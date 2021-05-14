@@ -2,13 +2,43 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/nn/pool.h"
+
 #include "core/framework/data_types_internal.h"
 #include "core/platform/threadpool.h"
-#include "pool_functors.h"
+#include "core/providers/cpu/nn/pool_functors.h"
+#include "core/providers/op_kernel_type_control.h"
+#include "core/providers/op_kernel_type_control_utils.h"
 
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
+
+namespace op_kernel_type_control {
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
+    kCpuExecutionProvider, kOnnxDomain, MaxPool, 8, Input, 0,
+    float,
+    double);
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
+    kCpuExecutionProvider, kOnnxDomain, MaxPool, 12, Input, 0,
+    double,
+    float,
+    int8_t,
+    uint8_t);
+}  // namespace op_kernel_type_control
+
+using MaxPool8DataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, MaxPool, 8, Input, 0);
+using EnabledMaxPool8DataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, MaxPool, 8, Input, 0);
+using MaxPool12DataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, MaxPool, 12, Input, 0);
+using EnabledMaxPool12DataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, MaxPool, 12, Input, 0);
+
+using AllEnabledMaxPoolDataTypes =
+    utils::TypeSetUnion<
+        EnabledMaxPool8DataTypes,
+        EnabledMaxPool12DataTypes>;
 
 template <typename T>
 inline static void RunLoop(concurrency::ThreadPool* tp, std::ptrdiff_t total_channels, T&& task) {
@@ -130,11 +160,10 @@ Status Pool<float, AveragePool>::Compute(OpKernelContext* context) const {
                            pool_attrs_.count_include_pad ? MlasAveragePoolingIncludePad : MlasAveragePoolingExcludePad);
 }
 
-
 Status MaxPoolV8::Compute(OpKernelContext* context) const {
-  utils::MLTypeCallDispatcherRet<Status, ComputeHelper, float, double, int8_t, uint8_t>
+  utils::MLTypeCallDispatcherFromTypeList<AllEnabledMaxPoolDataTypes>
       t_disp(context->Input<Tensor>(0)->GetElementType());
-  return t_disp.Invoke(this, context);
+  return t_disp.InvokeRet<Status, ComputeHelper>(this, context);
 }
 
 template <typename T>
@@ -239,19 +268,21 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(MaxPool, 1, 7,
                                    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                                    Pool<float, MaxPool<1 /*VERSION*/>>);
 
-ONNX_CPU_OPERATOR_VERSIONED_KERNEL(MaxPool, 8, 11, 
-                                         KernelDefBuilder()
-                                             .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                                                                   DataTypeImpl::GetTensorType<double>()})
-                                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
-                                         MaxPoolV8);
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(MaxPool, 8, 11,
+                                   KernelDefBuilder()
+                                       .TypeConstraint(
+                                           "T",
+                                           BuildKernelDefConstraintsFromTypeList<MaxPool8DataTypes>(),
+                                           BuildKernelDefConstraintsFromTypeList<EnabledMaxPool8DataTypes>())
+                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
+                                   MaxPoolV8);
 
 ONNX_CPU_OPERATOR_KERNEL(MaxPool, 12,
                          KernelDefBuilder()
-                             .TypeConstraint("T", {DataTypeImpl::GetTensorType<double>(),
-                                                   DataTypeImpl::GetTensorType<float>(),
-                                                   DataTypeImpl::GetTensorType<int8_t>(),
-                                                   DataTypeImpl::GetTensorType<uint8_t>()})
+                             .TypeConstraint(
+                                 "T",
+                                 BuildKernelDefConstraintsFromTypeList<MaxPool12DataTypes>(),
+                                 BuildKernelDefConstraintsFromTypeList<EnabledMaxPool12DataTypes>())
                              .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
                          MaxPoolV8);
 

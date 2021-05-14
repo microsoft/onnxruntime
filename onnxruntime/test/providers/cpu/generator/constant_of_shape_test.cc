@@ -148,7 +148,7 @@ TEST(ConstantOfShape, TypeTests) {
   //RunTypedTest(TensorProto::INT16, int16_t(16));
 
   RunTypedTest(TensorProto::FLOAT, 1.f);
-  RunTypedTest(TensorProto::FLOAT16, MLFloat16(5));
+  RunTypedTest(TensorProto::FLOAT16, MLFloat16(static_cast<uint16_t>(5)));
   RunTypedTest(TensorProto::DOUBLE, 1.0);
   RunTypedTest(TensorProto::INT32, int32_t(32));
   RunTypedTest(TensorProto::INT64, int64_t(64));

@@ -3,27 +3,27 @@ jobs:
   pool: Linux-GPU-TensorRT-Perf 
   variables:
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
-  timeoutInMinutes: 1200 
+    branch: 'master'
+  timeoutInMinutes: 4000 
   steps:
-    #- template: templates/set-test-data-variables-step.yml
-    #
-    - script: 'python3 ort_build_latest.py -c /usr/local/cuda-11.0/ -t /home/hcsuser/tensorrt/TensorRT-7.1.3.4/ -o /home/hcsuser/repos/onnxruntime'
-      displayName: 'Upgrade ORT wheel'
-      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-    
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/perf.sh "onnx-zoo-models"'
-      displayName: 'Command Line Script 1'
+  
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.tensorrt-perf -b master -i ort-$(branch)'
+      displayName: 'Build latest ORT Images'
+      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d ort-$(branch) -o "onnx-zoo-models"'
+      displayName: 'Onnx Zoo Models Perf'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/perf.sh "many-models"'
-      displayName: 'Command Line Script 2'
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  ort-$(branch) -o "many-models"'
+      displayName: 'Many Models Perf'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/perf.sh "partner-models"'
-      displayName: 'Command Line Script 3'
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  ort-$(branch) -o "partner-models"'
+      displayName: 'Partner Models Perf'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact' 
+    - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r /home/hcsuser/perf/result/ $(Build.SourcesDirectory)/Artifact' 
       displayName: 'Prepare Artifacts'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 

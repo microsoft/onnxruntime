@@ -40,7 +40,6 @@ cp $SOURCE_DIR/include/onnxruntime/core/session/onnxruntime_session_options_conf
 
 # copy the README, licence and TPN
 cp $SOURCE_DIR/README.md $BINARY_DIR/$ARTIFACT_NAME/README.md
-cp $SOURCE_DIR/docs/C_API.md $BINARY_DIR/$ARTIFACT_NAME/C_API.md
 cp $SOURCE_DIR/docs/Privacy.md $BINARY_DIR/$ARTIFACT_NAME/Privacy.md
 cp $SOURCE_DIR/LICENSE $BINARY_DIR/$ARTIFACT_NAME/LICENSE
 cp $SOURCE_DIR/ThirdPartyNotices.txt $BINARY_DIR/$ARTIFACT_NAME/ThirdPartyNotices.txt

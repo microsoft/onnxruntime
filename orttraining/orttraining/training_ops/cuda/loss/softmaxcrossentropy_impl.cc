@@ -49,7 +49,8 @@ Status SoftmaxCrossEntropy<T>::ComputeInternal(OpKernelContext* ctx) const {
   T* log_prob_data = log_prob->template MutableData<T>();
 
   // calculate logsoftmax
-  auto status = SoftMaxComputeHelper<T, true>(logit_data,
+  auto status = SoftMaxComputeHelper<T, true>(Stream(),
+                                              logit_data,
                                               logit_reshape,
                                               log_prob_data,
                                               CudnnHandle(),
@@ -64,6 +65,7 @@ Status SoftmaxCrossEntropy<T>::ComputeInternal(OpKernelContext* ctx) const {
   // calculate (label * log(softmax)) for each element
   IAllocatorUniquePtr<T> temp_X = GetScratchBuffer<T>(N * D);
   SoftMaxCrossEntropyImpl(
+      Stream(),
       log_prob_data,     // logsoftmax result
       label_data,        // label
       normalize_factor,  // normalize_factor
@@ -73,15 +75,13 @@ Status SoftmaxCrossEntropy<T>::ComputeInternal(OpKernelContext* ctx) const {
   std::vector<int64_t> output_dims(2, 1);
   Tensor* Y = ctx->Output(0, TensorShape({}));
   // Sum((label * log(softmax)) using Reduction
-  ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+  return ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
       temp_X.get(),
       logit_reshape,
       Y->template MutableData<T>(),
       TensorShape({}),
       CUDNN_REDUCE_TENSOR_ADD,
       output_dims);
-
-  return Status::OK();
 }
 
 template <typename T>
@@ -111,6 +111,7 @@ Status SoftmaxCrossEntropyGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
   T* d_logits_data = d_logits->template MutableData<T>();
 
   SoftMaxCrossEntropyGradImpl(
+      Stream(),
       dY_data,           // Dy
       log_prob_data,     // log(pi)
       label_data,        // Label
@@ -149,7 +150,8 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
   T* log_prob_data = log_prob->template MutableData<T>();
 
   // calculate logsoftmax
-  auto status = SoftMaxComputeHelper<T, true>(logit_data,
+  auto status = SoftMaxComputeHelper<T, true>(Stream(),
+                                              logit_data,
                                               logit_reshape,
                                               log_prob_data,
                                               CudnnHandle(),
@@ -165,22 +167,24 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
     weight_data = weight.template Data<T>();
   }
 
+  // Compute buffer size in byte for reduction APIs.
+  const auto buffer_size =
+      compute_reduction_buffer_size<T>(static_cast<int>(N));
+  // Allocate reduction buffer whose size is buffer_size bytes.
+  IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(
+      buffer_size);
+
   auto normalize_factor_data = GetScratchBuffer<T>(1);
   if (reduction_ == ReductionType::SUM) {
     const T normalize_factor = static_cast<T>(1);
-    cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice, Stream()));
   } else if (reduction_ == ReductionType::MEAN) {
     if (weight_data == nullptr) {
       const T normalize_factor = static_cast<T>(N);
-      cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice, Stream()));
     } else {
-      // Compute buffer size in byte for reduction APIs.
-      const auto buffer_size =
-          compute_reduction_buffer_size<T>(static_cast<int>(N));
-      // Allocate reduction buffer whose size is buffer_size bytes.
-      IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(
-          buffer_size);
       ORT_RETURN_IF_ERROR(reduce_sum(
+          Stream(),
           weight_data,
           normalize_factor_data.get(),
           static_cast<int>(N),
@@ -189,7 +193,8 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
     }
   }
 
-  SparseSoftmaxCrossEntropyImpl(log_prob_data,
+  SparseSoftmaxCrossEntropyImpl(Stream(),
+                                log_prob_data,
                                 label_data,
                                 weight_data,
                                 normalize_factor_data.get(),
@@ -198,16 +203,13 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
                                 D);
 
   // ReduceSum on loss_per_sample
-  std::vector<int64_t> output_dims(1, 1);
-  ReduceKernelShared<T, T, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+  return reduce_sum(
+      Stream(),
       tmp_loss_sample.get(),
-      label_reshape,
       total_loss_data,
-      TensorShape({}),
-      CUDNN_REDUCE_TENSOR_ADD,
-      output_dims);
-
-  return Status::OK();
+      static_cast<int>(N),
+      reduction_buffer.get(),
+      buffer_size);
 }
 
 template <typename T, typename Tin>
@@ -245,11 +247,11 @@ Status SparseSoftmaxCrossEntropyGrad<T, Tin>::ComputeInternal(OpKernelContext* c
   auto normalize_factor_data = GetScratchBuffer<T>(1);
   if (reduction_ == ReductionType::SUM) {
     const T normalize_factor = static_cast<T>(1);
-    cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice, Stream()));
   } else if (reduction_ == ReductionType::MEAN) {
     if (weight_data == nullptr) {
       const T normalize_factor = static_cast<T>(N);
-      cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice);
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice, Stream()));
     } else {
       // Compute buffer size in byte for reduction APIs.
       const auto buffer_size =
@@ -258,6 +260,7 @@ Status SparseSoftmaxCrossEntropyGrad<T, Tin>::ComputeInternal(OpKernelContext* c
       IAllocatorUniquePtr<void> reduction_buffer = GetScratchBuffer<void>(
           buffer_size);
       ORT_RETURN_IF_ERROR(reduce_sum(
+          Stream(),
           weight_data,
           normalize_factor_data.get(),
           static_cast<int>(N),
@@ -266,7 +269,8 @@ Status SparseSoftmaxCrossEntropyGrad<T, Tin>::ComputeInternal(OpKernelContext* c
     }
   }
 
-  SparseSoftmaxCrossEntropyGradImpl(dY_data,
+  SparseSoftmaxCrossEntropyGradImpl(Stream(),
+                                    dY_data,
                                     log_prob_data,
                                     label_data,
                                     weight_data,

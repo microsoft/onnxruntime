@@ -120,6 +120,7 @@ std::unordered_map<std::string, std::string> disabledGpuTests(
 
      // Tier 2 models
      {"fp16_test_tiny_yolov2_opset7", "Bug 31005780: Result of fp16_test_tiny_yolov2_opset7 and fp16_coreml_FNS_Candy_opset7 models on DirectML aren't as accurate as on CPU https://microsoft.visualstudio.com/OS/_workitems/edit/31005780"},
+     {"fp16_tiny_yolov2_opset8", "Bug 31005780: Result of fp16_test_tiny_yolov2_opset7 and fp16_coreml_FNS_Candy_opset7 models on DirectML aren't as accurate as on CPU https://microsoft.visualstudio.com/OS/_workitems/edit/31005780"},
      {"fp16_coreml_FNS_Candy_opset7", "Bug 31005780: Result of fp16_test_tiny_yolov2_opset7 and fp16_coreml_FNS_Candy_opset7 models on DirectML aren't as accurate as on CPU https://microsoft.visualstudio.com/OS/_workitems/edit/31005780"},
      {"mlperf_ssd_mobilenet_300_opset10", "Bug 31005624: mlperf_ssd_mobilenet_300 opset 10 model fails to evaluate in DirectML https://microsoft.visualstudio.com/OS/_workitems/edit/31005624"}
     });
@@ -129,6 +130,13 @@ std::unordered_map<std::string, std::string> disabledGpuTests(
 */
 std::unordered_map<std::string, std::pair<std::string, std::string>> disabledGpuAdapterTests(
     {
-      {"fp16_inception_v1_opset7", std::make_pair("AMD Radeon VII|Intel\\(R\\) (UHD )?Graphics|TITAN X", "Bug 31144419: Results of fp16_inception_v1 opset7 and opset8 aren't accurate enough on AMD Radeon VII & Intel(R) UHD Graphics 630 & NVIDIA TITAN X (Pascal) https://microsoft.visualstudio.com/OS/_workitems/edit/31144419")},
-      {"fp16_inception_v1_opset8", std::make_pair("AMD Radeon VII|Intel\\(R\\) (UHD )?Graphics|TITAN X", "Bug 31144419: Results of fp16_inception_v1 opset7 and opset8 aren't accurate enough on AMD Radeon VII & Intel(R) UHD Graphics 630 & NVIDIA TITAN X (Pascal) https://microsoft.visualstudio.com/OS/_workitems/edit/31144419")},
+      {"fp16_inception_v1_opset7", std::make_pair("NVIDIA", "Bug 31144419: Results of fp16_inception_v1 opset7 and opset8 aren't accurate enough on AMD Radeon VII & Intel(R) UHD Graphics 630 & NVIDIA https://microsoft.visualstudio.com/OS/_workitems/edit/31144419")},
+      {"fp16_inception_v1_opset8", std::make_pair("NVIDIA", "Bug 31144419: Results of fp16_inception_v1 opset7 and opset8 aren't accurate enough on AMD Radeon VII & Intel(R) UHD Graphics 630 & NVIDIA https://microsoft.visualstudio.com/OS/_workitems/edit/31144419")},
+      {"candy_opset9", std::make_pair("Intel\\(R\\) (UHD )?Graphics", "Bug 31652854: Results of candy_opset9 aren't accurate enough on Intel Graphics https://microsoft.visualstudio.com/OS/_workitems/edit/31652854")},
     });
+
+/*
+    test name -> sampleTolerance
+*/
+std::unordered_map<std::string, double> gpuSampleTolerancePerTests(
+    {{"fp16_inception_v1", 0.005}});

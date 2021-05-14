@@ -138,7 +138,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
     auto& data_n = *data_n_ptr;
 
     // Type sanity check (Make sure we are working on homogeneous types)
-    ORT_RETURN_IF_NOT(data_n.DataType() == p.output_tensor->DataType());
+    ORT_RETURN_IF_NOT(data_n.DataType() == p.output_tensor->DataType(), "Data type mismatch");
 
     // The input_axis_pitch is the number of elements to add to move to the next split axis in the input
     // Can handle stacking as well (as the "new dummy dimension" in the input is of unit value).

@@ -14,6 +14,7 @@ namespace cuda {
 // - input_size % bias_size == 0
 template <typename T, typename GeluComputationMode>
 void LaunchBiasGeluGradDxKernel(
+    cudaStream_t stream,
     int64_t input_size, int64_t bias_size,
     const T* dY, const T* X, const T* B, T* dX);
 

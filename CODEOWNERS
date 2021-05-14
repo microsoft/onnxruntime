@@ -1,14 +1,13 @@
 * @Microsoft/onnxruntime
 
 # Python frontend owners
-orttraining/*.py @thiagocrepaldi @spandantiwari @BowenBao @liqunfu
-orttraining/orttraining/python/** @thiagocrepaldi @spandantiwari @BowenBao @liqunfu
-orttraining/orttraining/test/python/** @thiagocrepaldi @spandantiwari @BowenBao @liqunfu
-orttraining/pytorch_frontend_examples/** @thiagocrepaldi @spandantiwari @BowenBao @liqunfu
-onnxruntime/python/training/** @thiagocrepaldi @spandantiwari @BowenBao @liqunfu
-onnxruntime/test/python/onnxruntime_test_ort_trainer.py @thiagocrepaldi @spandantiwari @BowenBao @liqunfu
-onnxruntime/test/python/onnxruntime_test_ort_trainer_with_mixed_precision.py @thiagocrepaldi @spandantiwari @BowenBao @liqunfu
-onnxruntime/test/python/onnxruntime_test_training_unit_tests.py @thiagocrepaldi @spandantiwari @BowenBao @liqunfu
-onnxruntime/test/python/onnxruntime_test_training_unittest_utils.py @thiagocrepaldi @spandantiwari @BowenBao @liqunfu
-samples/python/** @thiagocrepaldi @spandantiwari @BowenBao @liqunfu
-
+orttraining/*.py @thiagocrepaldi @spandantiwari @BowenBao @liqunfu @baijumeswani
+orttraining/orttraining/python/** @thiagocrepaldi @spandantiwari @BowenBao @liqunfu @baijumeswani
+orttraining/orttraining/test/python/** @thiagocrepaldi @spandantiwari @BowenBao @liqunfu @baijumeswani
+orttraining/pytorch_frontend_examples/** @thiagocrepaldi @spandantiwari @BowenBao @liqunfu @baijumeswani
+onnxruntime/python/training/** @thiagocrepaldi @spandantiwari @BowenBao @liqunfu @baijumeswani
+onnxruntime/test/python/onnxruntime_test_ort_trainer.py @thiagocrepaldi @spandantiwari @BowenBao @liqunfu @baijumeswani
+onnxruntime/test/python/onnxruntime_test_ort_trainer_with_mixed_precision.py @thiagocrepaldi @spandantiwari @BowenBao @liqunfu @baijumeswani
+onnxruntime/test/python/onnxruntime_test_training_unit_tests.py @thiagocrepaldi @spandantiwari @BowenBao @liqunfu @baijumeswani
+onnxruntime/test/python/onnxruntime_test_training_unittest_utils.py @thiagocrepaldi @spandantiwari @BowenBao @liqunfu @baijumeswani
+samples/python/** @thiagocrepaldi @spandantiwari @BowenBao @liqunfu @baijumeswani

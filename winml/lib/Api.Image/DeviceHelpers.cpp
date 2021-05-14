@@ -25,7 +25,7 @@ HRESULT IsWarpAdapter(IDXGIAdapter1* pAdapter, bool* isWarpAdapter) {
   return S_OK;
 }
 
-HRESULT _winml::GetDXGIHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, IDXGIAdapter1** ppAdapter) {
+HRESULT _winml::GetDXGIHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, _COM_Outptr_ IDXGIAdapter1** ppAdapter) {
 
   winrt::com_ptr<IDXGIAdapter1> spAdapter;
   UINT i = 0;
@@ -67,7 +67,7 @@ HRESULT _winml::GetDXGIHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE prefere
 // Return the first adapter that matches the preference:
 // DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE => DXCoreAdapterProperty::IsDetachable
 // DXGI_GPU_PREFERENCE_MINIMUM_POWER => DXCoreAdapterProperty::IsIntegrated
-HRESULT _winml::GetDXCoreHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, IDXCoreAdapter** ppAdapter) {
+HRESULT _winml::GetDXCoreHardwareAdapterWithPreference(DXGI_GPU_PREFERENCE preference, _COM_Outptr_ IDXCoreAdapter** ppAdapter) {
   winrt::com_ptr<IDXCoreAdapterFactory> spFactory;
   RETURN_IF_FAILED(DXCoreCreateAdapterFactory(IID_PPV_ARGS(spFactory.put())));
 

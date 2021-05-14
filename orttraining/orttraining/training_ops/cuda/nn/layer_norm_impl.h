@@ -31,6 +31,7 @@ namespace cuda {
 template <typename T, typename U, bool simplified>
 void HostLayerNormGradient(
     const cudaDeviceProp& prop,
+    cudaStream_t stream,
     const T* dout,
     const T* input,
     const T* output,

@@ -127,6 +127,7 @@ __global__ void BiasSoftmaxWarpForward(
 
 template <typename T>
 void DispatchBiasSoftmaxForwardImpl(
+    cudaStream_t stream,
     Tensor* output_tensor,
     const Tensor* input_tensor,
     const Tensor* input_bias_tensor,
@@ -167,47 +168,47 @@ void DispatchBiasSoftmaxForwardImpl(
   switch (log2_elements) {
     case 0:  // 1
       BiasSoftmaxWarpForward<input_t, output_t, acc_t, 0>
-          <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+          <<<blocks, threads, 0, stream>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     case 1:  // 2
       BiasSoftmaxWarpForward<input_t, output_t, acc_t, 1>
-          <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+          <<<blocks, threads, 0, stream>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     case 2:  // 4
       BiasSoftmaxWarpForward<input_t, output_t, acc_t, 2>
-          <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+          <<<blocks, threads, 0, stream>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     case 3:  // 8
       BiasSoftmaxWarpForward<input_t, output_t, acc_t, 3>
-          <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+          <<<blocks, threads, 0, stream>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     case 4:  // 16
       BiasSoftmaxWarpForward<input_t, output_t, acc_t, 4>
-          <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+          <<<blocks, threads, 0, stream>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     case 5:  // 32
       BiasSoftmaxWarpForward<input_t, output_t, acc_t, 5>
-          <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+          <<<blocks, threads, 0, stream>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     case 6:  // 64
       BiasSoftmaxWarpForward<input_t, output_t, acc_t, 6>
-          <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+          <<<blocks, threads, 0, stream>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     case 7:  // 128
       BiasSoftmaxWarpForward<input_t, output_t, acc_t, 7>
-          <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+          <<<blocks, threads, 0, stream>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     case 8:  // 256
       BiasSoftmaxWarpForward<input_t, output_t, acc_t, 8>
-          <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+          <<<blocks, threads, 0, stream>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     case 9:  // 512
       BiasSoftmaxWarpForward<input_t, output_t, acc_t, 9>
-          <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+          <<<blocks, threads, 0, stream>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     case 10:  // 1024
       BiasSoftmaxWarpForward<input_t, output_t, acc_t, 10>
-          <<<blocks, threads, 0>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
+          <<<blocks, threads, 0, stream>>>(output, input, input_bias, element_count, batch_count, batch_stride, bias_broadcast_size_per_batch);
       break;
     default:
       break;
@@ -216,6 +217,7 @@ void DispatchBiasSoftmaxForwardImpl(
 
 #define SPECIALIZED_BIAS_SOFTMAX_IMPL(T)           \
   template void DispatchBiasSoftmaxForwardImpl<T>( \
+      cudaStream_t stream,                         \
       Tensor * output_tensor,                      \
       const Tensor* input_tensor,                  \
       const Tensor* input_bias_tensor,             \
@@ -232,6 +234,7 @@ SPECIALIZED_BIAS_SOFTMAX_IMPL(MLFloat16)
 // note: This is an unhappy path! There is no performance benefit for the fusion.
 template <typename T>
 void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
+    cudaStream_t stream,
     cudnnHandle_t cudaDnnHandle,
     int element_count,
     int batch_count,
@@ -278,6 +281,7 @@ void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
 
   // invoke elementwise add with broadcast kernel
   ::onnxruntime::cuda::BinaryElementWiseImpl(
+      stream,
       (int32_t)X_shape.NumDimensions(),
       &lhs_padded_strides,
       X_data,
@@ -311,6 +315,7 @@ void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
 
 #define SPECIALIZED_BIAS_SOFTMAX_IMPL_VIA_DNN(T)                \
   template void DispatchBiasSoftMaxForwardViaDnnLibraryImpl<T>( \
+      cudaStream_t stream,                                      \
       cudnnHandle_t cudaDnnHandle,                              \
       int element_count,                                        \
       int batch_count,                                          \

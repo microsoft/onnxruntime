@@ -45,10 +45,9 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   auto x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
 
   auto x_dimensions = X->Shape().NumDimensions();
-  if (x_dimensions != 4 && x_dimensions != 3) {
-    // This condition is not true for test_convtranspose_3d in ONNX tests series.
+  if (x_dimensions < 3 || x_dimensions > 5) {
     // TODO: the error message should tell which operator raises it.
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must be 3- or 4-dimensional.",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must be 3-, 4- or 5-dimensional.",
                            " X: ", X->Shape().ToString().c_str());
   }
   const Tensor* W = context->Input<Tensor>(1);
@@ -94,11 +93,11 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       s_.y_dims = y_dims;
 
       if (w_dims_changed)
-        ORT_RETURN_IF_ERROR(s_.filter_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
+        ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
 
       // Special case when there is a dim value of 0 in the shape.
       // Return only after we have cached the following for subsequent runs :
-      // 1) `w_dims` in the `filter_desc`
+      // 1) `w_dims` in the `w_desc`
       // 2) `y_dims` in s_.y_dims
       if (p.Y->Shape().Size() == 0) {
         return Status::OK();
@@ -108,10 +107,9 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims, CudnnTensor::GetDataType<CudaT>()));
 
       cudnnConvolutionMode_t mode = CUDNN_CROSS_CORRELATION;
-      ORT_RETURN_IF_ERROR(s_.conv_desc.Set(p.kernel_shape.size(), p.pads, p.strides,
-                                           p.dilations, mode, CudnnTensor::GetDataType<CudaT>()));
-      CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(s_.conv_desc,
-                                                          gsl::narrow_cast<int>(conv_transpose_attrs_.group)));
+      ORT_RETURN_IF_ERROR(s_.conv_desc.Set(p.kernel_shape.size(), p.pads, p.strides, p.dilations,
+                                           gsl::narrow_cast<int>(conv_transpose_attrs_.group),
+                                           mode, CudnnTensor::GetDataType<CudaT>()));
 
       if (has_bias) {
         const auto& b_shape = p.B->Shape();
@@ -138,7 +136,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
         int algo_count = 1;
         CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionBackwardDataAlgorithmEx(
             CudnnHandle(),
-            s_.filter_desc,
+            s_.w_desc,
             w_data,
             s_.x_tensor,
             x_data,
@@ -184,7 +182,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
         cudnnConvolutionBackwardData(
             CudnnHandle(),
             &alpha,
-            s_.filter_desc,
+            s_.w_desc,
             w_data,
             s_.x_tensor,
             x_data,

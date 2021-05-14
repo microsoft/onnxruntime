@@ -20,6 +20,7 @@
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/framework/session_options.h"
+#include "core/framework/allocatormgr.h"
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
@@ -28,6 +29,9 @@
 #include <TraceLoggingActivity.h>
 #endif
 
+#ifdef ENABLE_TRAINING
+#include "core/framework/partial_graph_execution_state.h"
+#endif
 namespace onnxruntime {  // forward declarations
 class GraphTransformer;
 class Environment;
@@ -177,14 +181,21 @@ class InferenceSession {
                                           TransformerLevel level = TransformerLevel::Level2) ORT_MUST_USE_RESULT;
 
   /**
-    * Enable a custom set of transformers. Call this before invoking Initialize().
+    * Filter the enabled optimizers (either transformer or rewrite rule) using optimizers_to_disable.
+    * For an optimizer to be enabled, it must be allowed at the current optimization level (as specified in
+    * session options), and NOT in optimizers_to_disable. 
+    * This allows finer grained control of the enabled/disabled optimizations.
+    * Must be called before Initialize() to take effect.
+    * 
     * Calling this API is optional.
-    * When this list is provided ORT ignores the levels set in session options.
     * @return OK if success.
     */
-  common::Status AddCustomTransformerList(const std::vector<std::string>& transformers_to_enable) ORT_MUST_USE_RESULT;
+  common::Status FilterEnabledOptimizers(const std::unordered_set<std::string>& optimizers_to_disable)
+      ORT_MUST_USE_RESULT;
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   /**
     * Add custom ops. This API is not thread safe.
     */
@@ -200,6 +211,7 @@ class InferenceSession {
     * @return OK if success.
     */
   common::Status RegisterCustomRegistry(std::shared_ptr<CustomRegistry> custom_registry) ORT_MUST_USE_RESULT;
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
   /**
     * Load an ONNX or ORT format model.
@@ -293,6 +305,24 @@ class InferenceSession {
   virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
   common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
 
+#ifdef ENABLE_TRAINING
+  /**
+  * Partially run a pre-loaded and pre-intialized model.
+    * @param run_options run options. 
+    * @param feeds inputs owned by client code and should not be changed during
+    *        execution of this function.
+    * @param fetches outputs produced after the executin of this function.
+    * @param state State of the graph needed to resume partial graph run.
+    * @param feeds_fetches_manager Contains feed/fetches name to internal indices mapping and information for device
+    *                              copy/checks.
+  */
+  common::Status PartialRun(onnxruntime::RunOptions& run_options,
+                            const std::vector<OrtValue>& feeds,
+                            std::vector<OrtValue>& fetches,
+                            PartialGraphExecutionState& state,
+                            FeedsFetchesManager& feeds_fetches_manager);
+#endif
+
   /**
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
     * @note lifetime of the returned pointer is valid as long as the Session object is live.
@@ -384,10 +414,19 @@ class InferenceSession {
     */
   AllocatorPtr GetAllocator(const OrtMemoryInfo& mem_info) const;
 
+  std::shared_ptr<onnxruntime::AllocatorManager> GetAllocatorManager() {
+    return allocator_manager_;
+  }
+
   /**
     *Get InferenceSession logger.
     */
   const logging::Logger* GetLogger() const { return session_logger_; };
+
+  const SessionState& GetSessionState() const {
+    ORT_ENFORCE(session_state_ != nullptr, "Session must be initialized to create session state.");
+    return *session_state_;
+  }
 
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
@@ -410,11 +449,6 @@ class InferenceSession {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   bool IsInitialized() const;
-
-  const SessionState& GetSessionState() const {
-    ORT_ENFORCE(session_state_ != nullptr, "Session must be initialized to create session state.");
-    return *session_state_;
-  }
 
   // Use these 2 threadpool methods to get access to the threadpools since they rely on
   // specific flags in session options
@@ -522,8 +556,7 @@ class InferenceSession {
 
 #if !defined(ORT_MINIMAL_BUILD)
   virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
-                                         TransformerLevel graph_optimization_level,
-                                         const std::vector<std::string>& custom_list);
+                                         TransformerLevel graph_optimization_level);
 
   common::Status TransformGraph(onnxruntime::Graph& graph,
                                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
@@ -536,10 +569,8 @@ class InferenceSession {
 
   InsertCastTransformer insert_cast_transformer_;
 
-  // List of transformers to run. When this list is not empty only the transformers in this list
-  // will be run regardless of the level set.
-  // .i.e This list overrides both SessionOptions.graph_optimization_level and predefined transformers.
-  std::vector<std::string> transformers_to_enable_;
+  // Any GraphTransformer/RewriteRule name in this set will not be enabled.
+  std::unordered_set<std::string> optimizers_to_disable_;
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -564,6 +595,9 @@ class InferenceSession {
 
   // Threadpools per session. These are initialized and used for the entire duration of the session
   // when use_per_session_threads is true.
+  std::basic_string<ORTCHAR_T> thread_pool_name_;
+  std::basic_string<ORTCHAR_T> inter_thread_pool_name_;
+
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
 
@@ -583,9 +617,12 @@ class InferenceSession {
   std::list<std::shared_ptr<onnxruntime::IOnnxRuntimeOpSchemaCollection>> custom_schema_registries_;
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+
   //CustomRegistry objects own the corresponding KernelRegistry and OnnxRuntimeOpSchemaRegistry objects.
   //So its lifetime should be same as its constituents. This vector is to extend the lifetime of the owner.
   std::vector<std::shared_ptr<CustomRegistry>> custom_registries_;
+#endif
 
   ModelMetadata model_metadata_;
   std::unordered_set<std::string> required_inputs_;
@@ -649,6 +686,8 @@ class InferenceSession {
   // Longer term we may want to directly refer to offsets in this buffer for initializers so we don't need to copy
   // those into new OrtValue instances, at which point we won't free them until the InferenceSession goes away.
   std::vector<uint8_t> ort_format_model_bytes_;
+
+  std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;
 };
 
 struct SessionIOBinding {

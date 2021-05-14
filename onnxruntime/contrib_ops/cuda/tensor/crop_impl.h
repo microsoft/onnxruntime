@@ -12,6 +12,7 @@ using namespace onnxruntime::cuda;
 
 template <typename T>
 void CropImpl(
+    cudaStream_t stream,
     const T* input_data,
     const int src_start_x,
     const int src_start_y,

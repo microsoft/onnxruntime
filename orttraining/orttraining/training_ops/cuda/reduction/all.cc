@@ -26,10 +26,10 @@ Status All<T>::ComputeInternal(OpKernelContext* ctx) const {
               size, ") exceeds the max allowed value (", std::numeric_limits<int>::max(), ").");
 
   LaunchAllKernel(
+      Stream(),
       input.Data<T>(),
       static_cast<int>(size),
       output.MutableData<bool>());
-
   return Status::OK();
 }
 

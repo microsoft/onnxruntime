@@ -10,6 +10,7 @@ namespace cuda {
 
 template <typename T1, typename T2, typename T3, typename T4, typename T_GRAD, typename T_GRAD_NORM, typename T_MIXED_PRECISION_FP>
 void AdamOptimizerImpl(
+    cudaStream_t stream,
     const T1* eta,
     const T2 update_count,
     const T3* weights,
@@ -18,11 +19,11 @@ void AdamOptimizerImpl(
     const T4* moment_2,
     const T3* loss_scale,
     const T_GRAD_NORM* grad_norm,
-    const T4 alpha,
-    const T4 beta,
-    const T4 lambda,
-    const T4 epsilon,
-    const T4 max_norm,
+    const float alpha,
+    const float beta,
+    const float lambda,
+    const float epsilon,
+    const float max_norm,
     const bool do_bias_correction,
     const int64_t weight_decay_mode,
     T4* moment_1_out,

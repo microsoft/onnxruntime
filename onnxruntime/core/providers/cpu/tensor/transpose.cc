@@ -2,11 +2,33 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/transpose.h"
+
+#include "core/framework/element_type_lists.h"
 #include "core/framework/utils.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/providers/op_kernel_type_control.h"
+#include "core/providers/op_kernel_type_control_utils.h"
 #include "utils.h"
 
 namespace onnxruntime {
+
+namespace op_kernel_type_control {
+// we're using one set of types for all opsets
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Transpose, Input, 0,
+    element_type_lists::All);
+}  // namespace op_kernel_type_control
+
+namespace {
+// reduce the supported types with any global or op specific lists
+using DataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                 Transpose, Input, 0);
+using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                        Transpose, Input, 0);
+
+const auto type_constraints = BuildKernelDefConstraintsFromTypeList<DataTypes>();
+const auto enabled_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>();
+}  // namespace
 
 /* A permutation [a,b,c,...] indicates that
    - The 0-th dimension of the output corresponds to the a-th dimension of input
@@ -152,42 +174,54 @@ inline void CopyPrim(uint8_t* target, const uint8_t* source) {
 
 // The function does not check num_axes > 0 but this is expected.
 template <class T>
-static void TypedDoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
+static bool TypedDoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
                                     const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target) {
-  MultiIndex mindex;
-  IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, sizeof(T));
+  constexpr bool enabled = utils::HasTypeWithSameSize<EnabledDataTypes, T>();
 
-  const uint8_t* local_source = source;
-  uint8_t* target_end = target + sizeof(T) * num_blocks;
-  for (; target != target_end; target += sizeof(T)) {
-    ORT_ENFORCE((local_source >= source) && (local_source < source + sizeof(T) * num_blocks));
-    CopyPrim<T>(target, local_source);
-    IncrementIndexAndComputeOffset(mindex, local_source);
+  if (enabled) {
+    MultiIndex mindex;
+    IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, sizeof(T));
+
+    const uint8_t* local_source = source;
+    uint8_t* target_end = target + sizeof(T) * num_blocks;
+    for (; target != target_end; target += sizeof(T)) {
+      ORT_ENFORCE((local_source >= source) && (local_source < source + sizeof(T) * num_blocks));
+      CopyPrim<T>(target, local_source);
+      IncrementIndexAndComputeOffset(mindex, local_source);
+    }
   }
+
+  return enabled;
 }
 
 // DoTransposeEltWise: specialization of DoTranspose for the num_elts_in_block=1 case.
 // copies source tensor to target, transposing elements.
 // The stride vector indicates the transposition.
-void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
-                        const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target,
-                        size_t element_size) {
+Status DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
+                          const std::vector<size_t>& stride, const uint8_t* source, uint8_t* target,
+                          size_t element_size) {
+  bool enabled = false;
   switch (element_size) {
     case sizeof(uint64_t):
-      TypedDoTransposeEltWise<uint64_t>(num_axes, target_dims, num_blocks, stride, source, target);
+      enabled = TypedDoTransposeEltWise<uint64_t>(num_axes, target_dims, num_blocks, stride, source, target);
       break;
     case sizeof(uint32_t):
-      TypedDoTransposeEltWise<uint32_t>(num_axes, target_dims, num_blocks, stride, source, target);
+      enabled = TypedDoTransposeEltWise<uint32_t>(num_axes, target_dims, num_blocks, stride, source, target);
       break;
     case sizeof(uint16_t):
-      TypedDoTransposeEltWise<uint16_t>(num_axes, target_dims, num_blocks, stride, source, target);
+      enabled = TypedDoTransposeEltWise<uint16_t>(num_axes, target_dims, num_blocks, stride, source, target);
       break;
     case sizeof(uint8_t):
-      TypedDoTransposeEltWise<uint8_t>(num_axes, target_dims, num_blocks, stride, source, target);
+      enabled = TypedDoTransposeEltWise<uint8_t>(num_axes, target_dims, num_blocks, stride, source, target);
       break;
     default:
-      assert(false);
+      // leave enabled as false
+      break;
   }
+
+  return enabled ? Status::OK()
+                 : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Transpose of element size not supported in this build. Size=",
+                                   element_size);
 }
 
 static void DoTransposeEltWise(int64_t num_axes, const std::vector<int64_t>& target_dims, size_t num_blocks,
@@ -243,17 +277,25 @@ static Status DoUntypedTranspose(const std::vector<size_t>& permutations, const 
     }
   }
 
+  Status status = Status::OK();
+
   if (is_string_type) {
-    const auto* input_data = input.template Data<std::string>();
-    auto* output_data = output.template MutableData<std::string>();
-    if (1 == prefix_blocksize) {
-      DoTransposeSingleBlock(suffix_blocksize, input_data, output_data);
-    } else if (1 == suffix_blocksize) {
-      DoTransposeEltWise(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, stride,
-                         input_data, output_data);
+    constexpr bool string_enabled = utils::HasType<EnabledDataTypes, std::string>();
+
+    if (string_enabled) {
+      const auto* input_data = input.template Data<std::string>();
+      auto* output_data = output.template MutableData<std::string>();
+      if (1 == prefix_blocksize) {
+        DoTransposeSingleBlock(suffix_blocksize, input_data, output_data);
+      } else if (1 == suffix_blocksize) {
+        DoTransposeEltWise(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, stride,
+                           input_data, output_data);
+      } else {
+        DoTransposeImpl(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, suffix_blocksize, stride,
+                        input_data, output_data);
+      }
     } else {
-      DoTransposeImpl(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, suffix_blocksize, stride,
-                      input_data, output_data);
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Transpose of std::string is not supported in this build.");
     }
   } else {
     const auto* input_data = reinterpret_cast<const uint8_t*>(input.DataRaw());
@@ -261,15 +303,16 @@ static Status DoUntypedTranspose(const std::vector<size_t>& permutations, const 
     if (1 == prefix_blocksize) {
       DoTransposeSingleBlock(suffix_blocksize, input_data, output_data, element_size);
     } else if (1 == suffix_blocksize) {
-      DoTransposeEltWise(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, stride,
-                         input_data, output_data, element_size);
+      // this may return a failed status if the data size is not supported in this build
+      status = DoTransposeEltWise(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, stride,
+                                  input_data, output_data, element_size);
     } else {
       DoTransposeImpl(num_axes_in_prefix, output.Shape().GetDims(), prefix_blocksize, suffix_blocksize, stride,
                       input_data, output_data, element_size);
     }
   }
 
-  return Status::OK();
+  return status;
 }
 
 /*
@@ -298,11 +341,23 @@ We use memcpy if the block size is larger.
 We fall back to the default implementation in all other cases, and if the input is std::string.
 */
 
+namespace {
+
+template <typename T>
+struct has_mlas_transpose : std::false_type {};
+
+template <>
+struct has_mlas_transpose<uint8_t> : std::true_type {};
+
+template <>
+struct has_mlas_transpose<uint32_t> : std::true_type {};
+
 // moving a single axis outwards where the read/write size is a power of 2 and between 8 and 64 bits.
 template <typename T>
-static void SimpleTransposeSingleAxisOutwards(const T* input_data, T* output_data,
-                                              int64_t num_loops, int64_t num_writers,
-                                              int64_t writes_per_loop, int64_t writes_per_writer_per_loop) {
+typename std::enable_if<!has_mlas_transpose<T>::value, void>::type
+SimpleTransposeSingleAxisOutwards(const T* input_data, T* output_data,
+                                  int64_t num_loops, int64_t num_writers,
+                                  int64_t writes_per_loop, int64_t writes_per_writer_per_loop) {
   const T* end;
   for (int64_t l = 0; l < num_loops; ++l) {
     T* output_for_first_writer = output_data;
@@ -325,9 +380,11 @@ static void SimpleTransposeSingleAxisOutwards(const T* input_data, T* output_dat
   }
 }
 
-static void SimpleTransposeSingleAxisOutwards(const uint8_t* input_data, uint8_t* output_data,
-                                              int64_t num_loops, int64_t num_writers,
-                                              int64_t writes_per_loop, int64_t writes_per_writer_per_loop) {
+template <typename T>
+typename std::enable_if<has_mlas_transpose<T>::value, void>::type
+SimpleTransposeSingleAxisOutwards(const T* input_data, T* output_data,
+                                  int64_t num_loops, int64_t num_writers,
+                                  int64_t writes_per_loop, int64_t writes_per_writer_per_loop) {
   for (int64_t l = 0; l < num_loops; ++l) {
     MlasTranspose(input_data,
                   output_data,
@@ -339,8 +396,8 @@ static void SimpleTransposeSingleAxisOutwards(const uint8_t* input_data, uint8_t
 }
 
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
-static void TransposeSingleAxisOutwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
-                                        int64_t from, int64_t to, const TensorShape* input_shape_override = nullptr) {
+void TransposeSingleAxisOutwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                                 int64_t from, int64_t to, const TensorShape* input_shape_override = nullptr) {
   ORT_UNUSED_PARAMETER(permutations);
 
   const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
@@ -407,9 +464,10 @@ static void TransposeSingleAxisOutwards(const std::vector<size_t>& permutations,
 }
 
 template <typename T>
-static void SimpleTransposeSingleAxisInwards(const T* input_data, T* output_data,
-                                             int64_t num_loops, int64_t num_readers,
-                                             int64_t reads_per_loop, int64_t reads_per_reader_per_loop) {
+typename std::enable_if<!has_mlas_transpose<T>::value, void>::type
+SimpleTransposeSingleAxisInwards(const T* input_data, T* output_data,
+                                 int64_t num_loops, int64_t num_readers,
+                                 int64_t reads_per_loop, int64_t reads_per_reader_per_loop) {
   T* end;
   for (int64_t l = 0; l < num_loops; ++l) {
     const T* input_for_first_reader = input_data;
@@ -431,9 +489,11 @@ static void SimpleTransposeSingleAxisInwards(const T* input_data, T* output_data
   }
 }
 
-static void SimpleTransposeSingleAxisInwards(const uint8_t* input_data, uint8_t* output_data,
-                                             int64_t num_loops, int64_t num_readers,
-                                             int64_t reads_per_loop, int64_t reads_per_reader_per_loop) {
+template <typename T>
+typename std::enable_if<has_mlas_transpose<T>::value, void>::type
+SimpleTransposeSingleAxisInwards(const T* input_data, T* output_data,
+                                 int64_t num_loops, int64_t num_readers,
+                                 int64_t reads_per_loop, int64_t reads_per_reader_per_loop) {
   for (int64_t l = 0; l < num_loops; ++l) {
     MlasTranspose(input_data,
                   output_data,
@@ -446,8 +506,8 @@ static void SimpleTransposeSingleAxisInwards(const uint8_t* input_data, uint8_t*
 
 // moving a single axis inwards where the read/write size is a power of 2 and between 8 and 64 bits.
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
-static void TransposeSingleAxisInwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
-                                       int64_t from, int64_t to, const TensorShape* input_shape_override = nullptr) {
+void TransposeSingleAxisInwards(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                                int64_t from, int64_t to, const TensorShape* input_shape_override = nullptr) {
   ORT_UNUSED_PARAMETER(permutations);
 
   const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
@@ -515,8 +575,8 @@ static void TransposeSingleAxisInwards(const std::vector<size_t>& permutations, 
 }
 
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
-static void SingleAxisTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
-                                size_t from, size_t to, const TensorShape* input_shape_override = nullptr) {
+void SingleAxisTranspose(const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
+                         size_t from, size_t to, const TensorShape* input_shape_override = nullptr) {
   if (from > to) {
     TransposeSingleAxisOutwards(permutations, input, output, from, to, input_shape_override);
   } else {
@@ -524,7 +584,7 @@ static void SingleAxisTranspose(const std::vector<size_t>& permutations, const T
   }
 }
 
-static bool IsMovingSingleAxis(const std::vector<size_t>& permutations, size_t& from, size_t& to) {
+bool IsMovingSingleAxis(const std::vector<size_t>& permutations, size_t& from, size_t& to) {
   // if a single axis moved to an outer dimension, the values should be one lower than the index until the slot the
   // axis was moved from, and equal to the index after that.
   // e.g. axis 3 moves out to 1 would be: 0, 3, 1, 2, 4
@@ -592,6 +652,8 @@ static bool IsMovingSingleAxis(const std::vector<size_t>& permutations, size_t& 
 
   return single_axis_moved;
 }
+
+}  // namespace
 
 bool IsTransposeReshape(const std::vector<size_t>& perm, const std::vector<int64_t>& input_dims) {
   // As long as the dims with values > 1 stay in the same order, it's a reshape.
@@ -686,13 +748,13 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Transpose,
     1,
     12,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    KernelDefBuilder().TypeConstraint("T", type_constraints, enabled_type_constraints),
     Transpose);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Transpose,
     13,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
+    KernelDefBuilder().TypeConstraint("T", type_constraints, enabled_type_constraints),
     Transpose);
 
 }  // namespace onnxruntime

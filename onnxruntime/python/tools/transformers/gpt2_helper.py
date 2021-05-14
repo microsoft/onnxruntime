@@ -14,7 +14,7 @@ import time
 import re
 from pathlib import Path
 from typing import List, Dict, Tuple, Union
-from transformers import GPT2Model, GPT2LMHeadModel, GPT2Config
+from transformers import GPT2Model, GPT2LMHeadModel, GPT2Config, TFGPT2Model
 from benchmark_helper import Precision
 
 logger = logging.getLogger(__name__)
@@ -31,8 +31,17 @@ class GPT2ModelNoPastState(GPT2Model):
         super().__init__(config)
 
     def forward(self, input_ids):
-        return super().forward(input_ids, use_cache=False)
+        return super().forward(input_ids, use_cache=False, return_dict=False)
 
+class TFGPT2ModelNoPastState(TFGPT2Model):
+    """ Here we wrap a class to disable past state output.
+    """
+    def __init__(self, config):
+        config.use_cache = False
+        super().__init__(config)
+
+    def forward(self, input_ids):
+        return super().call(input_ids, use_cache=False)
 
 class MyGPT2Model(GPT2Model):
     """ Here we wrap a class for Onnx model conversion for GPT2Model with past state.
@@ -40,11 +49,26 @@ class MyGPT2Model(GPT2Model):
     def __init__(self, config):
         super().__init__(config)
 
+    @staticmethod
+    def post_process(result, num_layer):
+        if isinstance(result[1][0], tuple) or isinstance(result[1][0], list):
+            assert len(result[1]) == num_layer and len(result[1][0]) == 2 #and len(result[1][0][0].shape) == 4 and result[1][0][0].shape == result[1][0][1].shape
+            present = []
+            for i in range(num_layer):
+                # Since transformers v4.*, past key and values are separated outputs.
+                # Here we concate them into one tensor to be compatible with Attention operator.
+                present.append(torch.cat((result[1][i][0].unsqueeze(0), result[1][i][1].unsqueeze(0)), dim=0))
+            return (result[0], tuple(present))
+
+        return result
+
     def forward(self, input_ids, position_ids, attention_mask, *past):
-        return super().forward(input_ids,
-                               position_ids=position_ids,
-                               attention_mask=attention_mask,
-                               past_key_values=past)
+        result = super().forward(input_ids,
+                                 position_ids=position_ids,
+                                 attention_mask=attention_mask,
+                                 past_key_values=past,
+                                 return_dict=False)
+        return MyGPT2Model.post_process(result, self.config.n_layer)
 
 
 class MyGPT2LMHeadModel(GPT2LMHeadModel):
@@ -54,10 +78,13 @@ class MyGPT2LMHeadModel(GPT2LMHeadModel):
         super().__init__(config)
 
     def forward(self, input_ids, position_ids, attention_mask, *past):
-        return super().forward(input_ids,
-                               position_ids=position_ids,
-                               attention_mask=attention_mask,
-                               past_key_values=past)
+        result = super().forward(input_ids,
+                                 position_ids=position_ids,
+                                 attention_mask=attention_mask,
+                                 past_key_values=past,
+                                 return_dict=False)
+
+        return MyGPT2Model.post_process(result, self.config.n_layer)
 
 
 class MyGPT2LMHeadModel_NoPadding(GPT2LMHeadModel):
@@ -216,6 +243,7 @@ class Gpt2Helper:
 
         is_all_close = is_close
         num_layers = len(ort_outputs) - 1
+
         for layer in range(num_layers):
             is_close = numpy.allclose(ort_outputs[1 + layer],
                                       torch_outputs[1][layer].cpu().numpy(),
@@ -288,10 +316,12 @@ class Gpt2Helper:
             input_names.append('attention_mask')
         input_names.extend(past_names)
 
+        assert len(outputs) == 2 and len(outputs[1]) == num_layer
+
         logger.info(
             f"Shapes: input_ids={dummy_inputs.input_ids.shape} past={dummy_inputs.past[0].shape} output={outputs[0].shape} present={outputs[1][0].shape}"
         )
-
+    
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
         torch.onnx.export(model,

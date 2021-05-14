@@ -157,8 +157,9 @@ static Status CastNodeArg(onnxruntime::Graph& graph,
   std::string output_name = graph.GenerateNodeArgName(arg->Name());
   const std::string cast_node_name = graph.GenerateNodeName("cast_" + output_name);
 
-  output_name += (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ? "_fp32" :
-                  elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ? "_fp16" : "_bf16");
+  output_name += (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT
+                      ? "_fp32"
+                      : (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ? "_fp16" : "_bf16"));
   NodeArg& output = graph.GetOrCreateNodeArg(output_name, &type_proto);
 
   // Create Cast node
@@ -174,7 +175,8 @@ static Status CastNodeArg(onnxruntime::Graph& graph,
            producer_node->OutputDefs()[producer_node_arg_index] != arg) {
       producer_node_arg_index++;
     }
-    ORT_RETURN_IF_NOT(producer_node_arg_index != static_cast<int>(producer_node->OutputDefs().size()));
+    ORT_RETURN_IF_NOT(producer_node_arg_index != static_cast<int>(producer_node->OutputDefs().size()),
+                      "producer_node_arg_index == producer_node->OutputDefs().size()");
   }
 
   // Update consumer
@@ -215,7 +217,8 @@ static Status CastNodeArg(onnxruntime::Graph& graph,
     }
   } else {
     // Make sure it is not one of graph outputs, otherwise, graph outputs need to be updated.
-    ORT_RETURN_IF_NOT(std::find(graph.GetOutputs().cbegin(), graph.GetOutputs().cend(), arg) == graph.GetOutputs().cend());
+    ORT_RETURN_IF_NOT(std::find(graph.GetOutputs().cbegin(), graph.GetOutputs().cend(), arg) == graph.GetOutputs().cend(),
+                      arg->Name(), " is a graph output");
   }
 
   // Update producer
@@ -372,9 +375,9 @@ Status TransformConstants(Graph& graph,
     ORT_RETURN_IF_ERROR(
         CastNodeArg(graph,
                     stage1_fp32_node_args,
-                    p_loss_subgraph != nullptr ?
-                        p_loss_subgraph->GetFP32NodeArgs() :
-                        std::unordered_map<Node*, std::vector<int>>(),
+                    p_loss_subgraph != nullptr
+                        ? p_loss_subgraph->GetFP32NodeArgs()
+                        : std::unordered_map<Node*, std::vector<int>>(),
                     tensor,
                     mixed_precision_type));
   }
@@ -386,7 +389,7 @@ Status TransformConstants(Graph& graph,
 // as SparseSoftmaxCrossEntropy where FP32 precision is required.
 // Converts fp16/bf16 tensor --> Op --> fp16/bf16 tensor to
 // fp16/bf16 tensor --> Cast --> fp32 tensor --> Op --> fp32 tensor --> Cast --> fp16/bf16 tensor
-Status TransformStage2(Graph& graph, 
+Status TransformStage2(Graph& graph,
                        ONNX_NAMESPACE::TensorProto_DataType mixed_precision_type,
                        const std::unordered_map<Node*, std::vector<int>>& loss_subgraph_fp32_node_args = {}) {
   // This pass does not require topological sort order: okay to visit nodes in any order.
@@ -546,7 +549,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
                                        bool layernorm_stash_as_fp32) {
   //Only fp16 and bfloat16 supported for now.
   ORT_ENFORCE(mixed_precision_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
-                  mixed_precision_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
+              mixed_precision_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
 
   // Stag 0: Initialize loss subgraph.
   LossSubgraph loss_subgraph(graph);
@@ -613,15 +616,14 @@ Status TransformGraphForMixedPrecision(Graph& graph,
   for (const auto& kv : mixed_precision_initializers) {
     const ONNX_NAMESPACE::TensorProto* tensor_proto = kv.second;
     Initializer initializer(*tensor_proto, graph.ModelPath());
-    ONNX_NAMESPACE::TensorProto weight_tensor_proto = mixed_precision_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ?
-                                                      initializer.ToFP16(kv.first) : initializer.ToBFloat16(kv.first);
+    ONNX_NAMESPACE::TensorProto weight_tensor_proto = mixed_precision_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ? initializer.ToFP16(kv.first) : initializer.ToBFloat16(kv.first);
     graph.AddInitializedTensor(weight_tensor_proto);
   }
 
   //set layernorm stash type
-  for (auto& node : graph.Nodes()){
-    if (!node.OpType().compare("LayerNormalization")){
-      node.AddAttribute("stash_type",  static_cast<int64_t>(layernorm_stash_as_fp32 ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT : mixed_precision_type));
+  for (auto& node : graph.Nodes()) {
+    if (!node.OpType().compare("LayerNormalization")) {
+      node.AddAttribute("stash_type", static_cast<int64_t>(layernorm_stash_as_fp32 ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT : mixed_precision_type));
     }
   }
 
@@ -633,7 +635,7 @@ Status TransformGraphForMixedPrecision(Graph& graph,
       auto& attributes = node.GetMutableAttributes();
       auto* element_type = &(attributes.find("element_types")->second);
       int ints_size = element_type->ints_size();
-      for(int i = 0; i < ints_size; ++i){
+      for (int i = 0; i < ints_size; ++i) {
         if (element_type->ints(i) == static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT)) {
           element_type->set_ints(i, static_cast<int64_t>(mixed_precision_type));
           // Need to resolve and populate the new type through the graph.

@@ -31,7 +31,7 @@ namespace contrib {
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       LayerNorm<T, true>);
-  
+
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
 
@@ -50,7 +50,7 @@ Status LayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   const Tensor* bias = p_ctx->Input<Tensor>(2);
   auto X_data = X->template Data<T>();
   auto scale_data = scale->template Data<T>();
-  auto bias_data = simplified ? nullptr : bias->template Data<T>();
+  auto bias_data = (simplified || nullptr == bias) ? nullptr : bias->template Data<T>();
 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
@@ -60,13 +60,13 @@ Status LayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   Tensor* Y = p_ctx->Output(0, x_shape);
   auto Y_data = Y->template MutableData<T>();
 
-  std::vector<int64_t> mean_inv_std_var_dim;
-  mean_inv_std_var_dim.reserve(x_shape.NumDimensions());
+  std::vector<int64_t> mean_inv_std_dev_dim;
+  mean_inv_std_dev_dim.reserve(x_shape.NumDimensions());
   for (int i = 0; i < static_cast<int>(x_shape.NumDimensions()); ++i) {
     if (i < axis) {
-      mean_inv_std_var_dim.emplace_back(x_shape.GetDims()[i]);
+      mean_inv_std_dev_dim.emplace_back(x_shape.GetDims()[i]);
     } else {
-      mean_inv_std_var_dim.emplace_back(1);
+      mean_inv_std_dev_dim.emplace_back(1);
     }
   }
 
@@ -79,7 +79,7 @@ Status LayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   int output_index = 1;
 
   if (!simplified) {
-    Tensor* mean = p_ctx->Output(output_index++, TensorShape(mean_inv_std_var_dim));
+    Tensor* mean = p_ctx->Output(output_index++, TensorShape(mean_inv_std_dev_dim));
     if (mean != nullptr) {
       mean_data = mean->template MutableData<T>();
     } else {
@@ -89,16 +89,16 @@ Status LayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
     }
   }
 
-  T* inv_std_var_data = nullptr;
-  BufferUniquePtr inv_std_var_data_buf_ptr;
+  T* inv_std_dev_data = nullptr;
+  BufferUniquePtr inv_std_dev_data_buf_ptr;
 
-  Tensor* inv_std_var = p_ctx->Output(output_index, TensorShape(mean_inv_std_var_dim));
-  if (inv_std_var != nullptr) {
-    inv_std_var_data = inv_std_var->template MutableData<T>();
+  Tensor* inv_std_dev = p_ctx->Output(output_index, TensorShape(mean_inv_std_dev_dim));
+  if (inv_std_dev != nullptr) {
+    inv_std_dev_data = inv_std_dev->template MutableData<T>();
   } else {
-    auto inv_std_var_data_buf = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * norm_count);
-    inv_std_var_data_buf_ptr = BufferUniquePtr(inv_std_var_data_buf, BufferDeleter(alloc));
-    inv_std_var_data = static_cast<T*>(inv_std_var_data_buf_ptr.get());
+    auto inv_std_dev_data_buf = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * norm_count);
+    inv_std_dev_data_buf_ptr = BufferUniquePtr(inv_std_dev_data_buf, BufferDeleter(alloc));
+    inv_std_dev_data = static_cast<T*>(inv_std_dev_data_buf_ptr.get());
   }
 
   concurrency::ThreadPool::TryBatchParallelFor(p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(norm_count),
@@ -124,6 +124,8 @@ Status LayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
                                                  for (int64_t h = 0; h < norm_size; h++) {
                                                    if (simplified) {
                                                      p_output[h] = p_input[h] / mean_square * scale_data[h];
+                                                   } else if (nullptr == bias){
+                                                     p_output[h] = (p_input[h] - mean) / mean_square * scale_data[h];
                                                    } else {
                                                      p_output[h] = (p_input[h] - mean) / mean_square * scale_data[h] + bias_data[h];
                                                    }
@@ -132,7 +134,7 @@ Status LayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
                                                  if (mean_data != nullptr) {
                                                    mean_data[task_idx] = mean;
                                                  }
-                                                 inv_std_var_data[task_idx] = 1 / mean_square;
+                                                 inv_std_dev_data[task_idx] = 1 / mean_square;
                                                }, 0);
 
   return Status::OK();

@@ -27,11 +27,11 @@ __global__ void _Fill(
 }
 
 template <typename T>
-void Fill(T* output, T value, int64_t count) {
+void Fill(cudaStream_t stream, T* output, T value, int64_t count) {
   int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
   _Fill<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
-      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(output, value, N);
+      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(output, value, N);
 }
 template <typename T>
 class ConstantBufferImpl : public IConstantBuffer<T> {
@@ -43,7 +43,7 @@ class ConstantBufferImpl : public IConstantBuffer<T> {
       cudaFree(buffer_);
   }
 
-  virtual const T* GetBuffer(size_t count) {
+  virtual const T* GetBuffer(cudaStream_t stream, size_t count) {
     if (count > count_) {
       if (buffer_) {
         cudaFree(buffer_);
@@ -52,7 +52,7 @@ class ConstantBufferImpl : public IConstantBuffer<T> {
       CUDA_CALL_THROW(cudaMalloc(&buffer_, count * sizeof(T)));
       count_ = count;
 
-      Fill(buffer_, val_, count);
+      Fill(stream, buffer_, val_, count);
     }
     return buffer_;
   }
@@ -65,7 +65,7 @@ class ConstantBufferImpl : public IConstantBuffer<T> {
 
 template <typename T>
 std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes() {
-  return onnxruntime::make_unique<ConstantBufferImpl<T>>(Consts<T>::One);
+  return std::make_unique<ConstantBufferImpl<T>>(Consts<T>::One);
 }
 
 template std::unique_ptr<IConstantBuffer<float>> CreateConstantOnes<float>();
@@ -76,7 +76,7 @@ template std::unique_ptr<IConstantBuffer<nv_bfloat16>> CreateConstantOnes<nv_bfl
 #endif
 
 #define SPECIALIZED_FILL(T) \
-  template void Fill<T>(T * output, T value, int64_t count);
+  template void Fill<T>(cudaStream_t stream, T * output, T value, int64_t count);
 
 SPECIALIZED_FILL(int8_t)
 SPECIALIZED_FILL(int16_t)

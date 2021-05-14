@@ -36,13 +36,14 @@ __global__ void _Scale(
 
 template <typename T>
 void Impl_Scale(
+    cudaStream_t stream,
     const T* input_data,
     const float scale_value,
     T* output_data,
     size_t count) {
   int blocksPerGrid = static_cast<int>(CeilDiv(count, GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   CUDA_LONG N = static_cast<CUDA_LONG>(count);
-  _Scale<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _Scale<T, GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       input_data,
       static_cast<T>(scale_value),
       output_data,
@@ -51,6 +52,7 @@ void Impl_Scale(
 
 #define SPECIALIZE_SCALE_IMPL(T)        \
 template void Impl_Scale<T>(            \
+    cudaStream_t stream,                \
     const T* input_data,                \
     const float scale_value,            \
     T* output_data,                     \

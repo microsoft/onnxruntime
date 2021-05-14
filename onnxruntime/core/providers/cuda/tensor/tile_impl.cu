@@ -32,6 +32,7 @@ __global__ void _TileKernel(
 
 template <typename T>
 void TileImpl(
+    cudaStream_t stream,
     const size_t shape_rank,
     const TArray<fast_divmod>& fdm_input_shape,
     const TArray<int64_t>& input_stride,
@@ -40,7 +41,7 @@ void TileImpl(
     T* output_data,
     const size_t N) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
-  _TileKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _TileKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       shape_rank, fdm_input_shape, input_stride, input_data,
       fdm_output_strides, output_data, (CUDA_LONG)N);
 }
@@ -58,18 +59,54 @@ __global__ void _TileMemcpyKernel(
 
 template <typename T>
 void TileMemcpyImpl(
+    cudaStream_t stream,
     const T* input_data,
     const size_t num_input_elements,
     T* output_data,
     const size_t num_output_elements) {
   int blocksPerGrid = (int)(ceil(static_cast<float>(num_output_elements) / GridDim::maxThreadsPerBlock));
-  _TileMemcpyKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+  _TileMemcpyKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
       input_data, num_input_elements, output_data, (CUDA_LONG)num_output_elements);
 }
 
+template <typename T>
+__global__ void _TileBatchedMemcpyKernel(
+    const T* input_data,
+    const size_t num_of_elements_per_input_batch,
+    const size_t num_input_batch_count,
+    const fast_divmod num_of_elements_per_output_batch,
+    T* output_data,
+    const size_t N) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
+  CUDA_LONG batch_idx = 0;
+  CUDA_LONG element_idx = 0;
+  num_of_elements_per_output_batch.divmod(id, batch_idx, element_idx);
+  output_data[id] = input_data[(batch_idx % num_input_batch_count) * num_of_elements_per_input_batch + (element_idx % num_of_elements_per_input_batch)];
+}
+
+template <typename T>
+void TileBatchedMemcpyImpl(
+    cudaStream_t stream,
+    const T* input_data,
+    const size_t num_of_elements_per_input_batch,
+    const size_t num_input_batch_count,
+    const fast_divmod& num_of_elements_per_output_batch,
+    T* output_data,
+    const size_t num_output_elements) {
+  int blocksPerGrid = (int)(ceil(static_cast<float>(num_output_elements) / GridDim::maxThreadsPerBlock));
+  _TileBatchedMemcpyKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+      input_data,
+      num_of_elements_per_input_batch,
+      num_input_batch_count,
+      num_of_elements_per_output_batch,
+      output_data,
+      (CUDA_LONG)num_output_elements);
+}
+
 #define SPECIALIZED_IMPL(T)                                                                                                                                                                                                                \
-  template void TileImpl<T>(const size_t shape_rank, const TArray<fast_divmod>& fdm_input_shape, const TArray<int64_t>& input_stride, const T* input_data, const TArray<fast_divmod>& fdm_output_strides, T* output_data, const size_t N); \
-  template void TileMemcpyImpl<T>(const T* input_data, const size_t num_input_elements, T* output_data, const size_t num_output_elements);
+  template void TileImpl<T>(cudaStream_t stream, const size_t shape_rank, const TArray<fast_divmod>& fdm_input_shape, const TArray<int64_t>& input_stride, const T* input_data, const TArray<fast_divmod>& fdm_output_strides, T* output_data, const size_t N); \
+  template void TileMemcpyImpl<T>(cudaStream_t stream, const T* input_data, const size_t num_input_elements, T* output_data, const size_t num_output_elements);                                                                                                 \
+  template void TileBatchedMemcpyImpl<T>(cudaStream_t stream, const T* input_data, const size_t num_of_elements_per_input_batch, const size_t num_input_batch_count, const fast_divmod& num_of_elements_per_output_batch, T* output_data, const size_t num_output_elements);
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)

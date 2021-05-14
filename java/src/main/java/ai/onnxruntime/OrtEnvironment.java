@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2020 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019-2021 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -110,6 +110,36 @@ public class OrtEnvironment implements AutoCloseable {
     return INSTANCE;
   }
 
+  /**
+   * Creates an OrtEnvironment using the specified global thread pool options. Note unlike the other
+   * {@code getEnvironment} methods if there already is an existing OrtEnvironment this call throws
+   * {@link IllegalStateException} as we cannot guarantee that the environment has the appropriate
+   * thread pool configuration.
+   *
+   * @param loggingLevel The logging level to use.
+   * @param name The log id.
+   * @param threadOptions The global thread pool options.
+   * @return The OrtEnvironment singleton.
+   */
+  public static synchronized OrtEnvironment getEnvironment(
+      OrtLoggingLevel loggingLevel, String name, ThreadingOptions threadOptions) {
+    if (INSTANCE == null) {
+      try {
+        INSTANCE = new OrtEnvironment(loggingLevel, name, threadOptions);
+        curLogLevel = loggingLevel;
+        curLoggingName = name;
+      } catch (OrtException e) {
+        throw new IllegalStateException("Failed to create OrtEnvironment", e);
+      }
+      refCount.incrementAndGet();
+      return INSTANCE;
+    } else {
+      // As the thread pool state is unknown, and that's probably not what the user wanted.
+      throw new IllegalStateException(
+          "Tried to specify the thread pool when creating an OrtEnvironment, but one already exists.");
+    }
+  }
+
   final long nativeHandle;
 
   final OrtAllocator defaultAllocator;
@@ -134,6 +164,22 @@ public class OrtEnvironment implements AutoCloseable {
    */
   private OrtEnvironment(OrtLoggingLevel loggingLevel, String name) throws OrtException {
     nativeHandle = createHandle(OnnxRuntime.ortApiHandle, loggingLevel.getValue(), name);
+    defaultAllocator = new OrtAllocator(getDefaultAllocator(OnnxRuntime.ortApiHandle), true);
+  }
+
+  /**
+   * Create an OrtEnvironment using the specified name, log level and threading options.
+   *
+   * @param loggingLevel The logging level to use.
+   * @param name The logging id of the environment.
+   * @param threadOptions The global thread pool configuration.
+   * @throws OrtException If the environment couldn't be created.
+   */
+  private OrtEnvironment(OrtLoggingLevel loggingLevel, String name, ThreadingOptions threadOptions)
+      throws OrtException {
+    nativeHandle =
+        createHandle(
+            OnnxRuntime.ortApiHandle, loggingLevel.getValue(), name, threadOptions.nativeHandle);
     defaultAllocator = new OrtAllocator(getDefaultAllocator(OnnxRuntime.ortApiHandle), true);
   }
 
@@ -290,6 +336,19 @@ public class OrtEnvironment implements AutoCloseable {
       throws OrtException;
 
   /**
+   * Creates the native object with a global thread pool.
+   *
+   * @param apiHandle The API pointer.
+   * @param loggingLevel The logging level.
+   * @param name The name of the environment.
+   * @param threadOptionsHandle The threading options handle.
+   * @return The pointer to the native object.
+   * @throws OrtException If the creation failed.
+   */
+  private static native long createHandle(
+      long apiHandle, int loggingLevel, String name, long threadOptionsHandle) throws OrtException;
+
+  /**
    * Gets a reference to the default allocator.
    *
    * @param apiHandle The API handle to use.
@@ -317,4 +376,114 @@ public class OrtEnvironment implements AutoCloseable {
    */
   private static native void setTelemetry(long apiHandle, long nativeHandle, boolean sendTelemetry)
       throws OrtException;
+
+  /**
+   * Controls the global thread pools in the environment. Only used if the session is constructed
+   * using an options with {@link OrtSession.SessionOptions#disablePerSessionThreads()} set.
+   */
+  public static final class ThreadingOptions implements AutoCloseable {
+
+    private final long nativeHandle;
+
+    private boolean closed = false;
+
+    /** Create an empty threading options. */
+    public ThreadingOptions() {
+      nativeHandle = createThreadingOptions(OnnxRuntime.ortApiHandle);
+    }
+
+    /** Checks if the ThreadingOptions is closed, if so throws {@link IllegalStateException}. */
+    private void checkClosed() {
+      if (closed) {
+        throw new IllegalStateException("Trying to use a closed ThreadingOptions");
+      }
+    }
+
+    /** Closes the threading options. */
+    @Override
+    public void close() {
+      if (!closed) {
+        closeThreadingOptions(OnnxRuntime.ortApiHandle, nativeHandle);
+        closed = true;
+      } else {
+        throw new IllegalStateException("Trying to close a closed ThreadingOptions.");
+      }
+    }
+
+    /**
+     * Sets the number of threads available for inter-op parallelism (i.e. running multiple ops in
+     * parallel).
+     *
+     * <p>Setting it to 0 will allow ORT to choose the number of threads, setting it to 1 will cause
+     * the main thread to be used (i.e., no thread pools will be used).
+     *
+     * @param numThreads The number of threads.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void setGlobalInterOpNumThreads(int numThreads) throws OrtException {
+      checkClosed();
+      if (numThreads < 0) {
+        throw new IllegalArgumentException("Number of threads must be non-negative.");
+      }
+      setGlobalInterOpNumThreads(OnnxRuntime.ortApiHandle, nativeHandle, numThreads);
+    }
+
+    /**
+     * Sets the number of threads available for intra-op parallelism (i.e. within a single op).
+     *
+     * <p>Setting it to 0 will allow ORT to choose the number of threads, setting it to 1 will cause
+     * the main thread to be used (i.e., no thread pools will be used).
+     *
+     * @param numThreads The number of threads.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void setGlobalIntraOpNumThreads(int numThreads) throws OrtException {
+      checkClosed();
+      if (numThreads < 0) {
+        throw new IllegalArgumentException("Number of threads must be non-negative.");
+      }
+      setGlobalIntraOpNumThreads(OnnxRuntime.ortApiHandle, nativeHandle, numThreads);
+    }
+
+    /**
+     * Allows spinning of thread pools when their queues are empty. This call sets the value for
+     * both inter-op and intra-op thread pools.
+     *
+     * <p>If the CPU usage is very high then do not enable this.
+     *
+     * @param allowSpinning If true allow the thread pools to spin.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void setGlobalSpinControl(boolean allowSpinning) throws OrtException {
+      checkClosed();
+      setGlobalSpinControl(OnnxRuntime.ortApiHandle, nativeHandle, allowSpinning ? 1 : 0);
+    }
+
+    /**
+     * When this is set it causes intra-op and inter-op thread pools to flush denormal values to
+     * zero.
+     *
+     * @throws OrtException If there was an error in native code.
+     */
+    public void setGlobalDenormalAsZero() throws OrtException {
+      checkClosed();
+      setGlobalDenormalAsZero(OnnxRuntime.ortApiHandle, nativeHandle);
+    }
+
+    private static native long createThreadingOptions(long apiHandle);
+
+    private native void setGlobalIntraOpNumThreads(
+        long apiHandle, long nativeHandle, int numThreads) throws OrtException;
+
+    private native void setGlobalInterOpNumThreads(
+        long apiHandle, long nativeHandle, int numThreads) throws OrtException;
+
+    private native void setGlobalSpinControl(long apiHandle, long nativeHandle, int allowSpinning)
+        throws OrtException;
+
+    private native void setGlobalDenormalAsZero(long apiHandle, long nativeHandle)
+        throws OrtException;
+
+    private native void closeThreadingOptions(long apiHandle, long nativeHandle);
+  }
 }

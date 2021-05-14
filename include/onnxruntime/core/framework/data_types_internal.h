@@ -3,20 +3,22 @@
 
 #pragma once
 
-#include <assert.h>
-#include <stdint.h>
+#include <array>
+#include <cassert>
+#include <cstdint>
 #include <string>
+#include <type_traits>
 #include <vector>
 
+#include "boost/mp11.hpp"
+
 #include "core/common/common.h"
+#ifndef SHARED_PROVIDER
+#include "core/common/type_list.h"
 #include "core/framework/data_types.h"
 #include "core/graph/onnx_protobuf.h"
-
-#ifdef _MSC_VER
-#pragma warning(push)
-//TODO: fix the warning in CallableDispatchableRetHelper
-#pragma warning(disable : 4702)
 #endif
+
 namespace onnxruntime {
 namespace utils {
 
@@ -112,7 +114,7 @@ constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<BFloat16
       function<int8_t>(__VA_ARGS__);                              \
       break;                                                      \
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:              \
-      function<uint8_t>(__VA_ARGS__);                            \
+      function<uint8_t>(__VA_ARGS__);                             \
       break;                                                      \
     case ONNX_NAMESPACE::TensorProto_DataType_INT16:              \
       function<int16_t>(__VA_ARGS__);                             \
@@ -219,11 +221,13 @@ inline bool IsPrimitiveDataType(const PrimitiveDataTypeBase* prim_type) {
 // This implementation contains a workaround for GCC bug https://gcc.gnu.org/bugzilla/show_bug.cgi?id=47226
 // GCC until very recently does not support template parameter pack expansion within lambda context.
 namespace mltype_dispatcher_internal {
+
 // T - type handled by this helper
-struct CallableDispatchableHelper {
+class CallableDispatchableHelper {
   int32_t dt_type_;  // Type currently dispatched
   size_t called_;
 
+ public:
   explicit CallableDispatchableHelper(int32_t dt_type) noexcept : dt_type_(dt_type), called_(0) {}
 
   // Must return integer to be in a expandable context
@@ -235,31 +239,35 @@ struct CallableDispatchableHelper {
     }
     return 0;
   }
+
+  void CheckCalledOnce() {
+    ORT_ENFORCE(called_ == 1, "Unsupported data type: ", dt_type_);
+  }
 };
 
-// Default policy is to throw with no return type.
+// Default policy is to throw an exception.
+// Other policies may set the second result argument accordingly.
 template <class Ret>
 struct UnsupportedTypeDefaultPolicy {
-  Ret operator()(int32_t dt_type) const {
+  void operator()(int32_t dt_type, Ret& /*result*/) const {
     ORT_THROW("Unsupported data type: ", dt_type);
   }
 };
 
 // Helper with the result type
-template <class Ret, class UnsupportedPolicy = UnsupportedTypeDefaultPolicy<Ret>>
-struct CallableDispatchableRetHelper {
+template <class Ret, class UnsupportedPolicy>
+class CallableDispatchableRetHelper {
   int32_t dt_type_;  // Type currently dispatched
   size_t called_;
   Ret result_;
 
+ public:
   explicit CallableDispatchableRetHelper(int32_t dt_type) noexcept : dt_type_(dt_type), called_(0), result_() {}
 
   Ret Get() {
-    // See if there were multiple invocations.It is a bug.
-    ORT_ENFORCE(called_ < 2, "Check for duplicate types in MLTypeCallDispatcherRet");
     // No type was invoked
     if (called_ == 0) {
-      result_ = UnsupportedPolicy()(dt_type_);
+      UnsupportedPolicy()(dt_type_, result_);
     }
     return result_;
   }
@@ -275,90 +283,188 @@ struct CallableDispatchableRetHelper {
   }
 };
 
+template <typename T>
+using TensorProtoElementTypeConstant =
+    std::integral_constant<ONNX_NAMESPACE::TensorProto_DataType, ToTensorProtoElementType<T>()>;
+
+using UndefinedTensorProtoElementTypeConstant =
+    std::integral_constant<ONNX_NAMESPACE::TensorProto_DataType, ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED>;
+
 }  // namespace mltype_dispatcher_internal
 
-// This class helps to efficiently dispatch calls for templated
-// kernel implementation functions that has no return value.
-// If your implementation function must return a value such as Status
-// Use MLTypeCallDispatcherRet class.
-//
-// The first template parameter is a template<T> struct/class functor
-// that must implement operator() with arbitrary number of arguments
-// and void return turn. It must return Ret type if you are using MLTypeCallDispatcherRet.
-// Fn must be default constructible.
-//
-// Types is a type list that are supported by this kernel implementation.
-// There should be no duplicate types. An exception will be thrown if there
-// a duplicate.
-//
-// The constructor accepts an enum that is obtained from
-// input_tensor->DataType()->AsPrimitiveType()->GetDataType().
-// Fn will be called only once the type designated by dt_type value.
-// If current dt_type is not handled, the Dispatcher will throw an exception.
-//
-template <template <typename> class Fn, typename... Types>
+/**
+ * This class helps to efficiently dispatch calls to implementation function
+ * objects with a tensor element type template argument.
+ *
+ * The constructor accepts a value corresponding to a tensor element type.
+ * For example, it can be obtained from:
+ *   input_tensor->GetElementType()
+ *
+ * The Invoke member functions will instantiate and invoke the provided
+ * function object template, Fn. Fn must be default constructible. Fn must also
+ * have a tensor element type template argument. This type template argument
+ * will be the type that corresponds to the value given in the constructor.
+ * These functions accept and forward arbitrary function arguments. They ensure
+ * that Fn is called once with the type specified in the constructor.
+ *
+ * @tparam Types The types supported by the implementation. This should be a
+ *         set of ONNX tensor element types that are supported by ORT.
+ */
+template <typename... Types>
 class MLTypeCallDispatcher {
+  using SupportedTypeList = TypeList<Types...>;
+  using SupportedTensorProtoElementTypeList =
+      boost::mp11::mp_transform<
+          mltype_dispatcher_internal::TensorProtoElementTypeConstant, SupportedTypeList>;
+
+  static_assert(
+      boost::mp11::mp_and<
+          boost::mp11::mp_is_set<SupportedTensorProtoElementTypeList>,
+          boost::mp11::mp_not<
+              boost::mp11::mp_set_contains<
+                  SupportedTensorProtoElementTypeList,
+                  mltype_dispatcher_internal::UndefinedTensorProtoElementTypeConstant>>>::value,
+      "Types must map to a unique set of ONNX tensor element data types supported by ORT.");
+
   int32_t dt_type_;
 
  public:
+  /**
+   * Constructor.
+   * @param dt_type The value corresponding to the tensor element type to be
+   *        dispatched to. This can be obtained from
+   *        input_tensor->GetElementType() or
+   *        utils::ToTensorProtoElementType<T>().
+   */
   explicit MLTypeCallDispatcher(int32_t dt_type) noexcept : dt_type_(dt_type) {}
 
-  template <typename... Args>
+  /**
+   * Invokes Fn<T> with the specified arguments.
+   *
+   * @tparam Fn The function object template.
+   * @tparam Args The argument types.
+   */
+  template <template <typename...> class Fn, typename... Args>
   void Invoke(Args&&... args) const {
+    InvokeWithLeadingTemplateArgs<Fn, TypeList<>>(std::forward<Args>(args)...);
+  }
+
+  /**
+   * Invokes Fn<..., T> with leading template arguments and the specified
+   * arguments.
+   *
+   * @tparam Fn The function object template.
+   * @tparam LeadingTemplateArgTypeList A type list of the leading template
+   *         arguments.
+   * @tparam Args The argument types.
+   */
+  template <template <typename...> class Fn, typename LeadingTemplateArgTypeList, typename... Args>
+  void InvokeWithLeadingTemplateArgs(Args&&... args) const {
+    static_assert(
+        boost::mp11::mp_is_list<LeadingTemplateArgTypeList>::value,
+        "LeadingTemplateArgTypeList must be a type list (e.g., onnxruntime::TypeList<T1, T2, ...>).");
+
     mltype_dispatcher_internal::CallableDispatchableHelper helper(dt_type_);
-    int results[] = {0, helper.template Invoke<Types>(Fn<Types>(), std::forward<Args>(args)...)...};
-    ORT_UNUSED_PARAMETER(results);
-    ORT_ENFORCE(helper.called_ < 2, "Check for duplicate types in MLTypeCallDispatcher");
-    ORT_ENFORCE(helper.called_ == 1, "Unsupported data type: ", dt_type_);
-  }
-};
 
-// Version of the MLTypeDispatcher with a return type.
-// Return type of Fn must return type convertible to Ret
-// The value of the return type will be the return value
-// of the function for type T which was specified for execution.
-template <class Ret, template <typename> class Fn, typename... Types>
-class MLTypeCallDispatcherRet {
-  int32_t dt_type_;
+    // given LeadingTemplateArgTypeList is a type list L<U1, U2, ...>,
+    //   call helper.Invoke() with Fn<U1, U2, ..., T> for each T in Types
+    static_cast<void>(std::array<int, sizeof...(Types)>{
+        helper.template Invoke<Types>(
+            boost::mp11::mp_apply<Fn, boost::mp11::mp_push_back<LeadingTemplateArgTypeList, Types>>(),
+            std::forward<Args>(args)...)...});
 
- public:
-  explicit MLTypeCallDispatcherRet(int32_t dt_type) noexcept : dt_type_(dt_type) {}
+    // avoid "unused parameter" warning for the case where Types is empty
+    static_cast<void>(std::array<int, sizeof...(Args)>{(ORT_UNUSED_PARAMETER(args), 0)...});
 
-  template <typename... Args>
-  Ret Invoke(Args&&... args) const {
-    mltype_dispatcher_internal::CallableDispatchableRetHelper<Ret> helper(dt_type_);
-    int results[] = {0, helper.template Invoke<Types>(Fn<Types>(), std::forward<Args>(args)...)...};
-    ORT_UNUSED_PARAMETER(results);
-    return helper.Get();
+    helper.CheckCalledOnce();
   }
 
-  template <class UnsupportedPolicy, typename... Args>
-  Ret InvokeWithUnsupportedPolicy(Args&&... args) const {
+  /**
+   * Invokes Fn<T> with the specified arguments and returns the result.
+   *
+   * @tparam Ret The return type. Fn should return a type convertible to Ret.
+   * @tparam Fn The function object template.
+   * @tparam Args The argument types.
+   */
+  template <class Ret, template <typename...> class Fn, typename... Args>
+  Ret InvokeRet(Args&&... args) const {
+    return InvokeRetWithUnsupportedPolicy<
+        Ret, Fn, mltype_dispatcher_internal::UnsupportedTypeDefaultPolicy<Ret>>(
+        std::forward<Args>(args)...);
+  }
+
+  /**
+   * Invokes Fn<T> with the specified arguments and returns the result.
+   *
+   * @tparam Ret The return type. Fn should return a type convertible to Ret.
+   * @tparam Fn The function object template.
+   * @tparam UnsupportedPolicy The policy used to handle unsupported types.
+   *         See mltype_dispatcher_internal::UnsupportedTypeDefaultPolicy
+   *         for an example.
+   * @tparam Args The argument types.
+   */
+  template <class Ret, template <typename...> class Fn, class UnsupportedPolicy, typename... Args>
+  Ret InvokeRetWithUnsupportedPolicy(Args&&... args) const {
+    return InvokeRetWithUnsupportedPolicyAndLeadingTemplateArgs<
+        Ret, Fn, UnsupportedPolicy, TypeList<>>(
+        std::forward<Args>(args)...);
+  }
+
+  /**
+   * Invokes Fn<..., T> with leading template arguments and the specified
+   * arguments and returns the result.
+   *
+   * @tparam Ret The return type. Fn should return a type convertible to Ret.
+   * @tparam Fn The function object template.
+   * @tparam LeadingTemplateArgTypeList A type list of the leading template
+   *         arguments.
+   * @tparam Args The argument types.
+   */
+  template <class Ret, template <typename...> class Fn, typename LeadingTemplateArgTypeList, typename... Args>
+  Ret InvokeRetWithLeadingTemplateArgs(Args&&... args) const {
+    return InvokeRetWithUnsupportedPolicyAndLeadingTemplateArgs<
+        Ret, Fn, mltype_dispatcher_internal::UnsupportedTypeDefaultPolicy<Ret>, LeadingTemplateArgTypeList>(
+        std::forward<Args>(args)...);
+  }
+
+  /**
+   * Invokes Fn<..., T> with leading template arguments and the specified
+   * arguments and returns the result.
+   *
+   * @tparam Ret The return type. Fn should return a type convertible to Ret.
+   * @tparam Fn The function object template.
+   * @tparam UnsupportedPolicy The policy used to handle unsupported types.
+   *         See mltype_dispatcher_internal::UnsupportedTypeDefaultPolicy
+   *         for an example.
+   * @tparam LeadingTemplateArgTypeList A type list of the leading template
+   *         arguments.
+   * @tparam Args The argument types.
+   */
+  template <class Ret,
+            template <typename...> class Fn,
+            class UnsupportedPolicy,
+            typename LeadingTemplateArgTypeList,
+            typename... Args>
+  Ret InvokeRetWithUnsupportedPolicyAndLeadingTemplateArgs(Args&&... args) const {
     mltype_dispatcher_internal::CallableDispatchableRetHelper<Ret, UnsupportedPolicy> helper(dt_type_);
-    int results[] = {0, helper.template Invoke<Types>(Fn<Types>(), std::forward<Args>(args)...)...};
-    ORT_UNUSED_PARAMETER(results);
+
+    // given LeadingTemplateArgTypeList is a type list L<U1, U2, ...>,
+    //   call helper.Invoke() with Fn<U1, U2, ..., T> for each T in Types
+    static_cast<void>(std::array<int, sizeof...(Types)>{
+        helper.template Invoke<Types>(
+            boost::mp11::mp_apply<Fn, boost::mp11::mp_push_back<LeadingTemplateArgTypeList, Types>>(),
+            std::forward<Args>(args)...)...});
+
+    // avoid "unused parameter" warning for the case where Types is empty
+    static_cast<void>(std::array<int, sizeof...(Args)>{(ORT_UNUSED_PARAMETER(args), 0)...});
+
     return helper.Get();
   }
 };
 
-// Version of the MLTypeDispatcher that has an input type which is passed through ('carried')
-// as the first type parameter in the call to Fn when dispatching.
-template <typename TCarried, template <typename, typename> class Fn, typename... Types>
-class MLTypeCallDispatcherWithCarriedType {
-  int32_t dt_type_;
-
- public:
-  explicit MLTypeCallDispatcherWithCarriedType(int32_t dt_type) noexcept : dt_type_(dt_type) {}
-
-  template <typename... Args>
-  void Invoke(Args&&... args) const {
-    mltype_dispatcher_internal::CallableDispatchableHelper helper(dt_type_);
-    int results[] = {0, helper.template Invoke<Types>(Fn<TCarried, Types>(), std::forward<Args>(args)...)...};
-    ORT_UNUSED_PARAMETER(results);
-    ORT_ENFORCE(helper.called_ < 2, "Check for duplicate types in MLTypeCallDispatcher");
-    ORT_ENFORCE(helper.called_ == 1, "Unsupported data type: ", dt_type_);
-  }
-};
+// the type MLTypeCallDispatcher<T...> given a type list L<T...>
+template <typename L>
+using MLTypeCallDispatcherFromTypeList = boost::mp11::mp_apply<MLTypeCallDispatcher, L>;
 
 namespace data_types_internal {
 
@@ -514,7 +620,3 @@ bool IsOpaqueType(MLDataType ml_type, const char* domain, const char* name);
 
 }  // namespace utils
 }  // namespace onnxruntime
-
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif

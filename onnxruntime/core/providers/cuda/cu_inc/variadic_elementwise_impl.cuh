@@ -62,6 +62,7 @@ __global__ void VariadicElementWiseNoBroadcastInputBatchKernel(
 // - inputs and output have N elements
 template <typename T, typename Func, int32_t max_input_batch_size>
 void VariadicElementWiseNoBroadcastInputBatchImpl(
+    cudaStream_t stream,
     Func func,
     size_t N,
     TArray<const T*, max_input_batch_size> inputs,
@@ -70,7 +71,7 @@ void VariadicElementWiseNoBroadcastInputBatchImpl(
   constexpr int32_t threads_per_block = GridDim::maxThreadsPerBlock;
   const int32_t blocks_per_grid = static_cast<int32_t>(CeilDiv(N, elements_per_thread * threads_per_block));
   VariadicElementWiseNoBroadcastInputBatchKernel<T, Func, max_input_batch_size, elements_per_thread>
-      <<<blocks_per_grid, threads_per_block>>>(func, N, inputs, output);
+      <<<blocks_per_grid, threads_per_block, 0, stream>>>(func, N, inputs, output);
 }
 
 }  // namespace cuda

@@ -524,15 +524,15 @@ Status Node::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     const auto& attr_name = entry.first;
     const auto& attr_proto = entry.second;
     flatbuffers::Offset<fbs::Attribute> fbs_attr;
-    Graph* graph = nullptr;
+    Graph* subgraph = nullptr;
     if (attr_proto.has_g()) {
       const auto it = attr_to_subgraph_map_.find(attr_name);
       ORT_RETURN_IF_NOT(it != attr_to_subgraph_map_.cend(),
                         "Node [", name_, "] op_type [", op_type_, "] ", "does not have the graph for key ", attr_name);
-      graph = it->second;
+      subgraph = it->second;
     }
     ORT_RETURN_IF_ERROR(
-        experimental::utils::SaveAttributeOrtFormat(builder, attr_proto, fbs_attr, graph));
+        experimental::utils::SaveAttributeOrtFormat(builder, attr_proto, fbs_attr, ModelPath(), subgraph));
     attributes_vec.push_back(fbs_attr);
   }
   auto attributes = builder.CreateVector(attributes_vec);
@@ -1874,7 +1874,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     auto* subgraph = node_.GetMutableGraphAttribute(attribute_name);
 
     if (subgraph) {
-      auto inferencer = onnxruntime::make_unique<GraphInferencerImpl>(node_, *subgraph, subgraph_inferencing_func_, options_);
+      auto inferencer = std::make_unique<GraphInferencerImpl>(node_, *subgraph, subgraph_inferencing_func_, options_);
       graph_inferencer = inferencer.get();
       graph_inferencers_.push_back(std::move(inferencer));
     } else {
@@ -2062,7 +2062,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
           // The type-parameter T is bound to different values for different inputs.
           Status status(ONNXRUNTIME, FAIL,
                         "Type Error: Type parameter (" + op_formal_parameter.GetTypeStr() +
-                            ") bound to different types (" + *(param_to_type_iter->second) +
+                            ") of Optype (" + op.Name() + ") bound to different types (" + *(param_to_type_iter->second) +
                             " and " + *(input_def->Type()) +
                             " in node (" + node_name + ").");
           return status;
@@ -2265,6 +2265,8 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
   ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));
   ctx.set_opset_imports(DomainToVersionMap());
   ctx.set_schema_registry(schema_registry_.get());
+  // Set the parent directory of model path to load external tensors if exist
+  ctx.set_model_dir(ToMBString(ModelPath().ParentPath().ToPathString()));
 
   LexicalScopeContext lsc;
   lsc.output_names.insert(resolve_context_.inputs_and_initializers.cbegin(),
@@ -2369,13 +2371,31 @@ void Graph::InitFunctionBodyForNode(Node& node) {
     if (node.op_->HasContextDependentFunction()) {
       NodeProto node_proto;
       node.ToProto(node_proto);
-      onnx::FunctionBodyBuildContextImpl function_body_ctx(node_proto);
-      node.op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto);
+      std::vector<TypeProto> input_types;
+      for (size_t i = 0, n = node.InputDefs().size(); i < n; i++) {
+        auto p_node_arg = node.InputDefs().at(i);
+        if ((nullptr != p_node_arg) && p_node_arg->Exists()) {
+          auto& type = *(p_node_arg->TypeAsProto());
+          input_types.emplace_back(type);
+        } else
+          input_types.emplace_back();
+      }
+      onnx::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
+      if (!node.op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto))
+        return;
     } else {
       onnx_function_proto = *(node.op_->GetFunction());
     }
 
-    auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
+    // Check function's opset requirements are compatible with model's opset.
+    auto& graphImports = DomainToVersionMap();
+    for (const auto& fn_import : onnx_function_proto.opset_import()) {
+      auto it = graphImports.find(fn_import.domain());
+      if ((it != graphImports.end()) && (it->second != fn_import.version()))
+        return;  // Incompatible. Do not use this function expansion.
+    }
+
+    auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
                                                                         logger_);
 
     function_container_.emplace_back(std::move(func_ptr));
@@ -3028,6 +3048,66 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
   return result;
 }
 
+ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
+                                                                       size_t initializer_size_threshold) const {
+  GraphProto result;
+  ToGraphProtoInternal(result);
+  const auto& model_path = ModelPath();
+
+  std::ofstream external_stream(external_file_name, std::ofstream::out | std::ofstream::binary);
+  ORT_ENFORCE(external_stream.is_open());
+  int64_t external_offset = 0;
+
+  // Add the initializers to the result graph.
+  const auto sparse_end = sparse_tensor_names_.end();
+  for (const auto& initializer : graph_proto_->initializer()) {
+    if (sparse_end != sparse_tensor_names_.find(initializer.name())) {
+      // Sparse tensors are added to the ONNX file.
+      auto& sparse_initializer = *result.add_sparse_initializer();
+      auto status = utils::DenseTensorToSparseTensorProto(initializer, model_path, sparse_initializer);
+      ORT_ENFORCE(status.IsOK(), "Failed to convert dense initializer to sparse");
+    } else {
+      // Dense tensors larger than the threshold are added to the external file.
+      TensorProto* output_proto = result.add_initializer();
+
+      size_t tensor_bytes_size = 0;
+      std::unique_ptr<uint8_t[]> raw_data;
+      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, Path(), raw_data, tensor_bytes_size));
+
+      if (tensor_bytes_size < initializer_size_threshold) {
+        *output_proto = initializer;
+        continue;
+      }
+
+      for (size_t index = 0; index != tensor_bytes_size; ++index) {
+        external_stream << raw_data[index];
+      }
+
+      output_proto->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+      ONNX_NAMESPACE::StringStringEntryProto* location = output_proto->add_external_data();
+      location->set_key("location");
+      location->set_value(external_file_name);
+      ONNX_NAMESPACE::StringStringEntryProto* offset = output_proto->add_external_data();
+      offset->set_key("offset");
+      offset->set_value(std::to_string(external_offset));
+      ONNX_NAMESPACE::StringStringEntryProto* length = output_proto->add_external_data();
+      length->set_key("length");
+      length->set_value(std::to_string(tensor_bytes_size));
+
+      output_proto->set_name(initializer.name());
+      output_proto->set_data_type(initializer.data_type());
+      for (int i = 0; i != initializer.dims_size(); ++i) {
+        output_proto->add_dims(initializer.dims(i));
+      }
+      output_proto->set_doc_string(initializer.doc_string());
+
+      external_offset += tensor_bytes_size;
+    }
+  }
+
+  return result;
+}
+
 void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const {
   graph_proto_->clear_node();
   graph_proto_->clear_input();
@@ -3381,12 +3461,37 @@ Node& Graph::BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::stri
   // if this is a full build create the lightweight Function implementation that provides the schema so that
   // kernel lookup works as per usual. in an extended minimal build we do the lookup via a hash so don't
   // need to create the schema.
-  auto func = onnxruntime::make_unique<ViewerFunctionImpl>(*this, sub_graph, logger_);
+  auto func = std::make_unique<ViewerFunctionImpl>(*this, sub_graph, logger_);
   function_container_.push_back(std::move(func));
   node.SetFunctionBody(*function_container_.back());
 #endif
 
   return node;
+}
+
+void Graph::CancelFuseSubGraph(const Node& fused_node) {
+  auto node_idx = fused_node.Index();
+  if (!GetNode(node_idx))
+    return;
+
+  if (fused_node.NodeType() != Node::Type::Fused)
+    return;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // Remove the function body from function container
+  const auto* fused_node_func = fused_node.GetFunctionBody();
+  auto it = std::find_if(
+      function_container_.begin(), function_container_.end(),
+      [fused_node_func](const std::unique_ptr<onnxruntime::Function>& func) {
+        return func.get() == fused_node_func;
+      });
+  if (it != function_container_.end()) {
+    function_container_.erase(it);
+  }
+#endif
+
+  // Remove the fused_node
+  RemoveNode(node_idx);
 }
 
 void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_node) {
@@ -3429,9 +3534,7 @@ void Graph::FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_n
         if (it != input_indexes.cend()) {
           AddEdge(producer_idx, new_node_idx, src_idx, it->second);
         }
-      } 
-      else
-      {
+      } else {
         int dst_implicit_input_idx = dst_idx - (int)node->InputDefs().size();
         ORT_ENFORCE(dst_implicit_input_idx < (int)node->ImplicitInputDefs().size());
         auto it = input_indexes.find(node->ImplicitInputDefs()[dst_implicit_input_idx]->Name());

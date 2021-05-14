@@ -24,7 +24,7 @@
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #endif
-#include "single_include/nlohmann/json.hpp"
+#include "nlohmann/json.hpp"
 #include "test/perftest/utils.h"
 
 using json = nlohmann::json;
@@ -39,6 +39,7 @@ static SessionOptions SESSION_OPTION = {
     false,                             //enable_profiling
     ORT_TSTR(""),                      //optimized_model_filepath
     true,                              //enable_mem_pattern
+    true,                              //enable_mem_reuse
     true,                              //enable_cpu_mem_arena
     ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
     "",                                //session_logid
@@ -162,6 +163,8 @@ Status TrainingRunner::Initialize() {
 
   if (params_.use_gist) {
     TrainingSession::TrainingConfiguration::GistConfiguration gist{};
+    gist.op_type = params_.gist_config.op_type;
+    gist.compr_type = params_.gist_config.compr_type;
 
     config.gist_config = gist;
   }
@@ -201,10 +204,10 @@ Status TrainingRunner::Initialize() {
         config_result.mixed_precision_config_result.value().loss_scale_input_name;
     if (params_.loss_scale == 0.0f) {
       // use dynamic loss_scale
-      loss_scaler_ = onnxruntime::make_unique<LossScaler>(loss_scale_input_name, true, static_cast<float>(1 << 16));
+      loss_scaler_ = std::make_unique<LossScaler>(loss_scale_input_name, true, static_cast<float>(1 << 16));
     } else {
       // use static loss_scale
-      loss_scaler_ = onnxruntime::make_unique<LossScaler>(loss_scale_input_name, false, params_.loss_scale);
+      loss_scaler_ = std::make_unique<LossScaler>(loss_scale_input_name, false, params_.loss_scale);
     }
   }
 
@@ -273,7 +276,7 @@ Status TrainingRunner::Initialize() {
   // Checkpointing initialization
   // session_.Initialize() must be called prior to LoadCheckpoint()
   if (!params_.checkpoints_dir.empty()) {
-    checkpoint_registry_ = onnxruntime::make_unique<CheckpointRegistry>(
+    checkpoint_registry_ = std::make_unique<CheckpointRegistry>(
         params_.checkpoints_dir, params_.max_num_checkpoints);
 
     // Load checkpoint, if any
@@ -1225,7 +1228,6 @@ Status WithOrtValuesFromTensorProtos(
 
   NameMLValMap name_to_ort_value{};
   std::vector<std::vector<char>> tensor_buffers{};
-  std::vector<ScopedOrtCallbackInvoker> tensor_deleters{};
 
   for (const auto& tensor_proto : tensor_protos) {
     const auto* tensor_type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type());
@@ -1239,16 +1241,13 @@ Status WithOrtValuesFromTensorProtos(
     const MemBuffer mem_buffer{tensor_buffer.data(), tensor_buffer.size(), cpu_alloc_info};
 
     OrtValue ort_value;
-    OrtCallback callback;
 
     ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(
         Env::Default(), model_location.c_str(), tensor_proto, mem_buffer,
-        ort_value, callback));
-    ScopedOrtCallbackInvoker callback_invoker{callback};
+        ort_value));
 
     name_to_ort_value.emplace(tensor_proto.name(), ort_value);
     tensor_buffers.emplace_back(std::move(tensor_buffer));
-    tensor_deleters.emplace_back(std::move(callback_invoker));
   }
 
   ORT_RETURN_IF_ERROR(use_name_to_ort_value_fn(name_to_ort_value));
@@ -1288,7 +1287,7 @@ constexpr const char* k_loss_scaler_state = "loss_scaler_state";
 template <typename T>
 Status FromString(const std::string& s, T& t) {
   std::istringstream i{s};
-  ORT_RETURN_IF_NOT(i >> t && i.eof());
+  ORT_RETURN_IF_NOT(i >> t && i.eof(), "i >> t && i.eof() was false");
   return Status::OK();
 }
 }  // namespace
@@ -1315,7 +1314,7 @@ Status TrainingRunner::LoadCheckpointProperties(
     const std::unordered_map<std::string, std::string>& properties) {
   auto load_property = [&properties](const char* name, auto& val) {
     auto prop_it = properties.find(name);
-    ORT_RETURN_IF_NOT(prop_it != properties.end());
+    ORT_RETURN_IF_NOT(prop_it != properties.end(), "prop_it == properties.end()");
     ORT_RETURN_IF_ERROR(FromString(prop_it->second, val));
     return Status::OK();
   };
@@ -1329,7 +1328,7 @@ Status TrainingRunner::LoadCheckpointProperties(
 
   if (loss_scaler_) {
     auto prop_it = properties.find(property_names::k_loss_scaler_state);
-    ORT_RETURN_IF_NOT(prop_it != properties.end());
+    ORT_RETURN_IF_NOT(prop_it != properties.end(), "prop_it == properties.end()");
     ORT_RETURN_IF_ERROR(loss_scaler_->LoadFromString(prop_it->second));
   }
 

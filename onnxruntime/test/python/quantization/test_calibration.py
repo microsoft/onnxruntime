@@ -11,14 +11,14 @@ import onnx
 import onnxruntime
 import numpy as np
 from onnx import helper, TensorProto, numpy_helper
-from onnxruntime.quantization.calibrate import calibrate, CalibrationDataReader, ONNXCalibrater
+from onnxruntime.quantization.calibrate import CalibrationDataReader, MinMaxCalibrater
 
 
 def generate_input_initializer(tensor_shape, tensor_dtype, input_name):
     '''
   Helper function to generate initializers for test inputs
   '''
-    tensor = np.random.ranf(tensor_shape).astype(tensor_dtype)
+    tensor = np.random.normal(0, 0.3, tensor_shape).astype(tensor_dtype)
     init = numpy_helper.from_array(tensor, input_name)
     return init
 
@@ -26,35 +26,25 @@ def generate_input_initializer(tensor_shape, tensor_dtype, input_name):
 class TestDataReader(CalibrationDataReader):
     '''for test purpose'''
     def __init__(self):
-        pass
-
-    def get_next(self):
-        return None
-
-
-class TestDataReaderSecond(CalibrationDataReader):
-    '''for test purpose'''
-    def __init__(self):
         self.preprocess_flag = True
         self.enum_data_dicts = []
+        self.count = 4
+        self.input_data_list = []
+        for _ in range(self.count):
+            self.input_data_list.append(np.random.normal(0, 0.33, [1, 3, 1, 3]).astype(np.float32))
 
     def get_next(self):
         if self.preprocess_flag:
             self.preprocess_flag = False
-            nhwc_data_list = []
-            nhwc_data_list.append(
-                np.array([[[[0.45, 0.60, 0.75]], [[0.25, 0.50, 0.75]], [[0.90, 0.70, 0.50]]]]).astype(np.float32))
-            nhwc_data_list.append(
-                np.array([[[[0.62, 0.94, 0.38]], [[0.70, 0.13, 0.07]], [[0.89, 0.75, 0.84]]]]).astype(np.float32))
-            nhwc_data_list.append(
-                np.array([[[[0.64, 0.24, 0.97]], [[0.82, 0.58, 0.27]], [[0.019, 0.34, 0.02]]]]).astype(np.float32))
-            input_name = 'input0'
-            self.enum_data_dicts = iter([{input_name: nhwc_data} for nhwc_data in nhwc_data_list])
+            input_name = 'input'
+            self.enum_data_dicts = iter([{input_name: input_data} for input_data in self.input_data_list])
         return next(self.enum_data_dicts, None)
 
+    def rewind(self):
+        self.preprocess_flag = True
 
 class TestCalibrate(unittest.TestCase):
-    def test_augment_graph(self):
+    def test_augment_graph_config_1(self):
         ''' TEST_CONFIG_1'''
 
         #     Conv
@@ -80,11 +70,9 @@ class TestCalibrate(unittest.TestCase):
         onnx.save(model, test_model_path)
 
         # Augmenting graph
-        data_reader = TestDataReader()
         augmented_model_path = './augmented_test_model_1.onnx'
-        calibrater = ONNXCalibrater(test_model_path, data_reader, ['Conv', 'MatMul'], [], [], augmented_model_path)
-        augmented_model = calibrater.augment_graph()
-        onnx.save(augmented_model, augmented_model_path)
+        calibrater = MinMaxCalibrater(test_model_path, ['Conv', 'MatMul'], augmented_model_path)
+        augmented_model = calibrater.get_augment_model()
 
         # Checking if each added ReduceMin and ReduceMax node and its output exists
         augmented_model_node_names = [node.name for node in augmented_model.graph.node]
@@ -100,9 +88,8 @@ class TestCalibrate(unittest.TestCase):
         for output in added_outputs:
             self.assertTrue(output in augmented_model_outputs)
 
-        print('Finished TEST_CONFIG_1')
+    def test_augment_graph_config_2(self):
         '''TEST_CONFIG_2'''
-
         #   Conv
         #    |
         #   Conv
@@ -112,11 +99,11 @@ class TestCalibrate(unittest.TestCase):
         J = helper.make_tensor_value_info('J', TensorProto.FLOAT, [1, 1, 3, 3])
         K = helper.make_tensor_value_info('K', TensorProto.FLOAT, [1, 1, 5, 5])
         conv_node_1 = onnx.helper.make_node('Conv', ['G', 'H'], ['I'],
-                                            name='Conv',
+                                            name='Conv1',
                                             kernel_shape=[3, 3],
                                             pads=[1, 1, 1, 1])
         conv_node_2 = onnx.helper.make_node('Conv', ['I', 'J'], ['K'],
-                                            name='Conv',
+                                            name='Conv2',
                                             kernel_shape=[3, 3],
                                             pads=[1, 1, 1, 1])
         graph = helper.make_graph([conv_node_1, conv_node_2], 'test_graph_2', [G, H, J], [K])
@@ -124,12 +111,9 @@ class TestCalibrate(unittest.TestCase):
         test_model_path = './test_model_2.onnx'
         onnx.save(model, test_model_path)
 
-        # Augmenting graph
-        data_reader = TestDataReader()
         augmented_model_path = './augmented_test_model_2.onnx'
-        calibrater = ONNXCalibrater(test_model_path, data_reader, ['Conv', 'MatMul'], [], [], augmented_model_path)
-        augmented_model = calibrater.augment_graph()
-        onnx.save(augmented_model, augmented_model_path)
+        calibrater = MinMaxCalibrater(test_model_path, ['Conv', 'MatMul'], augmented_model_path)
+        augmented_model = calibrater.get_augment_model()
 
         augmented_model_node_names = [node.name for node in augmented_model.graph.node]
         augmented_model_outputs = [output.name for output in augmented_model.graph.output]
@@ -144,16 +128,20 @@ class TestCalibrate(unittest.TestCase):
         for output in added_outputs:
             self.assertTrue(output in augmented_model_outputs)
 
-        print('Finished TEST_CONFIG_2')
+    def test_augment_graph_config_3(self):
         '''TEST_CONFIG_3'''
 
-        #   Relu
-        #    |
-        #   Conv  \
-        #    |     |
-        #   Clip   |
-        #    |    /
-        #   MatMul
+        #    (input)
+        #       |
+        #      Relu
+        #      / \
+        #    Conv \
+        #     |    |
+        #    Clip  |
+        #     |   /
+        #    MatMul
+        #      |
+        #   (output)
 
         L = helper.make_tensor_value_info('L', TensorProto.FLOAT, [1, 1, 5, 5])
         N = helper.make_tensor_value_info('N', TensorProto.FLOAT, [1, 1, 3, 3])
@@ -171,11 +159,9 @@ class TestCalibrate(unittest.TestCase):
         onnx.save(model, test_model_path)
 
         # Augmenting graph
-        data_reader = TestDataReader()
         augmented_model_path = './augmented_test_model_3.onnx'
-        calibrater = ONNXCalibrater(test_model_path, data_reader, ['Conv', 'MatMul'], [], [], augmented_model_path)
-        augmented_model = calibrater.augment_graph()
-        onnx.save(augmented_model, augmented_model_path)
+        calibrater = MinMaxCalibrater(test_model_path, ['Conv', 'MatMul'], augmented_model_path)
+        augmented_model = calibrater.get_augment_model()
 
         augmented_model_node_names = [node.name for node in augmented_model.graph.node]
         augmented_model_outputs = [output.name for output in augmented_model.graph.output]
@@ -196,86 +182,129 @@ class TestCalibrate(unittest.TestCase):
         for output in added_outputs:
             self.assertTrue(output in augmented_model_outputs)
 
-        print('Finished TEST_CONFIG_3')
-
-    def test_quant_param_calculation(self):
-        '''TEST_CONFIG_4'''
-
-        #   Relu
-        #    |      \
-        #   Conv     \
-        #    |        \
-        #   Relu       |
-        #    |       Conv
-        #   Conv      /
-        #      \     /
-        #         |
-        #        Add
-
-        input0 = helper.make_tensor_value_info('input0', TensorProto.FLOAT, [1, 3, 1, 3])
-        output = helper.make_tensor_value_info('output', TensorProto.FLOAT, [1, 3, 1, 3])
-
-        X1_weight = generate_input_initializer([3, 3, 1, 1], np.float32, 'X1_weight')
-        X1_bias = generate_input_initializer([3], np.float32, 'X1_bias')
-        X3_weight = generate_input_initializer([3, 3, 1, 1], np.float32, 'X3_weight')
-        X3_bias = generate_input_initializer([3], np.float32, 'X3_bias')
-        X5_weight = generate_input_initializer([3, 3, 1, 1], np.float32, 'X5_weight')
-        X5_bias = generate_input_initializer([3], np.float32, 'X5_bias')
-
-        relu_node_1 = onnx.helper.make_node('Relu', ['input0'], ['X1'], name='Relu1')
-        conv_node_1 = onnx.helper.make_node('Conv', ['X1', 'X1_weight', 'X1_bias'], ['X2'], name='Conv1')
+    def construct_test_compute_range_model(self, test_model_path):
+        #    (input)
+        #       |
+        #      Relu
+        #      /  \
+        #    Conv  \
+        #     |     \
+        #    Relu  Conv
+        #     |     |
+        #   Conv    |
+        #     \     /
+        #       Add
+        #        |
+        #       (X6)
+        input = helper.make_tensor_value_info('input', TensorProto.FLOAT, [1, 3, 1, 3])
+        X1_output = helper.make_tensor_value_info('X1', TensorProto.FLOAT, [1, 3, 1, 3])
+        X2_output = helper.make_tensor_value_info('X2', TensorProto.FLOAT, [1, 3, 1, 3])
+        X3_output = helper.make_tensor_value_info('X3', TensorProto.FLOAT, [1, 3, 1, 3])
+        X4_output = helper.make_tensor_value_info('X4', TensorProto.FLOAT, [1, 3, 1, 3])
+        X5_output = helper.make_tensor_value_info('X5', TensorProto.FLOAT, [1, 3, 1, 3])
+        X6_output = helper.make_tensor_value_info('X6', TensorProto.FLOAT, [1, 3, 1, 3])
+        W1 = generate_input_initializer([3, 3, 1, 1], np.float32, 'W1')
+        B1 = generate_input_initializer([3], np.float32, 'B1')
+        W3 = generate_input_initializer([3, 3, 1, 1], np.float32, 'W3')
+        B3 = generate_input_initializer([3], np.float32, 'B3')
+        W5 = generate_input_initializer([3, 3, 1, 1], np.float32, 'W5')
+        B5 = generate_input_initializer([3], np.float32, 'B5')
+        relu_node_1 = onnx.helper.make_node('Relu', ['input'], ['X1'], name='Relu1')
+        conv_node_1 = onnx.helper.make_node('Conv', ['X1', 'W1', 'B1'], ['X2'], name='Conv1')
         relu_node_2 = onnx.helper.make_node('Relu', ['X2'], ['X3'], name='Relu2')
-        conv_node_2 = onnx.helper.make_node('Conv', ['X3', 'X3_weight', 'X3_bias'], ['X4'], name='Conv2')
-        conv_node_3 = onnx.helper.make_node('Conv', ['X1', 'X5_weight', 'X5_bias'], ['X5'], name='Conv3')
-        add_node = onnx.helper.make_node('Add', ['X4', 'X5'], ['output'], name='Add')
-
+        conv_node_2 = onnx.helper.make_node('Conv', ['X3', 'W3', 'B3'], ['X4'], name='Conv2')
+        conv_node_3 = onnx.helper.make_node('Conv', ['X1', 'W5', 'B5'], ['X5'], name='Conv3')
+        add_node = onnx.helper.make_node('Add', ['X4', 'X5'], ['X6'], name='Add')
         graph = helper.make_graph([relu_node_1, conv_node_1, relu_node_2, conv_node_2, conv_node_3, add_node],
-                                  'test_graph_4', [input0], [output])
-        graph.initializer.add().CopyFrom(X1_weight)
-        graph.initializer.add().CopyFrom(X1_bias)
-        graph.initializer.add().CopyFrom(X3_weight)
-        graph.initializer.add().CopyFrom(X3_bias)
-        graph.initializer.add().CopyFrom(X5_weight)
-        graph.initializer.add().CopyFrom(X5_bias)
-
+                                  'test_graph_4', [input], [X1_output, X2_output, X3_output, X4_output, X5_output, X6_output])
+        graph.initializer.add().CopyFrom(W1)
+        graph.initializer.add().CopyFrom(B1)
+        graph.initializer.add().CopyFrom(W3)
+        graph.initializer.add().CopyFrom(B3)
+        graph.initializer.add().CopyFrom(W5)
+        graph.initializer.add().CopyFrom(B5)
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
-        test_model_path = './test_model_4.onnx'
         onnx.save(model, test_model_path)
-        data_reader = TestDataReaderSecond()
+
+    def test_compute_range(self):
+        test_model_path = './test_model_4.onnx'
+        self.construct_test_compute_range_model(test_model_path)
+
         augmented_model_path = './augmented_test_model_4.onnx'
-        calibrater = ONNXCalibrater(test_model_path, data_reader, ['Conv', 'MatMul'], [], [], augmented_model_path)
-        augmented_model = calibrater.augment_graph()
-        onnx.save(augmented_model, augmented_model_path)
+        calibrater = MinMaxCalibrater(test_model_path, augmented_model_path=augmented_model_path)
+        data_reader = TestDataReader()
+        calibrater.collect_data(data_reader)
+        tensors_range = calibrater.compute_range()
 
-        #test calculation of quantization params
-        #TO_DO: check rmin/rmax
-        dict_for_quantization = calibrater.get_intermediate_outputs()
-        quantization_params_dict = calibrater.calculate_quantization_params(dict_for_quantization)
+        sess_options = onnxruntime.SessionOptions()
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        infer_session = onnxruntime.InferenceSession(test_model_path,
+                                                     sess_options=sess_options,
+                                                     providers=['CPUExecutionProvider'])
+        data_reader.rewind()
+        rmin = np.array([np.inf, np.inf, np.inf, np.inf, np.inf, np.inf], dtype=np.float32)
+        rmax = -1.0 * rmin
+        while True:
+            input = data_reader.get_next()
+            if not input:
+                break
+            output = np.asarray(infer_session.run(None, input)).reshape(6, -1)
+            rmin=np.minimum(rmin, np.amin(output, axis=1))
+            rmax=np.maximum(rmax, np.amax(output, axis=1))
 
-        #check the size of the quantization dictionary
-        self.assertEqual(len(quantization_params_dict), 5)
+        min_max_pairs = list(zip(rmin, rmax))
+        output_names = [infer_session.get_outputs()[i].name for i in range(len(infer_session.get_outputs()))]
+        output_min_max_dict = dict(zip(output_names, min_max_pairs))
+        for output_name in output_min_max_dict.keys():
+            self.assertEqual(output_min_max_dict[output_name], tensors_range[output_name])
 
-        #check the computation of zp and scale
-        for key, value in quantization_params_dict.items():
+    def test_augment_graph_with_zero_value_dimension(self):
+        '''TEST_CONFIG_5'''
+        #   Conv
+        #    |
+        #   Conv
+        #    |
+        #  Resize
 
-            self.assertTrue(value is not None)
-            self.assertTrue(len(value) == 2)
+        G = helper.make_tensor_value_info('G', TensorProto.FLOAT, [1, 1, 5, 5])
+        H = helper.make_tensor_value_info('H', TensorProto.FLOAT, [1, 1, 3, 3])
+        J = helper.make_tensor_value_info('J', TensorProto.FLOAT, [1, 1, 3, 3])
+        M = helper.make_tensor_value_info('M', TensorProto.FLOAT, [0])
+        N = helper.make_tensor_value_info('N', TensorProto.FLOAT, [0])
+        O = helper.make_tensor_value_info('O', TensorProto.FLOAT, [1,1,5,5])
+        # O = helper.make_tensor_value_info('O', TensorProto.FLOAT, None)
+        conv_node_1 = onnx.helper.make_node('Conv', ['G', 'H'], ['I'],
+                                            name='Conv1',
+                                            kernel_shape=[3, 3],
+                                            pads=[1, 1, 1, 1])
+        conv_node_2 = onnx.helper.make_node('Conv', ['I', 'J'], ['K'],
+                                            name='Conv2',
+                                            kernel_shape=[3, 3],
+                                            pads=[1, 1, 1, 1])
+        resize_node_1 = onnx.helper.make_node('Resize', ['K', 'M', 'N'], ['O'],
+                                            name='Reize1')
+        graph = helper.make_graph([conv_node_1, conv_node_2, resize_node_1], 'test_graph_5', [G, H, J, M, N], [O])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        test_model_path = './test_model_5.onnx'
+        onnx.save(model, test_model_path)
 
-            thresholds = dict_for_quantization[key]
-            rmin = min(thresholds[0], 0)
-            rmax = max(thresholds[1], 0)
-            if key == 'X2':  #next_node is Relu
-                if rmin < 0: rmin = 0
+        augmented_model_path = './augmented_test_model_5.onnx'
+        calibrater = MinMaxCalibrater(test_model_path, [], augmented_model_path)
+        augmented_model = calibrater.get_augment_model()
 
-            scale_expected = np.float32((rmax - rmin) / 255 if rmin != rmax else 1)
-            zp_expected = np.uint8(round(max(0, min(255, (0 - rmin) / scale_expected))))
-            zp_actual = value[0]
-            scale_actual = value[1]
+        augmented_model_node_names = [node.name for node in augmented_model.graph.node]
+        augmented_model_outputs = [output.name for output in augmented_model.graph.output]
+        added_node_names = ['I_ReduceMin', 'I_ReduceMax', 'K_ReduceMin', 'K_ReduceMax', 'O_ReduceMin', 'O_ReduceMax']
+        added_outputs = ['I_ReduceMin', 'I_ReduceMax', 'K_ReduceMin', 'K_ReduceMax', 'O_ReduceMin', 'O_ReduceMax']
+        # Original 3 nodes + added ReduceMin/Max nodes * 8 
+        self.assertEqual(len(augmented_model_node_names), 19)
+        # Original 1 graph output + added outputs * 8 
+        self.assertEqual(len(augmented_model_outputs), 17)
+        for name in added_node_names:
+            self.assertTrue(name in augmented_model_node_names)
+        for output in added_outputs:
+            self.assertTrue(output in augmented_model_outputs)
 
-            self.assertEqual(zp_expected, zp_actual)
-            self.assertEqual(scale_expected, scale_actual)
-
-        print('Finished' + ' test calculation of quantization params.')
 
 
 if __name__ == '__main__':

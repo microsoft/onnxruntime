@@ -25,5 +25,10 @@ class LongformerAttentionBase {
   int window_;     // Attention windows length (W). It is half (one-sided) of total window size.
 };
 
+namespace longformer {
+// Environment variable to give a hint about choosing kernels for less memory or latency.
+constexpr const char* kUseCompactMemory = "ORT_LONGFORMER_COMPACT_MEMORY";
+}  // namespace longformer
+
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -16,6 +16,22 @@ WinMLTelemetryHelper::WinMLTelemetryHelper()
 WinMLTelemetryHelper::~WinMLTelemetryHelper() {
 }
 
+void WinMLTelemetryHelper::LogApiUsage(const char* name){
+  if (!telemetry_enabled_)
+    return;
+  WinMLTraceLoggingWrite(
+      provider_,
+      "ApiUsage",
+      TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+      TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+      //Telemetry info
+      TraceLoggingUInt8(WINML_TLM_EXPERIMENTAL_API_VERSION, "experimentalSchemaVersion"),
+      // named dimension override info
+      TraceLoggingString(name, "name"),
+      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+}
+
+
 void WinMLTelemetryHelper::LogWinMLShutDown() {
   std::string message = BINARY_NAME;
   message += " is unloaded";
@@ -129,6 +145,22 @@ void WinMLTelemetryHelper::SetIntraOpNumThreadsOverride(
       TraceLoggingInt32(num_threads_override, "numThreadsOverride"),
       TraceLoggingInt32(std::thread::hardware_concurrency(), "maxThreadsOnMachine"),
       TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+}
+
+void WinMLTelemetryHelper::SetIntraOpThreadSpinning(
+    bool allow_spinning) {
+    if (!telemetry_enabled_) 
+      return;
+    WinMLTraceLoggingWrite(
+        provider_,
+        "SetIntraOpThreadSpinning",
+        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        //Telemetry info
+        TraceLoggingUInt8(WINML_TLM_NATIVE_API_INTRAOP_THREAD_SPINNING_VERSION, "schemaVersion"),
+        // thread spinning info
+        TraceLoggingBoolean(allow_spinning, "threadSpinningAllowed"),
+        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
 }
 
 void WinMLTelemetryHelper::SetNamedDimensionOverride(

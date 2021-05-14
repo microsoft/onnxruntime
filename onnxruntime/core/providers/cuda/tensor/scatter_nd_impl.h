@@ -9,6 +9,7 @@ namespace onnxruntime {
 namespace cuda {
 
 Status ScatterNDImpl(
+    cudaStream_t stream,
     void* output_data,
     const size_t element_size,
     const size_t num_indices,

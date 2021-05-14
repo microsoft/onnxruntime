@@ -4,12 +4,16 @@
 // if we can't load an ORT format model we can't really test anything
 #if defined(ENABLE_ORT_FORMAT_LOAD)
 
-#include "core/common/make_unique.h"
+// custom ops are only supported in a minimal build if explicitly enabled
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+
+#include "core/common/common.h"
 #include "core/graph/constants.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
 #include "test_allocator.h"
 #include "utils.h"
+#include "custom_op_utils.h"
 
 #include "gtest/gtest.h"
 
@@ -18,15 +22,16 @@ extern std::unique_ptr<Ort::Env> ort_env;
 static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& model_uri,
                           const std::vector<Input>& inputs, const char* output_name,
                           const std::vector<int64_t>& expected_dims_y, const std::vector<float>& expected_values_y,
-                          Ort::CustomOpDomain& custom_op_domain) {
+                          Ort::CustomOpDomain& custom_op_domain, void* cuda_compute_stream = nullptr) {
   Ort::SessionOptions session_options;
   session_options.Add(custom_op_domain);
 
 #ifdef USE_CUDA
-  OrtCUDAProviderOptions cuda_options{};
+  auto cuda_options = CreateDefaultOrtCudaProviderOptionsWithCustomStream(cuda_compute_stream);
   session_options.AppendExecutionProvider_CUDA(cuda_options);
+#else
+  ORT_UNUSED_PARAMETER(cuda_compute_stream);
 #endif
-
   Ort::Session session(env, model_uri.c_str(), session_options);
 
   MockedOrtAllocator allocator;
@@ -69,9 +74,14 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.test_output.ort");
 
 #ifdef USE_CUDA
-  MyCustomOp custom_op{onnxruntime::kCudaExecutionProvider};
+  // We need to launch our custom op in the same compute stream as the one we will be
+  // passing to ORT via Session options to use for the entire session (i.e.) CUDA ORT kernels
+  // will now use the same stream too
+  cudaStream_t compute_stream = nullptr;
+  cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
+  MyCustomOp custom_op{onnxruntime::kCudaExecutionProvider, compute_stream};
 #else
-  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
+  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider, nullptr};
 #endif
   Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&custom_op);
@@ -102,7 +112,12 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
-  TestInference(*ort_env, ort_file, inputs, "Y", expected_dims_y, expected_values_y, custom_op_domain);
+#ifdef USE_CUDA
+  TestInference(*ort_env, ort_file, inputs, "Y", expected_dims_y, expected_values_y, custom_op_domain, compute_stream);
+  cudaStreamDestroy(compute_stream);
+#else
+  TestInference(*ort_env, ort_file, inputs, "Y", expected_dims_y, expected_values_y, custom_op_domain, nullptr);
+#endif
 }
 #endif  // if !defined(ORT_MINIMAL_BUILD)
 
@@ -112,7 +127,7 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
 TEST(OrtFormatCustomOpTests, LoadOrtModel) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.ort");
 
-  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
+  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider, nullptr};
   Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&custom_op);
 
@@ -130,5 +145,7 @@ TEST(OrtFormatCustomOpTests, LoadOrtModel) {
   TestInference(*ort_env, ort_file, inputs, "Y", expected_dims_y, expected_values_y, custom_op_domain);
 }
 #endif
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
 #endif  // #if defined(ENABLE_ORT_FORMAT_LOAD)

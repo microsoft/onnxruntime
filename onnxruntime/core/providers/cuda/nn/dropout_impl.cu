@@ -69,6 +69,7 @@ __global__ void DropoutKernel(
 template <typename T>
 void DropoutKernelImpl(
     const cudaDeviceProp& prop,
+    cudaStream_t stream,
     const int64_t N,
     const float ratio,
     PhiloxGenerator& generator,
@@ -83,12 +84,13 @@ void DropoutKernelImpl(
   const uint64_t counter_offset = static_cast<uint64_t>(((N - 1) / (block_size * grid_size * UNROLL) + 1) * UNROLL);
   auto seeds = generator.NextPhiloxSeeds(counter_offset);
 
-  DropoutKernel<T><<<grid_size, block_size, 0>>>(N, ratio, seeds, X_data, Y_data, mask_data);
+  DropoutKernel<T><<<grid_size, block_size, 0, stream>>>(N, ratio, seeds, X_data, Y_data, mask_data);
 }
 
 #define SPECIALIZED_DROPOUT_IMPL(T) \
   template void DropoutKernelImpl(  \
       const cudaDeviceProp& prop,   \
+      cudaStream_t stream,          \
       const int64_t N,              \
       const float ratio,            \
       PhiloxGenerator& generator,   \

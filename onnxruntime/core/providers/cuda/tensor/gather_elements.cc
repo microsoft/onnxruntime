@@ -77,6 +77,7 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   if (indices_tensor->IsDataType<int32_t>() ||
       indices_tensor->IsDataType<int64_t>()) {
     GatherElementsImpl(
+        Stream(),
         input_rank,
         input_tensor->DataRaw(),
         input_dims[axis],

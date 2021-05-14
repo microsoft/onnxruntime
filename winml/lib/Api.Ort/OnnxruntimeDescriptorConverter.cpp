@@ -279,25 +279,23 @@ CreateImageColorSpaceGamma(const char* color_space_gamma) {
   return winmlp::ImageColorSpaceGamma::ImageColorSpaceGamma_SRGB;
 }
 
-static winmlp::ImageNominalPixelRange
+static winml::LearningModelPixelRange
 CreateImageNominalPixelRange(const char* nominal_range) {
   if (nominal_range) {
     auto comparator =
         std::bind(std::strcmp, nominal_range, std::placeholders::_1);
 
     if (0 == comparator("NominalRange_0_255")) {
-      return winmlp::ImageNominalPixelRange::ImageNominalPixelRange_NominalRange_0_255;
+      return winml::LearningModelPixelRange::ZeroTo255;
     } else if (0 == comparator("Normalized_0_1")) {
-      return winmlp::ImageNominalPixelRange::ImageNominalPixelRange_Normalized_0_1;
+      return winml::LearningModelPixelRange::ZeroToOne;
     } else if (0 == comparator("Normalized_1_1")) {
-      return winmlp::ImageNominalPixelRange::ImageNominalPixelRange_Normalized_1_1;
-    } else if (0 == comparator("NominalRange_16_235")) {
-      return winmlp::ImageNominalPixelRange::ImageNominalPixelRange_NominalRange_16_235;
+      return winml::LearningModelPixelRange::MinusOneToOne;
     }
   }
 
   // default value, non conforming values are overridden to NominalRange_0_255
-  return winmlp::ImageNominalPixelRange::ImageNominalPixelRange_NominalRange_0_255;
+  return winml::LearningModelPixelRange::ZeroTo255;
 }
 
 enum class TensorType { Tensor_Data,
@@ -616,10 +614,11 @@ OnnxruntimeDescriptorConverter::OnnxruntimeDescriptorConverter(
     const std::unordered_map<std::string, std::string>& metadata) : engine_factory_(engine_factory), metadata_(metadata) {}
 
 wfc::IVector<winml::ILearningModelFeatureDescriptor>
-OnnxruntimeDescriptorConverter::ConvertToLearningModelDescriptors(const std::vector<OnnxruntimeValueInfoWrapper>& descriptors) {
+OnnxruntimeDescriptorConverter::ConvertToLearningModelDescriptors(const OnnxruntimeValueInfoWrapper* descriptors, size_t num_descriptors) {
   auto features = winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>();
 
-  for (const auto& descriptor : descriptors) {
+  for (size_t i = 0; i < num_descriptors;  i++) {
+    const auto& descriptor = descriptors[i];
     auto learning_model_descriptor = _winml::CreateFeatureDescriptor(engine_factory_.Get(), &descriptor, metadata_);
     features.Append(learning_model_descriptor);
   }

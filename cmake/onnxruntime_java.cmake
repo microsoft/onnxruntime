@@ -9,7 +9,6 @@ find_package(Java REQUIRED)
 include(UseJava)
 if (NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
     find_package(JNI REQUIRED)
-    include_directories(${JNI_INCLUDE_DIRS})
 endif()
 
 set(JAVA_ROOT ${REPO_ROOT}/java)
@@ -41,10 +40,13 @@ set(JAVA_OUTPUT_JAR ${JAVA_ROOT}/build/libs/onnxruntime.jar)
 set(GRADLE_ARGS clean jar)
 if(WIN32)
   set(GRADLE_ARGS ${GRADLE_ARGS} -Dorg.gradle.daemon=false)
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  # For Android build, we may run gradle multiple times in same build,
+  # sometimes gradle JVM will run out of memory if we keep the daemon running
+  # it is better to not keep a daemon running
+  set(GRADLE_ARGS ${GRADLE_ARGS} --no-daemon)
 endif()
-if(onnxruntime_USE_CUDA)
-  set(GRADLE_ARGS ${GRADLE_ARGS} -DUSE_CUDA=1)
-endif()
+
 add_custom_command(OUTPUT ${JAVA_OUTPUT_JAR} COMMAND ${GRADLE_EXECUTABLE} ${GRADLE_ARGS} WORKING_DIRECTORY ${JAVA_ROOT} DEPENDS ${onnxruntime4j_gradle_files} ${onnxruntime4j_src})
 add_custom_target(onnxruntime4j DEPENDS ${JAVA_OUTPUT_JAR})
 set_source_files_properties(${JAVA_OUTPUT_JAR} PROPERTIES GENERATED TRUE)
@@ -57,40 +59,15 @@ file(GLOB onnxruntime4j_native_src
     "${REPO_ROOT}/include/onnxruntime/core/session/*.h"
     )
 # Build the JNI library
-add_library(onnxruntime4j_jni SHARED ${onnxruntime4j_native_src})
+onnxruntime_add_shared_library_module(onnxruntime4j_jni ${onnxruntime4j_native_src})
 set_property(TARGET onnxruntime4j_jni PROPERTY CXX_STANDARD 11)
 
-# Tell the JNI code about the requested providers
-if (onnxruntime_USE_CUDA)
-  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_CUDA=1)
-endif()
-if (onnxruntime_USE_DNNL)
-  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_DNNL=1)
-endif()
-if (onnxruntime_USE_OPENVINO)
-  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_OPENVINO=1)
-endif()
-if (onnxruntime_USE_TENSORRT)
-  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_TENSORRT=1)
-endif()
-if (onnxruntime_USE_NNAPI_BUILTIN)
-  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_NNAPI=1)
-endif()
-if (onnxruntime_USE_NUPHAR)
-  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_NUPHAR=1)
-endif()
-if (onnxruntime_USE_ACL)
-  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_ACL=1)
-endif()
-if (onnxruntime_USE_DML)
-  target_compile_definitions(onnxruntime4j_jni PRIVATE USE_DIRECTML=1)
-endif()
 
 # depend on java sources. if they change, the JNI should recompile
 add_dependencies(onnxruntime4j_jni onnxruntime4j)
 onnxruntime_add_include_to_target(onnxruntime4j_jni onnxruntime_session)
 # the JNI headers are generated in the onnxruntime4j target
-target_include_directories(onnxruntime4j_jni PRIVATE ${REPO_ROOT}/include ${JAVA_ROOT}/build/headers)
+target_include_directories(onnxruntime4j_jni PRIVATE ${REPO_ROOT}/include ${JAVA_ROOT}/build/headers ${JNI_INCLUDE_DIRS})
 target_link_libraries(onnxruntime4j_jni PUBLIC onnxruntime)
 
 set(JAVA_PACKAGE_OUTPUT_DIR ${JAVA_OUTPUT_DIR}/build)
@@ -137,7 +114,7 @@ else()
   # We don't do distribution for Android
   # Set for completeness
   set(JAVA_PLAT "android")
- endif()
+endif()
 
 # Similar to Nuget schema
 set(JAVA_OS_ARCH ${JAVA_PLAT}-${JNI_ARCH})
@@ -160,8 +137,11 @@ endif()
 
 # On Windows TARGET_LINKER_FILE_NAME is the .lib, TARGET_FILE_NAME is the .dll
 if (WIN32)
-  add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_FILE_NAME:onnxruntime>)
-  add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime4j_jni> ${JAVA_PACKAGE_JNI_DIR}/$<TARGET_FILE_NAME:onnxruntime4j_jni>)
+  #Our static analysis plugin set /p:LinkCompiled=false
+  if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
+    add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_FILE_NAME:onnxruntime>)
+    add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime4j_jni> ${JAVA_PACKAGE_JNI_DIR}/$<TARGET_FILE_NAME:onnxruntime4j_jni>)
+  endif()
 else()
   add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime>)
   add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:onnxruntime4j_jni> ${JAVA_PACKAGE_JNI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime4j_jni>)
@@ -176,10 +156,16 @@ endif()
 set(GRADLE_ARGS cmakeBuild -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR})
 if(WIN32)
   set(GRADLE_ARGS ${GRADLE_ARGS} -Dorg.gradle.daemon=false)
+elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
+  # For Android build, we may run gradle multiple times in same build,
+  # sometimes gradle JVM will run out of memory if we keep the daemon running
+  # it is better to not keep a daemon running
+  set(GRADLE_ARGS ${GRADLE_ARGS} --no-daemon)
 endif()
-if(onnxruntime_USE_CUDA)
-  set(GRADLE_ARGS ${GRADLE_ARGS} -DUSE_CUDA=1)
-endif()
+string(JOIN " " GRADLE_EP_FLAGS ${ORT_PROVIDER_FLAGS})
+set(GRADLE_ARGS ${GRADLE_ARGS} ${GRADLE_EP_FLAGS})
+
+message(STATUS "GRADLE_ARGS: ${GRADLE_ARGS}")
 add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} ${GRADLE_ARGS} WORKING_DIRECTORY ${JAVA_ROOT})
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} -b build-android.gradle -c settings-android.gradle build -DjniLibsDir=${ANDROID_PACKAGE_JNILIBS_DIR} -DbuildDir=${ANDROID_PACKAGE_OUTPUT_DIR} WORKING_DIRECTORY ${JAVA_ROOT})

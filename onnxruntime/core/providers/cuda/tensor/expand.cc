@@ -98,6 +98,7 @@ Status Expand::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   return ExpandImpl(
+      Stream(),
       input_data_tensor.DataType()->Size(),
       gsl::narrow_cast<int>(output_shape.Size()),
       gsl::narrow_cast<int>(input_data_tensor.Shape().Size()),

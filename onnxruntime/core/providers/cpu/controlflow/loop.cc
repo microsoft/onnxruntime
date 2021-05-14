@@ -178,7 +178,8 @@ class LoopImpl {
   LoopImpl(OpKernelContextInternal& context,
            const SessionState& session_state,
            const Loop::Info& info,
-           const Loop::ConcatOutput& concat_output_func);
+           const Loop::ConcatOutput& concat_output_func,
+           void* stream);
 
   // Initialize by validating all the inputs, and allocating the output tensors
   Status Initialize();
@@ -211,9 +212,11 @@ class LoopImpl {
   std::vector<std::vector<OrtValue>> loop_output_tensors_;
 
   const Loop::ConcatOutput& concat_output_func_;
+  void* stream_;
 };
 
-static Status ConcatenateCpuOutput(std::vector<OrtValue>& per_iteration_output,
+static Status ConcatenateCpuOutput(void* /*stream*/,
+                                   std::vector<OrtValue>& per_iteration_output,
                                    void* output, size_t output_size_in_bytes) {
   const auto& first_output = per_iteration_output.front().Get<Tensor>();
   const auto& per_iteration_shape = first_output.Shape();
@@ -253,6 +256,7 @@ Loop::Loop(const OpKernelInfo& info) : IControlFlowKernel(info) {
   ORT_IGNORE_RETURN_VALUE(proto);
 
   concat_output_func_ = ConcatenateCpuOutput;
+  stream_ = nullptr;
 }
 
 // we need this to be in the .cc so 'unique_ptr<Info> info_' can be handled
@@ -265,7 +269,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
   ORT_UNUSED_PARAMETER(attribute_name);
 
   const auto& node = Node();
-  info_ = onnxruntime::make_unique<Loop::Info>(node, subgraph_session_state.GetGraphViewer());
+  info_ = std::make_unique<Loop::Info>(node, subgraph_session_state.GetGraphViewer());
 
   // the Loop inputs are matched to subgraph feeds based on order.
   // we first need the names of the Loop inputs to determine what device they are available on
@@ -345,7 +349,7 @@ Status Loop::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
   ORT_ENFORCE(feeds_fetches_manager_, "CreateFeedsFetchesManager must be called prior to execution of graph.");
 
-  LoopImpl loop_impl{*ctx_internal, *session_state, *info_, concat_output_func_};
+  LoopImpl loop_impl{*ctx_internal, *session_state, *info_, concat_output_func_, stream_};
 
   auto status = loop_impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
@@ -358,12 +362,14 @@ Status Loop::Compute(OpKernelContext* ctx) const {
 LoopImpl::LoopImpl(OpKernelContextInternal& context,
                    const SessionState& session_state,
                    const Loop::Info& subgraph_info,
-                   const Loop::ConcatOutput& concat_output_func)
+                   const Loop::ConcatOutput& concat_output_func,
+                   void* stream)
     : context_(context),
       session_state_(session_state),
       info_(subgraph_info),
       implicit_inputs_(context_.GetImplicitInputs()),
-      concat_output_func_(concat_output_func) {
+      concat_output_func_(concat_output_func),
+      stream_(stream) {
   auto* max_trip_count_tensor = context.Input<Tensor>(0);
   max_trip_count_ = max_trip_count_tensor ? *max_trip_count_tensor->Data<int64_t>() : INT64_MAX;
 
@@ -392,6 +398,12 @@ Status LoopImpl::Initialize() {
   }
 
   auto& subgraph_inputs = info_.subgraph.GetInputs();
+
+  // we need to know if the subgraph expects a rank 0 or rank 1 value for these, so a shape is required.
+  ORT_RETURN_IF(subgraph_inputs[0]->Shape() == nullptr, "Loop subgraph input 0 has unknown shape: ",
+                subgraph_inputs[0]->Name());
+  ORT_RETURN_IF(subgraph_inputs[1]->Shape() == nullptr, "Loop subgraph input 1 has unknown shape: ",
+                subgraph_inputs[1]->Name());
 
   auto iter_num_rank = subgraph_inputs[0]->Shape()->dim_size();
   auto condition_rank = subgraph_inputs[1]->Shape()->dim_size();
@@ -457,7 +469,7 @@ Status LoopImpl::ConcatenateLoopOutput(std::vector<OrtValue>& per_iteration_outp
   TensorShape output_shape{dims};
   Tensor* output = context_.Output(output_index, output_shape);
 
-  ORT_RETURN_IF_ERROR(concat_output_func_(per_iteration_output, output->MutableDataRaw(), output->SizeInBytes()));
+  ORT_RETURN_IF_ERROR(concat_output_func_(stream_, per_iteration_output, output->MutableDataRaw(), output->SizeInBytes()));
 
   return Status::OK();
 }

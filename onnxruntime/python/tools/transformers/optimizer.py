@@ -39,7 +39,8 @@ MODEL_CLASSES = {
     "bert": (BertOnnxModel, "pytorch", True),
     "bert_tf": (BertOnnxModelTF, "tf2onnx", False),
     "bert_keras": (BertOnnxModelKeras, "keras2onnx", False),
-    "gpt2": (Gpt2OnnxModel, "pytorch", True)
+    "gpt2": (Gpt2OnnxModel, "pytorch", True),
+    "gpt2_tf": (Gpt2OnnxModel, 'tf2onnx', False) # might add a class for GPT2OnnxModel for TF later. 
 }
 
 
@@ -119,23 +120,23 @@ def _parse_arguments():
                         choices=list(MODEL_CLASSES.keys()),
                         help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
 
-    parser.add_argument('--num_heads',
-                        required=False,
-                        type=int,
-                        default=12,
-                        help="number of attention heads. 12 for bert-base model and 16 for bert-large")
+    parser.add_argument(
+        '--num_heads',
+        required=False,
+        type=int,
+        default=12,
+        help=
+        "number of attention heads. 12 for bert-base model and 16 for bert-large. For BERT, set it to 0 to detect automatically."
+    )
 
-    parser.add_argument('--head_size',
-                        required=False,
-                        type=int,
-                        default=0,
-                        help="size of each attention head. 0 means head_size = hidden_size / num_heads.")
-
-    parser.add_argument('--hidden_size',
-                        required=False,
-                        type=int,
-                        default=768,
-                        help="bert model hidden size. 768 for bert-base model and 1024 for bert-large")
+    parser.add_argument(
+        '--hidden_size',
+        required=False,
+        type=int,
+        default=768,
+        help=
+        "bert model hidden size. 768 for bert-base model and 1024 for bert-large. For BERT, set it to 0 to detect automatically."
+    )
 
     parser.add_argument('--input_int32',
                         required=False,
@@ -259,9 +260,8 @@ def _get_optimization_options(args):
 
 def optimize_model(input,
                    model_type='bert',
-                   num_heads=12,
-                   head_size=0,
-                   hidden_size=768,
+                   num_heads=0,
+                   hidden_size=0,
                    optimization_options=None,
                    opt_level=0,
                    use_gpu=False,
@@ -276,9 +276,8 @@ def optimize_model(input,
     Args:
         input (str): input model path.
         model_type (str): model type - like bert, bert_tf, bert_keras or gpt2.
-        num_heads (int): number of attention heads.
-        head_size (int): size of each head. if it's 0, it's hidden_size / num_heads.
-        hidden_size (int): hidden size.
+        num_heads (int): number of attention heads. Default is 0 to allow detect the parameter from graph automatically (for model_type "bert" only).
+        hidden_size (int): hidden size. Default is 0 to allow detect the parameter from graph automatically (for model_type "bert" only).
         optimization_options (OptimizationOptions or None): optimization options that can use to turn on/off some fusions.
         opt_level (int): onnxruntime graph optimization level (0, 1, 2 or 99). When the level > 0, onnxruntime will be used to optimize model first.
         use_gpu (bool): use gpu or not for onnxruntime.

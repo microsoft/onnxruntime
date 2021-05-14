@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include <core/common/common.h>
+#include <core/common/safeint.h>
 
 #include "NeuralNetworksWrapper.h"
 
@@ -99,7 +100,9 @@ size_t OperandType::GetElementByteSize() const {
 }
 
 size_t OperandType::GetOperandBlobByteSize() const {
-  return Product(dimensions) * GetElementByteSize();
+  // use uin64_t even dimension is uint32_t to prevent overflow
+  uint64_t num_elements = std::accumulate(dimensions.begin(), dimensions.end(), 1, std::multiplies<uint64_t>());
+  return SafeInt<size_t>(num_elements) * GetElementByteSize();
 }
 
 void OperandType::SetDimensions(const std::vector<uint32_t>& d) {

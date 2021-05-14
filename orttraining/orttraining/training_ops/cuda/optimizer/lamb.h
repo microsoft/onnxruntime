@@ -49,19 +49,20 @@ class LambOptimizer final : public CudaKernel {
 // of this.
 template <typename T1, typename T2, typename T3, typename T_GRAD_NORM>
 void LambComputeDirection(
+    cudaStream_t stream,
     const T1* weights,
     const T2* grads,
     const T3* moment_1,
     const T3* moment_2,
     const T1* loss_scale,
     const T_GRAD_NORM* grad_norm,
-    T3 alpha,
-    T3 beta,
-    T1 lambda,
-    T3 epsilon,
-    T1 max_norm,
-    T3 alpha_correction,
-    T3 beta_correction,
+    float alpha,
+    float beta,
+    float lambda,
+    float epsilon,
+    float max_norm,
+    float alpha_correction,
+    float beta_correction,
     T2* update_direction,
     T3* moment_1_out,
     T3* moment_2_out,
@@ -73,6 +74,7 @@ void LambComputeDirection(
 // of this.
 template <typename T1, typename T2, typename T3, typename T_MIXED_PRECISION_FP>
 void LambUpdate(
+    cudaStream_t stream,
     const T1* eta,
     const float ratio_min,
     const float ratio_max,
@@ -106,16 +108,17 @@ void LambUpdate(
 template <typename T1, typename T2, typename T3, typename T_GRAD_NORM>
 struct LambMultiTensorComputeDirectionFunctor {
   void operator()(
+      cudaStream_t stream,
       ChunkGroup<6> chunk_group,
       const T1* loss_scale,
       const T_GRAD_NORM* grad_norm,
-      const T1 lambda,
-      const T3 alpha,
-      const T3 beta,
-      const T3 epsilon,
-      const T1 max_norm,
-      const T3 alpha_correction,
-      const T3 beta_correction);
+      const float lambda,
+      const float alpha,
+      const float beta,
+      const float epsilon,
+      const float max_norm,
+      const float alpha_correction,
+      const float beta_correction);
 };
 
 // Lamb's reduction maps [w, d] to [w_norm, d_norm] where
@@ -134,6 +137,7 @@ struct LambMultiTensorComputeDirectionFunctor {
 template <typename TIn1, typename TIn2, typename TOut1, typename TOut2, typename TBuf>
 struct LambMultiTensorReductionFunctor {
   void operator()(
+      cudaStream_t stream,
       ChunkGroup<4> chunk_group,
       const CudaKernel& kernel,
       void* reduction_buffer,
@@ -183,6 +187,7 @@ struct LambMultiTensorSyncRangeAndLock {
 template <typename T1, typename T2, typename T3, typename T_MIXED_PRECISION_FP>
 struct LambMultiTensorUpdateFunctor {
   void operator()(
+      cudaStream_t stream,
       ChunkGroup<7> chunk_group,
       const T1* eta,
       const float ratio_min,

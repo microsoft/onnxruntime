@@ -65,9 +65,8 @@ class PCATransformer final : public OpKernel {
   }
 
   Status Compute(OpKernelContext* ctx) const override {
-    utils::MLTypeCallDispatcher<PCATransformerImpl, float, double>
-        t_disp(ctx->Input<Tensor>(1)->GetElementType());
-    t_disp.Invoke(ctx);
+    utils::MLTypeCallDispatcher<float, double> t_disp(ctx->Input<Tensor>(1)->GetElementType());
+    t_disp.Invoke<PCATransformerImpl>(ctx);
     return Status::OK();
   }
 };

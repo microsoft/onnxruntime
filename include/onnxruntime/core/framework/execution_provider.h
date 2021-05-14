@@ -3,11 +3,10 @@
 
 #pragma once
 
-#ifndef PROVIDER_BRIDGE_PROVIDER
-#include <map>
+#ifndef SHARED_PROVIDER
 #include <unordered_map>
 #include <unordered_set>
-
+#include <memory>
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/tensor.h"
@@ -21,17 +20,20 @@ struct ComputeCapability;
 class KernelRegistry;
 class KernelRegistryManager;
 }  // namespace onnxruntime
+#else
+#include <memory>
 #endif
 
 #include "core/framework/provider_options.h"
 #include "core/framework/func_api.h"
+#include "core/framework/allocatormgr.h"
 
 namespace onnxruntime {
 
 /**
    Logical device representation.
 */
-using AllocatorMap = std::map<int, AllocatorPtr>;
+using AllocatorMap = std::unordered_map<int, AllocatorPtr>;
 using MemoryInfoSet = std::set<OrtMemoryInfo>;
 
 // if we are export the fused function to dll, the function will still in the same binary as onnxruntime
@@ -51,7 +53,7 @@ class IExecutionProvider {
   IExecutionProvider(const std::string& type, bool use_metadef_id_creator = false)
       : type_{type} {
     if (use_metadef_id_creator) {
-      metadef_id_generator_ = onnxruntime::make_unique<ModelMetadefIdGenerator>();
+      metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
     }
   }
 
@@ -165,8 +167,13 @@ class IExecutionProvider {
   */
   virtual common::Status OnSessionInitializationEnd() { return Status::OK(); }
 
+  virtual common::Status SetComputeStream(void*) { return Status::OK(); }
+  virtual void* GetComputeStream() const { return nullptr; }
+
   void InsertAllocator(AllocatorPtr allocator);
   void ReplaceAllocator(AllocatorPtr allocator);
+  // TODO: temparary sulotion, need to unify the interface in EP and AllocatorManager
+  void TryInsertAllocator(AllocatorPtr allocator);
 
   // creation of a fused node is not supported in a minimal build, so any EP enabled in that scenario must support
   // compilation via GraphViewer instances.
@@ -248,9 +255,16 @@ class IExecutionProvider {
    @remarks e.g. the TensorRT Execution Provider is used in multiple sessions and the underlying infrastructure caches
             compiled kernels, so the name must be unique and deterministic across models and sessions.
             NOTE: Ideally this would be a protected method, but to work across the EP bridge it has to be public and 
-			      virtual, and ModelMetadefIdGenerator but be defined in the header as well.
+                  virtual, and ModelMetadefIdGenerator but be defined in the header as well.
    */
   virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, uint64_t& model_hash) const;
+
+  /**
+     Register allocators used for EP
+     TODO: Used for CUDA & TRT only for now, will have one more PR to apply this for all EPs.
+     EPs will have a shared pointer to allocator_manager, allocator_managerall will be the only place for allocators
+  */
+  virtual void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager);
 
  private:
   const std::string type_;

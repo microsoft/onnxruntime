@@ -19,6 +19,14 @@ class AttentionBase {
                      const Tensor*& mask_index,  // For dummy mask with shape (1, 1) or (batch_size, 1), it will be updated to nullptr.
                      const Tensor* past) const;
 
+  // This check function is specifically used in cuda
+  Status CheckInputs(const TensorShape& input_shape,
+                     const TensorShape& weights_shape,
+                     const TensorShape& bias_shape,
+                     const Tensor*& mask_index,  // For dummy mask with shape (1, 1) or (batch_size, 1), it will be updated to nullptr.
+                     const Tensor* past,
+                     const int max_threads_per_block) const;
+
   Tensor* GetPresent(OpKernelContext* context,
                      const Tensor* past,
                      int batch_size,

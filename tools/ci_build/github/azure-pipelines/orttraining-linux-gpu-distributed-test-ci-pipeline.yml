@@ -14,7 +14,7 @@ jobs:
   - template: templates/run-docker-build-steps.yml
     parameters:
       RunDockerBuildArgs: |
-        -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) \
+        -o ubuntu18.04 -d gpu -r $(Build.BinariesDirectory) \
         -t onnxruntime_distributed_tests_image \
         -x " \
           --config RelWithDebInfo \
@@ -40,7 +40,7 @@ jobs:
             --cwd /build/RelWithDebInfo \
     displayName: 'Run orttraining_distributed_tests.py'
     condition: succeededOrFailed()
-    timeoutInMinutes: 60
+    timeoutInMinutes: 120
   
   - template: templates/component-governance-component-detection-steps.yml
     parameters:

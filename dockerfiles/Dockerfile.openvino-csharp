@@ -15,7 +15,7 @@ ARG MY_ROOT=/code
 ENV PATH /opt/miniconda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:$PATH
 ENV LD_LIBRARY_PATH=/opt/miniconda/lib:/usr/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 
-ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2021.2.200
+ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2021.3.394
 ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/share
 ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64
 ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/inference_engine/external/gna/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib:$INTEL_OPENVINO_DIR/deployment_tools/ngraph/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/omp/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}
@@ -23,10 +23,11 @@ ENV OpenCV_DIR=${INTEL_OPENVINO_DIR}/opencv/share/OpenCV
 ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/opencv/lib:${INTEL_OPENVINO_DIR}/opencv/share/OpenCV/3rdparty/lib:${LD_LIBRARY_PATH}
 ENV HDDL_INSTALL_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl
 ENV LD_LIBRARY_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/hddl/lib:$LD_LIBRARY_PATH
+ENV ngraph_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/ngraph/cmake
 ENV LANG en_US.UTF-8
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt update && \
+RUN apt update -y && \
     apt -y install --no-install-recommends apt-transport-https ca-certificates python3 python3-pip gnupg udev zip unzip x11-apps lsb-core wget curl cpio sudo libboost-python-dev libpng-dev zlib1g-dev git libnuma1 ocl-icd-libopencl1 clinfo libboost-filesystem1.65-dev libboost-thread1.65-dev protobuf-compiler libprotoc-dev autoconf automake libtool libjson-c-dev unattended-upgrades && \
     unattended-upgrade && \
     rm -rf /var/lib/apt/lists/* && \
@@ -52,9 +53,9 @@ RUN apt update && \
     apt-key add GPG-PUB-KEY-INTEL-OPENVINO-2021 && rm GPG-PUB-KEY-INTEL-OPENVINO-2021 && \
     cd /etc/apt/sources.list.d && \
     echo "deb https://apt.repos.intel.com/openvino/2021 all main">intel-openvino-2021.list && \ 
-    apt update && \
-    apt -y install intel-openvino-dev-ubuntu18-2021.2.200 && \
-    cd ${INTEL_OPENVINO_DIR}/install_dependencies && ./install_openvino_dependencies.sh && \
+    apt update -y && \
+    apt -y install intel-openvino-dev-ubuntu18-2021.3.394 && \
+    cd ${INTEL_OPENVINO_DIR}/install_dependencies && ./install_openvino_dependencies.sh -y && \
     cd ${INTEL_OPENVINO_DIR} && rm -rf documentation data_processing && \
     cd deployment_tools/ && rm -rf model_optimizer open_model_zoo demo tools && \
     cd inference_engine && rm -rf samples && \
@@ -66,7 +67,7 @@ RUN apt update && \
     cd ${MY_ROOT} && \
     mkdir /tmp/opencl && \
     cd /tmp/opencl && \
-    apt update && \
+    apt update -y && \
     apt install -y --no-install-recommends ocl-icd-libopencl1 && \
     rm -rf /var/lib/apt/lists/* && \
     wget "https://github.com/intel/compute-runtime/releases/download/19.41.14441/intel-gmmlib_19.3.2_amd64.deb" && \
@@ -83,7 +84,7 @@ RUN apt update && \
     #apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 3FA7E0328081BFF6A14DA29AA6A19B38D3D831EF && \
     curl http://download.mono-project.com/repo/xamarin.gpg | apt-key add - && \
     echo "deb https://download.mono-project.com/repo/ubuntu stable-bionic main" | sudo tee /etc/apt/sources.list.d/mono-official-stable.list && \
-    apt update && \
+    apt update -y && \
     apt install -y mono-devel && \
 # Install nuget.exe
     wget https://dist.nuget.org/win-x86-commandline/latest/nuget.exe && \
@@ -93,22 +94,22 @@ RUN apt update && \
 # Install .NET core
     wget https://packages.microsoft.com/config/ubuntu/18.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb && \
     dpkg -i packages-microsoft-prod.deb && \
-    apt-get update &&\
+    apt-get update -y &&\
     apt-get install -y apt-transport-https && \
-    apt-get update && \
+    apt-get update -y && \
     apt-get install -y dotnet-sdk-3.1 && \
 # Download and build ONNX Runtime
     cd ${MY_ROOT} && \
     git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO} && \
     /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh && \
     cd onnxruntime/cmake/external/onnx && python3 setup.py install && \
-    cd ${MY_ROOT}/onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_nuget && \
+    cd ${MY_ROOT}/onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_nuget --build_shared_lib && \
     mv ${MY_ROOT}/onnxruntime/build/Linux/Release/nuget-artifacts ${MY_ROOT} && \
 # Clean-up unnecessary files
     rm -rf ${MY_ROOT}/cmake* /opt/cmake ${MY_ROOT}/onnxruntime && \
     rm -rf /opt/miniconda && \
     rm -rf /opt/v1.0.22.zip && \
     apt remove -y git && apt autoremove -y  && apt remove -y cmake && \
-    cd /usr/lib/ && rm -rf python2.7 python3.6 python3.8 && cd && rm -rf .cache && \
-    cd /usr/share/python-wheels/ && rm -rf *.whl 
- 
+    cd /usr/lib/ && rm -rf python2.7 python3.7 python3.8  && \
+    cd && rm -rf .cache && \
+    cd /usr/share/python-wheels/ && rm -rf *.whl

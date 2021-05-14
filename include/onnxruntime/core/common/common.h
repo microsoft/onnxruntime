@@ -34,7 +34,6 @@
 #include "core/common/code_location.h"
 #include "core/common/exceptions.h"
 #include "core/common/make_string.h"
-#include "core/common/make_unique.h"
 #include "core/common/status.h"
 
 #ifdef USE_MIMALLOC_ARENA_ALLOCATOR
@@ -193,19 +192,16 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
                                 ::onnxruntime::MakeString(__VA_ARGS__))
 
 // Check condition. if met, return status.
-#define ORT_RETURN_IF(condition, ...)                                                     \
-  if (condition) {                                                                        \
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,                                             \
-                           "Satisfied, but should not be: " #condition "\n",              \
-                           ORT_WHERE.ToString(), ::onnxruntime::MakeString(__VA_ARGS__)); \
+#define ORT_RETURN_IF(condition, ...)                                                                        \
+  if (condition) {                                                                                           \
+    return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,                                 \
+                                         ::onnxruntime::common::FAIL,                                        \
+                                         ::onnxruntime::MakeString(ORT_WHERE.ToString(), " ", __VA_ARGS__)); \
   }
 
 // Check condition. if not met, return status.
-#define ORT_RETURN_IF_NOT(condition, ...)                                                     \
-  if (!(condition)) {                                                                         \
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Not satisfied: " #condition "\n",              \
-                           ORT_WHERE.ToString(), ::onnxruntime::MakeString(__VA_ARGS__)); \
-  }
+#define ORT_RETURN_IF_NOT(condition, ...) \
+  ORT_RETURN_IF(!(condition), __VA_ARGS__)
 
 // Macros to disable the copy and/or move ctor and assignment methods
 // These are usually placed in the private: declarations for a class.

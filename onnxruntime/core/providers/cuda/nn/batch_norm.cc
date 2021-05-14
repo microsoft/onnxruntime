@@ -81,10 +81,10 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
     auto f_B = GetScratchBuffer<float>(C);
     auto f_mean = GetScratchBuffer<float>(C);
     auto f_var = GetScratchBuffer<float>(C);
-    Impl_Cast<CudaT, float>(scale_data, f_scale.get(), C);
-    Impl_Cast<CudaT, float>(b_data, f_B.get(), C);
-    Impl_Cast<CudaT, float>(mean_data, f_mean.get(), C);
-    Impl_Cast<CudaT, float>(var_data, f_var.get(), C);
+    Impl_Cast<CudaT, float>(Stream(), scale_data, f_scale.get(), C);
+    Impl_Cast<CudaT, float>(Stream(), b_data, f_B.get(), C);
+    Impl_Cast<CudaT, float>(Stream(), mean_data, f_mean.get(), C);
+    Impl_Cast<CudaT, float>(Stream(), var_data, f_var.get(), C);
 
     CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardInference(
         CudnnHandle(),

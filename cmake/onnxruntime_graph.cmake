@@ -17,7 +17,8 @@ if (onnxruntime_MINIMAL_BUILD)
     "${ONNXRUNTIME_ROOT}/core/graph/schema_registry.cc"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*defs.h"
     "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/*defs.cc"
-
+    "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_function_util.h"
+    "${ONNXRUNTIME_ROOT}/core/graph/contrib_ops/onnx_function_util.cc"
   )
 
   # no Function support initially
@@ -71,7 +72,7 @@ if (onnxruntime_ENABLE_TRAINING)
     list(APPEND onnxruntime_graph_lib_src ${orttraining_graph_src})
 endif()
 
-add_library(onnxruntime_graph ${onnxruntime_graph_lib_src})
+onnxruntime_add_static_library(onnxruntime_graph ${onnxruntime_graph_lib_src})
 add_dependencies(onnxruntime_graph onnx_proto flatbuffers)
 onnxruntime_add_include_to_target(onnxruntime_graph onnxruntime_common onnx onnx_proto protobuf::libprotobuf flatbuffers)
 
@@ -96,6 +97,10 @@ install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/graph  DESTI
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_graph_src} ${onnxruntime_ir_defs_src})
 if (onnxruntime_ENABLE_TRAINING)
     source_group(TREE ${ORTTRAINING_ROOT} FILES ${orttraining_graph_src})
+endif()
+
+if (onnxruntime_BUILD_MS_EXPERIMENTAL_OPS)
+  target_compile_definitions(onnxruntime_graph PRIVATE BUILD_MS_EXPERIMENTAL_OPS=1)
 endif()
 
 if (WIN32)

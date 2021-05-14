@@ -12,6 +12,7 @@ namespace cuda {
 
 template <typename T, typename Tin>
 void SoftmaxCrossEntropyLossImpl(
+    cudaStream_t stream,
     const T* log_prob,
     const Tin* label,
     const T* weight,
@@ -23,6 +24,7 @@ void SoftmaxCrossEntropyLossImpl(
 
 template <typename T, typename Tin>
 void SoftmaxCrossEntropyLossGradImpl(
+    cudaStream_t stream,
     const T* dY,
     const T* log_prob,
     const Tin* label,
@@ -35,6 +37,7 @@ void SoftmaxCrossEntropyLossGradImpl(
 
 template <typename T, typename Tin>
 void ComputeWeightsSoftmaxCrossEntropyImpl(
+    cudaStream_t stream,
     const Tin* label,
     const T* weight,
     size_t count,

@@ -8,9 +8,18 @@
 #include <mutex>
 #include "core/providers/shared/common.h"
 
+#ifndef _Ret_notnull_
+#define _Ret_notnull_
+#endif
+
+
+#ifndef _Post_writable_byte_size_
+#define _Post_writable_byte_size_(n)
+#endif
+
 // Override default new/delete so that we match the host's allocator
-void* operator new(size_t n) { return Provider_GetHost()->HeapAllocate(n); }
-void operator delete(void* p) { return Provider_GetHost()->HeapFree(p); }
+_Ret_notnull_ _Post_writable_byte_size_(n) void* operator new(size_t n) { return Provider_GetHost()->HeapAllocate(n); }
+void operator delete(void* p) noexcept { return Provider_GetHost()->HeapFree(p); }
 void operator delete(void* p, size_t /*size*/) { return Provider_GetHost()->HeapFree(p); }
 
 namespace onnxruntime {
@@ -23,7 +32,7 @@ void RunOnUnload(std::function<void()> function) {
   static std::mutex mutex;
   std::lock_guard<std::mutex> guard{mutex};
   if (!s_run_on_unload_)
-    s_run_on_unload_ = onnxruntime::make_unique<std::vector<std::function<void()>>>();
+    s_run_on_unload_ = std::make_unique<std::vector<std::function<void()>>>();
   s_run_on_unload_->push_back(std::move(function));
 }
 
@@ -45,6 +54,14 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
   return g_host->CreateAllocator(info);
 }
 
+void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) {
+  return g_host->AllocatorManager__InsertAllocator(p, allocator);
+}
+
+AllocatorPtr AllocatorManager__GetAllocator(AllocatorManager* p, int id, OrtMemType mem_type) {
+  return g_host->AllocatorManager__GetAllocator(p, id, mem_type);
+}
+
 template <>
 MLDataType DataTypeImpl::GetType<float>() {
   return g_host->DataTypeImpl_GetType_float();
@@ -55,8 +72,12 @@ MLDataType DataTypeImpl::GetTensorType<float>() {
   return g_host->DataTypeImpl_GetTensorType_float();
 }
 
-const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorTypes() {
-  return g_host->DataTypeImpl_AllFixedSizeTensorTypes();
+Status IDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
+  return g_host->IDataTransfer__CopyTensor(this, src, dst);
+}
+
+Status IDataTransfer::CopyTensors(const std::vector<SrcDstPair>& src_dst_pairs) const {
+  return g_host->IDataTransfer__CopyTensors(this, src_dst_pairs);
 }
 
 TensorShape::TensorShape(const int64_t* dimension_sizes, size_t dimension_count)
@@ -114,6 +135,10 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   g_host->IExecutionProvider__InsertAllocator(this, allocator);
 }
 
+void IExecutionProvider::TryInsertAllocator(AllocatorPtr allocator) {
+  g_host->IExecutionProvider__TryInsertAllocator(this, allocator);
+}
+
 std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                                                                   const std::vector<const KernelRegistry*>& kernel_registries) const {
   return g_host->IExecutionProvider__GetCapability(this, graph_viewer, kernel_registries);
@@ -138,6 +163,10 @@ int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_
   return g_host->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash);
 }
 
+void IExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
+  return g_host->IExecutionProvider__RegisterAllocator(this, allocator_manager);
+}
+
 #ifdef USE_TENSORRT
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAAllocator(device_id, name);
@@ -147,8 +176,8 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
   return g_host->CreateCUDAPinnedAllocator(device_id, name);
 }
 
-std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
-  return g_host->CreateGPUDataTransfer();
+std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) {
+  return g_host->CreateGPUDataTransfer(stream);
 }
 #endif
 
@@ -168,14 +197,14 @@ Status::Status(StatusCategory category, int code, const std::string& msg) {
   // state_ will be allocated here causing the status to be treated as a failure
   ORT_ENFORCE(code != static_cast<int>(common::OK));
 
-  state_ = onnxruntime::make_unique<State>(category, code, msg);
+  state_ = std::make_unique<State>(category, code, msg);
 }
 
 Status::Status(StatusCategory category, int code, const char* msg) {
   // state_ will be allocated here causing the status to be treated as a failure
   ORT_ENFORCE(code != static_cast<int>(common::OK));
 
-  state_ = onnxruntime::make_unique<State>(category, code, msg);
+  state_ = std::make_unique<State>(category, code, msg);
 }
 
 Status::Status(StatusCategory category, int code) : Status(category, code, "") {
@@ -203,6 +232,10 @@ std::vector<std::string> GetStackTrace() { return g_host->GetStackTrace(); }
 void LogRuntimeError(uint32_t session_id, const common::Status& status,
                      const char* file, const char* function, uint32_t line) {
   return g_host->LogRuntimeError(session_id, status, file, function, line);
+}
+
+std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) {
+  return g_host->CopyOpKernelInfo(info);
 }
 
 }  // namespace onnxruntime

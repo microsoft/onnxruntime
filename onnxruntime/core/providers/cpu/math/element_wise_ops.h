@@ -375,6 +375,24 @@ class Greater final : public OpKernel {
 };
 
 template <typename T>
+class LessOrEqual final : public OpKernel {
+ public:
+  LessOrEqual(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class GreaterOrEqual final : public OpKernel {
+ public:
+  GreaterOrEqual(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
+template <typename T>
 class Mean_6 final : public OpKernel {
  public:
   Mean_6(const OpKernelInfo& info) : OpKernel(info) {
@@ -956,7 +974,7 @@ struct TensorAllocator {
 
   template <typename T>
   std::unique_ptr<Tensor> Allocate(const TensorShape& shape) const {
-    return onnxruntime::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
+    return std::make_unique<Tensor>(DataTypeImpl::GetType<T>(),
                                             shape,
                                             allocator_);
   }

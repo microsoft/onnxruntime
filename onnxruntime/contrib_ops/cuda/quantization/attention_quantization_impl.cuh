@@ -8,7 +8,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 template <class Tin>
-Status CudaDequantizeWithBias(const int32_t* quantize, const Tin* bias, Tin* output, Tin scale, int m, int n);
+Status CudaDequantizeWithBias(cudaStream_t stream, const int32_t* quantize, const Tin* bias, Tin* output, Tin scale, int m, int n);
 
 }  // namespace cuda
 }  // namespace contrib

@@ -11,7 +11,8 @@ namespace cuda {
 
 namespace SliceCuda {
 
-Status Impl(const void* input_data,
+Status Impl(cudaStream_t stream,
+            const void* input_data,
             const TensorShape& input_shape,
             void* output_data,
             SliceOp::PrepareForComputeMetadata& prepare_metadata,

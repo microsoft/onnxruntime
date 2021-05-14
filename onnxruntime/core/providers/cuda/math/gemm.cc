@@ -86,6 +86,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
     if (b_shape.Size() == 1) {
       // if B is (), (1,) or (1, 1), broadcast the scalar
       CUBLAS_RETURN_IF_ERROR(cublasCopyHelper(
+          Stream(),
           CublasHandle(),
           M * N,
           b_data,
@@ -118,7 +119,7 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
           out_data, N, device_prop));
     } else {
       // B is (M, N), no broadcast needed.
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(out_data, b_data, M * N * sizeof(T), cudaMemcpyDeviceToDevice));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(out_data, b_data, M * N * sizeof(T), cudaMemcpyDeviceToDevice, Stream()));
     }
   }
 

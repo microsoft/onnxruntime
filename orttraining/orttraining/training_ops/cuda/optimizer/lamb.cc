@@ -117,6 +117,7 @@ void check_inputs_and_outputs(
 
 template <typename TWeight, typename TGradient, typename TMomentum, typename TMixedPrecision>
 Status copy_inputs_to_outputs(
+    cudaStream_t stream,
     OpKernelContext* ctx,
     const int non_grouped_input_count,
     const int non_grouped_output_count,
@@ -155,16 +156,16 @@ Status copy_inputs_to_outputs(
       w_mixed_precision_new->SetByteOffset(w_mixed_precision->ByteOffset());
 
     if (w_new) {
-      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TWeight>(w, *w_new));
+      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TWeight>(stream, w, *w_new));
     }
     if (g_new) {
-      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TGradient>(g, *g_new));
+      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TGradient>(stream, g, *g_new));
     }
-    ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMomentum>(m1, m1_new));
-    ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMomentum>(m2, m2_new));
+    ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMomentum>(stream, m1, m1_new));
+    ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMomentum>(stream, m2, m2_new));
 
     if (w_mixed_precision_new) {
-      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMixedPrecision>(*w_mixed_precision, *w_mixed_precision_new));
+      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<TMixedPrecision>(stream, *w_mixed_precision, *w_mixed_precision_new));
     }
   }
 
@@ -173,6 +174,7 @@ Status copy_inputs_to_outputs(
 
 template <typename CudaT2, typename CudaT3, typename CudaT4, typename CudaT_GRAD_NORM>
 Status launch_lamb_compute_direction(
+    cudaStream_t stream,
     const int64_t update_count,
     const int group_count,
     const CudaT2* p_loss_scale,
@@ -221,19 +223,20 @@ Status launch_lamb_compute_direction(
           do_bias_correction ? onnxruntime::contrib::compute_bias_correction_coefficient(betas[i], update_count) : 1.f;
 
       LambComputeDirection(
+          stream,
           p_ws[i],
           p_gs[i],
           p_m1s[i],
           p_m2s[i],
           p_loss_scale,
           p_g_norm,
-          CudaT4(alphas[i]),
-          CudaT4(betas[i]),
-          CudaT2(lambdas[i]),
-          CudaT4(epsilons[i]),
-          CudaT2(max_norms[i]),
-          CudaT4(alpha_correction),
-          CudaT4(beta_correction),
+          alphas[i],
+          betas[i],
+          lambdas[i],
+          epsilons[i],
+          max_norms[i],
+          alpha_correction,
+          beta_correction,
           p_ds[i],
           p_m1_news[i],
           p_m2_news[i],
@@ -268,11 +271,12 @@ Status launch_lamb_compute_direction(
     LambStage1 lamb_stage1;
 
     launch_multi_tensor_functor<tensor_count_per_group, LambStage1>(
+        stream,
         2048 * 32,
         tensor_sizes_in_buckets[key],
         buckets[key],
         lamb_stage1,
-        p_loss_scale, p_g_norm, lambda, alpha, beta, epsilon, CudaT2(max_norm), alpha_correction, beta_correction);
+        p_loss_scale, p_g_norm, lambda, alpha, beta, epsilon, max_norm, alpha_correction, beta_correction);
   }
 
   return Status::OK();
@@ -299,6 +303,7 @@ Status launch_lamb_reduction(
 
   constexpr int tensor_count_per_group = 4;
 
+  cudaStream_t stream = kernel.Stream();
   // Bucketize tensor groups by the associated optimizer configuration.
   // If two tensor groups use different "alpha", they should be put into two distinct buckets.
   std::vector<std::vector<void*>> buckets;
@@ -307,12 +312,14 @@ Status launch_lamb_reduction(
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
       ORT_RETURN_IF_ERROR(reduce_square_sum(
+          stream,
           p_ws[i],
           p_w_norms[i],
           tensor_sizes[i],
           reduction_buffer,
           reduction_buffer_size));
       ORT_RETURN_IF_ERROR(reduce_square_sum(
+          stream,
           p_ds[i],
           p_d_norms[i],
           tensor_sizes[i],
@@ -343,6 +350,7 @@ Status launch_lamb_reduction(
     typedef LambMultiTensorReductionFunctor<CudaTIn1, CudaTIn2, CudaTNorm, CudaTNorm, CudaTNorm> TReducer;
     TReducer reducer;
     launch_multi_tensor_functor<tensor_count_per_group, TReducer>(
+        stream,
         2048 * 32,
         tensor_sizes_in_buckets,
         buckets,
@@ -357,6 +365,7 @@ Status launch_lamb_reduction(
 
 template <typename CudaT1, typename CudaT2, typename CudaT3, typename CudaT_MIXED_PRECISION_FP>
 Status launch_lamb_update(
+    cudaStream_t stream,
     const int group_count,
     const CudaT1* eta,
     const float ratio_min,
@@ -389,6 +398,7 @@ Status launch_lamb_update(
   for (int i = 0; i < group_count; ++i) {
     if (tensor_sizes[i] > max_tensor_size) {
       LambUpdate(
+          stream,
           eta,
           ratio_min,
           ratio_max,
@@ -430,6 +440,7 @@ Status launch_lamb_update(
     LambStage2 lamb_stage2;
 
     launch_multi_tensor_functor<tensor_count_per_group, LambStage2>(
+        stream,
         2048 * 32,
         tensor_sizes_in_bucket,
         buckets,
@@ -503,6 +514,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
     auto update_signal = *update_signal_tensor->template Data<bool>();
     if (!update_signal) {
       return copy_inputs_to_outputs<T2, T3, T4, T_MIXED_PRECISION_FP>(
+          Stream(),
           ctx,
           non_grouped_input_count,
           non_grouped_output_count,
@@ -539,14 +551,14 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
   // and T2=float.
   IAllocatorUniquePtr<T2> d_norm_buffer = GetScratchBuffer<T2>(group_count);
   CudaT2* d_norm_data = reinterpret_cast<CudaT2*>(d_norm_buffer.get());
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(d_norm_data, 0, group_count * sizeof(T2)));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(d_norm_data, 0, group_count * sizeof(T2), Stream()));
 
   // Allocate buffer for reduction computation of weight tensor.
   // The i-th weight's norm is stored at the i-th element.
   // We reduce type T2 tensor to type T2 scalar. An example is that T2=float.
   IAllocatorUniquePtr<T2> w_norm_buffer = GetScratchBuffer<T2>(group_count);
   CudaT2* w_norm_data = reinterpret_cast<CudaT2*>(w_norm_buffer.get());
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(w_norm_data, 0, group_count * sizeof(T2)));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(w_norm_data, 0, group_count * sizeof(T2), Stream()));
 
   // Find the max size of updated weight tensors.
   int max_tensor_size = 0;
@@ -652,6 +664,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
   }
 
   ORT_RETURN_IF_ERROR(launch_lamb_compute_direction(
+      Stream(),
       step_data ? *step_data : 0,
       group_count,
       loss_scale_data,
@@ -675,6 +688,7 @@ Status LambOptimizer<T1, T2, T3, T4, T_GRAD_NORM, T_MIXED_PRECISION_FP>::Compute
       reduction_buffer_size));
 
   ORT_RETURN_IF_ERROR(launch_lamb_update(
+      Stream(),
       group_count,
       eta_data,
       ratio_min_,

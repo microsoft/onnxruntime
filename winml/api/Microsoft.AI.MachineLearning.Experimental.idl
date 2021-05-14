@@ -3,15 +3,16 @@
 
 import "Windows.Foundation.idl";
 import "dualapipartitionattribute.idl";
-import "Windows.AI.MachineLearning.idl";
 
 #include <sdkddkver.h>
 
 #ifdef BUILD_INBOX
+import "Windows.AI.MachineLearning.idl";
 #define ROOT_NS Windows
 #define INBOX_ONLY(x) x
 #define OTB_ONLY(x)
 #else
+import "Microsoft.AI.MachineLearning.idl";
 #define INBOX_ONLY(x)
 #define OTB_ONLY(x) x
 #endif
@@ -20,17 +21,8 @@ import "Windows.AI.MachineLearning.idl";
 #define ROOT_NS Microsoft
 #endif
 
-
 namespace ROOT_NS.AI.MachineLearning.Experimental {
-
-  [threading(both)]
-  [marshaling_behavior(agile)]
-  [dualapipartition(1)]
-  runtimeclass Dummy {
-    Dummy();
-
-    void Test();
-  }
+  runtimeclass LearningModelBuilder;
 
   [marshaling_behavior(agile)]
   [dualapipartition(1)]
@@ -46,4 +38,68 @@ namespace ROOT_NS.AI.MachineLearning.Experimental {
     LearningModelSessionOptionsExperimental Options { get; };
   }
 
+  [threading(both)]
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelOperator {
+    LearningModelOperator(String type);
+    LearningModelOperator(String type, String domain);
+
+    LearningModelOperator SetName(String name);
+    LearningModelOperator SetInput(String operator_input_name, String input_name);
+    LearningModelOperator SetConstant(String operator_input_name, IInspectable default_value);
+    LearningModelOperator SetOutput(String operator_output_name, String output_name);
+    LearningModelOperator SetAttribute(String name, IInspectable value);
+
+    String Name { get; };
+    String Type { get; };
+    String Domain { get; };
+  }
+
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelOperatorSet {
+    LearningModelBuilder Add(LearningModelOperator op);
+  }
+
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelInputs {
+    LearningModelBuilder Add(ROOT_NS.AI.MachineLearning.ILearningModelFeatureDescriptor input);
+    LearningModelBuilder Add(String input_name, String input_description, IInspectable default_value);
+    LearningModelBuilder AddConstant(String input_name, IInspectable value);
+  }
+
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelOutputs {
+    LearningModelBuilder Add(ROOT_NS.AI.MachineLearning.ILearningModelFeatureDescriptor output);
+  }
+
+  //! \interface LearningModelBuilder
+  //! \brief Represents a trained machine learning model.
+  //! \details This is the main object you use to interact with Windows Machine Learning.  You use
+  //! it to load, bind, and evaluate trained ONNX models.   To load the model you use
+  //! one of the Load constructors.  You can then enumerate the InputFeatures and
+  //! OutputFeatures.   To bind and evaluate you create a LearningModelSession.
+  [threading(both)]
+  [marshaling_behavior(agile)]
+  [dualapipartition(1)]
+  runtimeclass LearningModelBuilder {
+    LearningModelInputs Inputs { get; };
+    LearningModelOutputs Outputs { get; };
+    LearningModelOperatorSet Operators { get; };
+
+    //! Create a builder.
+    static LearningModelBuilder Create(Int32 opset);
+
+    //! Creates a TensorFeatureDescriptor.. this should be a constructor on the TFD
+    //TensorFeatureDescriptor(String name, String description, TensorKind kind, Int64[] shape);
+    static ROOT_NS.AI.MachineLearning.TensorFeatureDescriptor CreateTensorFeatureDescriptor(String name, String description, ROOT_NS.AI.MachineLearning.TensorKind kind, Int64[] shape);
+    static ROOT_NS.AI.MachineLearning.TensorFeatureDescriptor CreateTensorFeatureDescriptor(String name, ROOT_NS.AI.MachineLearning.TensorKind kind, Int64[] shape);
+
+    ROOT_NS.AI.MachineLearning.LearningModel CreateModel();
+
+    void Save(String file_name);
+  }
 }  // namespace Microsoft.AI.MachineLearning.Experimental

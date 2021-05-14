@@ -18,11 +18,11 @@ class ReduceAllL2 final : public CudaKernel {
 
 template <typename TIn, typename TOut>
 struct MultiTensorReduceL2 {
-  void operator()(ChunkGroup<1> chunk_group, TOut* output);
+  void operator()(cudaStream_t stream, ChunkGroup<1> chunk_group, TOut* output);
 };
 
 template<typename Tin, typename Tout>
-void ScalarSqrt(Tin* input, Tout* output);
+void ScalarSqrt(cudaStream_t stream, Tin* input, Tout* output);
 
 }  // namespace cuda
 }  // namespace onnxruntime

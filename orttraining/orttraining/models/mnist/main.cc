@@ -21,6 +21,15 @@
 #include <mutex>
 #include <tuple>
 
+namespace onnxruntime {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(OrtDevice::DeviceId device_id,
+                                                                               OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+                                                                               size_t gpu_mem_limit = std::numeric_limits<size_t>::max(),
+                                                                               onnxruntime::ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo,
+                                                                               bool do_copy_in_default_stream = true);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
+}
+
 using namespace onnxruntime;
 using namespace onnxruntime::common;
 using namespace onnxruntime::training;
@@ -28,22 +37,31 @@ using namespace onnxruntime::training::tensorboard;
 using namespace std;
 
 const static int NUM_CLASS = 10;
-const static vector<int64_t> IMAGE_DIMS = {784};  //{1, 28, 28} for mnist_conv
+const static vector<int64_t> IMAGE_DIMS_GEMM = {784};        // for mnist_gemm models
+const static vector<int64_t> IMAGE_DIMS_CONV = {1, 28, 28};  // for mnist_conv models
 const static vector<int64_t> LABEL_DIMS = {10};
 
-Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params) {
+struct MnistParameters : public TrainingRunner::Parameters {
+  std::string model_type;
+};
+
+Status ParseArguments(int argc, char* argv[], MnistParameters& params) {
   cxxopts::Options options("POC Training", "Main Program to train on MNIST");
   // clang-format off
   options
     .add_options()
       ("model_name", "model to be trained", cxxopts::value<std::string>())
+      ("model_type", "one of [gemm|conv] defaults gemm.", cxxopts::value<std::string>()->default_value("gemm"))
       ("train_data_dir", "MNIST training and test data path.",
         cxxopts::value<std::string>()->default_value("mnist_data"))
       ("log_dir", "The directory to write tensorboard events.",
         cxxopts::value<std::string>()->default_value(""))
       ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
-      ("use_gist", "Use GIST encoding/decoding.")
+      ("use_gist", "Whether to use GIST encoding/decoding.")
+      ("gist_op", "Opearator type(s) to which GIST is applied.", cxxopts::value<int>()->default_value("0"))
+      ("gist_compr", "Compression type used for GIST", cxxopts::value<std::string>()->default_value("GistPack8"))
       ("use_cuda", "Use CUDA execution provider for training.", cxxopts::value<bool>()->default_value("false"))
+      ("use_dnnl", "Use DNNL execution provider for training.", cxxopts::value<bool>()->default_value("false"))
       ("num_train_steps", "Number of training steps.", cxxopts::value<int>()->default_value("2000"))
       ("train_batch_size", "Total batch size for training.", cxxopts::value<int>()->default_value("100"))
       ("eval_batch_size", "Total batch size for eval.", cxxopts::value<int>()->default_value("100"))
@@ -70,6 +88,8 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
     params.lr_params.initial_lr = flags["learning_rate"].as<float>();
     params.num_train_steps = flags["num_train_steps"].as<int>();
     params.batch_size = flags["train_batch_size"].as<int>();
+    params.gist_config.op_type = flags["gist_op"].as<int>();
+    params.gist_config.compr_type = flags["gist_compr"].as<std::string>();
     if (flags.count("eval_batch_size")) {
       params.eval_batch_size = flags["eval_batch_size"].as<int>();
     } else {
@@ -154,6 +174,19 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
       params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(CUDAExecutionProviderInfo{}));
     }
 #endif
+
+    bool use_dnnl = flags.count("use_dnnl") > 0;
+    if (use_dnnl) {
+      params.providers.emplace(kDnnlExecutionProvider, CreateExecutionProviderFactory_Dnnl(1));
+    }
+
+    std::string model_type = flags["model_type"].as<std::string>();
+    if (model_type == "gemm" || model_type == "conv") {
+      params.model_type = model_type;
+    } else {
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Incorrect command line for model_type: it must be one of [gemm|conv]");
+    }
+
   } catch (const exception& e) {
     const std::string msg = "Failed to parse the command line arguments";
     cerr << msg << ": " << e.what() << "\n"
@@ -167,15 +200,14 @@ Status ParseArguments(int argc, char* argv[], TrainingRunner::Parameters& params
 int true_count = 0;
 float total_loss = 0.0f;
 
-void setup_training_params(TrainingRunner::Parameters& params) {
+void setup_training_params(MnistParameters& params) {
   params.model_path = ToPathString(params.model_name) + ORT_TSTR(".onnx");
   params.model_with_loss_func_path = ToPathString(params.model_name) + ORT_TSTR("_with_cost.onnx");
   params.model_with_training_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw.onnx");
   params.model_actual_running_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw_running.onnx");
+  params.model_with_gist_nodes_path = ToPathString(params.model_name) + ORT_TSTR("_with_gist.onnx");
   params.output_dir = ORT_TSTR(".");
 
-  //Gist encode
-  params.model_gist_encode_path = ToPathString(params.model_name) + ORT_TSTR("_encode_gist.onnx");
   params.loss_func_info = LossFunctionInfo(OpDef("SoftmaxCrossEntropy", kMSDomain, 1),
                                            "loss",
                                            {"predictions", "labels"});
@@ -220,7 +252,7 @@ void setup_training_params(TrainingRunner::Parameters& params) {
   if (!params.log_dir.empty() && MPIContext::GetInstance().GetWorldRank() == 0)
     tensorboard = std::make_shared<EventWriter>(params.log_dir);
 
-  params.post_evaluation_callback = [tensorboard](size_t num_samples, size_t step, const std::string /**/) {
+  params.post_evaluation_callback = [tensorboard](size_t num_samples, size_t step, const std::string /*tag*/) {
     float precision = float(true_count) / num_samples;
     float average_loss = total_loss / float(num_samples);
     if (tensorboard != nullptr) {
@@ -252,7 +284,7 @@ int main(int argc, char* args[]) {
   ORT_ENFORCE(Environment::Create(nullptr, env).IsOK());
 
   // setup training params
-  TrainingRunner::Parameters params;
+  MnistParameters params;
   RETURN_IF_FAIL(ParseArguments(argc, args, params));
   setup_training_params(params);
 
@@ -262,7 +294,11 @@ int main(int argc, char* args[]) {
   auto trainingData = std::make_shared<DataSet>(feeds);
   auto testData = std::make_shared<DataSet>(feeds);
   std::string mnist_data_path = ToMBString(params.train_data_dir);
-  PrepareMNISTData(mnist_data_path, IMAGE_DIMS, LABEL_DIMS, *trainingData, *testData, MPIContext::GetInstance().GetWorldRank() /* shard_to_load */, device_count /* total_shards */);
+  if (params.model_type == "conv") {
+    PrepareMNISTData(mnist_data_path, IMAGE_DIMS_CONV, LABEL_DIMS, *trainingData, *testData, MPIContext::GetInstance().GetWorldRank() /* shard_to_load */, device_count /* total_shards */);
+  } else /* gemm */ {
+    PrepareMNISTData(mnist_data_path, IMAGE_DIMS_GEMM, LABEL_DIMS, *trainingData, *testData, MPIContext::GetInstance().GetWorldRank() /* shard_to_load */, device_count /* total_shards */);
+  }
 
   if (testData->NumSamples() == 0) {
     printf("Warning: No data loaded - run cancelled.\n");
@@ -272,7 +308,7 @@ int main(int argc, char* args[]) {
   // start training session
   auto training_data_loader = std::make_shared<SingleDataLoader>(trainingData, feeds);
   auto test_data_loader = std::make_shared<SingleDataLoader>(testData, feeds);
-  auto runner = onnxruntime::make_unique<TrainingRunner>(params, *env);
+  auto runner = std::make_unique<TrainingRunner>(params, *env);
   RETURN_IF_FAIL(runner->Initialize());
   RETURN_IF_FAIL(runner->Run(training_data_loader.get(), test_data_loader.get()));
   RETURN_IF_FAIL(runner->EndTraining(test_data_loader.get()));

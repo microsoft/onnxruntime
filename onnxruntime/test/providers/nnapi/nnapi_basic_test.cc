@@ -58,13 +58,46 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
   feeds.insert(std::make_pair("Y", ml_value_y));
 
   RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.ReshapeFlattenTest",
-                            onnxruntime::make_unique<NnapiExecutionProvider>(0),
+                            std::make_unique<NnapiExecutionProvider>(0),
                             feeds);
 #else
   // test load only
   SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(onnxruntime::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.Load(model_file_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
+      << "Some nodes should have been taken by the NNAPI EP";
+#endif
+}
+
+// This is to test the uint8 handling of operators without "QLinear" such as Concat and Transpose
+// NNAPI will require scale and zero point for inputs of all quantized operations
+// For these operators without "Qlinear", there is no information about the scale and zero point, we can
+// only fetch these from the output of the previous node
+// So uint8 support of these operators will only be enabled when they are internal to the graph
+// by not consuming graph inputs
+TEST(NnapiExecutionProviderTest, InternalUint8SupportTest) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/nnapi_internal_uint8_support.onnx");
+
+#if defined(__ANDROID__)
+  std::vector<int64_t> dims_x = {1, 3};
+  std::vector<float> values_x = {0.0f, 256.0f, 512.0f};
+  OrtValue ml_value_x;
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_x, values_x,
+                       &ml_value_x);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.InternalUint8SupportTest",
+                            std::make_unique<NnapiExecutionProvider>(0),
+                            feeds);
+#else
+  // test load only
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
   ASSERT_STATUS_OK(session_object.Initialize());
   ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
@@ -142,13 +175,13 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
   feeds.insert(std::make_pair("Z", ml_value_z));
 
   RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.FunctionTest",
-                            onnxruntime::make_unique<NnapiExecutionProvider>(0),
+                            std::make_unique<NnapiExecutionProvider>(0),
                             feeds);
 #else
   // test load only
   SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(onnxruntime::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
   ASSERT_STATUS_OK(session_object.Initialize());
   ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
@@ -195,7 +228,7 @@ TEST(NnapiExecutionProviderTest, TestNoShapeInputModel) {
   // verify the entire graph will not be assigned to NNAPI EP
   SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(onnxruntime::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
   ASSERT_STATUS_OK(session_object.Initialize());
   ASSERT_EQ(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
@@ -231,13 +264,13 @@ TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
   feeds.insert(std::make_pair("Input3", ml_value));
 
   RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.TestOrtFormatModel",
-                            onnxruntime::make_unique<NnapiExecutionProvider>(0),
+                            std::make_unique<NnapiExecutionProvider>(0),
                             feeds);
 #else
   // test load only
   SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(onnxruntime::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
   ASSERT_STATUS_OK(session_object.Initialize());
   ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)

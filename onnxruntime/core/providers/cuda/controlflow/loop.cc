@@ -51,7 +51,7 @@ ONNX_OPERATOR_KERNEL_EX(Loop,
                             .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                         Loop);
 
-static Status ConcatenateGpuOutput(std::vector<OrtValue>& per_iteration_output,
+static Status ConcatenateGpuOutput(void* stream, std::vector<OrtValue>& per_iteration_output,
                                    void* output, ptrdiff_t output_size_in_bytes) {
   const auto& first_output = per_iteration_output.front().Get<Tensor>();
   const auto& per_iteration_shape = first_output.Shape();
@@ -68,8 +68,8 @@ static Status ConcatenateGpuOutput(std::vector<OrtValue>& per_iteration_output,
                              " Expected:", per_iteration_shape, " Got:", iteration_data.Shape());
     }
 
-    CUDA_RETURN_IF_ERROR(cudaMemcpy(cur_output, iteration_data.DataRaw(), bytes_per_iteration,
-                                    cudaMemcpyDeviceToDevice));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cur_output, iteration_data.DataRaw(), bytes_per_iteration,
+                                    cudaMemcpyDeviceToDevice, static_cast<cudaStream_t>(stream)));
 
     cur_output = static_cast<void*>((static_cast<gsl::byte*>(cur_output) + bytes_per_iteration));
   }
@@ -82,6 +82,7 @@ static Status ConcatenateGpuOutput(std::vector<OrtValue>& per_iteration_output,
 
 Loop::Loop(const OpKernelInfo& info) : onnxruntime::Loop(info) {
   SetConcatOutputFunc(ConcatenateGpuOutput);
+  SetComputeStream(static_cast<void*>(info.GetExecutionProvider()->GetComputeStream()));
 }
 
 Status Loop::Compute(OpKernelContext* ctx) const {

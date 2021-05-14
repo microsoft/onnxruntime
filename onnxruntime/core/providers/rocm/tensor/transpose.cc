@@ -54,14 +54,15 @@ static std::tuple<int, int> TryTransposeWithRocblas(const std::vector<size_t>& p
 }
 
 template <typename T>
-Status TransposeWithRocblas(rocblas_handle rocblas_handle, const Tensor& input, Tensor& output, int M, int N) {
+Status TransposeWithRocblas(hipStream_t stream, rocblas_handle rocblas_handle, const Tensor& input, Tensor& output, int M, int N) {
   typedef typename ToHipType<T>::MappedType HipT;
   HipT one = ToHipType<T>::FromFloat(1.0f);
   HipT zero = ToHipType<T>::FromFloat(0.0f);
   const HipT* input_data = reinterpret_cast<const HipT*>(input.Data<T>());
   HipT* output_data = reinterpret_cast<HipT*>(output.MutableData<T>());
   ROCBLAS_RETURN_IF_ERROR(
-      rocblasTransposeHelper(rocblas_handle,
+      rocblasTransposeHelper(stream,
+                            rocblas_handle,
                             rocblas_operation_transpose, rocblas_operation_transpose, M, N,
                             &one,
                             input_data,
@@ -76,10 +77,11 @@ Status TransposeWithRocblas(rocblas_handle rocblas_handle, const Tensor& input, 
 
 Status Transpose::DoTranspose(const Transpose& transpose_kernel,
                               const std::vector<size_t>& permutations, const Tensor& input, Tensor& output) {
-  return Transpose::DoTranspose(transpose_kernel.GetDeviceProp(), transpose_kernel.RocblasHandle(), permutations, input, output);
+  return Transpose::DoTranspose(transpose_kernel.GetDeviceProp(), transpose_kernel.Stream(), transpose_kernel.RocblasHandle(), permutations, input, output);
 }
 
 Status Transpose::DoTranspose(const hipDeviceProp_t& prop,
+                              hipStream_t stream,
                               const rocblas_handle rocblas_handle,
                               const std::vector<size_t>& permutations, const Tensor& input, Tensor& output,
                               const TensorShape* input_shape_override) {
@@ -96,11 +98,11 @@ Status Transpose::DoTranspose(const hipDeviceProp_t& prop,
     int N = std::get<1>(mn);
     if (M != 0 && N != 0) {
       if (element_type == utils::GetONNXTensorElementDataType<float>()) {
-        return TransposeWithRocblas<float>(rocblas_handle, input, output, M, N);
+        return TransposeWithRocblas<float>(stream, rocblas_handle, input, output, M, N);
       } else if (element_type == utils::GetONNXTensorElementDataType<double>()) {
-        return TransposeWithRocblas<double>(rocblas_handle, input, output, M, N);
+        return TransposeWithRocblas<double>(stream, rocblas_handle, input, output, M, N);
       } else {
-        return TransposeWithRocblas<MLFloat16>(rocblas_handle, input, output, M, N);
+        return TransposeWithRocblas<MLFloat16>(stream, rocblas_handle, input, output, M, N);
       }
     }
   }
@@ -162,14 +164,14 @@ Status Transpose::DoTranspose(const hipDeviceProp_t& prop,
 
   size_t element_size = input.DataType()->Size();
   if (CanDoTranspose3D(new_rank, new_input_dims, new_permutations)) {
-    return Transpose3DImpl(element_size, input_shape, tmp_input_strides,
+    return Transpose3DImpl(stream, element_size, input_shape, tmp_input_strides,
                            input.DataRaw(), output.MutableDataRaw(), output.Shape().Size());
   } else if (CanDoTranspose4D(prop, element_size, new_rank, new_input_dims, new_permutations)) {
     TArray<int64_t> tmp_output_strides(new_rank);
     for (auto i = 0; i < new_rank; i++) {
       tmp_output_strides[i] = new_output_strides[new_permutations[i]];
     }
-    return Transpose4DImpl(element_size, input_shape, tmp_input_strides, input.DataRaw(),
+    return Transpose4DImpl(stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
                            tmp_output_strides, output.MutableDataRaw(), output.Shape().Size());
   }
 
@@ -184,7 +186,7 @@ Status Transpose::DoTranspose(const hipDeviceProp_t& prop,
     output_strides[i] = fast_divmod(gsl::narrow_cast<int>(new_output_strides[i]));
   }
 
-  auto status = TransposeImpl(element_size, new_rank, input_strides, input.DataRaw(),
+  auto status = TransposeImpl(stream, element_size, new_rank, input_strides, input.DataRaw(),
                               output_strides, output.MutableDataRaw(), output.Shape().Size());
 
   return status;
@@ -208,7 +210,7 @@ Status Transpose::ComputeInternal(OpKernelContext* ctx) const {
   TensorShape output_shape{output_dims};
   Tensor* Y = ctx->Output(0, output_shape);
 
-  return DoTranspose(this->GetDeviceProp(), this->RocblasHandle(), *p_perm, X, *Y);
+  return DoTranspose(this->GetDeviceProp(), this->Stream(), this->RocblasHandle(), *p_perm, X, *Y);
 }
 
 }  // namespace rocm

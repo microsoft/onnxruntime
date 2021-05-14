@@ -6,10 +6,21 @@
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/nn/dropout_impl.h"
 #include "core/providers/common.h"
-#include "core/framework/random_seed.h"
 
 namespace onnxruntime {
 namespace cuda {
+
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#define ALL_IEEE_FLOAT_TENSOR_TYPES           \
+  { DataTypeImpl::GetTensorType<float>(),     \
+    DataTypeImpl::GetTensorType<double>(),    \
+    DataTypeImpl::GetTensorType<MLFloat16>(), \
+    DataTypeImpl::GetTensorType<BFloat16>() }
+#define ALL_IEEE_FLOAT_DATA_TYPES float, MLFloat16, double, BFloat16
+#else
+#define ALL_IEEE_FLOAT_TENSOR_TYPES DataTypeImpl::AllIEEEFloatTensorTypes()
+#define ALL_IEEE_FLOAT_DATA_TYPES float, MLFloat16, double
+#endif
 
 template <typename T>
 struct GetRatioDataImpl {
@@ -22,6 +33,7 @@ struct GetRatioDataImpl {
 template <typename T>
 struct DropoutComputeImpl {
   void operator()(const cudaDeviceProp& prop,
+                  cudaStream_t stream,
                   const int64_t N,
                   const float ratio_data,
                   PhiloxGenerator& generator,
@@ -33,7 +45,7 @@ struct DropoutComputeImpl {
     const CudaT* X_data = reinterpret_cast<const CudaT*>(X.template Data<T>());
     CudaT* Y_data = reinterpret_cast<CudaT*>(Y.template MutableData<T>());
 
-    DropoutKernelImpl<CudaT>(prop, N, ratio_data, generator, X_data, Y_data, mask_data);
+    DropoutKernelImpl<CudaT>(prop, stream, N, ratio_data, generator, X_data, Y_data, mask_data);
   }
 };
 
@@ -42,7 +54,7 @@ class Dropout final : public CudaKernel {
   Dropout(const OpKernelInfo& info) : CudaKernel(info) {
     int64_t seed = 0;
     if (info.GetAttr<int64_t>("seed", &seed).IsOK()) {
-      generator_ = onnxruntime::make_unique<PhiloxGenerator>(static_cast<uint64_t>(seed));
+      generator_ = std::make_unique<PhiloxGenerator>(static_cast<uint64_t>(seed));
     }
   }
 
@@ -52,64 +64,6 @@ class Dropout final : public CudaKernel {
   mutable std::unique_ptr<PhiloxGenerator> generator_;
   static constexpr float default_ratio_ = 0.5f;
 };
-
-Status Dropout::ComputeInternal(OpKernelContext* context) const {
-  //Get X_data
-  const Tensor* X = context->Input<Tensor>(0);
-  if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "X Input is not available.");
-  const TensorShape& shape = X->Shape();
-  const int64_t N = shape.Size();
-
-  //Get Y_data
-  auto Y = context->Output(0, shape);
-
-  //Get mask_data
-  auto mask = context->Output(1, shape);
-  ORT_ENFORCE(!mask || mask->Shape().Size() == N);
-
-  //Get the ratio_data
-  float ratio_data = default_ratio_;
-  auto ratio = context->Input<Tensor>(1);
-  if (ratio) {
-    utils::MLTypeCallDispatcher<GetRatioDataImpl, float, MLFloat16, double> t_disp(ratio->GetElementType());
-    t_disp.Invoke(ratio, ratio_data);
-  }
-
-  const Tensor* training_mode = context->Input<Tensor>(2);
-  //Check for inference mode.
-  if ((0 == ratio_data) ||(training_mode == nullptr || *(training_mode->Data<bool>()) == false)) {
-    const void* X_data = X->DataRaw();
-    void* Y_data = Y->MutableDataRaw();
-    if (Y_data != X_data) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->SizeInBytes(), cudaMemcpyDeviceToDevice));
-    }
-
-    // If mask is requested, return all 1s.
-    if (mask != nullptr) {
-      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask->MutableData<bool>(), true, N * sizeof(bool)));
-    }
-
-    return Status::OK();
-  }
-
-  IAllocatorUniquePtr<bool> temp_mask_buffer{};  // buffer to use if mask is not provided
-  bool* const mask_data = [this, N, mask, &temp_mask_buffer]() {
-    if (mask) return mask->MutableData<bool>();
-    temp_mask_buffer = GetScratchBuffer<bool>(N);
-    return temp_mask_buffer.get();
-  }();
-
-  PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
-
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-  utils::MLTypeCallDispatcher<DropoutComputeImpl, float, MLFloat16, double, BFloat16> t_disp(X->GetElementType());
-#else
-  utils::MLTypeCallDispatcher<DropoutComputeImpl, float, MLFloat16, double> t_disp(X->GetElementType());
-#endif
-  t_disp.Invoke(GetDeviceProp(), N, ratio_data, generator, *X, *Y, mask_data);
-
-  return Status::OK();
-}
 
 }  // namespace cuda
 }  // namespace onnxruntime

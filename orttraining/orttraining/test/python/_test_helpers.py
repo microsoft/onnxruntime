@@ -114,6 +114,24 @@ def assert_optim_state(expected_state, actual_state, rtol=1e-7, atol=0):
             assert_allclose(v, expected_state[param_name][k], rtol=rtol, atol=atol,
                             err_msg=f"Optimizer state mismatch for param {param_name}, key {k}")
 
+def is_dynamic_axes(model):
+    # Check inputs
+    for inp in model._execution_manager(model._is_training())._optimized_onnx_model.graph.input:
+        shape = inp.type.tensor_type.shape
+        if shape:
+            for dim in shape.dim:
+                if dim.dim_param and not isinstance(dim.dim_param, str):
+                    return False
+
+    # Check outputs
+    for out in model._execution_manager(model._is_training())._optimized_onnx_model.graph.output:
+        shape = out.type.tensor_type.shape
+        if shape:
+            for dim in shape.dim:
+                if dim.dim_param and not isinstance(dim.dim_param, str):
+                    return False
+    return True
+
 # TODO: thiagofc: Checkpoint related for redesign
 def _get_name(name):
     if os.path.exists(name):
@@ -127,3 +145,36 @@ def _get_name(name):
     if os.path.exists(res):
         return res
     raise FileNotFoundError("Unable to find '{0}' or '{1}' or '{2}'".format(name, rel, res))
+
+# Depending on calling backward() from which outputs, it's possible that grad of some weights are not calculated.
+# none_pt_params is to tell what these weights are, so we will not compare the tensors.
+def assert_gradients_match_and_reset_gradient(ort_model, pt_model, none_pt_params=[], reset_gradient=True, rtol=1e-05, atol=1e-06):
+    ort_named_params = list(ort_model.named_parameters())
+    pt_named_params = list(pt_model.named_parameters())
+    assert len(ort_named_params) == len(pt_named_params)
+
+    for ort_named_param, pt_named_param in zip(ort_named_params, pt_named_params):
+        ort_name, ort_param = ort_named_param
+        pt_name, pt_param = pt_named_param
+
+        assert pt_name in ort_name
+        if pt_name in none_pt_params:
+            assert pt_param.grad is None
+            assert not torch.is_nonzero(torch.count_nonzero(ort_param.grad))
+        else:
+            assert_values_are_close(ort_param.grad, pt_param.grad, rtol=rtol, atol=atol)
+
+        if reset_gradient:
+            ort_param.grad = None
+            pt_param.grad = None
+
+def assert_values_are_close(input, other, rtol=1e-05, atol=1e-06):
+    are_close = torch.allclose(input, other, rtol=rtol, atol=atol)
+    if not are_close:
+        abs_diff = torch.abs(input - other)
+        abs_other = torch.abs(other)
+        max_atol = torch.max((abs_diff - rtol * abs_other))
+        max_rtol = torch.max((abs_diff - atol) / abs_other)
+        err_msg = "The maximum atol is {}, maximum rtol is {}".format(max_atol, max_rtol)
+        assert False, err_msg
+
