@@ -60,7 +60,7 @@ namespace cuda {
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 #define UNARY_ACTIVATION_OP_TYPED_BF16(name, ver) UNARY_ACTIVATION_OP_TYPED(name, ver, BFloat16)
-UNARY_ACTIVATION_OP_VERSIONED_TYPED_BF16(name, startver, endver) UNARY_ACTIVATION_OP_VERSIONED_TYPED(name, startver, endver, BFloat16)
+#define UNARY_ACTIVATION_OP_VERSIONED_TYPED_BF16(name, startver, endver) UNARY_ACTIVATION_OP_VERSIONED_TYPED(name, startver, endver, BFloat16)
 #else
 #define UNARY_ACTIVATION_OP_TYPED_BF16(name, ver)
 #define UNARY_ACTIVATION_OP_VERSIONED_TYPED_BF16(name, startver, endver)
