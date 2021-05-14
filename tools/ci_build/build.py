@@ -1299,7 +1299,8 @@ def run_orttraining_test_orttrainer_frontend_separately(cwd):
 
 def run_training_python_frontend_tests(cwd):
     # have to disable due to (with torchvision==0.9.1+cu102 which is required by ortmodule):
-    # Downloading http://yann.lecun.com/exdb/mnist/https://ossci-datasets.s3.amazonaws.com/mnist/train-images-idx3-ubyte.gz
+    # Downloading http://yann.lecun.com/exdb/mnist/
+    # https://ossci-datasets.s3.amazonaws.com/mnist/train-images-idx3-ubyte.gz
     # Failed to download (trying next):
     # HTTP Error 404: Not Found
     # run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
