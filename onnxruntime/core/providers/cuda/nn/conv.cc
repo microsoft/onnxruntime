@@ -205,6 +205,11 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     std::vector<int64_t> x_dims_cudnn = x_dims;
     std::vector<int64_t> y_dims_cudnn = !post_slicing_required ? y_dims : y_dims_with_adjusted_pads;
     if (rank < 2) {
+      // TODO: Explore padding the provided input shape [N, C, D] to [N, C, 1, D]
+      // especially for EXHAUSTIVE algo search which may result in a better algo selection.
+      // Currently, we are padding it to [N, C, D, 1] as this seems to be the sweet spot
+      // for all algo search options: EXHAUSTIVE, HEURISTIC, and DEFAULT.
+      // See PR #7348 for more context.
       x_dims_cudnn.push_back(1);
       y_dims_cudnn.push_back(1);
       w_dims.push_back(1);
