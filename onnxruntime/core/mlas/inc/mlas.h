@@ -168,7 +168,7 @@ struct MLAS_SGEMM_DATA_PARAMS {
 
 /**
  * @brief  Batched single precision matrix/matrix multiply operation (SGEMM)
- * 
+ *
  * @param TransA     Supplies the transpose operation for matrix A.
  * @param TransB     Supplies the transpose operation for matrix B.
  * @param M          Supplies the number of rows of matrix A and matrix C.
@@ -195,7 +195,7 @@ MlasGemmBatch(
 
 /**
  * @brief  Single precision matrix/matrix multiply operation (SGEMM)
- * 
+ *
  * @param TransA  Supplies the transpose operation for matrix A.
  * @param TransB  Supplies the transpose operation for matrix B.
  * @param M       Supplies the number of rows of matrix A and matrix C.
@@ -223,7 +223,7 @@ MlasGemm(
 
 /**
  * @brief  Single precision matrix/matrix multiply operation (SGEMM)
- * 
+ *
  * @param TransA  Supplies the transpose operation for matrix A.
  * @param TransB  Supplies the transpose operation for matrix B.
  * @param M       Supplies the number of rows of matrix A and matrix C.
@@ -231,7 +231,7 @@ MlasGemm(
  * @param K       Supplies the number of columns of matrix A and the number
                   of rows of matrix B.
  * @param alpha   Supplies the scalar alpha multiplier (see SGEMM definition)
- * @param A       Supplies the address of matrix A 
+ * @param A       Supplies the address of matrix A
  * @param lda     Supplies the first dimension of matrix A.
  * @param B       Supplies the address of matrix B
  * @param ldb     Supplies the first dimension of matrix B.
@@ -341,7 +341,7 @@ struct MLAS_DGEMM_DATA_PARAMS {
 
 /**
  * @brief  Batched double precision matrix/matrix multiply operation (DGEMM)
- * 
+ *
  * @param TransA     Supplies the transpose operation for matrix A.
  * @param TransB     Supplies the transpose operation for matrix B.
  * @param M          Supplies the number of rows of matrix A and matrix C.
@@ -369,7 +369,7 @@ MlasGemmBatch(
 
 /**
  * @brief  Double precision matrix/matrix multiply operation (DGEMM)
- * 
+ *
  * @param TransA  Supplies the transpose operation for matrix A.
  * @param TransB  Supplies the transpose operation for matrix B.
  * @param M       Supplies the number of rows of matrix A and matrix C.
@@ -397,7 +397,7 @@ MlasGemm(
 
 /**
  * @brief  Double precision matrix/matrix multiply operation (DGEMM)
- * 
+ *
  * @param TransA  Supplies the transpose operation for matrix A.
  * @param TransB  Supplies the transpose operation for matrix B.
  * @param M       Supplies the number of rows of matrix A and matrix C.
@@ -405,7 +405,7 @@ MlasGemm(
  * @param K       Supplies the number of columns of matrix A and the number
                   of rows of matrix B.
  * @param alpha   Supplies the scalar alpha multiplier (see SGEMM definition)
- * @param A       Supplies the address of matrix A 
+ * @param A       Supplies the address of matrix A
  * @param lda     Supplies the first dimension of matrix A.
  * @param B       Supplies the address of matrix B
  * @param ldb     Supplies the first dimension of matrix B.
@@ -929,9 +929,21 @@ MlasNchwcPool(
 
 void
 MLASCALL
-MlasNchwcUpsample(
+MlasNchwcUpsampleNearest(
     const int64_t* InputShape,
     const int64_t* Scales,
+    const float* Input,
+    float* Output
+    );
+
+void
+MLASCALL
+MlasNchwcUpsampleLinear(
+    size_t InputHeight,
+    size_t InputWidth,
+    size_t OutputWidth,
+    float InterpolationHeight,
+    const float* InterpolationWidth,
     const float* Input,
     float* Output
     );

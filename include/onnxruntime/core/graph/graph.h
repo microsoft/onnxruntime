@@ -1033,6 +1033,16 @@ class Graph {
     }
   }
 
+  // Without removing the existing consumers, add a consumer to the give node arg name.
+  void AddConsumerNode(const std::string& node_arg_name, Node* consumer) {
+    node_arg_to_consumer_nodes_[node_arg_name].insert(consumer->Index());
+  }
+
+  // Remove a consumer from the set
+  void RemoveConsumerNode(const std::string& node_arg_name, Node* consumer) {
+    node_arg_to_consumer_nodes_[node_arg_name].erase(consumer->Index());
+  }
+
   /** During constant folding it may become possible to infer the shape for a node.
       To avoid running a full Resolve allow an individual node to have the shape inferencing re-run.
   */
