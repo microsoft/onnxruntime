@@ -571,8 +571,7 @@ stages:
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
-                  --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion)
-            
+                  --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion) ; \
             rm -rf $(Build.BinariesDirectory)/Release/onnxruntime/ && \
             files=($(Build.BinariesDirectory)/Release/dist/*.whl) && \
             echo ${files[0]} && \
@@ -593,8 +592,9 @@ stages:
               --volume /mnist:/mnist \
               --volume /bert_data:/bert_data \
               --volume /hf_models_cache:/hf_models_cache \
+              --workdir /build \
               onnxruntimetraininggpubuild \
-                bash -c "echo ninja--version ; $(PythonManylinuxDir)/bin/python3 -c "import sys ; import subprocess ; subprocess.run('ninja --version'.split(), stdout=sys.stderr)" ; $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$whlfilename ; $(PythonManylinuxDir)/bin/python3 --version ; $(PythonManylinuxDir)/bin/python3 -m pip freeze ; $(PythonManylinuxDir)/bin/python3 /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release " ; \
+                bash -c " $(PythonManylinuxDir)/bin/python3 -c "import sys ; import subprocess ; subprocess.run('ninja --version'.split(), stdout=sys.stderr)" ; $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$whlfilename ; $(PythonManylinuxDir)/bin/python3 --version ; $(PythonManylinuxDir)/bin/python3 -m pip freeze ; $(PythonManylinuxDir)/bin/python3 /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release " ; \
             echo test333333 ; \
             docker run \
               --gpus all \
