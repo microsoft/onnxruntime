@@ -11,9 +11,18 @@
 #include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     RNN,
     7,
+    13,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int>()),
+    RNN<float>);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    RNN,
+    14,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int>()),

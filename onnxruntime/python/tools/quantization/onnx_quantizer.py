@@ -79,6 +79,9 @@ class ONNXQuantizer:
 
         # Map of all original value names to quantized value names
         self.quantized_value_map = {}
+        # some output from nodes will be quantized, yet itself should be treat as existing so
+        # no dequantized will be applied when needed later
+        self.generated_value_names = {}
 
     def check_opset_version(self):
         ai_onnx_domain = [
@@ -189,12 +192,16 @@ class ONNXQuantizer:
         self.remove_fake_quantized_nodes()
 
         for node in self.model.nodes():
+            number_of_existing_new_nodes = len(self.new_nodes)
             if self.should_quantize(node):
                 op_quantizer = CreateOpQuantizer(self, node)
             else:
                 op_quantizer = CreateDefaultOpQuantizer(self, node)
 
             op_quantizer.quantize()
+            for i in range(number_of_existing_new_nodes, len(self.new_nodes)):
+                for output_name in self.new_nodes[i].output:
+                    self.generated_value_names.update({output_name : 1})
 
         self._dequantize_outputs()
 
@@ -742,7 +749,7 @@ class ONNXQuantizer:
             return: None if there is already a DequantizeLinear node that dequantizes it
                     A DequantizeLinear node otherwise
         '''
-        if value_name in self.quantized_value_map:
+        if (value_name in self.quantized_value_map) and (value_name not in self.generated_value_names):
             quantized_value = self.quantized_value_map[value_name]
             # Add DequantizeLinear Node for this input
             dqlinear_name = value_name + "_DequantizeLinear"

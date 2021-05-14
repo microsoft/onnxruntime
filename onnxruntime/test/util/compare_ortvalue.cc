@@ -129,6 +129,8 @@ std::pair<COMPARE_RESULT, std::string> CompareFloat16Result(const Tensor& outval
   const size_t size1 = static_cast<size_t>(expected_value.Shape().Size());
   const MLFloat16* expected_output = expected_value.template Data<MLFloat16>();
   const MLFloat16* real_output = outvalue.template Data<MLFloat16>();
+  std::ostringstream oss;
+  COMPARE_RESULT result = COMPARE_RESULT::SUCCESS;
   for (size_t di = 0; di != size1; ++di) {
     float expected = Eigen::half_impl::half_to_float(Eigen::half_impl::__half_raw(expected_output[di].val));
     float real = Eigen::half_impl::half_to_float(Eigen::half_impl::__half_raw(real_output[di].val));
@@ -136,13 +138,11 @@ std::pair<COMPARE_RESULT, std::string> CompareFloat16Result(const Tensor& outval
     const double diff = std::fabs(expected - real);
     const double rtol = per_sample_tolerance + relative_per_sample_tolerance * std::fabs(expected);
     if (!IsResultCloselyMatch<float>(real, expected, diff, rtol)) {
-      std::ostringstream oss;
-      oss << "expected " << expected << ", got " << real << ", diff: " << diff << ", tol=" << rtol;
-
-      return std::make_pair(COMPARE_RESULT::RESULT_DIFFERS, oss.str());
+      oss << "idx: " << di << "expected " << expected << ", got " << real << ", diff: " << diff << ", tol=" << rtol << "\n";
+      result = COMPARE_RESULT::RESULT_DIFFERS;
     }
   }
-  return std::make_pair(COMPARE_RESULT::SUCCESS, "");
+  return std::make_pair(result, oss.str());
 }
 
 std::pair<COMPARE_RESULT, std::string> CompareBFloat16Result(const Tensor& outvalue, const Tensor& expected_value,

@@ -40,7 +40,8 @@ set(onnxruntime_objc_headers
     "${OBJC_ROOT}/include/ort_enums.h"
     "${OBJC_ROOT}/include/ort_env.h"
     "${OBJC_ROOT}/include/ort_session.h"
-    "${OBJC_ROOT}/include/ort_value.h")
+    "${OBJC_ROOT}/include/ort_value.h"
+    )
 
 file(GLOB onnxruntime_objc_srcs
     "${OBJC_ROOT}/src/*.h"
