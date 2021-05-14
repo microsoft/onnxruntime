@@ -62,6 +62,68 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(['CPUExecutionProvider'], sess.get_providers())
 
     def testSetProvidersWithOptions(self):
+        if 'TensorrtExecutionProvider' in onnxrt.get_available_providers():
+            import sys
+            import ctypes
+            TensorRT_SUCCESS = 0
+            def setDeviceID():
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+                self.assertTrue('TensorrtExecutionProvider' in sess.get_providers())
+
+                option1 = {'device_id': 0}
+                sess.set_providers(['TensorrtExecutionProvider'], [option1])
+                self.assertEqual(['TensorrtExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+                option2 = {'device_id': -1}
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['TensorrtExecutionProvider'], [option2])
+                sess.set_providers(['TensorrtExecutionProvider', 'CPUExecutionProvider'], [option1, {}])
+                self.assertEqual(['TensorrtExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+
+            def setMaxPartitionIterations():
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+                self.assertTrue('TensorrtExecutionProvider' in sess.get_providers())
+
+                option1 = {'trt_max_partition_iterations': '20'}
+                sess.set_providers(['TensorrtExecutionProvider'], [option1])
+                self.assertEqual(['TensorrtExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+                option2 = {'trt_max_partition_iterations': '-1'}
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['TensorrtExecutionProvider'], [option2])
+                sess.set_providers(['TensorrtExecutionProvider', 'CPUExecutionProvider'], [option1, {}])
+                self.assertEqual(['TensorrtExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+
+            def setMinSubgraphSize():
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+                self.assertTrue('TensorrtExecutionProvider' in sess.get_providers())
+
+                option1 = {'trt_min_subgraph_size': '10'}
+                sess.set_providers(['TensorrtExecutionProvider'], [option1])
+                self.assertEqual(['TensorrtExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+                option2 = {'trt_min_subgraph_size': '-1'}
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['TensorrtExecutionProvider'], [option2])
+                sess.set_providers(['TensorrtExecutionProvider', 'CPUExecutionProvider'], [option1, {}])
+                self.assertEqual(['TensorrtExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+
+            def setDLACore():
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"))
+                self.assertTrue('TensorrtExecutionProvider' in sess.get_providers())
+
+                option1 = {'trt_dla_core': '0'}
+                sess.set_providers(['TensorrtExecutionProvider'], [option1])
+                self.assertEqual(['TensorrtExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+                option2 = {'trt_dla_core': '-1'}
+                with self.assertRaises(RuntimeError):
+                    sess.set_providers(['TensorrtExecutionProvider'], [option2])
+                sess.set_providers(['TensorrtExecutionProvider', 'CPUExecutionProvider'], [option1, {}])
+                self.assertEqual(['TensorrtExecutionProvider', 'CPUExecutionProvider'], sess.get_providers())
+
+            setDeviceID()
+            setMaxPartitionIterations()
+            setMinSubgraphSize()
+            setMaxWorkspaceSize()
+            setDLACore()
+
         if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
             import sys
             import ctypes

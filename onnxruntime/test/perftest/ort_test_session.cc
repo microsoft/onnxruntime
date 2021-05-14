@@ -62,12 +62,21 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #endif
   } else if (provider_name == onnxruntime::kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
-    bool has_trt_options = false;
+    int device_id = 0;
+    int trt_max_partition_iterations  = 1000;
+    int trt_min_subgraph_size = 1;
     size_t trt_max_workspace_size = 1 << 30;
     bool trt_fp16_enable = false;
     bool trt_int8_enable = false;
     std::string trt_int8_calibration_table_name = "";
     bool trt_int8_use_native_calibration_table = false;
+    bool trt_dla_enable = false;
+    int trt_dla_core = 0;
+    bool trt_dump_subgraphs = false;
+    bool trt_engine_cache_enable = false;
+    std::string trt_engine_cache_path = "";
+    bool trt_engine_decryption_enable = false;
+    std::string trt_engine_decryption_lib_path = "";
     bool trt_force_sequential_engine_build = false;
 
     #ifdef _MSC_VER
@@ -88,13 +97,23 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
       auto key = token.substr(0, pos);
       auto value = token.substr(pos + 1);
-      if (key == "has_trt_options") {
-        if (value == "true" || value == "True") {
-          has_trt_options = true;
-        } else if (value == "false" || value == "False") {
-          has_trt_options = false;
+      if (key == "device_id") {
+        if (!value.empty()) {
+          device_id = std::stoi(value);
         } else {
-          ORT_THROW("[ERROR] [TensorRT] The value for the key 'has_trt_options' should be a boolean i.e. true or false. Default value is false.\n");
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'device_id' should be a number.\n");
+        }
+      } else if (key == "trt_max_partition_iterations") {
+        if (!value.empty()) {
+          trt_max_partition_iterations = std::stoi(value);
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_max_partition_iterations' should be a number.\n");
+        }
+      } else if (key == "trt_min_subgraph_size") {
+        if (!value.empty()) {
+          trt_min_subgraph_size = std::stoi(value);
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_min_subgraph_size' should be a number.\n");
         }
       } else if (key == "trt_max_workspace_size") {
         if (!value.empty()) {
@@ -132,6 +151,56 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_use_native_calibration_table' should be a boolean i.e. true or false. Default value is false.\n");
         }
+      } else if (key == "trt_dla_enable") {
+        if (value == "true" || value == "True") {
+          trt_dla_enable = true;
+        } else if (value == "false" || value == "False") {
+          trt_dla_enable = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dla_enable' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "trt_dla_core") {
+        if (!value.empty()) {
+          trt_dla_core = std::stoi(value);
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dla_core' should be a number.\n");
+        }
+      } else if (key == "trt_dump_subgraphs") {
+        if (value == "true" || value == "True") {
+          trt_dump_subgraphs = true;
+        } else if (value == "false" || value == "False") {
+          trt_dump_subgraphs = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dump_subgraphs' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "trt_engine_cache_enable") {
+        if (value == "true" || value == "True") {
+          trt_engine_cache_enable = true;
+        } else if (value == "false" || value == "False") {
+          trt_engine_cache_enable = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_enable' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "trt_engine_cache_path") {
+        if (!value.empty()) {
+          trt_engine_cache_path = value;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_path' should be a non-emtpy string.\n");
+        }
+      } else if (key == "trt_engine_decryption_enable") {
+        if (value == "true" || value == "True") {
+          trt_engine_decryption_enable = true;
+        } else if (value == "false" || value == "False") {
+          trt_engine_decryption_enable = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_decryption_enable' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      } else if (key == "trt_engine_decryption_lib_path") {
+        if (!value.empty()) {
+          trt_engine_decryption_lib_path = value;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_decryption_lib_path' should be a non-emtpy string.\n");
+        }
       } else if (key == "trt_force_sequential_engine_build") {
         if (value == "true" || value == "True") {
           trt_force_sequential_engine_build = true;
@@ -141,19 +210,27 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_force_sequential_engine_build' should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else {
-        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['use_trt_options', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_force_sequential_engine_build'] \n");
+        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['device_id', 'trt_max_partition_iterations', 'trt_min_subgraph_size', 'trt_max_workspace_size', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_dla_enable', 'trt_dla_core', 'trt_dump_subgraphs', 'trt_engine_cache_enable', 'trt_engine_cache_path', 'trt_engine_decryption_enable', 'trt_engine_decryption_lib_path', 'trt_force_sequential_engine_build'] \n");
       }
     }
     OrtTensorRTProviderOptions tensorrt_options;
-    tensorrt_options.device_id = 0;
+    tensorrt_options.device_id = device_id;
     tensorrt_options.has_user_compute_stream = 0;
     tensorrt_options.user_compute_stream = nullptr;
-    tensorrt_options.has_trt_options = has_trt_options;
+    tensorrt_options.trt_max_partition_iterations = trt_max_partition_iterations;
+    tensorrt_options.trt_min_subgraph_size = trt_min_subgraph_size;	
     tensorrt_options.trt_max_workspace_size = trt_max_workspace_size;
     tensorrt_options.trt_fp16_enable = trt_fp16_enable;
     tensorrt_options.trt_int8_enable = trt_int8_enable;
     tensorrt_options.trt_int8_calibration_table_name = trt_int8_calibration_table_name.c_str();
     tensorrt_options.trt_int8_use_native_calibration_table = trt_int8_use_native_calibration_table;
+    tensorrt_options.trt_dla_enable = trt_dla_enable;
+    tensorrt_options.trt_dla_core = trt_dla_core;
+    tensorrt_options.trt_dump_subgraphs = trt_dump_subgraphs;
+    tensorrt_options.trt_engine_cache_enable = trt_engine_cache_enable;
+    tensorrt_options.trt_engine_cache_path = trt_engine_cache_path.c_str();
+    tensorrt_options.trt_engine_decryption_enable = trt_engine_decryption_enable;
+    tensorrt_options.trt_engine_decryption_lib_path = trt_engine_decryption_lib_path.c_str();
     tensorrt_options.trt_force_sequential_engine_build = trt_force_sequential_engine_build;
     session_options.AppendExecutionProvider_TensorRT(tensorrt_options);
 
