@@ -131,7 +131,6 @@ def _load_aten_op_executor_cpp_extension(verbosity, is_rocm_pytorch):
 #include <torch/torch.h>
 #include <ATen/DLConvertor.h>
 #include <unordered_map>
-#include <tuple>
 #include <vector>
 
 class ATenOperatorCache {
@@ -172,30 +171,30 @@ static const std::unordered_map<std::string, std::unordered_map<size_t, TensorTr
 };
 
 template <typename T>
-void SetIValueArguments(const std::vector<std::tuple<size_t, T>>& raw_arguments,
+void SetIValueArguments(const std::vector<std::pair<size_t, T>>& raw_arguments,
                         std::vector<c10::IValue>& ivalue_arguments) {
-  for (size_t i = 0; i < raw_arguments.size(); i++) {
-    size_t index = std::get<0>(raw_arguments[i]);
+  for (const auto& raw_argument : raw_arguments) {
+    size_t index = raw_argument.first;
     TORCH_INTERNAL_ASSERT(index < ivalue_arguments.size());
-    ivalue_arguments[index] = c10::IValue(std::get<1>(raw_arguments[i]));
+    ivalue_arguments[index] = c10::IValue(raw_argument.second);
   }
 }
 
 // TODO: Add more argument types, such as list type.
 std::vector<DLManagedTensor*> ExecuteATenOperator(
-    const char* op_name, const std::vector<std::tuple<size_t, DLManagedTensor*>>& tensor_arguments,
-    const std::vector<std::tuple<size_t, int64_t>>& int_arguments,
-    const std::vector<std::tuple<size_t, float>>& float_arguments,
-    const std::vector<std::tuple<size_t, bool>>& bool_arguments) {
+    const char* op_name, const std::vector<std::pair<size_t, DLManagedTensor*>>& tensor_arguments,
+    const std::vector<std::pair<size_t, int64_t>>& int_arguments,
+    const std::vector<std::pair<size_t, float>>& float_arguments,
+    const std::vector<std::pair<size_t, bool>>& bool_arguments) {
   std::string op_name_str(op_name);
   std::shared_ptr<torch::jit::Operator> op = ATenOperatorCache::Instance().GetOperator(op_name_str);
 
   // TODO: need to handle optional argument and arguments with default values.
   std::vector<c10::IValue> arguments;
   arguments.resize(op->schema().arguments().size());
-  for (size_t i = 0; i < tensor_arguments.size(); i++) {
-    size_t index = std::get<0>(tensor_arguments[i]);
-    at::Tensor tensor = at::fromDLPack(std::get<1>(tensor_arguments[i]));
+  for (const auto& tensor_argument : tensor_arguments) {
+    size_t index = tensor_argument.first;
+    at::Tensor tensor = at::fromDLPack(tensor_argument.second);
     bool has_transform_func = false;
     if (TENSOR_TRANSFORM_FUNCS.find(op_name_str) != TENSOR_TRANSFORM_FUNCS.end()) {
       const auto& transform_funcs = TENSOR_TRANSFORM_FUNCS.at(op_name_str);

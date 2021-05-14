@@ -2558,7 +2558,7 @@ Return true if all elements are true and false otherwise.
         const auto name_proto = ctx.getAttribute("name");
         ORT_ENFORCE(name_proto, "ATenOp's must have \"name\" attribute.");
         const std::string& name = name_proto->s();
-        const auto* op_config_ptr = contrib::aten_ops::GetATenOperatorConfig(name);
+        const auto* op_config_ptr = contrib::aten_ops::ATenOperatorConfigs::Instance().GetConfig(name);
         ORT_ENFORCE(op_config_ptr, "ATen Op config for ", name, " is not found.");
         const auto& op_config = *op_config_ptr;
         ORT_ENFORCE(ctx.getNumOutputs() == op_config.forward_output_type_infer_configs.size());

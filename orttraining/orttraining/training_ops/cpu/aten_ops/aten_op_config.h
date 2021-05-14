@@ -34,61 +34,106 @@ enum ArgumentKind {
   INT,
   FLOAT,
   BOOL,
-  // TODO: need more type, such as list type
+  INT_ARRAY,
+  FLOAT_ARRAY,
+  BOOL_ARRAY,
+  // TODO: may need more type
 };
 
 // TODO: need to support default attribute value.
 struct ATenOperatorConfig {
+  std::string op_name;
   std::string backward_op_name;
   // Forward ATen Op's argument kind and name.
-  std::vector<std::tuple<ArgumentKind, std::string>> forward_argument_configs;
+  std::vector<std::pair<ArgumentKind, std::string>> forward_argument_configs;
   // Backward ATen Op's argument kind and name.
-  std::vector<std::tuple<ArgumentKind, std::string>> backward_argument_configs;
+  std::vector<std::pair<ArgumentKind, std::string>> backward_argument_configs;
   // The source config of inputs of com.microsoft::ATenOpGrad.
-  std::vector<std::tuple<BackwardInputSourceKind, int>> backward_input_source_configs;
+  std::vector<std::pair<BackwardInputSourceKind, size_t>> backward_input_source_configs;
   // The output type infer config of outputs of com.microsoft::ATenOp.
-  std::vector<std::tuple<OutputTypeInferKind, int>> forward_output_type_infer_configs;
+  std::vector<std::pair<OutputTypeInferKind, int>> forward_output_type_infer_configs;
   // The mapping between com.microsoft::ATenOpGrad's outputs and com.microsoft::ATenOp's inputs,
   // i.e., gradient_input_indices[i] means GI(gradient_input_indices[i]) in gradient builder.
-  std::vector<int> gradient_input_indices;
+  std::vector<size_t> gradient_input_indices;
+  // Default argument values.
+  std::unordered_map<std::string, int> default_int_values;
+  std::unordered_map<std::string, float> default_float_values;
+  std::unordered_map<std::string, bool> default_bool_values;
+  std::unordered_map<std::string, std::vector<int>> default_int_array_values;
+  std::unordered_map<std::string, std::vector<float>> default_float_array_values;
+  std::unordered_map<std::string, std::vector<bool>> default_bool_array_values;
 
-  ATenOperatorConfig(const std::string& _backward_op_name,
-                     const std::vector<std::tuple<ArgumentKind, std::string>>& _forward_argument_configs,
-                     const std::vector<std::tuple<ArgumentKind, std::string>>& _backward_argument_configs,
-                     const std::vector<std::tuple<BackwardInputSourceKind, int>>& _backward_input_source_configs,
-                     const std::vector<std::tuple<OutputTypeInferKind, int>>& _forward_output_type_infer_configs,
-                     const std::vector<int>& _gradient_input_indices) {
-    backward_op_name = _backward_op_name;
-    forward_argument_configs.assign(_forward_argument_configs.begin(), _forward_argument_configs.end());
-    backward_argument_configs.assign(_backward_argument_configs.begin(), _backward_argument_configs.end());
-    backward_input_source_configs.assign(_backward_input_source_configs.begin(), _backward_input_source_configs.end());
-    forward_output_type_infer_configs.assign(_forward_output_type_infer_configs.begin(),
-                                             _forward_output_type_infer_configs.end());
-    gradient_input_indices.assign(_gradient_input_indices.begin(), _gradient_input_indices.end());
+  template <typename T>
+  bool TryGetValue(const std::string& name, T& value) const {
+    bool has_default_value = false;
+    if (std::is_same<T, int>::value) {
+      auto it = default_int_values.find(name);
+      if (it != default_int_values.end()) {
+        has_default_value = true;
+        value = it->second;
+      }
+    } else if (std::is_same<T, float>::value) {
+      auto it = default_float_values.find(name);
+      if (it != default_float_values.end()) {
+        has_default_value = true;
+        value = it->second;
+      }
+    } else if (std::is_same<T, bool>::value) {
+      auto it = default_bool_values.find(name);
+      if (it != default_bool_values.end()) {
+        has_default_value = true;
+        value = it->second;
+      }
+    }
+
+    return has_default_value;
+  }
+
+  template <typename T>
+  bool TryGetArrayValue(const std::string& name, std::vector<T>& value) const {
+    bool has_default_value = false;
+    if (std::is_same<T, int>::value) {
+      auto it = default_int_array_values.find(name);
+      if (it != default_int_array_values.end()) {
+        has_default_value = true;
+        std::copy(it->second.begin(), it->second.end(), back_inserter(value));
+      }
+    } else if (std::is_same<T, float>::value) {
+      auto it = default_float_array_values.find(name);
+      if (it != default_float_array_values.end()) {
+        has_default_value = true;
+        std::copy(it->second.begin(), it->second.end(), back_inserter(value));
+      }
+    } else if (std::is_same<T, bool>::value) {
+      auto it = default_bool_array_values.find(name);
+      if (it != default_bool_array_values.end()) {
+        has_default_value = true;
+        std::copy(it->second.begin(), it->second.end(), back_inserter(value));
+      }
+    }
+
+    return has_default_value;
   }
 };
 
-static const std::unordered_map<std::string, ATenOperatorConfig> ATEN_OPERATORS = {
-    {"aten::embedding",
-     ATenOperatorConfig("aten::embedding_backward",
-                        {{TENSOR, "weight"},
-                         {TENSOR, "indices"},
-                         {INT, "padding_idx"},
-                         {BOOL, "scale_grad_by_freq"},
-                         {BOOL, "sparse"}},
-                        {{TENSOR, "grad"},
-                         {TENSOR, "indices"},
-                         {TENSOR, "weight"},
-                         {INT, "padding_idx"},
-                         {BOOL, "scale_grad_by_freq"},
-                         {BOOL, "sparse"}},
-                        {{GRAD_OUTPUT, 0}, {FORWARD_INPUT, 1}, {FORWARD_INPUT, 0}}, {{PROPAGATE_FROM_INPUT, 0}}, {0})},
-};
+class ATenOperatorConfigs {
+ public:
+  static ATenOperatorConfigs& Instance() {
+    static ATenOperatorConfigs instance;
+    return instance;
+  }
 
-inline const ATenOperatorConfig* GetATenOperatorConfig(const std::string& op_name) {
-  auto it = ATEN_OPERATORS.find(op_name);
-  return it != ATEN_OPERATORS.end() ? &it->second : nullptr;
-}
+  const ATenOperatorConfig* GetConfig(const std::string& op_name) {
+    auto it = configs_.find(op_name);
+    return it != configs_.end() ? &it->second : nullptr;
+  }
+
+ private:
+  ATenOperatorConfigs();
+  ~ATenOperatorConfigs() = default;
+
+  std::unordered_map<std::string, ATenOperatorConfig> configs_;
+};
 
 }  // namespace aten_ops
 }  // namespace contrib

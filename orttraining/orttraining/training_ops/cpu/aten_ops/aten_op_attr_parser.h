@@ -36,7 +36,7 @@ class AttributesJsonParser {
   }
 
   template <typename T>
-  bool TryGetListValue(const std::string& name, std::vector<T>& value) {
+  bool TryGetArrayValue(const std::string& name, std::vector<T>& value) {
     if (!parsed_json_.contains(name)) {
       return false;
     }

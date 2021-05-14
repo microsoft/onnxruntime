@@ -11,10 +11,10 @@ namespace contrib {
 namespace aten_ops {
 
 typedef std::vector<DLManagedTensor*> (*ExecuteATenOperatorFunc)(
-    const char* op_name, const std::vector<std::tuple<size_t, DLManagedTensor*>>& tensor_arguments,
-    const std::vector<std::tuple<size_t, int64_t>>& int_arguments,
-    const std::vector<std::tuple<size_t, float>>& float_arguments,
-    const std::vector<std::tuple<size_t, bool>>& bool_arguments);
+    const char* op_name, const std::vector<std::pair<size_t, DLManagedTensor*>>& tensor_arguments,
+    const std::vector<std::pair<size_t, int64_t>>& int_arguments,
+    const std::vector<std::pair<size_t, float>>& float_arguments,
+    const std::vector<std::pair<size_t, bool>>& bool_arguments);
 
 class ATenOperatorExecutor {
  public:
@@ -23,10 +23,10 @@ class ATenOperatorExecutor {
   static void Initialize(void* p_func_raw) { InstanceImpl(p_func_raw); }
 
   std::vector<DLManagedTensor*> operator()(const std::string& op_name,
-                                           const std::vector<std::tuple<size_t, DLManagedTensor*>>& tensor_arguments,
-                                           const std::vector<std::tuple<size_t, int64_t>>& int_arguments,
-                                           const std::vector<std::tuple<size_t, float>>& float_arguments,
-                                           const std::vector<std::tuple<size_t, bool>>& bool_arguments) {
+                                           const std::vector<std::pair<size_t, DLManagedTensor*>>& tensor_arguments,
+                                           const std::vector<std::pair<size_t, int64_t>>& int_arguments,
+                                           const std::vector<std::pair<size_t, float>>& float_arguments,
+                                           const std::vector<std::pair<size_t, bool>>& bool_arguments) {
     ORT_ENFORCE(p_func_, "ATenOperatorExecutor is not initialized.");
     return p_func_(op_name.c_str(), tensor_arguments, int_arguments, float_arguments, bool_arguments);
   }
