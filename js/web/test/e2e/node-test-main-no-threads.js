@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 const ort = require('onnxruntime-web');
 const testFunction = require('./common');
 
