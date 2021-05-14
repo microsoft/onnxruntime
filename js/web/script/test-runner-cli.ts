@@ -147,6 +147,7 @@ run({
     cpuFlags: args.cpuFlags,
     webglFlags: args.webglFlags,
     wasmFlags: args.wasmFlags,
+    globalFlags: args.globalFlags
   }
 });
 npmlog.info('TestRunnerCli', 'Tests completed successfully');

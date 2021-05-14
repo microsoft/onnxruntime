@@ -112,6 +112,7 @@ export declare namespace Test {
     wasmFlags?: Env.WebAssemblyFlags;
     webglOptions?: InferenceSession.WebGLExecutionProviderOption;
     webglFlags?: Env.WebGLFlags;
+    globalFlags?: Env;
   }
 
   /**

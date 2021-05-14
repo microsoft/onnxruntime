@@ -12,11 +12,6 @@ export declare namespace Env {
     numThreads?: number;
 
     /**
-     * set a logging level. If omitted, default is 'warning'
-     */
-    loggingLevel?: 'verbose'|'info'|'warning'|'error'|'fatal';
-
-    /**
      * Set or get a number specifying the timeout for initialization of WebAssembly backend, in milliseconds. A zero
      * value indicates no timeout is set. (default is 0)
      */
@@ -58,6 +53,11 @@ export interface Env {
    * Represent a set of flags for WebGL
    */
   webgl: Env.WebGLFlags;
+
+  /**
+   * set a logging level. If omitted, default is 'warning'
+   */
+  loggingLevel?: 'verbose'|'info'|'warning'|'error'|'fatal';
 
   [name: string]: unknown;
 }

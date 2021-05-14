@@ -257,7 +257,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   loadModel(model: Uint8Array, options?: InferenceSession.SessionOptions): void {
     const wasm = getInstance();
     if (!ortInit) {
-      const errorCode = wasm._OrtInit(env.wasm.numThreads!, getLoggingLevel(env.wasm.loggingLevel!));
+      const errorCode = wasm._OrtInit(env.wasm.numThreads!, getLoggingLevel(env.loggingLevel!));
       if (errorCode !== 0) {
         throw new Error(`Can't initialize onnxruntime. error code = ${errorCode}`);
       }

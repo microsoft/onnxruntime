@@ -26,9 +26,9 @@ export const initializeFlags = (): void => {
   }
   env.wasm.numThreads = Math.min(4, env.wasm.numThreads);
 
-  if (typeof env.wasm.loggingLevel !== 'string' ||
-      ['verbose', 'info', 'warning', 'error', 'fatal'].indexOf(env.wasm.loggingLevel) === -1) {
-    env.wasm.loggingLevel = 'warning';
+  if (typeof env.loggingLevel !== 'string' ||
+      ['verbose', 'info', 'warning', 'error', 'fatal'].indexOf(env.loggingLevel) === -1) {
+    env.loggingLevel = 'warning';
   }
 };
 

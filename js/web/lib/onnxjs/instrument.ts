@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {WebGLContext} from './backends/webgl/webgl-context';
+import {Env} from 'onnxruntime-common';
 
 export declare namespace Logger {
   export interface SeverityTypeMap {
@@ -70,6 +71,12 @@ export interface Logger {
    * @param config the config object to indicate the logger's behavior
    */
   set(category: string, config: Logger.Config): void;
+
+  /**
+   * Set the logger's behavior from ort-common env
+   * @param env the env used to set logger. Currently only setting loglevel is supported through Env.
+   */
+  setWithEnv(env: Env): void;
 }
 
 interface LoggerProvider {
@@ -219,6 +226,27 @@ namespace log {
     }
 
     // TODO: we want to support wildcard or regex?
+  }
+
+  export function setWithEnv(env: Env): void {
+    let config: Logger.Config = {};
+    if(env.loggingLevel) {
+      switch(env.loggingLevel) {
+        case 'verbose':
+        case 'info':
+        case 'warning':
+        case 'error':
+          config.minimalSeverity = env.loggingLevel as Logger.Severity;
+        break;
+        // No fatal in onnxjs logger
+        case 'fatal':
+          config.minimalSeverity = 'error' as Logger.Severity;
+        break;
+        default:
+          throw new Error('Invalid log level.');
+      }
+    }
+    set('', config);
   }
 }
 

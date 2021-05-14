@@ -153,7 +153,7 @@ export interface TestRunnerCliArgs {
   wasmFlags?: Env.WebAssemblyFlags;
   webglOptions?: InferenceSession.WebGLExecutionProviderOption;
   webglFlags?: Env.WebGLFlags;
-
+  globalFlags?: Env;
   noSandbox?: boolean;
 }
 
