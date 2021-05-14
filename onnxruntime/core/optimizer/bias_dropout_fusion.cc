@@ -22,7 +22,7 @@ void FuseResidualAddIfAny(Graph& graph, const Node& dropout_node,
       ++dropout_consumers_count;
     }
   }
-  // To be able to fuse the resudial Add,
+  // To be able to fuse the residual Add,
   // the Dropout's output must not be a graph output and
   // there must be only one consumer of the Dropout's first output.
   if (dropout_consumers_count < 2 && graph.GetNodeOutputsInGraphOutputs(dropout_node).empty()) {
