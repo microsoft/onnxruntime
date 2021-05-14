@@ -309,4 +309,7 @@ class GraphExecutionManager(ABC):
         grad_builder_config.graph_transformer_config = self._get_graph_transformer_config()
         grad_builder_config.loglevel = _logger.ortmodule_loglevel_to_onnxruntime_c_loglevel(self._loglevel)
         self._graph_builder = C.OrtModuleGraphBuilder()
+
+        # It is assumed here that the order and names of the inputs and outputs are not modified by the backend in any way
+        # and are kept as they appear in the exported onnx model.
         self._graph_builder.initialize(self._onnx_model.SerializeToString(), grad_builder_config)

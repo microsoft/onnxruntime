@@ -2483,3 +2483,42 @@ def test_unused_parameters(model, none_pt_params):
     out_pt = model(x)
     out_ort = ort_model(y)
     _test_helpers.assert_values_are_close(out_ort, out_pt)
+
+def test_output_order():
+    class OutputOrderNet(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(OutputOrderNet, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.fc2 = torch.nn.Linear(input_size, hidden_size)
+            self.fc3 = torch.nn.Linear(input_size, hidden_size)
+            self.fc4 = torch.nn.Linear(input_size, hidden_size)
+            self.fc5 = torch.nn.Linear(input_size, hidden_size)
+            self.fc6 = torch.nn.Linear(input_size, hidden_size)
+            self.fc7 = torch.nn.Linear(input_size, hidden_size)
+            self.fc8 = torch.nn.Linear(input_size, hidden_size)
+            self.fc9 = torch.nn.Linear(input_size, hidden_size)
+            self.fc10 = torch.nn.Linear(input_size, hidden_size)
+            self.fc11 = torch.nn.Linear(input_size, hidden_size)
+            self.fc12 = torch.nn.Linear(input_size, hidden_size)
+
+        def forward(self, input1, input2, input3, input4, input5, input6, input7, input8, input9, input10, input11, input12):
+            return self.fc1(input1), self.fc2(input2), self.fc3(input3), \
+                self.fc4(input4), self.fc5(input5), self.fc6(input6), \
+                self.fc7(input7), self.fc8(input8), self.fc9(input9), \
+                self.fc10(input10), self.fc11(input11), self.fc12(input12)
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = OutputOrderNet(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(model))
+
+    x = [torch.randn(N, D_in, device=device) for _ in range(12)]
+    y = copy.deepcopy(x)
+
+    out_pt = model(*x)
+    out_ort = ort_model(*y)
+
+    assert len(out_pt) == len(out_ort)
+    for x, y in zip(out_pt, out_ort):
+        _test_helpers.assert_values_are_close(x, y)
