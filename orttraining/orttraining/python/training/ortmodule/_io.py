@@ -9,6 +9,18 @@ import inspect
 import torch
 import warnings
 
+
+class _OutputIdentityOp(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input):
+        return torch.nn.Identity()(input)
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output
+    @staticmethod
+    def symbolic(g, self):
+        return g.op("Identity", self)
+
 class _PrimitiveType(object):
     _primitive_types = {int, bool, float}
     @staticmethod
@@ -301,7 +313,8 @@ def _transform_output_to_flat_tuple(data):
         if data is None:
             return
         elif isinstance(data, torch.Tensor):
-            flat_data.append(data)
+            identity = _OutputIdentityOp.apply
+            flat_data.append(identity(data))
         elif isinstance(data, abc.Sequence):
             for value in data:
                 _flatten_data(value, flat_data)
