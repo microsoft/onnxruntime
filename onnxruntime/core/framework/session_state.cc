@@ -366,8 +366,9 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
                     } else {  // container doesn't contain the pre-packed weight - so write into it for sharing across kernel instances
 
                       if (!prepacked_weights_container_->WriteWeight(prepacked_weights_container_key, std::move(weights_to_be_filled_in))) {
-                        ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to write the provided PrePackedWeights instance into the container");
+                        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to write the provided PrePackedWeights instance into the container");
                       }
+
                       ORT_RETURN_IF_ERROR(KernelUseSharedPrePackedBuffers(*kernel, input_idx,
                                                                           prepacked_weights_container_->GetWeight(prepacked_weights_container_key),
                                                                           node.Name()));
