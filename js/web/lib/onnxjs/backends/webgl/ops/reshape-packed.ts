@@ -49,10 +49,8 @@ export class WebGLReshapePacked extends Reshape implements WebGLOperator {
     this.outputShape = ShapeUtil.calculateReshapedDims(originInputShape, inputs[1].integerData);
     const squeezedOutputShape = processDims3D(this.outputShape);
 
-    const outputLayout = handler.createTextureLayoutFromShape(
+    this.outputLayout = handler.createTextureLayoutFromShape(
         squeezedOutputShape, 4, squeezedOutputShape, {isPacked: true, reverseWH: true});
-    this.originalOutputLayout =
-        handler.createTextureLayoutFromShape(this.outputShape, 4, this.outputShape, {isPacked: true, reverseWH: true});
 
     let mainLoop = ``;
     for (let i = 0; i < 4; i++) {
@@ -110,7 +108,7 @@ export class WebGLReshapePacked extends Reshape implements WebGLOperator {
 
     return {
       inputLayouts: [inputLayout],
-      outputLayout,
+      outputLayout: this.outputLayout,
       samplers: ['A'],
       shaderSource,
       hasMain: true,
@@ -139,12 +137,10 @@ export class WebGLReshapePacked extends Reshape implements WebGLOperator {
     } else {
       inputTDs = [originalInputTD];
     }
-    let outputLayout = this.originalOutputLayout;
+    let outputLayout = this.outputLayout;
     if (outputLayout === undefined) {
-      const originInputShape = inputs[0].dims;
-      const outputShape = ShapeUtil.calculateReshapedDims(originInputShape, inputs[1].integerData);
-      outputLayout =
-          handler.createTextureLayoutFromShape(outputShape, 4, outputShape, {isPacked: true, reverseWH: true});
+      outputLayout = handler.createTextureLayoutFromShape(
+          this.outputShape, 4, this.outputShape, {isPacked: true, reverseWH: true});
     }
     // return run data for reshape. Here, we use the original calculate outputLayout to create the real output layout.
     return {
@@ -154,9 +150,9 @@ export class WebGLReshapePacked extends Reshape implements WebGLOperator {
     };
   }
   protected outputShape: ReadonlyArray<number>;
-  private originalOutputLayout: TextureLayout;
   private inputShape3D: [number, number, number];
   private needSqueezeInputData = false;
+  private outputLayout: TextureLayout;
 }
 
 function processDims3D(shape: readonly number[]|ReadonlyArray<number>|Tensor.IntegerType): [number, number, number] {
