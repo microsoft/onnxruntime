@@ -427,7 +427,8 @@ void NhwcTransformerImpl::Transform(Node& node) {
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearLeakyRelu", {1}, kMSDomain) ||
              graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearSigmoid", {1}, kMSDomain)) {
     TransformQLinearActivation(node);
-  } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearGlobalAveragePool", {1}, kMSDomain)) {
+  } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearGlobalAveragePool", {1}, kMSDomain) ||
+             graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearAveragePool", {1}, kMSDomain)) {
     TransformQLinearGlobalAveragePool(node);
   } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "QLinearConcat", {1}, kMSDomain)) {
     TransformQLinearConcat(node);
