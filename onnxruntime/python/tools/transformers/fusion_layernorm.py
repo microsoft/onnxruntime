@@ -111,10 +111,10 @@ class FusionLayerNormalization(Fusion):
         normalize_node = helper.make_node('LayerNormalization',
                                           inputs=[node.input[0], weight_input, bias_input],
                                           outputs=[last_add_node.output[0]],
-                                          name = 'LayerNormalization' + node.input[0])
+                                          name=self.model.create_node_name("LayerNormalization",
+                                                                           name_prefix="SkipLayerNorm"))
         normalize_node.attribute.extend([helper.make_attribute("epsilon", float(add_weight))])
         self.nodes_to_add.append(normalize_node)
-
         self.node_name_to_graph_name[normalize_node.name] = self.this_graph_name
 
 
@@ -219,6 +219,8 @@ class FusionLayerNormalizationTF(Fusion):
         #TODO: add epsilon attribute
         fused_node = helper.make_node('LayerNormalization',
                                       inputs=[mul_node_3.input[0], weight_input, bias_input],
-                                      outputs=[node.output[0]])
+                                      outputs=[node.output[0]],
+                                      name=self.model.create_node_name("LayerNormalization",
+                                                                       name_prefix="SkipLayerNorm"))
         fused_node.attribute.extend([helper.make_attribute("epsilon", float(epsilon))])
         self.nodes_to_add.append(fused_node)
