@@ -1,8 +1,16 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-if(${CMAKE_VERSION} VERSION_LESS "3.18")
-    message(FATAL_ERROR "CMake 3.18+ is required when building the Objective-C API.")
+if(NOT APPLE)
+    message(FATAL_ERROR "The Objective-C API must be built on an Apple platform.")
+endif()
+
+if(CMAKE_VERSION VERSION_LESS "3.18")
+    message(FATAL_ERROR "The Objective-C API requires CMake 3.18+.")
+endif()
+
+if(NOT onnxruntime_BUILD_SHARED_LIB)
+    message(FATAL_ERROR "The Objective-C API requires onnxruntime_BUILD_SHARED_LIB to be enabled.")
 endif()
 
 check_language(OBJC)
