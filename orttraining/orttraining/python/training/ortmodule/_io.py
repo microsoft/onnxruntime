@@ -11,6 +11,42 @@ import warnings
 
 
 class _OutputIdentityOp(torch.autograd.Function):
+    '''Internal class used to prepend Identity ops in model's outputs
+
+    This class is required to support ONNX models which passthrough [some of] the models's inputs
+    directly to the graph output. This is an issue because ONNX Runtime cannot build proper
+    gradient graph based on this pattern.
+
+    Adding a direct Identity Op to the user model doesn't work as the ONNX exporter would optimize it away,
+    resulting in the same issue.
+
+    Therefore a custom Autograd function was introduced to add an Identity right before the output
+    in a way the ONNX exporter will not optimize it away.
+
+    Given the model below
+
+    .. code-block:: python
+
+        class PassthroughNet(torch.nn.Module):
+            def __init__(self, input_size, hidden_size, num_classes):
+                super(PassthroughNet, self).__init__()
+                self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
+                self.relu1 = torch.nn.ReLU()
+                self.fc1_2 = torch.nn.Linear(hidden_size, num_classes)
+            def forward(self, input1, passthrough_input):
+                out1 = self.fc1_2(self.relu1(self.fc1_1(input1)))
+                # use shape from passthrough_input
+                out1 = out1.view(passthrough_input.size()[0], -1)
+                return out1, passthrough_input
+
+    We can see `passthrough_input` is part of both model input and output and the resulting
+    ONNX subgraph would contain something like `output2 -> output2`.
+
+    By prepending each model output to an :class:`_OutputIdentityOp` op, the resulting
+    onnx subgraph for this example would be  `passthrough_input -> Identity -> output2`.
+
+    TODO: Remove once PyTorch 1.8.2 or newer is released
+    '''
     @staticmethod
     def forward(ctx, input):
         return torch.nn.Identity()(input)
