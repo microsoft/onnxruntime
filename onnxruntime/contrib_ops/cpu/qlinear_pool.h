@@ -12,15 +12,17 @@ namespace contrib {
 
 class QLinearAveragePool final : public OpKernel, public PoolBase {
  public:
-  QLinearAveragePool(const OpKernelInfo& info) : OpKernel(info), PoolBase(info) { }
+  QLinearAveragePool(const OpKernelInfo& info) : OpKernel(info), PoolBase(info) {
+    channels_last_ = (info.GetAttrOrDefault<int64_t>("channels_last", static_cast<int64_t>(0)) != 0);
+  }
 
   ~QLinearAveragePool() override = default;
 
   Status Compute(OpKernelContext* context) const override;
 
-private:
+ private:
   PoolProcessContext pool_context_;
-
+  bool channels_last_;
 };
 
 }  // namespace contrib

@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "core/graph/graph.h"
+#include "core/graph/graph_utils.h"
 #include "core/optimizer/qdq_transformer/qdq_op_transformer.h"
 #include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/qdq_transformer/registry.h"
@@ -39,7 +40,21 @@ class QDQSimpleTransformer : public QDQOperatorTransformer {
   }
 };
 
-DEFINE_QDQ_CREATOR(MaxPool, QDQSimpleTransformer)
+class QDQMaxPoolTransformer : public QDQSimpleTransformer {
+ public:
+  QDQMaxPoolTransformer(Node& node, Graph& graph) : QDQSimpleTransformer(node, graph) {}
+
+ protected:
+  bool Check(const std::vector<const Node*>& dq_nodes, const std::vector<const Node*>& q_nodes) const override {
+    if (!QDQSimpleTransformer::Check(dq_nodes, q_nodes)) {
+      return false;
+    }
+
+    return graph_utils::IsSupportedOptypeVersionAndDomain(node_, "MaxPool", {12});
+  }
+};
+
+DEFINE_QDQ_CREATOR(MaxPool, QDQMaxPoolTransformer)
 DEFINE_QDQ_CREATOR(Reshape, QDQSimpleTransformer)
 DEFINE_QDQ_CREATOR(Gather, QDQSimpleTransformer)
 DEFINE_QDQ_CREATOR(Transpose, QDQSimpleTransformer)

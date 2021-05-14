@@ -13,3 +13,5 @@ ONNXTensorElementDataType PublicToCAPITensorElementType(ORTTensorElementDataType
 ORTTensorElementDataType CAPIToPublicTensorElementType(ONNXTensorElementDataType capi_type);
 
 size_t SizeOfCAPITensorElementType(ONNXTensorElementDataType capi_type);
+
+GraphOptimizationLevel PublicToCAPIGraphOptimizationLevel(ORTGraphOptimizationLevel opt_level);

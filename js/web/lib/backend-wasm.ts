@@ -21,6 +21,11 @@ export const initializeFlags = (): void => {
     env.wasm.numThreads = Math.ceil((navigator.hardwareConcurrency || 1) / 2);
   }
   env.wasm.numThreads = Math.min(4, env.wasm.numThreads);
+
+  if (typeof env.wasm.loggingLevel !== 'string' ||
+      ['verbose', 'info', 'warning', 'error', 'fatal'].indexOf(env.wasm.loggingLevel) === -1) {
+    env.wasm.loggingLevel = 'warning';
+  }
 };
 
 class OnnxruntimeWebAssemblyBackend implements Backend {
@@ -33,7 +38,7 @@ class OnnxruntimeWebAssemblyBackend implements Backend {
   }
   createSessionHandler(path: string, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
   createSessionHandler(buffer: Uint8Array, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
-  async createSessionHandler(pathOrBuffer: string|Uint8Array, _options?: InferenceSession.SessionOptions):
+  async createSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
       Promise<SessionHandler> {
     let buffer: Uint8Array;
     if (typeof pathOrBuffer === 'string') {
@@ -43,9 +48,9 @@ class OnnxruntimeWebAssemblyBackend implements Backend {
     } else {
       buffer = pathOrBuffer;
     }
+
     const handler = new OnnxruntimeWebAssemblySessionHandler();
-    // TODO: support SessionOptions
-    handler.loadModel(buffer);
+    handler.loadModel(buffer, options);
     return Promise.resolve(handler);
   }
 }
