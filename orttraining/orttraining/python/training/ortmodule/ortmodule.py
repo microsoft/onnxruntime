@@ -19,28 +19,7 @@ class ORTModule(torch.nn.Module):
     """Extends user's :class:`torch.nn.Module` model to leverage ONNX Runtime super fast training engine.
 
     ORTModule specializes the user's :class:`torch.nn.Module` model, providing :meth:`~torch.nn.Module.forward`,
-    :meth:`~torch.nn.Module.backward` along with all others :class:`torch.nn.Module` APIs leveraging ONNX Runtime.
-
-    ORTModule interacts with
-
-    * | :class:`GraphExecutionManagerFactory` which returns a :class:`GraphExecutionManager` based on
-      | whether or not the user's torch module is in training mode or eval mode
-
-    * :class:`GraphExecutionManager` builds and execute the forward/backward graphs
-
-        * | :class:`InferenceManager(GraphExecutionManager)` builds, optimizes and execute the inference ONNX graph
-
-        * | :class:`TrainingManager(GraphExecutionManager)` builds, optimizes and executes the
-          | training onnx graph. The :class:`GraphExecutionManager` first exports the user model into an ONNX model.
-          | Next, :class:`GraphExecutionManager` interacts with :class:`OrtModuleGraphBuilder` to optimize it.
-          | Finally, :class:`ExecutionAgent` is instantiated using the optimized ONNX graph to
-          | facilitate execution of the forward/backward subgraphs of the ONNX model
-
-    * py:module:`_io` provides utilities to transform the user inputs and outputs for the model
-
-        * | It facilitates in flattening the output from the user's PyTorch model (since exporting
-          | of nested structures is not supported at the moment)
-
+    :meth:`~torch.nn.Module.backward` along with all others :class:`torch.nn.Module`'s APIs.
     """
 
     def __init__(self, module):
