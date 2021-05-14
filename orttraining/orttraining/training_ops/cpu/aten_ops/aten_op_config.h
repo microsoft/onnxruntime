@@ -53,10 +53,10 @@ struct ATenOperatorConfig {
   std::vector<int> gradient_input_indices;
 
   ATenOperatorConfig(const std::string& _backward_op_name,
-                     const std::vector<std::tuple<ArgumentKind, std::string>>& _forward_argument_configs,
-                     const std::vector<std::tuple<ArgumentKind, std::string>>& _backward_argument_configs,
-                     const std::vector<std::tuple<BackwardInputSourceKind, int>>& _backward_input_source_configs,
-                     const std::vector<std::tuple<OutputTypeInferKind, int>>& _forward_output_type_infer_configs,
+                     const std::vector<std::pair<ArgumentKind, std::string>>& _forward_argument_configs,
+                     const std::vector<std::pair<ArgumentKind, std::string>>& _backward_argument_configs,
+                     const std::vector<std::pair<BackwardInputSourceKind, int>>& _backward_input_source_configs,
+                     const std::vector<std::pair<OutputTypeInferKind, int>>& _forward_output_type_infer_configs,
                      const std::vector<int>& _gradient_input_indices) {
     backward_op_name = _backward_op_name;
     forward_argument_configs.assign(_forward_argument_configs.begin(), _forward_argument_configs.end());
