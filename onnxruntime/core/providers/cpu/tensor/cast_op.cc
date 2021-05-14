@@ -299,7 +299,11 @@ Status Cast::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& shape = X->Shape();
   Tensor* Y = context->Output(0, shape);
-
+  {
+    std::ostringstream oss;
+    oss << context->GetNodeName() << " outputs " << Y->DataRaw();
+    std::cout << "XXXXXXXXXXXXXXXXXX: " << oss.str() << std::endl;
+  }
   if (shape.Size() == 0) {
     return Status::OK();
   }

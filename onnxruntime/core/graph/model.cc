@@ -259,7 +259,7 @@ const Graph& Model::MainGraph() const noexcept {
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
-ModelProto Model::ToProto() {
+ModelProto Model::ToProto() const{
   // We want to return back the original proto
   // To that end invoke const overload of ToGraphProto()
   // that returns by value and, therefore, allows us to filter

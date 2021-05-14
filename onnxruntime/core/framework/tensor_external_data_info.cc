@@ -23,6 +23,8 @@ Status ExternalDataInfo::Create(const RepeatedPtrField<StringStringEntryProto>& 
     if (!stringmap.has_value())
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model format error! Need a value for the external data info");
     if (stringmap.key() == "location" && !stringmap.value().empty()) {
+      //TODO: ONNX doesn't say which encoding the path uses. Here we assume it is in UTF-8(which is the most popular
+      //one on Linux but very uncommon on Windows). ONNX should make it more clear.
       out->rel_path_ = ToWideString(stringmap.value());
     } else if (stringmap.key() == "offset" && !stringmap.value().empty()) {
       char* end;

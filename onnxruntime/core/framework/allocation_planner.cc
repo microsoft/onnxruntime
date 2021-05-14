@@ -257,6 +257,9 @@ class PlannerImpl {
 
   // Find if there exists some input tensor that we can use in-place for output_arg_num-th input in the node.
   bool FindReusableInput(const onnxruntime::Node& node, int output_arg_num, OrtValueIndex* reusable_input) {
+    if (!context_.GetEnableMemoryReuse()) {
+      return false;
+    }
     auto p_output_arg = node.OutputDefs()[output_arg_num];
     const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
 
@@ -318,7 +321,6 @@ class PlannerImpl {
 
   static bool SameShape(const TensorShapeProto& shape1, const TensorShapeProto& shape2) {
     // TODO: This should probably be defined to be the equality operator on TensorShapeProto.
-    namespace on = ONNX_NAMESPACE;
     int rank1 = shape1.dim_size();
     if (shape2.dim_size() != rank1) return false;
     for (int i = 0; i < rank1; i++) {

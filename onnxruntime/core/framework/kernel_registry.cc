@@ -120,6 +120,7 @@ class TypeBindingResolver {
 bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
                                      const KernelDef& kernel_def,
                                      std::string& error_str) {
+
   // check if version matches
   int kernel_start_version;
   int kernel_end_version;
@@ -246,6 +247,16 @@ Status KernelRegistry::TryFindKernel(const onnxruntime::Node& node,
                                      onnxruntime::ProviderType exec_provider,
                                      uint64_t kernel_def_hash,
                                      const KernelCreateInfo** out) const {
+#if !defined(ORT_MINIMAL_BUILD) && !defined(NDEBUG)
+  if (node.Op() == nullptr) {
+    std::ostringstream oss;
+    oss << "Op";
+    if (!node.Name().empty())
+      oss << " with name (" << node.Name() << ") and";
+    oss << " type (" << node.OpType() << ") doesn't have schema. Please resolve the graph first.";
+    return Status(ONNXRUNTIME, INVALID_GRAPH, oss.str()); 
+  }
+#endif
   const auto& node_provider = node.GetExecutionProviderType();
   const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
 

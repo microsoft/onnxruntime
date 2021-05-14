@@ -692,10 +692,7 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
   return Status::OK();
 }
 
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 6239)
-#endif
+
 // TODO: Change the current interface to take Path object for model path
 // so that validating and manipulating path for reading external data becomes easy
 Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* model_path,
@@ -726,10 +723,7 @@ Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* model_path,
   value.Init(tensorp.release(), ml_tensor, ml_tensor->GetDeleteFunc());
   return Status::OK();
 }
-#ifdef _MSC_VER
-#pragma warning(pop)
-#pragma warning(disable : 6239)
-#endif
+
 #define CASE_TYPE(X)                             \
   case ONNX_NAMESPACE::TensorProto_DataType_##X: \
     return ONNX_TENSOR_ELEMENT_DATA_TYPE_##X;

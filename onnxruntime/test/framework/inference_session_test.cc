@@ -428,7 +428,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   // Load model with level 0 transform level
   // and assert that the model has Identity nodes.
   SessionOptions so;
-  const string test_model = "testdata/transform/abs-id-max.onnx";
+  const ORTCHAR_T* test_model = ORT_TSTR("testdata/transform/abs-id-max.onnx");
   so.session_logid = "InferenceSessionTests.TestModelSerialization";
   so.graph_optimization_level = TransformerLevel::Default;
   InferenceSessionWrapper session_object_noopt{so, GetEnvironment()};
@@ -442,7 +442,12 @@ TEST(InferenceSessionTests, TestModelSerialization) {
 
   // Load model with level 1 transform level.
   so.graph_optimization_level = TransformerLevel::Level1;
-  so.optimized_model_filepath = ToWideString(test_model + "-TransformLevel-" + std::to_string(static_cast<uint32_t>(so.graph_optimization_level)));
+  {    
+    std::basic_ostringstream<ORTCHAR_T> oss;
+    oss << test_model << ORT_TSTR("-TransformLevel-") << static_cast<uint32_t>(so.graph_optimization_level);
+    so.optimized_model_filepath = oss.str();
+    
+  }
   InferenceSessionWrapper session_object{so, GetEnvironment()};
   ASSERT_TRUE(session_object.Load(test_model).IsOK());
   ASSERT_STATUS_OK(session_object.Initialize());
@@ -461,7 +466,11 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   SessionOptions so_opt;
   so_opt.session_logid = "InferenceSessionTests.TestModelSerialization";
   so_opt.graph_optimization_level = TransformerLevel::Default;
-  so_opt.optimized_model_filepath = ToWideString(so.optimized_model_filepath) + ToWideString("-TransformLevel-" + std::to_string(static_cast<uint32_t>(so_opt.graph_optimization_level)));
+  {
+    std::basic_ostringstream<ORTCHAR_T> oss;
+    oss << so.optimized_model_filepath << ORT_TSTR("-TransformLevel-") << static_cast<uint32_t>(so_opt.graph_optimization_level);
+    so_opt.optimized_model_filepath = oss.str();
+  }
   InferenceSession session_object_opt{so_opt, GetEnvironment()};
   ASSERT_TRUE(session_object_opt.Load(so.optimized_model_filepath).IsOK());
   ASSERT_TRUE(session_object_opt.Initialize().IsOK());
@@ -480,7 +489,7 @@ TEST(InferenceSessionTests, TestModelSerialization) {
                          std::istreambuf_iterator<char>(model_fs_session2.rdbuf())));
 
   // Assert that empty optimized model file-path doesn't fail loading.
-  so_opt.optimized_model_filepath = ToWideString("");
+  so_opt.optimized_model_filepath = ORT_TSTR("");
   InferenceSession session_object_emptyValidation{so_opt, GetEnvironment()};
   ASSERT_TRUE(session_object_emptyValidation.Load(test_model).IsOK());
   ASSERT_TRUE(session_object_emptyValidation.Initialize().IsOK());

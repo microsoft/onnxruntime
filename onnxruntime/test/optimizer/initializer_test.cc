@@ -50,8 +50,8 @@ TEST(OptimizerInitializerTest, LoadExternalData) {
     return tensor_data;
   }();
   const gsl::span<const int> tensor_data_span = gsl::make_span(tensor_data);
-  const auto tensor_data_dir_path = Path::Parse(ToPathString("."));
-  const auto tensor_data_dir_relative_path = Path::Parse(ToPathString("OptimizerInitializerTest_LoadExternalData.bin"));
+  const auto tensor_data_dir_path = Path::Parse(ORT_TSTR("."));
+  const auto tensor_data_dir_relative_path = Path::Parse(ORT_TSTR("OptimizerInitializerTest_LoadExternalData.bin"));
   ScopedFileDeleter file_deleter{};
 
   ASSERT_STATUS_OK(WriteExternalDataFile(
@@ -95,7 +95,7 @@ TEST(OptimizerInitializerTest, LoadExternalData) {
 
   // bad model paths
   EXPECT_THROW(Initializer i(tensor_proto_base, Path{}), OnnxRuntimeException);
-  EXPECT_THROW(Initializer i(tensor_proto_base, Path::Parse(ToPathString("invalid/directory"))), OnnxRuntimeException);
+  EXPECT_THROW(Initializer i(tensor_proto_base, Path::Parse(ORT_TSTR("invalid/directory"))), OnnxRuntimeException);
 
   // bad length
   {

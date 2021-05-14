@@ -276,6 +276,7 @@ inline std::string ToMBString(const std::string& s) { return s; }
  */
 std::string ToMBString(const std::wstring& s);
 
+//XXX: assume s is std::string type, the ToMBString(ToWideString(s)) is not s. Instead, the result is garbage.
 std::wstring ToWideString(const std::string& s);
 inline std::wstring ToWideString(const std::wstring& s) { return s; }
 #else
