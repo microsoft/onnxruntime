@@ -7,38 +7,33 @@ const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
 const TerserPlugin = require("terser-webpack-plugin");
 const minimist = require('minimist');
 
-function addCopyrightBannerPlugin(mode) {
-  const VERSION = require(path.join(__dirname, 'package.json')).version;
-  const COPYRIGHT_BANNER = `/*!
- * ONNX Runtime Web v${VERSION}
- * Copyright (c) Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License.
- */`;
+const VERSION = require(path.join(__dirname, 'package.json')).version;
+const COPYRIGHT_BANNER = `/*!
+* ONNX Runtime Web v${VERSION}
+* Copyright (c) Microsoft Corporation. All rights reserved.
+* Licensed under the MIT License.
+*/`;
 
-  if (mode === 'production') {
-    return new TerserPlugin({
-      extractComments: false,
-      terserOptions: {
-        format: {
-          preamble: COPYRIGHT_BANNER,
-          comments: false,
-        },
-        compress: {
-          passes: 2
-        },
-        mangle: {
-          reserved: ["_scriptDir"]
-        }
+function defaultTerserPluginOptions() {
+  return {
+    extractComments: false,
+    terserOptions: {
+      format: {
+        comments: false,
+      },
+      compress: {
+        passes: 2
+      },
+      mangle: {
+        reserved: ["_scriptDir"]
       }
-    });
-  } else {
-    return new webpack.BannerPlugin({ banner: COPYRIGHT_BANNER, raw: true });
-  }
+    }
+  };
 }
 
 // common config for release bundle
 function buildConfig({ filename, format, target, mode, devtool }) {
-  return {
+  const config = {
     target: [format === 'commonjs' ? 'node' : 'web', target],
     entry: path.resolve(__dirname, 'lib/index.ts'),
     output: {
@@ -49,10 +44,7 @@ function buildConfig({ filename, format, target, mode, devtool }) {
       }
     },
     resolve: { extensions: ['.ts', '.js'] },
-    plugins: [
-      new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] }),
-      addCopyrightBannerPlugin(mode),
-    ],
+    plugins: [new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] })],
     module: {
       rules: [{
         test: /\.ts$/,
@@ -72,6 +64,20 @@ function buildConfig({ filename, format, target, mode, devtool }) {
     mode,
     devtool
   };
+
+  if (mode === 'production') {
+    config.resolve.alias = {
+      './binding/ort-wasm-threaded.js': './binding/ort-wasm-threaded.min.js',
+      './binding/ort-wasm-threaded.worker.js': './binding/ort-wasm-threaded.min.worker.js'
+    };
+    const options = defaultTerserPluginOptions();
+    options.terserOptions.format.preamble = COPYRIGHT_BANNER;
+    config.plugins.push(new TerserPlugin(options));
+  } else {
+    config.plugins.push(new webpack.BannerPlugin({ banner: COPYRIGHT_BANNER, raw: true }));
+  }
+
+  return config;
 }
 
 // "ort{.min}.js" config
@@ -125,7 +131,7 @@ function buildTestRunnerConfig({
   mode = 'production',
   devtool = 'source-map'
 }) {
-  return {
+  const config = {
     target: ['web', target],
     entry: path.resolve(__dirname, 'test/test-main.ts'),
     output: {
@@ -151,7 +157,6 @@ function buildTestRunnerConfig({
     plugins: [
       new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] }),
       new NodePolyfillPlugin(),
-      addCopyrightBannerPlugin(mode),
     ],
     module: {
       rules: [{
@@ -172,6 +177,12 @@ function buildTestRunnerConfig({
     mode: mode,
     devtool: devtool,
   };
+
+  if (mode === 'production') {
+    config.plugins.push(new TerserPlugin(defaultTerserPluginOptions()));
+  }
+
+  return config;
 }
 
 module.exports = () => {

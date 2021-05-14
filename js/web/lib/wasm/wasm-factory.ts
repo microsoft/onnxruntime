@@ -81,8 +81,8 @@ export const initializeWebAssembly = async(): Promise<void> => {
             return URL.createObjectURL(new Blob(
                 [
                   // This require() function is handled by webpack to load file content of the corresponding .worker.js
-                  // eslint-disable-next-line
-                  require('../../dist/ort-wasm-threaded.worker.js')
+                  // eslint-disable-next-line @typescript-eslint/no-require-imports
+                  require('./binding/ort-wasm-threaded.worker.js')
                 ],
                 {type: 'text/javascript'}));
           }

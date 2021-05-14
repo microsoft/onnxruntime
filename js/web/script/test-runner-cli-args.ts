@@ -119,11 +119,12 @@ export interface TestRunnerCliArgs {
    *
    * For running tests, the default mode is 'dev'. If flag '--perf' is set, the mode will be set to 'perf'.
    *
-   * Mode   | Output File        | Main                 | Source Map         | Webpack Config
-   * ------ | ------------------ | -------------------- | ------------------ | --------------
-   * prod   | /dist/ort.min.js   | /lib/index.ts        | source-map         | production
-   * dev    | /test/ort.dev.js   | /test/test-main.ts   | inline-source-map  | development
-   * perf   | /test/ort.perf.js  | /test/test-main.ts   | (none)             | production
+   * Mode   | Output File           | Main                 | Source Map         | Webpack Config
+   * ------ | --------------------- | -------------------- | ------------------ | --------------
+   * prod   | /dist/ort.min.js      | /lib/index.ts        | source-map         | production
+   * node   | /dist/ort-web.node.js | /lib/index.ts        | source-map         | production
+   * dev    | /test/ort.dev.js      | /test/test-main.ts   | inline-source-map  | development
+   * perf   | /test/ort.perf.js     | /test/test-main.ts   | (none)             | production
    */
   bundleMode: TestRunnerCliArgs.BundleMode;
 

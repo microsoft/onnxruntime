@@ -28,6 +28,8 @@ const WASM_BINDING_FOLDER = path.join(__dirname, '..', 'lib', 'wasm', 'binding')
 const WASM_BINDING_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm.js');
 const WASM_BINDING_THREADED_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.js');
 const WASM_BINDING_THREADED_WORKER_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.worker.js');
+const WASM_BINDING_THREADED_MIN_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.min.js');
+const WASM_BINDING_THREADED_MIN_WORKER_JS_PATH = path.join(WASM_BINDING_FOLDER, 'ort-wasm-threaded.min.worker.js');
 const WASM_DIST_FOLDER = path.join(__dirname, '..', 'dist');
 const WASM_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm.wasm');
 const WASM_THREADED_WASM_PATH = path.join(WASM_DIST_FOLDER, 'ort-wasm-threaded.wasm');
@@ -62,33 +64,64 @@ if (WASM) {
   }
   npmlog.info('Build', 'Validating WebAssembly artifacts... DONE');
 
-  npmlog.info('Build', `Copying file "ort-wasm-threaded.js" to "${WASM_DIST_FOLDER}"...`);
+  const VERSION = require(path.join(__dirname, '../package.json')).version;
+  const COPYRIGHT_BANNER = `/*!
+ * ONNX Runtime Web v${VERSION}
+ * Copyright (c) Microsoft Corporation. All rights reserved.
+ * Licensed under the MIT License.
+ */
+`;
+
+  const terserCommand = path.join(npmBin, 'terser');
+  npmlog.info('Build', 'Minimizing file "ort-wasm-threaded.js"...');
   try {
-    fs.copyFileSync(WASM_BINDING_THREADED_JS_PATH, WASM_THREADED_JS_PATH);
+    const terser = spawnSync(
+        terserCommand,
+        [
+          WASM_BINDING_THREADED_JS_PATH, '--compress', 'passes=2', '--format', 'comments=false', '--mangle',
+          'reserved=[_scriptDir]', '--module'
+        ],
+        {shell: true, encoding: 'utf-8'});
+    if (terser.status !== 0) {
+      console.error(terser.error);
+      process.exit(terser.status === null ? undefined : terser.status);
+    }
+
+    fs.writeFileSync(WASM_BINDING_THREADED_MIN_JS_PATH, terser.stdout);
+    fs.writeFileSync(WASM_THREADED_JS_PATH, COPYRIGHT_BANNER + terser.stdout);
+
+    validateFile(WASM_BINDING_THREADED_MIN_JS_PATH);
     validateFile(WASM_THREADED_JS_PATH);
   } catch (e) {
-    npmlog.error('Build', `Failed to copy file. ERR: ${e}`);
+    npmlog.error('Build', `Failed to run terser on ort-wasm-threaded.js. ERR: ${e}`);
     throw e;
   }
-  npmlog.info('Build', `Copying file "ort-wasm-threaded.js" to "${WASM_DIST_FOLDER}"... DONE`);
+  npmlog.info('Build', 'Minimizing file "ort-wasm-threaded.js"... DONE');
 
-  npmlog.info('Build', `Copying file "ort-wasm-threaded.worker.js" to "${WASM_DIST_FOLDER}"...`);
+  npmlog.info('Build', 'Minimizing file "ort-wasm-threaded.worker.js"...');
   try {
-    fs.copyFileSync(WASM_BINDING_THREADED_WORKER_JS_PATH, WASM_THREADED_WORKER_JS_PATH);
+    const terser = spawnSync(
+        terserCommand,
+        [
+          WASM_BINDING_THREADED_WORKER_JS_PATH, '--compress', 'passes=2', '--format', 'comments=false', '--mangle',
+          'reserved=[_scriptDir]', '--toplevel'
+        ],
+        {shell: true, encoding: 'utf-8'});
+    if (terser.status !== 0) {
+      console.error(terser.error);
+      process.exit(terser.status === null ? undefined : terser.status);
+    }
+
+    fs.writeFileSync(WASM_BINDING_THREADED_MIN_WORKER_JS_PATH, terser.stdout);
+    fs.writeFileSync(WASM_THREADED_WORKER_JS_PATH, COPYRIGHT_BANNER + terser.stdout);
+
+    validateFile(WASM_BINDING_THREADED_MIN_WORKER_JS_PATH);
     validateFile(WASM_THREADED_WORKER_JS_PATH);
   } catch (e) {
-    npmlog.error('Build', `Failed to copy file. ERR: ${e}`);
+    npmlog.error('Build', `Failed to run terser on ort-wasm-threaded.worker.js. ERR: ${e}`);
     throw e;
   }
-  npmlog.info('Build', `Copying file "ort-wasm-threaded.worker.js" to "${WASM_DIST_FOLDER}"... DONE`);
-
-  npmlog.info('Build', 'Minimizing generated JavaScript files...');
-  // const terserCommand = path.join(npmBin, 'terser');
-  // npmlog.info('Build', `Running terser on file "${WASM_THREADED_JS_PATH}"`);
-  // const terserArgsThreadedJs = ['--env', `--bundle-mode=${MODE}`];
-  // npmlog.info('Build', `Running terser on file "${WASM_THREADED_WORKER_JS_PATH}"`);
-
-  npmlog.info('Build', 'Minimizing generated JavaScript files... DONE');
+  npmlog.info('Build', 'Minimizing file "ort-wasm-threaded.worker.js"... DONE');
 }
 
 npmlog.info('Build', 'Building bundle...');
