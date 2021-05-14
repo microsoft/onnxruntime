@@ -19,6 +19,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/framework/utils.h"
 
+#include "onnx/defs/attr_proto_util.h"
 
 #include <algorithm>
 #include <condition_variable>
@@ -32,6 +33,142 @@ using namespace onnxruntime::common;
 using namespace onnxruntime::training;
 using namespace std;
 
+
+struct BinaryCrossEntropy : public ILossFunction {
+  GraphAugmenter::GraphDefs operator()(const Graph& graph, const LossFunctionInfo& loss_func_info) override {
+    const std::string& loss_name = loss_func_info.loss_name;
+    const VectorString& args = loss_func_info.loss_builder_args;
+    ORT_ENFORCE(args.size() == 2, "Expected 2 arguments.");
+    const std::string& prediction_name = args[0];
+    const std::string& label_name = args[1];
+
+    GraphAugmenter::GraphDefs graph_defs;
+
+    graph_defs.AddGraphInputs({label_name});
+    graph_defs.AddGraphOutputs({loss_name});
+
+    std::vector<NodeDef> new_nodes;
+
+    const NodeArg* prediction_arg = graph.GetNodeArg(prediction_name);
+    ORT_ENFORCE(prediction_arg != nullptr,
+                "Prediction arg ", prediction_name, " is not found in the graph.");
+    TypeProto* label_type_proto = graph_defs.CopyTypeProto(prediction_arg);
+
+    // p(x) * log(q(x))
+    {
+      new_nodes.emplace_back(NodeDef("Log",  // Op
+                                     {
+                                         ArgDef(prediction_name)},
+                                     {
+                                         ArgDef("BCE_Log_Pred"),  // Outputs
+                                     },
+                                     NodeAttributes(),
+                                     "BCE_Log_Pred"  // name
+                                     ));
+      new_nodes.emplace_back(NodeDef("Mul",  // Op
+                                     {
+                                         ArgDef(label_name, label_type_proto),
+                                         ArgDef("BCE_Log_Pred")},
+                                     {
+                                         ArgDef("BCE_Mul_Label_Log_Pred"),  // Outputs
+                                     },
+                                     NodeAttributes(),
+                                     "BCE_Mul_Label_Log_Pred"  // name
+                                     ));
+    }
+
+    // (1-p(x)) * log(1-q(x))
+    {
+      onnx::TensorProto tensor_proto;
+      tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      tensor_proto.add_float_data(1.f);
+      tensor_proto.set_name("one");
+      graph_defs.AddInitializers({tensor_proto});
+
+      new_nodes.emplace_back(NodeDef("Sub",  // Op
+                                     {
+                                         ArgDef("one"),
+                                         ArgDef(prediction_name)},
+                                     {
+                                         ArgDef("BCE_InversePred")  // Outputs
+                                     },
+                                     NodeAttributes(),
+                                     "BCE_InversePred"  // name
+                                     ));
+      new_nodes.emplace_back(NodeDef("Sub",  // Op
+                                     {
+                                         ArgDef("one"),
+                                         ArgDef(label_name, label_type_proto)},
+                                     {
+                                         ArgDef("BCE_InverseLabel"),  // Outputs
+                                     },
+                                     NodeAttributes(),
+                                     "BCE_InverseLabel"  // name
+                                     ));
+      new_nodes.emplace_back(NodeDef("Log",  // Op
+                                     {
+                                         ArgDef("BCE_InversePred")},
+                                     {
+                                         ArgDef("BCE_Log_InversePred"),  // Outputs
+                                     },
+                                     NodeAttributes(),
+                                     "BCE_Log_InversePred"  // name
+                                     ));
+      new_nodes.emplace_back(NodeDef("Mul",  // Op
+                                     {
+                                         ArgDef("BCE_InverseLabel"),
+                                         ArgDef("BCE_Log_InversePred")},
+                                     {
+                                         ArgDef("BCE_Mul_InverseLabel_Log_InversePred"),  // Outputs
+                                     },
+                                     NodeAttributes(),
+                                     "BCE_Mul_InverseLabel_Log_InversePred"  // name
+                                     ));
+    }
+
+    // add
+    {
+      new_nodes.emplace_back(NodeDef("Add",  // Op
+                                     {
+                                         ArgDef("BCE_Mul_Label_Log_Pred"),
+                                         ArgDef("BCE_Mul_InverseLabel_Log_InversePred")},
+                                     {
+                                         ArgDef("BCE_Sum"),  // Outputs
+                                     },
+                                     NodeAttributes(),
+                                     "BCE_Sum"  // name
+                                     ));
+      new_nodes.emplace_back(NodeDef("Neg",  // Op
+                                     {
+                                         ArgDef("BCE_Sum")},
+                                     {
+                                         ArgDef("BCE_Sum_Neg"),  // Outputs
+                                     },
+                                     NodeAttributes(),
+                                     "BCE_Sum_Neg"  // name
+                                     ));
+    }
+
+    // ReduceMean
+    {
+      new_nodes.emplace_back(NodeDef("ReduceMean",  // Op
+                                     {
+                                         ArgDef("BCE_Sum_Neg"),  // Inputs
+                                     },
+                                     {
+                                         ArgDef(loss_name),  // Outputs
+                                     },
+                                     NodeAttributes(),
+                                     //{ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t(0))},
+                                     "BCE_reduce_mean"  // name
+                                     ));
+    }
+
+    graph_defs.AddNodeDefs(new_nodes);
+
+    return graph_defs;
+  };
+};
 
 class TracingCPUAllocator : public IAllocator {
  public:
@@ -484,6 +621,16 @@ onnxruntime::common::Status SaveOptimizedOrtModel(const std::string& source_mode
           if (shape->dim()[i].has_dim_value()) {
               d = shape->dim()[i].dim_value();
           }
+          else if (shape->dim()[i].has_dim_param()) {
+              auto param_name = shape->dim()[i].dim_param();
+              if (param_name == "batch_size"){
+                  d = 6;
+              } else if (param_name == "query_length") {
+                  d = 13;
+              } else if (param_name == "doc_length") {
+                  d = 13;
+              }
+          }
           //TODO: handle variable axes
           dims.push_back(d);
           total_size *= d;
@@ -529,6 +676,8 @@ int main(int argc, char* args[]) {
 
   unique_ptr<Environment> env;
   ORT_ENFORCE(Environment::Create(nullptr, env).IsOK());
+
+  LossFunctionRegistry::GetInstance().Register<BinaryCrossEntropy>("BinaryCrossEntropy");
 
   ModelPrepParameters params = {};
   auto status = ConfigModelPrepParameters(argc, args, params);
