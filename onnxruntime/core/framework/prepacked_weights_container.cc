@@ -6,7 +6,7 @@
 
 namespace onnxruntime {
 
-AllocatorPtr PrepackedWeightsContainer::GetAllocator(const std::string& device_name) {
+AllocatorPtr PrepackedWeightsContainer::GetOrCreateAllocator(const std::string& device_name) {
   auto iter = allocators_.find(device_name);
 
   if (iter != allocators_.end())

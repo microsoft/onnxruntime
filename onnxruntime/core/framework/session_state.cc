@@ -322,7 +322,7 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
                 if (is_shared_initializer && should_cache_prepacked_weights_for_shared_initializers &&
                     node.GetExecutionProviderType() == kCpuExecutionProvider) {  // caching of pre-packed weights' turned ON
 
-                  AllocatorPtr allocator_for_caching = prepacked_weights_container_->GetAllocator(CPU);
+                  AllocatorPtr allocator_for_caching = prepacked_weights_container_->GetOrCreateAllocator(CPU);
                   ORT_ENFORCE(allocator_for_caching.get() != nullptr);
 
                   PrePackedWeights weights_to_be_filled_in;

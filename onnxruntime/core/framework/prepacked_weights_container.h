@@ -23,7 +23,11 @@ class PrepackedWeightsContainer final {
 
   ~PrepackedWeightsContainer() = default;
 
-  AllocatorPtr GetAllocator(const std::string& device_name);
+  // Returns an allocator keyed by device name.
+  // If an allocator doesn't exist for that specific device, an allocator
+  // is created and stored in a member to be returned on subsequent calls.
+  // Currently, the only supported device is "Cpu".
+  AllocatorPtr GetOrCreateAllocator(const std::string& device_name);
 
   // Returns the PrePackedWeights instance pertaining to the provided key.
   // The key is : op_type + "+" + hash_of_prepacked_buffers_in_the_PrepackedWeights_instance.
