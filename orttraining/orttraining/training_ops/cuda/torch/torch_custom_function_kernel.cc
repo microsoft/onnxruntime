@@ -182,7 +182,9 @@ std::vector<OrtValue*> CreateArgs(OpKernelContext* context, const size_t begin_i
   return args;
 }
 
-void SetContextOutput(OpKernelContext* context, std::vector<void*>& returned_args) {
+void SetContextOutput(OpKernelContext*, std::vector<OrtValue>& ) {
+  ::std::cerr<<"Not implemented context return after ref-count prototyping\n";
+#if 0
   // Handle the outputs;
   // The 1st output is context index of auto grad function.
   // Other outputs are address of OrtValue we got from python script run.
@@ -196,17 +198,15 @@ void SetContextOutput(OpKernelContext* context, std::vector<void*>& returned_arg
   ORT_ENFORCE(ctx_id_tensor != nullptr, "Context tensor should not be null.");
   int64_t* ctx_id_data = ctx_id_tensor->template MutableData<int64_t>();
   *ctx_id_data = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().RegisterContext(ctx_addr);
+#endif
 }
 
-void SetOtherOutputs(OpKernelContext* context, std::vector<void*>& returned_args) {
+void SetOtherOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_args) {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
+  ::std::cerr <<"count = " << ctx_internal->OutputCount() << "\n";
+  ::std::cerr <<"returned_args = " << returned_args.size() << "\n";
   for (size_t i = 1; i < static_cast<size_t>(ctx_internal->OutputCount()); ++i) {
-    // The returned pointer points to a OrtValue created on Python side.
-    // Here we just cast it to the right type.
-    OrtValue* ptr = reinterpret_cast<OrtValue*>(returned_args.at(i));
-    ORT_ENFORCE(ptr, "Returned argument from Python should not be null.");
-    // Set the output directly to Python-generated OrtValue value.
-    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(i, *ptr));
+    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(i, returned_args[i-1]));
   }
 }
 
@@ -218,12 +218,12 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   // Constant arguments are created in ctor.
   std::vector<OrtValue*> args = CreateArgs(context, 0);
   // Place holder for Python returned values.
-  std::vector<void*> returned_args;
+  std::vector<OrtValue> returned_args;
 
   // Invoke python calls.
   std::string err;
   auto state = onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().GetGil();
-  void* callback = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().GetForwardCore(name_);
+  PyObject* callback = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().GetForwardCore(name_);
   onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().Forward(
       callback, input_tensor_requires_grads_, args, arg_positions_, const_args_, const_arg_positions_, returned_args, is_training_mode_);
   onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().PutGil(state);
@@ -235,6 +235,7 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   SetContextOutput(context, returned_args);
   // Other outputs are wrappers of Pytorch tensors.
   SetOtherOutputs(context, returned_args);
+
   return Status::OK();
 }
 
@@ -254,28 +255,27 @@ void PythonOpGrad::SetPositions() {
   }
 }
 
-std::vector<void*> CreateConstArgs(OpKernelContext* context) {
+std::vector<PyObject*> CreateConstArgs(OpKernelContext* context) {
   const Tensor* context_id_tensor = context->Input<Tensor>(0);
   ORT_ENFORCE(context_id_tensor, "Context ID (first input) should not be null.");
   const int64_t* context_index_ptr = context_id_tensor->template Data<int64_t>();
-  void* ctx_ptr = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().GetContext(*context_index_ptr);
+  PyObject* ctx_ptr = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().GetContext(*context_index_ptr);
   return {ctx_ptr};
 }
 
-void SetOutputs(OpKernelContext* context, std::vector<void*>& returned_args) {
+void SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_args) {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
   auto outputs_count = static_cast<size_t>(ctx_internal->OutputCount());
   // It's possible that Pytorch returns None as gradient and ORT Python side may skip them.
   // In that case, returned_args may contain less arguments.
   outputs_count = outputs_count > returned_args.size() ? returned_args.size() : outputs_count;
   for (size_t i = 0; i < outputs_count; ++i) {
-    OrtValue* ptr = reinterpret_cast<OrtValue*>(returned_args.at(i));
-    ORT_ENFORCE(ptr, i, "th output from Python should not be null.");
-    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(i, *ptr));
+    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(i, returned_args[i]));
   }
 }
 
 PythonOpGrad::PythonOpGrad(const OpKernelInfo& info) : CudaKernel(info) {
+  ORT_NOT_IMPLEMENTED(false, "Not implemented PythonOpGrad after ref-count prototyping");
   ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
   ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_tensor_types_));
   ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_tensor_types_));
@@ -291,11 +291,11 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
   auto args = CreateArgs(context, 1);
   // This is called "const" because that's how Pytorch calls all non-tensor inputs.
   auto const_args = CreateConstArgs(context);
-  std::vector<void*> returned_args;
+  std::vector<OrtValue> returned_args;
 
   std::string err;
   auto state = onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().GetGil();
-  void* callback = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().GetBackwardCore(name_);
+  PyObject* callback = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().GetBackwardCore(name_);
   onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().Backward(
       callback, input_tensor_requires_grads_, args, arg_positions_, const_args, const_arg_positions_, returned_args);
   onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().PutGil(state);

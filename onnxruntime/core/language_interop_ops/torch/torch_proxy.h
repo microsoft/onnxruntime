@@ -5,6 +5,7 @@
 #include "core/platform/env.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/op_kernel_context_internal.h"
+#include <Python.h>
 namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
@@ -16,23 +17,23 @@ class TorchProxy {
   static TorchProxy& GetInstance();
 
   void Forward(
-      void* callback,
+      PyObject* callback,
       const std::vector<int64_t>& requires_grads,
       const std::vector<OrtValue*>& tensor_args,
       const std::vector<int64_t>& tensor_indices,
-      const std::vector<void*>& obj_args,
+      const std::vector<PyObject*>& obj_args,
       const std::vector<int64_t>& obj_indices,
-      std::vector<void*>& outputs,
+      std::vector<OrtValue>& outputs,
       bool is_training_mode);
 
   void Backward(
-      void* callback,
+      PyObject* callback,
       const std::vector<int64_t>& requires_grads,
       const std::vector<OrtValue*>& tensor_args,
       const std::vector<int64_t>& tensor_indices,
-      const std::vector<void*>& obj_args,
+      const std::vector<PyObject*>& obj_args,
       const std::vector<int64_t>& obj_indices,
-      std::vector<void*>& outputs);
+      std::vector<OrtValue>& outputs);
 
   bool Initialized() const { return initialized_; };
   int32_t GetGil() const;

@@ -652,7 +652,10 @@ def test_EvalTest():
     label_input = torch.ones([output_size])
     run_evalue_test_and_compare(model_builder, input_generator, label_input)
 
+# test pure inferencing scenarios, when inputs don't requires_grad.
+test_EvalTest()
 
+# test training scenarios
 test_GeLU()
 test_MegatronF()
 test_ScalarAndTuple()

@@ -36,19 +36,21 @@ def call_python_forward_function(forward_function, requires_grad_flags, tensor_t
                     new_wrapped_args.append(arg.view(arg.shape))
                 else:
                     new_wrapped_args.append(arg)
-            onnxruntime.register_python_object(new_wrapped_args)
             result = forward_function(*new_wrapped_args)
 
             if isinstance(result, torch.Tensor):
-                ort_value = _ortvalue_from_dlpack(to_dlpack(result))
-                unwrapped_values = [ort_value]
+                dlpack_value = to_dlpack(result)
                 ctx = result.grad_fn
+                dlpack_values = [ctx,dlpack_value]
+                print("ctx=", ctx)
+                print("dlpack_values=", dlpack_values)
             elif isinstance(result, tuple) or isinstance(result, list):
+                raise NotImplementedError("Not tested tuple return types with ref-count changes")
                 for value in result:
-                    unwrapped_value = _ortvalue_from_dlpack(to_dlpack(v))
-                    unwrapped_values.append(unwrapped_value)
-                    if ctx is None and unwrapped_value is not None and hasattr(unwrapped_value, 'grad_fn'):
-                        ctx = unwrapped_value.grad_fn
+                    dlpack_value = to_dlpack(v)
+                    dlpack_values.append(dlpack_value)
+                    if ctx is None and value is not None and hasattr(value, 'grad_fn'):
+                        ctx = value.grad_fn
             else:
                 raise Exception('Unsupported returned type: ', type(result), ' by calling ', forward_function)
 
@@ -56,21 +58,10 @@ def call_python_forward_function(forward_function, requires_grad_flags, tensor_t
             # Must extract one valid context from result tensors.
             assert ctx is not None
 
-        for i, value in enumerate(unwrapped_values):
-            print('[_custom_autograd_function_runner.py] returned ', i, 'th refcnt: ', sys.getrefcount(value))
-        onnxruntime.register_python_object(result)
-        for value in unwrapped_values:
-            # Maintain their life time.
-            # This causes memory leak.
-            onnxruntime.register_python_object(value)
+        for i, value in enumerate(dlpack_values):
+            print('[_custom_autograd_function_runner.py] returned ', i, 'th type=', type(value), ' refcnt: ', sys.getrefcount(value))
 
-        for i, value in enumerate(unwrapped_values):
-            print('[_custom_autograd_function_runner.py] returned ', i, 'th refcnt: ', sys.getrefcount(value))
-
-        unwrapped_ptrs = [int(id(ctx))]
-        for v in unwrapped_values:
-            unwrapped_ptrs.append(int(v.ortvalue_ptr()))
-        return tuple(unwrapped_ptrs)
+        return tuple(dlpack_values)
     except:
         # Flush buffers. Otherwise, calling this from C++ may lose them.
         sys.stdout.flush()

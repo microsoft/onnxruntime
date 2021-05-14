@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <Python.h>
 #include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/language_interop_ops/torch/torch_proxy.h"
@@ -26,7 +27,7 @@ class PythonOp final : public CudaKernel {
   void CreateArgPositions();
 
   std::vector<int64_t> const_arg_positions_;
-  std::vector<void*> const_args_;
+  std::vector<PyObject*> const_args_;
   std::vector<int64_t> arg_positions_;
 
   // Name of containing class. For example, MyReLU.
