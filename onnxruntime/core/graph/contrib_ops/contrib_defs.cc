@@ -399,7 +399,8 @@ and present state are optional. Present state could appear in output even when p
       .Input(
           4,
           "weight_scale",
-          "scale of weight scale. It's a scalar, which means a per-tensor/layer quantization.",
+          "scale of weight scale. It's a scalar or a 1D tensor, which means a per-tensor/per-column quantization."
+          "Its size should be 3 * hidden_size if it is per-column quantization",
           "T3")
       .Input(
           5,
@@ -416,7 +417,8 @@ and present state are optional. Present state could appear in output even when p
       .Input(
           7,
           "weight_zero_point",
-          "zero point of quantized weight tensor. It's a scalar, which means a per-tensor/layer quantization.",
+          "zero point of quantized weight tensor. It's a scalar or a 1D tensor, which means a per-tensor/per-column quantization."
+          "Its size should be 3 * hidden_size if it is per-column quantization",
           "T2",
           OpSchema::Optional)
       .Input(
