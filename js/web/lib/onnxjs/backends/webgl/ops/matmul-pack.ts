@@ -35,7 +35,6 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
     const allGlChannels = ['x', 'y', 'z', 'w', 'u', 'v'];
 
     const {activationFunction, applyActivation} = getActicationSnippet(this.activation);
-    // TODO:fix broadcasting
     const shaderSource = `
       ${activationFunction}
       void main() {

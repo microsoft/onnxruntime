@@ -7,7 +7,7 @@ import {promisify} from 'util';
 import {resolveBackend, SessionHandlerType} from './backend';
 import {ExecutionPlan} from './execution-plan';
 import {Graph} from './graph';
-import {Logger, Profiler} from './instrument';
+import {Profiler} from './instrument';
 import {Model} from './model';
 import {Operator} from './operators';
 import {Tensor} from './tensor';
@@ -16,7 +16,6 @@ export declare namespace Session {
   export interface Config {
     backendHint?: string;
     profiler?: Profiler.Config;
-    logger?: Logger.Config;
   }
 
   export interface Context {
@@ -31,10 +30,6 @@ export class Session {
     this._initialized = false;
     this.backendHint = config.backendHint;
     this.profiler = Profiler.create(config.profiler);
-    if (config.logger) {
-      // tslint:disable-next-line:no-backbone-get-set-outside-model
-      Logger.set('', config.logger);
-    }
     this.context = {profiler: this.profiler, graphInputTypes: [], graphInputDims: []};
   }
 

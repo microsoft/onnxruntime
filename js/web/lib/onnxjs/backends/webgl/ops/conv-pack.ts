@@ -39,7 +39,9 @@ export class WebGLConvPacked extends Conv {
         `autpPad:${this.autoPad}, dilations:${this.dilations}, group:${this.group}, kernelShape:${
             this.kernelShape}, pads:${this.pads}, strides:${this.strides}`);
 
-    this.outputShape = WebGLConv.calcOutputShape(xshape, kshape, this.dilations, this.pads, this.strides);
+    if (!this.outputShape) {
+      this.outputShape = WebGLConv.calcOutputShape(xshape, kshape, this.dilations, this.pads, this.strides);
+    }
     if (this.im2col === undefined) {
       this.im2col = new WebGLIm2ColPacked(this.outputShape, kshape, this.dilations, this.pads, this.strides);
     }
