@@ -584,6 +584,8 @@ stages:
             echo ${files3[0]} && \
             ls -la /usr/local ; \
             ls -la /usr/local/cuda-11.0 ; \
+            echo ninja--version ; \
+            ninja --version ; \
             docker run \
               --gpus all \
               -e NVIDIA_VISIBLE_DEVICES=all \
