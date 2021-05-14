@@ -18,8 +18,12 @@ void ORTSaveCodeAndDescriptionToError(int code, const char* descriptionCstr, NSE
                            userInfo:@{NSLocalizedDescriptionKey : description}];
 }
 
-void ORTSaveExceptionToError(const Ort::Exception& e, NSError** error) {
+void ORTSaveOrtExceptionToError(const Ort::Exception& e, NSError** error) {
   ORTSaveCodeAndDescriptionToError(e.GetOrtErrorCode(), e.what(), error);
+}
+
+void ORTSaveExceptionToError(const std::exception& e, NSError** error) {
+  ORTSaveCodeAndDescriptionToError(ORT_RUNTIME_EXCEPTION, e.what(), error);
 }
 
 NS_ASSUME_NONNULL_END

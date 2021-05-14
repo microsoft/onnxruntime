@@ -13,7 +13,8 @@ namespace onnxruntime {
 class LSTMBase {
  protected:
   LSTMBase(const OpKernelInfo& info)
-      : clip_(info.GetAttrOrDefault<float>("clip", std::numeric_limits<float>::max())) {
+      : clip_(info.GetAttrOrDefault<float>("clip", std::numeric_limits<float>::max())),
+        layout_(info.GetAttrOrDefault("layout", static_cast<int64_t>(0))) {
     std::string direction;
     ORT_ENFORCE(info.GetAttr("direction", &direction).IsOK());
 
@@ -46,6 +47,9 @@ class LSTMBase {
     activation_funcs_ = rnn::detail::ActivationFuncs(activation_func_names,
                                                      activation_func_alphas,
                                                      activation_func_betas);
+
+    ORT_ENFORCE(layout_ == 0,
+                "Batchwise recurrent operations (layout == 1) are not supported. If you need support create a github issue with justification.");
   }
 
   ~LSTMBase() = default;
@@ -70,6 +74,7 @@ class LSTMBase {
   int hidden_size_ = 0;
   float clip_;
   bool input_forget_ = false;
+  int64_t layout_;
 
   rnn::detail::ActivationFuncs activation_funcs_;
 };
