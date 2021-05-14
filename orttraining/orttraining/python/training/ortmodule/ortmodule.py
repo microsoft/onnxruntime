@@ -16,28 +16,31 @@ from typing import Iterator, Optional, Tuple, TypeVar
 T = TypeVar('T', bound='Module')
 
 class ORTModule(torch.nn.Module):
-    """Specializes a user torch.nn.Module to leverage ONNX Runtime graph execution.
+    """Extends user's :class:`torch.nn.Module` model to leverage ONNX Runtime super fast training engine.
 
-    ORTModule specializes the user's torch.nn.Module and provides forward, backward
-    implementations be leveraging ONNX Runtime.
+    ORTModule specializes the user's :class:`torch.nn.Module` model, providing :meth:`~torch.nn.Module.forward`,
+    :meth:`~torch.nn.Module.backward` along with all others :class:`torch.nn.Module` APIs leveraging ONNX Runtime.
 
-    ORTModule interacts with:
-    - GraphExecutionManagerFactory: Which returns a GraphExecutionManager based on
-    whether or not the user's torch module is in training mode or eval mode.
-    - GraphExecutionManager: Responsible for building and executing the forward and backward graphs.
-        - InferenceManager(GraphExecutionManager): Responsible for building, optimizing
-        and executing the inference onnx graph.
-        - TrainingManager(GraphExecutionManager): Responsible for building, optimizing
-        and executing the training onnx graph.
+    ORTModule interacts with
 
-        The GraphExecutionManager first exports the user model into an onnx model.
-        Following that, GraphExecutionManager interacts with OrtModuleGraphBuilder to optimize the onnx graph.
-        Once the onnx graph has been optimized, an ExecutionAgent is instantiated that
-        facilitates in executing the forward and backward subgraphs of the onnx model.
+    * | :class:`GraphExecutionManagerFactory` which returns a :class:`GraphExecutionManager` based on
+      | whether or not the user's torch module is in training mode or eval mode
 
-    - _ortmodule_io: Provides utilities to transform the user inputs and outputs of the model.
-        - It facilitates in flattening the output from the user's PyTorch model (since exporting
-        of nested structures is not supported at the moment)
+    * :class:`GraphExecutionManager` builds and execute the forward/backward graphs
+
+        * | :class:`InferenceManager(GraphExecutionManager)` builds, optimizes and execute the inference ONNX graph
+
+        * | :class:`TrainingManager(GraphExecutionManager)` builds, optimizes and executes the
+          | training onnx graph. The :class:`GraphExecutionManager` first exports the user model into an ONNX model.
+          | Next, :class:`GraphExecutionManager` interacts with :class:`OrtModuleGraphBuilder` to optimize it.
+          | Finally, :class:`ExecutionAgent` is instantiated using the optimized ONNX graph to
+          | facilitate execution of the forward/backward subgraphs of the ONNX model
+
+    * py:module:`_io` provides utilities to transform the user inputs and outputs for the model
+
+        * | It facilitates in flattening the output from the user's PyTorch model (since exporting
+          | of nested structures is not supported at the moment)
+
     """
 
     def __init__(self, module):
@@ -75,6 +78,13 @@ class ORTModule(torch.nn.Module):
         self._flattened_module = _io._FlattenedModule(self._original_module)
 
         self._execution_manager = GraphExecutionManagerFactory(self._flattened_module)
+
+    # IMPORTANT: DO NOT add code here
+    # This declaration is for automatic document generation purposes only
+    # The actual forward implementation is bound during ORTModule initialization
+    def forward(self, *inputs, **kwargs):
+        '''Dummy documentation for forward method'''
+        ...
 
     def _is_training(self):
         return self._flattened_module.training and torch.is_grad_enabled()
