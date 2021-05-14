@@ -27,7 +27,7 @@ NS_ASSUME_NONNULL_BEGIN
  * @param[out] error Optional error information set if an error occurs.
  * @return The instance, or nil if an error occurs.
  */
-- (nullable instancetype)initTensorWithData:(NSMutableData*)tensorData
+- (nullable instancetype)initWithTensorData:(NSMutableData*)tensorData
                                 elementType:(ORTTensorElementDataType)elementType
                                       shape:(NSArray<NSNumber*>*)shape
                                       error:(NSError**)error;

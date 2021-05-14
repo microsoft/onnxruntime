@@ -81,7 +81,7 @@ TEST(QDQTransformerTests, Conv) {
 }
 
 TEST(QDQTransformerTests, ConvMaxPoolReshape_UInt8) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape, int opset_version) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
       auto* output_arg = builder.MakeOutput();
@@ -118,16 +118,23 @@ TEST(QDQTransformerTests, ConvMaxPoolReshape_UInt8) {
       EXPECT_EQ(op_to_count["QLinearConv"], 1);
       EXPECT_EQ(op_to_count["MaxPool"], 1);
       EXPECT_EQ(op_to_count["Reshape"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+      EXPECT_EQ(op_to_count["QuantizeLinear"], opset_version < 12 ? 2 : 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], opset_version < 12 ? 1 : 0);
     };
 
-    TransformerTester(build_test_case, check_mp_reshape_graph, TransformerLevel::Level1, TransformerLevel::Level2);
+    TransformerTester(build_test_case,
+                      check_mp_reshape_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2,
+                      opset_version);
   };
 
-  test_case({1, 12, 37}, {32, 12, 5});
-  test_case({1, 23, 13, 13}, {30, 23, 3, 3});
-  test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3});
+  test_case({1, 12, 37}, {32, 12, 5}, 11);
+  test_case({1, 12, 37}, {32, 12, 5}, 12);
+  test_case({1, 23, 13, 13}, {30, 23, 3, 3}, 11);
+  test_case({1, 23, 13, 13}, {30, 23, 3, 3}, 12);
+  test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3}, 11);
+  test_case({1, 22, 11, 13, 15}, {30, 22, 5, 3, 3}, 12);
 }
 
 TEST(QDQTransformerTests, ConvMaxPoolReshape_Int8) {
@@ -317,7 +324,7 @@ TEST(QDQTransformerTests, Transpose_No_Fusion) {
       builder.AddDequantizeLinearNode<int8_t>(input1_arg, .003f, 1, dq_output);
 
       // add Transpose
-      auto* transpose_output = builder.MakeOutput(); // transpose output is graph output
+      auto* transpose_output = builder.MakeOutput();  // transpose output is graph output
       Node& transpose_node = builder.AddNode("Transpose", {dq_output}, {transpose_output});
       transpose_node.AddAttribute("perm", perms);
 

@@ -1784,6 +1784,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>auto_pad must be either NOTSET, SAME_UPPER, SAME_LOWER or VALID. Where default value is NOTSET, which means explicit padding is used. SAME_UPPER or SAME_LOWER mean pad the input so that the output spatial size match the input.In case of odd number add the extra padding at the end for SAME_UPPER and at the beginning for SAME_LOWER. VALID mean no padding.</dd>
 <dt><tt>ceil_mode</tt> : int</dt>
 <dd>Whether to use ceil or floor (default) to compute the output shape.</dd>
+<dt><tt>channels_last</tt> : int</dt>
+<dd>Works on NHWC layout or not? Default not.</dd>
 <dt><tt>count_include_pad</tt> : int</dt>
 <dd>Whether include pad pixels when calculating values for the edges. Default is 0, doesn't count include pad.</dd>
 <dt><tt>kernel_shape</tt> : list of ints (required)</dt>
