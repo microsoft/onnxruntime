@@ -9,7 +9,7 @@ import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, TextureData, WebGLOperator} from '../types';
 import {TextureLayout} from '../types';
 
-import {unpackFromChannel} from './packing_utils';
+import {unpackFromChannel} from './packing-utils';
 
 export class WebGLReshapePacked extends Reshape implements WebGLOperator {
   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
