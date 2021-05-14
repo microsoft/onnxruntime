@@ -51,11 +51,6 @@ void FuseResidualAddIfAny(Graph& graph, const Node& dropout_node,
           continue;
         }
 
-        // dropout's output is not part of the graph output
-        if (!graph.GetNodeOutputsInGraphOutputs(dropout_node).empty()) {
-          continue;
-        }
-
         Node& residual_add_node = *graph.GetNode(last_node.Index());
         const std::string& dropout_output_name = dropout_node.OutputDefs()[0]->Name();
         if (dropout_output_name == residual_add_node.InputDefs()[0]->Name()) {
