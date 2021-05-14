@@ -13,8 +13,8 @@ namespace torch {
 
 RefCountTracker::RefCountTracker() {
   addr_info_map_ = {
-      {RefCountTracker::ObjCategory::CallbackFunction, func_addresses_},
       {RefCountTracker::ObjCategory::ForwardArgs, forward_arg_addresses_},
+      {RefCountTracker::ObjCategory::ReturnValues, return_value_addresses_},
   };
 }
 
@@ -27,7 +27,7 @@ void RefCountTracker::TrackPyObject(RefCountTracker::ObjCategory category, PyObj
   } else {
     addrs[addr].push_back(log_tag);
   }
-  std::cout << "Track" << ObjCategoryToString(category) << "\t - \tAddress: [" << addr << "] \tRefCnt: " << Py_REFCNT(addr) << " \tLogTag: " << log_tag << std::endl;
+  std::cout << "Track" << ObjCategoryToString(category) << "\tAddress: [" << addr << "]\tRefCnt: " << Py_REFCNT(addr) << "\tLogTag: " << log_tag << std::endl;
 }
 
 void RefCountTracker::DumpDetails() {

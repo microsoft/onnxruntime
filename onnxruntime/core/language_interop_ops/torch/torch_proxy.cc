@@ -50,6 +50,8 @@ void DlpackCapsuleDestructor(PyObject* data) {
 bool ExtractPointerOutput(PyObject* pyObj, std::vector<void*>& outputs) {
   void* prt = PyLong_AsVoidPtr(pyObj);
   outputs.push_back(prt);
+  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ReturnValues,
+                                               pyObj, "python_invoke_results");
   return true;
 }
 
@@ -59,22 +61,62 @@ TorchProxy& TorchProxy::GetInstance() {
 }
 
 #ifndef NDEBUG
-void PyTuple_SetItem_Incref(PyObject* py_tuple, size_t index, PyObject* item, std::string log_tag) {
+PyObject* Ort_PyTuple_New(const size_t len, std::string log_tag) {
+  PyObject* item = PyTuple_New(len);
   RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
 #else
-void PyTuple_SetItem_Incref(PyObject* py_tuple, size_t index, PyObject* item, std::string /*log_tag*/) {
+PyObject* Ort_PyTuple_New(const size_t len, std::string /*log_tag*/) {
+  PyObject* item = PyTuple_New(len);
+#endif
+  return item;
+}
+
+#ifndef NDEBUG
+void Ort_PyTuple_SetItem_Incref(PyObject* py_tuple, size_t index, PyObject* item, std::string log_tag) {
+  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
+#else
+void Ort_PyTuple_SetItem_Incref(PyObject* py_tuple, size_t index, PyObject* item, std::string /*log_tag*/) {
 #endif
   Py_INCREF(item);
   PyTuple_SetItem(py_tuple, index, item);
 }
 
 #ifndef NDEBUG
-void PyList_SetItem_Incref(PyObject* py_list, size_t index, PyObject* item, std::string log_tag) {
+void Ort_PyTuple_SetItem_NoIncref(PyObject* py_tuple, size_t index, PyObject* item, std::string log_tag) {
   RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
 #else
-void PyList_SetItem_Incref(PyObject* py_list, size_t index, PyObject* item, std::string /*log_tag*/) {
+void Ort_PyTuple_SetItem_NoIncref(PyObject* py_tuple, size_t index, PyObject* item, std::string /*log_tag*/) {
+#endif
+  PyTuple_SetItem(py_tuple, index, item);
+}
+
+#ifndef NDEBUG
+PyObject* Ort_PyList_New(const size_t len, std::string log_tag) {
+  PyObject* item = PyList_New(len);
+  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
+#else
+PyObject* Ort_PyList_New(const size_t len, std::string /*log_tag*/) {
+  PyObject* item = PyList_New(len);
+#endif
+  return item;
+}
+
+#ifndef NDEBUG
+void Ort_PyList_SetItem_Incref(PyObject* py_list, size_t index, PyObject* item, std::string log_tag) {
+  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
+#else
+void Ort_PyList_SetItem_Incref(PyObject* py_list, size_t index, PyObject* item, std::string /*log_tag*/) {
 #endif
   Py_INCREF(item);
+  PyList_SetItem(py_list, index, item);
+}
+
+#ifndef NDEBUG
+void Ort_PyList_SetItem_NoIncref(PyObject* py_list, size_t index, PyObject* item, std::string log_tag) {
+  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
+#else
+void Ort_PyList_SetItem_NoIncref(PyObject* py_list, size_t index, PyObject* item, std::string /*log_tag*/) {
+#endif
   PyList_SetItem(py_list, index, item);
 }
 
@@ -114,21 +156,18 @@ void CheckArguments(
 PyObject* CreateTensorFlags(
     const size_t len,
     const std::vector<int64_t>& tensor_indices) {
-  PyObject* flags = PyList_New(len);
-#ifndef NDEBUG
-  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, flags,
-                                               std::to_string(__LINE__));
-#endif
+  PyObject* flags = Ort_PyList_New(len, "tensor_flags_list");
+
   // First we fill the list with 0. Later we will
   // assign 1's to tensors' corresponding positions.
   for (size_t i = 0; i < len; ++i) {
     PyObject* zero = PyLong_FromLong(0);
-    PyList_SetItem_Incref(flags, i, zero, std::to_string(__LINE__));
+    Ort_PyList_SetItem_Incref(flags, i, zero, std::to_string(__LINE__));
   }
 
   for (const auto i : tensor_indices) {
     PyObject* one = PyLong_FromLong(1);
-    PyList_SetItem_Incref(flags, i, one, std::to_string(__LINE__));
+    Ort_PyList_SetItem_Incref(flags, i, one, std::to_string(__LINE__));
   }
 
   return flags;
@@ -137,11 +176,7 @@ PyObject* CreateTensorFlags(
 // flags[i] corresponds to the i-th input of apply/backward.
 PyObject* CreateRequiresGradFlags(
     const std::vector<int64_t>& requires_grads) {
-  PyObject* flags = PyList_New(requires_grads.size());
-#ifndef NDEBUG
-  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, flags,
-                                               std::to_string(__LINE__));
-#endif
+  PyObject* flags = Ort_PyList_New(requires_grads.size(), "require_grads_list");
   for (size_t i = 0; i < requires_grads.size(); ++i) {
     PyObject* value;
     if (requires_grads.at(i) != 0) {
@@ -149,7 +184,7 @@ PyObject* CreateRequiresGradFlags(
     } else {
       value = PyLong_FromLong(0);
     }
-    PyList_SetItem_Incref(flags, i, value, std::to_string(__LINE__));
+    Ort_PyList_SetItem_Incref(flags, i, value, std::to_string(__LINE__));
   }
   return flags;
 }
@@ -183,36 +218,29 @@ std::unique_ptr<PythonObjectPtr> CreateForwardArguments(
   int64_t num_args_without_inputs = 4;
 
   // All arguments created for Python call will be destroyed along with PythonObjectPtr.
-  auto args = std::make_unique<PythonObjectPtr>(PyTuple_New(num_args_without_inputs + len));
+  auto args = std::make_unique<PythonObjectPtr>(Ort_PyTuple_New(num_args_without_inputs + len,
+                                                                "forward_arguments_tuple"));
   PyObject* tensor_flags = CreateTensorFlags(len, tensor_indices);
   PyObject* requires_grad_flags = CreateRequiresGradFlags(requires_grads);
-  Py_INCREF(callback);
-#ifndef NDEBUG
-  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::CallbackFunction,
-                                               callback, "callback");
-#endif
-  PyTuple_SetItem(args->get(), 0, callback);
-  PyTuple_SetItem(args->get(), 1, requires_grad_flags);
-  PyTuple_SetItem(args->get(), 2, tensor_flags);
+
+  Ort_PyTuple_SetItem_Incref(args->get(), 0, callback, "callback_function");
+  Ort_PyTuple_SetItem_NoIncref(args->get(), 1, requires_grad_flags, "requires_grad_flags");
+  Ort_PyTuple_SetItem_NoIncref(args->get(), 2, tensor_flags, "tensor_flags");
   PyObject* is_training = is_training_mode ? Py_True : Py_False;
-  PyTuple_SetItem_Incref(args->get(), 3, is_training, "is_training_mode");
+  Ort_PyTuple_SetItem_Incref(args->get(), 3, is_training, "is_training_mode");
 
   for (size_t i = 0; i < tensor_args.size(); ++i) {
     // Wrap with DLPack, then transfer to Python for its release.
     DLManagedTensor* dlmanaged_tensor = onnxruntime::python::OrtValueToDlpack(*tensor_args[i]);
     PyObject* dltensor = PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
-
-#ifndef NDEBUG
-    RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs,
-                                                 dltensor, "dltensor");
-#endif
-    PyTuple_SetItem(args->get(), num_args_without_inputs + tensor_indices[i], dltensor);
+    Ort_PyTuple_SetItem_NoIncref(args->get(), num_args_without_inputs + tensor_indices[i], dltensor,
+                                 "dltensor");
   }
 
   for (size_t i = 0; i < obj_args.size(); ++i) {
     PyObject* pyobj = reinterpret_cast<PyObject*>(obj_args[i]);
-    PyTuple_SetItem_Incref(args->get(), num_args_without_inputs + obj_indices[i], pyobj,
-                           "const_args");
+    Ort_PyTuple_SetItem_Incref(args->get(), num_args_without_inputs + obj_indices[i], pyobj,
+                               "const_args");
   }
 
   return args;
@@ -230,9 +258,9 @@ void Invoke(
     bool is_training_mode) {
   const auto len = tensor_args.size() + obj_args.size();
   CheckArguments(len, requires_grads, tensor_args, tensor_indices, obj_args, obj_indices);
-#ifndef NDEBUG
-  RefCountTracker::GetInstance().Reset();
-#endif
+  // #ifndef NDEBUG
+  //   RefCountTracker::GetInstance().Reset();
+  // #endif
   {
     auto args = CreateForwardArguments(
         callback,
