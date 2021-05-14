@@ -737,4 +737,27 @@ class GraphImpl implements Graph, Graph.Transformer {
       nodeIndex++;
     }
   }
+
+  isActivation(n: Node): boolean {
+    switch (n.opType) {
+      // TODO: add other activation methods
+      case 'Relu':
+      case 'Sigmoid':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  fuseConvActivationNodes() {
+    for (const node of this._nodes) {
+      if (node.opType === 'Conv') {
+        const next = this._allData[node.outputs[0]]._to;
+        if (next.length === 1 && this.isActivation(this._nodes[next[0]])) {
+          node.attributes.set('__internal_activation', 'string', (this._nodes[next[0]].opType));
+          this.deleteNode(next[0]);
+        }
+      }
+    }
+  }
 }

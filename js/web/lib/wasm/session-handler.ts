@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 import {onnx} from 'onnx-proto';
-import {InferenceSession, SessionHandler, Tensor, TypedTensor} from 'onnxruntime-common';
-import {getInstance} from './binding';
+import {env, InferenceSession, SessionHandler, Tensor, TypedTensor} from 'onnxruntime-common';
+import {getInstance} from './wasm-factory';
 
 let ortInit: boolean;
 
@@ -113,7 +113,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   loadModel(model: Uint8Array): void {
     const wasm = getInstance();
     if (!ortInit) {
-      wasm._OrtInit();
+      wasm._OrtInit(env.wasm.numThreads!, 2 /* LoggingLevel::Warning */);
       ortInit = true;
     }
 

@@ -5,7 +5,15 @@
 import onnx
 from onnx import helper, AttributeProto, TensorProto, GraphProto
 import os
-from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+
+if os.path.exists(os.path.join(os.path.dirname(__file__), '..', '..', 'python', 'tools', 'symbolic_shape_infer.py')):
+    # Allow running this test script without installing onnxruntime package.
+    import sys
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'python', 'tools'))
+    from symbolic_shape_infer import SymbolicShapeInference
+else:
+    from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+
 from pathlib import Path
 import unittest
 
@@ -29,7 +37,7 @@ class TestSymbolicShapeInference(unittest.TestCase):
                                                 guess_output_rank=True)
 
 
-class TestSymbolicShapeInferenceForUnsqueeze(unittest.TestCase):
+class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
     def _check_shapes(self, graph, inferred_graph, vis):  # type: (GraphProto, GraphProto, List[ValueInfoProto]) -> None
         names_in_vis = set(x.name for x in vis)
         vis = list(x for x in graph.value_info if x.name not in names_in_vis) + vis
@@ -57,7 +65,7 @@ class TestSymbolicShapeInferenceForUnsqueeze(unittest.TestCase):
         ])
         model = helper.make_model(graph, producer_name='Unsqueeze_Test_Model')
         model.opset_import[0].version = 11
-        
+
         inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
         expected_shapes = [
             helper.make_tensor_value_info('temp', TensorProto.FLOAT, [1, 'b', 's']),
@@ -83,6 +91,46 @@ class TestSymbolicShapeInferenceForUnsqueeze(unittest.TestCase):
         expected_shapes = [
             helper.make_tensor_value_info('temp', TensorProto.FLOAT, ['b', 's', 1]),
             helper.make_tensor_value_info('output', TensorProto.FLOAT, ['b', 's', 1])
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_embed_layer_norm(self):
+        hidden_size = 32
+        initializers = [
+            helper.make_tensor('word_embedding', TensorProto.FLOAT, [100, hidden_size], [1.0] * (100 * hidden_size)),
+            helper.make_tensor('position_embedding', TensorProto.FLOAT, [20, hidden_size], [1.0] * (20 * hidden_size)),
+            helper.make_tensor('segment_embedding', TensorProto.FLOAT, [2, hidden_size], [1.0] * (2 * hidden_size)),
+            helper.make_tensor('gamma', TensorProto.FLOAT, [hidden_size], [1.0] * hidden_size),
+            helper.make_tensor('beta', TensorProto.FLOAT, [hidden_size], [1.0] * hidden_size)
+        ]
+
+        nodes = [
+            helper.make_node("EmbedLayerNormalization",
+                             inputs=[
+                                 "input_ids", "segment_ids", "word_embedding", "position_embedding",
+                                 "segment_embedding", "gamma", "beta"
+                             ],
+                             outputs=["output", "mask_index"],
+                             domain="com.microsoft"),
+        ]
+
+        inputs = [
+            helper.make_tensor_value_info('input_ids', TensorProto.FLOAT, ['b', 's']),
+            helper.make_tensor_value_info('segment_ids', TensorProto.FLOAT, ['b', 's']),
+        ]
+
+        outputs = [
+            helper.make_tensor_value_info('output', TensorProto.FLOAT, None),
+            helper.make_tensor_value_info('mask_index', TensorProto.INT32, None),
+        ]
+
+        graph = helper.make_graph(nodes, "Unsqueeze_Test", inputs, outputs, initializers)
+        model = helper.make_model(graph)
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+        expected_shapes = [
+            helper.make_tensor_value_info('output', TensorProto.FLOAT, ['b', 's', hidden_size]),
+            helper.make_tensor_value_info('mask_index', TensorProto.INT32, ['b'])
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
 

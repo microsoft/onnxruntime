@@ -41,7 +41,7 @@ target_link_libraries(onnxruntime_webassembly PRIVATE
 
 set(EXTRA_EXPORTED_RUNTIME_METHODS "['stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8']")
 
-set_target_properties(onnxruntime_webassembly PROPERTIES LINK_FLAGS "                                \
+set_target_properties(onnxruntime_webassembly PROPERTIES LINK_FLAGS "                         \
                       -s \"EXTRA_EXPORTED_RUNTIME_METHODS=${EXTRA_EXPORTED_RUNTIME_METHODS}\" \
                       -s WASM=1                                                               \
                       -s NO_EXIT_RUNTIME=0                                                    \

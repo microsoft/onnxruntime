@@ -53,9 +53,9 @@ static SessionOptions session_options = {
     true,                              //use_per_session_threads
     true,                              //thread_pool_allow_spinning
     false,                             //use_deterministic_compute
-    {},                                //session_configurations
+    {},                                //config_options
     {},                                // initializers_to_share_map
-}; 
+};
 
 struct BertParameters : public TrainingRunner::Parameters {
   int max_sequence_length = 512;
@@ -798,17 +798,17 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
     ORT_RETURN_IF_ERROR(runner->UpdateParams(params_for_phase));
     auto rank_in_data_parallel_group = (MPIContext::GetInstance().GetWorldRank() / params_for_phase.horizontal_parallel_size) % params_for_phase.data_parallel_size;
     auto training_data_loader = std::make_unique<DataLoader>(params_for_phase.input_name_map,
-                                                                     params_for_phase.train_data_dir,
-                                                                     max_num_files_preload,
-                                                                     rank_in_data_parallel_group,
-                                                                     params_for_phase.data_parallel_size);
+                                                             params_for_phase.train_data_dir,
+                                                             max_num_files_preload,
+                                                             rank_in_data_parallel_group,
+                                                             params_for_phase.data_parallel_size);
 
     auto test_data_loader = std::unique_ptr<DataLoader>{};
     // Evaluation is only done in device #0
     if (MPIContext::GetInstance().GetWorldRank() == 0) {
       test_data_loader = std::make_unique<DataLoader>(params_for_phase.input_name_map,
-                                                              params_for_phase.test_data_dir,
-                                                              max_num_files_preload);
+                                                      params_for_phase.test_data_dir,
+                                                      max_num_files_preload);
     }
 
     if (!params.perf_output_dir.empty()) {
@@ -836,7 +836,8 @@ int main(int argc, char* argv[]) {
   OrtParameters ort_params{};
   RETURN_IF_FAIL(ParseArguments(argc, argv, params, ort_params));
   bool keep_looping = params.debug_break;
-  while(keep_looping);
+  while (keep_looping)
+    ;
 
   // setup logger, be noted: LOGS_DEFAULT must be after logging manager initialization.
   string default_logger_id{"Default"};
