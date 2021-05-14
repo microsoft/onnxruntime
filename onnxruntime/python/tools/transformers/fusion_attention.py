@@ -85,11 +85,10 @@ class FusionAttention(Fusion):
     """
     Fuse Attention subgraph into one Attention node.
     """
-    def __init__(self, model: OnnxModel, hidden_size: int, num_heads: int, head_size: int, attention_mask: AttentionMask):
+    def __init__(self, model: OnnxModel, hidden_size: int, num_heads: int, attention_mask: AttentionMask):
         super().__init__(model, "Attention", ["SkipLayerNormalization", "LayerNormalization"])
         self.hidden_size = hidden_size
         self.num_heads = num_heads
-        self.head_size = head_size
         self.attention_mask = attention_mask
 
     def get_num_heads_and_hidden_size(self, reshape_q: NodeProto) -> Tuple[int, int]:

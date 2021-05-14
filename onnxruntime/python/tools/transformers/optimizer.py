@@ -306,9 +306,7 @@ def optimize_model(input,
     if optimization_options is None:
         optimization_options = BertOptimizationOptions(model_type)
 
-    if head_size <= 0:
-        head_size = hidden_size / num_heads
-    optimizer = optimizer_class(model, num_heads, hidden_size, head_size)
+    optimizer = optimizer_class(model, num_heads, hidden_size)
 
     if not only_onnxruntime:
         optimizer.optimize(optimization_options)
@@ -345,7 +343,6 @@ def main():
     optimizer = optimize_model(args.input,
                                args.model_type,
                                args.num_heads,
-                               args.head_size,
                                args.hidden_size,
                                opt_level=args.opt_level,
                                optimization_options=optimization_options,

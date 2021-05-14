@@ -59,11 +59,10 @@ class BertOnnxModel(OnnxModel):
 
         super().__init__(model)
         self.num_heads = num_heads
-        self.head_size = head_size
         self.hidden_size = hidden_size
 
         self.attention_mask = AttentionMask(self)
-        self.attention_fusion = FusionAttention(self, self.hidden_size, self.num_heads, self.head_size, self.attention_mask)
+        self.attention_fusion = FusionAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
         self.utils = FusionUtils(self)
 
     def fuse_attention(self):
