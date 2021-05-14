@@ -30,14 +30,14 @@ AllocatorPtr PrepackedWeightsContainer::GetAllocator(const std::string& device_n
   }
 }
 
-const PrePackedWeights& PrepackedWeightsContainer::GetWeight(const std::string& key) {
-  ORT_ENFORCE(HasWeight(key), "PrepackedWeightsContainer does not have an initializer with the same key: ", key);
-  return prepacked_weights_map_[key];
+const PrePackedWeights& PrepackedWeightsContainer::GetWeight(const std::string& key) const {
+  // .at() will throw if th key doesn't exist
+  return prepacked_weights_map_.at(key);
 }
 
-void PrepackedWeightsContainer::WriteWeight(const std::string& key, PrePackedWeights&& packed_weight) {
-  ORT_ENFORCE(!HasWeight(key), "PrepackedWeightsContainer already has an initializer with the same key: ", key);
-  prepacked_weights_map_.insert({key, std::move(packed_weight)});
+bool PrepackedWeightsContainer::WriteWeight(const std::string& key, PrePackedWeights&& packed_weight) {
+  auto ret = prepacked_weights_map_.insert({key, std::move(packed_weight)});
+  return ret.second;
 }
 
 bool PrepackedWeightsContainer::HasWeight(const std::string& key) const {

@@ -25,13 +25,22 @@ class PrepackedWeightsContainer final {
 
   AllocatorPtr GetAllocator(const std::string& device_name);
 
-  const PrePackedWeights& GetWeight(const std::string& key);
+  // Returns the PrePackedWeights instance pertaining to the provided key.
+  // The key is : op_type + "+" + hash_of_prepacked_buffers_in_the_PrepackedWeights_instance.
+  // Throws an exception if the key doesn't exist
+  const PrePackedWeights& GetWeight(const std::string& key) const;
 
-  void WriteWeight(const std::string& key, PrePackedWeights&& packed_weight);
+  // Writes the PrePackedWeights instance pertaining to the provided key.
+  // The key is : op_type + "+" + hash_of_prepacked_buffers_in_the_PrepackedWeights_instance.
+  // Returns a boolean indicating if the insertion took place.
+  bool WriteWeight(const std::string& key, PrePackedWeights&& packed_weight);
 
+  // Returns a boolean indicating if there is a PrePackedWeights instance
+  // pertaining to the provided key.
+  // The key is : op_type + "+" + hash_of_prepacked_buffers_in_the_PrepackedWeights_instance.
   bool HasWeight(const std::string& key) const;
 
-  // Not thread-safe
+  // Returns the number of elements in the container
   size_t GetNumberOfElements() const;
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PrepackedWeightsContainer);

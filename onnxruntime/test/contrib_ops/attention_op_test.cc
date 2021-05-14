@@ -1662,7 +1662,7 @@ TEST(AttentionTest, SharedPrepackedWeights) {
   ASSERT_EQ(so.AddInitializer("weight", &weight), Status::OK());
 
   // We want all sessions running using this OpTester to be able to share pre-packed weights if applicable
-  tester.AddPrePackedSharedContainerToSessions();
+  tester.EnableSharingOfPrePackedWeightsAcrossSessions();
 
   // Pre-packing is limited just to the CPU EP for now and we will only test the CPU EP
   // and we want to ensure that it is available in this build
@@ -1685,7 +1685,7 @@ TEST(AttentionTest, SharedPrepackedWeights) {
   }
 
   auto number_of_elements_in_shared_prepacked_buffers_container =
-      tester.GetNumberOfElementsInPrePackedSharedContainer();
+      tester.GetNumPrePackedWeightsShared();
   // Assert that the number of elements in the shared container
   // is the same as the number of weights that have been pre-packed
   ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_elements_in_shared_prepacked_buffers_container);

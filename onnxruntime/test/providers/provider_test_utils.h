@@ -491,11 +491,11 @@ class OpTester {
     use_determinism_ = use_determinism;
   }
 
-  void AddPrePackedSharedContainerToSessions() {
+  void EnableSharingOfPrePackedWeightsAcrossSessions() {
     add_prepacked_shared_container_to_sessions_ = true;
   }
 
-  size_t GetNumberOfElementsInPrePackedSharedContainer() const {
+  size_t GetNumPrePackedWeightsShared() const {
     return prepacked_weights_container_.GetNumberOfElements();
   }
 

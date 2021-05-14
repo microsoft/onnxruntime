@@ -259,7 +259,7 @@ void SessionState::CleanInitializedTensorsFromGraph() {
   graph_.CleanAllInitializedTensors();
 }
 
-static Status KernelUseSharedPrePackedBuffers(OpKernel* kernel, int input_idx,
+static Status KernelUseSharedPrePackedBuffers(OpKernel& kernel, int input_idx,
                                               const PrePackedWeights& prepacked_weights,
                                               const std::string& node_name) {
   std::vector<BufferUniquePtr> shared_prepacked_buffers;
@@ -271,7 +271,7 @@ static Status KernelUseSharedPrePackedBuffers(OpKernel* kernel, int input_idx,
   }
 
   bool used_shared_buffers = false;
-  ORT_RETURN_IF_ERROR(kernel->UseSharedPrePackedBuffers(shared_prepacked_buffers, input_idx, used_shared_buffers));
+  ORT_RETURN_IF_ERROR(kernel.UseSharedPrePackedBuffers(shared_prepacked_buffers, input_idx, used_shared_buffers));
 
   // BUG CHECK: Ensure that the kernel used the provided shared buffers
   // Mostly a debug check to ensure that the kernel has an overridden implementation of the
@@ -358,15 +358,17 @@ Status SessionState::PrepackConstantInitializedTensors(std::unordered_map<std::s
                       LOGS(logger_, INFO) << "Using cached version of pre-packed weight for constant initializer: " << input_name
                                           << " used in the node: " << node.Name() << " which is of op type: " << node.OpType();
 
-                      ORT_RETURN_IF_ERROR(KernelUseSharedPrePackedBuffers(kernel, input_idx,
+                      ORT_RETURN_IF_ERROR(KernelUseSharedPrePackedBuffers(*kernel, input_idx,
                                                                           prepacked_weights_container_->GetWeight(prepacked_weights_container_key),
                                                                           node.Name()));
 
                       ++used_shared_pre_packed_weights_counter_;
                     } else {  // container doesn't contain the pre-packed weight - so write into it for sharing across kernel instances
 
-                      prepacked_weights_container_->WriteWeight(prepacked_weights_container_key, std::move(weights_to_be_filled_in));
-                      ORT_RETURN_IF_ERROR(KernelUseSharedPrePackedBuffers(kernel, input_idx,
+                      if (!prepacked_weights_container_->WriteWeight(prepacked_weights_container_key, std::move(weights_to_be_filled_in))) {
+                        ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to write the provided PrePackedWeights instance into the container");
+                      }
+                      ORT_RETURN_IF_ERROR(KernelUseSharedPrePackedBuffers(*kernel, input_idx,
                                                                           prepacked_weights_container_->GetWeight(prepacked_weights_container_key),
                                                                           node.Name()));
                     }
