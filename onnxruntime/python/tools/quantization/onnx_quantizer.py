@@ -592,7 +592,7 @@ class ONNXQuantizer:
 
         return quantized_bias_name
 
-    def quantize_inputs(self, node, indices, initializer_use_weight_qType=True, symmetric=True, reduce_range=False, per_channel=False, axis=-1):
+    def quantize_inputs(self, node, indices, initializer_use_weight_qType=True, reduce_range=False, per_channel=False, axis=-1):
         '''
         Given a node, this function quantizes the inputs as follows:
             - If input is an initializer, quantize the initializer data, replace old initializer
@@ -625,8 +625,14 @@ class ONNXQuantizer:
             # Quantize the input
             initializer = find_by_name(node_input, self.model.initializer())
             if initializer is not None:
-                q_weight_name, zp_name, scale_name = self.quantize_weight(
-                    initializer, self.weight_qType if initializer_use_weight_qType else self.input_qType)
+                if per_channel:
+                    q_weight_name, zp_name, scale_name = self.quantize_weight_per_channel(
+                        initializer.name, self.weight_qType if initializer_use_weight_qType else self.input_qType,
+                        axis, reduce_range)
+                else:
+                    q_weight_name, zp_name, scale_name = self.quantize_weight(
+                        initializer, self.weight_qType if initializer_use_weight_qType else self.input_qType,
+                        reduce_range)
 
                 quantized_input_names.append(q_weight_name)
                 zero_point_names.append(zp_name)
@@ -651,7 +657,7 @@ class ONNXQuantizer:
 
         return (quantized_input_names, zero_point_names, scale_names, nodes)
 
-    def quantize_weight(self, weight, qType):
+    def quantize_weight(self, weight, qType, reduce_range=False):
         '''
             :param weight: TensorProto initializer
             :param qType: type to quantize to
@@ -667,9 +673,11 @@ class ONNXQuantizer:
         scale_name = weight.name + "_scale"
 
         # Update packed weight, zero point, and scale initializers
+        symmetric = 'symmetric' in self.extra_options and self.extra_options['symmetric']
         weight_data = self.tensor_proto_to_array(weight)
         _, _, zero_point, scale, q_weight_data = quantize_data(weight_data.flatten().tolist(),
-                                                               get_qrange_for_qType(qType, self.reduce_range), qType)
+                                                               get_qrange_for_qType(qType, self.reduce_range and reduce_range),
+                                                               qType, symmetric)
         q_weight_data = np.asarray(q_weight_data, dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[qType]).reshape(weight.dims)
         q_weight_initializer = onnx.numpy_helper.from_array(q_weight_data, q_weight_name)
 
@@ -684,7 +692,7 @@ class ONNXQuantizer:
 
         return q_weight_name, zp_name, scale_name
 
-    def quantize_weight_per_channel(self, weight_name, weight_qType, channel_axis):
+    def quantize_weight_per_channel(self, weight_name, weight_qType, channel_axis, reduce_range=False):
         # Find if this input is already quantized
         if weight_name in self.quantized_value_map:
             quantized_value = self.quantized_value_map[weight_name]
@@ -694,6 +702,7 @@ class ONNXQuantizer:
         if initializer is None:
             raise ValueError("{} is not an initializer", weight_name)
 
+        symmetric = 'symmetric' in self.extra_options and self.extra_options['symmetric']
         weights = self.tensor_proto_to_array(initializer)
         channel_count = weights.shape[channel_axis]
         rmin_list = []
@@ -704,8 +713,9 @@ class ONNXQuantizer:
         for i in range(channel_count):
             per_channel_data = weights.take(i, channel_axis)
             rmin, rmax, zero_point, scale, quantized_per_channel_data = quantize_data(
-                per_channel_data.flatten().tolist(), get_qrange_for_qType(weight_qType, self.reduce_range),
-                weight_qType)
+                per_channel_data.flatten().tolist(),
+                get_qrange_for_qType(weight_qType, self.reduce_range and reduce_range),
+                weight_qType, symmetric)
             rmin_list.append(rmin)
             rmax_list.append(rmax)
             zero_point_list.append(zero_point)

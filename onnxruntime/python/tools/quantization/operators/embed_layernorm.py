@@ -15,7 +15,7 @@ class EmbedLayerNormalizationQuant(QuantOperatorBase):
         assert (node.op_type == "EmbedLayerNormalization")
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
-            self.quantizer.quantize_inputs(node, [2, 3, 4], True, False, False, False)
+            self.quantizer.quantize_inputs(node, [2, 3, 4])
 
         super().quantize()
         self.quantizer.new_nodes += nodes

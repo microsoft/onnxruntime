@@ -21,7 +21,7 @@ class AttentionQuant(QuantOperatorBase):
         assert (node.op_type == "Attention")
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
-            self.quantizer.quantize_inputs(node, [0, 1], True, False, True, True)
+            self.quantizer.quantize_inputs(node, [0, 1], reduce_range=True, per_channel=True)
 
         qattention_name = "" if node.name == "" else node.name + "_quant"
 

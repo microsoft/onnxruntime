@@ -19,7 +19,7 @@ class GatherQuant(QuantOperatorBase):
             return
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
-            self.quantizer.quantize_inputs(node, [0], True, False, False, False)
+            self.quantizer.quantize_inputs(node, [0])
 
         gather_new_output = node.output[0] + "_quantized"
 

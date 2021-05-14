@@ -109,11 +109,16 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
     return arr_fp32.astype(dtype)
 
 
-def compute_scale_zp(rmin, rmax, qType, quantize_range):
+def compute_scale_zp(rmin, rmax, qType, quantize_range, symmetric):
     if qType == onnx_proto.TensorProto.INT8:
-        max_range = max(abs(rmin), abs(rmax))
-        scale = (float(max_range) * 2) / quantize_range if max_range > 0 else 1
-        zero_point = 0
+        if symmetric:
+            max_range = max(abs(rmin), abs(rmax))
+            scale = (float(max_range) * 2) / quantize_range if max_range > 0 else 1.0
+            zero_point = 0
+        else:
+            max_range = float(rmax) - float(rmin)
+            scale = float(max_range) / quantize_range if max_range > 0 else 1.0
+            zero_point = int(int(quantize_range / 2) - rmax / scale)
     elif qType == onnx_proto.TensorProto.UINT8:
         scale = (float(rmax) - rmin) / quantize_range if rmin != rmax else 1
         zero_point = round((0 - rmin) / scale)  # round to nearest integer
@@ -123,11 +128,12 @@ def compute_scale_zp(rmin, rmax, qType, quantize_range):
     return [zero_point, scale]
 
 
-def quantize_data(data, quantize_range, qType):
+def quantize_data(data, quantize_range, qType, symmetric=True):
     '''
         :parameter data: data to quantize
         :parameter quantize_range: list of data to weight pack.
         :parameter qType: data type to quantize to. Supported types UINT8 and INT8
+        :parameter symmetric: whether symmetric quantization is used or not. This is applied to INT8.
         :return: minimum, maximum, zero point, scale, and quantized weights
         To pack weights, we compute a linear transformation
             - when data type == uint8 mode, from [rmin, rmax] -> [0, 2^{b-1}] and
@@ -140,10 +146,10 @@ def quantize_data(data, quantize_range, qType):
             S: scale
             z: zero point
     '''
-    rmin = min(min(data), 0)
-    rmax = max(max(data), 0)
+    rmin = min(min(data), 0.)
+    rmax = max(max(data), 0.)
 
-    zero_point, scale = compute_scale_zp(rmin, rmax, qType, quantize_range)
+    zero_point, scale = compute_scale_zp(rmin, rmax, qType, quantize_range, symmetric)
     quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
 
     return rmin, rmax, zero_point, scale, quantized_data
