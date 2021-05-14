@@ -257,6 +257,42 @@ TEST(MatmulIntegerOpTest, MatMulInteger_WithZero_ZeroPoint) {
   test.Run();
 }
 
+TEST(MatmulIntegerOpTest, MatMulInteger_PerColumn_ND) {
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<uint8_t>("T1",
+                         {2, 2, 4},
+                         {125, 135, 133, 122,
+                          132, 123, 136, 135,
+
+                          125, 135, 133, 122,
+                          132, 123, 136, 135});
+  test.AddInput<int8_t>("T2",
+                        {2, 4, 4},
+                        {0, -8, 2, 3,
+                         -11, -13, -8, 1,
+                         2, 4, 4, -10,
+                         3, 2, -11, 2,
+
+                         0, -8, 2, 3,
+                         -11, -13, -8, 1,
+                         2, 4, 4, -10,
+                         3, 2, -11, 2});
+  test.AddInput<uint8_t>("a_zero_point", {}, {133});
+  test.AddInput<int8_t>("b_zero_point",
+                        {2, 1, 4},
+                        {1, -2, 2, -1,
+                         2, -4, -1, 0});
+  test.AddOutput<int32_t>("T3",
+                          {2, 2, 4},
+                          {-38, -18, 123, -61,
+                           128, 142, 80, -45,
+
+                           -21, -52, 72, -44,
+                           134, 130, 62, -39});
+
+  test.Run();
+}
+
 template <typename T>
 std::vector<T> ToVector(const int* value, int size) {
   std::vector<T> data(size);
@@ -274,7 +310,7 @@ T GetMiddle(const std::vector<T>& v) {
 
 // [M x N] = [M x K] x [K x N] = [batch_seq x input_dim] x [input_dim x embed_dim]
 template <typename ScalarB>
-void RunMatMulIntegerU8X8Test(const int M, const int N, const int K, bool non_zero_zp, bool B_is_initializer) {
+void RunMatMulIntegerU8X8Test(const int M, const int N, const int K, bool non_zero_zp, bool B_is_initializer, bool per_column_zp = false) {
   OpTester test("MatMulInteger", 10);
   static std::default_random_engine e(123);
   static std::uniform_int_distribution<int> n_unsigned(0, 127);
@@ -290,15 +326,26 @@ void RunMatMulIntegerU8X8Test(const int M, const int N, const int K, bool non_ze
                                  .unaryExpr([](int) { return n_xint8(e); });
   std::vector<ScalarB> matrix_b_data = ToVector<ScalarB>(matrix_b.data(), N * K);
   ScalarB b_zero_point = non_zero_zp ? GetMiddle(matrix_b_data) : 0;
-  Eigen::MatrixXi matrix_b_offset = matrix_b - b_zero_point * Eigen::MatrixXi::Ones(N, K);
+  std::vector<ScalarB> b_zp_per_column(N, b_zero_point);
+  Eigen::MatrixXi b_zp_matrix = b_zero_point * Eigen::MatrixXi::Ones(N, K);
+  if (non_zero_zp && per_column_zp) {
+    for (int i = 0; i < N; i++) {
+      b_zp_per_column[i] += i % 2 == 0 ? 1 : -1;
+      b_zp_matrix.row(i).setConstant(b_zp_per_column[i]);
+    }
+  }
 
-  Eigen::MatrixXi matrix_c = (matrix_b_offset * matrix_a_offset).eval();
+  Eigen::MatrixXi matrix_c = ((matrix_b - b_zp_matrix) * matrix_a_offset).eval();
 
   test.AddInput<uint8_t>("T1", {M, K}, std::move(matrix_a_data));
   test.AddInput<ScalarB>("T2", {K, N}, std::move(matrix_b_data), B_is_initializer);
   if (non_zero_zp) {
     test.AddInput<uint8_t>("a_zero_point", {}, {a_zero_point});
-    test.AddInput<ScalarB>("b_zero_point", {}, {b_zero_point});
+    if (per_column_zp) {
+      test.AddInput<ScalarB>("b_zero_point", {N}, b_zp_per_column);
+    } else {
+      test.AddInput<ScalarB>("b_zero_point", {}, {b_zero_point});
+    }
   }
 
   test.AddOutput<int32_t>("T3", {M, N}, ToVector<int32_t>(matrix_c.data(), M * N));
@@ -311,36 +358,45 @@ void RunMatMulIntegerU8X8Test(const int M, const int N, const int K, bool non_ze
   }
 }
 
-#define RUN_MATMUL_INTEGER_U8X8(M, N, K)                                                         \
-  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, false /*non_zero_zp*/, false /*B_is_initializer*/);  \
-  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, false /*non_zero_zp*/, true /*B_is_initializer*/);   \
-  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, true /*non_zero_zp*/, false /*B_is_initializer*/);   \
-  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, true /*non_zero_zp*/, true /*B_is_initializer*/);    \
-  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, false /*non_zero_zp*/, false /*B_is_initializer*/); \
-  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, false /*non_zero_zp*/, true /*B_is_initializer*/);  \
-  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, true /*non_zero_zp*/, false /*B_is_initializer*/);  \
-  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, true /*non_zero_zp*/, true /*B_is_initializer*/);
+void RunMatMulIntegerU8X8TestBatch(const int M, const int N, const int K) {
+  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, false /*non_zero_zp*/, false /*B_is_initializer*/, false /*per_column_zp*/);
+  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, false /*non_zero_zp*/, true /*B_is_initializer*/, false /*per_column_zp*/);
+  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, true /*non_zero_zp*/, false /*B_is_initializer*/, false /*per_column_zp*/);
+  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, true /*non_zero_zp*/, true /*B_is_initializer*/, false /*per_column_zp*/);
+  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, false /*non_zero_zp*/, false /*B_is_initializer*/, false /*per_column_zp*/);
+  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, false /*non_zero_zp*/, true /*B_is_initializer*/, false /*per_column_zp*/);
+  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, true /*non_zero_zp*/, false /*B_is_initializer*/, false /*per_column_zp*/);
+  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, true /*non_zero_zp*/, true /*B_is_initializer*/, false /*per_column_zp*/);
+  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, false /*non_zero_zp*/, false /*B_is_initializer*/, true /*per_column_zp*/);
+  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, false /*non_zero_zp*/, true /*B_is_initializer*/, true /*per_column_zp*/);
+  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, true /*non_zero_zp*/, false /*B_is_initializer*/, true /*per_column_zp*/);
+  RunMatMulIntegerU8X8Test<int8_t>(M, N, K, true /*non_zero_zp*/, true /*B_is_initializer*/, true /*per_column_zp*/);
+  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, false /*non_zero_zp*/, false /*B_is_initializer*/, true /*per_column_zp*/);
+  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, false /*non_zero_zp*/, true /*B_is_initializer*/, true /*per_column_zp*/);
+  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, true /*non_zero_zp*/, false /*B_is_initializer*/, true /*per_column_zp*/);
+  RunMatMulIntegerU8X8Test<uint8_t>(M, N, K, true /*non_zero_zp*/, true /*B_is_initializer*/, true /*per_column_zp*/);
+}
 
 TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_Scalar) {
-  RUN_MATMUL_INTEGER_U8X8(1, 1, 32);
-  RUN_MATMUL_INTEGER_U8X8(1, 1, 260);
-  RUN_MATMUL_INTEGER_U8X8(1, 1, 288);
+  RunMatMulIntegerU8X8TestBatch(1, 1, 32);
+  RunMatMulIntegerU8X8TestBatch(1, 1, 260);
+  RunMatMulIntegerU8X8TestBatch(1, 1, 288);
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMV) {
-  RUN_MATMUL_INTEGER_U8X8(1, 2, 16);
-  RUN_MATMUL_INTEGER_U8X8(1, 2, 64);
-  RUN_MATMUL_INTEGER_U8X8(1, 8, 36);
-  RUN_MATMUL_INTEGER_U8X8(1, 8, 68);
-  RUN_MATMUL_INTEGER_U8X8(1, 8, 400);
-  RUN_MATMUL_INTEGER_U8X8(1, 512, 1024);
+  RunMatMulIntegerU8X8TestBatch(1, 2, 16);
+  RunMatMulIntegerU8X8TestBatch(1, 2, 64);
+  RunMatMulIntegerU8X8TestBatch(1, 8, 36);
+  RunMatMulIntegerU8X8TestBatch(1, 8, 68);
+  RunMatMulIntegerU8X8TestBatch(1, 8, 400);
+  RunMatMulIntegerU8X8TestBatch(1, 512, 1024);
 }
 
 TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMM) {
-  RUN_MATMUL_INTEGER_U8X8(2, 2, 40);
-  RUN_MATMUL_INTEGER_U8X8(2, 48, 33);
-  RUN_MATMUL_INTEGER_U8X8(2, 51, 40);
-  RUN_MATMUL_INTEGER_U8X8(4, 8, 68);
+  RunMatMulIntegerU8X8TestBatch(2, 2, 40);
+  RunMatMulIntegerU8X8TestBatch(2, 48, 33);
+  RunMatMulIntegerU8X8TestBatch(2, 51, 40);
+  RunMatMulIntegerU8X8TestBatch(4, 8, 68);
 }
 
 }  // namespace test
