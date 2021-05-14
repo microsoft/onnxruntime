@@ -30,7 +30,7 @@ export CXXFLAGS="${MANYLINUX_CXXFLAGS}"
 export LDFLAGS="${MANYLINUX_LDFLAGS}"
 ./Tools/pcre-build.sh
 ./configure
-make -j$(nproc)
+make
 make install DESTDIR=/manylinux-rootfs
 popd
 rm -rf ${SWIG_ROOT}*

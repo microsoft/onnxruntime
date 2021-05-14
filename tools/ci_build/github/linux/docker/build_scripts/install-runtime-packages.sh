@@ -48,7 +48,7 @@ else
 	exit 1
 fi
 
-BASETOOLS="autoconf automake bison bzip2 diffutils file hardlink hostname make patch unzip"
+BASETOOLS="autoconf automake bison bzip2 diffutils file hardlink make patch unzip"
 if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ]; then
 	PACKAGE_MANAGER=yum
 	BASETOOLS="${BASETOOLS} which"
@@ -72,22 +72,19 @@ if [ "${AUDITWHEEL_POLICY}" == "manylinux2010" ]; then
 	fi
 elif [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
 	PACKAGE_MANAGER=yum
-	BASETOOLS="${BASETOOLS} which"
+	BASETOOLS="${BASETOOLS} hostname which"
 	# See https://unix.stackexchange.com/questions/41784/can-yum-express-a-preference-for-x86-64-over-i386-packages
 	echo "multilib_policy=best" >> /etc/yum.conf
 	# Error out if requested packages do not exist
 	echo "skip_missing_names_on_install=False" >> /etc/yum.conf
 	# Make sure that locale will not be removed
 	sed -i '/^override_install_langs=/d' /etc/yum.conf
+	# Exclude mirror holding broken package metadata
+	echo "exclude = d36uatko69830t.cloudfront.net" >> /etc/yum/pluginconf.d/fastestmirror.conf
 	yum -y update
 	yum -y install yum-utils curl
 	yum-config-manager --enable extras
-	#Added by @snnn
-	if [ ! -d "/usr/local/cuda-10.2" ]; then
-	  TOOLCHAIN_DEPS="devtoolset-9-binutils devtoolset-9-gcc devtoolset-9-gcc-c++ devtoolset-9-gcc-gfortran"
-	else
-	  TOOLCHAIN_DEPS="devtoolset-8-binutils devtoolset-8-gcc devtoolset-8-gcc-c++ devtoolset-8-gcc-gfortran"
-	fi
+	TOOLCHAIN_DEPS="devtoolset-9-binutils devtoolset-9-gcc devtoolset-9-gcc-c++ devtoolset-9-gcc-gfortran"
 	if [ "${AUDITWHEEL_ARCH}" == "x86_64" ]; then
 		# Software collection (for devtoolset-9)
 		yum -y install centos-release-scl-rh
@@ -104,6 +101,7 @@ elif [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
 	fi
 elif [ "${AUDITWHEEL_POLICY}" == "manylinux_2_24" ]; then
 	PACKAGE_MANAGER=apt
+	BASETOOLS="${BASETOOLS} hostname"
 	export DEBIAN_FRONTEND=noninteractive
 	sed -i 's/none/en_US/g' /etc/apt/apt.conf.d/docker-no-languages
 	apt-get update -qq

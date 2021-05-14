@@ -27,6 +27,7 @@ function pyver_dist_dir {
 CPYTHON_DIST_DIR=$(pyver_dist_dir ${CPYTHON_VERSION})
 fetch_source Python-${CPYTHON_VERSION}.tgz ${CPYTHON_DOWNLOAD_URL}/${CPYTHON_DIST_DIR}
 fetch_source Python-${CPYTHON_VERSION}.tgz.asc ${CPYTHON_DOWNLOAD_URL}/${CPYTHON_DIST_DIR}
+gpg --import ${MY_DIR}/cpython-pubkeys.txt
 gpg --verify Python-${CPYTHON_VERSION}.tgz.asc
 tar -xzf Python-${CPYTHON_VERSION}.tgz
 pushd Python-${CPYTHON_VERSION}
@@ -38,8 +39,8 @@ mkdir -p ${PREFIX}/lib
 	CFLAGS_NODIST="${MANYLINUX_CFLAGS} ${MANYLINUX_CPPFLAGS}" \
 	LDFLAGS_NODIST="${MANYLINUX_LDFLAGS}" \
 	--prefix=${PREFIX} --disable-shared --with-ensurepip=no > /dev/null
-make -j$(nproc) > /dev/null
-make -j$(nproc) install > /dev/null
+make > /dev/null
+make install > /dev/null
 popd
 rm -rf Python-${CPYTHON_VERSION} Python-${CPYTHON_VERSION}.tgz Python-${CPYTHON_VERSION}.tgz.asc
 

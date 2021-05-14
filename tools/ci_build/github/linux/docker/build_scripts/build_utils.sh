@@ -48,8 +48,8 @@ function check_sha256sum {
 
 function do_standard_install {
     ./configure "$@" CPPFLAGS="${MANYLINUX_CPPFLAGS}" CFLAGS="${MANYLINUX_CFLAGS}" "CXXFLAGS=${MANYLINUX_CXXFLAGS}" LDFLAGS="${MANYLINUX_LDFLAGS}" > /dev/null
-    make -j$(nproc) > /dev/null
-    make -j$(nproc) install > /dev/null
+    make > /dev/null
+    make install > /dev/null
 }
 
 function strip_ {
