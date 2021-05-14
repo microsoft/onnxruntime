@@ -1,0 +1,99 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include <core/common/safeint.h>
+
+#include "core/providers/shared/utils/utils.h"
+#include "core/providers/coreml/builders/model_builder.h"
+#include "core/providers/coreml/builders/op_builder_factory.h"
+
+#include "base_op_builder.h"
+
+namespace onnxruntime {
+namespace coreml {
+
+class SqueezeOpBuilder : public BaseOpBuilder {
+  // Add operator related
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+                               const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+
+  //   // Operator support related
+  //  private:
+  //   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  //                          const logging::Logger& logger) const override;
+};
+
+// Add operator related
+
+void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  if (node.SinceVersion() > 12 && node.InputDefs().size() > 1) {
+    model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
+  }
+}
+
+/* static */ std::vector<int32_t> GetAxes(ModelBuilder& model_builder, const Node& node) {
+  std::vector<int32_t> axes;
+  // Squeeze opset 13 use input as axes
+  if (node.SinceVersion() > 12) {
+    // If axes is not provided, return an empty axes as default to squeeze all
+    if (node.InputDefs().size() > 1) {
+      const auto& initializers(model_builder.GetInitializerTensors());
+      const auto& axes_tensor = *initializers.at(node.InputDefs()[1]->Name());
+      const int64_t* raw_axes = GetTensorInt64Data(axes_tensor);
+      const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
+      axes.resize(size);
+      for (uint32_t i = 0; i < size; i++) {
+        // it is unlikely we have an axis value overflow for int32
+        axes[i] = static_cast<int32_t>(raw_axes[i]);
+      }
+    }
+  } else {
+    NodeAttrHelper helper(node);
+    axes = helper.Get("axes", std::vector<int32_t>());
+  }
+
+  return axes;
+}
+
+Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
+                                               const Node& node,
+                                               const logging::Logger& /* logger */) const {
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(node);
+
+  auto* coreml_squeeze = layer->mutable_squeeze();
+  std::vector<int32_t> axes = GetAxes(model_builder, node);
+  if (axes.empty()) {
+    coreml_squeeze->set_squeezeall(true);
+  } else {
+    for (uint32_t i = 0; i < axes.size(); i++) {
+      coreml_squeeze->set_axes(i, axes[i]);
+    }
+    coreml_squeeze->set_squeezeall(false);
+  }
+
+  *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
+  *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
+
+  model_builder.AddLayer(std::move(layer));
+
+  return Status::OK();
+}
+
+// // Operator support related
+
+// bool SqueezeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+//                                          const logging::Logger& logger) const {
+//   return true;
+// }
+
+void CreateSqueezeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<SqueezeOpBuilder>());
+  op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
+}
+
+}  // namespace coreml
+}  // namespace onnxruntime
