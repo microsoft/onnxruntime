@@ -156,7 +156,14 @@ Equations (Default: f=Sigmoid, g=Tanh, h=Tanh):
 namespace onnxruntime {
 
 /* LSTM operator */
-ONNX_CPU_OPERATOR_KERNEL(LSTM, 7,
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(LSTM, 7, 13,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                             DataTypeImpl::GetTensorType<double>()})
+                                       .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()),
+                                   DeepCpuLstmOp);
+
+ONNX_CPU_OPERATOR_KERNEL(LSTM, 14,
                          KernelDefBuilder()
                              .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                                                    DataTypeImpl::GetTensorType<double>()})
