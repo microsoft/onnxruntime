@@ -34,7 +34,10 @@ class Fusion:
         # This assumes that two search ops will not be fused at same time!
         for search_op_type in self.search_op_types:
             for node in self.model.get_nodes_by_op_type(search_op_type):
-                self.this_graph_name = (self.model.get_graph_by_node(node)).name
+                graph = self.model.get_graph_by_node(node)
+                if graph is None:
+                    raise Exception("Can not find node in any graphs")
+                self.this_graph_name = graph.name
                 self.fuse(node, input_name_to_nodes, output_name_to_node)
 
         op_list = [node.op_type for node in self.nodes_to_add]
@@ -48,4 +51,4 @@ class Fusion:
         if self.prune_graph:
             self.model.prune_graph()
         elif self.nodes_to_remove or self.nodes_to_add:
-           self.model.update_graph()
+            self.model.update_graph()
