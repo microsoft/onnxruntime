@@ -295,12 +295,20 @@ typedef struct OrtTensorRTProviderOptions {
   int device_id;                                // cuda device id.
   int has_user_compute_stream;                  // indicator of user specified CUDA compute stream.
   void* user_compute_stream;                    // user specified CUDA compute stream.
-  int has_trt_options;                          // override environment variables with following TensorRT settings at runtime.
+  int trt_max_partition_iterations;             // maximum iterations for TensorRT parser to get capability
+  int trt_min_subgraph_size;                    // minimum size of TensorRT subgraphs
   size_t trt_max_workspace_size;                // maximum workspace size for TensorRT.
   int trt_fp16_enable;                          // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
   int trt_int8_enable;                          // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
   const char* trt_int8_calibration_table_name;  // TensorRT INT8 calibration table name.
   int trt_int8_use_native_calibration_table;    // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
+  int trt_dla_enable;                           // enable DLA
+  int trt_dla_core;                             // DLA core number
+  int trt_dump_subgraphs;                       // dump TRT subgraph
+  int trt_engine_cache_enable;                  // enable engine caching
+  const char* trt_engine_cache_path;            // specify engine cache path
+  int trt_engine_decryption_enable;             // enable engine decryption
+  const char* trt_engine_decryption_lib_path;   // specify engine decryption library path
   int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
 } OrtTensorRTProviderOptions;
 
