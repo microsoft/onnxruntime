@@ -39,8 +39,8 @@ export class WebGLConvPacked extends Conv {
             this.kernelShape}, pads:${this.pads}, strides:${this.strides}`);
 
     const outputShape = WebGLConv.calcOutputShape(xshape, kshape, this.dilations, this.pads, this.strides);
-    if (this.im2col === undefined){
-     this.im2col = new WebGLIm2ColPacked(outputShape, kshape, this.dilations, this.pads, this.strides);
+    if (this.im2col === undefined) {
+      this.im2col = new WebGLIm2ColPacked(outputShape, kshape, this.dilations, this.pads, this.strides);
     }
     if (this.activation) {
       const attributes = new Attribute(undefined);
@@ -67,7 +67,8 @@ export class WebGLConvPacked extends Conv {
     const im2colOutput = runDataIm2col.outputTextureData.tensor;
 
     // reshape kernel
-    const runDataKernelReshape = this.kernelReshape.createRunData(inferenceHandler, this.programInfo[1], [inputs[1], shape]);
+    const runDataKernelReshape =
+        this.kernelReshape.createRunData(inferenceHandler, this.programInfo[1], [inputs[1], shape]);
     inferenceHandler.checkAndUpdateTextureForm(this.artifacts[1], runDataKernelReshape);
     programManager.run(this.artifacts[1], runDataKernelReshape);
     const kernelReshaped = runDataKernelReshape.outputTextureData.tensor;

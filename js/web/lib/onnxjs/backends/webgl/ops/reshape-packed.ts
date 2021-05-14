@@ -1,5 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT license.
+// Licensed under the MIT License.
 
 import {Reshape} from '../../../ops/reshape';
 import {Tensor} from '../../../tensor';
@@ -8,7 +8,6 @@ import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, TextureData, WebGLOperator} from '../types';
 import {TextureLayout} from '../types';
-
 import {unpackFromChannel} from './packing-utils';
 
 export class WebGLReshapePacked extends Reshape implements WebGLOperator {
@@ -17,7 +16,7 @@ export class WebGLReshapePacked extends Reshape implements WebGLOperator {
   }
   createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
     if (inputs.length !== 2) {
-      throw new Error(`resize kernel should have input tensor count to 2.`);
+      throw new Error('resize kernel should have input tensor count to 2.');
     }
 
     // For packed reshape, we need to re-arrange texel data for output shape.
@@ -52,21 +51,21 @@ export class WebGLReshapePacked extends Reshape implements WebGLOperator {
     this.outputLayout = handler.createTextureLayoutFromShape(
         squeezedOutputShape, 4, squeezedOutputShape, {isPacked: true, reverseWH: true});
 
-    let mainLoop = ``;
+    let mainLoop = '';
     for (let i = 0; i < 4; i++) {
       let outputCoords = '';
       switch (i) {
         case 0:
-          outputCoords = `outputCoords = rc;`;
+          outputCoords = 'outputCoords = rc;';
           break;
         case 1:
-          outputCoords = `outputCoords = ivec3(rc.x, rc.y+1, rc.z);`;
+          outputCoords = 'outputCoords = ivec3(rc.x, rc.y+1, rc.z);';
           break;
         case 2:
-          outputCoords = `outputCoords = ivec3(rc.x, rc.y, rc.z+1);`;
+          outputCoords = 'outputCoords = ivec3(rc.x, rc.y, rc.z+1);';
           break;
         case 3:
-          outputCoords = `outputCoords = ivec3(rc.x, rc.y+1, rc.z+1);`;
+          outputCoords = 'outputCoords = ivec3(rc.x, rc.y+1, rc.z+1);';
           break;
         default:
           throw new Error();
@@ -74,7 +73,7 @@ export class WebGLReshapePacked extends Reshape implements WebGLOperator {
 
       mainLoop += `
         ${outputCoords}
-        ${i > 0 ? `if(outputCoords.y < rows && outputCoords.z < cols){` : ''}
+        ${i > 0 ? 'if(outputCoords.y < rows && outputCoords.z < cols){' : ''}
           int flattenedIndex = getFlattenedIndex(outputCoords);
 
           ivec3 inputRC = inputCoordsFromReshapedOutCoords(flattenedIndex);
@@ -149,13 +148,13 @@ export class WebGLReshapePacked extends Reshape implements WebGLOperator {
       uniformData: {}
     };
   }
-  protected outputShape: ReadonlyArray<number>;
+  protected outputShape: readonly number[];
   private inputShape3D: [number, number, number];
   private needSqueezeInputData = false;
   private outputLayout: TextureLayout;
 }
 
-function processDims3D(shape: readonly number[]|ReadonlyArray<number>|Tensor.IntegerType): [number, number, number] {
+function processDims3D(shape: readonly number[]|readonly number[]|Tensor.IntegerType): [number, number, number] {
   if (shape.length === 0) {
     return [1, 1, 1];
   }
