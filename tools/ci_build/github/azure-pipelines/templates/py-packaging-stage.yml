@@ -591,11 +591,40 @@ stages:
               --volume /mnist:/mnist \
               --volume /bert_data:/bert_data \
               --volume /hf_models_cache:/hf_models_cache \
-              --env CUDA_HOME=/usr/local/cuda-11.0 \
-              --env CUDNN_HOME=/usr/local/cuda-11.0 \
               onnxruntimetraininggpubuild \
-                bash -c "$(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$whlfilename ; $(PythonManylinuxDir)/bin/python3 --version ; $(PythonManylinuxDir)/bin/python3 -m pip freeze ; $(PythonManylinuxDir)/bin/python3 /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release"
+                bash -c "$(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$whlfilename ; $(PythonManylinuxDir)/bin/python3 --version ; $(PythonManylinuxDir)/bin/python3 -m pip freeze ; $(PythonManylinuxDir)/bin/python3 /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release " ; \
+            docker run \
+              --gpus all \
+              -e NVIDIA_VISIBLE_DEVICES=all \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /mnist:/mnist \
+              --volume /bert_data:/bert_data \
+              --volume /hf_models_cache:/hf_models_cache \
+              onnxruntimetraininggpubuild \
+                bash -c "/build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release" ; \
+            docker run \
+              --gpus all \
+              -e NVIDIA_VISIBLE_DEVICES=all \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /mnist:/mnist \
+              --volume /bert_data:/bert_data \
+              --volume /hf_models_cache:/hf_models_cache \
+              onnxruntimetraininggpubuild \
+                bash -c "cd /build/Release ; python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers" ; \
+            docker run \
+              --gpus all \
+              -e NVIDIA_VISIBLE_DEVICES=all \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /mnist:/mnist \
+              --volume /bert_data:/bert_data \
+              --volume /hf_models_cache:/hf_models_cache \
+              onnxruntimetraininggpubuild \
+                bash -c "cd /build/Release ; $(PythonManylinuxDir)/bin/python3 orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers" ; \
+            which python
           workingDirectory: $(Build.SourcesDirectory)
+
+        # --env CUDA_HOME=/usr/local/cuda-11.0 \
+        # --env CUDNN_HOME=/usr/local/cuda-11.0 \
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
