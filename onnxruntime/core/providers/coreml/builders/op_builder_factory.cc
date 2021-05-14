@@ -66,7 +66,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   }
 
   {  // Squeeze
-    CreateClipOpBuilder("Squeeze", op_registrations);
+    CreateSqueezeOpBuilder("Squeeze", op_registrations);
   }
 
   return op_registrations;

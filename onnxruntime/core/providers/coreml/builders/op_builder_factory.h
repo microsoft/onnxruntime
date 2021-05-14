@@ -30,6 +30,6 @@ void CreateClipOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-void CreateSqeeuzeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateSqueezeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 }  // namespace coreml
 }  // namespace onnxruntime
