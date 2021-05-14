@@ -66,7 +66,7 @@ class ORTModule(torch.nn.Module):
         super(ORTModule, self).__init__()
 
         # Support contrib OPs
-        register_custom_ops_pytorch_exporter.register_custom_op()
+        register_custom_ops_pytorch_exporter.register_custom_op(is_ortmodule=True)
 
         # User module is wrapped to use its initializers and save computed gradients
         self._original_module = module

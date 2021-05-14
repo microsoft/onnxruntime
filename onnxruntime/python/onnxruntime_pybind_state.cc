@@ -28,7 +28,8 @@
 #include "core/session/abi_session_options_impl.h"
 
 #ifdef ENABLE_TRAINING
-#include "python/dlpack/dlpack_converter.h"
+#include "core/dlpack/dlpack_converter.h"
+#include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
 
 // execution provider factory creator headers
@@ -489,7 +490,8 @@ static AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
   static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
 
   if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
-    id_to_allocator_map.insert({id, CUDAExecutionProvider::CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info)});
+    // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
+    id_to_allocator_map.insert({id, CUDAExecutionProvider::CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, nullptr)});
   }
 
   return id_to_allocator_map[id];
@@ -578,7 +580,13 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         for (auto option : it->second) {
-          if (option.first == "has_trt_options") {
+          if (option.first == "device_id") {
+            if (!option.second.empty()) {
+              params.device_id = std::stoi(option.second);
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'device_id' should be a number i.e. '0'.\n");
+            }
+          } else if (option.first == "has_trt_options") {
             if (option.second == "True" || option.second == "true") {
               params.has_trt_options = true;
             } else if (option.second == "False" || option.second == "false") {
@@ -673,7 +681,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
                   return info;
                 }();
 
-      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still 
+      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
       // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
       // since FromProviderOptions might contain external CUDA allocator.
       external_allocator_info = info.external_allocator_info;
@@ -784,7 +792,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
         auto shared_lib_path_it = it->second.find(kExecutionProviderSharedLibraryPath);
         if (shared_lib_path_it != it->second.end()) {
           // this is an EP with dynamic loading
-          // construct the provider option 
+          // construct the provider option
           ProviderOptions provider_options;
           for (auto option : it->second) {
             if (option.first != kExecutionProviderSharedLibraryPath)
@@ -792,7 +800,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
           }
           auto p_ep = LoadExecutionProvider(shared_lib_path_it->second, provider_options);
           ORT_THROW_IF_ERROR(sess->RegisterExecutionProvider(
-                                   std::move(p_ep)));
+              std::move(p_ep)));
           continue;
         }
       }
@@ -940,6 +948,15 @@ void addGlobalMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
         }
       });
+#ifdef ENABLE_TRAINING
+   m.def(
+      "register_aten_op_executor", [](const std::string& aten_op_executor_address_str) -> void {
+        size_t aten_op_executor_address_int;
+        ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
+        void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
+        contrib::aten_ops::ATenOperatorExecutor::Initialize(p_aten_op_executor);
+      });
+#endif
 
 #ifdef USE_NUPHAR
   // TODO remove deprecated global config
@@ -1476,13 +1493,13 @@ void addObjectMethods(py::module& m, Environment& env) {
       })
 #ifdef ENABLE_TRAINING
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
-        DLManagedTensor* dlmanaged_tensor = OrtValueToDlpack(*ort_value);
+        DLManagedTensor* dlmanaged_tensor = dlpack::OrtValueToDlpack(*ort_value);
         return py::reinterpret_steal<py::object>(
             PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor));
       })
       .def_static("from_dlpack", [](py::object data, bool is_bool_tensor = false) {
         DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data.ptr(), "dltensor");
-        OrtValue ort_value = DlpackToOrtValue(dlmanaged_tensor, is_bool_tensor);
+        OrtValue ort_value = dlpack::DlpackToOrtValue(dlmanaged_tensor, is_bool_tensor);
         // Make sure this capsule will never be used again.
         PyCapsule_SetName(data.ptr(), "used_dltensor");
         return ort_value;
@@ -1745,7 +1762,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           "add_session_config_entry",
           [](PySessionOptions* options, const char* config_key, const char* config_value) -> void {
             //config_key and config_value will be copied
-            const Status status = options->AddConfigEntry(config_key, config_value);
+            const Status status = options->config_options.AddConfigEntry(config_key, config_value);
             if (!status.IsOK())
               throw std::runtime_error(status.ErrorMessage());
           },
@@ -1755,7 +1772,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           [](PySessionOptions* options, const char* config_key) -> std::string {
             const std::string key(config_key);
             std::string value;
-            if (!options->TryGetConfigEntry(key, value))
+            if (!options->config_options.TryGetConfigEntry(key, value))
               throw std::runtime_error("SessionOptions does not have configuration with key: " + key);
 
             return value;
@@ -2094,12 +2111,12 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Ort::SessionOptions tmp_options;
-  if(!InitProvidersSharedLibrary()){
+  if (!InitProvidersSharedLibrary()) {
     const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
     LOGS(default_logger, WARNING) << "Init provider bridge failed.";
   }
 #endif
-  
+
 #ifdef ENABLE_TRAINING
   addObjectMethodsForTraining(m);
 #endif  // ENABLE_TRAINING

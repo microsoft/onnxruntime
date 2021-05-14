@@ -9,6 +9,7 @@
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/gradient_config.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
+#include "orttraining/core/optimizer/batchnorm_replacement.h"
 #include "core/optimizer/gelu_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 
@@ -32,11 +33,10 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
   auto rule_based_graph_transformer =
       std::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
   rule_based_graph_transformer->Register(std::make_unique<InsertMaxPoolOutput>());
-  rule_based_graph_transformer->Register(std::make_unique<AdjustBatchNormOutputs>());
+  rule_based_graph_transformer->Register(std::make_unique<BatchNormReplacement>());
 
   graph_transformation_mgr_.Register(std::move(rule_based_graph_transformer),
                                      TransformerLevel::Level2);
-
   auto forward_reachable_nodes = BFSWithStopGradient(x_node_arg_names);
 
   for (const auto& name : y_node_arg_names) {

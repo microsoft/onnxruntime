@@ -89,7 +89,7 @@ export class CoordsGlslLib extends GlslLib {
    * Generates code for packed output sampler.
    */
   protected getPackedOutputSamplingSnippet(outputLayout: TextureLayout): {[name: string]: GlslLibRoutine} {
-    const outShape = outputLayout.shape;
+    const outShape = outputLayout.unpackedShape;
     const outTexShape = [outputLayout.width, outputLayout.height];
     const result: {[name: string]: GlslLibRoutine} = {};
     const funcName = 'getOutputCoords';
@@ -231,7 +231,7 @@ export class CoordsGlslLib extends GlslLib {
 
     const packedTexShape = texShape;
     // texels needed to accommodate a logical row
-    const texelsInLogicalRow = shape[1];
+    const texelsInLogicalRow = Math.ceil(shape[1] / 2);
 
     /**
      * getOutputCoords
@@ -264,8 +264,8 @@ export class CoordsGlslLib extends GlslLib {
    */
   protected getOutputPacked3DCoords(shape: [number, number, number], texShape: [number, number]): GlslLibRoutine {
     const packedTexShape = [texShape[0], texShape[1]];
-    const texelsInLogicalRow = shape[2];
-    const texelsInBatch = texelsInLogicalRow * shape[1];
+    const texelsInLogicalRow = Math.ceil(shape[2] / 2);
+    const texelsInBatch = texelsInLogicalRow * Math.ceil(shape[1] / 2);
     const source = `
         ivec3 getOutputCoords() {
           ivec2 resTexRC = ivec2(TexCoords.xy *
@@ -291,8 +291,8 @@ export class CoordsGlslLib extends GlslLib {
   protected getOutputPackedNDCoords(shape: readonly number[], texShape: [number, number]): GlslLibRoutine {
     const packedTexShape = [texShape[0], texShape[1]];
 
-    const texelsInLogicalRow = shape[shape.length - 1];
-    const texelsInBatch = texelsInLogicalRow * shape[shape.length - 2];
+    const texelsInLogicalRow = Math.ceil(shape[shape.length - 1] / 2);
+    const texelsInBatch = texelsInLogicalRow * Math.ceil(shape[shape.length - 2] / 2);
     let texelsInBatchN = texelsInBatch;
     let batches = '';
     let coords = 'b, r, c';
