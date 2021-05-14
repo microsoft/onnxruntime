@@ -1,8 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {WebGLContext} from './backends/webgl/webgl-context';
 import {Env} from 'onnxruntime-common';
+
+import {WebGLContext} from './backends/webgl/webgl-context';
 
 export declare namespace Logger {
   export interface SeverityTypeMap {
@@ -10,6 +11,7 @@ export declare namespace Logger {
     info: 'i';
     warning: 'w';
     error: 'e';
+    fatal: 'f';
   }
 
   export type Severity = keyof SeverityTypeMap;
@@ -43,6 +45,7 @@ export declare namespace Logger {
     info(content: string): void;
     warning(content: string): void;
     error(content: string): void;
+    fatal(content: string): void;
   }
 }
 
@@ -58,6 +61,8 @@ export interface Logger {
   warning(category: string, content: string): void;
   error(content: string): void;
   error(category: string, content: string): void;
+  fatal(content: string): void;
+  fatal(category: string, content: string): void;
 
   /**
    * Reset the logger configuration.
@@ -103,6 +108,8 @@ class ConsoleLoggerProvider implements LoggerProvider {
         return '\x1b[30;43mw\x1b[0m';
       case 'error':
         return '\x1b[31;40me\x1b[0m';
+      case 'fatal':
+        return '\x1b[101mf\x1b[0m';
       default:
         throw new Error(`unsupported severity: ${severity}`);
     }
@@ -113,7 +120,8 @@ const SEVERITY_VALUE = {
   verbose: 1000,
   info: 2000,
   warning: 4000,
-  error: 5000
+  error: 5000,
+  fatal: 6000
 };
 
 const LOGGER_PROVIDER_MAP: {readonly [provider: string]: Readonly<LoggerProvider>} = {
@@ -160,7 +168,8 @@ function createCategorizedLogger(category: string): Logger.CategorizedLogger {
     verbose: log.verbose.bind(null, category),
     info: log.info.bind(null, category),
     warning: log.warning.bind(null, category),
-    error: log.error.bind(null, category)
+    error: log.error.bind(null, category),
+    fatal: log.fatal.bind(null, category)
   };
 }
 
@@ -206,6 +215,11 @@ namespace log {
   export function error(arg0: string, arg1?: string) {
     log('error', arg0, arg1);
   }
+  export function fatal(content: string): void;
+  export function fatal(category: string, content: string): void;
+  export function fatal(arg0: string, arg1?: string) {
+    log('fatal', arg0, arg1);
+  }
 
   export function reset(config?: Logger.Config): void {
     LOGGER_CONFIG_MAP = {};
@@ -229,22 +243,9 @@ namespace log {
   }
 
   export function setWithEnv(env: Env): void {
-    let config: Logger.Config = {};
-    if(env.loggingLevel) {
-      switch(env.loggingLevel) {
-        case 'verbose':
-        case 'info':
-        case 'warning':
-        case 'error':
-          config.minimalSeverity = env.loggingLevel as Logger.Severity;
-        break;
-        // No fatal in onnxjs logger
-        case 'fatal':
-          config.minimalSeverity = 'error' as Logger.Severity;
-        break;
-        default:
-          throw new Error('Invalid log level.');
-      }
+    const config: Logger.Config = {};
+    if (env.loggingLevel) {
+      config.minimalSeverity = env.loggingLevel as Logger.Severity;
     }
     set('', config);
   }

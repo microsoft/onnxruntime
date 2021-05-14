@@ -25,11 +25,6 @@ export const initializeFlags = (): void => {
     env.wasm.numThreads = Math.ceil((numCpuLogicalCores || 1) / 2);
   }
   env.wasm.numThreads = Math.min(4, env.wasm.numThreads);
-
-  if (typeof env.loggingLevel !== 'string' ||
-      ['verbose', 'info', 'warning', 'error', 'fatal'].indexOf(env.loggingLevel) === -1) {
-    env.loggingLevel = 'warning';
-  }
 };
 
 class OnnxruntimeWebAssemblyBackend implements Backend {

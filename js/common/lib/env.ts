@@ -38,7 +38,26 @@ export declare namespace Env {
   }
 }
 
-export interface Env {
+export class Env {
+  private loggingLevelInternal?: 'verbose'|'info'|'warning'|'error'|'fatal';
+  /**
+   * set a logging level. If omitted, default is 'warning'
+   */
+  // TODO standadize the getter and setter convention in env for other fields.
+  set loggingLevel(value: 'verbose'|'info'|'warning'|'error'|'fatal'|undefined) {
+    if (!value) {
+      this.loggingLevelInternal = 'warning';
+      return;
+    }
+    if (typeof value !== 'string' || ['verbose', 'info', 'warning', 'error', 'fatal'].indexOf(value) === -1) {
+      throw new Error('Unsupported logging level.');
+    }
+    this.loggingLevelInternal = value;
+  }
+  get loggingLevel(): 'verbose'|'info'|'warning'|'error'|'fatal'|undefined {
+    return this.loggingLevelInternal;
+  }
+
   /**
    * Indicate whether run in debug mode.
    */
@@ -54,11 +73,6 @@ export interface Env {
    */
   webgl: Env.WebGLFlags;
 
-  /**
-   * set a logging level. If omitted, default is 'warning'
-   */
-  loggingLevel?: 'verbose'|'info'|'warning'|'error'|'fatal';
-
   [name: string]: unknown;
 }
 
@@ -67,5 +81,6 @@ export interface Env {
  */
 export const env: Env = {
   wasm: {},
-  webgl: {}
+  webgl: {},
+  loggingLevel: undefined,
 };
