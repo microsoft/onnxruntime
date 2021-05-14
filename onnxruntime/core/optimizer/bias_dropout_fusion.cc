@@ -15,49 +15,61 @@ void FuseResidualAddIfAny(Graph& graph, const Node& dropout_node,
                           std::vector<NodeArg*>& dropout_output,
                           std::vector<std::reference_wrapper<Node>>& nodes_to_fuse) {
   bool has_residual_add = false;
-  for (auto last_node_itr = dropout_node.OutputNodesBegin(); last_node_itr != dropout_node.OutputNodesEnd(); ++last_node_itr) {
-    const Node& last_node = (*last_node_itr);
 
-    if (graph_utils::IsSupportedOptypeVersionAndDomain(last_node, "Add", {7, 13}) &&
-        last_node.GetExecutionProviderType() == dropout_node.GetExecutionProviderType()) {
-      const TensorShapeProto* input1_shape = last_node.InputDefs()[0]->Shape();
-      const TensorShapeProto* input2_shape = last_node.InputDefs()[1]->Shape();
+  int dropout_consumers_count = 0;
+  for (auto edge_itr = dropout_node.OutputEdgesBegin(); edge_itr != dropout_node.OutputEdgesEnd(); ++edge_itr) {
+    if (edge_itr->GetSrcArgIndex() == 0) {
+      ++dropout_consumers_count;
+    }
+  }
+  // To be able to fuse the resudial Add,
+  // the Dropout's output must not be a graph output and
+  // there must be only one consumer of the Dropout's first output.
+  if (dropout_consumers_count < 2 && graph.GetNodeOutputsInGraphOutputs(dropout_node).empty()) {
+    for (auto last_node_itr = dropout_node.OutputNodesBegin(); last_node_itr != dropout_node.OutputNodesEnd(); ++last_node_itr) {
+      const Node& last_node = (*last_node_itr);
 
-      if (input1_shape == nullptr ||
-          input2_shape == nullptr ||
-          input1_shape->dim_size() < 1 ||
-          input2_shape->dim_size() < 1 ||
-          input1_shape->dim_size() != input2_shape->dim_size()) {
-        continue;
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(last_node, "Add", {7, 13}) &&
+          last_node.GetExecutionProviderType() == dropout_node.GetExecutionProviderType()) {
+        const TensorShapeProto* input1_shape = last_node.InputDefs()[0]->Shape();
+        const TensorShapeProto* input2_shape = last_node.InputDefs()[1]->Shape();
+
+        if (input1_shape == nullptr ||
+            input2_shape == nullptr ||
+            input1_shape->dim_size() < 1 ||
+            input2_shape->dim_size() < 1 ||
+            input1_shape->dim_size() != input2_shape->dim_size()) {
+          continue;
+        }
+
+        // Inputs of Residual Add must match in shape
+        bool match = true;
+        for (int i = 0; i < input1_shape->dim_size(); ++i) {
+          match &= ONNX_NAMESPACE::operator==(input1_shape->dim(i), input2_shape->dim(i));
+        }
+        if (!match) {
+          continue;
+        }
+
+        // dropout's output is not part of the graph output
+        if (!graph.GetNodeOutputsInGraphOutputs(dropout_node).empty()) {
+          continue;
+        }
+
+        Node& residual_add_node = *graph.GetNode(last_node.Index());
+        const std::string& dropout_output_name = dropout_node.OutputDefs()[0]->Name();
+        if (dropout_output_name == residual_add_node.InputDefs()[0]->Name()) {
+          dropout_input.push_back(residual_add_node.MutableInputDefs()[1]);  // residual
+        } else if (dropout_output_name == residual_add_node.InputDefs()[1]->Name()) {
+          dropout_input.push_back(residual_add_node.MutableInputDefs()[0]);  // residual
+        }
+
+        dropout_output[0] = residual_add_node.MutableOutputDefs()[0];
+
+        nodes_to_fuse.push_back(residual_add_node);
+        has_residual_add = true;
+        break;
       }
-
-      // Inputs of Residual Add must match in shape
-      bool match = true;
-      for (int i = 0; i < input1_shape->dim_size(); ++i) {
-        match &= ONNX_NAMESPACE::operator==(input1_shape->dim(i), input2_shape->dim(i));
-      }
-      if (!match) {
-        continue;
-      }
-
-      // dropout's output is not part of of graph output
-      if (!graph.GetNodeOutputsInGraphOutputs(dropout_node).empty()) {
-        continue;
-      }
-
-      Node& residual_add_node = *graph.GetNode(last_node.Index());
-      const std::string& dropout_output_name = dropout_node.OutputDefs()[0]->Name();
-      if (dropout_output_name == residual_add_node.InputDefs()[0]->Name()) {
-        dropout_input.push_back(residual_add_node.MutableInputDefs()[1]);  // residual
-      } else if (dropout_output_name == residual_add_node.InputDefs()[1]->Name()) {
-        dropout_input.push_back(residual_add_node.MutableInputDefs()[0]);  // residual
-      }
-
-      dropout_output[0] = residual_add_node.MutableOutputDefs()[0];
-
-      nodes_to_fuse.push_back(residual_add_node);
-      has_residual_add = true;
-      break;
     }
   }
 
