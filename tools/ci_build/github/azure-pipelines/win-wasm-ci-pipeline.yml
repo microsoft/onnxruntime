@@ -1,5 +1,24 @@
 jobs:
+- job: Extract_commit
+  pool: 'Win-CPU-2019'
+  timeoutInMinutes: 30
+  workspace:
+    clean: all
+  steps:
+  - checkout: none
+    fetchDepth: 1
+    submodules: false
+  - script: |
+     echo.$(Build.SourceVersion)
+     echo.$(Build.SourceVersion)>$(Build.ArtifactStagingDirectory)\__commit.txt
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact'
+    inputs:
+      artifactName: '__commit'
+      targetPath: '$(Build.ArtifactStagingDirectory)'
+
 - job: build_WASM
+  dependsOn: Extract_commit
   pool: 'Win-CPU-2019'
   strategy:
     maxParallel: 4
@@ -29,6 +48,23 @@ jobs:
   workspace:
     clean: all
   steps:
+  - checkout: self
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      artifact: '__commit'
+      path: $(Pipeline.Workspace)
+    displayName: 'Get commit SHA'
+  - script: |
+     set /p __commit__=<$(Pipeline.Workspace)\__commit.txt
+     git fetch origin +%__commit__%:refs/remotes/origin/%__commit__%
+     git checkout --force %__commit__%
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Read commit SHA and checkout'
+  - script: |
+     git submodule sync --recursive
+     git submodule update --init --recursive
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Checkout submodules'
   - task: UsePythonVersion@0
     inputs:
       versionSpec: '3.7'
@@ -92,6 +128,17 @@ jobs:
   steps:
   - checkout: self
     submodules: false
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      artifact: '__commit'
+      path: $(Pipeline.Workspace)
+    displayName: 'Get commit SHA'
+  - script: |
+     set /p __commit__=<$(Pipeline.Workspace)\__commit.txt
+     git fetch origin +%__commit__%:refs/remotes/origin/%__commit__%
+     git checkout --force %__commit__%
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Read commit SHA and checkout'
   - script: |
      git submodule sync -- cmake\external\onnx
      git submodule update --init -- cmake\external\onnx
