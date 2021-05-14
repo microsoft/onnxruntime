@@ -131,7 +131,7 @@ def main():
                         help='random seed (default: 42)')
     parser.add_argument('--pytorch-only', action='store_true', default=False,
                         help='disables ONNX Runtime training')  
-    parser.add_argument('--onnx', action='store_true', default=True,
+    parser.add_argument('--onnx', action='store_true', default=False,
                         help='convert model to onnx for test')
     parser.add_argument('--log-interval', type=int, default=300, metavar='N',
                         help='how many batches to wait before logging training status (default: 300)')
