@@ -77,6 +77,41 @@ class MatMulIntegerBase : public OpKernel {
   */
   virtual int GetBIdx() = 0;
 
+  // Check if quantization parameter of B is supported.
+  // It should be in one of the formats below:
+  // 1. Scalar
+  // 2. 1D tensor with size equal to 1 or last dimension of B_shape if B_shape is a 2D tensor
+  // 3. Equal to B_shape except that the second to last is 1
+  bool IsBQuantParamSupported(const TensorShape& B_quant_param_shape, const TensorShape& B_shape) const {
+    int64_t B_quant_param_rank = B_quant_param_shape.NumDimensions();
+    int64_t B_shape_rank = B_shape.NumDimensions();
+    if (B_quant_param_rank == 0 ||                                     //scalar
+        B_quant_param_rank == 1 && B_quant_param_shape.Size() == 1) {  // 1D tensor with size 1
+      return true;
+    }
+
+    if (B_quant_param_rank == 1 &&
+        B_shape_rank == 2 &&
+        B_quant_param_shape[B_quant_param_rank - 1] == B_shape[B_shape_rank - 1]) {
+      return true;
+    }
+
+    if (B_quant_param_rank != B_shape_rank ||
+        B_quant_param_rank <= 1 ||
+        B_quant_param_shape[B_quant_param_rank - 2] != 1) {
+      return false;
+    }
+
+    for (int64_t rank = 0; rank < B_quant_param_rank; rank++) {
+      if (rank != B_quant_param_rank - 2 &&
+          B_quant_param_shape[rank] != B_shape[rank]) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   bool b_is_signed_{true};
   TensorShape b_shape_;
   BufferUniquePtr packed_b_;

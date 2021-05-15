@@ -719,13 +719,16 @@ void TestQuantizedAttentionPastState(int64_t batch,
                                      int64_t head_number,
                                      int64_t head_size,
                                      const std::string& reference_model,
-                                     bool is_weight_constant) {
+                                     bool is_weight_constant,
+                                     bool per_column = false) {
   // create rand inputs
   RandomValueGenerator random{};
 
   constexpr InputT input_min = std::numeric_limits<InputT>::min();
   constexpr InputT input_max = std::numeric_limits<InputT>::max();
   constexpr int32_t input_range = input_max - input_min;
+
+  int64_t weight_scale_zp_size = per_column ? 3 * hidden_size : 1;
 
   InputT input_mean = (input_min + input_max) / 2 + 1;
   std::vector<InputT> input_zero_point{input_mean};
@@ -737,9 +740,12 @@ void TestQuantizedAttentionPastState(int64_t batch,
   constexpr WeightT weight_max = std::numeric_limits<WeightT>::max();
   constexpr int32_t weight_range = weight_max - weight_min;
 
-  WeightT weight_mean = (weight_min + weight_max) / 2 + 1;
-  std::vector<WeightT> weight_zero_point{weight_mean};
+  std::vector<WeightT> weight_zero_point(weight_scale_zp_size);
+  for (auto& zp : weight_zero_point) {
+    zp = static_cast<WeightT>(random.Uniform<int32_t>({1}, weight_min, weight_max)[0]);
+  }
 
+  WeightT weight_mean = (weight_min + weight_max) / 2 + 1;
   std::vector<int64_t> weight_dims{hidden_size, 3 * hidden_size};
   std::vector<WeightT> weight_data = random.Gaussian<WeightT>(weight_dims, weight_mean, static_cast<WeightT>(weight_range / 6), weight_min, weight_max);
 
@@ -747,7 +753,7 @@ void TestQuantizedAttentionPastState(int64_t batch,
   std::vector<float> bias_data = random.Gaussian<float>(bias_dims, 0.0f, 0.3f);
 
   std::vector<float> input_scale{0.005f};
-  std::vector<float> weight_scale{0.005f};
+  std::vector<float> weight_scale(random.Uniform<float>({weight_scale_zp_size}, -0.01f, 0.01f));
 
   std::vector<int64_t> past_dims{2, batch, head_number, past_seq_len, head_size};
   std::vector<float> past_data = random.Gaussian<float>(past_dims, 0.0f, 0.3f);
@@ -759,10 +765,10 @@ void TestQuantizedAttentionPastState(int64_t batch,
   test.AddInput<WeightT>("weight", weight_dims, weight_data, is_weight_constant);
   test.AddInput<float>("bias", bias_dims, bias_data);
   test.AddInput<float>("input_scale", {1}, input_scale);
-  test.AddInput<float>("weight_scale", {1}, weight_scale);
+  test.AddInput<float>("weight_scale", {weight_scale_zp_size}, weight_scale);
   test.AddMissingOptionalInput<int32_t>();
   test.AddInput<InputT>("input_zero_point", {1}, input_zero_point);
-  test.AddInput<WeightT>("weight_zero_point", {1}, weight_zero_point);
+  test.AddInput<WeightT>("weight_zero_point", {weight_scale_zp_size}, weight_zero_point);
   test.AddInput<float>("past", past_dims, past_data);
 
   test.AddReferenceOutputs(reference_model);
@@ -777,6 +783,16 @@ TEST(QAttentionTest, QAttentionPastState_u8u8) {
   TestQuantizedAttentionPastState<uint8_t, uint8_t>(2, 5, 15, 768, 12, 64,
                                                     "testdata/attention_past_state.u8u8.onnx",
                                                     true /*is_weight_constant*/);
+
+  TestQuantizedAttentionPastState<uint8_t, uint8_t>(2, 5, 15, 768, 12, 64,
+                                                    "testdata/attention_past_state.u8u8.onnx",
+                                                    false /*is_weight_constant*/,
+                                                    true /*per_column*/);
+
+  TestQuantizedAttentionPastState<uint8_t, uint8_t>(2, 5, 15, 768, 12, 64,
+                                                    "testdata/attention_past_state.u8u8.onnx",
+                                                    true /*is_weight_constant*/,
+                                                    true /*per_column*/);
 }
 
 TEST(QAttentionTest, QAttentionPastState_u8s8) {
@@ -784,9 +800,19 @@ TEST(QAttentionTest, QAttentionPastState_u8s8) {
                                                    "testdata/attention_past_state.u8s8.onnx",
                                                    false /*is_weight_constant*/);
 
-  TestQuantizedAttentionPastState<uint8_t, uint8_t>(2, 5, 15, 768, 12, 64,
-                                                    "testdata/attention_past_state.u8u8.onnx",
-                                                    true /*is_weight_constant*/);
+  TestQuantizedAttentionPastState<uint8_t, int8_t>(2, 5, 15, 768, 12, 64,
+                                                   "testdata/attention_past_state.u8s8.onnx",
+                                                   true /*is_weight_constant*/);
+
+  TestQuantizedAttentionPastState<uint8_t, int8_t>(2, 5, 15, 768, 12, 64,
+                                                   "testdata/attention_past_state.u8s8.onnx",
+                                                   false /*is_weight_constant*/,
+                                                   true /*per_column*/);
+
+  TestQuantizedAttentionPastState<uint8_t, int8_t>(2, 5, 15, 768, 12, 64,
+                                                   "testdata/attention_past_state.u8s8.onnx",
+                                                   true /*is_weight_constant*/,
+                                                   true /*per_column*/);
 }
 
 TEST(QAttentionTest, QAttentionPrunedModel) {
@@ -804,79 +830,12 @@ TEST(QAttentionTest, QAttentionPrunedModel) {
       0.5f, 0.2f, 0.3f, -0.6f, 6.0f, 7.0f};
 
   std::vector<float> weight_data = {
-      0.1f,
-      -0.2f,
-      0.3f,
-      1.0f,
-      1.1f,
-      0.3f,
-      0.5f,
-      0.2f,
-      0.3f,
-      -0.6f,
-      1.5f,
-      2.0f,
-      0.5f,
-      0.1f,
-      0.4f,
-      1.6f,
-      1.0f,
-      2.0f,
-      0.4f,
-      0.8f,
-      0.9f,
-      0.1f,
-      -1.3f,
-      0.7f,
-      0.3f,
-      0.2f,
-      4.0f,
-      2.2f,
-      1.6f,
-      1.1f,
-      0.7f,
-      0.2f,
-      0.4f,
-      1.0f,
-      1.2f,
-      0.5f,
-      0.2f,
-      0.1f,
-      0.4f,
-      1.6f,
-      2.4f,
-      3.3f,
-      2.1f,
-      4.2f,
-      8.4f,
-      0.0f,
-      2.1f,
-      3.2f,
-      0.1f,
-      0.2f,
-      0.3f,
-      0.4f,
-      0.5f,
-      0.6f,
-      0.7f,
-      0.8f,
-      0.9f,
-      1.0f,
-      1.1f,
-      1.2f,
-      1.2f,
-      1.1f,
-      1.0f,
-      0.9f,
-      0.8f,
-      0.7f,
-      0.6f,
-      0.5f,
-      0.4f,
-      0.3f,
-      0.2f,
-      0.1f,
-  };
+      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
+      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
+      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
+      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f,
+      0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f, 1.1f, 1.2f,
+      1.2f, 1.1f, 1.0f, 0.9f, 0.8f, 0.7f, 0.6f, 0.5f, 0.4f, 0.3f, 0.2f, 0.1f};
 
   std::vector<float> bias_data = {
       -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};

@@ -164,11 +164,13 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
                     "input scale must be a scalar or 1D tensor of size 1");
   T input_scale = *(input_scale_tensor->template Data<T>());
 
-  ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(weight_scale_tensor),
-                    "weight must be a scalar or 1D tensor of size 1");
-  T weight_scale = *(weight_scale_tensor->template Data<T>());
+  bool is_weight_scale_per_column = !IsScalarOr1ElementVector(weight_scale_tensor);
+  const T* weight_scale_data = weight_scale_tensor->template Data<T>();
 
-  T dequant_scale = input_scale * weight_scale;
+  std::vector<T> dequant_scales(weight_scale_data, weight_scale_data + weight_scale_tensor->Shape().Size());
+  std::for_each(dequant_scales.begin(), dequant_scales.end(), [&input_scale](float& dequant_scale) {
+    return dequant_scale *= input_scale;
+  });
 
   uint8_t input_zero_point = 0;
   if (i_zp_tensor != nullptr) {
@@ -177,11 +179,12 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
     input_zero_point = *i_zp_tensor->template Data<uint8_t>();
   }
 
-  uint8_t weight_zero_point = 0;
+  bool is_weight_zp_per_column = false;
+  uint8_t weight_zp_default = 0;
+  const uint8_t* weight_zp_data = nullptr;
   if (w_zp_tensor != nullptr) {
-    ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(w_zp_tensor),
-                      "weight zero point must be a scalar or 1D tensor of size 1.");
-    weight_zero_point = *static_cast<const uint8_t*>(w_zp_tensor->DataRaw());
+    is_weight_zp_per_column = !IsScalarOr1ElementVector(w_zp_tensor);
+    weight_zp_data = static_cast<const uint8_t*>(w_zp_tensor->DataRaw());
   }
 
   const auto& shape = input->Shape();
@@ -240,6 +243,8 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
 
       int input_offset = batch_index * sequence_length * input_hidden_size;
       int weights_offset = qkv_index * hidden_size + head_index * head_size;
+      int weights_scale_offset = is_weight_scale_per_column ? weights_offset : 0;
+      int weights_zp_offset = is_weight_zp_per_column ? weights_offset : 0;
       float* qkv_dest = QKV[qkv_index];
       int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
 
@@ -250,8 +255,10 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
 
       scale_bias_procs.emplace_back(qkv_dest + qkv_offset,
                                     head_size,
-                                    &dequant_scale,
-                                    bias_data + weights_offset);
+                                    dequant_scales.data() + weights_scale_offset,
+                                    bias_data + weights_offset,
+                                    MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
+                                    is_weight_scale_per_column ? MLAS_QUANTIZATION_GRANULARITY::PerColumn : MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
 
       auto& gemm_params = gemm_data_vec[i];
       gemm_params.A = input_data + input_offset;
@@ -266,7 +273,8 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
         gemm_params.B = weights_data + weights_offset;
         gemm_params.ldb = 3 * hidden_size;
       }
-      gemm_params.ZeroPointB = &weight_zero_point;
+      gemm_params.ZeroPointB = nullptr != weight_zp_data ? weight_zp_data + weights_zp_offset : &weight_zp_default;
+      gemm_params.PerColumnZeroPoints = is_weight_zp_per_column;
       gemm_params.C = reinterpret_cast<int32_t*>(qkv_dest + qkv_offset);
       gemm_params.ldc = head_size;
       gemm_params.OutputProcessor = &(scale_bias_procs[i]);

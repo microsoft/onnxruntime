@@ -1012,6 +1012,7 @@ void OpTester::AddReferenceOutputs(const std::string& model_path) {
   SessionOptions so;
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
+  so.graph_optimization_level = TransformerLevel::Default;
 
   RunOptions run_options;
   run_options.run_tag = op_;
