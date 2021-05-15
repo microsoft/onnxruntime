@@ -17,6 +17,7 @@
     "prepare": "tsc",
     "build": "node ./script/build",
     "test": "node ./script/prepare-test-data && node ./script/test-runner-cli",
+    "test:e2e": "node ./test/e2e/run",
     "prepack": "node ./script/prepack"
   },
   "dependencies": {

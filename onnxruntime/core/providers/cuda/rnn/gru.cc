@@ -10,11 +10,12 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                                \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
+#define REGISTER_KERNEL_VERSIONED_TYPED(T)                                      \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
       GRU,                                                                      \
       kOnnxDomain,                                                              \
       7,                                                                        \
+      13,                                                                       \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
       KernelDefBuilder()                                                        \
@@ -22,6 +23,23 @@ namespace cuda {
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>())         \
           .InputMemoryType<OrtMemTypeCPUInput>(RNN_Input_Index::sequence_lens), \
       GRU<T>);
+
+#define REGISTER_KERNEL_TYPED(T)                                                \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
+      GRU,                                                                      \
+      kOnnxDomain,                                                              \
+      14,                                                                       \
+      T,                                                                        \
+      kCudaExecutionProvider,                                                   \
+      KernelDefBuilder()                                                        \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>())         \
+          .InputMemoryType<OrtMemTypeCPUInput>(RNN_Input_Index::sequence_lens), \
+      GRU<T>);
+
+REGISTER_KERNEL_VERSIONED_TYPED(float);
+REGISTER_KERNEL_VERSIONED_TYPED(double);
+REGISTER_KERNEL_VERSIONED_TYPED(MLFloat16);
 
 REGISTER_KERNEL_TYPED(float);
 REGISTER_KERNEL_TYPED(double);

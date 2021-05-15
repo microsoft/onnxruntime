@@ -1114,6 +1114,22 @@ static bool ModelHasFP16Inputs(const Graph& graph) {
   return false;
 }
 
+common::Status InferenceSession::AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container) {
+  if (prepacked_weights_container == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "The provided PrePackedWeightsContainer instance to be added to the session is null");
+  }
+
+  if (prepacked_weights_container_ != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "The session already has a PrePackedWeightsContainer instance");
+  }
+
+  prepacked_weights_container_ = prepacked_weights_container;
+
+  return Status::OK();
+}
+
 common::Status InferenceSession::Initialize() {
   Status status = Status::OK();
   TimePoint tp;
@@ -1191,7 +1207,8 @@ common::Status InferenceSession::Initialize() {
         *session_logger_,
         session_profiler_,
         session_options_.use_deterministic_compute,
-        session_options_.enable_mem_reuse);
+        session_options_.enable_mem_reuse,
+        prepacked_weights_container_);
 
     onnxruntime::Graph& graph = model_->MainGraph();
 
