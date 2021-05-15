@@ -628,7 +628,7 @@ class ONNXQuantizer:
             # Quantize the input
             initializer = find_by_name(node_input, self.model.initializer())
             if initializer is not None:
-                if per_channel:
+                if self.per_channel and per_channel:
                     q_weight_name, zp_name, scale_name = self.quantize_weight_per_channel(
                         initializer.name, self.weight_qType if initializer_use_weight_qType else self.input_qType,
                         axis, reduce_range)
@@ -676,7 +676,7 @@ class ONNXQuantizer:
         scale_name = weight.name + "_scale"
 
         # Update packed weight, zero point, and scale initializers
-        symmetric = 'symmetric' in self.extra_options and self.extra_options['symmetric']
+        symmetric = 'Symmetric' in self.extra_options and self.extra_options['Symmetric']
         weight_data = self.tensor_proto_to_array(weight)
         _, _, zero_point, scale, q_weight_data = quantize_data(weight_data.flatten().tolist(),
                                                                get_qrange_for_qType(qType, self.reduce_range and reduce_range),
@@ -705,7 +705,7 @@ class ONNXQuantizer:
         if initializer is None:
             raise ValueError("{} is not an initializer", weight_name)
 
-        symmetric = 'symmetric' in self.extra_options and self.extra_options['symmetric']
+        symmetric = 'Symmetric' in self.extra_options and self.extra_options['Symmetric']
         weights = self.tensor_proto_to_array(initializer)
         channel_count = weights.shape[channel_axis]
         rmin_list = []
