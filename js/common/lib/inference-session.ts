@@ -120,9 +120,23 @@ export declare namespace InferenceSession {
      * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/
      * onnxruntime_session_options_config_keys.h
      *
+     * In example,
+     *
+     * ```js
+     * extra: {
+     *   session: {
+     *     set_denormal_as_zero: "1",
+     *     disable_prepacking: "1"
+     *   },
+     *   optimization: {
+     *     enable_gelu_approximation: "1"
+     *   }
+     * }
+     * ```
+     *
      * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
      */
-    configEntry?: {[name: string]: string};
+    extra?: Record<string, unknown>;
   }
 
   //#region execution providers
@@ -205,9 +219,19 @@ export declare namespace InferenceSession {
      * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/
      * onnxruntime_run_options_config_keys.h
      *
+     * In example,
+     *
+     * ```js
+     * extra: {
+     *   memory: {
+     *     enable_memory_arena_shrinkage: "1",
+     *   }
+     * }
+     * ```
+     *
      * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
      */
-    configEntry?: {[name: string]: string};
+    extra?: Record<string, unknown>;
   }
 
   //#endregion

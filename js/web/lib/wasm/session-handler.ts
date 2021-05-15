@@ -145,6 +145,23 @@ const getExecutionMode = (executionMode: 'sequential'|'parallel'): number => {
   }
 };
 
+interface ExtraOptionsHandler {
+  (name: string, value: string): void;
+}
+
+const iterateExtraOptions = (options: Record<string, unknown>, prefix: string, handler: ExtraOptionsHandler) => {
+  Object.entries(options).forEach(([key, value]) => {
+    const name = (prefix) ? prefix + '.' + key : key;
+    if (typeof value === 'object') {
+      iterateExtraOptions(value as Record<string, unknown>, name, handler);
+    } else if (['string', 'number', 'boolean'].indexOf(typeof value) !== -1) {
+      handler(name, (value as string | number | boolean).toString());
+    } else {
+      throw new Error(`Can't handle extra config type: ${typeof value}`);
+    }
+  });
+};
+
 const setSessionOptions = (options?: InferenceSession.SessionOptions): [number, number[]] => {
   const wasm = getInstance();
   const allocs: number[] = [];
@@ -192,8 +209,8 @@ const setSessionOptions = (options?: InferenceSession.SessionOptions): [number, 
     throw new Error('Can\'t create session options');
   }
 
-  if (options !== undefined && options.configEntry !== undefined) {
-    Object.entries(options.configEntry).forEach(([key, value]) => {
+  if (options !== undefined && options.extra !== undefined) {
+    iterateExtraOptions(options.extra, '', (key, value) => {
       const keyDataLength = wasm.lengthBytesUTF8(key) + 1;
       const keyDataOffset = wasm._malloc(keyDataLength);
       wasm.stringToUTF8(key, keyDataOffset, keyDataLength);
@@ -245,8 +262,8 @@ const setRunOptions = (options: InferenceSession.RunOptions): [number, number[]]
     throw new Error('Can\'t create run options');
   }
 
-  if (options !== undefined && options.configEntry !== undefined) {
-    Object.entries(options.configEntry).forEach(([key, value]) => {
+  if (options !== undefined && options.extra !== undefined) {
+    iterateExtraOptions(options.extra, '', (key, value) => {
       const keyDataLength = wasm.lengthBytesUTF8(key) + 1;
       const keyDataOffset = wasm._malloc(keyDataLength);
       wasm.stringToUTF8(key, keyDataOffset, keyDataLength);
