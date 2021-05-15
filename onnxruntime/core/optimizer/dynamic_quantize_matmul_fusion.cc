@@ -56,7 +56,8 @@ Status DynamicQuantizeMatMulFusion::ApplyImpl(Graph& graph, bool& modified, int 
 
     Node& dynamic_quant_linear = *graph.GetNode(p_dynamic_quant_linear->Index());
     auto& dql_output_args = dynamic_quant_linear.MutableOutputDefs();
-    if (!optimizer_utils::CheckOutputEdges(graph, dynamic_quant_linear, dql_output_args.size())) {
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(dynamic_quant_linear, "DynamicQuantizeLinear", {11}) ||
+        !optimizer_utils::CheckOutputEdges(graph, dynamic_quant_linear, dql_output_args.size())) {
       continue;
     }
 
