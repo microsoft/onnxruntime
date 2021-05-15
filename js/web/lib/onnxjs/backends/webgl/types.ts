@@ -82,6 +82,7 @@ export interface ProgramInfo {
 
   expectPackedInputs?: boolean;
   expectPackedOutputs?: boolean;
+  name?: string;
 }
 
 export interface VariableInfo {
@@ -113,6 +114,7 @@ export interface Artifact {
   program: WebGLProgram;
   uniformLocations: UniformLocation[];
   attribLocations: {position: number; textureCoord: number};
+  name?: string;
 }
 export declare namespace Artifact {
   type UniformLocations = Artifact['uniformLocations'];

@@ -15,7 +15,7 @@ export class WebGLSplit extends Split {
       const count = this.getProgramCount(inferenceHandler, inputs, axis);
       for (let i = 0; i < count; ++i) {
         const programInfo = this.createProgramInfo(inferenceHandler, inputs[0], axis, i);
-        const artifact = inferenceHandler.session.programManager.build(programInfo);
+        const artifact = inferenceHandler.session.programManager.build(programInfo, 'WebGLSplit');
         this.artifacts.push(artifact);
       }
     }

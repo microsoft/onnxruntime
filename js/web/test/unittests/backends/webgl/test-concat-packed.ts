@@ -289,7 +289,7 @@ describe('#UnitTest# - packed concat - Tensor concat', () => {
       const programInfo =
           op.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, [inputTensorA, inputTensorB]);
 
-      const artifact = webglInferenceHandler.session.programManager.build(programInfo);
+      const artifact = webglInferenceHandler.session.programManager.build(programInfo, 'WebGLConcat');
       webglInferenceHandler.session.programManager.setArtifact(op, artifact);
 
       // run kernal and get output

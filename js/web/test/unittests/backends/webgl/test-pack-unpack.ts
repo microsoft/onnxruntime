@@ -218,7 +218,7 @@ describe('#UnitTest# - pack - Tensor pack', () => {
 
         // compile shader code
         const programInfo = op.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, [inputTensor]);
-        const artifact = webglInferenceHandler.session.programManager.build(programInfo);
+        const artifact = webglInferenceHandler.session.programManager.build(programInfo, 'WebGLPack');
         webglInferenceHandler.session.programManager.setArtifact(op, artifact);
 
         // run kernal and get output
@@ -298,7 +298,7 @@ describe('#UnitTest# - unpack - Tensor unpack', () => {
       // compile shader code
       const programInfo = op.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, [inputTensor]);
 
-      const artifact = webglInferenceHandler.session.programManager.build(programInfo);
+      const artifact = webglInferenceHandler.session.programManager.build(programInfo, 'WebGLUnpack');
       webglInferenceHandler.session.programManager.setArtifact(op, artifact);
 
       // run kernal and get output
@@ -354,7 +354,7 @@ describe('#UnitTest# - pack-unpack round trip', () => {
 
       // compile pack shader code
       let programInfo = packOp.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, [inputTensor]);
-      let artifact = webglInferenceHandler.session.programManager.build(programInfo);
+      let artifact = webglInferenceHandler.session.programManager.build(programInfo, 'WebGLPack');
       webglInferenceHandler.session.programManager.setArtifact(packOp, artifact);
 
       // run pack kernal and get output
@@ -367,7 +367,7 @@ describe('#UnitTest# - pack-unpack round trip', () => {
       // compile unpack shader code
       programInfo =
           unpackOp.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, [runData.outputTextureData.tensor]);
-      artifact = webglInferenceHandler.session.programManager.build(programInfo);
+      artifact = webglInferenceHandler.session.programManager.build(programInfo, 'WebGLUnpack');
       webglInferenceHandler.session.programManager.setArtifact(unpackOp, artifact);
 
       // run unpack kernal and get output

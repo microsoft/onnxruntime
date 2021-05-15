@@ -152,8 +152,9 @@ export class WebGLUnpackedConv extends Conv {
     if (!this.artifacts) {
       this.artifacts = [];
       const programInfos = this.createProgramInfoArray(inferenceHandler, inputs);
+      const kernelNames = ['Im2Col', 'dotProduct'];
       for (let i = 0; i < programInfos.length; ++i) {
-        const artifact = inferenceHandler.session.programManager.build(programInfos[i]);
+        const artifact = inferenceHandler.session.programManager.build(programInfos[i], kernelNames[i]);
         this.artifacts.push(artifact);
       }
     }
@@ -325,7 +326,8 @@ export class WebGLUnpackedConv extends Conv {
     const outputLayout = inferenceHandler.createTextureLayoutFromShape(outputShape);
     const initValue = (inputs.length < 3) ? '0.0' : '_B(b)';
     const sharedDim = im2colLayout.shape[3];
-    const blendEnabled = inferenceHandler.session.backend.glContext.isBlendSupported && !this.activation;
+    // const blendEnabled = inferenceHandler.session.backend.glContext.isBlendSupported && !this.activation;
+    const blendEnabled = false;
     const sharedDimReadSize = blendEnabled && inferenceHandler.session.backend.matmulMaxBatchSize ?
         this.calcSharedDimReadSize(inferenceHandler.session.backend.matmulMaxBatchSize, sharedDim) :
         sharedDim;

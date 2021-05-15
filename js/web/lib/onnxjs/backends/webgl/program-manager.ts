@@ -37,10 +37,7 @@ export class ProgramManager {
     this.repo.set(key, artifact);
   }
   run(buildArtifact: Artifact, runData: RunData): void {
-    const inputInfo = runData.inputTextureDatas.map((d, i) => `input${i}:[${d.shape}]`).join(', ');
-    const outputInfo = `output: [${runData.outputTextureData.shape}]`;
-
-    this.profiler.event('backend', `ProgramManager.run ${inputInfo} ; ${outputInfo}`, () => {
+    this.profiler.event('op', `ProgramManager.run ${buildArtifact.name}`, () => {
       const gl = this.glContext.gl;
       const program = buildArtifact.program;
       gl.useProgram(program);
@@ -57,7 +54,7 @@ export class ProgramManager {
       this.profiler.event('backend', 'GlContext.draw()', () => {
         this.doDraw(buildArtifact, runData);
       });
-    });
+    }, this.glContext);
   }
   dispose(): void {
     if (this.vertexShader) {
@@ -65,7 +62,7 @@ export class ProgramManager {
     }
     this.repo.forEach(a => this.glContext.deleteProgram(a.program));
   }
-  build(programInfo: ProgramInfo): Artifact {
+  build(programInfo: ProgramInfo, kernelName: string): Artifact {
     return this.profiler.event('backend', 'ProgramManager.build', () => {
       const preprocessor = new GlslPreprocessor(this.glContext, programInfo);
       const fragScript = preprocessor.preprocess();
@@ -75,7 +72,8 @@ export class ProgramManager {
         program,
         uniformLocations: this.getUniformLocations(
             program, preprocessor.context.programInfo.samplers, preprocessor.context.programInfo.variables),
-        attribLocations: this.getAttribLocations(program)
+        attribLocations: this.getAttribLocations(program),
+        name: kernelName
       };
       return artifact;
     });

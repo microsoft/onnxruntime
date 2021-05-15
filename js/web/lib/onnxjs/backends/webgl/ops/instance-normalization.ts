@@ -13,7 +13,7 @@ export class WebGLInstanceNormalization extends InstanceNormalization {
       this.artifacts = [];
       const programInfos = this.createProgramInfos(inferenceHandler, inputs);
       programInfos.forEach((pi) => {
-        const artifact = inferenceHandler.session.programManager.build(pi);
+        const artifact = inferenceHandler.session.programManager.build(pi, pi.name === undefined ? '' : pi.name);
         this.artifacts.push(artifact);
       });
     }
@@ -78,6 +78,7 @@ export class WebGLInstanceNormalization extends InstanceNormalization {
       outputLayout: inferenceHandler.createTextureLayoutFromShape(outputShape, 4, outputUnpackedShape),
       samplers: ['X'],
       shaderSource,
+      name: 'MeanAndVariance',
     };
   }
 
@@ -114,6 +115,7 @@ export class WebGLInstanceNormalization extends InstanceNormalization {
       samplers: ['X', 'MeanAndVariance', 'Scale', 'B'],
       variables: [{name: 'epsilon', type: 'float'}],
       shaderSource,
+      name: 'ComputOutput',
     };
   }
   createProgramInfos(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo[] {

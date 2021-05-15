@@ -72,7 +72,7 @@ export class WebGLUint8Encode {
         ${glsl.output} = encodeAsUint8(value);
       }`;
     const programInfo = {inputLayouts: [input], outputLayout, samplers: ['X'], shaderSource, hasMain: true};
-    const artifact = inferenceHandler.session.programManager.build(programInfo);
+    const artifact = inferenceHandler.session.programManager.build(programInfo, 'WebGLUint8Encode');
 
     const encoder = inferenceHandler.session.backend.glContext.getEncoder('byte', 4);
     const texture =
