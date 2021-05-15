@@ -950,32 +950,38 @@ void addGlobalMethods(py::module& m, Environment& env) {
   m.def("register_python_object", [](py::object obj) -> void {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     py::handle h = obj.release();
-    PyObject* x = h.ptr();
-    pool.RegisterObject(x);
+    PyObject* raw = h.ptr();
+    pool.RegisterObject(raw);
   });
-  m.def("register_forward_runner", [](py::object obj) -> void {
+  m.def("register_forward_runner", [](py::object obj, bool override) -> void {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     py::handle h = obj.release();
-    PyObject* x = h.ptr();
-    pool.RegisterForwardRunner(x);
+    PyObject* raw = h.ptr();
+    pool.RegisterForwardRunner(raw, override);
   });
-  m.def("register_backward_runner", [](py::object obj) -> void {
+  m.def("unregister_forward_runner", []() -> void {
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.UnregisterForwardRunner();
+  });
+  m.def("register_backward_runner", [](py::object obj, bool override) -> void {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     py::handle h = obj.release();
-    PyObject* x = h.ptr();
-    pool.RegisterBackwardRunner(x);
+    PyObject* raw = h.ptr();
+    pool.RegisterBackwardRunner(raw, override);
   });
-  m.def("register_forward_core", [](std::string key, py::object obj) -> void {
+  m.def("unregister_backward_runner", []() -> void {
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.UnregisterBackwardRunner();
+  });
+  m.def("register_torch_autograd_function", [](std::string key, py::object obj, bool override) -> void {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     py::handle h = obj.release();
-    PyObject* x = h.ptr();
-    pool.RegisterForwardCore(key, x);
+    PyObject* raw = h.ptr();
+    pool.RegisterTorchAutogradFunction(key, raw, override);
   });
-  m.def("register_backward_core", [](std::string key, py::object obj) -> void {
+  m.def("unregister_torch_autograd_function", [](std::string key) -> void {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
-    py::handle h = obj.release();
-    PyObject* x = h.ptr();
-    pool.RegisterBackwardCore(key, x);
+    pool.UnregisterTorchAutogradFunction(key);
   });
 
 #ifdef USE_NUPHAR
