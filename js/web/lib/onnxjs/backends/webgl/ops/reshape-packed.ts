@@ -43,6 +43,8 @@ export class WebGLReshapePacked extends Reshape implements WebGLOperator {
     }
 
     const outputShape = ShapeUtil.calculateReshapedDims(originInputShape, inputs[1].integerData);
+    console.log(inputs[1].integerData);
+    this.outputOriginalUnpackedShape = Array.from(inputs[1].integerData);
     const squeezedOutputShape = processDims3D(outputShape);
 
     this.outputLayout = handler.createTextureLayoutFromShape(
@@ -122,6 +124,8 @@ export class WebGLReshapePacked extends Reshape implements WebGLOperator {
       outputLayout =
           handler.createTextureLayoutFromShape(outputShape, 4, outputShape, {isPacked: true, reverseWH: true});
     }
+    outputLayout.unpackedShape = this.outputOriginalUnpackedShape;
+    console.log(outputLayout);
     // return run data for reshape. Here, we use the original calculate outputLayout to create the real output layout.
     return {
       inputTextureDatas: inputTDs,
@@ -130,6 +134,7 @@ export class WebGLReshapePacked extends Reshape implements WebGLOperator {
     };
   }
   private outputLayout: TextureLayout;
+  private outputOriginalUnpackedShape: number[];
 }
 
 function processDims3D(shape: readonly number[]|readonly number[]|Tensor.IntegerType): [number, number, number] {
