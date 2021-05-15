@@ -86,6 +86,7 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
                                                                       dim=-1,
                                                                       largest=True,
                                                                       sorted=True)  # output shape=(batch, beam_size)
+
         # select the correspondent sentences/next tokens
         selected_input_seq = selected_index_flat // self.config.beam_size
         next_token_ids = next_token_ids.view(self.config.batch_size, -1).gather(-1, selected_index_flat)
@@ -696,7 +697,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         # Bind inputs
         data_type = output_buffers[ort_session.get_outputs()[1].name].dtype
         float_type = numpy.float16 if data_type == torch.float16 else numpy.float32
-        
+
         if past is not None:
             for i, past_i in enumerate(past):
                 assert past_i.is_contiguous()

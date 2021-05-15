@@ -20,6 +20,7 @@ from benchmark_helper import Precision
 
 logger = logging.getLogger(__name__)
 
+
 class Gpt2TesterFactory:
     @staticmethod
     def create_tester(tester_type="default"):
