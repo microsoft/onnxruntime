@@ -27,7 +27,7 @@ export declare namespace Logger {
      */
     provider?: Provider;
     /**
-     * Specify the minimal logger serverity. 'info' by default
+     * Specify the minimal logger serverity. 'warning' by default
      */
     minimalSeverity?: Logger.Severity;
     /**
@@ -130,7 +130,7 @@ const LOGGER_PROVIDER_MAP: {readonly [provider: string]: Readonly<LoggerProvider
 };
 const LOGGER_DEFAULT_CONFIG = {
   provider: 'console',
-  minimalSeverity: 'info',
+  minimalSeverity: 'warning',
   logDateTime: true,
   logSourceLocation: false
 };
@@ -244,8 +244,8 @@ namespace log {
 
   export function setWithEnv(env: Env): void {
     const config: Logger.Config = {};
-    if (env.loggingLevel) {
-      config.minimalSeverity = env.loggingLevel as Logger.Severity;
+    if (env.logLevel) {
+      config.minimalSeverity = env.logLevel as Logger.Severity;
     }
     set('', config);
   }

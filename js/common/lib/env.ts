@@ -41,9 +41,9 @@ export declare namespace Env {
 
 export interface Env {
   /**
-   * set a logging level. If omitted, default is 'warning'
+   * set the severity level for logging. If omitted, default is 'warning'
    */
-  loggingLevel?: 'verbose'|'info'|'warning'|'error'|'fatal';
+  logLevel?: 'verbose'|'info'|'warning'|'error'|'fatal';
   /**
    * Indicate whether run in debug mode.
    */
@@ -68,5 +68,5 @@ export interface Env {
 export const env: EnvIml = {
   wasm: {},
   webgl: {},
-  loggingLevel: 'warning',
+  logLevel: 'warning',
 };
