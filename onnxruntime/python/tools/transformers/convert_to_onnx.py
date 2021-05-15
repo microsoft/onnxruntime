@@ -135,9 +135,6 @@ def parse_arguments():
                                        help='Nuclear/top-p sampling accumulation probability.')
     sampling_option_group.add_argument('--do_sample_top_k', type=int, default=0, help='Use top-k if non-zero.')
 
-    parser.add_argument('--batch_size', required=False, type=int, default=1, help='Batch size for GPT model with beam search')
-    parser.add_argument('--beam_size', required=False, type=int, default=4, help='Beam size for beam search')
-
     args = parser.parse_args()
 
     return args
