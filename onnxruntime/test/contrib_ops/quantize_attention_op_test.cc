@@ -741,7 +741,7 @@ void TestQuantizedAttentionPastState(int64_t batch,
   constexpr int32_t weight_range = weight_max - weight_min;
 
   std::vector<WeightT> weight_zero_point(weight_scale_zp_size);
-  for(auto& zp : weight_zero_point) {
+  for (auto& zp : weight_zero_point) {
     zp = static_cast<WeightT>(random.Uniform<int32_t>({1}, weight_min, weight_max)[0]);
   }
 
@@ -856,6 +856,121 @@ TEST(QAttentionTest, QAttentionPrunedModel) {
                    use_special_quantize_parameter, is_unidirectional, use_float16,
                    input_hidden_size);
 }
+
+#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
+TEST(QAttentionTest, SharedPrepackedWeights) {
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 4;
+  int number_of_heads = 2;
+
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> weight_data = {
+      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
+      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
+      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
+      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
+
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
+
+  std::vector<int32_t> mask_index_data = {2L};
+
+  std::vector<float> output_data = {
+      3.1495983600616455f, 0.10843668878078461f, 4.25f, 5.6499996185302734f,
+      3.9696791172027588f, 0.073143675923347473f, 4.2499995231628418f, 5.6499991416931152f};
+
+  std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
+  std::vector<int64_t> weights_dims = {hidden_size, 3 * hidden_size};
+  std::vector<int64_t> bias_dims = {3 * hidden_size};
+  std::vector<int64_t> mask_index_dims = {batch_size};
+  std::vector<int64_t> output_dims = {batch_size, sequence_length, hidden_size};
+
+  OpTester tester("QAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
+
+  tester.AddInput<uint8_t>("input", input_dims, ToInteger<uint8_t>(input_data, 0.1f, 128));
+  auto weight_data_converted_to_int = ToInteger<uint8_t>(weight_data, 0.1f, 128);
+  tester.AddInput<uint8_t>("weight", weights_dims, weight_data_converted_to_int, true);  // Trigger pre-packing
+
+  tester.AddInput<float>("bias", bias_dims, bias_data);
+  tester.AddInput<float>("input_scale", {1}, {0.1f});
+  tester.AddInput<float>("weight_scale", {1}, {0.1f});
+  tester.AddOutput<float>("output", output_dims, output_data);
+
+  tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
+
+  tester.AddInput<uint8_t>("input_zero_point", {1}, {128});
+  tester.AddInput<uint8_t>("weight_zero_point", {1}, {128});
+
+  auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<uint8_t>(), TensorShape(weights_dims),
+                                           weight_data_converted_to_int.data(),
+                                           OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+  OrtValue weight;
+
+  weight.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
+              DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+
+  SessionOptions so;
+
+  // Set up weight as a shared initializer to be shared between sessions
+  ASSERT_EQ(so.AddInitializer("weight", &weight), Status::OK());
+
+  // We want all sessions running using this OpTester to be able to share pre-packed weights if applicable
+  tester.EnableSharingOfPrePackedWeightsAcrossSessions();
+
+  // Pre-packing is limited just to the CPU EP for now and we will only test the CPU EP
+  // and we want to ensure that it is available in this build
+  auto cpu_ep = []() -> std::vector<std::unique_ptr<IExecutionProvider>> {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    return execution_providers;
+  };
+
+  size_t number_of_pre_packed_weights_counter_session_1 = 0;
+  size_t number_of_shared_pre_packed_weights_counter = 0;
+
+  // Session 1
+  {
+    auto ep_vec = cpu_ep();
+    tester.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
+               &ep_vec, {}, &number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
+    // Assert that no pre-packed weights have been shared thus far
+    ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(0));
+  }
+
+  auto number_of_elements_in_shared_prepacked_buffers_container =
+      tester.GetNumPrePackedWeightsShared();
+  // Assert that the number of elements in the shared container
+  // is the same as the number of weights that have been pre-packed
+  ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_elements_in_shared_prepacked_buffers_container);
+
+  // On some platforms/architectures MLAS may choose to not do any pre-packing and the number of elements
+  // that have been pre-packed will be zero in which case we do not continue with the testing
+  // of "sharing" of pre-packed weights as there are no pre-packed weights to be shared at all.
+  if (number_of_pre_packed_weights_counter_session_1 == 0)
+    return;
+
+  // Session 2
+  {
+    size_t number_of_pre_packed_weights_counter_session_2 = 0;
+    auto ep_vec = cpu_ep();
+    tester.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
+               &ep_vec, {}, &number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
+
+    // Assert that the same number of weights were pre-packed in both sessions
+    ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_pre_packed_weights_counter_session_2);
+
+    // Assert that the number of pre-packed weights that were shared equals
+    // the number of pre-packed weights in the second session
+    ASSERT_EQ(number_of_pre_packed_weights_counter_session_2,
+              static_cast<size_t>(number_of_shared_pre_packed_weights_counter));
+  }
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

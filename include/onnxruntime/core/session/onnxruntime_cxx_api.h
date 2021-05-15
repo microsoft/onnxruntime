@@ -349,6 +349,7 @@ struct ModelMetadata : Base<OrtModelMetadata> {
 struct Session : Base<OrtSession> {
   explicit Session(std::nullptr_t) {}
   Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);
+  Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options, OrtPrepackedWeightsContainer* prepacked_weights_container);
   Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options);
 
   // Run that will allocate the output values
