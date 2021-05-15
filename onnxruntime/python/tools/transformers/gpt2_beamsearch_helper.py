@@ -77,15 +77,15 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
         finished_sents = ~input_unfinished_sents
         next_token_log_probs.masked_fill_(finished_sents.unsqueeze(-1), -numpy.inf)
         next_token_log_probs[..., 0].masked_fill_(finished_sents, 0)
-        next_token_ids.masked_fill_(
-            finished_sents.unsqueeze(-1), self.config.eos_token_id
-        )
+        next_token_ids.masked_fill_(finished_sents.unsqueeze(-1), self.config.eos_token_id)
         output_log_probs = input_log_probs.unsqueeze(-1) + next_token_log_probs
 
         # select N sequences from beams of each input, sorted by sequence probability
-        output_log_probs = output_log_probs.view(
-            self.config.batch_size, -1
-        )  # shape=(batch, beam_size^2)
+        output_log_probs = output_log_probs.view(self.config.batch_size, -1)  # shape=(batch, beam_size^2)
+        output_log_probs, selected_index_flat = output_log_probs.topk(self.config.beam_size,
+                                                                      dim=-1,
+                                                                      largest=True,
+                                                                      sorted=True)  # output shape=(batch, beam_size)
         # select the correspondent sentences/next tokens
         selected_input_seq = selected_index_flat // self.config.beam_size
         next_token_ids = next_token_ids.view(self.config.batch_size, -1).gather(-1, selected_index_flat)
@@ -115,6 +115,7 @@ class GPT2LMHeadModel_BeamSearchStep(GPT2LMHeadModel):
             output_unfinished_sents,
             current_step_results.view(self.config.batch_size * self.config.beam_size, -1),
             current_step_scores.view(self.config.batch_size * self.config.beam_size, -1),
+        )
 
 
 class GPT2LMHeadModel_ConfigurableOneStepSearch(GPT2LMHeadModel):
@@ -695,6 +696,7 @@ class Gpt2BeamSearchHelper(Gpt2Helper):
         # Bind inputs
         data_type = output_buffers[ort_session.get_outputs()[1].name].dtype
         float_type = numpy.float16 if data_type == torch.float16 else numpy.float32
+        
         if past is not None:
             for i, past_i in enumerate(past):
                 assert past_i.is_contiguous()
