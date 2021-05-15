@@ -3,7 +3,7 @@ jobs:
   pool: onnxruntime-tensorrt-linuxbuild
   variables:
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
-  timeoutInMinutes: 90
+  timeoutInMinutes: 120
   steps:
     - checkout: self
       clean: true
