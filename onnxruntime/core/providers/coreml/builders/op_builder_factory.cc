@@ -56,6 +56,15 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateResizeOpBuilder("Resize", op_registrations);
   }
 
+  {  // Gemm/MatMul
+    CreateGemmOpBuilder("Gemm", op_registrations);
+    CreateGemmOpBuilder("MatMul", op_registrations);
+  }
+
+  {  // Clip
+    CreateClipOpBuilder("Clip", op_registrations);
+  }
+
   return op_registrations;
 }
 

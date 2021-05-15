@@ -213,6 +213,22 @@ class ModelTestBuilder {
     return AddNode(op_type, input_args, {output_arg}, kMSDomain);
   }
 
+  Node& AddQLinearConcatLike(const std::string& op_type,
+                             NodeArg* output_arg,
+                             float output_scale,
+                             uint8_t output_zero_point,
+                             std::vector<std::tuple<NodeArg*, float, uint8_t>> quantized_inputs) {
+    std::vector<NodeArg*> input_args;
+    input_args.push_back(MakeScalarInitializer<float>(output_scale));
+    input_args.push_back(MakeScalarInitializer<uint8_t>(output_zero_point));
+    for (size_t input_index = 0; input_index < quantized_inputs.size(); ++input_index) {
+      input_args.push_back(std::get<0>(quantized_inputs[input_index]));
+      input_args.push_back(MakeScalarInitializer<float>(std::get<1>(quantized_inputs[input_index])));
+      input_args.push_back(MakeScalarInitializer<uint8_t>(std::get<2>(quantized_inputs[input_index])));
+    }
+    return AddNode(op_type, input_args, {output_arg}, kMSDomain);
+  }
+
   Node& AddQLinearActivationNode(const std::string& op_type,
                                  NodeArg* input_arg,
                                  float input_scale,
@@ -228,6 +244,14 @@ class ModelTestBuilder {
     input_args.push_back(MakeScalarInitializer<uint8_t>(output_zero_point));
 
     return AddNode(op_type, input_args, {output_arg}, kMSDomain);
+  }
+
+  void SetGraphOutputs() {
+    std::vector<const NodeArg*> outputs;
+    for (auto& output_name : output_names_) {
+      outputs.push_back(graph_.GetNodeArg(output_name));
+    }
+    graph_.SetOutputs(outputs);
   }
 
   Graph& graph_;

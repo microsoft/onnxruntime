@@ -88,7 +88,7 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("FastGelu", GetFastGeluGradient);
   REGISTER_GRADIENT_BUILDER("LayerNormalization", GetLayerNormalizationGradient);
   REGISTER_GRADIENT_BUILDER("SimplifiedLayerNormalization", GetSimplifiedLayerNormalizationGradient);
-  REGISTER_GRADIENT_BUILDER("BatchNormalization", GetBatchNormalizationGradient);
+  REGISTER_GRADIENT_BUILDER("BatchNormInternal", GetBatchNormalizationGradient);
   REGISTER_GRADIENT_BUILDER("MegatronF", GetMegatronFGradient);
   REGISTER_GRADIENT_BUILDER("MegatronG", GetMegatronGGradient);
   REGISTER_GRADIENT_BUILDER("Slice", GetSliceGradient);
@@ -101,7 +101,10 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("TopK", GetTopKGradient);
   REGISTER_GRADIENT_BUILDER("Clip", GetClipGradient);
   REGISTER_GRADIENT_BUILDER("Abs", GetAbsGradient);
+  REGISTER_GRADIENT_BUILDER("Min", GetMinMaxGradient);
+  REGISTER_GRADIENT_BUILDER("Max", GetMinMaxGradient);
   REGISTER_GRADIENT_BUILDER("Tile", GetTileGradient);
+  REGISTER_GRADIENT_BUILDER("ATenOp", GetATenOpGradient);
 };
 
 }  // namespace training

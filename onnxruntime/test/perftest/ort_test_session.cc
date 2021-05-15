@@ -49,7 +49,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         0,
         !performance_test_config.run_config.do_cuda_copy_in_separate_stream,
         0,
-        nullptr};
+        nullptr,
+        nullptr};  // TODO: Support arena configuration for users of perf test
     session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
     ORT_THROW("CUDA is not supported in this build\n");
@@ -68,16 +69,17 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     bool trt_int8_enable = false;
     std::string trt_int8_calibration_table_name = "";
     bool trt_int8_use_native_calibration_table = false;
+    bool trt_force_sequential_engine_build = false;
 
-    #ifdef _MSC_VER
+#ifdef _MSC_VER
     std::string ov_string = ToMBString(performance_test_config.run_config.ep_runtime_config_string);
-    #else
+#else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
-    #endif
+#endif
     std::istringstream ss(ov_string);
     std::string token;
     while (ss >> token) {
-      if(token == "") {
+      if (token == "") {
         continue;
       }
       auto pos = token.find("|");
@@ -85,10 +87,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         ORT_THROW("[ERROR] [TensorRT] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
       }
 
-      auto key = token.substr(0,pos);
-      auto value = token.substr(pos+1);
+      auto key = token.substr(0, pos);
+      auto value = token.substr(pos + 1);
       if (key == "has_trt_options") {
-        if(value == "true" || value == "True"){
+        if (value == "true" || value == "True") {
           has_trt_options = true;
         } else if (value == "false" || value == "False") {
           has_trt_options = false;
@@ -96,13 +98,13 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'has_trt_options' should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else if (key == "trt_max_workspace_size") {
-        if(!value.empty()) {
+        if (!value.empty()) {
           trt_max_workspace_size = std::stoull(value);
         } else {
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_max_workspace_size' should be a number.\n");
         }
       } else if (key == "trt_fp16_enable") {
-        if(value == "true" || value == "True"){
+        if (value == "true" || value == "True") {
           trt_fp16_enable = true;
         } else if (value == "false" || value == "False") {
           trt_fp16_enable = false;
@@ -110,7 +112,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_fp16_enable' should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else if (key == "trt_int8_enable") {
-        if(value == "true" || value == "True"){
+        if (value == "true" || value == "True") {
           trt_int8_enable = true;
         } else if (value == "false" || value == "False") {
           trt_int8_enable = false;
@@ -118,21 +120,29 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_enable' should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else if (key == "trt_int8_calibration_table_name") {
-        if(!value.empty()) {
+        if (!value.empty()) {
           trt_int8_calibration_table_name = value;
         } else {
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_calibration_table_name' should be a non-emtpy string.\n");
         }
       } else if (key == "trt_int8_use_native_calibration_table") {
-        if(value == "true" || value == "True"){
+        if (value == "true" || value == "True") {
           trt_int8_use_native_calibration_table = true;
         } else if (value == "false" || value == "False") {
           trt_int8_use_native_calibration_table = false;
         } else {
           ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_use_native_calibration_table' should be a boolean i.e. true or false. Default value is false.\n");
         }
+      } else if (key == "trt_force_sequential_engine_build") {
+        if (value == "true" || value == "True") {
+          trt_force_sequential_engine_build = true;
+        } else if (value == "false" || value == "False") {
+          trt_force_sequential_engine_build = false;
+        } else {
+          ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_force_sequential_engine_build' should be a boolean i.e. true or false. Default value is false.\n");
+        }
       } else {
-          ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['use_trt_options', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table'] \n");
+        ORT_THROW("[ERROR] [TensorRT] wrong key type entered. Choose from the following runtime key options that are available for TensorRT. ['use_trt_options', 'trt_fp16_enable', 'trt_int8_enable', 'trt_int8_calibration_table_name', 'trt_int8_use_native_calibration_table', 'trt_force_sequential_engine_build'] \n");
       }
     }
     OrtTensorRTProviderOptions tensorrt_options;
@@ -145,6 +155,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     tensorrt_options.trt_int8_enable = trt_int8_enable;
     tensorrt_options.trt_int8_calibration_table_name = trt_int8_calibration_table_name.c_str();
     tensorrt_options.trt_int8_use_native_calibration_table = trt_int8_use_native_calibration_table;
+    tensorrt_options.trt_force_sequential_engine_build = trt_force_sequential_engine_build;
     session_options.AppendExecutionProvider_TensorRT(tensorrt_options);
 
     OrtCUDAProviderOptions cuda_options{
@@ -154,29 +165,30 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         0,
         !performance_test_config.run_config.do_cuda_copy_in_separate_stream,
         0,
-        nullptr};
+        nullptr,
+        nullptr};  // TODO: Support arena configuration for users of perf test
     session_options.AppendExecutionProvider_CUDA(cuda_options);
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
 #endif
   } else if (provider_name == onnxruntime::kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-    std::string device_type = ""; // [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.
-    bool enable_vpu_fast_compile = false; // [enable_vpu_fast_compile]: Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format.
-    std::string device_id = ""; // [device_id]: Selects a particular hardware device for inference.
-    size_t num_of_threads = 8; // [num_of_threads]: Overrides the accelerator default value of number of threads with this value at runtime.
-    bool use_compiled_network = false; // [use_compiled_network]: Can be enabled to directly import pre-compiled blobs if exists.
-    std::string blob_dump_path = ""; // [blob_dump_path]: Explicitly specify the path where you would like to dump and load the blobs for the use_compiled_network(save/load blob) feature. This overrides the default path.
+    std::string device_type = "";          // [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.
+    bool enable_vpu_fast_compile = false;  // [enable_vpu_fast_compile]: Fast-compile may be optionally enabled to speeds up the model's compilation to VPU device specific format.
+    std::string device_id = "";            // [device_id]: Selects a particular hardware device for inference.
+    size_t num_of_threads = 8;             // [num_of_threads]: Overrides the accelerator default value of number of threads with this value at runtime.
+    bool use_compiled_network = false;     // [use_compiled_network]: Can be enabled to directly import pre-compiled blobs if exists.
+    std::string blob_dump_path = "";       // [blob_dump_path]: Explicitly specify the path where you would like to dump and load the blobs for the use_compiled_network(save/load blob) feature. This overrides the default path.
 
-    #ifdef _MSC_VER
+#ifdef _MSC_VER
     std::string ov_string = ToMBString(performance_test_config.run_config.ep_runtime_config_string);
-    #else
+#else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
-    #endif
+#endif
     std::istringstream ss(ov_string);
     std::string token;
     while (ss >> token) {
-      if(token == "") {
+      if (token == "") {
         continue;
       }
       auto pos = token.find("|");
@@ -184,21 +196,20 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         ORT_THROW("[ERROR] [OpenVINO] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
       }
 
-      auto key = token.substr(0,pos);
-      auto value = token.substr(pos+1);
+      auto key = token.substr(0, pos);
+      auto value = token.substr(pos + 1);
 
       if (key == "device_type") {
         std::set<std::string> ov_supported_device_types = {"CPU_FP32", "GPU_FP32", "GPU_FP16", "VAD-M_FP16", "MYRIAD_FP16", "VAD-F_FP32"};
         if (ov_supported_device_types.find(value) != ov_supported_device_types.end()) {
           device_type = value;
-        }
-        else {
+        } else {
           ORT_THROW("[ERROR] [OpenVINO] You have selcted wrong configuration value for the key 'device_type'. select from 'CPU_FP32', 'GPU_FP32', 'GPU_FP16', 'VAD-M_FP16', 'MYRIAD_FP16', 'VAD-F_FP32' or from Hetero/Multi options available. \n");
         }
       } else if (key == "device_id") {
         device_id = value;
       } else if (key == "enable_vpu_fast_compile") {
-        if(value == "true" || value == "True"){
+        if (value == "true" || value == "True") {
           enable_vpu_fast_compile = true;
         } else if (value == "false" || value == "False") {
           enable_vpu_fast_compile = false;
@@ -206,7 +217,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_vpu_fast_compile' should be a boolean i.e. true or false. Default value is false.\n");
         }
       } else if (key == "use_compiled_network") {
-        if(value == "true" || value == "True"){
+        if (value == "true" || value == "True") {
           use_compiled_network = true;
         } else if (value == "false" || value == "False") {
           use_compiled_network = false;
@@ -216,22 +227,22 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       } else if (key == "num_of_threads") {
         std::stringstream sstream(value);
         sstream >> num_of_threads;
-        if ((int)num_of_threads <=0) {
+        if ((int)num_of_threads <= 0) {
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'num_of_threads' should be greater than 0\n");
         }
       } else if (key == "blob_dump_path") {
         blob_dump_path = value;
       } else {
-          ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_vpu_fast_compile', 'num_of_threads', 'use_compiled_network', 'blob_dump_path'] \n");
+        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_vpu_fast_compile', 'num_of_threads', 'use_compiled_network', 'blob_dump_path'] \n");
       }
     }
     OrtOpenVINOProviderOptions options;
-    options.device_type = device_type.c_str(); //To set the device_type
-    options.device_id = device_id.c_str(); // To set the device_id
-    options.enable_vpu_fast_compile = enable_vpu_fast_compile; // To enable_vpu_fast_compile, default is false
-    options.num_of_threads = num_of_threads; // To set number of free InferRequests, default is 8
-    options.use_compiled_network = use_compiled_network; // To use_compiled_network, default is false
-    options.blob_dump_path = blob_dump_path.c_str(); // sets the blob_dump_path, default is ""
+    options.device_type = device_type.c_str();                  //To set the device_type
+    options.device_id = device_id.c_str();                      // To set the device_id
+    options.enable_vpu_fast_compile = enable_vpu_fast_compile;  // To enable_vpu_fast_compile, default is false
+    options.num_of_threads = num_of_threads;                    // To set number of free InferRequests, default is 8
+    options.use_compiled_network = use_compiled_network;        // To use_compiled_network, default is false
+    options.blob_dump_path = blob_dump_path.c_str();            // sets the blob_dump_path, default is ""
     session_options.AppendExecutionProvider_OpenVINO(options);
 #else
     ORT_THROW("OpenVINO is not supported in this build\n");
@@ -324,7 +335,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       if (g_ort->AddFreeDimensionOverrideByName(session_options, ToMBString(dim_override.first).c_str(), dim_override.second) != nullptr) {
         fprintf(stderr, "AddFreeDimensionOverrideByName failed for named dimension: %s\n", ToMBString(dim_override.first).c_str());
       } else {
-        fprintf(stdout, "Overriding dimension with name, %s, to %d\n", ToMBString(dim_override.first).c_str(), (int) dim_override.second);
+        fprintf(stdout, "Overriding dimension with name, %s, to %d\n", ToMBString(dim_override.first).c_str(), (int)dim_override.second);
       }
     }
   }
@@ -333,7 +344,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       if (g_ort->AddFreeDimensionOverride(session_options, ToMBString(dim_override.first).c_str(), dim_override.second) != nullptr) {
         fprintf(stderr, "AddFreeDimensionOverride failed for dimension denotation: %s\n", ToMBString(dim_override.first).c_str());
       } else {
-        fprintf(stdout, "Overriding dimension with denotation, %s, to %d\n", ToMBString(dim_override.first).c_str(), (int) dim_override.second);
+        fprintf(stdout, "Overriding dimension with denotation, %s, to %d\n", ToMBString(dim_override.first).c_str(), (int)dim_override.second);
       }
     }
   }

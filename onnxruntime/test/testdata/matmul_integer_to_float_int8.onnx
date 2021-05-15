@@ -1,4 +1,4 @@
-:Ê
+:Ì
 U
 A
 B
@@ -29,21 +29,19 @@ mul_bottom"MulDynamicQuantizeMatMul_fusionZ
 a_scale
 
 
-Z
-b_scale
-
-
-Z
+Z
+b_scale
+	
+CZ
 a_zero_point
 
 
-Z
-b_zero_point
-
-
-b
+Z
+b_zero_point
+	
+Cb
 Y
 
 
 M
-NB
+NB

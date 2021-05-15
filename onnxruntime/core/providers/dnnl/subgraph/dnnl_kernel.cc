@@ -19,7 +19,7 @@ void DnnlKernel::InitDstReorderOutput(dnnl::engine& cpu_engine,
         primitive_dst_shape_.GetDims().begin(), primitive_dst_shape_.GetDims().end());
     dnnl::memory::desc dst_des = dnnl::memory::desc(dst_dims_mkl,
                                                     data_type, ort_source_format_);
-    reorder_dst_mem_to_ = onnxruntime::make_unique<dnnl::memory>(
+    reorder_dst_mem_to_ = std::make_unique<dnnl::memory>(
         dnnl::memory(dst_des, cpu_engine));
     net.push_back(dnnl::reorder(*primitive_dst_mem_, *reorder_dst_mem_to_));
     net_args.push_back({{DNNL_ARG_FROM, *primitive_dst_mem_},

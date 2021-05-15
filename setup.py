@@ -47,12 +47,16 @@ if parse_arg_remove_boolean(sys.argv, '--nightly_build'):
 wheel_name_suffix = parse_arg_remove_string(sys.argv, '--wheel_name_suffix=')
 
 cuda_version = None
+rocm_version = None
 # The following arguments are mutually exclusive
 if parse_arg_remove_boolean(sys.argv, '--use_tensorrt'):
     package_name = 'onnxruntime-gpu-tensorrt' if not nightly_build else 'ort-trt-nightly'
 elif parse_arg_remove_boolean(sys.argv, '--use_cuda'):
     package_name = 'onnxruntime-gpu' if not nightly_build else 'ort-gpu-nightly'
     cuda_version = parse_arg_remove_string(sys.argv, '--cuda_version=')
+elif parse_arg_remove_boolean(sys.argv, '--use_rocm'):
+    package_name = 'onnxruntime-rocm' if not nightly_build else 'ort-rocm-nightly'
+    rocm_version = parse_arg_remove_string(sys.argv, '--rocm_version=')
 elif parse_arg_remove_boolean(sys.argv, '--use_openvino'):
     package_name = 'onnxruntime-openvino'
 elif parse_arg_remove_boolean(sys.argv, '--use_dnnl'):
@@ -131,6 +135,7 @@ try:
                 copyfile(source, dest)
                 result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
                 cuda_dependencies = ['libcublas.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so', 'libcufft.so', 'libnvToolsExt.so']
+                cuda_dependencies.extend(['librccl.so', 'libamdhip64.so', 'librocblas.so', 'libMIOpen.so', 'libhsa-runtime64.so', 'libhsakmt.so'])
                 to_preload = []
                 args = ['patchelf', '--debug']
                 for line in result.stdout.split('\n'):
@@ -185,7 +190,7 @@ else:
   libs.extend(['onnxruntime_providers_tensorrt.dll'])
   libs.extend(['onnxruntime_providers_openvino.dll'])
   # DirectML Libs
-  libs.extend(['directml.dll'])
+  libs.extend(['DirectML.dll'])
   # Nuphar Libs
   libs.extend(['tvm.dll'])
   if nightly_build:
@@ -227,6 +232,10 @@ packages = [
     'onnxruntime.capi.training',
     'onnxruntime.datasets',
     'onnxruntime.tools',
+    'onnxruntime.tools.ort_format_model',
+    'onnxruntime.tools.ort_format_model.ort_flatbuffers_py',
+    'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.experimental',
+    'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.experimental.fbs',
     'onnxruntime.quantization',
     'onnxruntime.quantization.operators',
     'onnxruntime.quantization.CalTableFlatBuffers',
@@ -241,7 +250,8 @@ enable_training = parse_arg_remove_boolean(sys.argv, '--enable_training')
 if enable_training:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
-                     'onnxruntime.training.optim'])
+                     'onnxruntime.training.optim',
+                     'onnxruntime.training.ortmodule'])
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
     # stable:
@@ -252,9 +262,13 @@ if enable_training:
     # install an onnxruntime training package with matching torch cuda version.
     package_name = 'onnxruntime-training'
     if cuda_version:
+        # removing '.' to make local Cuda version number in the same form as Pytorch.
+        local_version = '+cu' + cuda_version.replace('.', '')
+    if rocm_version:
         # removing '.' to make Cuda version number in the same form as Pytorch.
-        cuda_version = cuda_version.replace('.', '')
-        local_version = '+cu' + cuda_version
+        rocm_version = rocm_version.replace('.', '')
+        local_version = '+rocm' + rocm_version
+
 
 package_data = {}
 data_files = []
@@ -353,6 +367,34 @@ if not path.exists(requirements_path):
     raise FileNotFoundError("Unable to find " + requirements_file)
 with open(requirements_path) as f:
     install_requires = f.read().splitlines()
+
+if enable_training:
+    def save_build_and_package_info(package_name, version_number, cuda_version):
+
+        sys.path.append(path.join(path.dirname(__file__), 'onnxruntime', 'python'))
+        from onnxruntime_collect_build_info import find_cudart_versions
+
+        version_path = path.join('onnxruntime', 'capi', 'build_and_package_info.py')
+        with open(version_path, 'w') as f:
+            f.write("package_name = '{}'\n".format(package_name))
+            f.write("__version__ = '{}'\n".format(version_number))
+
+            if cuda_version:
+                f.write("cuda_version = '{}'\n".format(cuda_version))
+
+                # cudart_versions are integers
+                cudart_versions = find_cudart_versions(build_env=True)
+                if len(cudart_versions) == 1:
+                    f.write("cudart_version = {}\n".format(cudart_versions[0]))
+                else:
+                    print(
+                        "Error getting cudart version. ",
+                        "did not find any cudart library" if len(cudart_versions) == 0 else "found multiple cudart libraries")
+            else:
+                # TODO: rocm
+                pass
+
+    save_build_and_package_info(package_name, version_number, cuda_version)
 
 # Setup
 setup(

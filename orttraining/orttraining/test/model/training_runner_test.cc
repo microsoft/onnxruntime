@@ -46,7 +46,7 @@ TEST(TrainingRunnerTest, Basic) {
   TrainingRunner runner{params, *env};
 
   CUDAExecutionProviderInfo xp_info;
-  ASSERT_TRUE(runner.GetSession().RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)).IsOK());
+  ASSERT_TRUE(runner.GetSession().RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)).IsOK());
 
   auto status = runner.Initialize();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();

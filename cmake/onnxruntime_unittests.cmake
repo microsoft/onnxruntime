@@ -57,6 +57,9 @@ function(AddTest)
   target_include_directories(${_UT_TARGET} PRIVATE ${TEST_INC_DIR})
   if (onnxruntime_USE_CUDA)
     target_include_directories(${_UT_TARGET} PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${onnxruntime_CUDNN_HOME}/include)
+    if (onnxruntime_USE_NCCL)
+      target_include_directories(${_UT_TARGET} PRIVATE ${NCCL_INCLUDE_DIRS})
+    endif()
   endif()
   if(MSVC)
     target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
@@ -97,7 +100,8 @@ function(AddTest)
       MACOSX_BUNDLE_BUNDLE_VERSION ${ORT_VERSION}
       MACOSX_BUNDLE_SHORT_VERSION_STRING ${ORT_VERSION}
       XCODE_ATTRIBUTE_CLANG_ENABLE_MODULES "YES"
-      XCODE_ATTRIBUTE_ENABLE_BITCODE "NO")
+      XCODE_ATTRIBUTE_ENABLE_BITCODE "NO"
+      XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO")
 
     xctest_add_bundle(${_UT_TARGET}_xc ${_UT_TARGET}
       ${TEST_SRC_DIR}/xctest/ortxctest.m
@@ -126,10 +130,21 @@ function(AddTest)
 
     xctest_add_test(xctest.${_UT_TARGET} ${_UT_TARGET}_xc)
   else()
-    add_test(NAME ${_UT_TARGET}
-      COMMAND ${_UT_TARGET} ${TEST_ARGS}
-      WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
-    )
+    if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+      find_program(NODE_EXECUTABLE node required)
+      if (NOT NODE_EXECUTABLE)
+        message(FATAL_ERROR "Node is required for unit tests")
+      endif()
+      add_test(NAME ${_UT_TARGET}
+        COMMAND ${NODE_EXECUTABLE} --experimental-wasm-threads --experimental-wasm-bulk-memory ${_UT_TARGET}.js ${TEST_ARGS}
+        WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
+      )
+    else()
+      add_test(NAME ${_UT_TARGET}
+        COMMAND ${_UT_TARGET} ${TEST_ARGS}
+        WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
+      )
+    endif()
   endif()
 endfunction(AddTest)
 
@@ -319,7 +334,7 @@ set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_ort_format_models.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.h
-          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc		  
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/utils.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.h
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.cc)
 
@@ -522,20 +537,21 @@ file(GLOB onnxruntime_test_framework_src CONFIGURE_DEPENDS
   )
 
 #without auto initialize onnxruntime
-add_library(onnxruntime_test_utils ${onnxruntime_test_utils_src})
+onnxruntime_add_static_library(onnxruntime_test_utils ${onnxruntime_test_utils_src})
 if(MSVC)
   target_compile_options(onnxruntime_test_utils PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-elseif (NOT onnxruntime_BUILD_WEBASSEMBLY)
+else()
   target_compile_definitions(onnxruntime_test_utils PUBLIC -DNSYNC_ATOMIC_CPP11)
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
           "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
 endif()
+if (onnxruntime_USE_NCCL)
+  target_include_directories(onnxruntime_test_utils PRIVATE ${NCCL_INCLUDE_DIRS})
+endif()
 onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework onnxruntime_session GTest::gtest GTest::gmock onnx onnx_proto flatbuffers)
 
-if (onnxruntime_USE_DNNL)
-  target_compile_definitions(onnxruntime_test_utils PUBLIC USE_DNNL=1)
-endif()
+
 if (onnxruntime_USE_DML)
   target_add_dml(onnxruntime_test_utils)
 endif()
@@ -551,11 +567,11 @@ file(GLOB onnx_test_runner_common_srcs CONFIGURE_DEPENDS
 
 list(REMOVE_ITEM onnx_test_runner_common_srcs ${onnx_test_runner_src_dir}/main.cc)
 
-add_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
+onnxruntime_add_static_library(onnx_test_runner_common ${onnx_test_runner_common_srcs})
 if(MSVC)
   target_compile_options(onnx_test_runner_common PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-elseif (NOT onnxruntime_BUILD_WEBASSEMBLY)
+else()
   target_compile_definitions(onnx_test_runner_common PUBLIC -DNSYNC_ATOMIC_CPP11)
   target_include_directories(onnx_test_runner_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
           "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
@@ -580,7 +596,7 @@ if(NOT TARGET onnxruntime AND NOT onnxruntime_BUILD_WEBASSEMBLY)
 endif()
 
 if (onnxruntime_USE_CUDA)
-  add_library(onnxruntime_test_cuda_ops_lib ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu)
+  onnxruntime_add_static_library(onnxruntime_test_cuda_ops_lib ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu)
   list(APPEND onnxruntime_test_common_libs onnxruntime_test_cuda_ops_lib)
 endif()
 
@@ -605,17 +621,25 @@ if(WIN32)
 endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
-  # blacklist for WebAssembly for now.
-  # exclude thread test since WebAssembly doesn't support multi-threads properly yet.
-  list(REMOVE_ITEM all_tests
-    "${TEST_SRC_DIR}/framework/execution_frame_test.cc"
-    "${TEST_SRC_DIR}/framework/inference_session_test.cc"
-    "${TEST_SRC_DIR}/platform/barrier_test.cc"
-    "${TEST_SRC_DIR}/platform/threadpool_test.cc"
-    "${TEST_SRC_DIR}/providers/cpu/controlflow/loop_test.cc"
-    "${TEST_SRC_DIR}/providers/cpu/nn/string_normalizer_test.cc"
-    "${TEST_SRC_DIR}/providers/memcpy_test.cc"
-  )
+  if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    # WebAssembly threading support in node is an experimental feature yet
+    # and that makes some intensive threadpool tests fail randomly.
+    # Will enable this test when node.js releases a stable version supporting multi-threads.
+    list(REMOVE_ITEM all_tests
+      "${TEST_SRC_DIR}/platform/threadpool_test.cc"
+      "${TEST_SRC_DIR}/providers/cpu/nn/string_normalizer_test.cc"
+    )
+  else()
+    list(REMOVE_ITEM all_tests
+      "${TEST_SRC_DIR}/framework/execution_frame_test.cc"
+      "${TEST_SRC_DIR}/framework/inference_session_test.cc"
+      "${TEST_SRC_DIR}/platform/barrier_test.cc"
+      "${TEST_SRC_DIR}/platform/threadpool_test.cc"
+      "${TEST_SRC_DIR}/providers/cpu/controlflow/loop_test.cc"
+      "${TEST_SRC_DIR}/providers/cpu/nn/string_normalizer_test.cc"
+      "${TEST_SRC_DIR}/providers/memcpy_test.cc"
+    )
+  endif()
 endif()
 
 AddTest(
@@ -652,7 +676,11 @@ if (onnxruntime_USE_ROCM)
   target_include_directories(onnxruntime_test_all PRIVATE  ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
 endif()
 if (onnxruntime_BUILD_WEBASSEMBLY)
-  set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata")
+  if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s USE_PTHREADS=1 -s PROXY_TO_PTHREAD=1 -s EXIT_RUNTIME=1")
+  else()
+    set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1")
+  endif()
 endif()
 
 set(test_data_target onnxruntime_test_all)
@@ -697,7 +725,7 @@ if(WIN32)
   endif()
 endif()
 
-add_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
+onnxruntime_add_static_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 #onnx_proto target should mark this definition as public, instead of private
 target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
@@ -722,7 +750,7 @@ onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS external/onnx TARGET onnx_
 
 if(WIN32)
   set(wide_get_opt_src_dir ${TEST_SRC_DIR}/win_getopt/wide)
-  add_library(win_getopt_wide ${wide_get_opt_src_dir}/getopt.cc ${wide_get_opt_src_dir}/include/getopt.h)
+  onnxruntime_add_static_library(win_getopt_wide ${wide_get_opt_src_dir}/getopt.cc ${wide_get_opt_src_dir}/include/getopt.h)
   target_include_directories(win_getopt_wide INTERFACE ${wide_get_opt_src_dir}/include)
   set_target_properties(win_getopt_wide PROPERTIES FOLDER "ONNXRuntimeTest")
   set(onnx_test_runner_common_srcs ${onnx_test_runner_common_srcs})
@@ -745,6 +773,12 @@ if(MSVC)
   target_compile_options(onnx_test_runner PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
 endif()
+if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+  set_target_properties(onnx_test_runner PROPERTIES
+    XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+  )
+endif()
+
 target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
 target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
 set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
@@ -773,6 +807,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
     ${BENCHMARK_DIR}/eigen.cc
     ${BENCHMARK_DIR}/gelu.cc
     ${BENCHMARK_DIR}/activation.cc
+    ${BENCHMARK_DIR}/quantize.cc
     ${BENCHMARK_DIR}/reduceminmax.cc)
   target_include_directories(onnxruntime_benchmark PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_graph_header} ${ONNXRUNTIME_ROOT}/core/mlas/inc)
   if(WIN32)
@@ -811,6 +846,45 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     list(APPEND android_shared_libs log android)
 endif()
 
+#eager mode test
+if(onnxruntime_ENABLE_EAGER_MODE)
+  file(GLOB onnxruntime_eager_mode_test_src CONFIGURE_DEPENDS
+    "${TEST_SRC_DIR}/eager/*.cc"
+    )
+  add_executable(onnxruntime_eager_mode_test ${onnxruntime_eager_mode_test_src})
+  target_include_directories(onnxruntime_eager_mode_test PRIVATE ${ONNXRUNTIME_ROOT}
+          ${onnxruntime_graph_header} 
+          ${onnxruntime_exec_src_dir}
+          ${CMAKE_CURRENT_BINARY_DIR}
+          "${TEST_SRC_DIR}/util/include")
+  set(onnxruntime_eager_mode_libs 
+          onnxruntime_eager
+          onnxruntime_session
+          onnxruntime_optimizer
+          onnxruntime_providers
+          onnxruntime_util
+          onnxruntime_framework
+          flatbuffers
+          onnxruntime_graph 
+          onnxruntime_common
+          onnxruntime_mlas
+          onnx 
+          onnx_proto 
+          protobuf::libprotobuf
+          GTest::gtest
+          re2::re2
+          onnxruntime_flatbuffers
+          ${CMAKE_DL_LIBS}
+          )
+  if(onnxruntime_ENABLE_TRAINING)
+    list(APPEND onnxruntime_eager_mode_libs onnxruntime_training tensorboard) 
+  endif()
+  IF(NOT WIN32)
+    list(APPEND onnxruntime_eager_mode_libs nsync_cpp)
+  endif()
+  target_link_libraries(onnxruntime_eager_mode_test PRIVATE ${onnxruntime_eager_mode_libs} Threads::Threads ${onnxruntime_EXTERNAL_LIBRARIES})
+endif()
+
 #perf test runner
 set(onnxruntime_perf_test_src_dir ${TEST_SRC_DIR}/perftest)
 set(onnxruntime_perf_test_src_patterns
@@ -844,6 +918,11 @@ if (WIN32)
     set(SYS_PATH_LIB shlwapi)
   endif()
 endif()
+if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+  set_target_properties(onnxruntime_perf_test PROPERTIES
+    XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+  )
+endif()
 
 if (onnxruntime_BUILD_SHARED_LIB)
   set(onnxruntime_perf_test_libs
@@ -851,7 +930,7 @@ if (onnxruntime_BUILD_SHARED_LIB)
           onnxruntime onnxruntime_flatbuffers  onnx_test_data_proto
           ${onnxruntime_EXTERNAL_LIBRARIES}
           ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
-  if(NOT WIN32 AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if(NOT WIN32)
     list(APPEND onnxruntime_perf_test_libs nsync_cpp)
   endif()
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
@@ -884,14 +963,14 @@ endif()
 
 # shared lib
 if (onnxruntime_BUILD_SHARED_LIB)
-  add_library(onnxruntime_mocked_allocator ${TEST_SRC_DIR}/util/test_allocator.cc)
+  onnxruntime_add_static_library(onnxruntime_mocked_allocator ${TEST_SRC_DIR}/util/test_allocator.cc)
   target_include_directories(onnxruntime_mocked_allocator PUBLIC ${TEST_SRC_DIR}/util/include)
   set_target_properties(onnxruntime_mocked_allocator PROPERTIES FOLDER "ONNXRuntimeTest")
 
   #################################################################
   # test inference using shared lib
   set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnx_proto)
-  if(NOT WIN32 AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if(NOT WIN32)
     list(APPEND onnxruntime_shared_lib_test_LIBS nsync_cpp)
   endif()
   if (onnxruntime_USE_CUDA)
@@ -943,6 +1022,7 @@ if(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
     SOURCES
       "${TEST_SRC_DIR}/debug_node_inputs_outputs/debug_node_inputs_outputs_utils_test.cc"
       "${TEST_SRC_DIR}/framework/TestAllocatorManager.cc"
+      "${TEST_SRC_DIR}/framework/test_utils.cc"
       "${TEST_SRC_DIR}/providers/provider_test_utils.cc"
       ${onnxruntime_unittest_main_src}
     LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
@@ -977,10 +1057,15 @@ if(MSVC)
   target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
 endif()
+if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+  set_target_properties(onnxruntime_mlas_test PROPERTIES
+    XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+  )
+endif()
 target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
         ${CMAKE_CURRENT_BINARY_DIR})
 set(onnxruntime_mlas_test_libs GTest::gtest GTest::gmock onnxruntime_mlas onnxruntime_common)
-if(NOT WIN32 AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+if(NOT WIN32)
   list(APPEND onnxruntime_mlas_test_libs nsync_cpp ${CMAKE_DL_LIBS})
 endif()
 if (onnxruntime_USE_OPENMP)
@@ -996,10 +1081,14 @@ if (onnxruntime_LINK_LIBATOMIC)
 endif()
 set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
 if (onnxruntime_BUILD_WEBASSEMBLY)
-  set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1")
+  if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 -s USE_PTHREADS=1 -s PROXY_TO_PTHREAD=1 -s EXIT_RUNTIME=1")
+  else()
+    set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1")
+  endif()
 endif()
 
-add_library(custom_op_library SHARED ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
+onnxruntime_add_shared_library_module(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
 target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
 if(UNIX)
   if (APPLE)
@@ -1032,6 +1121,7 @@ if (onnxruntime_BUILD_JAVA)
         -DGRADLE_EXECUTABLE=${GRADLE_EXECUTABLE}
         -DBIN_DIR=${CMAKE_CURRENT_BINARY_DIR}
         -DREPO_ROOT=${REPO_ROOT}
+        ${ORT_PROVIDER_CMAKE_FLAGS}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
     else()
       add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:custom_op_library>
@@ -1045,6 +1135,36 @@ if (onnxruntime_BUILD_JAVA)
       endif()
     endif()
     set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
+endif()
+
+# limit to only test on windows first, due to a runtime path issue on linux
+if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD 
+                                  AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
+                                  AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
+                                  AND NOT onnxruntime_BUILD_WEBASSEMBLY
+                                  AND MSVC)
+  file(GLOB_RECURSE test_execution_provider_srcs
+    "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.h"
+    "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
+  )
+
+  onnxruntime_add_shared_library_module(test_execution_provider ${test_execution_provider_srcs})
+  add_dependencies(test_execution_provider onnxruntime_providers_shared)
+  target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared)
+  target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
+  target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
+  target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
+  if(APPLE)
+    set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/exported_symbols.lst")
+  elseif(UNIX)
+    set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/version_script.lds -Xlinker --gc-sections")
+  elseif(WIN32)
+    set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/symbols.def")
+  else()
+    message(FATAL_ERROR "test_execution_provider unknown platform, need to specify shared library exports for it")
+  endif()
 endif()
 
 include(onnxruntime_fuzz_test.cmake)

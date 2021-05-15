@@ -717,7 +717,7 @@ void CreateSharedOpBuilderImpl(const std::string& op_type,
   if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
     return;
 
-  op_registrations.builders.push_back(onnxruntime::make_unique<T>());
+  op_registrations.builders.push_back(std::make_unique<T>());
   for (const auto& op : op_types) {
     op_registrations.op_builder_map.emplace(op, op_registrations.builders.back().get());
   }
@@ -2310,7 +2310,7 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   float min, max;
-  GetClipMinMax(model_builder.GetInitializerTensors(), node, min, max);
+  GetClipMinMax(model_builder.GetInitializerTensors(), node, min, max, logging::LoggingManager::DefaultLogger());
 
   int32_t op_code;
   if (min == 0.0f && max == 6.0f)
@@ -2544,7 +2544,7 @@ Status MinMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 // This is for ops with dedicated OpBuilder
 #define NNAPI_EP_ADD_SINGLE_OP_BUILDER(OP_TYPE, BUILDER_NAME)                                 \
   {                                                                                           \
-    op_registrations.builders.push_back(onnxruntime::make_unique<BUILDER_NAME>());            \
+    op_registrations.builders.push_back(std::make_unique<BUILDER_NAME>());                    \
     op_registrations.op_builder_map.emplace(OP_TYPE, op_registrations.builders.back().get()); \
   }
 

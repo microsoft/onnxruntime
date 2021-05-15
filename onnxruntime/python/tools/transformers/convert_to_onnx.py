@@ -99,6 +99,41 @@ def parse_arguments():
 
     parser.add_argument('-e', '--use_external_data_format', required=False, action='store_true')
     parser.set_defaults(use_external_data_format=False)
+    parser.add_argument('--beam_size', type=int, default=4, help='Beam size if greedy/top-p/top-k sampling is needed')
+
+    search_option_group = parser.add_argument_group("configurable one step search options")
+
+    search_option_group.add_argument('--ignore_eos',
+                                     type=bool,
+                                     default=False,
+                                     help='If ignore end of sentence token in model inference.')
+    search_option_group.add_argument('--repetition_penalty',
+                                     type=float,
+                                     default=1,
+                                     help='Positive. >1 to penalize and <1 to encorage.')
+    search_option_group.add_argument('--temperature',
+                                     type=float,
+                                     default=1,
+                                     help='Softmax temperature for output logits.')
+    search_option_group.add_argument('--excluded_token_ids',
+                                     required=False,
+                                     nargs='+',
+                                     type=float,
+                                     help='A list of token ids to be excluded in inference.')
+    search_option_group.add_argument('--length_penalty',
+                                     type=float,
+                                     default=1,
+                                     help='Positive. >1 to penalize and <1 to encorage short sentence.')
+
+    sampling_option_group = parser.add_argument_group("one step sampling options")
+    sampling_option_group.add_argument('--do_sample',
+                                       action='store_true',
+                                       help='If to do sampling instead of beam search or greedy.')
+    sampling_option_group.add_argument('--do_sample_top_p',
+                                       type=float,
+                                       default=0.95,
+                                       help='Nuclear/top-p sampling accumulation probability.')
+    sampling_option_group.add_argument('--do_sample_top_k', type=int, default=0, help='Use top-k if non-zero.')
 
     parser.add_argument('--batch_size', required=False, type=int, default=1, help='Batch size for GPT model with beam search')
     parser.add_argument('--beam_size', required=False, type=int, default=4, help='Beam size for beam search')
@@ -110,7 +145,8 @@ def parse_arguments():
 
 def main():
     from transformers import __version__ as transformers_version
-    if version.parse(transformers_version) < version.parse("3.1.0"): # past_key_values name does not exist in 3.0.2 or older
+    if version.parse(transformers_version) < version.parse(
+            "3.1.0"):  # past_key_values name does not exist in 3.0.2 or older
         raise RuntimeError("This tool requires transformers 3.1.0 or later.")
 
     args = parse_arguments()
@@ -138,12 +174,36 @@ def main():
         assert not args.output.endswith('.onnx'), "output shall be a directory for --use_external_data_format"
 
     model_class = MODEL_CLASSES[args.model_class][0]
-    model_type = "beam_search_step" if args.model_class == "GPT2LMHeadModel_BeamSearchStep" else "default"
+    if args.model_class == "GPT2LMHeadModel_BeamSearchStep":
+        model_type = "beam_search_step"
+    elif args.model_class == "GPT2LMHeadModel_ConfigurableOneStepSearch":
+        model_type = "configurable_one_step_search"
+    else:
+        model_type = "default"
+
     gpt2helper = Gpt2HelperFactory.create_helper(model_type)
     gpt2tester = Gpt2TesterFactory.create_tester(model_type)
     config = AutoConfig.from_pretrained(args.model_name_or_path, cache_dir=cache_dir)
     if model_type == 'beam_search_step':
-        model = model_class.from_pretrained(args.model_name_or_path, config=config, batch_size=args.batch_size, beam_size=args.beam_size, cache_dir=cache_dir)
+        model = model_class.from_pretrained(args.model_name_or_path,
+                                            config=config,
+                                            batch_size=1,
+                                            beam_size=args.beam_size,
+                                            cache_dir=cache_dir)
+    elif model_type == 'configurable_one_step_search':
+        model = model_class.from_pretrained(args.model_name_or_path,
+                                            config=config,
+                                            batch_size=1,
+                                            beam_size=args.beam_size,
+                                            ignore_eos=args.ignore_eos,
+                                            temperature=args.temperature,
+                                            repetition_penalty=args.repetition_penalty,
+                                            excluded_token_ids=args.excluded_token_ids,
+                                            length_penalty=args.length_penalty,
+                                            do_sample=args.do_sample,
+                                            do_sample_top_p=args.do_sample_top_p,
+                                            do_sample_top_k=args.do_sample_top_k,
+                                            cache_dir=cache_dir)
     else:
         model = model_class.from_pretrained(args.model_name_or_path, config=config, cache_dir=cache_dir)
 
@@ -239,20 +299,16 @@ def main():
                 else:
                     inputs = {"input_ids": input_ids}
 
-                if model_type == "beam_search_step":
+                if model_type == "beam_search_step" or model_type == "configurable_one_step_search":
                     beam_select_idx = torch.zeros([1, input_ids.shape[0]]).long()
 
                     input_log_probs = torch.zeros([input_ids.shape[0], 1])
-                    input_unfinished_sents = torch.ones(
-                        [input_ids.shape[0], 1], dtype=torch.bool
-                    )
-                    inputs.update(
-                        {
-                            "beam_select_idx": beam_select_idx,
-                            "input_log_probs": input_log_probs,
-                            "input_unfinished_sents": input_unfinished_sents,
-                        }
-                    )
+                    input_unfinished_sents = torch.ones([input_ids.shape[0], 1], dtype=torch.bool)
+                    inputs.update({
+                        "beam_select_idx": beam_select_idx,
+                        "input_log_probs": input_log_probs,
+                        "input_unfinished_sents": input_unfinished_sents,
+                    })
 
                 test_inputs.append(inputs)
 
