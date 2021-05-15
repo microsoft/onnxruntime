@@ -27,27 +27,27 @@ if (options.globalEnvFlags && options.globalEnvFlags.logLevel !== undefined) {
 }
 if (ort.env.webgl && options.globalEnvFlags && options.globalEnvFlags.webgl &&
     options.globalEnvFlags.webgl.contextId !== undefined) {
-  ort.env.webgl.contextId = options.globalEnvFlags.contextId;
+  ort.env.webgl.contextId = options.globalEnvFlags.webgl.contextId;
 }
 if (ort.env.webgl && options.globalEnvFlags && options.globalEnvFlags.webgl &&
-    options.globalEnvFlags.matmulMaxBatchSize !== undefined) {
-  ort.env.webgl.matmulMaxBatchSize = options.globalEnvFlags.matmulMaxBatchSize;
+    options.globalEnvFlags.webgl.matmulMaxBatchSize !== undefined) {
+  ort.env.webgl.matmulMaxBatchSize = options.globalEnvFlags.webgl.matmulMaxBatchSize;
 }
 if (ort.env.webgl && options.globalEnvFlags && options.globalEnvFlags.webgl &&
-    options.globalEnvFlags.textureCacheMode !== undefined) {
-  ort.env.webgl.textureCacheMode = options.globalEnvFlags.textureCacheMode;
+    options.globalEnvFlags.webgl.textureCacheMode !== undefined) {
+  ort.env.webgl.textureCacheMode = options.globalEnvFlags.webgl.textureCacheMode;
 }
 if (ort.env.webgl && options.globalEnvFlags && options.globalEnvFlags.webgl &&
-    options.globalEnvFlags.pack !== undefined) {
-  ort.env.webgl.pack = options.globalEnvFlags.pack;
+    options.globalEnvFlags.webgl.pack !== undefined) {
+  ort.env.webgl.pack = options.globalEnvFlags.webgl.pack;
 }
-if (ort.env.wasm && options.globalEnvFlags && options.globalEnvFlags.webgl &&
-    options.globalEnvFlags.numThreads !== undefined) {
-  ort.env.wasm.numThreads = options.globalEnvFlags.numThreads;
+if (ort.env.wasm && options.globalEnvFlags && options.globalEnvFlags.wasm &&
+    options.globalEnvFlags.wasm.numThreads !== undefined) {
+  ort.env.wasm.numThreads = options.globalEnvFlags.wasm.numThreads;
 }
-if (ort.env.wasm && options.globalEnvFlags && options.globalEnvFlags.webgl &&
-    options.globalEnvFlags.initTimeout !== undefined) {
-  ort.env.wasm.initTimeout = options.globalEnvFlags.initTimeout;
+if (ort.env.wasm && options.globalEnvFlags && options.globalEnvFlags.wasm &&
+    options.globalEnvFlags.wasm.initTimeout !== undefined) {
+  ort.env.wasm.initTimeout = options.globalEnvFlags.wasm.initTimeout;
 }
 
 // Set logging configuration
