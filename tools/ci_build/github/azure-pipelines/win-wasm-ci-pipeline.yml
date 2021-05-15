@@ -157,7 +157,6 @@ jobs:
       sourceFolder: $(Pipeline.Workspace)\artifacts
       contents: |
         **\*.wasm
-        **\*.worker.js
       targetFolder: $(Build.SourcesDirectory)\js\web\dist
       flattenFolders: true
     displayName: 'Binplace dist files'
@@ -166,7 +165,6 @@ jobs:
       sourceFolder: $(Pipeline.Workspace)\artifacts
       contents: |
         **\*.js
-        !**\*.worker.js
       targetFolder: $(Build.SourcesDirectory)\js\web\lib\wasm\binding
       flattenFolders: true
     displayName: 'Binplace js files'
@@ -211,6 +209,11 @@ jobs:
       npm pack
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Generate NPM package (onnxruntime-web)'
+    condition: and(succeeded(), eq(variables['BuildConfig'], 'Release'))
+  - script: |
+      npm run test:e2e
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'E2E package consuming test'
     condition: and(succeeded(), eq(variables['BuildConfig'], 'Release'))
   - task: CopyFiles@2
     inputs:
