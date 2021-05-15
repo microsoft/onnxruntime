@@ -33,21 +33,15 @@ export interface OrtWasmModule extends EmscriptenModule {
       sessionHandle: number, inputNamesOffset: number, inputsOffset: number, inputCount: number,
       outputNamesOffset: number, outputCount: number, outputsOffset: number, runOptionsHandle: number): number;
 
-  _OrtCreateSessionOptions(): number;
+  _OrtCreateSessionOptions(
+      graphOptimizationLevel: number, enableCpuMemArena: boolean, enableMemPattern: boolean, executionMode: number,
+      logId: number, logSeverityLevel: number, logVerbosityLevel: number): number;
+  _OrtAddSessionConfigEntry(sessionOptionsHandle: number, configKey: number, configValue: number): number;
   _OrtReleaseSessionOptions(sessionOptionsHandle: number): void;
-  _OrtSetSessionGraphOptimizationLevel(sessionOptionsHandle: number, level: number): number;
-  _OrtEnableCpuMemArena(sessionOptionsHandle: number): number;
-  _OrtDisableCpuMemArena(sessionOptionsHandle: number): number;
-  _OrtEnableMemPattern(sessionOptionsHandle: number): number;
-  _OrtDisableMemPattern(sessionOptionsHandle: number): number;
-  _OrtSetSessionExecutionMode(sessionOptionsHandle: number, mode: number): number;
-  _OrtSetSessionLogId(sessionOptionsHandle: number, logid: number): number;
-  _OrtSetSessionLogSeverityLevel(sessionOptionsHandle: number, level: number): number;
 
-  _OrtCreateRunOptions(): number;
+  _OrtCreateRunOptions(logSeverityLevel: number, logVerbosityLevel: number, terminate: boolean, tag: number): number;
+  _OrtAddRunConfigEntry(runOptionsHandle: number, configKey: number, configValue: number): number;
   _OrtReleaseRunOptions(runOptionsHandle: number): void;
-  _OrtRunOptionsSetRunLogSeverityLevel(runOptionsHandle: number, level: number): number;
-  _OrtRunOptionsSetRunTag(runOptionsHandle: number, tag: number): number;
   //#endregion
 
   //#region config

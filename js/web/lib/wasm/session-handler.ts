@@ -119,97 +119,95 @@ const getLoggingLevel = (loggingLevel: 'verbose'|'info'|'warning'|'error'|'fatal
   }
 };
 
+const getGraphOptimzationLevel = (graphOptimizationLevel: 'disabled'|'basic'|'extended'|'all'): number => {
+  switch (graphOptimizationLevel) {
+    case 'disabled':
+      return 0;
+    case 'basic':
+      return 1;
+    case 'extended':
+      return 2;
+    case 'all':
+      return 99;
+    default:
+      throw new Error(`unsupported graph optimization level: ${graphOptimizationLevel}`);
+  }
+};
+
+const getExecutionMode = (executionMode: 'sequential'|'parallel'): number => {
+  switch (executionMode) {
+    case 'sequential':
+      return 0;
+    case 'parallel':
+      return 1;
+    default:
+      throw new Error(`unsupported execution mode: ${executionMode}`);
+  }
+};
+
 const setSessionOptions = (options?: InferenceSession.SessionOptions): [number, number[]] => {
   const wasm = getInstance();
-  const sessionOptionsHandle = wasm._OrtCreateSessionOptions();
   const allocs: number[] = [];
 
+  const sessionOptions: InferenceSession.SessionOptions = (options !== undefined) ? options : {};
+
+  if (options === undefined || options.graphOptimizationLevel === undefined) {
+    sessionOptions.graphOptimizationLevel = 'all';
+  }
+  const graphOptimizationLevel = getGraphOptimzationLevel(sessionOptions.graphOptimizationLevel!);
+
+  if (options === undefined || options.enableCpuMemArena === undefined) {
+    sessionOptions.enableCpuMemArena = true;
+  }
+
+  if (options === undefined || options.enableMemPattern === undefined) {
+    sessionOptions.enableMemPattern = true;
+  }
+
+  if (options === undefined || options.executionMode === undefined) {
+    sessionOptions.executionMode = 'sequential';
+  }
+  const executionMode = getExecutionMode(sessionOptions.executionMode!);
+
+  let logIdDataOffset = 0;
+  if (options !== undefined && options.logId !== undefined) {
+    const logIdDataLength = wasm.lengthBytesUTF8(options.logId) + 1;
+    logIdDataOffset = wasm._malloc(logIdDataLength);
+    wasm.stringToUTF8(options.logId, logIdDataOffset, logIdDataLength);
+    allocs.push(logIdDataOffset);
+  }
+
+  if (options === undefined || options.logSeverityLevel === undefined) {
+    sessionOptions.logSeverityLevel = 2;  // Default to warning
+  }
+
+  if (options === undefined || options.logVerbosityLevel === undefined) {
+    sessionOptions.logVerbosityLevel = 0;  // Default to 0
+  }
+
+  const sessionOptionsHandle = wasm._OrtCreateSessionOptions(
+      graphOptimizationLevel, sessionOptions.enableCpuMemArena!, sessionOptions.enableMemPattern!, executionMode,
+      logIdDataOffset, sessionOptions.logSeverityLevel!, sessionOptions.logVerbosityLevel!);
   if (sessionOptionsHandle === 0) {
     throw new Error('Can\'t create session options');
   }
 
-  if (options === undefined) {
-    return [sessionOptionsHandle, allocs];
-  }
+  if (options !== undefined && options.configEntry !== undefined) {
+    Object.entries(options.configEntry).forEach(([key, value]) => {
+      const keyDataLength = wasm.lengthBytesUTF8(key) + 1;
+      const keyDataOffset = wasm._malloc(keyDataLength);
+      wasm.stringToUTF8(key, keyDataOffset, keyDataLength);
+      allocs.push(keyDataOffset);
 
-  let errorCode = 0;
+      const valueDataLength = wasm.lengthBytesUTF8(value) + 1;
+      const valueDataOffset = wasm._malloc(valueDataLength);
+      wasm.stringToUTF8(value, valueDataOffset, valueDataLength);
+      allocs.push(valueDataOffset);
 
-  if (options.graphOptimizationLevel !== undefined) {
-    switch (options.graphOptimizationLevel) {
-      case 'disabled':
-        errorCode = wasm._OrtSetSessionGraphOptimizationLevel(sessionOptionsHandle, 0);
-        break;
-      case 'basic':
-        errorCode = wasm._OrtSetSessionGraphOptimizationLevel(sessionOptionsHandle, 1);
-        break;
-      case 'extended':
-        errorCode = wasm._OrtSetSessionGraphOptimizationLevel(sessionOptionsHandle, 2);
-        break;
-      case 'all':
-        errorCode = wasm._OrtSetSessionGraphOptimizationLevel(sessionOptionsHandle, 99);
-        break;
-      default:
-        throw new Error(`unsupported graph optimization level: ${options.graphOptimizationLevel}`);
-    }
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a graph optimization level as a session option. error code = ${errorCode}`);
-    }
-  }
-
-  if (options.enableCpuMemArena !== undefined) {
-    if (options.enableCpuMemArena) {
-      errorCode = wasm._OrtEnableCpuMemArena(sessionOptionsHandle);
-    } else {
-      errorCode = wasm._OrtDisableCpuMemArena(sessionOptionsHandle);
-    }
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a CPU memory arena as a session option. error code = ${errorCode}`);
-    }
-  }
-
-  if (options.enableMemPattern !== undefined) {
-    if (options.enableMemPattern) {
-      errorCode = wasm._OrtEnableMemPattern(sessionOptionsHandle);
-    } else {
-      errorCode = wasm._OrtDisableMemPattern(sessionOptionsHandle);
-    }
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a memory pattern as a session option. error code = ${errorCode}`);
-    }
-  }
-
-  if (options.executionMode !== undefined) {
-    switch (options.executionMode) {
-      case 'sequential':
-        errorCode = wasm._OrtSetSessionExecutionMode(sessionOptionsHandle, 0);
-        break;
-      case 'parallel':
-        errorCode = wasm._OrtSetSessionExecutionMode(sessionOptionsHandle, 1);
-        break;
-      default:
-        throw new Error(`unsupported execution mode: ${options.executionMode}`);
-    }
-    if (errorCode !== 0) {
-      throw new Error(`Can't set an execution mode as a session option. error code = ${errorCode}`);
-    }
-  }
-
-  if (options.logId !== undefined) {
-    const logIdDataLength = wasm.lengthBytesUTF8(options.logId) + 1;
-    const logIdDataOffset = wasm._malloc(logIdDataLength);
-    wasm.stringToUTF8(options.logId, logIdDataOffset, logIdDataLength);
-    errorCode = wasm._OrtSetSessionLogId(sessionOptionsHandle, logIdDataOffset);
-    allocs.push(logIdDataOffset);
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a log id as a session option. error code = ${errorCode}`);
-    }
-  }
-
-  if (options.logSeverityLevel !== undefined) {
-    errorCode = wasm._OrtSetSessionLogSeverityLevel(sessionOptionsHandle, options.logSeverityLevel);
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a log severity level as a session option. error code = ${errorCode}`);
-    }
+      if (wasm._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !== 0) {
+        throw new Error(`Can't set a session config entry: ${key} - ${value}`);
+      }
+    });
   }
 
   return [sessionOptionsHandle, allocs];
@@ -217,30 +215,52 @@ const setSessionOptions = (options?: InferenceSession.SessionOptions): [number, 
 
 const setRunOptions = (options: InferenceSession.RunOptions): [number, number[]] => {
   const wasm = getInstance();
-  const runOptionsHandle = wasm._OrtCreateRunOptions();
+  const allocs: number[] = [];
+
+  const runOptions: InferenceSession.RunOptions = (options !== undefined) ? options : {};
+
+  if (options === undefined || options.logSeverityLevel === undefined) {
+    runOptions.logSeverityLevel = 2;  // Default to warning
+  }
+
+  if (options === undefined || options.logVerbosityLevel === undefined) {
+    runOptions.logVerbosityLevel = 0;  // Default to 0
+  }
+
+  if (options === undefined || options.terminate === undefined) {
+    runOptions.terminate = false;
+  }
+
+  let tagDataOffset = 0;
+  if (options.tag !== undefined) {
+    const tagDataLength = wasm.lengthBytesUTF8(options.tag) + 1;
+    tagDataOffset = wasm._malloc(tagDataLength);
+    wasm.stringToUTF8(options.tag, tagDataOffset, tagDataLength);
+    allocs.push(tagDataOffset);
+  }
+
+  const runOptionsHandle = wasm._OrtCreateRunOptions(
+      runOptions.logSeverityLevel!, runOptions.logVerbosityLevel!, runOptions.terminate!, tagDataOffset);
   if (runOptionsHandle === 0) {
     throw new Error('Can\'t create run options');
   }
 
-  const allocs: number[] = [];
-  let errorCode = 0;
+  if (options !== undefined && options.configEntry !== undefined) {
+    Object.entries(options.configEntry).forEach(([key, value]) => {
+      const keyDataLength = wasm.lengthBytesUTF8(key) + 1;
+      const keyDataOffset = wasm._malloc(keyDataLength);
+      wasm.stringToUTF8(key, keyDataOffset, keyDataLength);
+      allocs.push(keyDataOffset);
 
-  if (options.logSeverityLevel !== undefined) {
-    errorCode = wasm._OrtRunOptionsSetRunLogSeverityLevel(runOptionsHandle, options.logSeverityLevel);
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a log severity level as a run option. error code = ${errorCode}`);
-    }
-  }
+      const valueDataLength = wasm.lengthBytesUTF8(value) + 1;
+      const valueDataOffset = wasm._malloc(valueDataLength);
+      wasm.stringToUTF8(value, valueDataOffset, valueDataLength);
+      allocs.push(valueDataOffset);
 
-  if (options.tag !== undefined) {
-    const tagDataLength = wasm.lengthBytesUTF8(options.tag) + 1;
-    const tagDataOffset = wasm._malloc(tagDataLength);
-    wasm.stringToUTF8(options.tag, tagDataOffset, tagDataLength);
-    errorCode = wasm._OrtRunOptionsSetRunTag(runOptionsHandle, tagDataOffset);
-    allocs.push(tagDataOffset);
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a tag as a run option. error code = ${errorCode}`);
-    }
+      if (wasm._OrtAddRunConfigEntry(runOptionsHandle, keyDataOffset, valueDataOffset) !== 0) {
+        throw new Error(`Can't set a run config entry: ${key} - ${value}`);
+      }
+    });
   }
 
   return [runOptionsHandle, allocs];

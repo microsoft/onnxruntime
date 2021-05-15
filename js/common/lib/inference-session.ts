@@ -107,6 +107,22 @@ export declare namespace InferenceSession {
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
     logSeverityLevel?: 0|1|2|3|4;
+
+    /**
+     * Log verbosity level.
+     *
+     * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
+     */
+    logVerbosityLevel?: number;
+
+    /**
+     * Store configurations for a session. See
+     * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/
+     * onnxruntime_session_options_config_keys.h
+     *
+     * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
+     */
+    configEntry?: {[name: string]: string};
   }
 
   //#region execution providers
@@ -164,11 +180,34 @@ export declare namespace InferenceSession {
     logSeverityLevel?: 0|1|2|3|4;
 
     /**
+     * Log verbosity level.
+     *
+     * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
+     */
+    logVerbosityLevel?: number;
+
+    /**
+     * Terminate all incomplete OrtRun calls as soon as possible if true
+     *
+     * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
+     */
+    terminate?: boolean;
+
+    /**
      * A tag for the Run() calls using this
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
     tag?: string;
+
+    /**
+     * Set a single run configuration entry. See
+     * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/
+     * onnxruntime_run_options_config_keys.h
+     *
+     * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
+     */
+    configEntry?: {[name: string]: string};
   }
 
   //#endregion
