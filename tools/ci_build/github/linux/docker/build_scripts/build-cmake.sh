@@ -23,8 +23,8 @@ export CPPFLAGS="${MANYLINUX_CPPFLAGS}"
 export CFLAGS="${MANYLINUX_CFLAGS} ${CPPFLAGS}"
 export CXXFLAGS="${MANYLINUX_CXXFLAGS} ${CPPFLAGS}"
 export LDFLAGS="${MANYLINUX_LDFLAGS}"
-./bootstrap --system-curl
-make
+./bootstrap --system-curl --parallel=$(nproc)
+make -j$(nproc)
 make install DESTDIR=/manylinux-rootfs
 popd
 rm -rf cmake-${CMAKE_VERSION}.tar.gz cmake-${CMAKE_VERSION}

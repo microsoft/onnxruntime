@@ -36,7 +36,7 @@ check_sha256sum ${OPENSSL_ROOT}.tar.gz ${OPENSSL_HASH}
 tar -xzf ${OPENSSL_ROOT}.tar.gz
 pushd ${OPENSSL_ROOT}
 ./config no-shared --prefix=/usr/local/ssl --openssldir=/usr/local/ssl CPPFLAGS="${MANYLINUX_CPPFLAGS}" CFLAGS="${MANYLINUX_CFLAGS} -fPIC" CXXFLAGS="${MANYLINUX_CXXFLAGS} -fPIC" LDFLAGS="${MANYLINUX_LDFLAGS} -fPIC" > /dev/null
-make > /dev/null
+make -j$(nproc) > /dev/null
 make install_sw > /dev/null
 popd
 rm -rf ${OPENSSL_ROOT} ${OPENSSL_ROOT}.tar.gz
