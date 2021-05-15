@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {EnvIml} from './env-impl';
 export declare namespace Env {
   export interface WebAssemblyFlags {
     /**
@@ -38,26 +39,11 @@ export declare namespace Env {
   }
 }
 
-export class Env {
-  private loggingLevelInternal?: 'verbose'|'info'|'warning'|'error'|'fatal';
+export interface Env {
   /**
    * set a logging level. If omitted, default is 'warning'
    */
-  // TODO standadize the getter and setter convention in env for other fields.
-  set loggingLevel(value: 'verbose'|'info'|'warning'|'error'|'fatal'|undefined) {
-    if (!value) {
-      this.loggingLevelInternal = 'warning';
-      return;
-    }
-    if (typeof value !== 'string' || ['verbose', 'info', 'warning', 'error', 'fatal'].indexOf(value) === -1) {
-      throw new Error('Unsupported logging level.');
-    }
-    this.loggingLevelInternal = value;
-  }
-  get loggingLevel(): 'verbose'|'info'|'warning'|'error'|'fatal'|undefined {
-    return this.loggingLevelInternal;
-  }
-
+  loggingLevel?: 'verbose'|'info'|'warning'|'error'|'fatal';
   /**
    * Indicate whether run in debug mode.
    */
@@ -79,8 +65,8 @@ export class Env {
 /**
  * Represent a set of flags as a global singleton.
  */
-export const env: Env = {
+export const env: EnvIml = {
   wasm: {},
   webgl: {},
-  loggingLevel: undefined,
+  loggingLevel: 'warning',
 };
