@@ -1,0 +1,13 @@
+{
+  "devDependencies": {
+    "fs-extra": "^9.1.0",
+    "globby": "^11.0.3",
+    "karma": "^6.3.2",
+    "karma-chrome-launcher": "^3.1.0",
+    "karma-mocha": "^2.0.1",
+    "karma-mocha-reporter": "^2.2.5",
+    "light-server": "^2.9.1",
+    "minimist": "^1.2.5",
+    "mocha": "^8.3.2"
+  }
+}
