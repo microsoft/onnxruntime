@@ -1111,7 +1111,6 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
         return Status::OK();
       } else {
         // User shouldn't hit this as the check has been performed in ScalesValidation()
-        std::ostringstream oss;
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, (is_resize_ ? "Resize" : "Upsample"),
                                ": 'Linear' mode only support 2-D inputs or 3-D inputs ('Bilinear', 'Trilinear') "
                                "or 4-D inputs or 5-D inputs with the corresponding outermost 2 scale values "
