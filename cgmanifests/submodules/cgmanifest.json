@@ -72,8 +72,8 @@
         "Type": "other",
         "other": {
           "Name": "cmake",
-          "Version": "3.20.0",
-          "DownloadUrl": "https://github.com/Kitware/CMake/releases/download/v3.20.0/cmake-3.20.0.tar.gz"
+          "Version": "3.20.2",
+          "DownloadUrl": "https://github.com/Kitware/CMake/releases/download/v3.20.2/cmake-3.20.2.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -94,8 +94,8 @@
         "Type": "other",
         "other": {
           "Name": "sqlite_autoconf",
-          "Version": "3350400",
-          "DownloadUrl": "https://www.sqlite.org/2021/sqlite-autoconf-3350400.tar.gz"
+          "Version": "3350500",
+          "DownloadUrl": "https://www.sqlite.org/2021/sqlite-autoconf-3350500.tar.gz"
         },
         "comments": "manylinux dependency"
       }
