@@ -599,7 +599,7 @@ stages:
         inputs:
           script: |
             mkdir -p $HOME/.onnx
-            docker run \
+            docker run --rm \
               --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
@@ -647,12 +647,7 @@ stages:
                 --account_name onnxruntimepackages \
                 --account_key $(orttrainingpackagestorageaccountkey) \
                 --container_name '$web' && \
-            whlfilename=$(basename ${files[0]}) && \
-            echo $whlfilename && \
-            docker run \
-              --volume $(Build.ArtifactStagingDirectory):/artifact \
-              onnxruntimetraininggpubuild \
-                $(PythonManylinuxDir)/bin/python3 -m pip install /artifact/Release/dist/$whlfilename
+            whlfilename=$(basename ${files[0]})
           condition: succeededOrFailed()
           displayName: 
 
