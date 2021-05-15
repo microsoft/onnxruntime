@@ -84,7 +84,12 @@ elif [ "${AUDITWHEEL_POLICY}" == "manylinux2014" ]; then
 	yum -y update
 	yum -y install yum-utils curl
 	yum-config-manager --enable extras
-	TOOLCHAIN_DEPS="devtoolset-9-binutils devtoolset-9-gcc devtoolset-9-gcc-c++ devtoolset-9-gcc-gfortran"
+	#Added by @snnn
+	if [ ! -d "/usr/local/cuda-10.2" ]; then
+	  TOOLCHAIN_DEPS="devtoolset-9-binutils devtoolset-9-gcc devtoolset-9-gcc-c++ devtoolset-9-gcc-gfortran"
+	else
+	  TOOLCHAIN_DEPS="devtoolset-8-binutils devtoolset-8-gcc devtoolset-8-gcc-c++ devtoolset-8-gcc-gfortran"
+	fi
 	if [ "${AUDITWHEEL_ARCH}" == "x86_64" ]; then
 		# Software collection (for devtoolset-9)
 		yum -y install centos-release-scl-rh
