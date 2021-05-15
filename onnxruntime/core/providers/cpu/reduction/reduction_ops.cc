@@ -425,7 +425,6 @@ void NoTransposeReduce1Loop(Tensor* output, const TensorShape& new_input_shape, 
 
   auto fn = [&data](std::ptrdiff_t first, std::ptrdiff_t end) {
     const typename AGG::input_type* loop_red_ptr;
-    const typename AGG::input_type* loop_red_ptr_end;
     const ResultsNoTransposePrepareForReduce& last_results = *data.last_results;
     int64_t main_index = first / last_results.last_loop_size;
     int64_t loop = first % last_results.last_loop_size;
@@ -434,9 +433,8 @@ void NoTransposeReduce1Loop(Tensor* output, const TensorShape& new_input_shape, 
       AGG accumulator(data.denominator, data.from_data[origin + last_results.projected_index[0]]);
       for (auto it = last_results.projected_index.begin(); it != last_results.projected_index.end(); ++it) {
         loop_red_ptr = data.from_data + (origin + *it);
-        loop_red_ptr_end = loop_red_ptr + data.loop_size;
-        for (; loop_red_ptr != loop_red_ptr_end; loop_red_ptr += last_results.last_loop_red_inc) {
-          accumulator.update(*loop_red_ptr);
+        for (int64_t red = 0; red < data.loop_size; red += last_results.last_loop_red_inc) {
+          accumulator.update(loop_red_ptr[red]);
         }
       }
       data.to_data[main_index_last_loop] = accumulator.get_value();
