@@ -21,17 +21,16 @@ import _test_helpers
 
 torch.manual_seed(1)
 
-def run_with_pytorch_on_gpu(model, input_list, label_input, is_eval_mode=False):
-    print('Use PyTorch for CUDA run....')
-    device = torch.device('cuda:0')
+def run_with_pytorch_on_device(device, model, input_list, label_input, is_eval_mode=False):
+    print('Use PyTorch for CUDA run on {} ....'.format(device))
     model.to(device)
     if is_eval_mode:
         model.eval()
     else:
         model.train()
 
-    inputs_on_cuda = [input_.to(device) for input_ in input_list]
-    output = model(*inputs_on_cuda)
+    inputs_on_device = [input_.to(device) for input_ in input_list]
+    output = model(*inputs_on_device)
     forward_outputs=[output]
     grad_outputs = []
 
@@ -40,17 +39,13 @@ def run_with_pytorch_on_gpu(model, input_list, label_input, is_eval_mode=False):
         target = label_input.to(device)
         loss = criterion(output, target)
         loss.backward()
-        torch.cuda.synchronize()
         for name, param in model.named_parameters():
             if param.requires_grad:
                 grad_outputs.append(param.grad)
-    else:
-        torch.cuda.synchronize()
     return forward_outputs, grad_outputs
 
-def run_with_ort_on_gpu(model, input_list, label_input, is_eval_mode=False):
-    print('Use ORTModule for CUDA run....')
-    device = torch.device('cuda:0')
+def run_with_ort_on_device(device, model, input_list, label_input, is_eval_mode=False):
+    print('Use ORTModule for CUDA run on {} ....'.format(device))
     model = copy.deepcopy(model)
     model.to(device)
     model = ORTModule(model, torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH)
@@ -60,8 +55,8 @@ def run_with_ort_on_gpu(model, input_list, label_input, is_eval_mode=False):
     else:
         model.train()
 
-    inputs_on_cuda = [input_.to(device) for input_ in input_list]
-    output = model(*inputs_on_cuda)
+    inputs_on_device = [input_.to(device) for input_ in input_list]
+    output = model(*inputs_on_device)
     forward_outputs=[output]
     grad_outputs = []
 
@@ -70,33 +65,39 @@ def run_with_ort_on_gpu(model, input_list, label_input, is_eval_mode=False):
         target = label_input.to(device)
         loss = criterion(output, target)
         loss.backward()
-        torch.cuda.synchronize()
-
         for name, param in model.named_parameters():
             if param.requires_grad:
                 grad_outputs.append(param.grad)
-    else:
-        torch.cuda.synchronize()
     return forward_outputs, grad_outputs
 
 def compare_tensor_list(val_list_a, val_list_b):
     for val_a, val_b in zip(val_list_a,val_list_b):
         _test_helpers.assert_values_are_close(val_a, val_b, atol=1e-7, rtol=1e-6)
 
-
 def run_training_test_and_compare(pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, ignore_grad_compare=False):
+    cpu = torch.device("cpu")
+    def cpu_barrier_func():
+        pass
+    run_training_test_on_device_and_compare(cpu, pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, cpu_barrier_func, ignore_grad_compare)
+
+    def cuda_barrier_func():
+        torch.cuda.synchronize()
+    cuda = torch.device('cuda:0')
+    run_training_test_on_device_and_compare(cuda, pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, cuda_barrier_func, ignore_grad_compare)
+
+def run_training_test_on_device_and_compare(device, pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, barrier_func, ignore_grad_compare=False):
     m = pt_model_builder_func()
     x = pt_model_inputs_generator()
 
     m_ort = copy.deepcopy(m)
     x_ort = copy.deepcopy(x)
 
-    outputs, grads = run_with_pytorch_on_gpu(m, [x], pt_model_label_input)
-    torch.cuda.synchronize()
+    outputs, grads = run_with_pytorch_on_device(device, m, [x], pt_model_label_input)
+    barrier_func()
 
-    outputs_ort, grads_ort = run_with_ort_on_gpu(m_ort, [x_ort], pt_model_label_input)
+    outputs_ort, grads_ort = run_with_ort_on_device(device, m_ort, [x_ort], pt_model_label_input)
+    barrier_func()
 
-    torch.cuda.synchronize()
     val_list_a = [o.detach().cpu() for o in outputs if o is not None]
     val_list_b = [o.detach().cpu() for o in outputs_ort if o is not None]
     compare_tensor_list(val_list_a, val_list_b)
@@ -107,19 +108,34 @@ def run_training_test_and_compare(pt_model_builder_func, pt_model_inputs_generat
         val_list_b = [o.detach().cpu() for o in grads_ort if o is not None]
         compare_tensor_list(val_list_a, val_list_b)
 
-def run_evalue_test_and_compare(pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input):
+
+def run_evaluate_test_and_compare(pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input):
+    cpu = torch.device("cpu")
+    def cpu_barrier_func():
+        pass
+
+    run_evaluate_test_on_device_and_compare(cpu, pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, cpu_barrier_func)
+
+    def cuda_barrier_func():
+        torch.cuda.synchronize()
+        pass 
+
+    cuda = torch.device('cuda:0')
+    run_evaluate_test_on_device_and_compare(cuda, pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, cuda_barrier_func)
+
+def run_evaluate_test_on_device_and_compare(device, pt_model_builder_func, pt_model_inputs_generator, pt_model_label_input, barrier_func):
     m = pt_model_builder_func()
     x = pt_model_inputs_generator()
 
     m_ort = copy.deepcopy(m)
     x_ort = copy.deepcopy(x)
 
-    outputs, grads = run_with_pytorch_on_gpu(m, [x], pt_model_label_input, is_eval_mode=True)
-    torch.cuda.synchronize()
+    outputs, grads = run_with_pytorch_on_device(device, m, [x], pt_model_label_input, is_eval_mode=True)
+    barrier_func()
 
-    outputs_ort, grads_ort = run_with_ort_on_gpu(m_ort, [x_ort], pt_model_label_input, is_eval_mode=True)
+    outputs_ort, grads_ort = run_with_ort_on_device(device, m_ort, [x_ort], pt_model_label_input, is_eval_mode=True)
+    barrier_func()
 
-    torch.cuda.synchronize()
     val_list_a = [o.detach().cpu() for o in outputs if o is not None]
     val_list_b = [o.detach().cpu() for o in outputs_ort if o is not None]
     compare_tensor_list(val_list_a, val_list_b)
@@ -433,7 +449,7 @@ def test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty():
     run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
-####### tests below: # input is in-place updated, but does require gradient. ########
+####### tests below: input is in-place updated, but does require gradient. ########
 #####################################################################################
 # without mark_ditry, the inner computation graph is extracted into another subgraph, which is a duplicated computation with the PythonOp.
 # so for the weights that are used twice BUT SHOULD only used once, the gradients are almost 2x than PyTorch's grad, this is the reason we
@@ -640,7 +656,7 @@ def test_EvalTest():
 
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
-    run_evalue_test_and_compare(model_builder, input_generator, label_input)
+    run_evaluate_test_and_compare(model_builder, input_generator, label_input)
 
 ################# Multi-input and multi-output custom function. ###################
 ###################################################################################
@@ -698,15 +714,4 @@ def test_TwoOutputFunction():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_evalue_test_and_compare(model_builder, input_generator, label_input)
-
-
-# input is in-place updated, but does not require gradient.
-test_InplaceUpdateInputAsOutputNotRequireGrad()
-test_InplaceUpdateInputNotAsOutputNotRequireGrad()
-test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty()
-
-
-test_InplaceUpdateInputAsOutputRequireGrad()
-test_InplaceUpdateInputNotAsOutputRequireGrad()
-test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty()
+    run_evaluate_test_and_compare(model_builder, input_generator, label_input)

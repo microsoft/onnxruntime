@@ -15,8 +15,8 @@ using AddressInfos = std::unordered_map<void*, std::vector<std::string>>;
 class RefCountTracker {
  public:
   enum ObjCategory {
-    CallbackFunction,
-    ForwardArgs
+    ForwardArgs,
+    ReturnValues,
   };
 
   static RefCountTracker& GetInstance() {
@@ -30,11 +30,12 @@ class RefCountTracker {
  private:
   RefCountTracker();
   const char* ObjCategoryToString(int enumVal) {
-    static const char* enum_strings[] = {"CallbackFunction", "ForwardArgs"};
+    static const char* enum_strings[] = {"ForwardArgs", "ReturnValues"};
     return enum_strings[enumVal];
   }
-  AddressInfos func_addresses_;
+
   AddressInfos forward_arg_addresses_;
+  AddressInfos return_value_addresses_;
   std::unordered_map<RefCountTracker::ObjCategory, AddressInfos> addr_info_map_;
 };
 #endif

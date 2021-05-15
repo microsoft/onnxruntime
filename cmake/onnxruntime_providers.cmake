@@ -193,7 +193,8 @@ endif()
 
 if (onnxruntime_ENABLE_TRAINING)
   add_dependencies(onnxruntime_providers tensorboard)
-  onnxruntime_add_include_to_target(onnxruntime_providers tensorboard)
+  onnxruntime_add_include_to_target(onnxruntime_providers tensorboard onnxruntime_language_interop_torch)
+  target_include_directories(onnxruntime_providers PRIVATE ${PYTHON_INCLUDE_DIRS})
 
   if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)
     target_include_directories(onnxruntime_providers PUBLIC ${MPI_INCLUDE_DIRS})
