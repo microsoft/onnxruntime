@@ -553,9 +553,6 @@ stages:
               --volume $(Build.BinariesDirectory):/build \
               --volume /data/models:/build/models:ro \
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-              --volume /mnist:/mnist \
-              --volume /bert_data:/bert_data \
-              --volume /hf_models_cache:/hf_models_cache \
               -e NVIDIA_VISIBLE_DEVICES=all \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
@@ -575,7 +572,7 @@ stages:
             echo ${files[0]} && \
             whlfilename=$(basename ${files[0]}) && \
             echo $whlfilename && \
-            docker run \
+            docker run --rm \
               --gpus all \
               -e NVIDIA_VISIBLE_DEVICES=all \
               --volume $(Build.BinariesDirectory):/build \
@@ -646,8 +643,7 @@ stages:
                 --python_wheel_path ${files[0]} \
                 --account_name onnxruntimepackages \
                 --account_key $(orttrainingpackagestorageaccountkey) \
-                --container_name '$web' && \
-            whlfilename=$(basename ${files[0]})
+                --container_name '$web'
           condition: succeededOrFailed()
           displayName: 
 
