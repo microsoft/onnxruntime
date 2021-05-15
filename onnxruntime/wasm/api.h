@@ -48,7 +48,6 @@ int EMSCRIPTEN_KEEPALIVE OrtInit(int num_threads, int logging_level);
  * @param log_verbosity_level vlog level
  * @returns a pointer to a session option handle and must be freed by calling OrtReleaseSessionOptions().
  */
-// Dont' support AddInitializer and AddFreeDimensionOverride
 ort_session_options_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSessionOptions(size_t graph_optimization_level,
                                                                           bool enable_cpu_mem_arena,
                                                                           bool enable_mem_pattern,
