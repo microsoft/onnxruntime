@@ -10,7 +10,6 @@ jobs:
       --skip_submodule_sync
       --parallel
       --build_shared_lib
-      --build_java
       --build_nodejs
       --build_objc
       --enable_language_interop_ops
