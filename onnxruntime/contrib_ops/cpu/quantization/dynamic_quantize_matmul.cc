@@ -10,8 +10,6 @@
 
 #include <algorithm>
 
-// #define SUPPORT_COLUMNWISE_QUANTIZATION
-
 namespace onnxruntime {
 namespace contrib {
 
@@ -151,7 +149,6 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
 
   return Status::OK();
 }
-
 
 class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
  public:

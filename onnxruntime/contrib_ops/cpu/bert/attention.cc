@@ -73,6 +73,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   }
   int batch_size = static_cast<int>(dims[0]);
   int sequence_length = static_cast<int>(dims[1]);
+
   const auto& weights_dims = weights_shape.GetDims();
   if (weights_dims.size() != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'weights' is expected to have 2 dimensions, got ",
@@ -342,7 +343,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
               packed_weight,              // B
               1.0f,                       // beta
               qkv_dest + qkv_offset,      // C
-              head_size,                 // ldc
+              head_size,                  // ldc
               nullptr);                   // use single-thread
         } else {
           math::GemmEx<float, ThreadPool>(

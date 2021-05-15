@@ -11,8 +11,6 @@
 #include "core/platform/threadpool.h"
 #include "core/mlas/inc/mlas.h"
 
-// #define SUPPORT_COLUMNWISE_QUANTIZATION
-
 using onnxruntime::concurrency::ThreadPool;
 
 namespace onnxruntime {
@@ -104,10 +102,10 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   //   Input  1 - weights           : (input_hidden_size, 3 * hidden_size)
   //   Input  2 - bias              : (3 * hidden_size)
   //   Input  3 - input_scale       : scalar
-  //   Input  4 - weight_scale      : scalar for now, will support per column later
+  //   Input  4 - weight_scale      : scalar for per tensor quantization, (3 * hidden_size) for per column quantization
   //   Input  5 - mask_index        : nullptr, (batch_size), (2 * batch_size), (batch_size, 1), (1, 1) or (batch_size, past_sequence_length + sequence_length)
   //   Input  6 - input_zero_point  : scalar
-  //   Input  7 - weight_zero_point : scalar for now, will support per column later
+  //   Input  7 - weight_zero_point : scalar for per tensor quantization, (3 * hidden_size) for per column quantization
   //   Input  8 - past              : (2, batch_size, num_heads, past_sequence_length, head_size)
   //   Output 0                     : (batch_size, sequence_length, hidden_size)
   //   Output 1 - present           : (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)
@@ -155,6 +153,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
     is_weight_zp_per_column = !IsScalarOr1ElementVector(w_zp_tensor);
     weight_zp_data = static_cast<const uint8_t*>(w_zp_tensor->DataRaw());
   }
+
   const auto& shape = input->Shape();
   const int batch_size = static_cast<int>(shape[0]);
   const int sequence_length = static_cast<int>(shape[1]);
