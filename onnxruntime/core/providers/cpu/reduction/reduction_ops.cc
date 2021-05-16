@@ -438,6 +438,7 @@ void NoTransposeReduce1Loop(Tensor* output, const TensorShape& new_input_shape, 
         }
       }
       data.to_data[main_index_last_loop] = accumulator.get_value();
+
       ++loop;
       if (loop >= last_results.last_loop_size) {
         loop = 0;
@@ -480,42 +481,55 @@ void NoTransposeReduce2Loops(Tensor* output, const TensorShape& new_input_shape,
       return;
   }
   last_results.ValidateNotEmpty();
-  int64_t denominator = last_results.last_loop_red_size * last_results.projected_index.size();
+
+  ParallelizedData<AGG> data;
+  data.denominator = last_results.last_loop_red_size * last_results.projected_index.size();
+  data.loop_size = last_results.last_loop_red_size * last_results.last_loop_red_inc;
+  data.last_results = &last_results;
+  data.from_data = from_data;
+  data.to_data = to_data;
 
   auto fn = [&](std::ptrdiff_t first, std::ptrdiff_t end) {
-    int64_t loop;
     const typename AGG::input_type* loop_red_ptr;
-    const typename AGG::input_type* loop_red_ptr_end;
-    int64_t current_index = first * last_results.last_loop_size;
-    for (int64_t main_index = first; main_index < end; ++main_index) {
-      for (loop = 0; loop < last_results.last_loop_size; ++loop, ++current_index) {
-        int64_t origin = last_results.unprojected_index[main_index] + loop * last_results.last_loop_inc;
-        AGG accumulator(denominator, from_data[origin + last_results.projected_index[0]]);
-        for (auto it = last_results.projected_index.begin(); it != last_results.projected_index.end(); ++it) {
-          loop_red_ptr = from_data + (origin + *it);
-          loop_red_ptr_end = loop_red_ptr + last_results.last_loop_red_size * last_results.last_loop_red_inc;
-          for (; loop_red_ptr != loop_red_ptr_end; loop_red_ptr += last_results.last_loop_red_inc) {
-            accumulator.update0(*loop_red_ptr);
-          }
+    const ResultsNoTransposePrepareForReduce& last_results = *data.last_results;
+    int64_t main_index = first / last_results.last_loop_size;
+    int64_t loop = first % last_results.last_loop_size;
+    int64_t origin = last_results.unprojected_index[main_index] + loop * last_results.last_loop_inc;
+    for (int64_t main_index_last_loop = first; main_index_last_loop < end; ++main_index_last_loop) {
+      AGG accumulator(data.denominator, data.from_data[origin + last_results.projected_index[0]]);
+      for (auto it = last_results.projected_index.begin(); it != last_results.projected_index.end(); ++it) {
+        loop_red_ptr = data.from_data + (origin + *it);
+        for (int64_t red = 0; red < data.loop_size; red += last_results.last_loop_red_inc) {
+          accumulator.update0(loop_red_ptr[red]);
         }
-        for (auto it = last_results.projected_index.begin(); it != last_results.projected_index.end(); ++it) {
-          loop_red_ptr = from_data + (origin + *it);
-          loop_red_ptr_end = loop_red_ptr + last_results.last_loop_red_size * last_results.last_loop_red_inc;
-          for (; loop_red_ptr != loop_red_ptr_end; loop_red_ptr += last_results.last_loop_red_inc) {
-            accumulator.update(*loop_red_ptr);
-          }
+      }
+
+      for (auto it = last_results.projected_index.begin(); it != last_results.projected_index.end(); ++it) {
+        loop_red_ptr = data.from_data + (origin + *it);
+        for (int64_t red = 0; red < data.loop_size; red += last_results.last_loop_red_inc) {
+          accumulator.update(loop_red_ptr[red]);
         }
-        to_data[current_index] = accumulator.get_value();
+      }
+      data.to_data[main_index_last_loop] = accumulator.get_value();
+
+      ++loop;
+      if (loop >= last_results.last_loop_size) {
+        loop = 0;
+        ++main_index;
+        if (main_index < static_cast<int64_t>(last_results.unprojected_index.size())) {
+          origin = last_results.unprojected_index[main_index];
+        }
+      } else {
+        origin += last_results.last_loop_inc;
       }
     }
   };
 
   auto cost = TensorOpCost{(double)(last_results.projected_index.size() * sizeof(typename AGG::input_type) *
-                                    last_results.last_loop_size * last_results.last_loop_red_size),
-                           (double)last_results.last_loop_size * last_results.last_loop_red_size,
-                           (double)last_results.projected_index.size() * last_results.last_loop_size *
-                               last_results.last_loop_red_size * 2};
-  concurrency::ThreadPool::TryParallelFor(tp, count / last_results.last_loop_size, cost, fn);
+                                    last_results.last_loop_red_size),
+                           (double)last_results.last_loop_red_size,
+                           (double)last_results.projected_index.size() * last_results.last_loop_red_size * 2};
+  concurrency::ThreadPool::TryParallelFor(tp, count, cost, fn);
 }
 
 void DropDimensions(const std::vector<int64_t>& input_shape,
@@ -681,6 +695,7 @@ bool CommonFastReduceSwitch(OpKernelContext* ctx,
   fast_kind = OptimizeShapeForFastReduce(
       reduced_dims, input_axes.empty() ? axes_ : input_axes,
       fast_shape, output_shape, fast_axes, keepdims_, noop_with_empty_axes);
+
   if (which_fast_reduce != FastReduceKind::kNone) {
     if (IsFastReduceKindAvailable(fast_kind, which_fast_reduce)) {
       Tensor* output = ctx->Output(0, output_shape);
