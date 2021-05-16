@@ -480,22 +480,22 @@ stages:
       pool: Onnxruntime-Linux-GPU
       strategy:
         matrix:
-          # Python36 Cuda10.2:
-          #   PythonVersion: '3.6'
-          #   CudaVersion: '10.2'
-          #   DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
-          # Python36 Cuda11.1:
-          #   PythonVersion: '3.6'
-          #   CudaVersion: '11.1'
-          #   DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
-          # Python37 Cuda10.2:
-          #   PythonVersion: '3.7'
-          #   CudaVersion: '10.2'
-          #   DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
-          # Python37 Cuda11.1:
-          #   PythonVersion: '3.7'
-          #   CudaVersion: '11.1'
-          #   DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
+          Python36 Cuda10.2:
+            PythonVersion: '3.6'
+            CudaVersion: '10.2'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
+          Python36 Cuda11.1:
+            PythonVersion: '3.6'
+            CudaVersion: '11.1'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
+          Python37 Cuda10.2:
+            PythonVersion: '3.7'
+            CudaVersion: '10.2'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
+          Python37 Cuda11.1:
+            PythonVersion: '3.7'
+            CudaVersion: '11.1'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
           Python38 Cuda10.2:
             PythonVersion: '3.8'
             CudaVersion: '10.2'
@@ -504,14 +504,14 @@ stages:
             PythonVersion: '3.8'
             CudaVersion: '11.1'
             DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
-          # Python39 Cuda10.2:
-          #   PythonVersion: '3.9'
-          #   CudaVersion: '10.2'
-          #   DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
-          # Python39 Cuda11.1:
-          #   PythonVersion: '3.9'
-          #   CudaVersion: '11.1'
-          #   DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
+          Python39 Cuda10.2:
+            PythonVersion: '3.9'
+            CudaVersion: '10.2'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
+          Python39 Cuda11.1:
+            PythonVersion: '3.9'
+            CudaVersion: '11.1'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
       steps:
 
       - checkout: self
@@ -568,6 +568,7 @@ stages:
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
                   --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion) ;
           workingDirectory: $(Build.SourcesDirectory)
+          displayName: 'build onnxruntime'
 
       - task: CmdLine@2
         inputs:
@@ -587,7 +588,8 @@ stages:
               onnxruntimetraininggpubuild \
                 bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$whlfilename ; $(PythonManylinuxDir)/bin/python3 /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release " ;
           workingDirectory: $(Build.SourcesDirectory)
-          condition: eq('${{ CudaVersion }}', '10.2')
+          displayName: 'test ortmodule'
+          condition: ne(variables['CudaVersion'], '11.1')
           # with Cuda 11.1:
           # test_bert_inputs_with_dynamic_shape: RuntimeError: CUDA error: CUBLAS_STATUS_EXECUTION_FAILED when calling `cublasSgemm( handle, opa, opb, m, n, k, &alpha, a, lda, b, ldb, &beta, c, ldc)`
           # test_gpu_reserved_memory_with_torch_no_grad: RuntimeError: CUDA error: CUBLAS_STATUS_EXECUTION_FAILED when calling `cublasSgemmStridedBatched( handle, opa, opb, m, n, k, &alpha, a, lda, stridea, b, ldb, strideb, &beta, c, ldc, stridec, num_batches)`
