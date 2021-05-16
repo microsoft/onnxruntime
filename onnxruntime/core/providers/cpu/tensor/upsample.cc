@@ -4,7 +4,6 @@
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/tensor/upsample.h"
-#include <sstream>
 
 using namespace onnxruntime::common;
 using namespace std;
