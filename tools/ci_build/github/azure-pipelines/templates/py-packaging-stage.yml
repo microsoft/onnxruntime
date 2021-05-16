@@ -544,6 +544,7 @@ stages:
         condition: succeededOrFailed()
 
       - task: CmdLine@2
+        displayName: 'build onnxruntime'
         inputs:
           script: |
             mkdir -p $HOME/.onnx
@@ -568,9 +569,13 @@ stages:
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
                   --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion) ;
           workingDirectory: $(Build.SourcesDirectory)
-          displayName: 'build onnxruntime'
 
+      # with Cuda 11.1:
+      # test_bert_inputs_with_dynamic_shape: RuntimeError: CUDA error: CUBLAS_STATUS_EXECUTION_FAILED when calling `cublasSgemm( handle, opa, opb, m, n, k, &alpha, a, lda, b, ldb, &beta, c, ldc)`
+      # test_gpu_reserved_memory_with_torch_no_grad: RuntimeError: CUDA error: CUBLAS_STATUS_EXECUTION_FAILED when calling `cublasSgemmStridedBatched( handle, opa, opb, m, n, k, &alpha, a, lda, stridea, b, ldb, strideb, &beta, c, ldc, stridec, num_batches)`
       - task: CmdLine@2
+        displayName: 'test ortmodule'
+        condition: ne(variables['CudaVersion'], '11.1')
         inputs:
           script: |
             rm -rf $(Build.BinariesDirectory)/Release/onnxruntime/ && \
@@ -588,11 +593,6 @@ stages:
               onnxruntimetraininggpubuild \
                 bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$whlfilename ; $(PythonManylinuxDir)/bin/python3 /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release " ;
           workingDirectory: $(Build.SourcesDirectory)
-          displayName: 'test ortmodule'
-          condition: ne(variables['CudaVersion'], '11.1')
-          # with Cuda 11.1:
-          # test_bert_inputs_with_dynamic_shape: RuntimeError: CUDA error: CUBLAS_STATUS_EXECUTION_FAILED when calling `cublasSgemm( handle, opa, opb, m, n, k, &alpha, a, lda, b, ldb, &beta, c, ldc)`
-          # test_gpu_reserved_memory_with_torch_no_grad: RuntimeError: CUDA error: CUBLAS_STATUS_EXECUTION_FAILED when calling `cublasSgemmStridedBatched( handle, opa, opb, m, n, k, &alpha, a, lda, stridea, b, ldb, strideb, &beta, c, ldc, stridec, num_batches)`
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
