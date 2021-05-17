@@ -71,19 +71,19 @@ struct ATenOperatorConfig {
       auto it = default_int_values.find(name);
       if (it != default_int_values.end()) {
         has_default_value = true;
-        value = it->second;
+        value = static_cast<T>(it->second);
       }
     } else if (std::is_same<T, float>::value) {
       auto it = default_float_values.find(name);
       if (it != default_float_values.end()) {
         has_default_value = true;
-        value = it->second;
+        value = static_cast<T>(it->second);
       }
     } else if (std::is_same<T, bool>::value) {
       auto it = default_bool_values.find(name);
       if (it != default_bool_values.end()) {
         has_default_value = true;
-        value = it->second;
+        value = static_cast<T>(it->second);
       }
     }
 
