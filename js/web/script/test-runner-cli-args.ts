@@ -146,7 +146,6 @@ export interface TestRunnerCliArgs {
   times?: number;
 
   cpuOptions?: InferenceSession.CpuExecutionProviderOption;
-  cpuFlags?: Record<string, unknown>;
   cudaOptions?: InferenceSession.CudaExecutionProviderOption;
   cudaFlags?: Record<string, unknown>;
   wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
@@ -283,7 +282,8 @@ function parseWebglFlags(args: minimist.ParsedArgs): Env.WebGLFlags {
 function parseGlobalEnvFlags(args: minimist.ParsedArgs): Env {
   const wasmFlags = parseWasmFlags(args);
   const webglFlags = parseWebglFlags(args);
-  return {webgl: webglFlags, wasm: wasmFlags};
+  const cpuFlags = parseCpuFlags(args);
+  return {webgl: webglFlags, wasm: wasmFlags, cpuFlags};
 }
 
 export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs {
@@ -330,7 +330,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   // --log-warning=<...>
   // --log-error=<...>
   const logConfig = parseLogConfig(args);
-  globalEnvFlags.logLevel = logConfig[0].config.minimalSeverity;
+  globalEnvFlags.logLevel = logConfig[0]?.config.minimalSeverity;
   // Option: -p, --profile
   const profile = (args.profile || args.p) ? true : false;
   if (profile) {
@@ -359,7 +359,6 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   const fileCache = parseBooleanArg(args['file-cache'] || args.c, false);
 
   const cpuOptions = parseCpuOptions(args);
-  const cpuFlags = parseCpuFlags(args);
   const wasmOptions = parseWasmOptions(args);
 
   const webglOptions = parseWebglOptions(args);
@@ -385,7 +384,6 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     times: perf ? times : undefined,
     fileCache,
     cpuOptions,
-    cpuFlags,
     webglOptions,
     wasmOptions,
     globalEnvFlags,

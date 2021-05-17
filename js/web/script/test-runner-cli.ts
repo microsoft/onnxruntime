@@ -144,7 +144,6 @@ run({
     cpuOptions: args.cpuOptions,
     webglOptions: args.webglOptions,
     wasmOptions: args.wasmOptions,
-    cpuFlags: args.cpuFlags,
     globalEnvFlags: args.globalEnvFlags
   }
 });

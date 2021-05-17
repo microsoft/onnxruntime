@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {EnvIml} from './env-impl';
+import {EnvImpl} from './env-impl';
 export declare namespace Env {
   export interface WebAssemblyFlags {
     /**
@@ -65,8 +65,4 @@ export interface Env {
 /**
  * Represent a set of flags as a global singleton.
  */
-export const env: EnvIml = {
-  wasm: {},
-  webgl: {},
-  logLevel: 'warning',
-};
+export const env: Env = new EnvImpl();

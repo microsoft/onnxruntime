@@ -3,18 +3,25 @@
 
 import {Env} from './env';
 
-export class EnvIml implements Env {
+type LogLevelType = Env['logLevel'];
+export class EnvImpl implements Env {
+  constructor() {
+    this.wasm = {};
+    this.webgl = {};
+    this.logLevelInternal = 'warning';
+  }
+
   // TODO standadize the getter and setter convention in env for other fields.
-  set logLevel(value: 'verbose'|'info'|'warning'|'error'|'fatal'|undefined) {
-    if (!value) {
+  set logLevel(value: LogLevelType) {
+    if (value === undefined) {
       return;
     }
     if (typeof value !== 'string' || ['verbose', 'info', 'warning', 'error', 'fatal'].indexOf(value) === -1) {
-      throw new Error('Unsupported logging level.');
+      throw new Error(`Unsupported logging level: ${value}`);
     }
     this.logLevelInternal = value;
   }
-  get logLevel(): 'verbose'|'info'|'warning'|'error'|'fatal'|undefined {
+  get logLevel(): LogLevelType {
     return this.logLevelInternal;
   }
 
@@ -26,5 +33,5 @@ export class EnvIml implements Env {
 
   [name: string]: unknown;
 
-  private logLevelInternal?: 'verbose'|'info'|'warning'|'error'|'fatal';
+  private logLevelInternal: Required<LogLevelType>;
 }
