@@ -18,7 +18,7 @@ void FuseResidualAddIfAny(Graph& graph, const Node& dropout_node,
   for (auto last_node_itr = dropout_node.OutputNodesBegin(); last_node_itr != dropout_node.OutputNodesEnd(); ++last_node_itr) {
     const Node& last_node = (*last_node_itr);
 
-    if (graph_utils::IsSupportedOptypeVersionAndDomain(last_node, "Add", {7, 13}) &&
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(last_node, "Add", {7, 13, 14}) &&
         last_node.GetExecutionProviderType() == dropout_node.GetExecutionProviderType()) {
       const TensorShapeProto* input1_shape = last_node.InputDefs()[0]->Shape();
       const TensorShapeProto* input2_shape = last_node.InputDefs()[1]->Shape();
@@ -83,7 +83,7 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
     std::vector<std::reference_wrapper<Node>> nodes_to_fuse;
 
     // matching for bias Add node
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7, 13}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7, 13, 14}) ||
         !graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders()) ||
         node.GetOutputEdgesCount() != 1) {
       continue;
