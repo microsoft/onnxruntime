@@ -25,26 +25,8 @@ ONNX_OPERATOR_KERNEL_EX(
     QLinearMatMul);
 
 Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
-  MatMulComputeHelper helper;
   const auto* a = ctx->Input<Tensor>(IN_A);
   const auto* b = packed_b_ ? nullptr : ctx->Input<Tensor>(IN_B);
-
-  const uint8_t* b_data;
-  bool b_is_signed;
-  if (nullptr != b) {
-    ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
-    b_data = static_cast<const uint8_t*>(b->DataRaw());
-    b_is_signed = b->IsDataType<int8_t>();
-  } else {
-    ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape_));
-    b_data = static_cast<const uint8_t*>(packed_b_.get());
-    b_is_signed = b_is_signed_;
-  }
-
-  Tensor* y = ctx->Output(OUT_Y, helper.OutputShape());
-  // Bail out early if the output is going to be empty
-  if (y->Shape().Size() == 0)
-    return Status::OK();
 
   // validate offsets
   const auto* a_offset = ctx->Input<Tensor>(IN_A_ZERO_POINT);
@@ -53,7 +35,7 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(IsScalarOr1ElementVector(a_offset),
               "QLinearMatmul : input zero point must be a scalar or 1D tensor of size 1");
   ORT_ENFORCE(IsBQuantParamSupported(b_offset->Shape(), b ? b->Shape() : b_shape_),
-              "MatmulInteger : weight zero point must be a scalar, 1D tensor of size 1, or last to second dimension is 1");
+              "QLinearMatmul : weight zero point must be a scalar, 1D tensor of size 1, or last to second dimension is 1");
   ORT_ENFORCE(IsScalarOr1ElementVector(y_offset),
               "QLinearMatmul : result zero point must be a scalar or 1D tensor of size 1");
 
@@ -64,9 +46,27 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(IsScalarOr1ElementVector(a_scale),
               "QLinearMatmul : input scale must be a scalar or 1D tensor of size 1");
   ORT_ENFORCE(IsBQuantParamSupported(b_scale->Shape(), b ? b->Shape() : b_shape_),
-              "MatmulInteger : weight scale must be a scalar, 1D tensor of size 1, or last to second dimension is 1");
+              "QLinearMatmul : weight scale must be a scalar, 1D tensor of size 1, or last to second dimension is 1");
   ORT_ENFORCE(IsScalarOr1ElementVector(y_scale),
               "QLinearMatmul : result scale must be a scalar or 1D tensor of size 1");
+
+  MatMulComputeHelper helper;
+  const uint8_t* b_data;
+  bool b_is_signed;
+  if (nullptr != b) {
+    ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape(), &b_scale->Shape(), &b_offset->Shape()));
+    b_data = static_cast<const uint8_t*>(b->DataRaw());
+    b_is_signed = b->IsDataType<int8_t>();
+  } else {
+    ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape_, &b_scale->Shape(), &b_offset->Shape()));
+    b_data = static_cast<const uint8_t*>(packed_b_.get());
+    b_is_signed = b_is_signed_;
+  }
+
+  Tensor* y = ctx->Output(OUT_Y, helper.OutputShape());
+  // Bail out early if the output is going to be empty
+  if (y->Shape().Size() == 0)
+    return Status::OK();
 
   const auto* b_scale_data = b_scale->template Data<float>();
   auto a_scale_data = *(a_scale->template Data<float>());
@@ -102,10 +102,9 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
 
   auto b_zp_data = static_cast<const uint8_t*>(b_offset->DataRaw());
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
-    auto b_param_offset = helper.RightOffsets()[i] / helper.K();
     gemm_params.A = a->template Data<uint8_t>() + helper.LeftOffsets()[i];
     gemm_params.B = b_data + helper.RightOffsets()[i];
-    gemm_params.ZeroPointB = b_zp_data + (gemm_params.PerColumnZeroPoints ? b_param_offset : 0);
+    gemm_params.ZeroPointB = b_zp_data + helper.RightZeroPointOffsets()[i];
 
     MlasGemm(gemm_shape, gemm_params, ctx->GetOperatorThreadPool());
 
@@ -115,7 +114,7 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
                          nullptr,
                          static_cast<size_t>(helper.M()),
                          static_cast<size_t>(helper.N()),
-                         output_scales.data() + (output_scales.size() > 1 ? b_param_offset : 0),
+                         output_scales.data() + helper.RightScaleOffsets()[i],
                          output_scales.size() > 1,
                          *y_offset->template Data<uint8_t>());
   }

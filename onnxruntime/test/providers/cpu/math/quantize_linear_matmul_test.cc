@@ -216,7 +216,7 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_2D) {
   test.AddInput<float>("y_scale", {}, {0.2f});
   test.AddInput<uint8_t>("y_zero_point", {}, {130});
 
-  test.AddOutput<uint8_t>("T3",
+  test.AddOutput<uint8_t>("y",
                           {2, 4},
                           {128, 128, 148, 118,
                            136, 144, 142, 121});
@@ -256,7 +256,7 @@ TEST(QuantizeLinearMatmulOpTest, PerColumn_ND) {
   test.AddInput<float>("y_scale", {}, {0.2f});
   test.AddInput<uint8_t>("y_zero_point", {}, {130});
 
-  test.AddOutput<uint8_t>("T3",
+  test.AddOutput<uint8_t>("y",
                           {2, 2, 4},
                           {128, 128, 148, 118,
                            136, 144, 142, 121,
