@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 import {SessionHandler} from './backend';
-// import {WebGLBackend} from './backends/backend-webgl';
-// import {WebGLContext} from './backends/webgl/webgl-context';
 import {Graph} from './graph';
 import {Logger, Profiler} from './instrument';
 import {Operator} from './operators';
@@ -53,12 +51,6 @@ export class ExecutionPlan {
   }
 
   async execute(sessionHandler: SessionHandler, modelInputs: Tensor[]): Promise<Tensor[]> {
-    // const isWebGLBackend = sessionHandler.backend instanceof WebGLBackend;
-    // let glCtx: WebGLContext|undefined;
-    // if (isWebGLBackend) {
-    //   glCtx = (sessionHandler.backend as WebGLBackend).glContext;
-    // }
-
     return this.profiler.event('session', 'ExecutionPlan.execute', async () => {
       // reset mediem result
       this.reset();
@@ -114,8 +106,6 @@ export class ExecutionPlan {
           return result;
         };
 
-        // const outputList = isWebGLBackend ? await this.profiler.event('node', thisOp.node.name, execNodeFn, glCtx) :
-        //                                     await this.profiler.event('node', thisOp.node.name, execNodeFn);
         const outputList = await this.profiler.event('node', thisOp.node.name, execNodeFn);
 
         // check output
