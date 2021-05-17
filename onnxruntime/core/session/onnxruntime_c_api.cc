@@ -2227,6 +2227,9 @@ static constexpr OrtApi ort_api_1_to_8 = {
     &OrtApis::ReleasePrepackedWeightsContainer,
     &OrtApis::CreateSessionWithPrepackedWeightsContainer,
     &OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer,
+    &OrtApis::CreateTensorRTProviderOptions,
+    &OrtApis::UpdateTensorRTProviderOptions,
+    &OrtApis::ReleaseTensorRTProviderOptions,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

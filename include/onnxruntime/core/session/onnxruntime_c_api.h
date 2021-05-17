@@ -1381,6 +1381,22 @@ struct OrtApi {
                   _In_ const void* model_data, size_t model_data_length,
                   _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
                   _Outptr_ OrtSession** out);
+
+  /**
+  * Use this API to create the configuration of a Tensorrt Execution Provider
+  */
+  ORT_API2_STATUS(CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptions** out);
+
+
+  ORT_API2_STATUS(UpdateTensorRTProviderOptions, _Inout_ OrtTensorRTProviderOptions* tensorrt_provider_options,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
+
+  /**
+  * Use this API to release the configuration of a TensorRT Execution Provider
+  */
+  ORT_CLASS_RELEASE(TensorRTProviderOptions);
 };
 
 /*

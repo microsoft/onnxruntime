@@ -25,6 +25,7 @@
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/tensorrt/tensorrt_execution_provider_info.h"
 #endif
 
 namespace ONNX_NAMESPACE {
@@ -739,4 +740,54 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtS
 
   options->provider_factories.push_back(factory);
   return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptions** out) {
+#ifdef USE_TENSORRT
+  *out = new OrtTensorRTProviderOptions();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(out);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
+                    _Inout_ OrtTensorRTProviderOptions* tensorrt_provider_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys) {
+#ifdef USE_TENSORRT
+  onnxruntime::ProviderOptions provider_options_map;
+  for (size_t i = 0; i != num_keys; ++i) {
+    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
+        provider_options_values == nullptr || provider_options_values[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "key/value cannot be empty");
+    }
+
+    provider_options_map[provider_options_keys[i]] = provider_options_values[i];
+  }
+
+  auto internal_options = onnxruntime::TensorrtExecutionProviderInfo::FromProviderOptions(provider_options_map);
+  //auto internal_options = onnxruntime::GetExecutionProviderInfo_Tensorrt()->FromProviderOptions(provider_options_map);
+
+  tensorrt_provider_options->device_id = internal_options.device_id;
+  tensorrt_provider_options->trt_max_workspace_size = internal_options.max_workspace_size;
+  tensorrt_provider_options->trt_fp16_enable = internal_options.fp16_enable;
+  tensorrt_provider_options->trt_int8_enable = internal_options.int8_enable;
+  tensorrt_provider_options->trt_int8_calibration_table_name = internal_options.int8_calibration_table_name.c_str();
+  tensorrt_provider_options->trt_int8_use_native_calibration_table = internal_options.int8_use_native_calibration_table;
+  
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(tensorrt_provider_options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
+}
+
+ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptions* ptr) {
+  delete ptr;
 }
