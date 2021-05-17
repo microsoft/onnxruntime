@@ -194,6 +194,79 @@ TEST(QuantizeLinearMatmulOpTest, QLinearMatMulAllInputExceptT1AreInitializers) {
   QLinearMatMul2DTest(true);
 }
 
+TEST(QuantizeLinearMatmulOpTest, PerColumn_2D) {
+  OpTester test("QLinearMatMul", 10);
+  test.AddInput<uint8_t>("a",
+                         {2, 4},
+                         {125, 135, 133, 122,
+                          132, 123, 136, 135});
+  test.AddInput<float>("a_scale", {}, {0.1f});
+  test.AddInput<uint8_t>("a_zero_point", {}, {133});
+  test.AddInput<int8_t>("b",
+                        {4, 4},
+                        {0, -8, 2, 3,
+                         -11, -13, -8, 1,
+                         2, 4, 4, -10,
+                         3, 2, -11, 2});
+  test.AddInput<float>("b_scale", {4},
+                       {0.1f, 0.2f, 0.3f, 0.4f});
+  test.AddInput<int8_t>("b_zero_point",
+                        {1, 4},
+                        {1, -2, 2, -1});
+  test.AddInput<float>("y_scale", {}, {0.2f});
+  test.AddInput<uint8_t>("y_zero_point", {}, {130});
+
+  test.AddOutput<uint8_t>("T3",
+                          {2, 4},
+                          {128, 128, 148, 118,
+                           136, 144, 142, 121});
+
+  test.Run();
+}
+
+TEST(QuantizeLinearMatmulOpTest, PerColumn_ND) {
+  OpTester test("QLinearMatMul", 10);
+  test.AddInput<uint8_t>("a",
+                         {2, 2, 4},
+                         {125, 135, 133, 122,
+                          132, 123, 136, 135,
+
+                          125, 135, 133, 122,
+                          132, 123, 136, 135});
+  test.AddInput<float>("a_scale", {}, {0.1f});
+  test.AddInput<uint8_t>("a_zero_point", {}, {133});
+  test.AddInput<int8_t>("b",
+                        {2, 4, 4},
+                        {0, -8, 2, 3,
+                         -11, -13, -8, 1,
+                         2, 4, 4, -10,
+                         3, 2, -11, 2,
+
+                         0, -8, 2, 3,
+                         -11, -13, -8, 1,
+                         2, 4, 4, -10,
+                         3, 2, -11, 2});
+  test.AddInput<float>("b_scale", {2, 1, 4},
+                       {0.1f, 0.2f, 0.3f, 0.4f,
+                        0.4f, 0.3f, 0.2f, 0.1f});
+  test.AddInput<int8_t>("b_zero_point",
+                        {2, 1, 4},
+                        {1, -2, 2, -1,
+                         2, -4, -1, 0});
+  test.AddInput<float>("y_scale", {}, {0.2f});
+  test.AddInput<uint8_t>("y_zero_point", {}, {130});
+
+  test.AddOutput<uint8_t>("T3",
+                          {2, 2, 4},
+                          {128, 128, 148, 118,
+                           136, 144, 142, 121,
+
+                           126, 122, 137, 128,
+                           157, 150, 136, 128});
+
+  test.Run();
+}
+
 /**
  * @brief Extend QLinearMatMul for verifying prepacking behavior 
 */

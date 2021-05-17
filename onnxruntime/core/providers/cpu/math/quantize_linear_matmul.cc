@@ -27,24 +27,18 @@ ONNX_OPERATOR_KERNEL_EX(
 Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   MatMulComputeHelper helper;
   const auto* a = ctx->Input<Tensor>(IN_A);
+  const auto* b = packed_b_ ? nullptr : ctx->Input<Tensor>(IN_B);
 
   const uint8_t* b_data;
-  bool b_is_signed;  // can't modify b_is_signed_, this is a const method
-  if (packed_b_) {
-    ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape_));
-    b_data = static_cast<const uint8_t*>(packed_b_.get());
-    b_is_signed = b_is_signed_;
-  } else {
-    const Tensor* b = ctx->Input<Tensor>(IN_B);
-    if (b == nullptr) {
-      // For required input, the framework has checks to ensure this won't happen,
-      // dead code to quiet the compiler warning. 
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-          "Required input B can not be null!");
-    }
+  bool b_is_signed;
+  if (nullptr != b) {
     ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
     b_data = static_cast<const uint8_t*>(b->DataRaw());
     b_is_signed = b->IsDataType<int8_t>();
+  } else {
+    ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape_));
+    b_data = static_cast<const uint8_t*>(packed_b_.get());
+    b_is_signed = b_is_signed_;
   }
 
   Tensor* y = ctx->Output(OUT_Y, helper.OutputShape());
@@ -58,8 +52,8 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   const auto* y_offset = ctx->Input<Tensor>(IN_Y_ZERO_POINT);
   ORT_ENFORCE(IsScalarOr1ElementVector(a_offset),
               "QLinearMatmul : input zero point must be a scalar or 1D tensor of size 1");
-  ORT_ENFORCE(IsScalarOr1ElementVector(b_offset),
-              "QLinearMatmul : weight zero point must be a scalar or 1D tensor of size 1");
+  ORT_ENFORCE(IsBQuantParamSupported(b_offset->Shape(), b ? b->Shape() : b_shape_),
+              "MatmulInteger : weight zero point must be a scalar, 1D tensor of size 1, or last to second dimension is 1");
   ORT_ENFORCE(IsScalarOr1ElementVector(y_offset),
               "QLinearMatmul : result zero point must be a scalar or 1D tensor of size 1");
 
@@ -69,16 +63,21 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   const auto* y_scale = ctx->Input<Tensor>(IN_Y_SCALE);
   ORT_ENFORCE(IsScalarOr1ElementVector(a_scale),
               "QLinearMatmul : input scale must be a scalar or 1D tensor of size 1");
-  ORT_ENFORCE(IsScalarOr1ElementVector(b_scale),
-              "QLinearMatmul : weight scale must be a scalar or 1D tensor of size 1");
+  ORT_ENFORCE(IsBQuantParamSupported(b_scale->Shape(), b ? b->Shape() : b_shape_),
+              "MatmulInteger : weight scale must be a scalar, 1D tensor of size 1, or last to second dimension is 1");
   ORT_ENFORCE(IsScalarOr1ElementVector(y_scale),
               "QLinearMatmul : result scale must be a scalar or 1D tensor of size 1");
 
+  const auto* b_scale_data = b_scale->template Data<float>();
   auto a_scale_data = *(a_scale->template Data<float>());
-  auto b_scale_data = *(b_scale->template Data<float>());
   auto y_scale_data = *(y_scale->template Data<float>());
 
-  const float real_multiplier = (a_scale_data * b_scale_data) / y_scale_data;
+  std::vector<float> output_scales;
+  const int64_t output_scale_size = b_scale->Shape().Size();
+  output_scales.resize(static_cast<size_t>(output_scale_size));
+  for (int64_t i = 0; i < output_scale_size; i++) {
+    output_scales[i] = (a_scale_data * b_scale_data[i] / y_scale_data);
+  }
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
@@ -97,14 +96,17 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   gemm_params.lda = gemm_shape.K;
   gemm_params.ZeroPointA = *a_offset->template Data<uint8_t>();
   gemm_params.ldb = gemm_shape.N;
-  gemm_params.ZeroPointB = static_cast<const uint8_t*>(b_offset->DataRaw());
   gemm_params.C = gemm_output;
   gemm_params.ldc = gemm_shape.N;
   gemm_params.BIsPacked = bool(packed_b_);
+  gemm_params.PerColumnZeroPoints = !IsScalarOr1ElementVector(b_offset);
 
+  auto b_zp_data = static_cast<const uint8_t*>(b_offset->DataRaw());
   for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
+    auto b_param_offset = helper.RightOffsets()[i] / helper.K();
     gemm_params.A = a->template Data<uint8_t>() + helper.LeftOffsets()[i];
     gemm_params.B = b_data + helper.RightOffsets()[i];
+    gemm_params.ZeroPointB = b_zp_data + (gemm_params.PerColumnZeroPoints ? b_param_offset : 0);
 
     MlasGemm(gemm_shape, gemm_params, ctx->GetOperatorThreadPool());
 
@@ -114,8 +116,8 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
                          nullptr,
                          static_cast<size_t>(helper.M()),
                          static_cast<size_t>(helper.N()),
-                         &real_multiplier,
-                         false,
+                         output_scales.data() + (output_scales.size() > 1 ? b_param_offset : 0),
+                         output_scales.size() > 1,
                          *y_offset->template Data<uint8_t>());
   }
 
