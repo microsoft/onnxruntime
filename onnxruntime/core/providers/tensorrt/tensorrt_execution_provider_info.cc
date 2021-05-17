@@ -12,7 +12,6 @@ namespace onnxruntime {
 namespace tensorrt {
 namespace provider_option_names {
 constexpr const char* kDeviceId = "device_id";
-//constexpr const char* kHasTrtOptions = "has_trt_options";
 constexpr const char* kMaxPartitionIterations = "trt_max_partition_iterations";
 constexpr const char* kMinSubgraphSize = "trt_min_subgraph_size";
 constexpr const char* kMaxWorkspaceSize = "trt_max_workspace_size";

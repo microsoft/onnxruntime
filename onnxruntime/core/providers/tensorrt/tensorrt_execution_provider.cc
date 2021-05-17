@@ -506,16 +506,20 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 
   // Validate setting
   if (max_partition_iterations_ <= 0) {
-    throw std::runtime_error("trt_max_partition_iterations must be a positive integer value");
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] TensorRT option trt_max_partition_iterations must be a positive integer value. Set it to 1000";
+    max_partition_iterations_ = 1000;
   }
   if (min_subgraph_size_ <= 0) {
-    throw std::runtime_error("trt_min_subgraph_size must be a positive integer value");
+	LOGS_DEFAULT(WARNING) << "[TensorRT EP] TensorRT option trt_min_subgraph_size must be a positive integer value. Set it to 1";
+    min_subgraph_size_ = 1;
   }	
   if (max_workspace_size_ <= 0) {
-    throw std::runtime_error("trt_max_workspace_size must be a positive integer value");
+	LOGS_DEFAULT(WARNING) << "[TensorRT EP] TensorRT option trt_max_workspace_size must be a positive integer value. Set it to 1073741824 (1GB)";
+    max_workspace_size_ = 1 << 30;
   }
   if (dla_core_ < 0) {
-    throw std::runtime_error("trt_dla_core must be a non-negative integer value");
+	LOGS_DEFAULT(WARNING) << "[TensorRT EP] TensorRT option trt_dla_core must be a non-negative integer value. Set it to 0";
+    dla_core_ = 0;
   }
 
   if (engine_cache_enable_ || int8_enable_) {
