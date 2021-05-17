@@ -714,7 +714,7 @@ class OnnxModel:
         for node in graph.node:
             if node.op_type in ['Loop', 'Scan', 'If']:
                 # TODO: handle inner graph
-                logger.debug(f"Skip prune_graph since graph has operator: {node.op_type}")
+                logger.debug(f"Skip update_graph since graph has operator: {node.op_type}")
                 return
             if node.op_type != "Constant":
                 for input_name in node.input:
