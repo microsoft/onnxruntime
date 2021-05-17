@@ -66,7 +66,7 @@ cd ninja-1.10.0
 cmake -Bbuild-cmake -H.
 cmake --build build-cmake
 mv ./build-cmake/ninja /usr/bin
-echo "Installing Node.js from source"
+echo "Installing Node.js"
 GetFile https://nodejs.org/dist/v12.16.3/node-v12.16.3-linux-x64.tar.gz /tmp/src/node-v12.16.3-linux-x64.tar.gz
 tar --strip 1 -xf /tmp/src/node-v12.16.3-linux-x64.tar.gz -C /usr
 
