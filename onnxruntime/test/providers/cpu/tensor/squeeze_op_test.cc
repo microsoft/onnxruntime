@@ -120,7 +120,7 @@ TEST(SqueezeOpTest, Squeeze_2_axes_input) {
   auto run_test = [](bool axes_is_initializer) {
     OpTester test("Squeeze", 13);
     test.AddInput<float>("data", {1, 4, 1, 1, 2},
-                        std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+                         std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
     test.AddInput<int64_t>("axes", {3}, std::vector<int64_t>{0, 2, 3}, axes_is_initializer);
     test.AddOutput<float>("squeezed", {4, 2},
                           std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
@@ -145,7 +145,7 @@ TEST(SqueezeOpTest, SqueezeNegAxis_axes_input) {
   auto run_test = [](bool axes_is_initializer) {
     OpTester test("Squeeze", 13);
     test.AddInput<float>("data", {1, 4, 1, 1, 2},
-                        std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+                         std::vector<float>{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
 
     test.AddInput<int64_t>("axes", {3}, std::vector<int64_t>{0, -3, -2}, axes_is_initializer);
     test.AddOutput<float>("squeezed", {4, 2},
@@ -158,7 +158,6 @@ TEST(SqueezeOpTest, SqueezeNegAxis_axes_input) {
 
   run_test(false);
   run_test(true);  // COREML EP will need axes as an initializer
-
 }
 
 // Add 4d input shape test, since NNAPI supports up to 4d input shape
