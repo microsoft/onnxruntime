@@ -47,7 +47,7 @@ jobs:
       script: |
         rm -rf $(Build.BinariesDirectory)/Release/onnxruntime
         rm -f $(Build.BinariesDirectory)/Release/models
-        getfacl -R $(Build.BinariesDirectory)/Release > $(Build.BinariesDirectory)/Release/perms.txt
+        find $(Build.BinariesDirectory)/Release -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline Artifact'
