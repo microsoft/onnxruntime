@@ -102,8 +102,8 @@ const numericTensorTypeToTypedArray = (type: Tensor.Type): Float32ArrayConstruct
       }
     };
 
-const getLoggingLevel = (loggingLevel: 'verbose'|'info'|'warning'|'error'|'fatal'): number => {
-  switch (loggingLevel) {
+const getLogLevel = (logLevel: 'verbose'|'info'|'warning'|'error'|'fatal'): number => {
+  switch (logLevel) {
     case 'verbose':
       return 0;
     case 'info':
@@ -115,7 +115,7 @@ const getLoggingLevel = (loggingLevel: 'verbose'|'info'|'warning'|'error'|'fatal
     case 'fatal':
       return 4;
     default:
-      throw new Error(`unsupported logging level: ${loggingLevel}`);
+      throw new Error(`unsupported logging level: ${logLevel}`);
   }
 };
 
@@ -257,7 +257,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   loadModel(model: Uint8Array, options?: InferenceSession.SessionOptions): void {
     const wasm = getInstance();
     if (!ortInit) {
-      const errorCode = wasm._OrtInit(env.wasm.numThreads!, getLoggingLevel(env.wasm.loggingLevel!));
+      const errorCode = wasm._OrtInit(env.wasm.numThreads!, getLogLevel(env.logLevel!));
       if (errorCode !== 0) {
         throw new Error(`Can't initialize onnxruntime. error code = ${errorCode}`);
       }
