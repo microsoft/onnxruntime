@@ -94,6 +94,20 @@ export declare namespace InferenceSession {
     executionMode?: 'sequential'|'parallel';
 
     /**
+     * Wether enable profiling.
+     *
+     * This setting is a placeholder for a future use.
+     */
+    enableProfiling?: boolean;
+
+    /**
+     * File prefix for profiling.
+     *
+     * This setting is a placeholder for a future use.
+     */
+    profileFilePrefix?: string;
+
+    /**
      * Log ID.
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend

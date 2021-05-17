@@ -35,7 +35,8 @@ export interface OrtWasmModule extends EmscriptenModule {
 
   _OrtCreateSessionOptions(
       graphOptimizationLevel: number, enableCpuMemArena: boolean, enableMemPattern: boolean, executionMode: number,
-      logId: number, logSeverityLevel: number, logVerbosityLevel: number): number;
+      enableProfiling: boolean, profileFilePrefix: number, logId: number, logSeverityLevel: number,
+      logVerbosityLevel: number): number;
   _OrtAddSessionConfigEntry(sessionOptionsHandle: number, configKey: number, configValue: number): number;
   _OrtReleaseSessionOptions(sessionOptionsHandle: number): void;
 
