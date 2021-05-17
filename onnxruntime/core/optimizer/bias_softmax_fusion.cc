@@ -43,7 +43,7 @@ bool TryBiasSoftmaxSubgraphMatch(Graph& graph, Node& start, Node*& add, Node*& s
   add = softmax = nullptr;
 
   // check node is add and has single output
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7, 13, 14}) ||
       !graph_utils::IsSupportedProvider(node, {kCudaExecutionProvider, kRocmExecutionProvider}) ||
       !optimizer_utils::CheckOutputEdges(graph, node, 1)) {
     return false;
