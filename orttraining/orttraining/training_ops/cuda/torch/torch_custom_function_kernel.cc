@@ -1,9 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_ops/cuda/torch/torch_custom_function_kernel.h"
-#include "core/language_interop_ops/torch/torch_proxy.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
+#include "core/language_interop_ops/torch/torch_proxy.h"
+#include "core/language_interop_ops/torch/refcount_tracker.h"
+#include "orttraining/training_ops/cuda/torch/torch_custom_function_kernel.h"
+
+using namespace onnxruntime::language_interop_ops::torch;
 
 namespace onnxruntime {
 namespace cuda {
@@ -42,9 +45,8 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
 
   // Invoke python calls.
   std::string err;
-  onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().Forward(
-      onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool ::GetInstance()
-          .GetForwardCore(name_),
+  TorchProxy::GetInstance().Forward(
+      OrtTorchFunctionPool::GetInstance().GetForwardCore(name_),
       input_tensor_requires_grads_,
       args,
       arg_positions_,
@@ -60,6 +62,10 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   SetContextOutput(context, returned_args);
   // Other outputs are wrappers of Pytorch tensors.
   SetOtherOutputs(context, returned_args);
+
+#ifndef NDEBUG
+  RefCountTracker::GetInstance().DumpDetails("Backward Kernel Completed");
+#endif
   return Status::OK();
 }
 
@@ -69,13 +75,16 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
 
   auto args = contrib::CreateOrtValueArgs(context, 1);
   // This is called "const" because that's how Pytorch calls all non-tensor inputs.
-  auto const_args = CreateConstArgs(context);
+  const Tensor* context_id_tensor = context->Input<Tensor>(0);
+  ORT_ENFORCE(context_id_tensor, "Context ID (first input) should not be null.");
+  const int64_t* context_index_ptr = context_id_tensor->template Data<int64_t>();
+  void* ctx_ptr = OrtTorchFunctionPool::GetInstance().GetContext(*context_index_ptr);
+  auto const_args = {ctx_ptr};
   std::vector<void*> returned_args;
 
   std::string err;
-  onnxruntime::language_interop_ops::torch::TorchProxy::GetInstance().Backward(
-      onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance()
-          .GetBackwardCore(name_),
+  TorchProxy::GetInstance().Backward(
+      OrtTorchFunctionPool::GetInstance().GetBackwardCore(name_),
       input_tensor_requires_grads_,
       args,
       arg_positions_,
@@ -85,8 +94,13 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
   // todo(pengwa): okay to remove it?
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
 
+  // It's safe to un-register the context now because this GPU kernel runs in "sync" mode.
+  OrtTorchFunctionPool::GetInstance().UnRegisterContext(*context_index_ptr);
   SetOutputs(context, returned_args);
 
+#ifndef NDEBUG
+  RefCountTracker::GetInstance().DumpDetails("Backward Kernel Completed");
+#endif
   return Status::OK();
 }
 

@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/language_interop_ops/torch/custom_function_register.h"
-
 #include "core/common/common.h"
 #include "core/platform/env.h"
+#include "core/language_interop_ops/torch/custom_function_register.h"
+#include "core/language_interop_ops/torch/refcount_tracker.h"
 
 namespace onnxruntime {
 namespace language_interop_ops {
@@ -104,7 +104,6 @@ static void UnregisterEntry(
   auto it = pool.find(key);
 
   ORT_ENFORCE(it != pool.end(), "Cannot unregister unexisting key: ", key);
-
   // Release the ownership.
   Py_DECREF(it->second);
   pool.erase(it);
@@ -216,7 +215,10 @@ int64_t OrtTorchFunctionPool::RegisterContext(PyObject* auto_grad_context) {
   static int64_t index_ = 0x1000000;
   std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
   index_++;
-  PyObject_Print(auto_grad_context, stdout, 0);
+#ifndef NDEBUG
+  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::AutoGradContext,
+                                               auto_grad_context, "autograd_context_register");
+#endif
   func_context_pool.insert({index_, auto_grad_context});
   Py_INCREF(auto_grad_context);
   return index_;
@@ -231,6 +233,7 @@ PyObject* OrtTorchFunctionPool::GetContext(int64_t context_index) {
 
 void OrtTorchFunctionPool::UnRegisterContext(int64_t context_index) {
   std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
+
   UnregisterEntry(context_index, func_context_pool);
 }
 

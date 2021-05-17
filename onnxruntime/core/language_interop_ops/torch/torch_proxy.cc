@@ -43,11 +43,6 @@ bool ExtractPointerOutput(PyObject* pyObj, std::vector<void*>& outputs) {
   return true;
 }
 
-TorchProxy& TorchProxy::GetInstance() {
-  static TorchProxy proxy;
-  return proxy;
-}
-
 #ifndef NDEBUG
 PyObject* Ort_PyTuple_New(const size_t len, std::string log_tag) {
   PyObject* item = PyTuple_New(len);
@@ -150,12 +145,12 @@ PyObject* CreateTensorFlags(
   // assign 1's to tensors' corresponding positions.
   for (size_t i = 0; i < len; ++i) {
     PyObject* zero = PyLong_FromLong(0);
-    Ort_PyList_SetItem_Incref(flags, i, zero, std::to_string(__LINE__));
+    Ort_PyList_SetItem_NoIncref(flags, i, zero, std::to_string(__LINE__));
   }
 
   for (const auto i : tensor_indices) {
     PyObject* one = PyLong_FromLong(1);
-    Ort_PyList_SetItem_Incref(flags, i, one, std::to_string(__LINE__));
+    Ort_PyList_SetItem_NoIncref(flags, i, one, std::to_string(__LINE__));
   }
 
   return flags;
@@ -172,7 +167,7 @@ PyObject* CreateRequiresGradFlags(
     } else {
       value = PyLong_FromLong(0);
     }
-    Ort_PyList_SetItem_Incref(flags, i, value, std::to_string(__LINE__));
+    Ort_PyList_SetItem_NoIncref(flags, i, value, std::to_string(__LINE__));
   }
   return flags;
 }
@@ -181,15 +176,16 @@ void InvokeRunner(
     PyObject* callback_runner,
     PyObject* args,
     std::vector<void*>& returned_args) {
-  PyObject* result = PyObject_CallObject(reinterpret_cast<PyObject*>(callback_runner), args);
+  PythonObjectPtr result_ptr(PyObject_CallObject(callback_runner, args));
+
   if (PyErr_Occurred()) {
     PyErr_Print();
     ORT_THROW("Python function execution fails with the above information.");
   }
 
-  ORT_ENFORCE(PyTuple_Check(result), "Python function must return a tuple.");
-  for (int i = 0; i < PyTuple_Size(result); ++i) {
-    ORT_ENFORCE(ExtractPointerOutput(PyTuple_GetItem(result, i), returned_args));
+  ORT_ENFORCE(PyTuple_Check(result_ptr.get()), "Python function must return a tuple.");
+  for (int i = 0; i < PyTuple_Size(result_ptr.get()); ++i) {
+    ORT_ENFORCE(ExtractPointerOutput(PyTuple_GetItem(result_ptr.get(), i), returned_args));
   }
 }
 
@@ -215,7 +211,7 @@ std::unique_ptr<PythonObjectPtr> CreateForwardArguments(
   Ort_PyTuple_SetItem_NoIncref(args->get(), 1, requires_grad_flags, "requires_grad_flags");
   Ort_PyTuple_SetItem_NoIncref(args->get(), 2, tensor_flags, "tensor_flags");
   PyObject* is_training = is_training_mode ? Py_True : Py_False;
-  Ort_PyTuple_SetItem_Incref(args->get(), 3, is_training, "is_training_mode");
+  Ort_PyTuple_SetItem_NoIncref(args->get(), 3, is_training, "is_training_mode");
 
   for (size_t i = 0; i < tensor_args.size(); ++i) {
     // Wrap with DLPack, then transfer to Python for its release.
@@ -260,12 +256,12 @@ void Invoke(
         obj_indices,
         is_training_mode);
 #ifndef NDEBUG
-    RefCountTracker::GetInstance().DumpDetails();
+    RefCountTracker::GetInstance().DumpDetails("Before Invoke Python Call");
 #endif
     InvokeRunner(runner, args->get(), returned_args);
   }
 #ifndef NDEBUG
-  RefCountTracker::GetInstance().DumpDetails();
+  RefCountTracker::GetInstance().DumpDetails("After Python Call Completed");
 #endif
 }
 

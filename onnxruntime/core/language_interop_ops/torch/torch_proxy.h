@@ -18,7 +18,10 @@ template class ObjectPointer<PyObject>;
 
 class TorchProxy {
  public:
-  static TorchProxy& GetInstance();
+  static TorchProxy& GetInstance() {
+    static TorchProxy proxy;
+    return proxy;
+  };
 
   void Forward(
       void* callback,
