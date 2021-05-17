@@ -49,7 +49,7 @@ struct MLAS_GEMM_U8X8_DISPATCH {
     MLAS_GEMM_U8X8_OPERATION* PackedOperation;
     MLAS_GEMM_U8X8_COPY_PACKB_ROUTINE* CopyPackBRoutine;
     size_t PackedK;
-    size_t PackedStrideK;
+    size_t StrideK;
 };
 
 const MLAS_GEMM_U8X8_DISPATCH*
@@ -147,6 +147,74 @@ MlasGemmU8X8TryGemvKernel(
     MLAS_UNREFERENCED_PARAMETER(BIsSigned);
 
     return false;
+}
+
+
+/**
+ * Heap buffer for packing panels used in QGEMM
+ */
+struct MLAS_GEMM_U8X8_PACK_PANELS {
+    std::vector<uint8_t> BufHolder;
+    std::ptrdiff_t AddrA = 0;
+    std::ptrdiff_t AddrB = 0;
+};
+
+thread_local MLAS_GEMM_U8X8_PACK_PANELS MlasQGemmPckBuf;
+
+//
+// When defining multiple Kernels for the same CPU,
+// sizes of panel A and B must agree among these kernels!
+//
+
+template <typename KernelType>
+MLAS_FORCEINLINE
+size_t
+MlasQGemmPackPanelASize()
+{
+    constexpr MLAS_GEMM_U8X8_STRIDES Strides = KernelType::Strides;
+    constexpr size_t PackPanelASize =
+        Strides.M * Strides.K * sizeof(typename KernelType::PackedAType);
+
+    return PackPanelASize;
+}
+
+template <typename KernelType>
+MLAS_FORCEINLINE size_t
+MlasQGemmPackPanelBSize()
+{
+    constexpr MLAS_GEMM_U8X8_STRIDES Strides = KernelType::Strides;
+    constexpr size_t PackPanelBSize =
+        Strides.K * Strides.N * sizeof(typename KernelType::PackedBType);
+
+    return PackPanelBSize;
+}
+
+template <typename KernelType>
+MLAS_FORCEINLINE 
+void 
+MlasQGemmGetPackPanels(
+    typename KernelType::PackedAType*& PanelA,
+    typename KernelType::PackedBType*& PanelB
+    )
+{
+
+    if (MlasQGemmPckBuf.AddrA == 0) {
+        // Multiple Kernels defined for the same CPU will cause buffer overrun problem
+        // they must specialize panel size functions to make panel sizes agree.
+        constexpr size_t AlignPadding = 64;
+
+        const size_t PackPanelASize = MlasQGemmPackPanelASize<KernelType>();
+        const size_t PackPanelBSize = MlasQGemmPackPanelBSize<KernelType>();
+        const size_t PanelBufSize = PackPanelASize + PackPanelBSize + AlignPadding - 1;
+
+        MlasQGemmPckBuf.BufHolder.resize(PanelBufSize);
+        MlasQGemmPckBuf.AddrA = reinterpret_cast<size_t>(MlasQGemmPckBuf.BufHolder.data());
+        MlasQGemmPckBuf.AddrA = (MlasQGemmPckBuf.AddrA + AlignPadding - 1) & ~(AlignPadding - 1);
+        MlasQGemmPckBuf.AddrB = MlasQGemmPckBuf.AddrA + PackPanelASize;
+    }
+
+    PanelA = reinterpret_cast<typename KernelType::PackedAType*>(MlasQGemmPckBuf.AddrA);
+    PanelB = reinterpret_cast<typename KernelType::PackedBType*>(MlasQGemmPckBuf.AddrB);
 }
 
 template<typename KernelType>
@@ -271,8 +339,9 @@ Return Value:
 {
     constexpr MLAS_GEMM_U8X8_STRIDES Strides = KernelType::Strides;
 
-    MLAS_DECLSPEC_ALIGN(typename KernelType::PackedAType PanelA[Strides.M * Strides.K], 64);
-    MLAS_DECLSPEC_ALIGN(typename KernelType::PackedBType PanelB[Strides.N * Strides.K], 64);
+    typename KernelType::PackedAType* PanelA;
+    typename KernelType::PackedBType* PanelB;
+    MlasQGemmGetPackPanels<KernelType>(PanelA, PanelB);
 
     MLAS_DECLSPEC_ALIGN(int32_t RowSumBuffer[Strides.M], 64);
     MLAS_DECLSPEC_ALIGN(int32_t ColumnSumBuffer[Strides.N], 64);
@@ -495,9 +564,12 @@ Return Value:
 
 --*/
 {
-    constexpr MLAS_GEMM_U8X8_STRIDES Strides = KernelType::PackedStrides;
+    constexpr MLAS_GEMM_U8X8_STRIDES Strides = KernelType::Strides;
 
-    MLAS_DECLSPEC_ALIGN(typename KernelType::PackedAType PanelA[Strides.M * Strides.K], 64);
+    // Only need PanelA, PanelB is just for the function interface;
+    typename KernelType::PackedAType* PanelA;
+    typename KernelType::PackedBType* PanelB;
+    MlasQGemmGetPackPanels<KernelType>(PanelA, PanelB);
 
     MLAS_DECLSPEC_ALIGN(int32_t RowSumBuffer[Strides.M], 64);
     MLAS_DECLSPEC_ALIGN(int32_t ColumnSumBuffer[Strides.N], 64);
@@ -1164,12 +1236,24 @@ struct MLAS_GEMM_U8S8_KERNEL_SSE41
 
     static constexpr size_t PackedK = 4;
     static constexpr MLAS_GEMM_U8X8_STRIDES Strides{24, 128, 128};
-    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{24, 128, 128};
 };
 
 constexpr size_t MLAS_GEMM_U8S8_KERNEL_SSE41::PackedK;
 constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8S8_KERNEL_SSE41::Strides;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8S8_KERNEL_SSE41::PackedStrides;
+
+template <>
+MLAS_FORCEINLINE size_t
+MlasQGemmPackPanelASize<MLAS_GEMM_U8S8_KERNEL_SSE41>()
+{
+    return MlasQGemmPackPanelASize<MLAS_GEMM_U8X8_KERNEL_SSE>();
+}
+
+template <>
+MLAS_FORCEINLINE size_t
+MlasQGemmPackPanelBSize<MLAS_GEMM_U8S8_KERNEL_SSE41>()
+{
+    return MlasQGemmPackPanelBSize<MLAS_GEMM_U8X8_KERNEL_SSE>();
+}
 
 template<>
 void
@@ -1576,7 +1660,7 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchSse41 = {
     MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_SSE41>,
     MlasGemmU8X8CopyPackB<MLAS_GEMM_U8S8_KERNEL_SSE41>,
     MLAS_GEMM_U8S8_KERNEL_SSE41::PackedK,
-    MLAS_GEMM_U8S8_KERNEL_SSE41::PackedStrides.K,
+    MLAS_GEMM_U8S8_KERNEL_SSE41::Strides.K,
 };
 
 #endif
@@ -1649,13 +1733,11 @@ struct MLAS_GEMM_U8S8_KERNEL_AVX2
     typedef int8_t OffsetBType;
 
     static constexpr size_t PackedK = 4;
-    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{24, 256, 128};
-    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{48, 256, 384};
+    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{48, 256, 384};
 };
 
 constexpr size_t MLAS_GEMM_U8S8_KERNEL_AVX2::PackedK;
 constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8S8_KERNEL_AVX2::Strides;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8S8_KERNEL_AVX2::PackedStrides;
 
 template<>
 MLAS_FORCEINLINE
@@ -1750,7 +1832,7 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchAvx2 = {
     MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>,
     MlasGemmU8X8CopyPackB<MLAS_GEMM_U8S8_KERNEL_AVX2>,
     MLAS_GEMM_U8S8_KERNEL_AVX2::PackedK,
-    MLAS_GEMM_U8S8_KERNEL_AVX2::PackedStrides.K,
+    MLAS_GEMM_U8S8_KERNEL_AVX2::Strides.K,
 };
 
 struct MLAS_GEMM_U8U8_KERNEL_AVX2
@@ -1760,13 +1842,30 @@ struct MLAS_GEMM_U8U8_KERNEL_AVX2
     typedef uint8_t OffsetBType;
 
     static constexpr size_t PackedK = 2;
-    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{24, 256, 128};
-    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{48, 256, 384};
+    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{48, 256, 384};
 };
 
 constexpr size_t MLAS_GEMM_U8U8_KERNEL_AVX2::PackedK;
 constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8U8_KERNEL_AVX2::Strides;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8U8_KERNEL_AVX2::PackedStrides;
+
+//
+//  this U8U8 kernel needs a bigger packing panel, need to make
+// the corresponding U8S8 kernel agree with the panel size
+//
+
+template <>
+MLAS_FORCEINLINE size_t
+MlasQGemmPackPanelASize<MLAS_GEMM_U8S8_KERNEL_AVX2>()
+{
+    return MlasQGemmPackPanelASize<MLAS_GEMM_U8U8_KERNEL_AVX2>();
+}
+
+template <>
+MLAS_FORCEINLINE size_t
+MlasQGemmPackPanelBSize<MLAS_GEMM_U8S8_KERNEL_AVX2>()
+{
+    return MlasQGemmPackPanelBSize<MLAS_GEMM_U8U8_KERNEL_AVX2>();
+}
 
 template<>
 MLAS_FORCEINLINE
@@ -1827,7 +1926,7 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8U8DispatchAvx2 = {
     MlasGemmU8X8PackedOperation<MLAS_GEMM_U8U8_KERNEL_AVX2>,
     MlasGemmU8X8CopyPackB<MLAS_GEMM_U8U8_KERNEL_AVX2>,
     MLAS_GEMM_U8U8_KERNEL_AVX2::PackedK,
-    MLAS_GEMM_U8U8_KERNEL_AVX2::PackedStrides.K,
+    MLAS_GEMM_U8U8_KERNEL_AVX2::Strides.K,
 };
 
 #endif
@@ -1867,12 +1966,10 @@ struct MLAS_GEMM_U8X8_KERNEL_NEON
 
     static constexpr size_t PackedK = 4;
     static constexpr MLAS_GEMM_U8X8_STRIDES Strides{24, 128, 256};
-    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{24, 128, 256};
 };
 
 constexpr size_t MLAS_GEMM_U8X8_KERNEL_NEON::PackedK;
 constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_NEON::Strides;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides;
 
 template<>
 MLAS_FORCEINLINE
@@ -2323,7 +2420,7 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchNeon = {
     MlasGemmU8X8PackedOperation<MLAS_GEMM_U8X8_KERNEL_NEON>,
     MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_NEON>,
     MLAS_GEMM_U8X8_KERNEL_NEON::PackedK,
-    MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides.K,
+    MLAS_GEMM_U8X8_KERNEL_NEON::Strides.K,
 };
 
 #endif
@@ -2360,13 +2457,11 @@ struct MLAS_GEMM_U8X8_KERNEL_UDOT
     typedef uint8_t OffsetBType;
 
     static constexpr size_t PackedK = 8;
-    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{24, 128, 256};
-    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{24, 128, 384};
+    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{24, 128, 384};
 };
 
 constexpr size_t MLAS_GEMM_U8X8_KERNEL_UDOT::PackedK;
 constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_UDOT::Strides;
-constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_UDOT::PackedStrides;
 
 template<>
 MLAS_FORCEINLINE
@@ -2895,7 +2990,7 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchUdot = {
     MlasGemmU8X8PackedOperation<MLAS_GEMM_U8X8_KERNEL_UDOT>,
     MlasGemmU8X8CopyPackB<MLAS_GEMM_U8X8_KERNEL_UDOT>,
     MLAS_GEMM_U8X8_KERNEL_UDOT::PackedK,
-    MLAS_GEMM_U8X8_KERNEL_UDOT::PackedStrides.K,
+    MLAS_GEMM_U8X8_KERNEL_UDOT::Strides.K,
 };
 
 #endif
@@ -2908,7 +3003,6 @@ struct MLAS_GEMM_U8X8_KERNEL_DEFAULT
 
     static constexpr size_t PackedK = 4;
     static constexpr MLAS_GEMM_U8X8_STRIDES Strides{16, 128, 128};
-    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{16, 128, 128};
 };
 
 template<>
@@ -3310,7 +3404,7 @@ Return Value:
     const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(BIsSigned);
 
     size_t PackedK = GemmU8X8Dispatch->PackedK;
-    size_t PackedStrideK = GemmU8X8Dispatch->PackedStrideK;
+    size_t PackedStrideK = GemmU8X8Dispatch->StrideK;
 
     if (PackedStrideK == 0) {
         return 0;
@@ -3378,7 +3472,7 @@ Return Value:
     const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(BIsSigned);
 
     size_t PackedK = GemmU8X8Dispatch->PackedK;
-    size_t PackedStrideK = GemmU8X8Dispatch->PackedStrideK;
+    size_t PackedStrideK = GemmU8X8Dispatch->StrideK;
 
     //
     // Reserve and initialize storage for the column sum buffer to hold the sums

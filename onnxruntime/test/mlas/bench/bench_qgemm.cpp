@@ -109,6 +109,7 @@ static void QGemmSize(benchmark::internal::Benchmark* b) {
   b->Args({512, 64, 512, 12, 1});
   b->Args({512, 64, 512, 12, 4});
   b->Args({512, 64, 512, 12, 6});
+
 }
 
 
