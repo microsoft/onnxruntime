@@ -534,11 +534,28 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   if (engine_decryption_enable_) {
     LIBTYPE handle = OPENLIB(engine_decryption_lib_path_.c_str());
     if (handle == nullptr) {
-      ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                      "TensorRT EP could not open shared library from " + engine_decryption_lib_path_);
+      ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                      "TensorRT EP could not open shared library from " + engine_decryption_lib_path_));
     }
     engine_decryption_ = (int (*)(const char*, char*, size_t*))LIBFUNC(handle, "decrypt");
   }
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT provider options: "
+  << "device_id: " << device_id_ 
+  << ", trt_max_partition_iterations: " << max_partition_iterations_
+  << ", trt_min_subgraph_size: " << min_subgraph_size_  
+  << ", trt_max_workspace_size: " << max_workspace_size_ 
+  << ", trt_fp16_enable: " << fp16_enable_ 
+  << ", trt_int8_enable: " << int8_enable_ 
+  << ", trt_int8_calibration_cache_name: " << int8_calibration_cache_name_ 
+  << ", trt_int8_use_native_tensorrt_calibration_table: " << int8_use_native_tensorrt_calibration_table_
+  << ", trt_dla_enable: " << dla_enable_ 
+  << ", trt_dla_core: " << dla_core_
+  << ", trt_dump_subgraphs: " << dump_subgraphs_ 
+  << ", trt_engine_cache_enable: " << engine_cache_enable_
+  << ", trt_cache_path: " << cache_path_ 
+  << ", trt_engine_decryption_enable: " << engine_decryption_enable_ 
+  << ", trt_engine_decryption_lib_path: " << engine_decryption_lib_path_ 
+  << ", trt_force_sequential_engine_build: " << force_sequential_engine_build_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -862,7 +879,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         model_proto->SerializeToString(string_buf);
 
         if (dump_subgraphs_) {
-          // Dump TensorRT subgraph for debugging if enabled via ORT_TENSORRT_DUMP_SUBGRAPHS env variable.
+          // Dump TensorRT subgraph for debugging
           std::fstream dump("TensorrtExecutionProvider_TRT_Subgraph.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
           model_proto->SerializeToOstream(dump);
         }
@@ -1098,7 +1115,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     model_proto->SerializeToString(string_buf);
 
     if (dump_subgraphs_) {
-      // Dump the TensorRT subgraph if enabled via ORT_TENSORRT_DUMP_SUBGRAPHS env variable.
+      // Dump TensorRT subgraphs
       std::fstream dump(fused_node->Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
       model_proto->SerializeToOstream(dump);
     }
