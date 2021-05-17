@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <core/common/safeint.h>
-
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
@@ -36,8 +34,8 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   }
 }
 
-/* static */ std::vector<int32_t> GetAxes(ModelBuilder& model_builder, const Node& node) {
-  std::vector<int32_t> axes;
+/* static */ std::vector<int64_t> GetAxes(ModelBuilder& model_builder, const Node& node) {
+  std::vector<int64_t> axes;
   // Squeeze opset 13 use input as axes
   if (node.SinceVersion() > 12) {
     // If axes is not provided, return an empty axes as default to squeeze all
@@ -45,16 +43,13 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
       const auto& initializers(model_builder.GetInitializerTensors());
       const auto& axes_tensor = *initializers.at(node.InputDefs()[1]->Name());
       const int64_t* raw_axes = GetTensorInt64Data(axes_tensor);
-      const auto size = SafeInt<uint32_t>(axes_tensor.dims()[0]);
-      axes.resize(size);
-      for (uint32_t i = 0; i < size; i++) {
-        // it is unlikely we have an axis value overflow for int32
-        axes[i] = static_cast<int32_t>(raw_axes[i]);
+      for (uint64_t i = 0; i < axes.size(); i++) {
+        axes[i] = raw_axes[i];
       }
     }
   } else {
     NodeAttrHelper helper(node);
-    axes = helper.Get("axes", std::vector<int32_t>());
+    axes = helper.Get("axes", std::vector<int64_t>());
   }
 
   return axes;
@@ -66,13 +61,11 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(node);
 
   auto* coreml_squeeze = layer->mutable_squeeze();
-  std::vector<int32_t> axes = GetAxes(model_builder, node);
+  std::vector<int64_t> axes = GetAxes(model_builder, node);
   if (axes.empty()) {
     coreml_squeeze->set_squeezeall(true);
   } else {
-    for (uint32_t i = 0; i < axes.size(); i++) {
-      coreml_squeeze->set_axes(i, axes[i]);
-    }
+    *coreml_squeeze->mutable_axes() = {axes.cbegin(), axes.cend()};
     coreml_squeeze->set_squeezeall(false);
   }
 
