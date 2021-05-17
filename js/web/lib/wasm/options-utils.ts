@@ -4,31 +4,28 @@
 import {getInstance} from './wasm-factory';
 
 interface ExtraOptionsHandler {
-  handle(name: string, value: string): void;
-  seen?: WeakSet<Record<string, unknown>>;
+  (name: string, value: string): void;
 }
 
 export const iterateExtraOptions =
-    (options: Record<string, unknown>, prefix: string, handler: ExtraOptionsHandler): void => {
-      if (handler.seen === undefined) {
-        handler.seen = new WeakSet<Record<string, unknown>>();
-      }
+    (options: Record<string, unknown>, prefix: string, seen: WeakSet<Record<string, unknown>>,
+     handler: ExtraOptionsHandler): void => {
       if (typeof options == 'object' && options !== null) {
-        if (handler.seen.has(options)) {
+        if (seen.has(options)) {
           throw new Error('Circular reference in options');
         } else {
-          handler.seen.add(options);
+          seen.add(options);
         }
       }
 
       Object.entries(options).forEach(([key, value]) => {
         const name = (prefix) ? prefix + key : key;
         if (typeof value === 'object') {
-          iterateExtraOptions(value as Record<string, unknown>, name + '.', handler);
+          iterateExtraOptions(value as Record<string, unknown>, name + '.', seen, handler);
         } else if (typeof value === 'string' || typeof value === 'number') {
-          handler.handle(name, value.toString());
+          handler(name, value.toString());
         } else if (typeof value === 'boolean') {
-          handler.handle(name, (value) ? '1' : '0');
+          handler(name, (value) ? '1' : '0');
         } else {
           throw new Error(`Can't handle extra config type: ${typeof value}`);
         }

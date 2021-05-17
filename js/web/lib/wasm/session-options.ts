@@ -66,13 +66,14 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
     if (options?.logSeverityLevel === undefined) {
       sessionOptions.logSeverityLevel = 2;  // Default to warning
     } else if (
-        typeof options.logSeverityLevel !== 'number' || options.logSeverityLevel < 0 || options.logSeverityLevel > 4) {
+        typeof options.logSeverityLevel !== 'number' || !Number.isInteger(options.logSeverityLevel) ||
+        options.logSeverityLevel < 0 || options.logSeverityLevel > 4) {
       throw new Error(`log serverity level is not valid: ${options.logSeverityLevel}`);
     }
 
     if (options?.logVerbosityLevel === undefined) {
       sessionOptions.logVerbosityLevel = 0;  // Default to 0
-    } else if (typeof options.logVerbosityLevel !== 'number') {
+    } else if (typeof options.logVerbosityLevel !== 'number' || !Number.isInteger(options.logVerbosityLevel)) {
       throw new Error(`log verbosity level is not valid: ${options.logVerbosityLevel}`);
     }
 
@@ -88,14 +89,12 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
     }
 
     if (options?.extra !== undefined) {
-      iterateExtraOptions(options.extra, '', {
-        handle: (key, value) => {
-          const keyDataOffset = allocWasmString(key, allocs);
-          const valueDataOffset = allocWasmString(value, allocs);
+      iterateExtraOptions(options.extra, '', new WeakSet<Record<string, unknown>>(), (key, value) => {
+        const keyDataOffset = allocWasmString(key, allocs);
+        const valueDataOffset = allocWasmString(value, allocs);
 
-          if (wasm._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !== 0) {
-            throw new Error(`Can't set a session config entry: ${key} - ${value}`);
-          }
+        if (wasm._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !== 0) {
+          throw new Error(`Can't set a session config entry: ${key} - ${value}`);
         }
       });
     }
