@@ -272,7 +272,7 @@ class ONNXModel:
         # initialize sorted_nodes
         sorted_nodes = []
         for input in itertools.chain(self.initializer(), self.model.graph.input):
-            if input_name in deps_to_nodes:
+            if input.name in deps_to_nodes:
                 for node_idx in deps_to_nodes[input.name]:
                     deps_count[node_idx] = deps_count[node_idx] - 1
                     if deps_count[node_idx] == 0:
@@ -294,3 +294,4 @@ class ONNXModel:
         assert(e == len(self.graph().node)), "Graph is not a DAG"
         self.graph().ClearField('node')
         self.graph().node.extend(sorted_nodes)
+

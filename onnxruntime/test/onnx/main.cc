@@ -313,12 +313,20 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           0,
           0,
           nullptr,
-          0,
+          1000,
+          1,
           1 << 30,
           0,
           0,
           nullptr,
           0,
+          0,
+          0,
+          0,
+          0,
+          nullptr,
+          0,
+          nullptr,
           0};
 
       OrtCUDAProviderOptions cuda_options{

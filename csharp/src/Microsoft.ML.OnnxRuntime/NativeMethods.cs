@@ -190,6 +190,17 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CreateArenaCfg;
         public IntPtr ReleaseArenaCfg;
         public IntPtr ModelMetadataGetGraphDescription;
+        public IntPtr SessionOptionsAppendExecutionProvider_TensorRT;
+        public IntPtr SetCurrentGpuDeviceId;
+        public IntPtr GetCurrentGpuDeviceId;
+        public IntPtr KernelInfoGetAttributeArray_float;
+        public IntPtr KernelInfoGetAttributeArray_int64;
+        public IntPtr CreateArenaCfgV2;
+        public IntPtr AddRunConfigEntry;
+        public IntPtr CreatePrepackedWeightsContainer;
+        public IntPtr ReleasePrepackedWeightsContainer;
+        public IntPtr CreateSessionWithPrepackedWeightsContainer;
+        public IntPtr CreateSessionFromArrayWithPrepackedWeightsContainer;
     }
 
     internal static class NativeMethods
@@ -218,7 +229,11 @@ namespace Microsoft.ML.OnnxRuntime
             OrtReleaseStatus = (DOrtReleaseStatus)Marshal.GetDelegateForFunctionPointer(api_.ReleaseStatus, typeof(DOrtReleaseStatus));
 
             OrtCreateSession = (DOrtCreateSession)Marshal.GetDelegateForFunctionPointer(api_.CreateSession, typeof(DOrtCreateSession));
+            OrtCreateSessionWithPrepackedWeightsContainer =
+                (DOrtCreateSessionWithPrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.CreateSessionWithPrepackedWeightsContainer, typeof(DOrtCreateSessionWithPrepackedWeightsContainer));
             OrtCreateSessionFromArray = (DOrtCreateSessionFromArray)Marshal.GetDelegateForFunctionPointer(api_.CreateSessionFromArray, typeof(DOrtCreateSessionFromArray));
+            OrtCreateSessionFromArrayWithPrepackedWeightsContainer =
+                (DOrtCreateSessionFromArrayWithPrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.CreateSessionFromArrayWithPrepackedWeightsContainer, typeof(DOrtCreateSessionFromArrayWithPrepackedWeightsContainer));
             OrtRun = (DOrtRun)Marshal.GetDelegateForFunctionPointer(api_.Run, typeof(DOrtRun));
             OrtRunWithBinding = (DOrtRunWithBinding)Marshal.GetDelegateForFunctionPointer(api_.RunWithBinding, typeof(DOrtRunWithBinding));
             OrtSessionGetInputCount = (DOrtSessionGetInputCount)Marshal.GetDelegateForFunctionPointer(api_.SessionGetInputCount, typeof(DOrtSessionGetInputCount));
@@ -335,6 +350,10 @@ namespace Microsoft.ML.OnnxRuntime
 
             OrtGetAvailableProviders = (DOrtGetAvailableProviders)Marshal.GetDelegateForFunctionPointer(api_.GetAvailableProviders, typeof(DOrtGetAvailableProviders));
             OrtReleaseAvailableProviders = (DOrtReleaseAvailableProviders)Marshal.GetDelegateForFunctionPointer(api_.ReleaseAvailableProviders, typeof(DOrtReleaseAvailableProviders));
+
+            OrtCreatePrepackedWeightsContainer = (DOrtCreatePrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.CreatePrepackedWeightsContainer, typeof(DOrtCreatePrepackedWeightsContainer));
+            OrtReleasePrepackedWeightsContainer = (DOrtReleasePrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.ReleasePrepackedWeightsContainer, typeof(DOrtReleasePrepackedWeightsContainer));
+
         }
 
         [DllImport(nativeLib, CharSet = charSet)]
@@ -381,13 +400,47 @@ namespace Microsoft.ML.OnnxRuntime
                                                 out IntPtr /**/ session);
         public static DOrtCreateSession OrtCreateSession;
 
+        /// <summary>
+        /// Creates an instance of OrtSession with provided parameters
+        /// </summary>
+        /// <param name="environment">Native OrtEnv instance</param>
+        /// <param name="modelPath">UTF-8 bytes corresponding to model string path</param>
+        /// <param name="sessionOptions">Native SessionOptions instance</param>         
+        /// <param name="prepackedWeightsContainer">Native OrtPrepackedWeightsContainer instance</param>
+        /// <param name="session">(Output) Created native OrtSession instance</param>
+        public delegate IntPtr /* OrtStatus* */DOrtCreateSessionWithPrepackedWeightsContainer(
+                                        IntPtr /* (OrtEnv*) */ environment,
+                                        byte[] modelPath,
+                                        IntPtr /* (OrtSessionOptions*) */sessionOptions,
+                                        IntPtr /* (OrtPrepackedWeightsContainer*) */prepackedWeightsContainer,
+                                        out IntPtr /* (OrtSession**) */ session);
+        public static DOrtCreateSessionWithPrepackedWeightsContainer OrtCreateSessionWithPrepackedWeightsContainer;
+
         public delegate IntPtr /* OrtStatus* */DOrtCreateSessionFromArray(
                                                 IntPtr /* (OrtEnv*) */ environment,
                                                 byte[] modelData,
                                                 UIntPtr modelSize,
-                                                IntPtr /* (OrtSessionOptions*) */sessionOptions,
+                                                IntPtr /* (OrtSessionOptions*) */ sessionOptions,
                                                 out IntPtr /**/ session);
         public static DOrtCreateSessionFromArray OrtCreateSessionFromArray;
+
+        /// <summary>
+        /// Creates an instance of OrtSession with provided parameters
+        /// </summary>
+        /// <param name="environment">Native OrtEnv instance</param>
+        /// <param name="modelData">Byte array correspoonding to the model</param>
+        /// <param name="modelSize">Size of the model in bytes</param>
+        /// <param name="sessionOptions">Native SessionOptions instance</param>         
+        /// <param name="prepackedWeightsContainer">Native OrtPrepackedWeightsContainer instance</param>
+        /// <param name="session">(Output) Created native OrtSession instance</param>
+        public delegate IntPtr /* OrtStatus* */DOrtCreateSessionFromArrayWithPrepackedWeightsContainer(
+                                        IntPtr /* (OrtEnv*) */ environment,
+                                        byte[] /* (void*) */ modelData,
+                                        UIntPtr /* (size_t) */ modelSize,
+                                        IntPtr /* (OrtSessionOptions*) */ sessionOptions,
+                                        IntPtr /* (OrtPrepackedWeightsContainer*) */prepackedWeightsContainer,
+                                        out IntPtr /* (OrtSession**) */ session);
+        public static DOrtCreateSessionFromArrayWithPrepackedWeightsContainer OrtCreateSessionFromArrayWithPrepackedWeightsContainer;
 
         public delegate IntPtr /*(ONNStatus*)*/ DOrtRun(
                                                 IntPtr /*(OrtSession*)*/ session,
@@ -632,7 +685,6 @@ namespace Microsoft.ML.OnnxRuntime
                                                                   IntPtr /*(const char*)*/ name,
                                                                   IntPtr /*(OrtValue*)*/ ortValue);
         public static DOrtAddInitializer OrtAddInitializer;
-
         #endregion
 
         #region RunOptions API
@@ -1161,6 +1213,20 @@ namespace Microsoft.ML.OnnxRuntime
 
         public delegate IntPtr /* (OrtStatus*) */ DOrtReleaseAvailableProviders(IntPtr /* (char**) */ providers, int /* (int) */ numProviders);
         public static DOrtReleaseAvailableProviders OrtReleaseAvailableProviders;
+
+        /// <summary>
+        /// Create an instance of PrepackedWeightsContainer
+        /// </summary>
+        /// <param name="prepackedWeightsContainer">(output) Created native OrtPrepackedWeightsContainer instance</param>
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtCreatePrepackedWeightsContainer(out IntPtr /*(OrtPrepackedWeightsContainer**)*/ prepackedWeightsContainer);
+        public static DOrtCreatePrepackedWeightsContainer OrtCreatePrepackedWeightsContainer;
+
+        /// <summary>
+        /// Destroy an instance of PrepackedWeightsContainer
+        /// </summary>
+        /// <param name="prepackedWeightsContainer">Native OrtPrepackedWeightsContainer instance to be destroyed</param>
+        public delegate void DOrtReleasePrepackedWeightsContainer(IntPtr /*(OrtPrepackedWeightsContainer*)*/ prepackedWeightsContainer);
+        public static DOrtReleasePrepackedWeightsContainer OrtReleasePrepackedWeightsContainer;
         #endregion
 
         public static byte[] GetPlatformSerializedString(string str)
