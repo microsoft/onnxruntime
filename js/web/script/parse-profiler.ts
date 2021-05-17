@@ -11,17 +11,17 @@
 // STEP.1 - profiling
 // > npm test -- model test/test-data/{path-to-my-model} --backend={cpu/webgl/wasm} --profile > profile.raw.log
 // STEP.2 - parse
-// > node tools/parse-profiler < profile.raw.log > profile.parsed.log
+// > node script/parse-profiler < profile.raw.log > profile.parsed.log
 
 
 import * as readline from 'readline';
-const int = readline.createInterface({input: process.stdin, output: process.stdout, terminal: false});
+const lines = readline.createInterface({input: process.stdin, output: process.stdout, terminal: false});
 
 // eslint-disable-next-line no-control-regex
 const matcher = /Profiler\.([^[\s\x1b]+)(\x1b\[0m)? (\d.+Z)\|([\d.]+)ms on event '([^']+)' at (\d*\.*\d*)/;
 
 const allEvents: any[] = [];
-int.on('line', input => {
+lines.on('line', input => {
   const matches = matcher.exec(input);
   if (matches) {
     // console.log(matches);
@@ -34,7 +34,7 @@ int.on('line', input => {
   }
 });
 
-int.on('close', () => {
+lines.on('close', () => {
   for (const i of allEvents) {
     console.log(`${(i.category + '           ').substring(0, 12)} ${((i.ms) + '           ').substring(0, 12)} ${
         (i.event + '                                      ').substring(0, 40)} ${i.endTimeInNumber}`);
