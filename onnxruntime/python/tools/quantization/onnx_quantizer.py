@@ -79,6 +79,9 @@ class ONNXQuantizer:
 
         # Map of all original value names to quantized value names
         self.quantized_value_map = {}
+        # some output from nodes will be quantized, yet itself should be treat as existing so
+        # no dequantized will be applied when needed later
+        self.generated_value_names = {}
 
     def check_opset_version(self):
         ai_onnx_domain = [
@@ -189,12 +192,16 @@ class ONNXQuantizer:
         self.remove_fake_quantized_nodes()
 
         for node in self.model.nodes():
+            number_of_existing_new_nodes = len(self.new_nodes)
             if self.should_quantize(node):
                 op_quantizer = CreateOpQuantizer(self, node)
             else:
                 op_quantizer = CreateDefaultOpQuantizer(self, node)
 
             op_quantizer.quantize()
+            for i in range(number_of_existing_new_nodes, len(self.new_nodes)):
+                for output_name in self.new_nodes[i].output:
+                    self.generated_value_names.update({output_name : 1})
 
         self._dequantize_outputs()
 
@@ -204,7 +211,7 @@ class ONNXQuantizer:
         self.model.graph().node.extend(self.new_nodes)
 
         # Remove ununsed weights from graph.
-        self.model.remove_unused_constant()
+        self.remove_quantized_weights()
 
         self.model.model.producer_name = __producer__
         self.model.model.producer_version = __version__
@@ -742,7 +749,7 @@ class ONNXQuantizer:
             return: None if there is already a DequantizeLinear node that dequantizes it
                     A DequantizeLinear node otherwise
         '''
-        if value_name in self.quantized_value_map:
+        if (value_name in self.quantized_value_map) and (value_name not in self.generated_value_names):
             quantized_value = self.quantized_value_map[value_name]
             # Add DequantizeLinear Node for this input
             dqlinear_name = value_name + "_DequantizeLinear"
@@ -798,3 +805,24 @@ class ONNXQuantizer:
                                                                 get_qrange_for_qType(self.input_qType))
 
         return quantization_params
+
+    def remove_quantized_weights(self):
+        ''' Remove the weights which are already quantized from graph initializer list.
+            This function assumes that after quantization, all nodes that previously use a weight:
+                - use output from DequantizeLinear as input if they do not support quantization.
+                - use quantized weight if they support quantization.
+        '''
+        for tensor_name, quant_value in self.quantized_value_map.items():
+            if quant_value.value_type == QuantizedValueType.Initializer:
+                weight = self.model.get_initializer(tensor_name)
+
+                if weight is not None:
+                    self.model.initializer().remove(weight)
+
+                    # Remove from graph.input
+                    try:
+                        weight_input = next(val for val in self.model.graph().input if val.name == tensor_name)
+                        self.model.graph().input.remove(weight_input)
+                    except StopIteration:
+                        if self.model.ir_version() < 4:
+                            print("Warning: invalid weight name {} found in the graph (not a graph input)".format(tensor_name))

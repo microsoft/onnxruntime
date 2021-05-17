@@ -21,7 +21,14 @@ class Attention : public OpKernel, public AttentionCPUBase {
   explicit Attention(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
+
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   int input_idx,
+                                   /*out*/ bool& used_shared_buffers) override;
 
  private:
   BufferUniquePtr packed_weights_;
@@ -205,7 +212,9 @@ Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPU
 }
 
 template <typename T>
-Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_packed) {
+Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr alloc,
+                             /*out*/ bool& is_packed,
+                             /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
   if (1 != input_idx) {
@@ -236,8 +245,14 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pack
   }
 
   const size_t loop_len = static_cast<size_t>(3) * num_heads_;
-  auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
+  size_t packed_weights_data_size = packed_weights_size_ * loop_len;  // The same size would be computed by AllocArray() below
   auto* packed_weights_data = static_cast<uint8_t*>(alloc->AllocArray(packed_weights_size_, loop_len));
+
+  // Initialize memory to 0 as there could be some padding associated with pre-packed
+  // buffer memory and we don not want it uninitialized and generate different hashes
+  // if and when we try to cache this pre-packed buffer for sharing between sessions.
+  memset(packed_weights_data, 0, packed_weights_data_size);
+
   packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
 
   for (size_t i = 0; i < loop_len; i++) {
@@ -246,7 +261,27 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pack
     weights_data += head_size;
   }
 
+  bool share_prepacked_weights = (prepacked_weights != nullptr);
+  if (share_prepacked_weights) {
+    prepacked_weights->buffers_.push_back(std::move(packed_weights_));
+    prepacked_weights->buffer_sizes_.push_back(packed_weights_data_size);
+  }
+
   is_packed = true;
+  return Status::OK();
+}
+
+template <typename T>
+Status Attention<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                               int input_idx,
+                                               /*out*/ bool& used_shared_buffers) {
+  if (1 != input_idx) {
+    return Status::OK();
+  }
+
+  used_shared_buffers = true;
+  packed_weights_ = std::move(prepacked_buffers[0]);
+
   return Status::OK();
 }
 
