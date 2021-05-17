@@ -277,10 +277,10 @@ void ReduceAggregatorBase::FastReduceKRK(const Tensor&, const std::vector<int64_
   ValidateMustBeOverloaded();
 }
 
-TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int64_t element_size) {
-  return TensorOpCost{static_cast<double>(n_col * n_row * element_size),
+TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int64_t element_size, int n_ops) {
+  return TensorOpCost{static_cast<double>(n_row * n_col * element_size),
                       static_cast<double>(n_row * element_size),
-                      static_cast<double>(n_col * n_row * element_size * 2)};
+                      static_cast<double>(n_row * n_col * element_size * n_ops)};
 }
 
 void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
@@ -452,10 +452,9 @@ void NoTransposeReduce1Loop(Tensor* output, const TensorShape& new_input_shape, 
     }
   };
 
-  auto cost = TensorOpCost{(double)(last_results.projected_index.size() * sizeof(typename AGG::input_type) *
-                                    last_results.last_loop_red_size),
-                           (double)last_results.last_loop_red_size,
-                           (double)last_results.projected_index.size() * last_results.last_loop_red_size * 3};
+  auto cost = ParallelReduceFastCost(1,
+                                     last_results.projected_index.size() * last_results.last_loop_red_size,
+                                     sizeof(typename AGG::input_type), 6);
   concurrency::ThreadPool::TryParallelFor(tp, count, cost, fn);
 }
 
@@ -525,10 +524,9 @@ void NoTransposeReduce2Loops(Tensor* output, const TensorShape& new_input_shape,
     }
   };
 
-  auto cost = TensorOpCost{(double)(last_results.projected_index.size() * sizeof(typename AGG::input_type) *
-                                    last_results.last_loop_red_size),
-                           (double)last_results.last_loop_red_size,
-                           (double)last_results.projected_index.size() * last_results.last_loop_red_size * 2};
+  auto cost = ParallelReduceFastCost(1,
+                                     last_results.projected_index.size() * last_results.last_loop_red_size,
+                                     sizeof(typename AGG::input_type), 8);
   concurrency::ThreadPool::TryParallelFor(tp, count, cost, fn);
 }
 
