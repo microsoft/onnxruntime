@@ -17,9 +17,9 @@ static const std::vector<std::pair<std::string, std::string>> ATEN_FUNCS = {
     {"aten::embedding(Tensor<T> weight, Tensor<int64> indices, int padding_idx=-1, bool scale_grad_by_freq=False, bool sparse=False) -> Tensor<T> result",
      "aten::embedding_backward(Tensor<T> grad_result, Tensor<int64> indices, Tensor<T> weight, int padding_idx=-1, bool scale_grad_by_freq=False, bool sparse=False) -> Tensor<T> grad_weight"}};
 
-const std::regex regex_expr_whole("([a-z0-9:_]+)\\(([TFa-z0-9_ ,.=+-\\[\\]<>]+)\\) -> \\(?([Ta-z0-9_ ,<>]+)\\)?");
+const std::regex regex_expr_whole("([a-z0-9:_]+)\\(([A-Za-z0-9_ ,.=+-\\[\\]<>]+)\\) -> \\(?([A-Za-z0-9_ ,<>]+)\\)?");
 const std::regex regex_expr_argument(
-    "(Tensor|int|bool|float)(<([Ta-z0-9_]+)>)?(\\[\\])?(\\?)? ([a-z0-9_]+)(=([TFa-z0-9,.+-\\[\\]]+))?");
+    "(Tensor|int|bool|float)(<([A-Za-z0-9_]+)>)?(\\[\\])?(\\?)? ([a-z0-9_]+)(=([TFa-z0-9,.+-\\[\\]]+))?");
 const std::regex regex_expr_comma_space(", ");
 const std::regex regex_expr_comma(",");
 // default constructor = end-of-sequence:
@@ -46,10 +46,10 @@ struct Function {
   std::vector<Argument> arguments;
   std::vector<Argument> returns;
 
-  std::vector<std::pair<ArgumentKind, std::string>> ToArgumentConfigs() {
-    std::vector<std::pair<ArgumentKind, std::string>> argument_configs;
+  std::vector<std::tuple<ArgumentKind, std::string, bool>> ToArgumentConfigs() {
+    std::vector<std::tuple<ArgumentKind, std::string, bool>> argument_configs;
     for (const auto& argument : arguments) {
-      argument_configs.emplace_back(std::make_pair(argument.type, argument.name));
+      argument_configs.emplace_back(std::make_tuple(argument.type, argument.name, argument.is_optional));
     }
 
     return argument_configs;
@@ -153,9 +153,11 @@ std::vector<std::string> SplitValues(const std::string& value) {
               "Array values must be inside square brackets.");
   std::vector<std::string> values;
   std::string array_value = value.substr(1, value.length() - 2);
-  std::regex_token_iterator<std::string::iterator> it(array_value.begin(), array_value.end(), regex_expr_comma, -1);
-  while (it != rend) {
-    values.emplace_back(*it++);
+  if (!array_value.empty()) {
+    std::regex_token_iterator<std::string::iterator> it(array_value.begin(), array_value.end(), regex_expr_comma, -1);
+    while (it != rend) {
+      values.emplace_back(*it++);
+    }
   }
 
   return values;
@@ -191,7 +193,7 @@ void AddDefaultValue(const std::string& name, ArgumentKind type, const std::stri
     case BOOL_ARRAY: {
       std::vector<bool> bool_values;
       for (const auto& value : SplitValues(value_str)) {
-        bool_values.emplace_back(ParseFloat(value));
+        bool_values.emplace_back(ParseBool(value));
       }
       config.default_bool_array_values[name] = bool_values;
     } break;
@@ -245,26 +247,24 @@ ATenOperatorConfig Parse(const std::string& forward_function_str, const std::str
 
   for (const auto& argument : backward_function.arguments) {
     if (argument.type != TENSOR) {
-      continue;
-    }
-
-    const auto& name = argument.name;
-    if (forward_arguments_name_to_index.find(name) != forward_arguments_name_to_index.end()) {
-      config.backward_input_source_configs.emplace_back(
-          std::make_pair(FORWARD_INPUT, forward_arguments_name_to_index.at(name)));
-    } else if (forward_returns_name_to_index.find(name) != forward_returns_name_to_index.end()) {
-      config.backward_input_source_configs.emplace_back(
-          std::make_pair(FORWARD_OUTPUT, forward_returns_name_to_index.at(name)));
-    } else if (forward_returns_name_to_index.find(name.substr(5UL)) != forward_returns_name_to_index.end()) {
-      // Output gradient has "grad_" prefix.
-      config.backward_input_source_configs.emplace_back(
-          std::make_pair(GRAD_OUTPUT, forward_returns_name_to_index.at(name.substr(5UL))));
+      if (argument.default_value != "" && argument_names.find(argument.name) == argument_names.end()) {
+        AddDefaultValue(argument.name, argument.type, argument.default_value, config);
+      }
     } else {
-      ORT_ENFORCE(false, "Argument ", name, " is not forward input, output or output gradient.");
-    }
-
-    if (argument.default_value != "" && argument_names.find(argument.name) == argument_names.end()) {
-      AddDefaultValue(argument.name, argument.type, argument.default_value, config);
+      const auto& name = argument.name;
+      if (forward_arguments_name_to_index.find(name) != forward_arguments_name_to_index.end()) {
+        config.backward_input_source_configs.emplace_back(
+            std::make_pair(FORWARD_INPUT, forward_arguments_name_to_index.at(name)));
+      } else if (forward_returns_name_to_index.find(name) != forward_returns_name_to_index.end()) {
+        config.backward_input_source_configs.emplace_back(
+            std::make_pair(FORWARD_OUTPUT, forward_returns_name_to_index.at(name)));
+      } else if (forward_returns_name_to_index.find(name.substr(5UL)) != forward_returns_name_to_index.end()) {
+        // Output gradient has "grad_" prefix.
+        config.backward_input_source_configs.emplace_back(
+            std::make_pair(GRAD_OUTPUT, forward_returns_name_to_index.at(name.substr(5UL))));
+      } else {
+        ORT_ENFORCE(false, "Argument ", name, " is not forward input, output or output gradient.");
+      }
     }
   }
 

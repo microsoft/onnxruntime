@@ -33,8 +33,11 @@ ATenOpBase<is_backward>::ATenOpBase(const OpKernelInfo& info) : OpKernel(info) {
   aten_ops::AttributesJsonParser parser(custom_attributes_json);
 
   for (size_t i = 0; i < argument_configs.size(); i++) {
-    const auto& argument_name = argument_configs[i].second;
-    switch (argument_configs[i].first) {
+    // TODO: for optional arguments, we need to pass this information to torch extension,
+    // then c10::optional<> type will be used there to call ATen functions.
+    ORT_ENFORCE(!std::get<2>(argument_configs[i]), "Optional argument is not supported for now.");
+    const auto& argument_name = std::get<1>(argument_configs[i]);
+    switch (std::get<0>(argument_configs[i])) {
       case aten_ops::TENSOR:
         tensor_argument_indices_.emplace_back(i);
         break;

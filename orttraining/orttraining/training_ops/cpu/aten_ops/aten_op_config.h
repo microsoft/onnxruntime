@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 
 namespace onnxruntime {
@@ -44,10 +45,10 @@ enum ArgumentKind {
 struct ATenOperatorConfig {
   std::string op_name;
   std::string backward_op_name;
-  // Forward ATen Op's argument kind and name.
-  std::vector<std::pair<ArgumentKind, std::string>> forward_argument_configs;
-  // Backward ATen Op's argument kind and name.
-  std::vector<std::pair<ArgumentKind, std::string>> backward_argument_configs;
+  // Forward ATen Op's argument kind, name and if it's optional.
+  std::vector<std::tuple<ArgumentKind, std::string, bool>> forward_argument_configs;
+  // Backward ATen Op's argument kind, name and if it's optional.
+  std::vector<std::tuple<ArgumentKind, std::string, bool>> backward_argument_configs;
   // The source config of inputs of com.microsoft::ATenOpGrad.
   std::vector<std::pair<BackwardInputSourceKind, size_t>> backward_input_source_configs;
   // The output type infer config of outputs of com.microsoft::ATenOp.
@@ -115,6 +116,8 @@ struct ATenOperatorConfig {
     return has_default_value;
   }
 };
+
+ATenOperatorConfig Parse(const std::string& forward_function_str, const std::string& backward_function_str);
 
 class ATenOperatorConfigs {
  public:
