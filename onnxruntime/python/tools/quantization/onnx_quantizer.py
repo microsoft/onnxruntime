@@ -696,7 +696,7 @@ class ONNXQuantizer:
 
         return q_weight_name, zp_name, scale_name
 
-    def quantize_weight_per_channel(self, weight_name, weight_qType, channel_axis, reduce_range=False):
+    def quantize_weight_per_channel(self, weight_name, weight_qType, channel_axis, reduce_range=True):
         # Find if this input is already quantized
         if weight_name in self.quantized_value_map:
             quantized_value = self.quantized_value_map[weight_name]
