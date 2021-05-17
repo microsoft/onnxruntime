@@ -84,7 +84,7 @@ class QDQQuantizer(ONNXQuantizer):
         self.quantize_weights_per_channel()
         self.quantize_bias_tensors()
         self.remove_nodes()
-        self.model.remove_unused_constant()
+        self.remove_quantized_weights()
 
         self.model.model.producer_name = __producer__
         self.model.model.producer_version = __version__

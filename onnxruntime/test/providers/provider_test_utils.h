@@ -12,6 +12,7 @@
 #include "core/framework/run_options.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensor.h"
+#include "core/framework/prepacked_weights_container.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/framework/data_types.h"
@@ -437,9 +438,12 @@ class OpTester {
            const std::unordered_set<std::string>& excluded_provider_types = {},
            const RunOptions* run_options = nullptr,
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
-           const Graph::ResolveOptions& resolve_options = {});
+           const Graph::ResolveOptions& resolve_options = {},
+           /*out*/ size_t* number_of_pre_packed_weights_counter = nullptr,
+           /*out*/ size_t* number_of_shared_pre_packed_weights_counter = nullptr);
 
-  std::vector<MLValue> GetFetches() { return fetches_; }
+  std::vector<MLValue>
+  GetFetches() { return fetches_; }
 
   std::unique_ptr<onnxruntime::Model> BuildGraph(const std::unordered_map<std::string, int>& extra_domain_to_version = {});
 
@@ -486,6 +490,14 @@ class OpTester {
 
   void SetDeterminism(bool use_determinism) {
     use_determinism_ = use_determinism;
+  }
+
+  void EnableSharingOfPrePackedWeightsAcrossSessions() {
+    add_prepacked_shared_container_to_sessions_ = true;
+  }
+
+  size_t GetNumPrePackedWeightsShared() const {
+    return prepacked_weights_container_.GetNumberOfElements();
   }
 
  protected:
@@ -646,6 +658,10 @@ class OpTester {
   bool use_determinism_ = false;
 
   CustomOutputVerifierFn custom_output_verifier_;
+
+  bool add_prepacked_shared_container_to_sessions_ = false;
+
+  onnxruntime::PrepackedWeightsContainer prepacked_weights_container_;
 };
 
 template <typename TException>

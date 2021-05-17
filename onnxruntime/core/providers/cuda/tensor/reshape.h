@@ -13,7 +13,8 @@ namespace cuda {
 
 class Reshape final : public CudaKernel {
  public:
-  Reshape(const OpKernelInfo& info) : CudaKernel(info) {
+  Reshape(const OpKernelInfo& info) : CudaKernel(info),
+                                      allow_zero_(info.GetAttrOrDefault("allowzero", static_cast<int64_t>(0)) == 1) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override {
@@ -28,7 +29,7 @@ class Reshape final : public CudaKernel {
     if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
     const TensorShape& X_shape = X->Shape();
 
-    ReshapeHelper helper(X_shape, shape);
+    ReshapeHelper helper(X_shape, shape, allow_zero_);
 
     Tensor* Y = context->Output(0, TensorShape(shape));
     const void* source = X->DataRaw();
@@ -40,6 +41,9 @@ class Reshape final : public CudaKernel {
 
     return Status::OK();
   }
+
+  private:
+   bool allow_zero_;
 };
 
 class Reshape_1 final : public CudaKernel {

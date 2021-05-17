@@ -12,37 +12,13 @@
 #include "core/common/common.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor_shape.h"
+#include "core/framework/buffer_deleter.h"
 #include "onnxruntime_config.h"
 #include "core/framework/data_types.h"
 #include "core/framework/data_types_internal.h"
 
 namespace onnxruntime {
-// TODO: Do we need this class or is IAllocator::MakeUniquePtr sufficient/better
-class BufferDeleter {
- public:
-  BufferDeleter() : alloc_(nullptr) {}
-  BufferDeleter(AllocatorPtr alloc)
-      : alloc_(alloc) {}
 
-  void operator()(void* p) const {
-    if (alloc_)
-      alloc_->Free(p);
-  }
-
- private:
-  // TODO: we may need consider the lifetime of alloc carefully
-  // The alloc_ here is the allocator that used to allocate the buffer
-  // And need go with the unique_ptr together. If it is using our internal
-  // allocator, it is ok as our allocators are global managed. But if it
-  // is provide by user, user need to be very careful about it.
-  // A weak_ptr may be a choice to reduce the impact, but that require to
-  // change our current allocator mgr to use shared_ptr. Will revisit it
-  // later.
-  AllocatorPtr alloc_;
-};
-
-using BufferUniquePtr = std::unique_ptr<void, BufferDeleter>;
-using BufferNakedPtr = void*;
 //TODO:ensure dtype_!=nullptr
 #ifdef __GNUC__
 #pragma GCC diagnostic push

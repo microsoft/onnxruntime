@@ -119,11 +119,12 @@ export interface TestRunnerCliArgs {
    *
    * For running tests, the default mode is 'dev'. If flag '--perf' is set, the mode will be set to 'perf'.
    *
-   * Mode   | Output File        | Main                 | Source Map         | Webpack Config
-   * ------ | ------------------ | -------------------- | ------------------ | --------------
-   * prod   | /dist/ort.min.js   | /lib/index.ts        | source-map         | production
-   * dev    | /test/ort.dev.js   | /test/test-main.ts   | inline-source-map  | development
-   * perf   | /test/ort.perf.js  | /test/test-main.ts   | (none)             | production
+   * Mode   | Output File           | Main                 | Source Map         | Webpack Config
+   * ------ | --------------------- | -------------------- | ------------------ | --------------
+   * prod   | /dist/ort.min.js      | /lib/index.ts        | source-map         | production
+   * node   | /dist/ort-web.node.js | /lib/index.ts        | source-map         | production
+   * dev    | /test/ort.dev.js      | /test/test-main.ts   | inline-source-map  | development
+   * perf   | /test/ort.perf.js     | /test/test-main.ts   | (none)             | production
    */
   bundleMode: TestRunnerCliArgs.BundleMode;
 
@@ -298,24 +299,23 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
 
   const mode = args._.length === 0 ? 'suite0' : args._[0];
 
-  // Option: -b=<...>, --backend=<...>
-  const backendArgs = args.backend || args.b;
-  const backend = (typeof backendArgs !== 'string') ? ['webgl', 'wasm'] : backendArgs.split(',');
-  for (const b of backend) {
-    if (b !== 'webgl' && b !== 'wasm') {
-      throw new Error(`not supported backend ${b}`);
-    }
-  }
-
   // Option: -e=<...>, --env=<...>
   const envArg = args.env || args.e;
   const env = (typeof envArg !== 'string') ? 'chrome' : envArg;
   if (['chrome', 'edge', 'firefox', 'electron', 'safari', 'node', 'bs'].indexOf(env) === -1) {
     throw new Error(`not supported env ${env}`);
   }
-  if (env === 'node') {
-    // TODO: support node
-    throw new Error('node is currently not supported.');
+
+  // Option: -b=<...>, --backend=<...>
+  const browserBackends = ['webgl', 'wasm'];
+  const nodejsBackends = ['cpu', 'wasm'];
+  const backendArgs = args.backend || args.b;
+  const backend =
+      (typeof backendArgs !== 'string') ? (env === 'node' ? nodejsBackends : browserBackends) : backendArgs.split(',');
+  for (const b of backend) {
+    if ((env !== 'node' && browserBackends.indexOf(b) === -1) || (env === 'node' && nodejsBackends.indexOf(b) === -1)) {
+      throw new Error(`backend ${b} is not supported in env ${env}`);
+    }
   }
 
   // Options:

@@ -33,19 +33,6 @@ bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const loggin
   return true;
 }
 
-// TODO, move this to shared_library
-bool GetType(const NodeArg& node_arg, int32_t& type, const logging::Logger& logger) {
-  type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-  const auto* type_proto = node_arg.TypeAsProto();
-  if (!type_proto || !type_proto->has_tensor_type() || !type_proto->tensor_type().has_elem_type()) {
-    LOGS(logger, WARNING) << "NodeArg [" << node_arg.Name() << "] has no input type";
-    return false;
-  }
-
-  type = type_proto->tensor_type().elem_type();
-  return true;
-}
-
 bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const logging::Logger& logger) {
   const auto& op_builders = GetOpBuilders();
   if (Contains(op_builders, node.OpType())) {

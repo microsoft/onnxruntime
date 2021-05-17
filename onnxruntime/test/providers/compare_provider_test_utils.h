@@ -19,7 +19,8 @@ class CompareOpTester : public OpTester {
 
   void CompareWithCPU(const std::string& target_provider_type,
                       double per_sample_tolerance = 1e-4,
-                      double relative_per_sample_tolerance = 1e-4);
+                      double relative_per_sample_tolerance = 1e-4,
+                      const bool need_cpu_cast = false);
 };
 
 }  // namespace test

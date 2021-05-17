@@ -1,16 +1,48 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import '../lib/index'; // this need to be the first line
+// Load onnxruntime-web and testdata-config.
+// NOTE: this need to be called before import any other library.
+const ort = require('..');
+const ORT_WEB_TEST_CONFIG = require('./testdata-config.json') as Test.Config;
 
-import * as ort from 'onnxruntime-common';
 import * as platform from 'platform';
 
 import {Logger} from '../lib/onnxjs/instrument';
 
 import {Test} from './test-types';
 
-const ORT_WEB_TEST_CONFIG = (ort.env as any).ORT_WEB_TEST_DATA as Test.Config;
+if (ORT_WEB_TEST_CONFIG.model.some(testGroup => testGroup.tests.some(test => test.backend === 'cpu'))) {
+  // require onnxruntime-node
+  require('../../node');
+}
+
+// set flags
+const options = ORT_WEB_TEST_CONFIG.options;
+if (options.debug !== undefined) {
+  ort.env.debug = options.debug;
+}
+if (ort.env.webgl && options.webglFlags && options.webglFlags.contextId !== undefined) {
+  ort.env.webgl.contextId = options.webglFlags.contextId;
+}
+if (ort.env.webgl && options.webglFlags && options.webglFlags.matmulMaxBatchSize !== undefined) {
+  ort.env.webgl.matmulMaxBatchSize = options.webglFlags.matmulMaxBatchSize;
+}
+if (ort.env.webgl && options.webglFlags && options.webglFlags.textureCacheMode !== undefined) {
+  ort.env.webgl.textureCacheMode = options.webglFlags.textureCacheMode;
+}
+if (ort.env.webgl && options.webglFlags && options.webglFlags.pack !== undefined) {
+  ort.env.webgl.pack = options.webglFlags.pack;
+}
+if (ort.env.wasm && options.wasmFlags && options.wasmFlags.numThreads !== undefined) {
+  ort.env.wasm.numThreads = options.wasmFlags.numThreads;
+}
+if (ort.env.wasm && options.wasmFlags && options.wasmFlags.loggingLevel !== undefined) {
+  ort.env.wasm.loggingLevel = options.wasmFlags.loggingLevel;
+}
+if (ort.env.wasm && options.wasmFlags && options.wasmFlags.initTimeout !== undefined) {
+  ort.env.wasm.initTimeout = options.wasmFlags.initTimeout;
+}
 
 // Set logging configuration
 for (const logConfig of ORT_WEB_TEST_CONFIG.log) {

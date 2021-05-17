@@ -52,6 +52,8 @@ class GraphExecutionManager(ABC):
         self._optimized_onnx_model = None
         self._graph_builder = None
         self._graph_info = None
+        self._graph_initializer_names = None
+        self._graph_initializer_names_to_train = None
 
         # TrainingAgent or InferenceAgent
         self._execution_agent = None
@@ -155,6 +157,11 @@ class GraphExecutionManager(ABC):
 
         self._optimized_onnx_model = onnx.load_model_from_string(self._graph_builder.get_model())
         self._graph_info = self._graph_builder.get_graph_info()
+
+        # TODO: Explore ways to make self._graph_info.initializer_names and self._graph_info.initializer_names_to_train
+        #       a set (unordered_set in the backend) that does not require a copy on each reference.
+        self._graph_initializer_names = set(self._graph_info.initializer_names)
+        self._graph_initializer_names_to_train = set(self._graph_info.initializer_names_to_train)
 
     def _get_session_config(self):
         """Creates and returns the session configuration to be used for the ExecutionAgent"""

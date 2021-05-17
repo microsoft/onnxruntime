@@ -5,6 +5,10 @@
 
 #include "boost/mp11.hpp"
 
+// It is safe to include the below header even if SHARED_PROVIDER macro is enabled
+// as it doesn't include any pb headers.
+#include "core/framework/prepacked_weights_container.h"
+
 #ifndef SHARED_PROVIDER
 #include <functional>
 #include "core/common/exceptions.h"
@@ -48,28 +52,68 @@ class OpKernel {
 
   // Override this function to PrePack initialized constant tensor to the format as needed.
   // For example, MatMul kernel can pack the input B if it is constant like code below.
-  //   Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override {
+  //   Status PrePack(const Tensor& tensor, int input_idx, /*out*/ bool& is_packed,
+  //                  /*out*/ PrePackedWeights* prepacked_weight_for_caching,
+  //                  AllocatorPtr alloc) override {
   //     is_packed = false;
   //     if (input_idx == 1) {
-  //       this.Pack(tensor, this.buffer_);
   //       is_packed = true;
+  //       this.Pack(tensor, this.buffer_, alloc);
+  //       if (prepacked_weight_for_caching) {
+  //           // LOGIC TO CACHE `this.buffer_` SINCE THE KERNEL DOESN"T OWN THE PACKED WEIGHT
+  //       }
   //     }
   //     return Status::OK();
   //   }
   // Please refer to MatMulIntegerToFloatBase for a complete example
   // @param tensor: The initialized constant tensor
   // @param input_idx: The input index of the tensor in this kernel
+  // @param alloc: The kernel's PrePack() method MUST use this allocator for allocating the pre-packed
+  //               weights' buffers. The alloc that the PrePack() method will receive will be either
+  //               the allocator tied to the session if the kernel owns the pre-packed buffer or an
+  //               allocator shared between sessions if the pre-packed buffer is to be shared across sessions
+  //               (i.e.) the kernel does not own the buffer.
   // @param is_packed: Set it to true if the kernel packed the tensor or to false
   //                   The kernel is responsible for keeping the packed data and related metadata if is_packed is true,
   //                   and the original initialized constant tensor will be released and not accessible anymore in
   //                   the Compute function.
-  virtual Status PrePack(const Tensor& /*tensor*/, int /*input_idx*/, bool& is_packed) {
+  // @param prepacked_weights: A PrePackedWeights instance will be provided to the kernel IF the pre-packed weights
+  //                          are meant to be stored in a shared container.
+
+  virtual Status
+  PrePack(const Tensor& /*tensor*/, int /*input_idx*/, AllocatorPtr /*alloc*/,
+          /*out*/ bool& is_packed, /*out*/ PrePackedWeights* /*prepacked_weights*/) {
     is_packed = false;
     return Status::OK();
   }
 
+  // Override this function to use provided pre-packed weight.
+  // Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+  //                                 int input_idx,
+  //                                 /*out*/ bool& used_shared_buffers) {
+  //     used_shared_buffers = true;
+  //     this.buffer_ = std::move(prepacked_buffers[0]);
+  //     return Status::OK();
+  //   }
+  // Please refer to MatMulIntegerToFloatBase for a complete example
+  // @param prepacked_buffers: The pre-packed buffers to be used by this kernel for the provided input index
+  //                           (Sometimes a single constant initializer may have multiple pre-packed buffers associated
+  //                            with it and it upto the kernel developer to store it in any order of their choice in PrePack()
+  //                            and must use the same order for retrieval in UseSharedPrePackedBuffers().
+  // @param input_idx: The input index of the tensor in this kernel
+  // @param used_shared_buffers: Boolean flag set by the kernel implementation indicating
+  // that the provided weight has been used by the kernel.
+  virtual Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& /*prepacked_buffers*/,
+                                          int /*input_idx*/,
+                                          /*out*/ bool& used_shared_buffers) {
+    used_shared_buffers = false;
+    return Status::OK();
+  }
+
   const OrtMemoryInfo& Allocator(int id, OrtMemType mem_type) const;
-  const OpKernelInfo& Info() const { return *op_kernel_info_; }
+  const OpKernelInfo& Info() const {
+    return *op_kernel_info_;
+  }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernel);
