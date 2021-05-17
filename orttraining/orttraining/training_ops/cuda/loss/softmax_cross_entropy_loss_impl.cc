@@ -4,8 +4,6 @@
 #include "core/providers/cuda/math/softmax.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/tensor/transpose.h"
-#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
-#include "core/providers/cpu/controlflow/scan_utils.h"
 #include "core/framework/ml_value.h"
 #include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
 #include "orttraining/training_ops/cuda/loss/softmax_cross_entropy_loss_impl.h"
