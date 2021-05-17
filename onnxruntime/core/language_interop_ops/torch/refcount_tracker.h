@@ -17,6 +17,7 @@ class RefCountTracker {
   enum ObjCategory {
     ForwardArgs,
     ReturnValues,
+    AutoGradContext,
   };
 
   static RefCountTracker& GetInstance() {
@@ -24,18 +25,19 @@ class RefCountTracker {
     return tracker;
   }
   void TrackPyObject(RefCountTracker::ObjCategory category, PyObject* py_obj, std::string log_tag);
-  void DumpDetails();
+  void DumpDetails(std::string phase_name);
   void Reset();
 
  private:
   RefCountTracker();
   const char* ObjCategoryToString(int enumVal) {
-    static const char* enum_strings[] = {"ForwardArgs", "ReturnValues"};
+    static const char* enum_strings[] = {"ForwardArgs", "ReturnValues", "AutoGradContext"};
     return enum_strings[enumVal];
   }
 
   AddressInfos forward_arg_addresses_;
   AddressInfos return_value_addresses_;
+  AddressInfos auto_grad_addresses_;
   std::unordered_map<RefCountTracker::ObjCategory, AddressInfos> addr_info_map_;
 };
 #endif

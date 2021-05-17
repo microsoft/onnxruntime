@@ -11,8 +11,6 @@ namespace contrib {
 
 std::vector<OrtValue*> CreateOrtValueArgs(OpKernelContext* context, const size_t begin_index);
 
-//////// PythonOp section begins
-
 class PythonOpBase {
  protected:
   PythonOpBase(const OpKernelInfo& info);
@@ -69,16 +67,11 @@ class PythonOpBase {
   std::vector<int64_t> output_tensor_requires_grads_;
 };
 
-//////// PythonOp section ends
-
-//////// PythonOpGrad section begins
-
 class PythonOpGradBase {
  protected:
   PythonOpGradBase(const OpKernelInfo& info);
 
   void SetPositions();
-  std::vector<void*> CreateConstArgs(OpKernelContext* context) const;
   void SetOutputs(OpKernelContext* context, std::vector<void*>& returned_args) const;
 
   // Name of containing class. For example, MyReLU.
@@ -92,8 +85,6 @@ class PythonOpGradBase {
   std::vector<int64_t> arg_positions_;
   std::vector<int64_t> const_arg_positions_;
 };
-
-//////// PythonOpGrad section ends
 
 }  // namespace contrib
 }  // namespace onnxruntime

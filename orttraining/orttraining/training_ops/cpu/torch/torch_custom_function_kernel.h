@@ -12,8 +12,6 @@
 namespace onnxruntime {
 namespace contrib {
 
-//////// PythonOp section begins
-
 // Pytorch's torch.autograd.Function.apply(...) wrapper.
 class PythonOp final : public OpKernel, public PythonOpBase {
  public:
@@ -21,18 +19,12 @@ class PythonOp final : public OpKernel, public PythonOpBase {
   Status Compute(OpKernelContext* context) const override;
 };
 
-//////// PythonOp section ends
-
-//////// PythonOpGrad section begins
-
 // Pytorch's torch.autograd.Function.backward(...) wrapper.
 class PythonOpGrad final : public OpKernel, public PythonOpGradBase {
  public:
   PythonOpGrad(const OpKernelInfo& info) : OpKernel(info), PythonOpGradBase(info){};
   Status Compute(OpKernelContext* context) const override;
 };
-
-//////// PythonOpGrad section ends
 
 }  // namespace contrib
 }  // namespace onnxruntime

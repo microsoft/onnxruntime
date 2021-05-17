@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #include <Python.h>
-#include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
 #include "core/framework/op_kernel_context_internal.h"
-
 #include "core/language_interop_ops/torch/custom_function_register.h"
+#include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
+
+using namespace onnxruntime::language_interop_ops::torch;
 
 namespace onnxruntime {
 namespace contrib {
@@ -18,8 +19,6 @@ std::vector<OrtValue*> CreateOrtValueArgs(OpKernelContext* context, const size_t
   }
   return args;
 }
-
-//////// PythonOp section begins
 
 PythonOpBase::PythonOpBase(const OpKernelInfo& info) {
   ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
@@ -176,7 +175,7 @@ void PythonOpBase::SetContextOutput(OpKernelContext* context, std::vector<void*>
   Tensor* ctx_id_tensor = context->Output(0, {1});
   ORT_ENFORCE(ctx_id_tensor != nullptr, "Context tensor should not be null.");
   int64_t* ctx_id_data = ctx_id_tensor->template MutableData<int64_t>();
-  *ctx_id_data = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().RegisterContext(ctx_addr);
+  *ctx_id_data = OrtTorchFunctionPool::GetInstance().RegisterContext(ctx_addr);
 }
 
 void PythonOpBase::SetOtherOutputs(OpKernelContext* context, std::vector<void*>& returned_args) const {
@@ -190,10 +189,6 @@ void PythonOpBase::SetOtherOutputs(OpKernelContext* context, std::vector<void*>&
     ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(i, *ptr));
   }
 }
-
-//////// PythonOp section ends
-
-//////// PythonOpGrad section begins
 
 PythonOpGradBase::PythonOpGradBase(const OpKernelInfo& info) {
   ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
@@ -220,14 +215,6 @@ void PythonOpGradBase::SetPositions() {
   }
 }
 
-std::vector<void*> PythonOpGradBase::CreateConstArgs(OpKernelContext* context) const {
-  const Tensor* context_id_tensor = context->Input<Tensor>(0);
-  ORT_ENFORCE(context_id_tensor, "Context ID (first input) should not be null.");
-  const int64_t* context_index_ptr = context_id_tensor->template Data<int64_t>();
-  void* ctx_ptr = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance().GetContext(*context_index_ptr);
-  return {ctx_ptr};
-}
-
 void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<void*>& returned_args) const {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
   auto outputs_count = static_cast<size_t>(ctx_internal->OutputCount());
@@ -240,8 +227,6 @@ void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<void*>& 
     ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(i, *ptr));
   }
 }
-
-//////// PythonOpGrad section ends
 
 }  // namespace contrib
 }  // namespace onnxruntime

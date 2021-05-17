@@ -5,6 +5,7 @@
 #include <mutex>
 #include "core/common/common.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
+#include "core/language_interop_ops/torch/refcount_tracker.h"
 #include "core/platform/env.h"
 
 namespace onnxruntime {
@@ -102,7 +103,8 @@ int64_t OrtTorchFunctionPool::RegisterContext(PyObject* auto_grad_context) {
   static int64_t index_ = 0;
   std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
   index_++;
-  PyObject_Print(auto_grad_context, stdout, 0);
+  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::AutoGradContext,
+                                               auto_grad_context, "autograd_context_register");
   func_context_pool.insert({index_, auto_grad_context});
   Py_INCREF(auto_grad_context);
   return index_;
@@ -119,7 +121,8 @@ void OrtTorchFunctionPool::UnRegisterContext(int64_t context_index) {
   std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
   auto iter = func_context_pool.find(context_index);
   ORT_ENFORCE(iter != func_context_pool.end(), "No context registered for ", context_index);
-  PyObject_Print(iter->second, stdout, 0);
+  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::AutoGradContext,
+                                               iter->second, "autograd_context_unregister");
   Py_XDECREF(iter->second);
   func_context_pool.erase(iter);
 }
