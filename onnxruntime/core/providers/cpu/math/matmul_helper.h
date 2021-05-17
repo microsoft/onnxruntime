@@ -158,20 +158,20 @@ class MatMulComputeHelper {
     right_zp_offsets_.resize(right_offsets_.size());
     right_scale_offsets_.resize(right_offsets_.size());
 
-    auto set_right_param = [this, &right_shape](const TensorShape* param_shape, std::vector<size_t>& param_offsets) {
+    auto SetRightMatrixQuantParam = [this, &right_shape](const TensorShape* param_shape, std::vector<size_t>& quant_param_offsets) {
       if (nullptr != param_shape && param_shape->NumDimensions() > 1) {
         ORT_RETURN_IF_NOT(param_shape->NumDimensions() == right_shape.NumDimensions() && param_shape->Size() * K_ == right_shape.Size(),
                           "Per-column quantization parameter of batched matrix should have same dimension as the matrix,"
                           "and its size by K should be equal to the matrix's size.");
-        for (size_t batch_id = 0; batch_id < param_offsets.size(); batch_id++) {
-          param_offsets[batch_id] = right_offsets_[batch_id] / K_;
+        for (size_t batch_id = 0; batch_id < quant_param_offsets.size(); batch_id++) {
+          quant_param_offsets[batch_id] = right_offsets_[batch_id] / K_;
         }
       }
       return Status::OK();
     };
 
-    ORT_RETURN_IF_ERROR(set_right_param(right_zp_shape, right_zp_offsets_));
-    ORT_RETURN_IF_ERROR(set_right_param(right_scale_shape, right_scale_offsets_));
+    ORT_RETURN_IF_ERROR(SetRightMatrixQuantParam(right_zp_shape, right_zp_offsets_));
+    ORT_RETURN_IF_ERROR(SetRightMatrixQuantParam(right_scale_shape, right_scale_offsets_));
 
     return Status::OK();
   }
