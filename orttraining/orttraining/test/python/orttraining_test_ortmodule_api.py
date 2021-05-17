@@ -2562,3 +2562,24 @@ def test_output_order():
     assert len(out_pt) == len(out_ort)
     for x, y in zip(out_pt, out_ort):
         _test_helpers.assert_values_are_close(x, y)
+
+def test_stateless_model():
+    class StatelessModel(torch.nn.Module):
+        def __init__(self):
+            super(StatelessModel, self).__init__()
+
+        def forward(self, x):
+            return x
+
+    device = 'cuda'
+    N, D_in, H, D_out = 32, 784, 500, 10
+    pt_model = StatelessModel().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.randn(N, D_in, device=device)
+    ort_x = pt_x.clone()
+
+    pt_y = pt_model(pt_x)
+    ort_y = ort_model(ort_x)
+
+    _test_helpers.assert_values_are_close(pt_y, ort_y)
