@@ -40,37 +40,37 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
   const sessionOptions: InferenceSession.SessionOptions = options || {};
 
   try {
-    if (options === undefined || options.graphOptimizationLevel === undefined) {
+    if (options?.graphOptimizationLevel === undefined) {
       sessionOptions.graphOptimizationLevel = 'all';
     }
     const graphOptimizationLevel = getGraphOptimzationLevel(sessionOptions.graphOptimizationLevel!);
 
-    if (options === undefined || options.enableCpuMemArena === undefined) {
+    if (options?.enableCpuMemArena === undefined) {
       sessionOptions.enableCpuMemArena = true;
     }
 
-    if (options === undefined || options.enableMemPattern === undefined) {
+    if (options?.enableMemPattern === undefined) {
       sessionOptions.enableMemPattern = true;
     }
 
-    if (options === undefined || options.executionMode === undefined) {
+    if (options?.executionMode === undefined) {
       sessionOptions.executionMode = 'sequential';
     }
     const executionMode = getExecutionMode(sessionOptions.executionMode!);
 
     let logIdDataOffset = 0;
-    if (options !== undefined && options.logId !== undefined) {
+    if (options?.logId !== undefined) {
       logIdDataOffset = allocWasmString(options.logId, allocs);
     }
 
-    if (options === undefined || options.logSeverityLevel === undefined) {
+    if (options?.logSeverityLevel === undefined) {
       sessionOptions.logSeverityLevel = 2;  // Default to warning
     } else if (
         typeof options.logSeverityLevel !== 'number' || options.logSeverityLevel < 0 || options.logSeverityLevel > 4) {
       throw new Error(`log serverity level is not valid: ${options.logSeverityLevel}`);
     }
 
-    if (options === undefined || options.logVerbosityLevel === undefined) {
+    if (options?.logVerbosityLevel === undefined) {
       sessionOptions.logVerbosityLevel = 0;  // Default to 0
     } else if (typeof options.logVerbosityLevel !== 'number') {
       throw new Error(`log verbosity level is not valid: ${options.logVerbosityLevel}`);
@@ -87,7 +87,7 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
       throw new Error('Can\'t create session options');
     }
 
-    if (options !== undefined && options.extra !== undefined) {
+    if (options?.extra !== undefined) {
       iterateExtraOptions(options.extra, '', {
         handle: (key, value) => {
           const keyDataOffset = allocWasmString(key, allocs);

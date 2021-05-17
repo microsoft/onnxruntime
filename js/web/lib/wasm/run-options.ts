@@ -14,25 +14,25 @@ export const setRunOptions = (options: InferenceSession.RunOptions): [number, nu
   const runOptions: InferenceSession.RunOptions = options || {};
 
   try {
-    if (options === undefined || options.logSeverityLevel === undefined) {
+    if (options?.logSeverityLevel === undefined) {
       runOptions.logSeverityLevel = 2;  // Default to warning
     } else if (
         typeof options.logSeverityLevel !== 'number' || options.logSeverityLevel < 0 || options.logSeverityLevel > 4) {
       throw new Error(`log serverity level is not valid: ${options.logSeverityLevel}`);
     }
 
-    if (options === undefined || options.logVerbosityLevel === undefined) {
+    if (options?.logVerbosityLevel === undefined) {
       runOptions.logVerbosityLevel = 0;  // Default to 0
     } else if (typeof options.logVerbosityLevel !== 'number') {
       throw new Error(`log verbosity level is not valid: ${options.logVerbosityLevel}`);
     }
 
-    if (options === undefined || options.terminate === undefined) {
+    if (options?.terminate === undefined) {
       runOptions.terminate = false;
     }
 
     let tagDataOffset = 0;
-    if (options.tag !== undefined) {
+    if (options?.tag !== undefined) {
       tagDataOffset = allocWasmString(options.tag, allocs);
     }
 
@@ -42,7 +42,7 @@ export const setRunOptions = (options: InferenceSession.RunOptions): [number, nu
       throw new Error('Can\'t create run options');
     }
 
-    if (options !== undefined && options.extra !== undefined) {
+    if (options?.extra !== undefined) {
       iterateExtraOptions(options.extra, '', {
         handle: (key, value) => {
           const keyDataOffset = allocWasmString(key, allocs);
