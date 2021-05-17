@@ -3,7 +3,7 @@ jobs:
   timeoutInMinutes: 180
   workspace:
     clean: all
-  pool: Linux-GPU-CUDA10
+  pool: Linux-CPU-2019
   steps:
   - checkout: self
     clean: true
@@ -20,7 +20,7 @@ jobs:
     inputs:
       script: |
         mkdir -p $HOME/.onnx
-        docker run --gpus all -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
+        docker run -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
           --volume /data/onnx:/data/onnx:ro \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
@@ -30,30 +30,66 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecuda11build \
-            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+            /opt/python/cp36-cp36m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
-              --config Release \
+              --config Release --update --build \
               --skip_submodule_sync \
               --build_shared_lib \
               --parallel \
               --build_wheel \
               --enable_onnx_tests --use_cuda --cuda_version=11.0 --cuda_home=/usr/local/cuda-11.0 --cudnn_home=/usr/local/cuda-11.0 \
               --enable_pybind --build_java --build_nodejs \
-              --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so CMAKE_CUDA_ARCHITECTURES=75
+              --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=/opt/python/cp36-cp36m/include/python3.6m PYTHON_LIBRARY=/usr/lib64/librt.so CMAKE_CUDA_ARCHITECTURES=75
       workingDirectory: $(Build.SourcesDirectory)
 
-  - task: PublishTestResults@2
-    displayName: 'Publish unit test results'
+  - task: CmdLine@2
     inputs:
-      testResultsFiles: '**/*.results.xml'
-      searchFolder: '$(Build.BinariesDirectory)'
-      testRunTitle: 'Unit Test Run'
-    condition: succeededOrFailed()
+      script: |
+        rm -rf $(Build.BinariesDirectory)/Release/onnxruntime
+        rm -f $(Build.BinariesDirectory)/Release/models
+
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact'
+    inputs:
+      artifactName: 'drop-linux'
+      targetPath: '$(Build.BinariesDirectory)/Release'
 
   - template: templates/component-governance-component-detection-steps.yml
     parameters:
       condition: 'succeeded'
 
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
+- job: Linux_Test
+  timeoutInMinutes: 180
+  workspace:
+    clean: all
+  pool: centos7gpu
+  dependsOn:
+  - Linux_Build
+  steps:
+  - checkout: self
+    submodules: false
+  - task: DownloadPipelineArtifact@2
+    displayName: 'Download Pipeline Artifact - Win x64'
+    inputs:
+      buildType: 'current'
+      artifactName: 'drop-linux'
+      targetPath: '$(Build.BinariesDirectory)/Release'
+      
+  - task: CmdLine@2
+    inputs:
+      script: |
+         python3 -m pip uninstall -y onnxruntime-gpu -qq
+         python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
+         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
+              --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja \
+              --config Release --test \
+              --skip_submodule_sync \
+              --build_shared_lib \
+              --parallel \
+              --build_wheel \
+              --enable_onnx_tests --use_cuda --cuda_version=11.3 --cuda_home=/usr/local/cuda-11.3 --cudnn_home=/usr/local/cuda-11.3 \
+              --enable_pybind --build_java --build_nodejs
+              
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters:
+      condition: 'succeeded'
