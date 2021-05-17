@@ -357,7 +357,7 @@ TEST(NhwcTransformerTests, ConvSplitQLinearConcat) {
 
       Node& qlconcat_node = builder.AddQLinearConcatLike(
           "QLinearConcat", qlconcat_output_arg, .37f, 131,
-          {{split_output1_arg, .37f, uint8_t(131)}, {split_output2_arg, .37f, uint8_t(131)}});
+          {std::make_tuple(split_output1_arg, .37f, uint8_t(131)), std::make_tuple(split_output2_arg, .37f, uint8_t(131))});
       qlconcat_node.AddAttribute("axis", static_cast<int64_t>(axis));
 
       auto* conv2_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {17, conv1_output_channels, 3, 3});
