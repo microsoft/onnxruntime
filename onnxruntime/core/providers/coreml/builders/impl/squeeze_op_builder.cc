@@ -3,6 +3,7 @@
 
 #include <core/common/safeint.h>
 
+#include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
@@ -21,10 +22,10 @@ class SqueezeOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
-  //   // Operator support related
-  //  private:
-  //   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-  //                          const logging::Logger& logger) const override;
+  // Operator support related
+ private:
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+                         const logging::Logger& logger) const override;
 };
 
 // Add operator related
@@ -79,16 +80,24 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
 
   model_builder.AddLayer(std::move(layer));
-
   return Status::OK();
 }
 
-// // Operator support related
+// Operator support related
 
-// bool SqueezeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-//                                          const logging::Logger& logger) const {
-//   return true;
-// }
+bool SqueezeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+                                         const logging::Logger& /*logger*/) const {
+  // Squeeze opset 13 uses input 1 as axes, if we have input 1 then it needs to be an initializer
+  if (node.SinceVersion() > 12 && node.InputDefs().size() > 1) {
+    const auto& axes_name = node.InputDefs()[1]->Name();
+    if (!Contains(initializers, axes_name)) {
+      LOGS_DEFAULT(VERBOSE) << "Input axes of Squeeze must be known";
+      return false;
+    }
+  }
+
+  return true;
+}
 
 void CreateSqueezeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   op_registrations.builders.push_back(std::make_unique<SqueezeOpBuilder>());
