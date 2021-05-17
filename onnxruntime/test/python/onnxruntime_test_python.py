@@ -69,20 +69,35 @@ class TestInferenceSession(unittest.TestCase):
             options = sess.get_provider_options()
             option = options['TensorrtExecutionProvider']
             self.assertIn('device_id', option)
-            self.assertIn('has_trt_options', option)
+            self.assertIn('trt_max_partition_iterations', option)
+            self.assertIn('trt_min_subgraph_size', option)
             self.assertIn('trt_max_workspace_size', option)
             self.assertIn('trt_fp16_enable', option)
             self.assertIn('trt_int8_enable', option)
             self.assertIn('trt_int8_calibration_table_name', option)
             self.assertIn('trt_int8_use_native_calibration_table', option)
+            self.assertIn('trt_dla_enable', option)      
+            self.assertIn('trt_dla_core', option)
+            self.assertIn('trt_dump_subgraphs', option)
+            self.assertIn('trt_engine_cache_enable', option)
+            self.assertIn('trt_engine_cache_path', option)
+            self.assertIn('trt_engine_decryption_enable', option)
+            self.assertIn('trt_engine_decryption_lib_path', option)
+            self.assertIn('trt_force_sequential_engine_build', option)
 
+            max_partition_iterations = option['trt_max_partition_iterations']
+            new_max_partition_iterations = int(max_partition_iterations) + 1
+            min_subgraph_size = option['trt_min_subgraph_size']
+            new_min_subgraph_size = int(max_partition_iterations) + 1
             ori_max_workspace_size = option['trt_max_workspace_size']
             new_max_workspace_size = int(ori_max_workspace_size) // 2
+            dla_core = option['trt_dla_core']
+            new_dla_core = int(dla_core) + 1
 
             option = {}
+            option['trt_max_partition_iterations'] = new_max_partition_iterations
+            option['trt_min_subgraph_size'] = new_min_subgraph_size
             option['trt_max_workspace_size'] = new_max_workspace_size
-            trt_options = "true"
-            option['has_trt_options'] = trt_options
             fp16_enable = "true"
             option['trt_fp16_enable'] = fp16_enable
             int8_enable = "false"
@@ -91,17 +106,40 @@ class TestInferenceSession(unittest.TestCase):
             option['trt_int8_calibration_table_name'] = calib_table_name
             int8_use_native_calibration_table = "true"
             option['trt_int8_use_native_calibration_table'] = int8_use_native_calibration_table
+            dla_enable = "true"
+            option['trt_dla_enable'] = dla_enable
+            option['trt_dla_core'] = new_dla_core
+            dump_subgraphs = "true"
+            option['trt_dump_subgraphs'] = dump_subgraphs
+            engine_cache_enable = "true"
+            option['trt_engine_cache_enable'] = engine_cache_enable
+            engine_cache_path = '/home/onnxruntime/engine_cache'
+            option['trt_engine_cache_path'] = engine_cache_path
+            engine_decryption_enable = "true"
+            option['trt_engine_decryption_enable'] = engine_decryption_enable
+            engine_decryption_lib_path = '/home/onnxruntime/decryption_lib'
+            option['trt_engine_decryption_lib_path'] = engine_decryption_lib_path
+            force_sequential_engine_build = "true"
+            option['trt_force_sequential_engine_build'] = force_sequential_engine_build
             sess.set_providers(['TensorrtExecutionProvider'], [option])
 
             options = sess.get_provider_options()
             option = options['TensorrtExecutionProvider']
+            self.assertEqual(option['trt_max_partition_iterations'], str(new_max_partition_iterations))
+            self.assertEqual(option['trt_min_subgraph_size'], str(new_min_subgraph_size))
             self.assertEqual(option['trt_max_workspace_size'], str(new_max_workspace_size))
             self.assertEqual(option['trt_int8_calibration_table_name'], str(calib_table_name))
-            self.assertEqual(option['has_trt_options'], '1')
             self.assertEqual(option['trt_fp16_enable'], '1')
             self.assertEqual(option['trt_int8_enable'], '0')
             self.assertEqual(option['trt_int8_use_native_calibration_table'], '1')
-
+            self.assertEqual(option['trt_dla_enable'], '1')
+            self.assertEqual(option['trt_dla_core'], str(new_dla_core))
+            self.assertEqual(option['trt_dump_subgraphs'], '1')
+            self.assertEqual(option['trt_engine_cache_enable'], '1')
+            self.assertEqual(option['trt_engine_cache_path'], str(engine_cache_path))
+            self.assertEqual(option['trt_engine_decryption_enable'], '1')
+            self.assertEqual(option['engine_decryption_lib_path'], str(engine_decryption_lib_path))
+            self.assertEqual(option['trt_force_sequential_engine_build'], '1')
 
             # We currently disable following test code since that not all test machines/GPUs have nvidia int8 capability
 
