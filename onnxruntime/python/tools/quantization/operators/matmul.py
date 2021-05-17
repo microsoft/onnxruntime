@@ -66,7 +66,7 @@ class QLinearMatMul(QuantOperatorBase):
         assert (node.op_type == "MatMul")
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
-            self.quantizer.quantize_inputs(node, [0, 1], reduce_range=True, per_channel=True)
+            self.quantizer.quantize_inputs(node, [0, 1], reduce_range=True)
 
         data_found, output_scale_name, output_zp_name, _, _ = \
             self.quantizer._get_quantization_params(node.output[0])

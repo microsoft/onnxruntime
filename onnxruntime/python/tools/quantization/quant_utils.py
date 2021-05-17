@@ -118,7 +118,7 @@ def compute_scale_zp(rmin, rmax, qType, quantize_range, symmetric):
         else:
             max_range = float(rmax) - float(rmin)
             scale = float(max_range) / quantize_range if max_range > 0 else 1.0
-            zero_point = int(int(quantize_range / 2) - rmax / scale)
+            zero_point = round((quantize_range / 2) - rmax / scale)
     elif qType == onnx_proto.TensorProto.UINT8:
         scale = (float(rmax) - rmin) / quantize_range if rmin != rmax else 1
         zero_point = round((0 - rmin) / scale)  # round to nearest integer

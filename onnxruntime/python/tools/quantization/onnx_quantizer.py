@@ -41,6 +41,7 @@ class ONNXQuantizer:
         self.static = static  # use static quantization for inputs.
         self.fuse_dynamic_quant = False
         self.extra_options = extra_options if extra_options is not None else {}
+        self.quantize_const_node_only = 'ConstOnly' not in self.extra_options or self.extra_options['ConstOnly']
 
         self.input_qType = onnx_proto.TensorProto.INT8 if input_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
         self.weight_qType = onnx_proto.TensorProto.INT8 if weight_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
@@ -187,8 +188,8 @@ class ONNXQuantizer:
             return False
 
         # do not quantize non-constant B matrices for matmul
-        if node.op_type == "MatMul":
-            if find_by_name(node.input[1], self.model.initializer()) is None:
+        if self.quantize_const_node_only:
+            if node.op_type == "MatMul" and find_by_name(node.input[1], self.model.initializer()) is None:
                 return False
 
         return True
@@ -676,7 +677,7 @@ class ONNXQuantizer:
         scale_name = weight.name + "_scale"
 
         # Update packed weight, zero point, and scale initializers
-        symmetric = 'Symmetric' in self.extra_options and self.extra_options['Symmetric']
+        symmetric = 'Symmetric' not in self.extra_options or self.extra_options['Symmetric']
         weight_data = self.tensor_proto_to_array(weight)
         _, _, zero_point, scale, q_weight_data = quantize_data(weight_data.flatten().tolist(),
                                                                get_qrange_for_qType(qType, self.reduce_range and reduce_range),
@@ -705,7 +706,7 @@ class ONNXQuantizer:
         if initializer is None:
             raise ValueError("{} is not an initializer", weight_name)
 
-        symmetric = 'Symmetric' in self.extra_options and self.extra_options['Symmetric']
+        symmetric = 'Symmetric' not in self.extra_options or self.extra_options['Symmetric']
         weights = self.tensor_proto_to_array(initializer)
         channel_count = weights.shape[channel_axis]
         rmin_list = []
@@ -808,6 +809,7 @@ class ONNXQuantizer:
             self.tensors_range[node.input[0]] = self.tensors_range[node.output[0]]
 
         quantization_params = {}
+        symmetric = 'Symmetric' not in self.extra_options or self.extra_options['Symmetric']
         for tensor_name in self.tensors_range.keys():
             rmin, rmax = self.tensors_range[tensor_name]
 
@@ -817,7 +819,8 @@ class ONNXQuantizer:
             rmax = max(rmax, 0)
 
             quantization_params[tensor_name] = compute_scale_zp(rmin, rmax, self.input_qType,
-                                                                get_qrange_for_qType(self.input_qType))
+                                                                get_qrange_for_qType(self.input_qType),
+                                                                symmetric)
 
         return quantization_params
 
