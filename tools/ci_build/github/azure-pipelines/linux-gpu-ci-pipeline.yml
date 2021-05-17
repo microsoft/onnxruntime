@@ -78,6 +78,8 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
+         sudo rm -f /build
+         sudo ln -s $(Build.BinariesDirectory) /build
          python3 -m pip uninstall -y onnxruntime-gpu -qq
          python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
