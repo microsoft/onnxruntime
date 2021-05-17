@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include <core/common/safeint.h>
 
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
@@ -43,7 +44,9 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
       const auto& initializers(model_builder.GetInitializerTensors());
       const auto& axes_tensor = *initializers.at(node.InputDefs()[1]->Name());
       const int64_t* raw_axes = GetTensorInt64Data(axes_tensor);
-      for (uint64_t i = 0; i < axes.size(); i++) {
+      const auto size = SafeInt<size_t>(axes_tensor.dims()[0]);
+      axes.resize(size);
+      for (size_t i = 0; i < size; i++) {
         axes[i] = raw_axes[i];
       }
     }
