@@ -324,7 +324,7 @@ def parse_arguments():
     parser.add_argument(
         "--osx_arch",
         default="arm64" if platform.machine() == "arm64" else "x86_64",
-        choices=["arm64", "x86_64"],
+        choices=["arm64", "arm64e", "x86_64"],
         help="Specify the Target specific architectures for macOS and iOS, This is only supported on MacOS")
     parser.add_argument(
         "--apple_deploy_target", type=str,
