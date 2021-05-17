@@ -232,7 +232,7 @@ class _TensorStub(object):
         return True
 
 
-def unflatten_user_output(output_schema, output_names, outputs):
+def unflatten_user_output(output_schema, outputs):
     """Follows the schema to generate an output that is expected by the user"""
 
     def _replace_stub_with_tensor_value(user_output, outputs, output_idx):
@@ -264,11 +264,11 @@ def unflatten_user_output(output_schema, output_names, outputs):
 
         return user_output
 
-    # Order the outputs according to the names so that the traversal order is consistent
-    outputs = [x for _, x in sorted(zip(output_names, outputs))]
-
     # Replace every _TensorStub value in the schema with the torch.Tensor outputs calculated
     output_schema_copy = copy.deepcopy(output_schema)
+
+    # It is expected that the outputs are ordered in the way defined in the exported onnx model
+    # which is the order in which the output schema was saved.
     output_idx = [0]
     user_output = _replace_stub_with_tensor_value(output_schema_copy, outputs, output_idx)
     return user_output
