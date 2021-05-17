@@ -1,5 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT license.
+// Licensed under the MIT License.
+
+
+/* eslint-disable @typescript-eslint/restrict-plus-operands */
 
 // parse-profiler
 //
@@ -10,12 +13,12 @@
 // STEP.2 - parse
 // > node tools/parse-profiler < profile.raw.log > profile.parsed.log
 
-// tslint:disable
 
 import * as readline from 'readline';
 const int = readline.createInterface({input: process.stdin, output: process.stdout, terminal: false});
 
-const matcher = /Profiler\.([^\[\s\x1b]+)(\x1b\[0m)? (\d.+Z)\|([\d\.]+)ms on event '([^']+)' at (\d*\.*\d*)/;
+// eslint-disable-next-line no-control-regex
+const matcher = /Profiler\.([^[\s\x1b]+)(\x1b\[0m)? (\d.+Z)\|([\d.]+)ms on event '([^']+)' at (\d*\.*\d*)/;
 
 const allEvents: any[] = [];
 int.on('line', input => {
