@@ -215,8 +215,10 @@ int64_t OrtTorchFunctionPool::RegisterContext(PyObject* auto_grad_context) {
   static int64_t index_ = 0x1000000;
   std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
   index_++;
+#ifndef NDEBUG
   RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::AutoGradContext,
                                                auto_grad_context, "autograd_context_register");
+#endif
   func_context_pool.insert({index_, auto_grad_context});
   Py_INCREF(auto_grad_context);
   return index_;
