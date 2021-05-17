@@ -41,7 +41,7 @@ class ONNXQuantizer:
         self.static = static  # use static quantization for inputs.
         self.fuse_dynamic_quant = False
         self.extra_options = extra_options if extra_options is not None else {}
-        self.quantize_const_node_only = 'ConstOnly' not in self.extra_options or self.extra_options['ConstOnly']
+        self.q_matmul_const_b_only = 'MatMulConstBOnly' in self.extra_options and self.extra_options['MatMulConstBOnly']
 
         self.input_qType = onnx_proto.TensorProto.INT8 if input_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
         self.weight_qType = onnx_proto.TensorProto.INT8 if weight_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
@@ -188,7 +188,7 @@ class ONNXQuantizer:
             return False
 
         # do not quantize non-constant B matrices for matmul
-        if self.quantize_const_node_only:
+        if self.q_matmul_const_b_only:
             if node.op_type == "MatMul" and find_by_name(node.input[1], self.model.initializer()) is None:
                 return False
 
