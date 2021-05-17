@@ -50,8 +50,10 @@ void DlpackCapsuleDestructor(PyObject* data) {
 bool ExtractPointerOutput(PyObject* pyObj, std::vector<void*>& outputs) {
   void* prt = PyLong_AsVoidPtr(pyObj);
   outputs.push_back(prt);
+#ifndef NDEBUG
   RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ReturnValues,
                                                pyObj, "python_invoke_results");
+#endif
   return true;
 }
 

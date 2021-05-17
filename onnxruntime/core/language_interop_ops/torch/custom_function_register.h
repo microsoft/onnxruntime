@@ -3,8 +3,9 @@
 
 #pragma once
 #include <mutex>
+#include <unordered_map>
+#include <vector>
 #include <Python.h>
-#include "core/platform/env.h"
 
 namespace onnxruntime {
 namespace language_interop_ops {
@@ -17,12 +18,17 @@ class OrtTorchFunctionPool final {
     return instance_;
   }
   void RegisterObject(PyObject* obj);
-  void RegisterForwardCore(const std::string& key, PyObject* obj);
-  void RegisterBackwardCore(const std::string& key, PyObject* obj);
-  void RegisterForwardRunner(PyObject* obj);
-  void RegisterBackwardRunner(PyObject* obj);
+  void RegisterTorchAutogradFunction(const std::string& key, PyObject* obj, const bool override = false);
+  void UnregisterTorchAutogradFunction(const std::string& key);
+
+  void RegisterForwardRunner(PyObject* obj, const bool override = false);
+  void UnregisterForwardRunner();
+  void RegisterBackwardRunner(PyObject* obj, const bool override = false);
+  void UnregisterBackwardRunner();
+
   PyObject* GetForwardRunner();
   PyObject* GetBackwardRunner();
+
   PyObject* GetForwardCore(const std::string& key);
   PyObject* GetBackwardCore(const std::string& key);
 
@@ -32,10 +38,9 @@ class OrtTorchFunctionPool final {
   void UnRegisterContext(int64_t context_index);
 
  private:
-  OrtTorchFunctionPool() = default;
-  ~OrtTorchFunctionPool() = default;
+  OrtTorchFunctionPool();
+  ~OrtTorchFunctionPool();
   OrtTorchFunctionPool(const OrtTorchFunctionPool&) = delete;
-
   OrtTorchFunctionPool& operator=(const OrtTorchFunctionPool&) = delete;
 
   std::vector<PyObject*> obj_pool;
