@@ -184,7 +184,6 @@ class TrainingManager(GraphExecutionManager):
                 return tuple(results)
 
         return _io.unflatten_user_output(self._module_output_schema,
-                                        self._graph_info.user_output_names,
                                         _ORTModuleFunction.apply(
                                             *_io._combine_input_buffers_initializers(
                                                 [param for name, param in self._flattened_module.named_parameters()

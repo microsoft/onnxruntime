@@ -399,5 +399,80 @@ TEST(MatmulIntegerOpTest, MatMulInteger_Uint8_Int8_GEMM) {
   RunMatMulIntegerU8X8TestBatch(4, 8, 68);
 }
 
+#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
+TEST(MatmulIntegerOpTest, SharedPrepackedWeights) {
+  OpTester test("MatMulInteger", 10);
+  test.AddInput<uint8_t>("T1", {1, 1}, {11});
+  test.AddInput<uint8_t>("T2", {1, 1}, {13}, true);  // Trigger pre-packing
+  test.AddInput<uint8_t>("a_zero_point", {}, {12});
+  test.AddInput<uint8_t>("b_zero_point", {}, {12});
+  test.AddOutput<int32_t>("T3", {1, 1}, {-1});
+
+  std::vector<uint8_t> t2_init_values(1, 13);
+
+  auto p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<uint8_t>(), TensorShape({1, 1}),
+                                           t2_init_values.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+  OrtValue t2;
+
+  t2.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
+          DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+
+  SessionOptions so;
+  // Set up T2 as a shared initializer to be shared between sessions
+  ASSERT_EQ(so.AddInitializer("T2", &t2), Status::OK());
+
+  // We want all sessions running using this OpTester to be able to share pre-packed weights if applicable
+  test.EnableSharingOfPrePackedWeightsAcrossSessions();
+
+  // Pre-packing is limited just to the CPU EP for now and we will only test the CPU EP
+  // and we want to ensure that it is available in this build
+  auto cpu_ep = []() -> std::vector<std::unique_ptr<IExecutionProvider>> {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    return execution_providers;
+  };
+
+  size_t number_of_pre_packed_weights_counter_session_1 = 0;
+  size_t number_of_shared_pre_packed_weights_counter = 0;
+
+  // Session 1
+  {
+    auto ep_vec = cpu_ep();
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
+             &ep_vec, {}, &number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
+    // Assert that no pre-packed weights have been shared thus far
+    ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(0));
+  }
+
+  auto number_of_elements_in_shared_prepacked_buffers_container =
+      test.GetNumPrePackedWeightsShared();
+  // Assert that the number of elements in the shared container
+  // is the same as the number of weights that have been pre-packed
+  ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_elements_in_shared_prepacked_buffers_container);
+
+  // On some platforms/architectures MLAS may choose to not do any pre-packing and the number of elements
+  // that have been pre-packed will be zero in which case we do not continue with the testing
+  // of "sharing" of pre-packed weights as there are no pre-packed weights to be shared at all.
+  if (number_of_pre_packed_weights_counter_session_1 == 0)
+    return;
+
+  // Session 2
+  {
+    size_t number_of_pre_packed_weights_counter_session_2 = 0;
+    auto ep_vec = cpu_ep();
+    test.Run(so, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr,
+             &ep_vec, {}, &number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
+
+    // Assert that the same number of weights were pre-packed in both sessions
+    ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_pre_packed_weights_counter_session_2);
+
+    // Assert that the number of pre-packed weights that were shared equals
+    // the number of pre-packed weights in the second session
+    ASSERT_EQ(number_of_pre_packed_weights_counter_session_2,
+              static_cast<size_t>(number_of_shared_pre_packed_weights_counter));
+  }
+}
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime

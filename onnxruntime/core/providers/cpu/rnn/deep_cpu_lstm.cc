@@ -174,7 +174,7 @@ using namespace rnn::detail;
 
 // LSTM details
 
-Status DeepCpuLstmOp::TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed) {
+Status DeepCpuLstmOp::TryPackWeights(const Tensor& weights, PackedWeights& packed_weights, bool& is_packed, AllocatorPtr& alloc) {
   const auto& shape = weights.Shape();
   if (shape.NumDimensions() != 3) {
     return Status::OK();
@@ -194,9 +194,16 @@ Status DeepCpuLstmOp::TryPackWeights(const Tensor& weights, PackedWeights& packe
     return Status::OK();
   }
 
-  auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
-  auto* packed_weights_data = alloc->Alloc(SafeInt<size_t>(packed_weights_size) * num_directions_);
+  size_t packed_weights_data_size = SafeInt<size_t>(packed_weights_size) * num_directions_;
+  auto* packed_weights_data = alloc->Alloc(packed_weights_data_size);
+
+  // Initialize memory to 0 as there could be some padding associated with pre-packed
+  // buffer memory and we don not want it uninitialized and generate different hashes
+  // if and when we try to cache this pre-packed buffer for sharing between sessions.
+  memset(packed_weights_data, 0, packed_weights_data_size);
+
   packed_weights.buffer_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
+  packed_weights.buffer_size_ = packed_weights_data_size;
   packed_weights.weights_size_ = packed_weights_size;
   packed_weights.shape_ = shape;
 
@@ -211,15 +218,50 @@ Status DeepCpuLstmOp::TryPackWeights(const Tensor& weights, PackedWeights& packe
   return Status::OK();
 }
 
-Status DeepCpuLstmOp::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+static void UseSharedPrePackedBuffersImpl(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                          rnn::detail::PackedWeights& packed_tensor) {
+  packed_tensor.buffer_ = std::move(prepacked_buffers[0]);
+}
+
+Status DeepCpuLstmOp::PrePack(const Tensor& tensor, int input_idx,
+                              AllocatorPtr alloc, /*out*/ bool& is_packed,
+                              /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
   if (tensor.IsDataType<float>()) {
     if (input_idx == 1) {
-      return TryPackWeights(tensor, packed_W_, is_packed);
+      ORT_RETURN_IF_ERROR(TryPackWeights(tensor, packed_W_, is_packed, alloc));
+
+      bool share_prepacked_weights = (prepacked_weights != nullptr);
+      if (is_packed && share_prepacked_weights) {
+        prepacked_weights->buffers_.push_back(std::move(packed_W_.buffer_));
+        prepacked_weights->buffer_sizes_.push_back(packed_W_.buffer_size_);
+      }
     } else if (input_idx == 2) {
-      return TryPackWeights(tensor, packed_R_, is_packed);
+      ORT_RETURN_IF_ERROR(TryPackWeights(tensor, packed_R_, is_packed, alloc));
+
+      bool share_prepacked_weights = (prepacked_weights != nullptr);
+      if (is_packed && share_prepacked_weights) {
+        prepacked_weights->buffers_.push_back(std::move(packed_R_.buffer_));
+        prepacked_weights->buffer_sizes_.push_back(packed_R_.buffer_size_);
+      }
     }
+  }
+
+  return Status::OK();
+}
+
+Status DeepCpuLstmOp::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                int input_idx,
+                                                /*out*/ bool& used_shared_buffers) {
+  used_shared_buffers = false;
+
+  if (input_idx == 1) {
+    used_shared_buffers = true;
+    UseSharedPrePackedBuffersImpl(prepacked_buffers, packed_W_);
+  } else if (input_idx == 2) {
+    used_shared_buffers = true;
+    UseSharedPrePackedBuffersImpl(prepacked_buffers, packed_R_);
   }
 
   return Status::OK();

@@ -211,7 +211,7 @@ class ONNXQuantizer:
         self.model.graph().node.extend(self.new_nodes)
 
         # Remove ununsed weights from graph.
-        self.model.remove_unused_constant()
+        self.remove_quantized_weights()
 
         self.model.model.producer_name = __producer__
         self.model.model.producer_version = __version__
@@ -805,3 +805,24 @@ class ONNXQuantizer:
                                                                 get_qrange_for_qType(self.input_qType))
 
         return quantization_params
+
+    def remove_quantized_weights(self):
+        ''' Remove the weights which are already quantized from graph initializer list.
+            This function assumes that after quantization, all nodes that previously use a weight:
+                - use output from DequantizeLinear as input if they do not support quantization.
+                - use quantized weight if they support quantization.
+        '''
+        for tensor_name, quant_value in self.quantized_value_map.items():
+            if quant_value.value_type == QuantizedValueType.Initializer:
+                weight = self.model.get_initializer(tensor_name)
+
+                if weight is not None:
+                    self.model.initializer().remove(weight)
+
+                    # Remove from graph.input
+                    try:
+                        weight_input = next(val for val in self.model.graph().input if val.name == tensor_name)
+                        self.model.graph().input.remove(weight_input)
+                    except StopIteration:
+                        if self.model.ir_version() < 4:
+                            print("Warning: invalid weight name {} found in the graph (not a graph input)".format(tensor_name))

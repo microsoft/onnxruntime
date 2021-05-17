@@ -110,6 +110,7 @@ class FusionFastGelu(Fusion):
                                       name=self.model.create_node_name('FastGelu'))
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
+        self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
         return True
 
     def fuse_2(self, tanh_node, input_name_to_nodes: Dict, output_name_to_node: Dict) -> Optional[bool]:
@@ -204,8 +205,8 @@ class FusionFastGelu(Fusion):
                                       name=self.model.create_node_name('FastGelu'))
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
+        self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
         return True
-
 
     def fuse_3(self, tanh_node, input_name_to_nodes: Dict, output_name_to_node: Dict) -> Optional[bool]:
         """
@@ -301,9 +302,10 @@ class FusionFastGelu(Fusion):
 
         self.nodes_to_remove.extend(subgraph_nodes)
         fused_node = helper.make_node('FastGelu',
-                                    inputs=[root_input],
-                                    outputs=mul_last.output,
-                                    name=self.model.create_node_name('FastGelu'))
+                                      inputs=[root_input],
+                                      outputs=mul_last.output,
+                                      name=self.model.create_node_name('FastGelu'))
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
+        self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
         return True
