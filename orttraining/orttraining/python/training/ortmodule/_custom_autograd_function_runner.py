@@ -34,9 +34,11 @@ def call_python_forward_function(forward_function, requires_grad_flags, tensor_t
             new_wrapped_args = []
             for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, wrapped_args):
                 if tensor_flag and grad_flag:
-                    # "view" helps change the torch tensor's is_leaf to be False.
+                    # "multiply one" helps change the torch tensor's is_leaf to be False.
                     # This is required when the torch tensor is updated in-place during forward pass.
-                    new_wrapped_args.append(arg.view(arg.shape))
+                    # we cannot use view here, because PyTorch handels grad_fn for view differently.
+                    non_leaf_arg = arg * arg.new_ones((1,))
+                    new_wrapped_args.append(non_leaf_arg)
                 else:
                     new_wrapped_args.append(arg)
             result = forward_function(*new_wrapped_args)
