@@ -12,8 +12,9 @@ export class WebGLInstanceNormalization extends InstanceNormalization {
     if (!this.artifacts) {
       this.artifacts = [];
       const programInfos = this.createProgramInfos(inferenceHandler, inputs);
-      programInfos.forEach((pi) => {
-        const artifact = inferenceHandler.session.programManager.build(pi, pi.name === undefined ? '' : pi.name);
+      programInfos.forEach((programInfo) => {
+        const artifact = inferenceHandler.session.programManager.build(
+            programInfo, programInfo.name === undefined ? '' : programInfo.name);
         this.artifacts.push(artifact);
       });
     }

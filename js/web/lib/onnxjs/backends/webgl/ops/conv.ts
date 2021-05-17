@@ -326,8 +326,7 @@ export class WebGLUnpackedConv extends Conv {
     const outputLayout = inferenceHandler.createTextureLayoutFromShape(outputShape);
     const initValue = (inputs.length < 3) ? '0.0' : '_B(b)';
     const sharedDim = im2colLayout.shape[3];
-    // const blendEnabled = inferenceHandler.session.backend.glContext.isBlendSupported && !this.activation;
-    const blendEnabled = false;
+    const blendEnabled = inferenceHandler.session.backend.glContext.isBlendSupported && !this.activation;
     const sharedDimReadSize = blendEnabled && inferenceHandler.session.backend.matmulMaxBatchSize ?
         this.calcSharedDimReadSize(inferenceHandler.session.backend.matmulMaxBatchSize, sharedDim) :
         sharedDim;
