@@ -72,9 +72,8 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
   auto a_scale_data = *(a_scale->template Data<float>());
   auto y_scale_data = *(y_scale->template Data<float>());
 
-  std::vector<float> output_scales;
   const int64_t output_scale_size = b_scale->Shape().Size();
-  output_scales.resize(static_cast<size_t>(output_scale_size));
+  std::vector<float> output_scales(output_scale_size);
   for (int64_t i = 0; i < output_scale_size; i++) {
     output_scales[i] = (a_scale_data * b_scale_data[i] / y_scale_data);
   }
