@@ -71,7 +71,7 @@ class NupharExecutionProvider : public IExecutionProvider {
         pair.second = Dimension_Unknown;
       }
     } else {
-      tls_realized_dims_ = onnxruntime::make_unique<std::unordered_map<std::string, int64_t>>();
+      tls_realized_dims_ = std::make_unique<std::unordered_map<std::string, int64_t>>();
     }
     return Status::OK();
   }

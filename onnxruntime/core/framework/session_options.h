@@ -8,6 +8,7 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/util/thread_utils.h"
+#include "core/framework/config_options.h"
 
 namespace onnxruntime {
 
@@ -65,7 +66,7 @@ struct SessionOptions {
   bool enable_mem_pattern = true;
 
   // Enable memory resue in memory planning. Allows to reuse tensor buffer between tensors if they are of
-  // the same size. The issue with this is it can lead to memory being held for longer than needed and 
+  // the same size. The issue with this is it can lead to memory being held for longer than needed and
   // can impact peak memory consumption.
   bool enable_mem_reuse = true;
 
@@ -113,24 +114,12 @@ struct SessionOptions {
   // To add an configuration to this session, call OrtApis::AddSessionConfigEntry
   // The configuration keys and value formats are defined in
   // /include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h
-  std::unordered_map<std::string, std::string> session_configurations;
+  ConfigOptions config_options;
   std::unordered_map<std::string, const OrtValue*> initializers_to_share_map;
 
   // See onnxruntime_c_api.h for detailed documentation.
   Status AddInitializer(_In_z_ const char* name, _In_ const OrtValue* val) noexcept;
-
-  // Check if the given SessionOptions has a config using the given config_key.
-  // Returns true if found and copies the value into config_value.
-  // Returns false if not found and clears config_value.
-  bool TryGetConfigEntry(const std::string& config_key, std::string& config_value) const noexcept;
-
-  // Get the config string of the given SessionOptions using the given config_key
-  // If there is no such config, the given default string will be returned
-  const std::string GetConfigOrDefault(const std::string& config_key, const std::string& default_value) const noexcept;
-
-  // Add a config pair (config_key, config_value) to the given SessionOptions
-  Status AddConfigEntry(_In_z_ const char* config_key, _In_z_ const char* config_value) noexcept;
-
+ 
   // Specifiy onnx_opset_version to only load the latest ones for each opset before specified onnx_opset_version
   // By default if session_onnx_opset_version=0, it registers all ONNX opset schema for all opset versions
   int session_onnx_opset_version = 0;

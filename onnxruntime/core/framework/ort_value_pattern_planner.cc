@@ -9,7 +9,7 @@ namespace onnxruntime {
 OrtValuePatternPlanner::OrtValuePatternPlanner(const ExecutionPlanBase& execution_plan, bool trace_using_counters)
     : execution_planner_(execution_plan) {
   for (auto& location : execution_plan.GetAllLocations()) {
-    planner_map_.emplace(location, onnxruntime::make_unique<MemPatternPlanner>(trace_using_counters));
+    planner_map_.emplace(location, std::make_unique<MemPatternPlanner>(trace_using_counters));
   }
 }
 

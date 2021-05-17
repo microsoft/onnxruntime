@@ -6,6 +6,7 @@
 #include "core/graph/graph.h"
 #include "core/optimizer/qdq_transformer/qdq_op_transformer.h"
 #include "core/optimizer/qdq_transformer/registry.h"
+#include "core/optimizer/utils.h"
 
 namespace onnxruntime {
 class QDQMatMulTransformer : public QDQOperatorTransformer {
@@ -13,6 +14,43 @@ class QDQMatMulTransformer : public QDQOperatorTransformer {
   QDQMatMulTransformer(Node& node, Graph& graph) : QDQOperatorTransformer(node, graph) {}
 
   bool TransformImpl(const std::vector<const Node*>& dq_nodes, const std::vector<const Node*>& q_nodes) override {
+    if (q_nodes.size() == 1) {
+      return FuseQLinearMatMul(dq_nodes, q_nodes);
+    }
+    if (q_nodes.size() == 0) {
+      return FuseMatMulIntegerToFloat(dq_nodes);
+    }
+    return false;
+  }
+
+  bool Check(const std::vector<const Node*>& dq_nodes, const std::vector<const Node*>& q_nodes) const override {
+    constexpr size_t DQCount = 2;
+    if (DQCount != dq_nodes.size()) {
+      return false;
+    }
+
+    if (q_nodes.size() > 0 &&
+        (node_.MutableOutputDefs().size() != q_nodes.size() ||
+         !optimizer_utils::CheckOutputEdges(graph_, node_, q_nodes.size()))) {
+      return false;
+    }
+
+    // Currently Quant MatMul only support activation type uint8_t
+    int32_t dt_input1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    if (dt_input1 != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) {
+      return false;
+    }
+
+    if (q_nodes.size() == 0) {
+      return true;
+    }
+
+    int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    return dt_output == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8;
+  }
+
+ private:
+  bool FuseQLinearMatMul(const std::vector<const Node*>& dq_nodes, const std::vector<const Node*>& q_nodes) {
     std::vector<NodeArg*> input_defs(graph_.GetNode(dq_nodes[0]->Index())->MutableInputDefs());
     Node* b = graph_.GetNode(dq_nodes[1]->Index());
     input_defs.insert(input_defs.end(), b->MutableInputDefs().begin(), b->MutableInputDefs().end());
@@ -32,14 +70,27 @@ class QDQMatMulTransformer : public QDQOperatorTransformer {
     return true;
   }
 
-  bool Check(const std::vector<const Node*>& dq_nodes, const std::vector<const Node*>& q_nodes) const override {
-    if (!QDQOperatorTransformer::Check(dq_nodes, q_nodes)) {
-      return false;
-    }
+  bool FuseMatMulIntegerToFloat(const std::vector<const Node*>& dq_nodes) {
+    std::vector<NodeArg*>& input_defs_dq_0 = graph_.GetNode(dq_nodes[0]->Index())->MutableInputDefs();
+    std::vector<NodeArg*>& input_defs_dq_1 = graph_.GetNode(dq_nodes[1]->Index())->MutableInputDefs();
+    std::vector<NodeArg*> input_defs{
+        input_defs_dq_0[0],
+        input_defs_dq_1[0],
+        input_defs_dq_0[1],
+        input_defs_dq_1[1],
+        input_defs_dq_0[2],
+        input_defs_dq_1[2],
+    };
 
-    // Currently QLinearConv only support activation type uint8_t
-    int32_t dt = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-    return dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8;
+    graph_.AddNode(node_.Name(),
+                   "MatMulIntegerToFloat",
+                   node_.Description(),
+                   input_defs,
+                   node_.MutableOutputDefs(),
+                   &node_.GetAttributes(),
+                   kMSDomain)
+        .SetExecutionProviderType(kCpuExecutionProvider);
+    return true;
   }
 };
 

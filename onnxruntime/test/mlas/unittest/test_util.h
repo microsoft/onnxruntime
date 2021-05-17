@@ -22,7 +22,6 @@
 #include "core/platform/threadpool.h"
 #endif
 
-#include "core/common/make_unique.h"
 
 #if !defined(UNUSED_VARIABLE)
 #if defined(__GNUC__)

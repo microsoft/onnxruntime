@@ -222,6 +222,17 @@ TEST(GatherElementsGrad, SameUpdateWithoutAxisMLFloat16) {
   test.Run();
 }
 
+TEST(GatherElementsGrad, LargerIndicesOnAxis) {
+  onnxruntime::test::OpTester test("GatherElementsGrad", 1, kMSDomain);
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddInput<float>("dY", {1, 4}, {1.1f, 2.2f, 3.3f, 4.4f});
+  std::vector<int64_t> data_shape = {1, 2};
+  test.AddInput<int64_t>("data_shape", {2}, data_shape);
+  test.AddInput<int64_t>("indices", {1, 4}, {0, 1, 0, 1});
+  test.AddOutput<float>("dX", {1, 2}, {4.4f, 6.6f});
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace cuda
 }  // namespace onnxruntime

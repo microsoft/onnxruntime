@@ -22,7 +22,8 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        TransformerLevel target_level,
                        int opset_version,
                        double per_sample_tolerance,
-                       double relative_per_sample_tolerance) {
+                       double relative_per_sample_tolerance,
+                       std::unique_ptr<GraphTransformer> transformer) {
   // Build the model for this test.
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = opset_version;
@@ -32,17 +33,25 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
   build_test_case(helper);
+  helper.SetGraphOutputs();
   ASSERT_TRUE(model.MainGraph().Resolve().IsOK());
 
   // Serialize the model to a string.
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
 
-  auto run_model = [&](TransformerLevel level, std::vector<OrtValue>& fetches) {
+  auto run_model = [&](TransformerLevel level, std::vector<OrtValue>& fetches, std::unique_ptr<GraphTransformer> transformer = nullptr) {
     SessionOptions session_options;
-    session_options.graph_optimization_level = level;
+    session_options.graph_optimization_level = transformer ? baseline_level : level;
+#if 0  // enable to dump model for debugging
+    session_options.optimized_model_filepath = L"model" + std::to_wstring(static_cast<int>(level)) + L".onnx";
+#endif
     InferenceSessionWrapper session{session_options, GetEnvironment()};
     ASSERT_TRUE(session.Load(model_data.data(), static_cast<int>(model_data.size())).IsOK());
+    if (transformer) {
+      ASSERT_TRUE(session.RegisterGraphTransformer(std::move(transformer), level).IsOK());
+    }
+
     auto status = session.Initialize();
     if (!status.IsOK()) {
       std::cout << "Model initialized failed with status message: " << status.ErrorMessage() << std::endl;
@@ -68,7 +77,7 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
   run_model(baseline_level, baseline_fetches);
 
   std::vector<OrtValue> target_fetches;
-  run_model(target_level, target_fetches);
+  run_model(target_level, target_fetches, std::move(transformer));
 
   size_t num_outputs = baseline_fetches.size();
   ASSERT_TRUE(num_outputs == target_fetches.size());

@@ -38,8 +38,6 @@ set(onnxruntime_pybind_srcs_pattern
 
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_pybind_srcs_pattern
-    "${ONNXRUNTIME_ROOT}/python/dlpack/*.cc"
-    "${ONNXRUNTIME_ROOT}/python/dlpack/*.h"
     "${ORTTRAINING_ROOT}/orttraining/python/*.cc"
     "${ORTTRAINING_ROOT}/orttraining/python/*.h"
   )
@@ -61,9 +59,6 @@ if(onnxruntime_PYBIND_EXPORT_OPSCHEMA)
   target_compile_definitions(onnxruntime_pybind11_state PRIVATE onnxruntime_PYBIND_EXPORT_OPSCHEMA)
 endif()
 
-if (onnxruntime_USE_DNNL)
-  target_compile_definitions(onnxruntime_pybind11_state PRIVATE USE_DNNL=1)
-endif()
 if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     #TODO: fix the warnings
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4244")
@@ -74,9 +69,9 @@ if(onnxruntime_USE_CUDA)
     target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CUDNN_HOME}/include)
 endif()
 if(onnxruntime_USE_ROCM)
-    target_compile_options(onnxruntime_pybind11_state PUBLIC -D__HIP_PLATFORM_HCC__=1)
-    target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
-  endif()
+  target_compile_options(onnxruntime_pybind11_state PUBLIC -D__HIP_PLATFORM_HCC__=1)
+  target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
+endif()
 if (onnxruntime_USE_NCCL)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${NCCL_INCLUDE_DIRS})
 endif()
@@ -281,8 +276,16 @@ file(GLOB onnxruntime_python_datasets_data CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/datasets/*.onnx"
 )
 
-set(build_output_target onnxruntime_common)
+# Files needed to convert ONNX model to ORT format
+set(onnxruntime_ort_format_model_conversion_srcs
+    ${REPO_ROOT}/tools/python/util/convert_onnx_models_to_ort.py
+    ${REPO_ROOT}/tools/python/util/logger.py
+)
+file(GLOB onnxruntime_ort_format_model_srcs CONFIGURE_DEPENDS
+    ${REPO_ROOT}/tools/python/util/ort_format_model/*.py)
 
+set(build_output_target onnxruntime_common)
+if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
 add_custom_command(
   TARGET onnxruntime_pybind11_state POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/backend
@@ -291,6 +294,8 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/featurizer_ops
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/ort_flatbuffers_py
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/longformer
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization
@@ -335,6 +340,15 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_tools_featurizers_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/featurizer_ops/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_ort_format_model_conversion_srcs}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_ort_format_model_srcs}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+      ${ONNXRUNTIME_ROOT}/core/flatbuffers/ort_flatbuffers_py
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/ort_flatbuffers_py
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_quantization_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/
@@ -482,7 +496,7 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
 endif()
-
+endif()
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   include(onnxruntime_language_interop_ops.cmake)
 endif()

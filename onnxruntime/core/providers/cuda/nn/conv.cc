@@ -205,17 +205,19 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     std::vector<int64_t> x_dims_cudnn = x_dims;
     std::vector<int64_t> y_dims_cudnn = !post_slicing_required ? y_dims : y_dims_with_adjusted_pads;
     if (rank < 2) {
-      // cudnn only takes 4D or 5D input, so pad dimensions if needed
-      // If input shape is [N, C, D], we pad the shape to [N, C, 1, D], as it results in
-      // more efficient algorithm than padding to [N, C, D, 1]
-      x_dims_cudnn.insert(x_dims_cudnn.begin() + 2, 1);
-      y_dims_cudnn.insert(y_dims_cudnn.begin() + 2, 1);
-      w_dims.insert(w_dims.begin() + 2, 1);
-      pads.insert(pads.begin(), 0);
-      pads.insert(pads.begin() + 2, 0);
-      kernel_shape.insert(kernel_shape.begin(), 1);
-      strides.insert(strides.begin(), 1);
-      dilations.insert(dilations.begin(), 1);
+      // TODO: Explore padding the provided input shape [N, C, D] to [N, C, 1, D]
+      // especially for EXHAUSTIVE algo search which may result in a better algo selection.
+      // Currently, we are padding it to [N, C, D, 1] as this seems to be the sweet spot
+      // for all algo search options: EXHAUSTIVE, HEURISTIC, and DEFAULT.
+      // See PR #7348 for more context.
+      x_dims_cudnn.push_back(1);
+      y_dims_cudnn.push_back(1);
+      w_dims.push_back(1);
+      pads.insert(pads.begin() + rank, 0);
+      pads.insert(pads.end(), 0);
+      kernel_shape.push_back(1);
+      strides.push_back(1);
+      dilations.push_back(1);
     }
 
     if (w_dims_changed) {

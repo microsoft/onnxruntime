@@ -8,7 +8,6 @@
 
 #include "gsl/gsl"
 
-#include "core/common/make_unique.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/session/abi_session_options_impl.h"
@@ -31,7 +30,7 @@ struct CUDAProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
-  return onnxruntime::make_unique<CUDAExecutionProvider>(info_);
+  return std::make_unique<CUDAExecutionProvider>(info_);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(const CUDAExecutionProviderInfo& info) {
@@ -59,6 +58,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA,
   info.do_copy_in_default_stream = cuda_options->do_copy_in_default_stream;
   info.has_user_compute_stream = cuda_options->has_user_compute_stream;
   info.user_compute_stream = cuda_options->user_compute_stream;
+  info.default_memory_arena_cfg = cuda_options->default_memory_arena_cfg;
   options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_CUDA(info));
 
   return nullptr;

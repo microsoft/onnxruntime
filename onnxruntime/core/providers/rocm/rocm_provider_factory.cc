@@ -8,7 +8,6 @@
 
 #include "gsl/gsl"
 
-#include "core/common/make_unique.h"
 #include "core/providers/rocm/rocm_execution_provider.h"
 #include "core/providers/rocm/rocm_execution_provider_info.h"
 #include "core/session/abi_session_options_impl.h"
@@ -30,7 +29,7 @@ struct HIPProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> HIPProviderFactory::CreateProvider() {
-  return onnxruntime::make_unique<ROCMExecutionProvider>(info_);
+  return std::make_unique<ROCMExecutionProvider>(info_);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ROCM(const ROCMExecutionProviderInfo& info) {

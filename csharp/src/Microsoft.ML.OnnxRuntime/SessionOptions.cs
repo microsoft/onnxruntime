@@ -96,7 +96,7 @@ namespace Microsoft.ML.OnnxRuntime
             catch (Exception e)
             {
                 options.Dispose();
-                throw;
+                throw e;
             }
         }
 

@@ -28,7 +28,8 @@
 #include "core/session/abi_session_options_impl.h"
 
 #ifdef ENABLE_TRAINING
-#include "python/dlpack/dlpack_converter.h"
+#include "core/dlpack/dlpack_converter.h"
+#include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
 
 // execution provider factory creator headers
@@ -489,7 +490,8 @@ static AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
   static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
 
   if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
-    id_to_allocator_map.insert({id, CUDAExecutionProvider::CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info)});
+    // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
+    id_to_allocator_map.insert({id, CUDAExecutionProvider::CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, nullptr)});
   }
 
   return id_to_allocator_map[id];
@@ -573,18 +575,47 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
                                           sess->GetSessionOptions().enable_cpu_mem_arena));
     } else if (type == kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
-      OrtTensorRTProviderOptions params{0, 0, nullptr, 0, 1 << 30, 0, 0, nullptr, 0, 0};
-      std::string trt_int8_calibration_table_name;
+      OrtTensorRTProviderOptions params{
+          0,
+          0,
+          nullptr,
+          1000,
+          1,
+          1 << 30,
+          0,
+          0,
+          nullptr,
+          0,
+          0,
+          0,
+          0,
+          0,
+          nullptr,
+          0,
+          nullptr,
+          0};
+
+      std::string calibration_table, cache_path, lib_path;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         for (auto option : it->second) {
-          if (option.first == "has_trt_options") {
-            if (option.second == "True" || option.second == "true") {
-              params.has_trt_options = true;
-            } else if (option.second == "False" || option.second == "false") {
-              params.has_trt_options = false;
+          if (option.first == "device_id") {
+            if (!option.second.empty()) {
+              params.device_id = std::stoi(option.second);
             } else {
-              ORT_THROW("[ERROR] [TensorRT] The value for the key 'has_trt_options' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'device_id' should be a number i.e. '0'.\n");
+            }
+          } else if (option.first == "trt_max_partition_iterations") {
+            if (!option.second.empty()) {
+              params.trt_max_partition_iterations = std::stoi(option.second);
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_max_partition_iterations' should be a positive integer number i.e. '1000'.\n");
+            }
+          } else if (option.first == "trt_min_subgraph_size") {
+            if (!option.second.empty()) {
+              params.trt_min_subgraph_size = std::stoi(option.second);
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_min_subgraph_size' should be a positive integer number i.e. '1'.\n");
             }
           } else if (option.first == "trt_max_workspace_size") {
             if (!option.second.empty()) {
@@ -610,8 +641,8 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
             }
           } else if (option.first == "trt_int8_calibration_table_name") {
             if (!option.second.empty()) {
-              trt_int8_calibration_table_name = option.second;
-              params.trt_int8_calibration_table_name = trt_int8_calibration_table_name.c_str();
+              calibration_table = option.second;
+              params.trt_int8_calibration_table_name = calibration_table.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_calibration_table_name' should be a file name i.e. 'cal_table'.\n");
             }
@@ -622,6 +653,66 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
               params.trt_int8_use_native_calibration_table = false;
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_int8_use_native_calibration_table' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
+            }
+          } else if (option.first == "trt_dla_enable") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_dla_enable = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_dla_enable = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dla_enable' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
+            }
+          } else if (option.first == "trt_dla_core") {
+            if (!option.second.empty()) {
+              params.trt_dla_core = std::stoi(option.second);
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dla_core' should be a positive integer number i.e. '0'.\n");
+            }
+          } else if (option.first == "trt_dump_subgraphs") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_dump_subgraphs = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_dump_subgraphs = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dump_subgraphs' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
+            }
+          } else if (option.first == "trt_engine_cache_enable") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_engine_cache_enable = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_engine_cache_enable = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_enable' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
+            }
+          } else if (option.first == "trt_engine_cache_path") {
+            if (!option.second.empty()) {
+              cache_path = option.second;
+              params.trt_engine_cache_path = cache_path.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_path' should be a path string i.e. 'engine_cache'.\n");
+            }
+          } else if (option.first == "trt_engine_decryption_enable") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_engine_decryption_enable = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_engine_decryption_enable = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_decryption_enable' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
+            }
+          } else if (option.first == "trt_engine_decryption_lib_path") {
+            if (!option.second.empty()) {
+              lib_path = option.second;
+              params.trt_engine_decryption_lib_path = lib_path.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_decryption_lib_path' should be a path string i.e. 'decryption_lib'.\n");
+            }
+          } else if (option.first == "trt_force_sequential_engine_build") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_force_sequential_engine_build = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_force_sequential_engine_build = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_force_sequential_engine_build' should be a boolean i.e. 'True' or 'False'. Default value is False.\n");
             }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
@@ -673,7 +764,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
                   return info;
                 }();
 
-      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still 
+      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
       // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
       // since FromProviderOptions might contain external CUDA allocator.
       external_allocator_info = info.external_allocator_info;
@@ -784,7 +875,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
         auto shared_lib_path_it = it->second.find(kExecutionProviderSharedLibraryPath);
         if (shared_lib_path_it != it->second.end()) {
           // this is an EP with dynamic loading
-          // construct the provider option 
+          // construct the provider option
           ProviderOptions provider_options;
           for (auto option : it->second) {
             if (option.first != kExecutionProviderSharedLibraryPath)
@@ -792,7 +883,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
           }
           auto p_ep = LoadExecutionProvider(shared_lib_path_it->second, provider_options);
           ORT_THROW_IF_ERROR(sess->RegisterExecutionProvider(
-                                   std::move(p_ep)));
+              std::move(p_ep)));
           continue;
         }
       }
@@ -940,6 +1031,15 @@ void addGlobalMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
         }
       });
+#ifdef ENABLE_TRAINING
+   m.def(
+      "register_aten_op_executor", [](const std::string& aten_op_executor_address_str) -> void {
+        size_t aten_op_executor_address_int;
+        ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
+        void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
+        contrib::aten_ops::ATenOperatorExecutor::Initialize(p_aten_op_executor);
+      });
+#endif
 
 #ifdef USE_NUPHAR
   // TODO remove deprecated global config
@@ -1288,7 +1388,7 @@ void addObjectMethods(py::module& m, Environment& env) {
   // See docs/C_API.md for details on what the following parameters mean and how to choose these values
   ort_arena_cfg_binding.def(py::init([](size_t max_mem, int arena_extend_strategy_local,
                                         int initial_chunk_size_bytes, int max_dead_bytes_per_chunk) {
-    auto ort_arena_cfg = onnxruntime::make_unique<OrtArenaCfg>();
+    auto ort_arena_cfg = std::make_unique<OrtArenaCfg>();
     ort_arena_cfg->max_mem = max_mem;
     ort_arena_cfg->arena_extend_strategy = arena_extend_strategy_local;
     ort_arena_cfg->initial_chunk_size_bytes = initial_chunk_size_bytes;
@@ -1299,13 +1399,13 @@ void addObjectMethods(py::module& m, Environment& env) {
   py::class_<OrtMemoryInfo> ort_memory_info_binding(m, "OrtMemoryInfo");
   ort_memory_info_binding.def(py::init([](const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
     if (strcmp(name, onnxruntime::CPU) == 0) {
-      return onnxruntime::make_unique<OrtMemoryInfo>(onnxruntime::CPU, type, OrtDevice(), id, mem_type);
+      return std::make_unique<OrtMemoryInfo>(onnxruntime::CPU, type, OrtDevice(), id, mem_type);
     } else if (strcmp(name, onnxruntime::CUDA) == 0) {
-      return onnxruntime::make_unique<OrtMemoryInfo>(
+      return std::make_unique<OrtMemoryInfo>(
           onnxruntime::CUDA, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id)), id,
           mem_type);
     } else if (strcmp(name, onnxruntime::CUDA_PINNED) == 0) {
-      return onnxruntime::make_unique<OrtMemoryInfo>(
+      return std::make_unique<OrtMemoryInfo>(
           onnxruntime::CUDA_PINNED, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, static_cast<OrtDevice::DeviceId>(id)),
           id, mem_type);
     } else {
@@ -1323,7 +1423,7 @@ void addObjectMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Creation of OrtValues is currently only supported from non-string numpy arrays");
         }
 
-        auto ml_value = onnxruntime::make_unique<OrtValue>();
+        auto ml_value = std::make_unique<OrtValue>();
 
         // The tensor's memory is allocated on the CPU
         if (GetDeviceName(device) == CPU) {
@@ -1380,12 +1480,12 @@ void addObjectMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Creation of OrtValues is currently only supported from non-string numpy arrays");
         }
 
-        auto ml_value = onnxruntime::make_unique<OrtValue>();
+        auto ml_value = std::make_unique<OrtValue>();
 
         std::unique_ptr<Tensor> tensor;
         // The tensor's memory is allocated on the CPU
         if (GetDeviceName(device) == CPU) {
-          tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, GetAllocator());
+          tensor = std::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, GetAllocator());
         } else if (GetDeviceName(device) == CUDA) {
       // The tensor's memory is allocated on CUDA
 #ifdef USE_CUDA
@@ -1393,7 +1493,7 @@ void addObjectMethods(py::module& m, Environment& env) {
             throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
           }
 
-          tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, GetCudaAllocator(device.Id()));
+          tensor = std::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, GetCudaAllocator(device.Id()));
 #else
       throw std::runtime_error(
           "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
@@ -1476,13 +1576,13 @@ void addObjectMethods(py::module& m, Environment& env) {
       })
 #ifdef ENABLE_TRAINING
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
-        DLManagedTensor* dlmanaged_tensor = OrtValueToDlpack(*ort_value);
+        DLManagedTensor* dlmanaged_tensor = dlpack::OrtValueToDlpack(*ort_value);
         return py::reinterpret_steal<py::object>(
             PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor));
       })
       .def_static("from_dlpack", [](py::object data, bool is_bool_tensor = false) {
         DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data.ptr(), "dltensor");
-        OrtValue ort_value = DlpackToOrtValue(dlmanaged_tensor, is_bool_tensor);
+        OrtValue ort_value = dlpack::DlpackToOrtValue(dlmanaged_tensor, is_bool_tensor);
         // Make sure this capsule will never be used again.
         PyCapsule_SetName(data.ptr(), "used_dltensor");
         return ort_value;
@@ -1493,7 +1593,7 @@ void addObjectMethods(py::module& m, Environment& env) {
   py::class_<SessionIOBinding> session_io_binding(m, "SessionIOBinding");
   session_io_binding
       .def(py::init([](PyInferenceSession* sess) {
-        auto sess_io_binding = onnxruntime::make_unique<SessionIOBinding>(sess->GetSessionHandle());
+        auto sess_io_binding = std::make_unique<SessionIOBinding>(sess->GetSessionHandle());
         return sess_io_binding;
       }))
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, py::object& arr_on_cpu) -> void {
@@ -1537,7 +1637,7 @@ void addObjectMethods(py::module& m, Environment& env) {
 
         OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
         std::unique_ptr<Tensor> p_tensor =
-            onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, reinterpret_cast<void*>(data_ptr), info);
+            std::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, reinterpret_cast<void*>(data_ptr), info);
 
         OrtValue ml_value;
         ml_value.Init(p_tensor.release(),
@@ -1586,7 +1686,7 @@ void addObjectMethods(py::module& m, Environment& env) {
 
         OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
 
-        std::unique_ptr<Tensor> p_tensor = onnxruntime::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, reinterpret_cast<void*>(data_ptr), info);
+        std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(NumpyTypeToOnnxRuntimeType(type_num), shape, reinterpret_cast<void*>(data_ptr), info);
 
         OrtValue ml_value;
         ml_value.Init(p_tensor.release(),
@@ -1747,7 +1847,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           "add_session_config_entry",
           [](PySessionOptions* options, const char* config_key, const char* config_value) -> void {
             //config_key and config_value will be copied
-            const Status status = options->AddConfigEntry(config_key, config_value);
+            const Status status = options->config_options.AddConfigEntry(config_key, config_value);
             if (!status.IsOK())
               throw std::runtime_error(status.ErrorMessage());
           },
@@ -1757,7 +1857,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           [](PySessionOptions* options, const char* config_key) -> std::string {
             const std::string key(config_key);
             std::string value;
-            if (!options->TryGetConfigEntry(key, value))
+            if (!options->config_options.TryGetConfigEntry(key, value))
               throw std::runtime_error("SessionOptions does not have configuration with key: " + key);
 
             return value;
@@ -1899,7 +1999,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         // in a minimal build we only support load via Load(...) and not at session creation time
         if (load_config_from_model) {
 #if !defined(ORT_MINIMAL_BUILD)
-          sess = onnxruntime::make_unique<PyInferenceSession>(env, so, arg, is_arg_file_name);
+          sess = std::make_unique<PyInferenceSession>(env, so, arg, is_arg_file_name);
 
           RegisterCustomOpDomainsAndLibraries(sess.get(), so);
 
@@ -1908,7 +2008,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           ORT_THROW("Loading configuration from an ONNX model is not supported in this build.");
 #endif
         } else {
-          sess = onnxruntime::make_unique<PyInferenceSession>(env, so);
+          sess = std::make_unique<PyInferenceSession>(env, so);
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
           RegisterCustomOpDomainsAndLibraries(sess.get(), so);
 #endif
@@ -2096,12 +2196,12 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Ort::SessionOptions tmp_options;
-  if(!InitProvidersSharedLibrary()){
+  if (!InitProvidersSharedLibrary()) {
     const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
     LOGS(default_logger, WARNING) << "Init provider bridge failed.";
   }
 #endif
-  
+
 #ifdef ENABLE_TRAINING
   addObjectMethodsForTraining(m);
 #endif  // ENABLE_TRAINING
@@ -2123,7 +2223,7 @@ void InitializeEnv() {
       import_array1();
     })();
     Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
-    OrtPybindThrowIfError(Environment::Create(onnxruntime::make_unique<LoggingManager>(
+    OrtPybindThrowIfError(Environment::Create(std::make_unique<LoggingManager>(
                                                   std::unique_ptr<ISink>{new CLogSink{}},
                                                   Severity::kWARNING, false, LoggingManager::InstanceType::Default,
                                                   &SessionObjectInitializer::default_logger_id),

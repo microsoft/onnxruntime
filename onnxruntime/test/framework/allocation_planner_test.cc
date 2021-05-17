@@ -182,7 +182,7 @@ class PlannerTest : public ::testing::Test {
     external_outputs_kernel_ =
         KernelDefBuilder().SetName("Tanh").Provider(kCpuExecutionProvider).SinceVersion(1, 10).ExternalOutputs().Build();
     CPUExecutionProviderInfo epi;
-    auto execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(epi);
+    auto execution_provider = std::make_unique<CPUExecutionProvider>(epi);
     execution_providers_.Add("CPUExecutionProvider", std::move(execution_provider));
 
     state_.reset(new SessionState(graph_, execution_providers_, false, tp_.get(), nullptr, dtm_,
@@ -196,7 +196,7 @@ class PlannerTest : public ::testing::Test {
   }
 
   onnxruntime::Node* AddNode(::onnxruntime::KernelDef& kernel_def, std::string& input, std::string& output) {
-    auto node = onnxruntime::make_unique<UnaryNode>(graph_, kernel_def.OpName(), Arg(input), Arg(output));
+    auto node = std::make_unique<UnaryNode>(graph_, kernel_def.OpName(), Arg(input), Arg(output));
     auto* p_node = node->p_node;
     p_node->SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
     nodes_.push_back(std::move(node));
@@ -220,14 +220,14 @@ class PlannerTest : public ::testing::Test {
                   std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map) {
     const IExecutionProvider* ep = execution_providers_.Get(*p_node);
     ASSERT_NE(ep, nullptr);
-    auto info = onnxruntime::make_unique<OpKernelInfo>(
+    auto info = std::make_unique<OpKernelInfo>(
         *p_node, kernel_def, *ep, state_->GetInitializedTensors(), state_->GetOrtValueNameIdxMap(),
         state_->GetFuncMgr(), state_->GetDataTransferMgr());
 
     op_kernel_infos_.push_back(std::move(info));
     if (!KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider)) {
       auto st = reg->Register(
-          KernelCreateInfo(onnxruntime::make_unique<KernelDef>(kernel_def),
+          KernelCreateInfo(std::make_unique<KernelDef>(kernel_def),
                            [](const OpKernelInfo& info) -> OpKernel* { return new DummyOpKernel(info); }));
       ORT_ENFORCE(st.IsOK(), st.ErrorMessage());
     }
@@ -255,7 +255,7 @@ class PlannerTest : public ::testing::Test {
       BindKernel(binding.first, binding.second, reg.get(), kernel_create_info_map);
     }
 
-    auto cpu_execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
     KernelRegistryManager kernel_registry_manager;
     kernel_registry_manager.RegisterKernelRegistry(reg);
     auto status = kernel_registry_manager.RegisterKernels(execution_providers_);

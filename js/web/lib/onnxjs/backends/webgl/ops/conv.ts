@@ -1,32 +1,169 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {Attribute} from '../../../attribute';
 import {Logger} from '../../../instrument';
 import {Conv} from '../../../ops/conv';
 import {Tensor} from '../../../tensor';
 import {PoolConvUtil} from '../../../util';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {Artifact, ProgramInfo, RunData, TextureLayout} from '../types';
+import {Artifact, ProgramInfo, RunData, TextureLayout, WebGLOperator} from '../types';
 import {WebGLContext} from '../webgl-context';
 
+import {WebGLConvPacked} from './conv-pack';
+import {getActicationSnippet} from './fuse-utils';
+
 export class WebGLConv extends Conv {
+  unpackedGroupedConvImpl: WebGLUnpackedGroupedConv;
+  unpackedConvImpl: WebGLUnpackedConv;
+  packedConvImpl: WebGLConvPacked;
+
+  constructor() {
+    super();
+    this.unpackedGroupedConvImpl = new WebGLUnpackedGroupedConv();
+    this.unpackedConvImpl = new WebGLUnpackedConv();
+    this.packedConvImpl = new WebGLConvPacked();
+  }
+
+  initialize(attributes: Attribute): void {
+    super.initialize(attributes);
+    this.unpackedGroupedConvImpl.initialize(attributes);
+    this.unpackedConvImpl.initialize(attributes);
+    this.packedConvImpl.initialize(attributes);
+  }
+
+  run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
+    const packMode = inferenceHandler.session.pack;
+    if (this.group > 1) {
+      return this.unpackedGroupedConvImpl.run(inferenceHandler, inputs);
+    } else if (packMode && inputs[0].dims.length === 4 && inputs[0].dims[0] === 1) {
+      return this.packedConvImpl.run(inferenceHandler, inputs);
+    } else {
+      return this.unpackedConvImpl.run(inferenceHandler, inputs);
+    }
+  }
+
+  static calcOutputShape(
+      inputShape: number[], kernelShape: number[], dilations: number[], adjustPads: number[],
+      strides: number[]): number[] {
+    const batchSize = inputShape[0];
+    const inputSpatialShape = inputShape.slice(2);
+    const spatialRank = inputSpatialShape.length;
+    const outChannels = kernelShape[0];
+    const kernelSpatialShape = kernelShape.slice(2);
+    const dilatedKernelShape = kernelSpatialShape.map((v, i) => v + (v - 1) * (dilations[i] - 1));
+    const inputSpatialShapeWithPad = inputSpatialShape.map((v, i) => v + adjustPads[i] + adjustPads[i + spatialRank]);
+    const outputSpatialShape =
+        inputSpatialShapeWithPad.map((v, i) => Math.floor((v - dilatedKernelShape[i] + strides[i]) / strides[i]));
+    const outputShape = [batchSize, outChannels].concat(...outputSpatialShape);
+    return outputShape;
+  }
+}
+
+export class WebGLUnpackedGroupedConv extends Conv implements WebGLOperator {
+  run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
+    return inferenceHandler.run(this, inputs);
+  }
+
+  createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
+    const hasBias = inputs.length > 2;
+    const processBias = hasBias ? 'value += getBias(output_channel);' : '';
+    const xShape = inputs[0].dims.slice();
+    const wShape = inputs[1].dims.slice();
+    const outputChannelsPerGroup = wShape[0] / this.group;
+    // if kernelShape is not specified in the attributes of this op, infer it from the weight tensor dims
+    if (this.kernelShape.length === 0) {
+      for (let i = 2; i < wShape.length; ++i) {
+        this.kernelShape.push(wShape[i]);
+      }
+    }
+    PoolConvUtil.adjustPadsBasedOnAutoPad(
+        inputs[0].dims, this.strides, this.dilations, this.kernelShape, this.pads, this.autoPad);
+    Logger.verbose(
+        'Conv',
+        `autpPad:${this.autoPad}, dilations:${this.dilations}, group:${this.group}, kernelShape:${
+            this.kernelShape}, pads:${this.pads}, strides:${this.strides}`);
+    const outputShape = WebGLConv.calcOutputShape(xShape, wShape, this.dilations, this.pads, this.strides);
+    const glsl = getGlsl(handler.session.backend.glContext.version);
+
+    const {activationFunction, applyActivation} = getActicationSnippet(this.activation);
+
+    const shaderSource = `
+    const ivec2 strides = ivec2(${this.strides[0]}, ${this.strides[1]});
+    const ivec2 pads = ivec2(${this.pads[0]}, ${this.pads[1]});
+    ${activationFunction}
+    void main() {
+      ivec4 coords = getOutputCoords();
+      int batch = coords.x;
+      int output_channel = coords.y;
+      ivec2 xRCCorner = coords.zw * strides - pads;
+      int group_id = output_channel / ${outputChannelsPerGroup};
+
+      float value = 0.0;
+      for (int wInChannel = 0; wInChannel < ${wShape[1]}; wInChannel++) {
+        int input_channel = group_id * ${wShape[1]} + wInChannel;
+        for (int wHeight = 0; wHeight < ${wShape[2]}; wHeight++) {
+          int xHeight = xRCCorner.x + wHeight * ${this.dilations[0]};
+
+          if (xHeight < 0 || xHeight >= ${xShape[2]}) {
+            continue;
+          }
+
+          for (int wWidth = 0; wWidth < ${wShape[3]}; wWidth++) {
+            int xWidth = xRCCorner.y + wWidth * ${this.dilations[1]};
+            if (xWidth < 0 || xWidth >= ${xShape[3]}) {
+              continue;
+            }
+
+            float xVal = getX(batch, input_channel, xWidth, xHeight);
+            float wVal = getW(output_channel, wInChannel, wWidth, wHeight);
+            value += xVal*wVal;
+          }
+        }
+      }
+      ${processBias}
+      ${applyActivation}
+      ${glsl.output} = vec4(value, .0, .0, .0);
+    }
+`;
+    return {
+      inputLayouts: inputs.map(t => handler.getOrCreateTextureLayout(t)),
+      outputLayout: handler.createTextureLayoutFromShape(outputShape),
+      samplers: hasBias ? ['X', 'W', 'Bias'] : ['X', 'W'],
+      shaderSource,
+      hasMain: true,
+    };
+  }
+
+  createRunData(handler: WebGLInferenceHandler, programInfo: ProgramInfo, inputs: Tensor[]): RunData {
+    const inputTDs = inputs.map((t, i) => handler.getOrCreateTextureData(t, programInfo.inputLayouts[i]));
+    return {
+      inputTextureDatas: inputTDs,
+      outputTextureData: handler.createTextureDataFromLayout(programInfo.outputLayout, inputTDs[0].tensor.type),
+      uniformData: {}
+    };
+  }
+}
+
+export class WebGLUnpackedConv extends Conv {
   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
     const programManager = inferenceHandler.session.programManager;
     if (!this.artifacts) {
       this.artifacts = [];
-      const programInfos = this.createProgramInfos(inferenceHandler, inputs);
+      const programInfos = this.createProgramInfoArray(inferenceHandler, inputs);
       for (let i = 0; i < programInfos.length; ++i) {
         const artifact = inferenceHandler.session.programManager.build(programInfos[i]);
         this.artifacts.push(artifact);
       }
     }
-    const runDatas = this.createRunDatas(inferenceHandler, this.artifacts.map(a => a.programInfo), inputs);
-    programManager.run(this.artifacts[0], runDatas[0]);
-    programManager.run(this.artifacts[1], runDatas[1]);
-    return [runDatas[1].outputTextureData.tensor];
+    const runDataArray = this.createRunDataArray(inferenceHandler, this.artifacts.map(a => a.programInfo), inputs);
+    inferenceHandler.checkAndUpdateTextureForm(this.artifacts[0], runDataArray[0]);
+    programManager.run(this.artifacts[0], runDataArray[0]);
+    programManager.run(this.artifacts[1], runDataArray[1]);
+    return [runDataArray[1].outputTextureData.tensor];
   }
-  createProgramInfos(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo[] {
+  createProgramInfoArray(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo[] {
     const xshape = inputs[0].dims.slice();
     const kshape = inputs[1].dims.slice();
     // if kernelShape is not specified in the attributes of this op, infer it from the weight tensor dims
@@ -48,14 +185,15 @@ export class WebGLConv extends Conv {
         this.createDotProductProgramInfo(inferenceHandler, im2colProgramInfo.outputLayout, inputs, outputShape);
     return [im2colProgramInfo, dotProductProgramInfo];
   }
-  createRunDatas(inferenceHandler: WebGLInferenceHandler, programInfos: ProgramInfo[], inputs: Tensor[]): RunData[] {
+  createRunDataArray(inferenceHandler: WebGLInferenceHandler, programInfos: ProgramInfo[], inputs: Tensor[]):
+      RunData[] {
     const k = inputs[1];
     const b = inputs.length >= 3 ? inputs[2] : undefined;
     let kTD = inferenceHandler.getTextureData(k.dataId);
     if (!kTD) {
       Logger.verbose('Conv', 'Did not find the adjustedKernel texture in the cache. Creating rew.');
       const newKernelData =
-          WebGLConv.prepKernelForDotProduct(k.dims.slice(), this.group, 4, k.floatData as Float32Array);
+          WebGLUnpackedConv.prepKernelForDotProduct(k.dims.slice(), this.group, 4, k.floatData as Float32Array);
       // hack: should use graph transformer to rewrite initializer K
       kTD = inferenceHandler.createTextureDataFromLayoutBindTensor(
           programInfos[1].inputLayouts[1], k.type, newKernelData, k);
@@ -82,7 +220,6 @@ export class WebGLConv extends Conv {
         let blend = false;
         for (let k = 0; k < sharedDim; k += sharedDimReadSize) {
           Logger.verbose('MatMul2D', `k = ${k}, sharedDim: ${sharedDim}, readSize = ${sharedDimReadSize}`);
-
           if (k === sharedDimReadSize) {
             blend = true;
             gl.enable(gl.BLEND);
@@ -112,9 +249,10 @@ export class WebGLConv extends Conv {
     const kshape = inputs[1].dims.slice();
 
     const rank = outputShape.length;
-    const im2colDims = WebGLConv.calcIm2ColDims(xshape, kshape, outputShape, 4);
+    const im2colDims = WebGLUnpackedConv.calcIm2ColDims(xshape, kshape, outputShape, 4);
     const outputLayout = inferenceHandler.createTextureLayoutFromShape(
         im2colDims, 4, [im2colDims[0], im2colDims[1], im2colDims[2], im2colDims[3] * 4], {breakAxis: 3});
+
     const shaderSource = `
       const int XC = ${xshape[1]};
       const int XH = ${xshape[2]};
@@ -130,13 +268,12 @@ export class WebGLConv extends Conv {
       const int KHKW = KH*KW;
       const int XCKHKW = XC * KHKW;
       const int outputChannels = 4;
-
       vec4 process(int indices[${rank}]) {
         int b  = indices[0]; // batch size
         int oh = indices[1] * strideH - padH; //output height
         int ow = indices[2] * strideW - padW; //output width
         int p = indices[3] * outputChannels; //patch
-        vec4 v = vec4(0.0);
+        vec4 value = vec4(0.0);
         for(int i=0; i < outputChannels; ++i) {
           if(p < XCKHKW) {
             int patchC = p / KHKW;
@@ -153,12 +290,12 @@ export class WebGLConv extends Conv {
                 xh2 < XH &&
                 xw2 >= 0 &&
                 xw2 < XW) {
-              v[i] = _X(x);
+              value[i] = _X(x);
             }
           }
           ++p;
         }
-        return v;
+        return value;
       }
       `;
     return {
@@ -188,7 +325,7 @@ export class WebGLConv extends Conv {
     const outputLayout = inferenceHandler.createTextureLayoutFromShape(outputShape);
     const initValue = (inputs.length < 3) ? '0.0' : '_B(b)';
     const sharedDim = im2colLayout.shape[3];
-    const blendEnabled = inferenceHandler.session.backend.glContext.isBlendSupported;
+    const blendEnabled = inferenceHandler.session.backend.glContext.isBlendSupported && !this.activation;
     const sharedDimReadSize = blendEnabled && inferenceHandler.session.backend.matmulMaxBatchSize ?
         this.calcSharedDimReadSize(inferenceHandler.session.backend.matmulMaxBatchSize, sharedDim) :
         sharedDim;
@@ -196,8 +333,12 @@ export class WebGLConv extends Conv {
     if (inputs.length === 3) {
       samplers.push('B');
     }
+
+    const {activationFunction, applyActivation} = getActicationSnippet(this.activation);
+
     const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
     const shaderSource = `
+    ${activationFunction}
     float process(int indices[${rank}]) {
       int b[1];
       b[0] = indices[1];
@@ -208,15 +349,16 @@ export class WebGLConv extends Conv {
       int im2colOffset = im2col[0] * ${im2colLayout.strides[0]} + im2col[1] * ${
         im2colLayout.strides[1]} + im2col[2] * ${im2colLayout.strides[2]} + sharedDimOffset;
       int kernelOffset = indices[1] * ${kLayout.strides[0]} + sharedDimOffset;
-      float sum = sharedDimOffset == 0 ? ${initValue} : 0.0;
+      float value = sharedDimOffset == 0 ? ${initValue} : 0.0;
       for (int i = 0; i < ${sharedDimReadSize}; ++i) {
         vec2 im2colCoords = offsetToCoords(im2colOffset, ${im2colLayout.width}, ${im2colLayout.height});
         vec2 kernelCoords = offsetToCoords(kernelOffset, ${kLayout.width}, ${kLayout.height});
-        sum += dot(${glsl.texture2D}(Im2Col, im2colCoords), ${glsl.texture2D}(K, kernelCoords));
+        value += dot(${glsl.texture2D}(Im2Col, im2colCoords), ${glsl.texture2D}(K, kernelCoords));
         ++im2colOffset;
         ++kernelOffset;
       }
-      return sum;
+      ${applyActivation}
+      return value;
     }`;
     return {
       inputLayouts: inputs.length === 3 ? [im2colLayout, kLayout, bLayout!] : [im2colLayout, kLayout],
@@ -249,21 +391,7 @@ export class WebGLConv extends Conv {
       Math.ceil(inputShape[1] * kernelShape[2] * kernelShape[3] / channels)
     ];
   }
-  static calcOutputShape(
-      inputShape: number[], kernelShape: number[], dilations: number[], adjustPads: number[],
-      strides: number[]): number[] {
-    const batchSize = inputShape[0];
-    const inputSpatialShape = inputShape.slice(2);
-    const spatialRank = inputSpatialShape.length;
-    const outChannels = kernelShape[0];
-    const kernelSpatialShape = kernelShape.slice(2);
-    const dilatedKernelShape = kernelSpatialShape.map((v, i) => v + (v - 1) * (dilations[i] - 1));
-    const inputSpatialShapeWithPad = inputSpatialShape.map((v, i) => v + adjustPads[i] + adjustPads[i + spatialRank]);
-    const outputSpatialShape =
-        inputSpatialShapeWithPad.map((v, i) => Math.floor((v - dilatedKernelShape[i] + strides[i]) / strides[i]));
-    const outputShape = [batchSize, outChannels].concat(...outputSpatialShape);
-    return outputShape;
-  }
+
   protected calcSharedDimReadSize(preferredBatchSize: number, sharedDim: number): number {
     if (preferredBatchSize <= 0 || sharedDim < preferredBatchSize || sharedDim % preferredBatchSize !== 0) {
       return sharedDim;

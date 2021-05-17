@@ -531,7 +531,20 @@ stages:
             --build-arg BUILD_UID=$(id -u)
           Repository: onnxruntimetraininggpubuild
 
+      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/mnist" -d "/mnist"
+        displayName: 'Mount MNIST'
+        condition: succeededOrFailed()
+
+      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/bert-data" -d "/bert_data"
+        displayName: 'Mount bert-data'
+        condition: succeededOrFailed()
+
+      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
+        displayName: 'Mount hf-models-cache'
+        condition: succeededOrFailed()
+
       - task: CmdLine@2
+        displayName: 'build onnxruntime'
         inputs:
           script: |
             mkdir -p $HOME/.onnx
@@ -554,12 +567,33 @@ stages:
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
-                  --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion)
+                  --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion) ;
           workingDirectory: $(Build.SourcesDirectory)
 
-      # TODO: run ortmodule test.
-      # without run_dockerbuild (build.py instead), /build/RelWithDebInfo/ is not available after build.py step. need to find a way to do module test within packaging pipeline
-  
+      # with Cuda 11.1:
+      # test_bert_inputs_with_dynamic_shape: RuntimeError: CUDA error: CUBLAS_STATUS_EXECUTION_FAILED when calling `cublasSgemm( handle, opa, opb, m, n, k, &alpha, a, lda, b, ldb, &beta, c, ldc)`
+      # test_gpu_reserved_memory_with_torch_no_grad: RuntimeError: CUDA error: CUBLAS_STATUS_EXECUTION_FAILED when calling `cublasSgemmStridedBatched( handle, opa, opb, m, n, k, &alpha, a, lda, stridea, b, ldb, strideb, &beta, c, ldc, stridec, num_batches)`
+      - task: CmdLine@2
+        displayName: 'test ortmodule'
+        condition: ne(variables['CudaVersion'], '11.1')
+        inputs:
+          script: |
+            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime/ && \
+            files=($(Build.BinariesDirectory)/Release/dist/*.whl) && \
+            echo ${files[0]} && \
+            whlfilename=$(basename ${files[0]}) && \
+            echo $whlfilename && \
+            docker run --rm \
+              --gpus all \
+              -e NVIDIA_VISIBLE_DEVICES=all \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /mnist:/mnist \
+              --volume /bert_data:/bert_data \
+              --volume /hf_models_cache:/hf_models_cache \
+              onnxruntimetraininggpubuild \
+                bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$whlfilename ; $(PythonManylinuxDir)/bin/python3 /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release " ;
+          workingDirectory: $(Build.SourcesDirectory)
+
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
         inputs:
@@ -1070,8 +1104,8 @@ stages:
             sudo rm -rf /mnt/toolchains
             sudo mkdir /mnt/toolchains
             sudo tar -Jxf $(Build.BinariesDirectory)/toolchains.tar.xz -C /mnt/toolchains
-            aria2c -q https://github.com/protocolbuffers/protobuf/releases/download/v3.15.8/protoc-3.15.8-linux-x86_64.zip
-            unzip protoc-3.15.8-linux-x86_64.zip
+            aria2c -q https://github.com/protocolbuffers/protobuf/releases/download/v3.16.0/protoc-3.16.0-linux-x86_64.zip
+            unzip protoc-3.16.0-linux-x86_64.zip
             sudo cp /mnt/toolchains/manylinux2014_aarch64/usr/include/stdlib.h /mnt/toolchains/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu/aarch64-linux-gnu/libc/usr/include/
             #The PYTHON_EXECUTABLE cmake variable is only used for generating ONNX's protobuf definition file.(Invoking the onnx/gen_proto.py file in ONNX's source folder)
             cmake \

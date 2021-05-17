@@ -190,7 +190,7 @@ else:
   libs.extend(['onnxruntime_providers_tensorrt.dll'])
   libs.extend(['onnxruntime_providers_openvino.dll'])
   # DirectML Libs
-  libs.extend(['directml.dll'])
+  libs.extend(['DirectML.dll'])
   # Nuphar Libs
   libs.extend(['tvm.dll'])
   if nightly_build:
@@ -232,6 +232,10 @@ packages = [
     'onnxruntime.capi.training',
     'onnxruntime.datasets',
     'onnxruntime.tools',
+    'onnxruntime.tools.ort_format_model',
+    'onnxruntime.tools.ort_format_model.ort_flatbuffers_py',
+    'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.experimental',
+    'onnxruntime.tools.ort_format_model.ort_flatbuffers_py.experimental.fbs',
     'onnxruntime.quantization',
     'onnxruntime.quantization.operators',
     'onnxruntime.quantization.CalTableFlatBuffers',
@@ -258,9 +262,8 @@ if enable_training:
     # install an onnxruntime training package with matching torch cuda version.
     package_name = 'onnxruntime-training'
     if cuda_version:
-        # removing '.' to make Cuda version number in the same form as Pytorch.
-        cuda_version = cuda_version.replace('.', '')
-        local_version = '+cu' + cuda_version
+        # removing '.' to make local Cuda version number in the same form as Pytorch.
+        local_version = '+cu' + cuda_version.replace('.', '')
     if rocm_version:
         # removing '.' to make Cuda version number in the same form as Pytorch.
         rocm_version = rocm_version.replace('.', '')
@@ -364,6 +367,34 @@ if not path.exists(requirements_path):
     raise FileNotFoundError("Unable to find " + requirements_file)
 with open(requirements_path) as f:
     install_requires = f.read().splitlines()
+
+if enable_training:
+    def save_build_and_package_info(package_name, version_number, cuda_version):
+
+        sys.path.append(path.join(path.dirname(__file__), 'onnxruntime', 'python'))
+        from onnxruntime_collect_build_info import find_cudart_versions
+
+        version_path = path.join('onnxruntime', 'capi', 'build_and_package_info.py')
+        with open(version_path, 'w') as f:
+            f.write("package_name = '{}'\n".format(package_name))
+            f.write("__version__ = '{}'\n".format(version_number))
+
+            if cuda_version:
+                f.write("cuda_version = '{}'\n".format(cuda_version))
+
+                # cudart_versions are integers
+                cudart_versions = find_cudart_versions(build_env=True)
+                if len(cudart_versions) == 1:
+                    f.write("cudart_version = {}\n".format(cudart_versions[0]))
+                else:
+                    print(
+                        "Error getting cudart version. ",
+                        "did not find any cudart library" if len(cudart_versions) == 0 else "found multiple cudart libraries")
+            else:
+                # TODO: rocm
+                pass
+
+    save_build_and_package_info(package_name, version_number, cuda_version)
 
 # Setup
 setup(

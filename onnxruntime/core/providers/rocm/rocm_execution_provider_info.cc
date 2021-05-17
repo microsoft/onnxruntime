@@ -57,6 +57,9 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
               arena_extend_strategy_mapping, info.arena_extend_strategy)
           .Parse(options));
 
+  ROCMExecutionProviderExternalAllocatorInfo alloc_info{alloc, free};
+  info.external_allocator_info = alloc_info;
+
   return info;
 }
 

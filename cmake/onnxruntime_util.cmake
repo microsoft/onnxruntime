@@ -10,7 +10,7 @@ file(GLOB_RECURSE onnxruntime_util_srcs CONFIGURE_DEPENDS
 
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_util_srcs})
 
-add_library(onnxruntime_util ${onnxruntime_util_srcs})
+onnxruntime_add_static_library(onnxruntime_util ${onnxruntime_util_srcs})
 target_include_directories(onnxruntime_util PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC ${eigen_INCLUDE_DIRS})
 if (onnxruntime_USE_CUDA)
  target_include_directories(onnxruntime_util PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})

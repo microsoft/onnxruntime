@@ -12,6 +12,7 @@
 #include "orttraining/core/graph/optimizer_graph_output_key.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/graph/gradient_config.h"
+#include "orttraining/core/optimizer/graph_transformer_config.h"
 
 namespace onnxruntime {
 namespace training {
@@ -142,7 +143,13 @@ class TrainingSession : public InferenceSession {
     // Exactly one of loss_function_config or loss_name should be given.
     optional<std::string> loss_name{};
 
-    struct GistConfiguration {};
+    struct GistConfiguration {
+      // The operator type to which GIST is applied. Valid Values - 1 (Softmax), 2 (Transpose), 3 (Reshape),
+      // 4 (Add), 5 (Dropout), 6 (LayerNormalization), 7 (MatMul), 8 (Relu), 9 (All the above)
+      int op_type{};
+      // The compression type used for GIST. Valid values - GistBinarize, GistPack1, GistPack8, GistPack16, GistPackMsfp15
+      std::string compr_type{};
+    };
     // The GIST configuration.
     // If not provided, GIST is disabled.
     optional<GistConfiguration> gist_config{};
@@ -241,25 +248,7 @@ class TrainingSession : public InferenceSession {
     // Otherwise, it returns false.
     optional<PipelineConfiguration> pipeline_config{};
 
-    struct GraphTransformerConfiguration {
-      // Whether to enable GELU approximation which is faster but produces different results.
-      bool enable_gelu_approximation{false};
-      // Enable recompute of attention dropout to save memory
-      bool attn_dropout_recompute{false};
-      // Enable recompute of Gelu activation output to save memory
-      bool gelu_recompute{false};
-      // Enable recompute of transformer layer ouput to save memory
-      bool transformer_layer_recompute{false};
-      // Number of layers to apply recompute
-      int number_recompute_layers{0};
-      // Propagate FP16 Cast operations up and FP32 operations down
-      int propagate_cast_ops_level{-1};
-      std::vector<std::string> propagate_cast_ops_allow;
-      // Whether allow fusion of layer norm subgraph if doing so will cause modified precision.
-      bool allow_layer_norm_mod_precision{false};
-    };
-
-    GraphTransformerConfiguration graph_transformer_config{};
+    TrainingGraphTransformerConfiguration graph_transformer_config{};
   };
 
   /**
@@ -433,7 +422,7 @@ class TrainingSession : public InferenceSession {
       std::string* loss_scale_input_name,
       std::string& actual_loss_name);
 
-  common::Status AddGistEncoding();
+  common::Status AddGistEncoding(const int op_type, const std::string compr_type);
 
   /** Add tensorboard summary nodes to the graph.
   @param summary_name name for the merged summary node.
@@ -483,7 +472,7 @@ class TrainingSession : public InferenceSession {
       optional<TrainingConfigurationResult::PipelineConfigurationResult>& pipeline_config_result);
 
   common::Status ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
-                                                 const TrainingConfiguration::GraphTransformerConfiguration& config);
+                                                 const TrainingGraphTransformerConfiguration& config);
 
   common::Status ApplyModelParallelTransformationsToMainGraph(std::unordered_set<std::string>& weights_to_train,
                                                               TrainingConfigurationResult& config_result_out);
@@ -492,7 +481,7 @@ class TrainingSession : public InferenceSession {
   void AddPreTrainingTransformers(const IExecutionProvider& execution_provider,  // for constant folding
                                   GraphTransformerManager& transformer_manager,
                                   const std::unordered_set<std::string>& weights_to_train,
-                                  const TrainingConfiguration::GraphTransformerConfiguration& config,
+                                  const TrainingGraphTransformerConfiguration& config,
                                   TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel);
 
   /** override the parent method in inference session for training specific transformers */

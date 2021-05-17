@@ -1,90 +1,127 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 const path = require('path');
 const webpack = require('webpack');
-const NodePolyfillPlugin = require("node-polyfill-webpack-plugin");
+const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
+const TerserPlugin = require("terser-webpack-plugin");
 const minimist = require('minimist');
 
-function buildAllConfig({
-  suffix = '',
-  format = 'umd',
-  target = 'ES2017',
-  mode = 'production',
-  devtool = 'source-map'
-}) {
+const VERSION = require(path.join(__dirname, 'package.json')).version;
+const COPYRIGHT_BANNER = `/*!
+* ONNX Runtime Web v${VERSION}
+* Copyright (c) Microsoft Corporation. All rights reserved.
+* Licensed under the MIT License.
+*/`;
+
+function defaultTerserPluginOptions() {
   return {
-    entry: path.resolve(__dirname, 'lib/index.ts'),
-    output: {
-      path: path.resolve(__dirname, 'dist'),
-      filename: `ort${suffix}.js`,
-      library: {
-        name: 'ort',
-        type: format
+    extractComments: false,
+    terserOptions: {
+      format: {
+        comments: false,
+      },
+      compress: {
+        passes: 2
+      },
+      mangle: {
+        reserved: ["_scriptDir"]
       }
-    },
-    externals: {
-      'fs': 'fs',
-      'path': 'path',
-      'util': 'util',
-    },
-    resolve: { extensions: ['.ts', '.js'] },
-    plugins: [new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] })],
-    module: {
-      rules: [{
-        test: /\.tsx?$/,
-        use: [
-          {
-            loader: 'ts-loader',
-            options: {
-              compilerOptions: { target: target }
-            }
-          }
-        ]
-      }]
-    },
-    mode: mode,
-    devtool: devtool,
+    }
   };
 }
 
-function buildWebConfig({
-  suffix = '',
-  format = 'umd',
-  target = 'ES2017',
-  mode = 'production',
-  devtool = 'source-map'
-}) {
-  return {
+// common config for release bundle
+function buildConfig({ filename, format, target, mode, devtool }) {
+  const config = {
+    target: [format === 'commonjs' ? 'node' : 'web', target],
     entry: path.resolve(__dirname, 'lib/index.ts'),
     output: {
       path: path.resolve(__dirname, 'dist'),
-      filename: `ort-web${suffix}.js`,
+      filename,
       library: {
         type: format
       }
-    },
-    externals: {
-      'onnxruntime-common': 'ort',
-      'fs': 'fs',
-      'path': 'path',
-      'util': 'util',
     },
     resolve: { extensions: ['.ts', '.js'] },
     plugins: [new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] })],
     module: {
       rules: [{
-        test: /\.tsx?$/,
+        test: /\.ts$/,
         use: [
           {
             loader: 'ts-loader',
             options: {
-              compilerOptions: { target: target }
+              compilerOptions: { target }
             }
           }
         ]
+      }, {
+        test: /\.worker.js$/,
+        type: 'asset/source'
       }]
     },
-    mode: mode,
-    devtool: devtool,
+    mode,
+    devtool
   };
+
+  if (mode === 'production') {
+    config.resolve.alias = {
+      './binding/ort-wasm-threaded.js': './binding/ort-wasm-threaded.min.js',
+      './binding/ort-wasm-threaded.worker.js': './binding/ort-wasm-threaded.min.worker.js'
+    };
+    const options = defaultTerserPluginOptions();
+    options.terserOptions.format.preamble = COPYRIGHT_BANNER;
+    config.plugins.push(new TerserPlugin(options));
+  } else {
+    config.plugins.push(new webpack.BannerPlugin({ banner: COPYRIGHT_BANNER, raw: true }));
+  }
+
+  return config;
+}
+
+// "ort{.min}.js" config
+function buildOrtConfig({
+  suffix = '',
+  target = 'es5',
+  mode = 'production',
+  devtool = 'source-map'
+}) {
+  const config = buildConfig({ filename: `ort${suffix}.js`, format: 'umd', target, mode, devtool });
+  // set global name 'ort'
+  config.output.library.name = 'ort';
+  // do not use those node builtin modules in browser
+  config.resolve.fallback = { path: false, fs: false, util: false };
+  return config;
+}
+
+// "ort-web{.min|.node}.js" config
+function buildOrtWebConfig({
+  suffix = '',
+  format = 'umd',
+  target = 'es5',
+  mode = 'production',
+  devtool = 'source-map'
+}) {
+  const config = buildConfig({ filename: `ort-web${suffix}.js`, format, target, mode, devtool });
+  // exclude onnxruntime-common from bundle
+  config.externals = {
+    'onnxruntime-common': {
+      commonjs: "onnxruntime-common",
+      commonjs2: "onnxruntime-common",
+      root: 'ort'
+    }
+  };
+  // in nodejs, treat as external dependencies
+  if (format === 'commonjs') {
+    config.externals.path = 'path';
+    config.externals.fs = 'fs';
+    config.externals.util = 'util';
+    config.externals.worker_threads = 'worker_threads';
+    config.externals.perf_hooks = 'perf_hooks';
+    config.externals.os = 'os';
+  }
+  return config;
 }
 
 function buildTestRunnerConfig({
@@ -94,7 +131,8 @@ function buildTestRunnerConfig({
   mode = 'production',
   devtool = 'source-map'
 }) {
-  return {
+  const config = {
+    target: ['web', target],
     entry: path.resolve(__dirname, 'test/test-main.ts'),
     output: {
       path: path.resolve(__dirname, 'test'),
@@ -107,15 +145,22 @@ function buildTestRunnerConfig({
     externals: {
       'onnxruntime-common': 'ort',
       'fs': 'fs',
+      'perf_hooks': 'perf_hooks',
+      'worker_threads': 'worker_threads',
+      '../../node': '../../node'
     },
-    resolve: { extensions: ['.ts', '.js'] },
+    resolve: {
+      extensions: ['.ts', '.js'],
+      aliasFields: [],
+      fallback: { './binding/ort-wasm-threaded.js': false, './binding/ort-wasm.js': false }
+    },
     plugins: [
       new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] }),
-      new NodePolyfillPlugin()
+      new NodePolyfillPlugin(),
     ],
     module: {
       rules: [{
-        test: /\.tsx?$/,
+        test: /\.ts$/,
         use: [
           {
             loader: 'ts-loader',
@@ -124,32 +169,63 @@ function buildTestRunnerConfig({
             }
           }
         ]
+      }, {
+        test: /\.worker\.js$/,
+        type: 'asset/source'
       }]
     },
     mode: mode,
     devtool: devtool,
   };
 
+  if (mode === 'production') {
+    config.plugins.push(new TerserPlugin(defaultTerserPluginOptions()));
+  }
+
+  return config;
 }
 
 module.exports = () => {
   const args = minimist(process.argv);
-  const bundleMode = args['bundle-mode'] || 'prod';  // 'prod'|'dev'|'perf'|undefined;
+  const bundleMode = args['bundle-mode'] || 'prod';  // 'prod'|'dev'|'perf'|'node'|undefined;
   const builds = [];
 
-  if (bundleMode === 'prod') {
-    builds.push(
-      buildAllConfig({ suffix: '.min', target: 'es5' }),
-      buildWebConfig({ suffix: '.min', target: 'es5' }),
-      buildAllConfig({ mode: 'development', devtool: 'inline-source-map', target: 'es5' }),
-      buildWebConfig({ mode: 'development', devtool: 'inline-source-map', target: 'es5' }),
-    );
-  }
+  switch (bundleMode) {
+    case 'prod':
+      builds.push(
+        // ort.min.js
+        buildOrtConfig({ suffix: '.min' }),
+        // ort.js
+        buildOrtConfig({ mode: 'development', devtool: 'inline-source-map' }),
+        // ort.es6.min.js
+        buildOrtConfig({ suffix: '.es6.min', target: 'es6' }),
+        // ort.es6.js
+        buildOrtConfig({ suffix: '.es6', mode: 'development', devtool: 'inline-source-map', target: 'es6' }),
 
-  if (bundleMode === 'dev') {
-    builds.push(buildTestRunnerConfig({ suffix: '.dev', mode: 'development', devtool: 'inline-source-map' }));
-  } else if (bundleMode === 'perf') {
-    builds.push(buildTestRunnerConfig({ suffix: '.perf', devtool: undefined }));
+        // ort-web.min.js
+        buildOrtWebConfig({ suffix: '.min' }),
+        // ort-web.js
+        buildOrtWebConfig({ mode: 'development', devtool: 'inline-source-map' }),
+        // ort-web.es6.min.js
+        buildOrtWebConfig({ suffix: '.es6.min', target: 'es6' }),
+        // ort-web.es6.js
+        buildOrtWebConfig({ suffix: '.es6', mode: 'development', devtool: 'inline-source-map', target: 'es6' }),
+      );
+
+    case 'node':
+      builds.push(
+        // ort-web.node.js
+        buildOrtWebConfig({ suffix: '.node', format: 'commonjs' }),
+      );
+      break;
+    case 'dev':
+      builds.push(buildTestRunnerConfig({ suffix: '.dev', mode: 'development', devtool: 'inline-source-map' }));
+      break;
+    case 'perf':
+      builds.push(buildTestRunnerConfig({ suffix: '.perf' }));
+      break;
+    default:
+      throw new Error(`unsupported bundle mode: ${bundleMode}`);
   }
 
   return builds;

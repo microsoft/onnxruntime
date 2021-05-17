@@ -248,6 +248,14 @@
         18128921553709069152
     ],
     [
+        "BatchNormalization ai.onnx CPUExecutionProvider",
+        13094179255141648608
+    ],
+    [
+        "BatchNormalization ai.onnx CPUExecutionProvider",
+        17832136363477464736
+    ],
+    [
         "BitShift ai.onnx CPUExecutionProvider",
         4758677670685660688
     ],
@@ -873,6 +881,10 @@
     ],
     [
         "GRU ai.onnx CPUExecutionProvider",
+        5656895183302764352
+    ],
+    [
+        "GRU ai.onnx CPUExecutionProvider",
         2706165712066264784
     ],
     [
@@ -1074,6 +1086,10 @@
     [
         "LRN ai.onnx CPUExecutionProvider",
         15047083116516536152
+    ],
+    [
+        "LSTM ai.onnx CPUExecutionProvider",
+        4392316607181063320
     ],
     [
         "LSTM ai.onnx CPUExecutionProvider",
@@ -2038,6 +2054,10 @@
     [
         "ReverseSequence ai.onnx CPUExecutionProvider",
         777686786711298232
+    ],
+    [
+        "RNN ai.onnx CPUExecutionProvider",
+        1524012948315159160
     ],
     [
         "RNN ai.onnx CPUExecutionProvider",

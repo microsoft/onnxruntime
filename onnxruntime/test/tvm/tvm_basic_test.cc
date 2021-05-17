@@ -108,7 +108,7 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
 
     for (auto& group : groups) {
       if (group.size() > 1) {
-        std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
+        std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
         std::set<const onnxruntime::NodeArg*> fused_inputs, fused_outputs;
         for (auto index : group) {
           sub_graph->nodes.push_back(index);
@@ -131,7 +131,7 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
           }
         }
 
-        auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+        auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
         meta_def->name = "TVMFuse";
         meta_def->domain = "FuseTest";
         for (auto input : fused_inputs) {
@@ -147,7 +147,7 @@ class FuseExecutionProviderX : public CPUExecutionProvider {
         sub_graph->SetMetaDef(std::move(meta_def));
         //TODO:set fuse kernel func;
         result.push_back(
-            onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+            std::make_unique<ComputeCapability>(std::move(sub_graph)));
       }
     }
     return result;
@@ -312,7 +312,7 @@ TEST(TVMTest, CodeGen_Demo_for_Fuse_Mul) {
 
   InferenceSession session_object{so, GetEnvironment()};
   CPUExecutionProviderInfo info;
-  auto tvm_xp = onnxruntime::make_unique<FuseExecutionProviderX>(info);
+  auto tvm_xp = std::make_unique<FuseExecutionProviderX>(info);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(tvm_xp)).IsOK());
   EXPECT_TRUE(session_object.Load(MODEL_URI).IsOK());
   EXPECT_TRUE(session_object.Initialize().IsOK());

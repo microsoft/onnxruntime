@@ -27,7 +27,7 @@ struct PartialGraphExecutionState {
                                     const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                     const SessionState& session_state) {
     if (execution_frame_ == nullptr) {
-      execution_frame_ = onnxruntime::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
+      execution_frame_ = std::make_unique<ExecutionFrame>(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
                                                                   fetch_allocators, session_state);
     } else {
       execution_frame_->UpdateFeeds(feed_mlvalue_idxs, feeds);

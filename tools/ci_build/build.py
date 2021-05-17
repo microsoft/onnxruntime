@@ -331,6 +331,8 @@ def parse_arguments():
         help="Specify the minimum version of the target platform "
         "(e.g. macOS or iOS)"
         "This is only supported on MacOS")
+    parser.add_argument("--apple_disable_bitcode", action='store_true',
+                        help="Disable bitcode for iOS, bitcode is by default enabled for iOS.")
 
     # WebAssembly build
     parser.add_argument("--build_wasm", action='store_true', help="Build for WebAssembly")
@@ -340,6 +342,12 @@ def parse_arguments():
     parser.add_argument(
         "--enable_wasm_threads", action='store_true',
         help="Enable WebAssembly multi-threads support")
+    parser.add_argument(
+        "--enable_wasm_sourcemap", action='store_true',
+        help="Build WebAssembly with source map")
+    parser.add_argument(
+        "--wasm_sourcemap_base", default="http://localhost:9876/onnxruntime/",
+        help="Set base URL of the source map")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -513,7 +521,11 @@ def parse_arguments():
     parser.add_argument("--code_coverage", action='store_true',
                         help="Generate code coverage when targetting Android (only).")
     parser.add_argument(
-        "--ms_experimental", action='store_true', help="Build microsoft experimental operators.")
+        "--ms_experimental", action='store_true', help="Build microsoft experimental operators.")\
+
+    parser.add_argument(
+        "--build_eager_mode", action='store_true',
+        help="Build ONNXRuntime micro-benchmarks.")
 
     return parser.parse_args()
 
@@ -734,6 +746,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING=" + ("OFF" if args.disable_wasm_exception_catching
                                                                   else "ON"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
+        "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP=" + ("ON" if args.enable_wasm_sourcemap else "OFF"),
+        "-Donnxruntime_WEBASSEMBLY_SOURCEMAP_BASE=" + (args.wasm_sourcemap_base if args.enable_wasm_sourcemap else ""),
     ]
 
     if acl_home and os.path.exists(acl_home):
@@ -813,7 +828,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(
                 args.android_ndk_path, 'build', 'cmake', 'android.toolchain.cmake'),
             "-DANDROID_PLATFORM=android-" + str(args.android_api),
-            "-DANDROID_ABI=" + str(args.android_abi)
+            "-DANDROID_ABI=" + str(args.android_abi),
+            "-DANDROID_MIN_SDK=" + str(args.android_api),
         ]
 
         if args.android_cpp_shared:
@@ -866,6 +882,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
                 # we do not need protoc binary for ios cross build
                 "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
+                "-Donnxruntime_ENABLE_BITCODE=" + ("OFF" if args.apple_disable_bitcode else "ON"),
                 "-DCMAKE_TOOLCHAIN_FILE=" + (
                     args.ios_toolchain_file if args.ios_toolchain_file
                     else "../cmake/onnxruntime_ios.toolchain.cmake")
@@ -1163,7 +1180,7 @@ def setup_rocm_build(args, configs):
     return rocm_home or ''
 
 
-def run_android_tests(args, source_dir, config, cwd):
+def run_android_tests(args, source_dir, build_dir, config, cwd):
     sdk_tool_paths = android.get_sdk_tool_paths(args.android_sdk_path)
     device_dir = '/data/local/tmp'
 
@@ -1172,6 +1189,9 @@ def run_android_tests(args, source_dir, config, cwd):
 
     def adb_shell(*args, **kwargs):
         return run_subprocess([sdk_tool_paths.adb, 'shell', *args], **kwargs)
+
+    def adb_install(*args, **kwargs):
+        return run_subprocess([sdk_tool_paths.adb, 'install', *args], **kwargs)
 
     def run_adb_shell(cmd):
         # GCOV_PREFIX_STRIP specifies the depth of the directory hierarchy to strip and
@@ -1210,6 +1230,20 @@ def run_android_tests(args, source_dir, config, cwd):
             adb_push('onnx_test_runner', device_dir, cwd=cwd)
             adb_shell('chmod +x {}/onnx_test_runner'.format(device_dir))
             run_adb_shell('{0}/onnxruntime_test_all'.format(device_dir))
+            if args.build_java:
+                adb_install(
+                    os.path.join(
+                        get_config_build_dir(build_dir, config),
+                        "java", "androidtest", "android", "app", "build", "outputs", "apk",
+                        "debug", "app-debug.apk"))
+                adb_install(
+                    os.path.join(
+                        get_config_build_dir(build_dir, config),
+                        "java", "androidtest", "android", "app", "build", "outputs", "apk",
+                        "androidTest", "debug", "app-debug-androidTest.apk"))
+                adb_shell(
+                    'am instrument -w ai.onnxruntime.example.javavalidator.test/androidx.test.runner.AndroidJUnitRunner'
+                    )
             if args.use_nnapi:
                 adb_shell('cd {0} && {0}/onnx_test_runner -e nnapi {0}/test'.format(device_dir))
             else:
@@ -1264,7 +1298,13 @@ def run_orttraining_test_orttrainer_frontend_separately(cwd):
 
 
 def run_training_python_frontend_tests(cwd):
-    run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
+    # have to disable due to (with torchvision==0.9.1+cu102 which is required by ortmodule):
+    # Downloading http://yann.lecun.com/exdb/mnist/
+    # https://ossci-datasets.s3.amazonaws.com/mnist/train-images-idx3-ubyte.gz
+    # Failed to download (trying next):
+    # HTTP Error 404: Not Found
+    # run_subprocess([sys.executable, 'onnxruntime_test_ort_trainer.py'], cwd=cwd)
+
     run_subprocess([sys.executable, 'onnxruntime_test_training_unit_tests.py'], cwd=cwd)
     run_subprocess([
         sys.executable, 'orttraining_test_transformers.py',
@@ -1351,7 +1391,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         cwd = os.path.abspath(cwd)
 
         if args.android:
-            run_android_tests(args, source_dir, config, cwd)
+            run_android_tests(args, source_dir, build_dir, config, cwd)
             continue
         elif args.ios:
             run_ios_tests(args, source_dir, config, cwd)

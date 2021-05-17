@@ -1,50 +1,68 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {readFile} from 'fs';
 import {Backend, env, InferenceSession, SessionHandler} from 'onnxruntime-common';
+import {cpus} from 'os';
+import {promisify} from 'util';
 
-import {init, OnnxruntimeWebAssemblySessionHandler} from './wasm';
+import {OnnxruntimeWebAssemblySessionHandler} from './wasm/session-handler';
+import {initializeWebAssembly} from './wasm/wasm-factory';
+
+/**
+ * This function initializes all flags for WebAssembly.
+ *
+ * Those flags are accessible from `ort.env.wasm`. Users are allow to set those flags before the first inference session
+ * being created, to override default value.
+ */
+export const initializeFlags = (): void => {
+  if (typeof env.wasm.initTimeout !== 'number' || env.wasm.initTimeout < 0) {
+    env.wasm.initTimeout = 0;
+  }
+
+  if (typeof env.wasm.numThreads !== 'number' || !Number.isInteger(env.wasm.numThreads) || env.wasm.numThreads < 0) {
+    const numCpuLogicalCores = typeof navigator === 'undefined' ? cpus().length : navigator.hardwareConcurrency;
+    env.wasm.numThreads = Math.ceil((numCpuLogicalCores || 1) / 2);
+  }
+  env.wasm.numThreads = Math.min(4, env.wasm.numThreads);
+
+  if (typeof env.wasm.loggingLevel !== 'string' ||
+      ['verbose', 'info', 'warning', 'error', 'fatal'].indexOf(env.wasm.loggingLevel) === -1) {
+    env.wasm.loggingLevel = 'warning';
+  }
+};
 
 class OnnxruntimeWebAssemblyBackend implements Backend {
   async init(): Promise<void> {
-    await init();
+    // populate wasm flags
+    initializeFlags();
+
+    // init wasm
+    await initializeWebAssembly();
   }
   createSessionHandler(path: string, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
   createSessionHandler(buffer: Uint8Array, options?: InferenceSession.SessionOptions): Promise<SessionHandler>;
-  async createSessionHandler(pathOrBuffer: string|Uint8Array, _options?: InferenceSession.SessionOptions):
+  async createSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
       Promise<SessionHandler> {
     let buffer: Uint8Array;
     if (typeof pathOrBuffer === 'string') {
-      const response = await fetch(pathOrBuffer);
-      const arrayBuffer = await response.arrayBuffer();
-      buffer = new Uint8Array(arrayBuffer);
+      if (typeof fetch === 'undefined') {
+        // node
+        buffer = await promisify(readFile)(pathOrBuffer);
+      } else {
+        // browser
+        const response = await fetch(pathOrBuffer);
+        const arrayBuffer = await response.arrayBuffer();
+        buffer = new Uint8Array(arrayBuffer);
+      }
     } else {
       buffer = pathOrBuffer;
     }
+
     const handler = new OnnxruntimeWebAssemblySessionHandler();
-    // TODO: support SessionOptions
-    handler.loadModel(buffer);
+    handler.loadModel(buffer, options);
     return Promise.resolve(handler);
   }
 }
 
 export const wasmBackend = new OnnxruntimeWebAssemblyBackend();
-
-export interface WebAssemblyFlags {
-  /**
-   * set or get number of worker(s)
-   *
-   * This setting is available only when WebAssembly multithread feature is available in current context.
-   */
-  worker?: number;
-
-  /**
-   * set or get a number specifying the timeout for initialization of WebAssembly backend, in milliseconds.
-   */
-  initTimeout?: number;
-}
-
-/**
- * Represent a set of flags for WebAssembly backend.
- */
-export const flags: WebAssemblyFlags = env.wasm = env.wasm as WebAssemblyFlags || {};

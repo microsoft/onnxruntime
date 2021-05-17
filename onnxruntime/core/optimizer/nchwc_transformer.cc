@@ -182,7 +182,7 @@ void NchwcTransformerImpl::CreateNchwcArgument(Node& node,
   std::string output_reorder_def_name = graph_.GenerateNodeArgName("reorder");
   auto* output_nchwc_arg = &graph_.GetOrCreateNodeArg(output_reorder_def_name, nullptr);
   nchwc_args_[output_original_arg] =
-      onnxruntime::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, channels, shape);
+      std::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, channels, shape);
   output_defs[0] = output_nchwc_arg;
 }
 
@@ -194,7 +194,7 @@ void NchwcTransformerImpl::FuseNchwcArgument(Node& node, const NchwcArgument& nc
   auto& nchwc_node = nchwc_arg.output_node_;
   auto* output_nchwc_arg = nchwc_node.MutableOutputDefs()[0];
   nchwc_args_[output_original_arg] =
-      onnxruntime::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, nchwc_arg.channels_, nchwc_arg.shape_);
+      std::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, nchwc_arg.channels_, nchwc_arg.shape_);
 }
 
 void NchwcTransformerImpl::InsertReorderInput(Node& node) {
@@ -982,13 +982,20 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
   }
   auto* nchwc_input = it->second.get();
 
-  // Only support the nearest interpolation mode (the default value).
+  // Support nearest (default) and linear modes.
   const auto* mode_attr = graph_utils::GetNodeAttribute(node, "mode");
+  bool nearest_mode = true;
   if (mode_attr != nullptr && utils::HasString(*mode_attr)) {
     if (mode_attr->s() != "nearest") {
-      return;
+      if (mode_attr->s() == "linear") {
+        nearest_mode = false;
+      } else {
+        return;
+      }
     }
   }
+
+  const ONNX_NAMESPACE::AttributeProto* transformation_mode_attr = nullptr;
 
   NodeArg* sizes_arg = nullptr;
   NodeArg* scales_arg = nullptr;
@@ -1001,20 +1008,30 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
       scales_arg = input_defs[2];
     }
 
-    // Only support the asymmetric coordinate transformation mode.
-    const auto* transform_mode_attr = graph_utils::GetNodeAttribute(node, "coordinate_transformation_mode");
-    if ((transform_mode_attr == nullptr) ||
-        !utils::HasString(*transform_mode_attr) ||
-        (transform_mode_attr->s() != "asymmetric")) {
+    transformation_mode_attr = graph_utils::GetNodeAttribute(node, "coordinate_transformation_mode");
+    if ((transformation_mode_attr == nullptr) ||
+        !utils::HasString(*transformation_mode_attr)) {
       return;
     }
+    if (transformation_mode_attr->s() != "asymmetric") {
+      // Nearest mode kernel support asymmetric transformation mode only.
+      if (nearest_mode) {
+        return;
+      }
+      if ((transformation_mode_attr->s() != "align_corners") &&
+          (transformation_mode_attr->s() != "half_pixel")) {
+        return;
+      }
+    }
 
-    // Only support the floor rounding mode.
-    const auto* nearest_mode_attr = graph_utils::GetNodeAttribute(node, "nearest_mode");
-    if ((nearest_mode_attr == nullptr) ||
-        !utils::HasString(*nearest_mode_attr) ||
-        (nearest_mode_attr->s() != "floor")) {
-      return;
+    if (nearest_mode) {
+      // Only support the floor rounding mode.
+      const auto* nearest_mode_attr = graph_utils::GetNodeAttribute(node, "nearest_mode");
+      if ((nearest_mode_attr == nullptr) ||
+          !utils::HasString(*nearest_mode_attr) ||
+          (nearest_mode_attr->s() != "floor")) {
+        return;
+      }
     }
   } else {
     scales_arg = input_defs[1];
@@ -1099,6 +1116,12 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
                                     kMSNchwcDomain);
   nchwc_node.SetExecutionProviderType(kCpuExecutionProvider);
   nchwc_node.AddAttribute("scales", scales_attr);
+  if (!nearest_mode) {
+    nchwc_node.AddAttribute("mode", mode_attr->s());
+    if (transformation_mode_attr != nullptr) {
+      nchwc_node.AddAttribute("coordinate_transformation_mode", transformation_mode_attr->s());
+    }
+  }
 
   nchwc_input->remaining_original_uses_--;
 

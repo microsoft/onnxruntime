@@ -43,7 +43,7 @@ void CheckLayerNorm(bool compute_mean = true, bool compute_isd = true) {
     testCase.RunTest();
   else
     testCase.CreateModel(true);
-}  // namespace test
+}
 
 TEST_F(ContribFunExpansionTest, LayerNorm) {
   // Test expand-and-run
@@ -57,6 +57,55 @@ TEST_F(ContribFunExpansionTest, LayerNorm_OptionalOutputs) {
   CheckLayerNorm<float, float, true>(false, false);
   CheckLayerNorm<float, float, true>(false, true);
   CheckLayerNorm<float, float, true>(true, false);
+}
+
+template <typename T>
+void CheckGelu() {
+  FunctionTestCase testCase("Gelu", kMSDomain);
+  std::vector<int64_t> shape{8, 16};
+
+  testCase.AddInput<T>("x", shape);
+  testCase.AddOutput("y");
+
+  // Only check expanded graph. Can't run it yet because no implementation of Erf is available yet.
+  testCase.CreateModel(true);
+}
+
+TEST_F(ContribFunExpansionTest, Gelu) {
+  CheckGelu<float>();
+  CheckGelu<double>();
+  CheckGelu<BFloat16>();
+  CheckGelu<MLFloat16>();
+}
+
+template <typename T, bool RunTest = true>
+void CheckFastGelu(bool withBias = true) {
+  FunctionTestCase testCase("FastGelu", kMSDomain);
+  std::vector<int64_t> shape{8, 16};
+  std::vector<int64_t> bias_shape{16};
+
+  testCase.AddInput<T, RunTest>("x", shape);
+  if (withBias) {
+    testCase.AddInput<T, RunTest>("bias", bias_shape);
+  }
+  testCase.AddOutput("y");
+
+  if (RunTest)
+    testCase.RunTest();
+  else
+    testCase.CreateModel(true);
+}
+
+TEST_F(ContribFunExpansionTest, FastGeluWithBias) {
+  CheckFastGelu<float>(true);
+  CheckFastGelu<BFloat16, false>(true);
+  CheckFastGelu<MLFloat16, false>(true);
+}
+
+TEST_F(ContribFunExpansionTest, FastGeluWithoutBias) {
+  CheckFastGelu<float>(false);
+  CheckFastGelu<BFloat16, false>(false);
+  CheckFastGelu<MLFloat16, false>(false);
 }
 
 }  // namespace test
