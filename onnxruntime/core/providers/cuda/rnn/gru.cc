@@ -17,10 +17,10 @@ namespace cuda {
       13,                                                                       \
       T,                                                                        \
       kCudaExecutionProvider,                                                   \
-      KernelDefBuilder()                                                        \
+      (*KernelDefBuilder::Create())                                             \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())                \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>())         \
-          .InputMemoryType<OrtMemTypeCPUInput>(RNN_Input_Index::sequence_lens), \
+          .InputMemoryType(OrtMemTypeCPUInput, RNN_Input_Index::sequence_lens), \
       GRU<T>);
 
 #define REGISTER_KERNEL_TYPED(T)                                                \

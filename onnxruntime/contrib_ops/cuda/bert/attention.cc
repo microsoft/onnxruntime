@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "attention.h"
 #include "attention_impl.h"
+#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/shared_inc/fpgeneric.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;

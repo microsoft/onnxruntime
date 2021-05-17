@@ -120,6 +120,7 @@ final class OnnxRuntime {
    * in time.
    *
    * @param file The file to remove.
+   * @param onExitOnly Delete the file on exit only, vs trying to do it immediately
    */
   private static void cleanUp(File file, boolean onExitOnly) {
     if (!file.exists()) {
@@ -146,6 +147,7 @@ final class OnnxRuntime {
    *
    * @param tempDirectory The temp directory to write the library resource to.
    * @param library The bare name of the library.
+   * @param systemLoad If system.Load(..) should be called on the library vs just preparing it
    * @throws IOException If the file failed to read or write.
    */
   private static void load(Path tempDirectory, String library, boolean systemLoad)

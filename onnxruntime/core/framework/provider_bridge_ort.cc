@@ -1007,48 +1007,48 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options) {
-  if (auto provider = s_library_cuda.Get())
+  if (auto* provider = s_library_cuda.Get())
     return provider->CreateExecutionProviderFactory(provider_options);
 
   return nullptr;
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena) {
-  if (auto provider = s_library_dnnl.Get())
+  if (auto* provider = s_library_dnnl.Get())
     return provider->CreateExecutionProviderFactory(use_arena);
 
   return nullptr;
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id) {
-  if (auto provider = s_library_tensorrt.Get())
+  if (auto* provider = s_library_tensorrt.Get())
     return provider->CreateExecutionProviderFactory(device_id);
 
   return nullptr;
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* provider_options) {
-  if (auto provider = s_library_tensorrt.Get())
+  if (auto* provider = s_library_tensorrt.Get())
     return provider->CreateExecutionProviderFactory(provider_options);
 
   return nullptr;
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* provider_options) {
-  if (auto provider = s_library_openvino.Get())
+  if (auto* provider = s_library_openvino.Get())
     return provider->CreateExecutionProviderFactory(provider_options);
 
   return nullptr;
 }
 
 ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO() {
-  if (auto provider = s_library_openvino.Get())
+  if (auto* provider = s_library_openvino.Get())
     return reinterpret_cast<ProviderInfo_OpenVINO*>(provider->GetInfo());
   return nullptr;
 }
 
 ProviderInfo_CUDA* GetProviderInfo_CUDA() {
-  if (auto provider = s_library_cuda.Get())
+  if (auto* provider = s_library_cuda.Get())
     return reinterpret_cast<ProviderInfo_CUDA*>(provider->GetInfo());
   LOGS_DEFAULT(WARNING) << "GetProviderInfo_CUDA called, returning nullptr";
   ORT_THROW("CUDA Provider not available, can't get interface for it");

@@ -8,6 +8,35 @@
 #include <mutex>
 #include "core/providers/shared/common.h"
 
+#include "core/framework/random_generator.h"
+#include "core/providers/cpu/controlflow/if.h"
+#include "core/providers/cpu/controlflow/loop.h"
+#include "core/providers/cpu/controlflow/scan.h"
+#include "core/providers/cpu/math/einsum.h"
+#include "core/providers/cpu/object_detection/non_max_suppression.h"
+#include "core/providers/cpu/tensor/concatbase.h"
+#include "core/providers/cpu/tensor/padbase.h"
+#include "core/providers/cpu/tensor/gatherbase.h"
+#include "core/providers/cpu/tensor/slice.h"
+#include "core/providers/cpu/tensor/split.h"
+#include "core/providers/cpu/tensor/size.h"
+#include "core/providers/cpu/tensor/scatter_nd.h"
+#include "core/providers/cpu/tensor/unsqueeze.h"
+#include "core/providers/cpu/tensor/tile.h"
+
+#ifndef DISABLE_CONTRIB_OPS
+#include "contrib_ops/cpu/bert/attention_base.h"
+#include "contrib_ops/cpu/bert/bias_gelu_helper.h"
+#include "contrib_ops/cpu/bert/embed_layer_norm_helper.h"
+#include "contrib_ops/cpu/bert/longformer_attention_base.h"
+#endif
+
+#ifdef ENABLE_TRAINING
+#include "orttraining/training_ops/cpu/aten_ops/aten_op.h"
+#include "orttraining/training_ops/cpu/controlflow/group.h"
+#include "orttraining/training_ops/cpu/controlflow/yield.h"
+#endif
+
 #ifndef _Ret_notnull_
 #define _Ret_notnull_
 #endif
@@ -310,39 +339,6 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status,
 std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) {
   return g_host->CopyOpKernelInfo(info);
 }
-
-}  // namespace onnxruntime
-
-#include "core/providers/cpu/tensor/unsqueeze.h"
-#include "core/providers/cpu/tensor/slice.h"
-#include "core/providers/cpu/tensor/split.h"
-#include "core/providers/cpu/tensor/size.h"
-#include "core/providers/cpu/tensor/scatter_nd.h"
-#include "core/providers/cpu/tensor/padbase.h"
-#include "core/providers/cpu/tensor/concatbase.h"
-#include "core/providers/cpu/tensor/gatherbase.h"
-#include "core/providers/cpu/controlflow/scan.h"
-#include "core/providers/cpu/controlflow/loop.h"
-#include "core/providers/cpu/tensor/tile.h"
-#include "core/providers/cpu/object_detection/non_max_suppression.h"
-#include "core/framework/random_generator.h"
-#include "core/providers/cpu/math/einsum.h"
-#include "core/providers/cpu/controlflow/if.h"
-
-#ifndef DISABLE_CONTRIB_OPS
-#include "contrib_ops/cpu/bert/bias_gelu_helper.h"
-#include "contrib_ops/cpu/bert/embed_layer_norm_helper.h"
-#include "contrib_ops/cpu/bert/longformer_attention_base.h"
-#include "contrib_ops/cpu/bert/attention_base.h"
-#endif
-
-#ifdef ENABLE_TRAINING
-#include "orttraining/training_ops/cpu/aten_ops/aten_op.h"
-#include "orttraining/training_ops/cpu/controlflow/group.h"
-#include "orttraining/training_ops/cpu/controlflow/yield.h"
-#endif
-
-namespace onnxruntime {
 
 namespace utils {
 template <>
