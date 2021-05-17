@@ -734,7 +734,8 @@ bool CommonFastReduce(OpKernelContext* ctx,
                       std::vector<int64_t>& fast_shape,
                       std::vector<int64_t>& output_shape,
                       std::vector<int64_t>& fast_axes) {
-  return CommonFastReduceSwitch(ctx, axes_, keepdims_, noop_with_empty_axes, fast_kind, fast_shape, output_shape, fast_axes,
+  return CommonFastReduceSwitch(ctx, axes_, keepdims_, noop_with_empty_axes,
+                                fast_kind, fast_shape, output_shape, fast_axes,
                                 AGG::WhichFastReduce(), &AGG::FastReduceKR, &AGG::FastReduceRK, &AGG::FastReduceKRK);
 }
 
