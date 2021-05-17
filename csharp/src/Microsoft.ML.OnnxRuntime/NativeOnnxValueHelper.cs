@@ -5,6 +5,7 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Collections.Generic;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -77,6 +78,31 @@ namespace Microsoft.ML.OnnxRuntime
             Marshal.Copy(nativeUtf8, buffer, 0, len);
             return Encoding.UTF8.GetString(buffer, 0, buffer.Length);
         }
+
+        /// <summary>
+        /// Run helper
+        /// </summary>
+        /// <param name="names">names to convert to zero terminated utf8 and pin</param>
+        /// <param name="extractor">delegate for string extraction from inputs</param>
+        /// <param name="cleanupList">list to add pinned memory to for later disposal</param>
+        /// <returns></returns>
+        internal static IntPtr[] ConvertNamesToUtf8<T>(IReadOnlyCollection<T> names, NameExtractor<T> extractor,
+            DisposableList<IDisposable> cleanupList)
+        {
+            var result = new IntPtr[names.Count];
+            for (int i = 0; i < names.Count; ++i)
+            {
+                var name = extractor(names.ElementAt(i));
+                var utf8Name = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name);
+                var pinnedHandle = new PinnedGCHandle(GCHandle.Alloc(utf8Name, GCHandleType.Pinned));
+                result[i] = pinnedHandle.Pointer;
+                cleanupList.Add(pinnedHandle);
+            }
+            return result;
+        }
+
+        // Delegate for string extraction from an arbitrary input/output object
+        internal delegate string NameExtractor<in TInput>(TInput input);
     }
 
     internal static class TensorElementTypeConverter

@@ -201,6 +201,9 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleasePrepackedWeightsContainer;
         public IntPtr CreateSessionWithPrepackedWeightsContainer;
         public IntPtr CreateSessionFromArrayWithPrepackedWeightsContainer;
+        public IntPtr CreateTensorRTProviderOptions;
+        public IntPtr UpdateTensorRTProviderOptions;
+        public IntPtr ReleaseTensorRTProviderOptions;
     }
 
     internal static class NativeMethods
@@ -271,6 +274,8 @@ namespace Microsoft.ML.OnnxRuntime
             OrtRegisterCustomOpsLibrary = (DOrtRegisterCustomOpsLibrary)Marshal.GetDelegateForFunctionPointer(api_.RegisterCustomOpsLibrary, typeof(DOrtRegisterCustomOpsLibrary));
             OrtAddSessionConfigEntry = (DOrtAddSessionConfigEntry)Marshal.GetDelegateForFunctionPointer(api_.AddSessionConfigEntry, typeof(DOrtAddSessionConfigEntry));
             OrtAddInitializer = (DOrtAddInitializer)Marshal.GetDelegateForFunctionPointer(api_.AddInitializer, typeof(DOrtAddInitializer));
+            SessionOptionsAppendExecutionProvider_TensorRT = (DSessionOptionsAppendExecutionProvider_TensorRT)Marshal.GetDelegateForFunctionPointer(
+                                                             api_.SessionOptionsAppendExecutionProvider_TensorRT, typeof(DSessionOptionsAppendExecutionProvider_TensorRT));
 
             OrtCreateRunOptions = (DOrtCreateRunOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateRunOptions, typeof(DOrtCreateRunOptions));
             OrtReleaseRunOptions = (DOrtReleaseRunOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseRunOptions, typeof(DOrtReleaseRunOptions));
@@ -354,6 +359,10 @@ namespace Microsoft.ML.OnnxRuntime
             OrtCreatePrepackedWeightsContainer = (DOrtCreatePrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.CreatePrepackedWeightsContainer, typeof(DOrtCreatePrepackedWeightsContainer));
             OrtReleasePrepackedWeightsContainer = (DOrtReleasePrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.ReleasePrepackedWeightsContainer, typeof(DOrtReleasePrepackedWeightsContainer));
 
+            OrtCreateTensorRTProviderOptions = (DOrtCreateTensorRTProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateTensorRTProviderOptions, typeof(DOrtCreateTensorRTProviderOptions));
+            OrtUpdateTensorRTProviderOptions = (DOrtUpdateTensorRTProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.UpdateTensorRTProviderOptions, typeof(DOrtUpdateTensorRTProviderOptions));
+            OrtReleaseTensorRTProviderOptions = (DOrtReleaseTensorRTProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseTensorRTProviderOptions, typeof(DOrtReleaseTensorRTProviderOptions));
+
         }
 
         [DllImport(nativeLib, CharSet = charSet)]
@@ -375,6 +384,37 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtDisableTelemetryEvents OrtDisableTelemetryEvents;
 
         #endregion Runtime/Environment API
+
+        #region Provider Options API
+        /// <summary>
+        /// Creates native OrtTensorRTProviderOptions instance
+        /// </summary>
+        /// <param name="trtProviderOptionsInstance">(output) native instance of OrtTensorRTProviderOptions</param>
+        public delegate IntPtr /* OrtStatus* */DOrtCreateTensorRTProviderOptions(
+            out IntPtr /*(OrtTensorRTProviderOptions**)*/ trtProviderOptionsInstance);
+        public static DOrtCreateTensorRTProviderOptions OrtCreateTensorRTProviderOptions;
+
+        /// <summary>
+        /// Updates native OrtTensorRTProviderOptions instance using given key/value pairs
+        /// </summary>
+        /// <param name="trtProviderOptionsInstance">native instance of OrtTensorRTProviderOptions</param>
+        /// <param name="providerOptionsKeys">configuration keys of OrtTensorRTProviderOptions</param>
+        /// <param name="providerOptionsValues">configuration values of OrtTensorRTProviderOptions</param>
+        /// <param name="numKeys">number of configuration keys</param>
+        public delegate IntPtr /* OrtStatus* */DOrtUpdateTensorRTProviderOptions(
+            IntPtr /*(OrtTensorRTProviderOptions*)*/ trtProviderOptionsInstance,
+            IntPtr[] /*(const char* const *)*/ providerOptionsKeys,
+            IntPtr[] /*(const char* const *)*/ providerOptionsValues,
+            UIntPtr /*(size_t)*/ numKeys);
+        public static DOrtUpdateTensorRTProviderOptions OrtUpdateTensorRTProviderOptions;
+
+        /// <summary>
+        /// Releases native OrtTensorRTProviderOptions instance
+        /// </summary>
+        /// <param name="trtProviderOptionsInstance">native instance of OrtTensorRTProviderOptions to be released</param>
+        public delegate void DOrtReleaseTensorRTProviderOptions(IntPtr /*(OrtTensorRTProviderOptions*)*/ trtProviderOptionsInstance);
+        public static DOrtReleaseTensorRTProviderOptions OrtReleaseTensorRTProviderOptions;
+        #endregion
 
         #region Status API
         public delegate ErrorCode DOrtGetErrorCode(IntPtr /*(OrtStatus*)*/status);
@@ -640,6 +680,16 @@ namespace Microsoft.ML.OnnxRuntime
 
         //[DllImport(nativeLib, CharSet = charSet)]
         //public static extern void OrtAddCustomOp(IntPtr /*(OrtSessionOptions*)*/ options, string custom_op_path);
+        //
+        /// <summary>
+        /// Append a TensorRT EP instance (configured based on given provider options) to the native OrtSessionOptions instance
+        /// </summary>
+        /// <param name="options">Native OrtSessionOptions instance</param>
+        /// <param name="trtProviderOptions">Native OrtTensorRTProviderOptions instance</param>
+        public delegate IntPtr /*(OrtStatus*)*/DSessionOptionsAppendExecutionProvider_TensorRT(
+                                               IntPtr /*(OrtSessionOptions*)*/ options,
+                                               IntPtr /*(const OrtTensorRTProviderOptions*)*/ trtProviderOptions);
+        public static DSessionOptionsAppendExecutionProvider_TensorRT SessionOptionsAppendExecutionProvider_TensorRT;
 
         /// <summary>
         /// Free Dimension override (by denotation)
