@@ -42,6 +42,7 @@ class ONNXQuantizer:
         self.fuse_dynamic_quant = False
         self.extra_options = extra_options if extra_options is not None else {}
         self.q_matmul_const_b_only = 'MatMulConstBOnly' in self.extra_options and self.extra_options['MatMulConstBOnly']
+        self.is_weight_symmetric = 'WeightSymmetric' not in self.extra_options or self.extra_options['WeightSymmetric']
 
         self.input_qType = onnx_proto.TensorProto.INT8 if input_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
         self.weight_qType = onnx_proto.TensorProto.INT8 if weight_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
@@ -596,7 +597,7 @@ class ONNXQuantizer:
 
         return quantized_bias_name
 
-    def quantize_inputs(self, node, indices, initializer_use_weight_qType=True, reduce_range=False, per_channel=False, axis=-1):
+    def quantize_inputs(self, node, indices, initializer_use_weight_qType=True, reduce_range=False, op_level_per_channel=False, axis=-1):
         '''
         Given a node, this function quantizes the inputs as follows:
             - If input is an initializer, quantize the initializer data, replace old initializer
@@ -629,7 +630,7 @@ class ONNXQuantizer:
             # Quantize the input
             initializer = find_by_name(node_input, self.model.initializer())
             if initializer is not None:
-                if self.per_channel and per_channel:
+                if self.per_channel and op_level_per_channel:
                     q_weight_name, zp_name, scale_name = self.quantize_weight_per_channel(
                         initializer.name, self.weight_qType if initializer_use_weight_qType else self.input_qType,
                         axis, reduce_range)
@@ -677,11 +678,10 @@ class ONNXQuantizer:
         scale_name = weight.name + "_scale"
 
         # Update packed weight, zero point, and scale initializers
-        symmetric = 'Symmetric' not in self.extra_options or self.extra_options['Symmetric']
         weight_data = self.tensor_proto_to_array(weight)
         _, _, zero_point, scale, q_weight_data = quantize_data(weight_data.flatten().tolist(),
                                                                get_qrange_for_qType(qType, self.reduce_range and reduce_range),
-                                                               qType, symmetric)
+                                                               qType, self.is_weight_symmetric)
         q_weight_data = np.asarray(q_weight_data, dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[qType]).reshape(weight.dims)
         q_weight_initializer = onnx.numpy_helper.from_array(q_weight_data, q_weight_name)
 
@@ -706,7 +706,6 @@ class ONNXQuantizer:
         if initializer is None:
             raise ValueError("{} is not an initializer", weight_name)
 
-        symmetric = 'Symmetric' not in self.extra_options or self.extra_options['Symmetric']
         weights = self.tensor_proto_to_array(initializer)
         channel_count = weights.shape[channel_axis]
         rmin_list = []
@@ -719,7 +718,7 @@ class ONNXQuantizer:
             rmin, rmax, zero_point, scale, quantized_per_channel_data = quantize_data(
                 per_channel_data.flatten().tolist(),
                 get_qrange_for_qType(weight_qType, self.reduce_range and reduce_range),
-                weight_qType, symmetric)
+                weight_qType, self.is_weight_symmetric)
             rmin_list.append(rmin)
             rmax_list.append(rmax)
             zero_point_list.append(zero_point)
@@ -809,7 +808,6 @@ class ONNXQuantizer:
             self.tensors_range[node.input[0]] = self.tensors_range[node.output[0]]
 
         quantization_params = {}
-        symmetric = 'Symmetric' not in self.extra_options or self.extra_options['Symmetric']
         for tensor_name in self.tensors_range.keys():
             rmin, rmax = self.tensors_range[tensor_name]
 
@@ -820,7 +818,7 @@ class ONNXQuantizer:
 
             quantization_params[tensor_name] = compute_scale_zp(rmin, rmax, self.input_qType,
                                                                 get_qrange_for_qType(self.input_qType),
-                                                                symmetric)
+                                                                self.is_weight_symmetric)
 
         return quantization_params
 
