@@ -15,7 +15,7 @@ struct Provider {
   virtual const void* GetInfo() { return nullptr; }  // Returns a provider specific information interface if it exists
 
   // Update provider options from key-value string configuration
-  virtual void UpdateInfo(void* /*provider options to be configured*/, const ProviderOptions& /*key-value string provider options*/) = 0;
+  virtual void UpdateInfo(void* /*provider options to be configured*/, const ProviderOptions& /*key-value string provider options*/) {};
 
   virtual void Shutdown() = 0;
 };
