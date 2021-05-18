@@ -207,7 +207,7 @@ class GraphExecutionManager(ABC):
             # All required models have already been exported previously
             return False
 
-        self._set_device_from_module()
+        self._set_device_from_module(inputs, kwargs)
         self._onnx_model = self._get_exported_model(*inputs, **kwargs)
         _utils._load_aten_op_executor_cpp_extension_if_needed(self._onnx_model, self._loglevel < _logger.LogLevel.WARNING, self.is_rocm_pytorch)
         if self._save_onnx:
@@ -269,14 +269,15 @@ class GraphExecutionManager(ABC):
 
         return onnx.load_model_from_string(f.getvalue())
 
-    def _set_device_from_module(self):
+    def _set_device_from_module(self, inputs, kwargs):
         """Get the device from the module and save it to self._device"""
 
-        device_from_module = _utils.get_device_from_module(self._original_module)
-        if not self._device or self._device != device_from_module:
-            self._device = device_from_module
+        device = _utils.get_device_from_module(self._original_module) or \
+            _utils.get_device_from_inputs(inputs, kwargs)
+        if not self._device or self._device != device:
+            self._device = device
             if not self._device:
-                raise RuntimeError('A device must be specified in the model!')
+                raise RuntimeError('A device must be specified in the model or inputs!')
 
     def _get_graph_transformer_config(self):
         graph_transformer_config = C.TrainingGraphTransformerConfiguration()
