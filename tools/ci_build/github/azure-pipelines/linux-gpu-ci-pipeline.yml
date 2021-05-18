@@ -45,9 +45,10 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-        rm -rf $(Build.BinariesDirectory)/Release/onnxruntime
+        rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
         rm -f $(Build.BinariesDirectory)/Release/models
-        find $(Build.BinariesDirectory)/Release -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
+        cd $(Build.BinariesDirectory)/Release
+        find -executable -type f > $(Build.BinariesDirectory)/Release/perms.txt
 
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline Artifact'
