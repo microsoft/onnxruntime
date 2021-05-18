@@ -137,12 +137,13 @@ if(onnxruntime_BUILD_UNIT_TESTS)
     target_compile_options(onnxruntime_objc_test PRIVATE ${OBJC_ARC_COMPILE_OPTIONS})
 
     set_target_properties(onnxruntime_objc_test PROPERTIES
-        FOLDER "ONNXRuntimeTest")
+        FOLDER "ONNXRuntimeTest"
+        XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO")
 
     add_custom_command(TARGET onnxruntime_objc_test POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${OBJC_ROOT}/test/testdata"
-            "$<TARGET_BUNDLE_CONTENT_DIR:onnxruntime_objc_test>/Resources/testdata")
+            "$<TARGET_BUNDLE_CONTENT_DIR:onnxruntime_objc_test>/Resources")
 
     xctest_add_test(XCTest.onnxruntime_objc_test onnxruntime_objc_test)
 

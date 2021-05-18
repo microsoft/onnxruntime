@@ -35,17 +35,14 @@ NS_ASSUME_NONNULL_BEGIN
   [super tearDown];
 }
 
-+ (NSString*)getTestDataWithRelativePath:(NSString*)relativePath {
-  NSString* testDataDir = [NSString stringWithFormat:@"%@/Contents/Resources/testdata",
-                                                     [[NSBundle bundleForClass:[ORTSessionTest class]] bundlePath]];
-  return [testDataDir stringByAppendingString:relativePath];
-}
-
 // model with an Add op
 // inputs: A, B
 // output: C = A + B
 + (NSString*)getAddModelPath {
-  return [ORTSessionTest getTestDataWithRelativePath:@"/single_add.onnx"];
+  NSBundle* bundle = [NSBundle bundleForClass:[ORTSessionTest class]];
+  NSString* path = [bundle pathForResource:@"single_add"
+                                    ofType:@"onnx"];
+  return path;
 }
 
 + (NSMutableData*)dataWithScalarFloat:(float)value {
@@ -148,7 +145,7 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 - (void)testInitFailsWithInvalidPath {
-  NSString* invalidModelPath = [ORTSessionTest getTestDataWithRelativePath:@"/invalid/path/to/model.onnx"];
+  NSString* invalidModelPath = @"invalid/path/to/model.onnx";
   NSError* err = nil;
   ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
                                               modelPath:invalidModelPath
