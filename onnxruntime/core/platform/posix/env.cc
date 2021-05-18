@@ -74,15 +74,15 @@ struct FileDescriptorTraits {
 };
 
 std::string where_am_i(){
-    Dl_info info;
-    if (dladdr((void*)&where_am_i, &info) != 0){
-        char path[PATH_MAX];
-        strcpy(path, info.dli_fname);
-        return std::string(dirname(path)) + "/"; 
-    }
-    else{
-        return "";
-    }
+  Dl_info info;
+  if (dladdr((void*)&where_am_i, &info) != 0){
+    char path[PATH_MAX];
+    strncpy(path, info.dli_fname, sizeof(path));
+    return std::string(dirname(path)) + "/"; 
+  }
+  else{
+    return "";
+  }
 }
 
 // Note: File descriptor cleanup may fail but this class doesn't expose a way to check if it failed.
