@@ -436,7 +436,7 @@ class InferenceSession {
     */
   Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
 
-  common::Status RegisterONNXOpsetSchema(const SessionOptions& session_options);
+  common::Status RegisterONNXOpsetSchema(const SessionOptions& session_options) ORT_MUST_USE_RESULT;
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
   /**
