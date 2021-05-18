@@ -1889,8 +1889,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* 
       cfg->initial_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
     } else if (strcmp(arena_config_keys[i], "max_dead_bytes_per_chunk") == 0) {
       cfg->max_dead_bytes_per_chunk = static_cast<int>(arena_config_values[i]);
-    } else if (strcmp(arena_config_keys[i], "initial_regrowth_chunk_size_bytes") == 0) {
-      cfg->initial_regrowth_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
+    } else if (strcmp(arena_config_keys[i], "initial_growth_chunk_size_bytes") == 0) {
+      cfg->initial_growth_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
     } else {
       std::ostringstream oss;
       oss << "Invalid key found: " << arena_config_keys[i];

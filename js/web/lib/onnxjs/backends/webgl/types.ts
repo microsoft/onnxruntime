@@ -82,6 +82,7 @@ export interface ProgramInfo {
 
   expectPackedInputs?: boolean;
   expectPackedOutputs?: boolean;
+  name?: string;
 }
 
 export interface VariableInfo {
