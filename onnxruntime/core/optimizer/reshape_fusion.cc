@@ -28,6 +28,11 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
       continue;
     }
 
+    const auto* attr_proto = graph_utils::GetNodeAttribute(reshape, "allowzero");
+    if ((nullptr != attr_proto) && attr_proto->has_i() && attr_proto->i() != 0) {
+      continue;
+    }
+
     if (ReshapeFusion::Fuse_Subgraph(reshape, graph, logger)) {
       fused_count++;
       LOGS(logger, INFO) << "Fused reshape node: " << reshape.OutputDefs()[0]->Name();
