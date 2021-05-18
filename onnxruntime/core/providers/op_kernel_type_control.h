@@ -302,15 +302,17 @@ struct EnabledTypes {
  * @param ArgIndex Index of the given Op kernel argument.
  * @param RequiredTypeList The types.
  */
-#define ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPE_LIST(                              \
-    OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex, RequiredTypeList) \
-  class ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_TAG_CLASS_NAME(OpDomain, OpName);      \
-  class ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_PROVIDER_TAG_CLASS_NAME(OpProvider);      \
-  template <>                                                                      \
-  struct ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_REQUIRED_TYPES_HOLDER(                   \
-      OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex) {               \
-    using types = RequiredTypeList;                                                \
-  };
+#define ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPE_LIST(                                                   \
+    OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex, RequiredTypeList)                      \
+  class ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_OP_TAG_CLASS_NAME(OpDomain, OpName);                           \
+  class ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_PROVIDER_TAG_CLASS_NAME(OpProvider);                           \
+  template <>                                                                                           \
+  struct ORT_OP_KERNEL_TYPE_CTRL_INTERNAL_REQUIRED_TYPES_HOLDER(                                        \
+      OpProvider, OpDomain, OpName, OpSet, ArgDirection, ArgIndex) {                                    \
+    using types = boost::mp11::mp_if_c<USING_GLOBAL_TYPE_REDUCTION, RequiredTypeList, ORT_TYPE_LIST()>; \
+  }
+//  using types = RequiredTypeList;                                                \
+  //};
 
 /**
  * Specifies a required set of types for a given Op kernel argument that is valid for all opsets.
@@ -363,6 +365,9 @@ struct EnabledTypes {
  * @param ArgDirection Direction of the given Op kernel argument - Input or Output.
  * @param ArgIndex Index of the given Op kernel argument.
  * @param ... The types.
+ * 
+ * @remarks The required type list is only used if global type reduction is active. If per-model type reduction is 
+ *          being used, we should have explicit entries for all types individual operators require.
  */
 #define ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(                                  \
     OpProvider, OpDomain, OpName, ArgDirection, ArgIndex, ...)                                \

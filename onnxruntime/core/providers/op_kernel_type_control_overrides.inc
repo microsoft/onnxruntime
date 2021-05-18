@@ -42,6 +42,9 @@ namespace op_kernel_type_control {
     using types = ::onnxruntime::TypeList<__VA_ARGS__>;             \
   };
 
+
+#define USING_GLOBAL_TYPE_REDUCTION false
+
 // Examples:
 // Specify allowed types per Op kernel arg:
 //   ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Cast, Input, 0, float, int64_t);
@@ -52,6 +55,35 @@ namespace op_kernel_type_control {
 // specify allowed types here
 
 // @@insertion_point_begin(allowed_types)@@
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Add, Input, 0, float, int64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, ArgMax, Input, 0, float);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, BatchNormalization, Input, 0, float);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Cast, Input, 0, int32_t, int64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Cast, Output, 0, float);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Clip, Input, 0, float);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, ConstantOfShape, Output, 0, float);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Conv, Input, 0, float);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, DequantizeLinear, Input, 0, int8_t, uint8_t);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, DynamicQuantizeLinear, Output, 0, uint8_t);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Equal, Input, 0, int64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Gather, Input, 0, float, int8_t, uint8_t);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Gather, Input, 1, int64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Gemm, Input, 0, float);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, LogSoftmax, Input, 0, float);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Mul, Input, 0, float, int64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Neg, Input, 0, float);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, QuantizeLinear, Output, 0, uint8_t);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Relu, Input, 0, float);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Resize, Input, 0, float);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Sigmoid, Input, 0, float);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Sin, Input, 0, float);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Slice, Input, 0, float, int64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Slice, Input, 1, int64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Softmax, Input, 0, float);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Sub, Input, 0, float);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Tanh, Input, 0, float);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kOnnxDomain, Transpose, Input, 0, float, uint8_t);
+ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES(kMSDomain, QLinearAdd, Input, 0, uint8_t);
 // @@insertion_point_end(allowed_types)@@
 
 #undef ORT_SPECIFY_OP_KERNEL_ARG_ALLOWED_TYPES

@@ -366,6 +366,7 @@ def _create_operator_type_usage_processors():
     default_processor_onnxml_ops = []
 
     [add(DefaultTypeUsageProcessor('ai.onnx', op)) for op in default_processor_onnx_ops]
+    # [add(DefaultTypeUsageProcessor('ai.onnx', op)) for op in default_processor_onnx_ops_requiring_ints_for_input_0]
     [add(DefaultTypeUsageProcessor('ai.onnx', op, required_input_types={0: {"int32_t", "int64_t"}}))
         for op in default_processor_onnx_ops_requiring_ints_for_input_0]
     [add(DefaultTypeUsageProcessor('ai.onnx.ml', op)) for op in default_processor_onnxml_ops]
