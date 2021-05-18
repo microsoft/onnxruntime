@@ -279,6 +279,11 @@ class FusionAttention(Fusion):
                 root_input = mul_before_layernorm.output[0]
             else:
                 return
+        elif normalize_node.op_type == 'LayerNormalization':
+            children = input_name_to_nodes[root_input]
+            for child in children:
+                if child.op_type == "LayerNormalization":
+                    root_input = child.output[0]
 
         children = input_name_to_nodes[root_input]
         children_types = [child.op_type for child in children]
