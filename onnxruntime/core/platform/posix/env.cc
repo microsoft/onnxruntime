@@ -31,7 +31,6 @@ limitations under the License.
 #include <utility>  // for std::forward
 #include <vector>
 #include <assert.h>
-#include <link.h>
 #include <dlfcn.h>
 #include <libgen.h>
 
