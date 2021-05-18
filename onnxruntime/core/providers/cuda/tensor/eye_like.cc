@@ -16,7 +16,17 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     9,
     kCudaExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T1", std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>(), DataTypeImpl::GetTensorType<uint64_t>(), DataTypeImpl::GetTensorType<int64_t>(), DataTypeImpl::GetTensorType<int32_t>()}).TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>(), DataTypeImpl::GetTensorType<uint64_t>(), DataTypeImpl::GetTensorType<int64_t>(), DataTypeImpl::GetTensorType<int32_t>()}),
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>(),
+                                                      DataTypeImpl::GetTensorType<double>(),
+                                                      DataTypeImpl::GetTensorType<uint64_t>(),
+                                                      DataTypeImpl::GetTensorType<int64_t>(),
+                                                      DataTypeImpl::GetTensorType<int32_t>()})
+        .TypeConstraint("T2", std::vector<MLDataType>{DataTypeImpl::GetTensorType<float>(),
+                                                      DataTypeImpl::GetTensorType<double>(),
+                                                      DataTypeImpl::GetTensorType<uint64_t>(),
+                                                      DataTypeImpl::GetTensorType<int64_t>(),
+                                                      DataTypeImpl::GetTensorType<int32_t>()}),
     EyeLike);
 
 #define TYPED_FUNCTION_CALL(T)                                                              \
