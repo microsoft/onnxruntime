@@ -2223,7 +2223,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         [Fact]
-        private void TestSharingOfInitializerAndItsPrepackedVersions()
+        private void TestSharingOfInitializerAndItsPrepackedVersion()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "matmul_1.onnx");
 
