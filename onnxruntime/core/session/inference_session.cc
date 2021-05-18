@@ -207,7 +207,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   session_id_ = global_session_id_.fetch_add(1);
   ORT_ENFORCE(status.IsOK(), "Could not finalize session options while constructing the inference session. Error Message: ",
               status.ErrorMessage());
-  
+
   // The call to InitLogger depends on the final state of session_options_. Hence it should be invoked
   // after the invocation of FinalizeSessionOptions.
   InitLogger(logging_manager_);  // this sets session_logger_ so that it can be used for logging after this point.
@@ -216,15 +216,6 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   // Update the number of steps for the graph transformer manager using the "finalized" session options
   ORT_ENFORCE(graph_transformation_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps).IsOK());
 #endif
-  if (OpSchemaRegistry::Instance()->GetLoadedSchemaVersion() == -1) {
-    if (session_options_.session_onnx_opset_version == 0) {
-      // By default if session_onnx_opset_version=0, it registers all ONNX opset schema for all opset versions
-      RegisterOnnxOperatorSetSchema();
-    } else {
-      // If giving session_onnx_opset_version, only load the latest ones for each opset before specified onnx_opset_version
-      RegisterOnnxOperatorSetSchema(session_options_.session_onnx_opset_version);
-    }
-  }
   bool set_denormal_as_zero =
       session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSetDenormalAsZero, "0") == "1";
 
@@ -1150,6 +1141,15 @@ common::Status InferenceSession::Initialize() {
 
   ORT_TRY {
     LOGS(*session_logger_, INFO) << "Initializing session.";
+    if (OpSchemaRegistry::Instance()->GetLoadedSchemaVersion() == -1) {
+      if (session_options_.session_onnx_opset_version == 0) {
+        // By default if session_onnx_opset_version=0, it registers all ONNX opset schema for all opset versions
+        RegisterOnnxOperatorSetSchema();
+      } else {
+        // If giving session_onnx_opset_version, only load the latest ones for each opset before specified onnx_opset_version
+        RegisterOnnxOperatorSetSchema(session_options_.session_onnx_opset_version);
+      }
+    }
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogSessionCreationStart();
 
