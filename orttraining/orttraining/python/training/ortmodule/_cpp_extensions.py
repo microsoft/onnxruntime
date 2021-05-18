@@ -3,6 +3,16 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+"""Support for PyTorch C++ extensions within ORTModule
+
+IMPORTANT: All extensions must explicitly use TORCH_CPP_BUILD_DIR as `build_directory`
+           to allow ORTModule to monitor TORCH_CPP_BUILD_DIR/lock and warn the user
+           when abnormal initialization occurs
+
+TODO: Implement mechanism to register extensions and prevent issues with incorrect/missing flags
+      for each :meth:`torch.utils.cpp_extension.load_inline` call
+"""
+
 import threading
 from functools import wraps
 from torch.utils.cpp_extension import load_inline
