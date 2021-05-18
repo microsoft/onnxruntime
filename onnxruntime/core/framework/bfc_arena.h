@@ -55,7 +55,7 @@ class BFCArena : public IArenaAllocator {
   static const ArenaExtendStrategy DEFAULT_ARENA_EXTEND_STRATEGY = ArenaExtendStrategy::kNextPowerOfTwo;
   static const int DEFAULT_INITIAL_CHUNK_SIZE_BYTES = 1 * 1024 * 1024;
   static const int DEFAULT_MAX_DEAD_BYTES_PER_CHUNK = 128 * 1024 * 1024;
-  static const int DEFAULT_INITIAL_REGROWTH_CHUNK_SIZE_BYTES = 2 * 1024 * 1024;
+  static const int DEFAULT_INITIAL_GROWTH_CHUNK_SIZE_BYTES = 2 * 1024 * 1024;
   static const size_t DEFAULT_MAX_MEM = std::numeric_limits<size_t>::max();
 
   BFCArena(std::unique_ptr<IAllocator> resource_allocator,
@@ -63,7 +63,7 @@ class BFCArena : public IArenaAllocator {
            ArenaExtendStrategy arena_extend_strategy = DEFAULT_ARENA_EXTEND_STRATEGY,
            int initial_chunk_size_bytes = DEFAULT_INITIAL_CHUNK_SIZE_BYTES,
            int max_dead_bytes_per_chunk = DEFAULT_MAX_DEAD_BYTES_PER_CHUNK,
-           int initial_regrowth_chunk_size_bytes = DEFAULT_INITIAL_REGROWTH_CHUNK_SIZE_BYTES);
+           int initial_growth_chunk_size_bytes = DEFAULT_INITIAL_GROWTH_CHUNK_SIZE_BYTES);
 
   ~BFCArena() override;
 
@@ -78,7 +78,7 @@ class BFCArena : public IArenaAllocator {
   // Frees all allocation regions in which no chunk is in use.
   // Does not free any reserved chunks.
   // Resets the size that the arena will grow by in the next allocation to
-  // `initial_regrowth_chunk_size_bytes_` but ultimately all
+  // `initial_growth_chunk_size_bytes_` but ultimately all
   // future allocation sizes are determined by the arena growth strategy
   // and the allocation request.
   Status Shrink() override;
@@ -475,7 +475,7 @@ class BFCArena : public IArenaAllocator {
 
   const int initial_chunk_size_bytes_;
   const int max_dead_bytes_per_chunk_;
-  const int initial_regrowth_chunk_size_bytes_;
+  const int initial_growth_chunk_size_bytes_;
 
   // This flag is only relevant if Shrink() is invoked.
   // This is a boolean flag that controls whether the first allocation region
