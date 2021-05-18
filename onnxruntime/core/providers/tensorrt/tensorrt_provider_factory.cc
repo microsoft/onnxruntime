@@ -5,6 +5,7 @@
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #include <atomic>
 #include "tensorrt_execution_provider.h"
+#include "core/framework/provider_options.h"
 
 using namespace onnxruntime;
 
@@ -68,6 +69,17 @@ struct Tensorrt_Provider : Provider {
     info.engine_decryption_lib_path = options.trt_engine_decryption_lib_path == nullptr ? "" : options.trt_engine_decryption_lib_path;
     info.force_sequential_engine_build = options.trt_force_sequential_engine_build;
     return std::make_shared<TensorrtProviderFactory>(info);
+  }
+
+  void UpdateInfo (void* provider_options, const ProviderOptions& options) override {
+    auto internal_options = onnxruntime::TensorrtExecutionProviderInfo::FromProviderOptions(options);
+    auto& trt_options = *reinterpret_cast<OrtTensorRTProviderOptions*>(provider_options);
+    trt_options.device_id = internal_options.device_id;
+    trt_options.trt_max_workspace_size = internal_options.max_workspace_size;
+    trt_options.trt_fp16_enable = internal_options.fp16_enable;
+    trt_options.trt_int8_enable = internal_options.int8_enable;
+    trt_options.trt_int8_calibration_table_name = internal_options.int8_calibration_table_name.c_str();
+    trt_options.trt_int8_use_native_calibration_table = internal_options.int8_use_native_calibration_table;
   }
 
   void Shutdown() override {

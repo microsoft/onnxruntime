@@ -1,5 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+//
+#include "core/framework/provider_options.h"
 
 namespace onnxruntime {
 
@@ -11,6 +13,10 @@ struct Provider {
   virtual std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int /*device_id*/) { return nullptr; }
 
   virtual const void* GetInfo() { return nullptr; }  // Returns a provider specific information interface if it exists
+
+  // Update provider options from key-value string configuration
+  virtual void UpdateInfo(void* /*provider options to be configured*/, const ProviderOptions& /*key-value string provider options*/) = 0;
+
   virtual void Shutdown() = 0;
 };
 

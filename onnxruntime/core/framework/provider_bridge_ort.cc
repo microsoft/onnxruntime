@@ -18,6 +18,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
+#include "core/framework/provider_options.h"
 
 
 #ifdef USE_TENSORRT
@@ -688,6 +689,12 @@ const ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO() {
   return nullptr;
 }
 
+void UpdateProviderInfo_Tensorrt(OrtTensorRTProviderOptions* provider_options, const ProviderOptions& options) {
+  if (auto provider = s_library_tensorrt.Get()) {
+    provider->UpdateInfo(reinterpret_cast<void*>(provider_options), options);
+  }
+}
+
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
@@ -768,16 +775,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
     provider_options_map[provider_options_keys[i]] = provider_options_values[i];
   }
 
-  auto internal_options = onnxruntime::TensorrtExecutionProviderInfo::FromProviderOptions(provider_options_map);
-  //auto internal_options = onnxruntime::GetExecutionProviderInfo_Tensorrt()->FromProviderOptions(provider_options_map);
-
-  tensorrt_provider_options->device_id = internal_options.device_id;
-  tensorrt_provider_options->trt_max_workspace_size = internal_options.max_workspace_size;
-  tensorrt_provider_options->trt_fp16_enable = internal_options.fp16_enable;
-  tensorrt_provider_options->trt_int8_enable = internal_options.int8_enable;
-  tensorrt_provider_options->trt_int8_calibration_table_name = internal_options.int8_calibration_table_name.c_str();
-  tensorrt_provider_options->trt_int8_use_native_calibration_table = internal_options.int8_use_native_calibration_table;
-  
+  onnxruntime::UpdateProviderInfo_Tensorrt(tensorrt_provider_options, reinterpret_cast<const onnxruntime::ProviderOptions&>(provider_options_map));
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(tensorrt_provider_options);
