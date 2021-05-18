@@ -3,6 +3,9 @@
 
 import {onnx} from 'onnx-proto';
 import {env, InferenceSession, SessionHandler, Tensor, TypedTensor} from 'onnxruntime-common';
+
+import {setRunOptions} from './run-options';
+import {setSessionOptions} from './session-options';
 import {getInstance} from './wasm-factory';
 
 let ortInit: boolean;
@@ -102,8 +105,8 @@ const numericTensorTypeToTypedArray = (type: Tensor.Type): Float32ArrayConstruct
       }
     };
 
-const getLoggingLevel = (loggingLevel: 'verbose'|'info'|'warning'|'error'|'fatal'): number => {
-  switch (loggingLevel) {
+const getLogLevel = (logLevel: 'verbose'|'info'|'warning'|'error'|'fatal'): number => {
+  switch (logLevel) {
     case 'verbose':
       return 0;
     case 'info':
@@ -115,135 +118,8 @@ const getLoggingLevel = (loggingLevel: 'verbose'|'info'|'warning'|'error'|'fatal
     case 'fatal':
       return 4;
     default:
-      throw new Error(`unsupported logging level: ${loggingLevel}`);
+      throw new Error(`unsupported logging level: ${logLevel}`);
   }
-};
-
-const setSessionOptions = (options?: InferenceSession.SessionOptions): [number, number[]] => {
-  const wasm = getInstance();
-  const sessionOptionsHandle = wasm._OrtCreateSessionOptions();
-  const allocs: number[] = [];
-
-  if (sessionOptionsHandle === 0) {
-    throw new Error('Can\'t create session options');
-  }
-
-  if (options === undefined) {
-    return [sessionOptionsHandle, allocs];
-  }
-
-  let errorCode = 0;
-
-  if (options.graphOptimizationLevel !== undefined) {
-    switch (options.graphOptimizationLevel) {
-      case 'disabled':
-        errorCode = wasm._OrtSetSessionGraphOptimizationLevel(sessionOptionsHandle, 0);
-        break;
-      case 'basic':
-        errorCode = wasm._OrtSetSessionGraphOptimizationLevel(sessionOptionsHandle, 1);
-        break;
-      case 'extended':
-        errorCode = wasm._OrtSetSessionGraphOptimizationLevel(sessionOptionsHandle, 2);
-        break;
-      case 'all':
-        errorCode = wasm._OrtSetSessionGraphOptimizationLevel(sessionOptionsHandle, 99);
-        break;
-      default:
-        throw new Error(`unsupported graph optimization level: ${options.graphOptimizationLevel}`);
-    }
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a graph optimization level as a session option. error code = ${errorCode}`);
-    }
-  }
-
-  if (options.enableCpuMemArena !== undefined) {
-    if (options.enableCpuMemArena) {
-      errorCode = wasm._OrtEnableCpuMemArena(sessionOptionsHandle);
-    } else {
-      errorCode = wasm._OrtDisableCpuMemArena(sessionOptionsHandle);
-    }
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a CPU memory arena as a session option. error code = ${errorCode}`);
-    }
-  }
-
-  if (options.enableMemPattern !== undefined) {
-    if (options.enableMemPattern) {
-      errorCode = wasm._OrtEnableMemPattern(sessionOptionsHandle);
-    } else {
-      errorCode = wasm._OrtDisableMemPattern(sessionOptionsHandle);
-    }
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a memory pattern as a session option. error code = ${errorCode}`);
-    }
-  }
-
-  if (options.executionMode !== undefined) {
-    switch (options.executionMode) {
-      case 'sequential':
-        errorCode = wasm._OrtSetSessionExecutionMode(sessionOptionsHandle, 0);
-        break;
-      case 'parallel':
-        errorCode = wasm._OrtSetSessionExecutionMode(sessionOptionsHandle, 1);
-        break;
-      default:
-        throw new Error(`unsupported execution mode: ${options.executionMode}`);
-    }
-    if (errorCode !== 0) {
-      throw new Error(`Can't set an execution mode as a session option. error code = ${errorCode}`);
-    }
-  }
-
-  if (options.logId !== undefined) {
-    const logIdDataLength = wasm.lengthBytesUTF8(options.logId) + 1;
-    const logIdDataOffset = wasm._malloc(logIdDataLength);
-    wasm.stringToUTF8(options.logId, logIdDataOffset, logIdDataLength);
-    errorCode = wasm._OrtSetSessionLogId(sessionOptionsHandle, logIdDataOffset);
-    allocs.push(logIdDataOffset);
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a log id as a session option. error code = ${errorCode}`);
-    }
-  }
-
-  if (options.logSeverityLevel !== undefined) {
-    errorCode = wasm._OrtSetSessionLogSeverityLevel(sessionOptionsHandle, options.logSeverityLevel);
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a log severity level as a session option. error code = ${errorCode}`);
-    }
-  }
-
-  return [sessionOptionsHandle, allocs];
-};
-
-const setRunOptions = (options: InferenceSession.RunOptions): [number, number[]] => {
-  const wasm = getInstance();
-  const runOptionsHandle = wasm._OrtCreateRunOptions();
-  if (runOptionsHandle === 0) {
-    throw new Error('Can\'t create run options');
-  }
-
-  const allocs: number[] = [];
-  let errorCode = 0;
-
-  if (options.logSeverityLevel !== undefined) {
-    errorCode = wasm._OrtRunOptionsSetRunLogSeverityLevel(runOptionsHandle, options.logSeverityLevel);
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a log severity level as a run option. error code = ${errorCode}`);
-    }
-  }
-
-  if (options.tag !== undefined) {
-    const tagDataLength = wasm.lengthBytesUTF8(options.tag) + 1;
-    const tagDataOffset = wasm._malloc(tagDataLength);
-    wasm.stringToUTF8(options.tag, tagDataOffset, tagDataLength);
-    errorCode = wasm._OrtRunOptionsSetRunTag(runOptionsHandle, tagDataOffset);
-    allocs.push(tagDataOffset);
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a tag as a run option. error code = ${errorCode}`);
-    }
-  }
-
-  return [runOptionsHandle, allocs];
 };
 
 export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
@@ -257,7 +133,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   loadModel(model: Uint8Array, options?: InferenceSession.SessionOptions): void {
     const wasm = getInstance();
     if (!ortInit) {
-      const errorCode = wasm._OrtInit(env.wasm.numThreads!, getLoggingLevel(env.wasm.loggingLevel!));
+      const errorCode = wasm._OrtInit(env.wasm.numThreads!, getLogLevel(env.logLevel!));
       if (errorCode !== 0) {
         throw new Error(`Can't initialize onnxruntime. error code = ${errorCode}`);
       }

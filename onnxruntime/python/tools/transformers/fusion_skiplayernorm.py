@@ -41,6 +41,8 @@ class FusionSkipLayerNormalization(Fusion):
             if not self.shape_infer_helper.compare_shape(add.input[0], add.input[1]):
                 return
         else:
+            # shape_infer_helper can not handle subgraphs. Current work around is to disable skiplayernorm fusion
+            # longterm todo: support subgraph in symbolic_shape_infer or support add broadcasting in skiplayernorm op
             logger.warning(
                 "symbolic shape infer failed. it's safe to ignore this message if there is no issue with optimized model"
             )
@@ -72,6 +74,7 @@ class FusionSkipLayerNormalization(Fusion):
                 normalize_node.attribute.extend([helper.make_attribute("epsilon", 1.0E-12)])
 
             self.nodes_to_add.append(normalize_node)
+            self.node_name_to_graph_name[normalize_node.name] = self.this_graph_name
 
 
 class FusionBiasSkipLayerNormalization(Fusion):
@@ -136,3 +139,4 @@ class FusionBiasSkipLayerNormalization(Fusion):
             new_node.attribute.extend([helper.make_attribute("epsilon", 1.0E-12)])
 
         self.nodes_to_add.append(new_node)
+        self.node_name_to_graph_name[new_node.name] = self.this_graph_name
