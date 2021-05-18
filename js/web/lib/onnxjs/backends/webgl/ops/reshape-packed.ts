@@ -106,6 +106,7 @@ export class WebGLReshapePacked extends Reshape implements WebGLOperator {
     `;
 
     return {
+      name: 'WebGLReshapePacked',
       inputLayouts: [inputLayout],
       outputLayout: this.outputLayout,
       samplers: ['A'],
