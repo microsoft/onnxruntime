@@ -439,7 +439,8 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         env->GetEnvironment());
   }
-
+  // Add ONNX domains
+  sess->RegisterONNXOpsetSchema(options == nullptr ? onnxruntime::SessionOptions() : options->value);
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // Add custom domains
   if (options && !options->custom_op_domains_.empty()) {
