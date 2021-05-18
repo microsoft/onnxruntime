@@ -64,7 +64,10 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
                                                const Tensor* b_zp_tensor,
                                                const Tensor* bias_tensor) const {
   MatMulComputeHelper helper;
-  ORT_RETURN_IF_ERROR(helper.Compute(a_shape, b_tensor ? b_tensor->Shape() : b_shape_));
+  ORT_RETURN_IF_ERROR(helper.Compute(a_shape,
+                                     b_tensor ? b_tensor->Shape() : b_shape_,
+                                     b_scale_tensor ? &b_scale_tensor->Shape() : nullptr,
+                                     b_zp_tensor ? &b_zp_tensor->Shape() : nullptr));
   Tensor* y = ctx->Output(OUT_Y, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
@@ -122,12 +125,9 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
   std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> gemm_data_vec(num_gemms);
 
   for (size_t gemm_idx = 0; gemm_idx < num_gemms; gemm_idx++) {
-    int64_t scale_zp_offset = helper.RightOffsets()[gemm_idx] / helper.K();
-    int64_t scale_offset = is_b_scale_per_column ? scale_zp_offset : 0;
-    int64_t zp_offset = is_b_zp_per_column ? scale_zp_offset : 0;
     gemm_scale_procs.emplace_back(y_data + helper.OutputOffsets()[gemm_idx],
                                   gemm_shape.N,
-                                  b_scale_data + scale_offset,
+                                  b_scale_data + helper.RightScaleOffsets()[gemm_idx],
                                   bias_data,
                                   MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
                                   is_b_scale_per_column ? MLAS_QUANTIZATION_GRANULARITY::PerColumn : MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
@@ -139,7 +139,7 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
     params.BIsPacked = bool(packed_b_);
     params.B = b_tensor ? static_cast<const uint8_t*>(b_tensor->DataRaw()) + helper.RightOffsets()[gemm_idx] : packed_b_.get();
     params.ldb = gemm_shape.N;
-    params.ZeroPointB = b_zp_ptr + zp_offset;
+    params.ZeroPointB = b_zp_ptr + helper.RightZeroPointOffsets()[gemm_idx];
     params.PerColumnZeroPoints = is_b_zp_per_column;
     params.C = reinterpret_cast<int32_t*>(y_data + helper.OutputOffsets()[gemm_idx]);
     params.ldc = gemm_shape.N;
