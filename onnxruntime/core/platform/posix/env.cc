@@ -31,6 +31,9 @@ limitations under the License.
 #include <utility>  // for std::forward
 #include <vector>
 #include <assert.h>
+#include <link.h>
+#include <dlfcn.h>
+#include <libgen.h>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -69,6 +72,18 @@ struct FileDescriptorTraits {
     }
   }
 };
+
+std::string where_am_i(){
+    Dl_info info;
+    if (dladdr((void*)&where_am_i, &info) != 0){
+        char path[PATH_MAX];
+        strcpy(path, info.dli_fname);
+        return std::string(dirname(path)) + "/"; 
+    }
+    else{
+        return "";
+    }
+}
 
 // Note: File descriptor cleanup may fail but this class doesn't expose a way to check if it failed.
 //       If that's important, consider using another cleanup method.
@@ -467,6 +482,10 @@ class PosixEnv : public Env {
   std::string GetEnvironmentVar(const std::string& var_name) const override {
     char* val = getenv(var_name.c_str());
     return val == NULL ? std::string() : std::string(val);
+  }
+
+  std::string GetRuntimePath() const override{
+    return where_am_i();
   }
 
  private:
