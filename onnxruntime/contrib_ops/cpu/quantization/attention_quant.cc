@@ -135,10 +135,10 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   //   Input  1 - weights           : (input_hidden_size, 3 * hidden_size)
   //   Input  2 - bias              : (3 * hidden_size)
   //   Input  3 - input_scale       : scalar
-  //   Input  4 - weight_scale      : scalar
+  //   Input  4 - weight_scale      : scalar for per tensor quantization, (3 * hidden_size) for per column quantization
   //   Input  5 - mask_index        : nullptr, (batch_size), (2 * batch_size), (batch_size, 1), (1, 1) or (batch_size, past_sequence_length + sequence_length)
   //   Input  6 - input_zero_point  : scalar
-  //   Input  7 - weight_zero_point : scalar
+  //   Input  7 - weight_zero_point : scalar for per tensor quantization, (3 * hidden_size) for per column quantization
   //   Input  8 - past              : (2, batch_size, num_heads, past_sequence_length, head_size)
   //   Output 0                     : (batch_size, sequence_length, hidden_size)
   //   Output 1 - present           : (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)
