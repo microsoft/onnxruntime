@@ -78,7 +78,7 @@ std::string where_am_i(){
   if (dladdr((void*)&where_am_i, &info) != 0){
     char path[PATH_MAX];
     strncpy(path, info.dli_fname, PATH_MAX - 1);
-    path[PATH_MAX-1] = '\0'
+    path[PATH_MAX-1] = '\0';
     return std::string(dirname(path)) + "/"; 
   }
   else{
