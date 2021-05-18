@@ -92,6 +92,11 @@ function getTestData(): TestData[] {
     },
     {
       elementCount: 18432,
+      inputShape: [512, 36, 1, 1],
+      outputShape: [512, 36],
+    },
+    {
+      elementCount: 18432,
       inputShape: [512, 36],
       outputShape: [512, 36, 1, 1],
     },
