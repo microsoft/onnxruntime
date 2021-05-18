@@ -99,7 +99,6 @@ def update_version():
         os.path.join(js_root, 'web', 'package.json'),
         os.path.join(js_root, 'web', 'package-lock.json'),
         os.path.join(js_root, 'react_native', 'package.json'),
-        os.path.join(js_root, 'react_native', 'package-lock.json'),
     ]
     for file_path in file_paths:
         with open(file_path) as f:
