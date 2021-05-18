@@ -99,6 +99,18 @@ def get_device_from_module(module):
         pass
     return device
 
+
+def get_device_from_inputs(args, kwargs):
+    '''Returns device from first PyTorch Tensor within args or kwargs'''
+
+    device = None
+    if args:
+        device = torch.device(args[0].device)
+    elif kwargs:
+        device = torch.device(next(iter(kwargs.values())).device)
+    return device
+
+
 def _create_iobinding(io_binding, inputs, model, device):
     '''Creates IO binding for a `model` inputs and output'''
     for idx, value_info in enumerate(model.graph.input):
