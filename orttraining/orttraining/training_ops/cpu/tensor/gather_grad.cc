@@ -65,10 +65,11 @@ Status GatherGrad::ComputeImpl(const TensorShape& data_shape, const Tensor& indi
   const int64_t grad_size = grad.Shape().Size();
 
   // Check the indices first in case there's a out of bound index.
+  // All index values are expected to be within bounds [-s, s-1] along axis of size s.
   // We can't merge this code in the omp loop below as omp does not allow return in the loop
   for (int64_t i = 0; i < N; i++) {
     Tind idx = indices_data[i];
-    if (idx < 0 || idx >= indices_max) {
+    if (idx < -indices_max || idx >= indices_max) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "indices element out of data bounds, idx=", idx,
                              " data_dim=", indices_max);
     }
@@ -80,7 +81,8 @@ Status GatherGrad::ComputeImpl(const TensorShape& data_shape, const Tensor& indi
     const int64_t block_offset = g % output_block_size;
     const int64_t indices_index = block_offset / block_size;
     const int64_t offset = block_offset % block_size;
-    const Tind idx = indices_data[indices_index];
+    Tind idx = indices_data[indices_index];
+    if (idx < 0) idx += indices_max;
     const int64_t input_index = input_block_index * input_block_size + idx * block_size + offset;
     //REVIEW(codemzs): This lock can become a performance bottleneck. An area for potential improvement.
     std::lock_guard<std::mutex> lck(mtx);
