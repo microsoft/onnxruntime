@@ -412,6 +412,8 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
                                                 size_t model_data_length,
 
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {
+  // Add ONNX domain
+  ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterONNXOpsetSchema(options == nullptr ? onnxruntime::SessionOptions() : options->value));
   // quick check here to decide load path. InferenceSession will provide error message for invalid values.
   // TODO: Could move to a helper
   const Env& os_env = Env::Default();  // OS environment (!= ORT environment)
@@ -439,8 +441,6 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         env->GetEnvironment());
   }
-  // Add ONNX domains
-  ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterONNXOpsetSchema(options == nullptr ? onnxruntime::SessionOptions() : options->value));
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // Add custom domains
   if (options && !options->custom_op_domains_.empty()) {
