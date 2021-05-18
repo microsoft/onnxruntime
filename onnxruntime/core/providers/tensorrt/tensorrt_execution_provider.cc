@@ -859,7 +859,20 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         // Check if input tensors have shapes
         if (iterations > 1) {
           for (const auto* input_arg : graph_build.GetInputs()) {
-            if (input_arg->Shape() == nullptr) {
+            bool has_dim_values = false;
+            auto input_shape = input_arg->Shape();
+            if (input_shape != nullptr) {
+              auto dim_size = input_shape->dim_size(); 
+              for (int i = 0; i < dim_size; ++i) {
+                auto &dim = input_shape->dim(i);
+                if (dim.has_dim_value()) {
+                  has_dim_values = true;
+                  break;
+                }
+              }
+            }
+
+            if (input_shape == nullptr || !has_dim_values) {
               ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                                  "TensorRT input: " + input_arg->Name() + " has no shape specified. " +
                                                      "Please run shape inference on the onnx model first. Details can be found in " +
