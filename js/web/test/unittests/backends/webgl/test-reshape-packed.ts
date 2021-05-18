@@ -148,7 +148,7 @@ describe('#UnitTest# - reshape - packed', () => {
       const programInfo =
           op.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, [inputTensorA, inputTensorB]);
 
-      const artifact = webglInferenceHandler.session.programManager.build(programInfo, 'WebGLReshapePacked');
+      const artifact = webglInferenceHandler.session.programManager.build(programInfo);
       webglInferenceHandler.session.programManager.setArtifact(op, artifact);
 
       // run kernal and get output

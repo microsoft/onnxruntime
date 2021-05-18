@@ -37,7 +37,7 @@ export class ProgramManager {
     this.repo.set(key, artifact);
   }
   run(buildArtifact: Artifact, runData: RunData): void {
-    this.profiler.event('op', `ProgramManager.run ${buildArtifact.name}`, () => {
+    this.profiler.event('op', `ProgramManager.run ${buildArtifact.programInfo.name ?? 'unknown kernel'}`, () => {
       const gl = this.glContext.gl;
       const program = buildArtifact.program;
       gl.useProgram(program);
@@ -62,7 +62,7 @@ export class ProgramManager {
     }
     this.repo.forEach(a => this.glContext.deleteProgram(a.program));
   }
-  build(programInfo: ProgramInfo, kernelName: string): Artifact {
+  build(programInfo: ProgramInfo): Artifact {
     return this.profiler.event('backend', 'ProgramManager.build', () => {
       const preprocessor = new GlslPreprocessor(this.glContext, programInfo);
       const fragScript = preprocessor.preprocess();
@@ -72,8 +72,7 @@ export class ProgramManager {
         program,
         uniformLocations: this.getUniformLocations(
             program, preprocessor.context.programInfo.samplers, preprocessor.context.programInfo.variables),
-        attribLocations: this.getAttribLocations(program),
-        name: kernelName
+        attribLocations: this.getAttribLocations(program)
       };
       return artifact;
     });

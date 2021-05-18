@@ -50,10 +50,10 @@ export class WebGLConvPacked extends Conv {
       this.artifacts = [];
       this.programInfo = [];
       this.programInfo[0] = im2col.createProgramInfo(inferenceHandler, [inputs[0], inputs[1]]);
-      this.artifacts[0] = programManager.build(this.programInfo[0], 'WebGLIm2ColPacked');
+      this.artifacts[0] = programManager.build(this.programInfo[0]);
 
       this.programInfo[1] = reshape.createProgramInfo(inferenceHandler, [inputs[1], shape]);
-      this.artifacts[1] = programManager.build(this.programInfo[1], 'WebGLReshapePacked');
+      this.artifacts[1] = programManager.build(this.programInfo[1]);
     }
 
     // run im2col
@@ -74,7 +74,7 @@ export class WebGLConvPacked extends Conv {
     if (this.artifacts.length === 2) {
       this.programInfo[2] = matmul.createProgramInfo(
           inferenceHandler, hasBias ? [kernelReshaped, im2colOutput, inputs[2]] : [kernelReshaped, im2colOutput]);
-      this.artifacts[2] = programManager.build(this.programInfo[2], 'WebGLMatMulPacked');
+      this.artifacts[2] = programManager.build(this.programInfo[2]);
     }
     const runDataMatmul = matmul.createRunData(
         inferenceHandler, this.programInfo[2],
@@ -91,7 +91,7 @@ export class WebGLConvPacked extends Conv {
     assert(this.artifacts.length > 2, () => 'expect at least 3 artifacts created');
     if (this.artifacts.length === 3) {
       this.programInfo[3] = reshape.createProgramInfo(inferenceHandler, [matmulOutput, outputShapeTensor]);
-      this.artifacts[3] = programManager.build(this.programInfo[3], 'WebGLReshapePacked');
+      this.artifacts[3] = programManager.build(this.programInfo[3]);
     }
     const runDataOutputReshape =
         reshape.createRunData(inferenceHandler, this.programInfo[3], [matmulOutput, outputShapeTensor]);

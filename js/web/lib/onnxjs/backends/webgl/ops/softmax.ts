@@ -17,7 +17,7 @@ export class WebGLSoftmax extends Softmax {
       this.artifacts = [];
       const programInfos = this.createProgramInfos(inferenceHandler, inputs);
       programInfos.forEach((pi) => {
-        const artifact = inferenceHandler.session.programManager.build(pi, 'WebGLSoftmax');
+        const artifact = inferenceHandler.session.programManager.build(pi);
         this.artifacts.push(artifact);
       });
     }

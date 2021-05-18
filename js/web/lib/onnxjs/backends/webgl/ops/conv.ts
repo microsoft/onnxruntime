@@ -152,9 +152,8 @@ export class WebGLUnpackedConv extends Conv {
     if (!this.artifacts) {
       this.artifacts = [];
       const programInfos = this.createProgramInfoArray(inferenceHandler, inputs);
-      const kernelNames = ['Im2Col', 'dotProduct'];
       for (let i = 0; i < programInfos.length; ++i) {
-        const artifact = inferenceHandler.session.programManager.build(programInfos[i], kernelNames[i]);
+        const artifact = inferenceHandler.session.programManager.build(programInfos[i]);
         this.artifacts.push(artifact);
       }
     }
@@ -300,6 +299,7 @@ export class WebGLUnpackedConv extends Conv {
       }
       `;
     return {
+      name: 'Im2Col',
       inputLayouts: [inferenceHandler.createTextureLayoutFromShape(xshape)],
       outputLayout,
       samplers: ['X'],
@@ -362,6 +362,7 @@ export class WebGLUnpackedConv extends Conv {
       return value;
     }`;
     return {
+      name: 'dotProduct',
       inputLayouts: inputs.length === 3 ? [im2colLayout, kLayout, bLayout!] : [im2colLayout, kLayout],
       outputLayout,
       shaderSource,

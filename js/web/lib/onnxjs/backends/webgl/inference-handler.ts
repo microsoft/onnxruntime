@@ -32,7 +32,10 @@ export class WebGLInferenceHandler implements InferenceHandler {
     let artifact = this.session.programManager.getArtifact(op);
     if (!artifact) {
       const programInfo = op.createProgramInfo(this, inputs);
-      artifact = this.session.programManager.build(programInfo, op.constructor.name);
+      if (!programInfo.name) {
+        programInfo.name = op.constructor?.name;
+      }
+      artifact = this.session.programManager.build(programInfo);
       this.session.programManager.setArtifact(op, artifact);
     }
     const runData = op.createRunData(this, artifact.programInfo, inputs);
@@ -269,7 +272,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
     let artifact = this.session.programManager.getArtifact(op);
     if (!artifact) {
       const programInfo = op.createProgramInfo(this, [input.tensor]);
-      artifact = this.session.programManager.build(programInfo, 'WebGLPack');
+      artifact = this.session.programManager.build(programInfo);
       this.session.programManager.setArtifact(op, artifact);
     }
     const runData = op.createRunData(this, artifact.programInfo, [input.tensor]);
@@ -298,7 +301,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
     let artifact = this.session.programManager.getArtifact(op);
     if (!artifact) {
       const programInfo = op.createProgramInfo(this, [input.tensor]);
-      artifact = this.session.programManager.build(programInfo, 'WebGLUnpack');
+      artifact = this.session.programManager.build(programInfo);
       this.session.programManager.setArtifact(op, artifact);
     }
     const runData = op.createRunData(this, artifact.programInfo, [input.tensor]);
