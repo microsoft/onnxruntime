@@ -297,7 +297,6 @@ void Impl_Cast(
 
 }  // namespace cuda
 
-/*
 template <>
 bool CudaCall<cudaError, false>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
   return g_host->CudaCall_false(retCode, exprString, libName, successCode, msg);
@@ -307,7 +306,6 @@ template <>
 bool CudaCall<cudaError, true>(cudaError retCode, const char* exprString, const char* libName, cudaError successCode, const char* msg) {
   return g_host->CudaCall_true(retCode, exprString, libName, successCode, msg);
 }
-*/
 
 class Memcpy final : public OpKernel {
  public:

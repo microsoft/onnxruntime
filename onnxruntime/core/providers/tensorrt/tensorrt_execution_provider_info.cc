@@ -30,7 +30,7 @@ constexpr const char* kForceSequentialEngineBuild = "trt_force_sequential_engine
 }  // namespace provider_option_names
 }  // namespace tensorrt 
 
- TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
+TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   TensorrtExecutionProviderInfo info{};
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
