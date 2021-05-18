@@ -75,6 +75,7 @@ export class WebGLSoftmax extends Softmax {
       outputLayout: inferenceHandler.createTextureLayoutFromShape(outputShape),
       samplers: ['A', 'Max', 'Norm'],
       shaderSource,
+      name: 'SoftMax',
     };
   }
 
@@ -131,6 +132,7 @@ export class WebGLSoftmax extends Softmax {
       outputLayout: inferenceHandler.createTextureLayoutFromShape(outputShape),
       samplers: ['A', 'Max'],
       shaderSource,
+      name: 'ComputScale',
     };
   }
   /**
@@ -179,6 +181,7 @@ export class WebGLSoftmax extends Softmax {
       outputLayout: inferenceHandler.createTextureLayoutFromShape(outputShape),
       samplers: ['A'],
       shaderSource,
+      name: 'ComputeMax',
     };
   }
   createProgramInfos(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo[] {
