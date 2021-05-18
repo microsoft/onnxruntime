@@ -53,7 +53,6 @@ RUN pip3 install --upgrade setuptools
 ARG NUMPY_VERSION=1.18.5
 ARG ONNX_VERSION=1.7.0
 RUN pip3 install --no-cache-dir wheel tqdm boto3 requests six ipdb h5py html2text nltk progressbar pyyaml \
-        GPUtil azureml azureml-core \
         git+https://github.com/NVIDIA/dllogger \
         numpy==${NUMPY_VERSION} \
         onnx=="${ONNX_VERSION}"
@@ -136,35 +135,9 @@ RUN git clone --recursive https://github.com/microsoft/onnxruntime.git \
   && ldconfig
 
 # ONNX Runtime Training Examples
+RUN pip3 install --no-cache-dir GPUtil azureml azureml-core datasets tokenizers ninja cerberus sympy
 WORKDIR $GITHUB_DIR
-ARG GPT2_DATASET=wikitext-103
-RUN git clone -b wezhan/amdgpu https://github.com/microsoft/onnxruntime-training-examples.git \
-  && cd onnxruntime-training-examples \
-  # Nvidia BERT
-  && git clone --no-checkout https://github.com/NVIDIA/DeepLearningExamples.git \
-  && cd DeepLearningExamples \
-  && git checkout cf54b787 \
-  && cd .. \
-  && mv DeepLearningExamples/PyTorch/LanguageModeling/BERT ${WORKSPACE_DIR} \
-  && rm -rf DeepLearningExamples \
-  && cp -r ./nvidia-bert/ort_addon/* ${WORKSPACE_DIR}/BERT \
-  # GPT2 fine-tuning
-  && cd huggingface-gpt2 \
-  && git clone https://github.com/huggingface/transformers.git \
-  && cd transformers \
-  && git checkout 9a0a8c1c6f4f2f0c80ff07d36713a3ada785eec5 \
-  && cd .. \
-  && mkdir -p ${WORKSPACE_DIR}/GPT2 \
-  && cp -r transformers ${WORKSPACE_DIR}/GPT2 \
-  && cd ${WORKSPACE_DIR}/GPT2/transformers \
-  && git apply $GITHUB_DIR/onnxruntime-training-examples/huggingface-gpt2/ort_addon/src_changes.patch \
-  && cp -r $GITHUB_DIR/onnxruntime-training-examples/huggingface-gpt2/ort_addon/ort_supplement/* ./ \
-  && python3 -m pip install --no-cache-dir -e . \
-  && python3 -m pip install --no-cache-dir -r examples/requirements.txt \
-  && python3 -m pip install cerberus sympy \
-  && cd .. \
-  && wget https://s3.amazonaws.com/research.metamind.io/wikitext/${GPT2_DATASET}-v1.zip \
-  && unzip ${GPT2_DATASET}-v1.zip
+RUN git clone https://github.com/microsoft/huggingface-transformers.git
 
 ENV BERT_DIR=${WORKSPACE_DIR}/BERT
 ENV GPT2_DIR=${WORKSPACE_DIR}/GPT2
