@@ -1148,7 +1148,7 @@ common::Status InferenceSession::Initialize() {
     onnxruntime::Graph& graph = model_->MainGraph();
 #ifdef DISABLE_EXTERNAL_INITIALIZERS
     const InitializedTensorSet& initializers = graph.GetAllInitializedTensors();
-    for (auto& it: initializers) {
+    for (const auto& it: initializers) {
       if (utils::HasExternalData(*it.second)) {
         return common::Status(common::ONNXRUNTIME, common::FAIL,
                   "Initializer tensors with external data is not allowed.");
