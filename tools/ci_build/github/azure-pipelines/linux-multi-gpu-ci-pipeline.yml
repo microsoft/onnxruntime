@@ -39,7 +39,7 @@ jobs:
               --build_wheel \
               --enable_onnx_tests --use_cuda --cuda_version=11.0 --cuda_home=/usr/local/cuda-11.0 --cudnn_home=/usr/local/cuda-11.0 \
               --enable_pybind --build_java --build_nodejs --enable_multi_device_test \
-              --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so CMAKE_CUDA_ARCHITECTURES=75
+              --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so CMAKE_CUDA_ARCHITECTURES=52
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishTestResults@2
