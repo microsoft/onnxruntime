@@ -37,7 +37,9 @@ class TrainingManager(GraphExecutionManager):
         # have the need for passing IOBinding.
         state = C.PartialGraphExecutionState()
         forward_inputs = C.OrtValueVector()
-        forward_inputs.extend([_utils._ortvalue_from_torch_tensor(input) for input in inputs])
+        forward_inputs.reserve(len(inputs))
+        for input in inputs:
+            forward_inputs.push_back(_utils._ortvalue_from_torch_tensor(input))
 
         forward_outputs = C.OrtValueVector()
         # Run and return module outputs.
@@ -127,6 +129,8 @@ class TrainingManager(GraphExecutionManager):
                 # Use IO binding
                 # Push user output grads to ONNX backend.
                 backward_inputs = C.OrtValueVector()
+                # Preallocate length of the vector. And then delete as required towards the end.
+                backward_inputs.reserve(len(grad_outputs))
                 for idx, grad_output in enumerate(grad_outputs):
                     if idx in self._graph_info.output_grad_indices_non_differentiable:
                         assert grad_output is None, "ORT found the {}-th module output '{}' is " \
@@ -144,7 +148,8 @@ class TrainingManager(GraphExecutionManager):
                             grad_output = torch.tensor(0., device=device, dtype=dtype)
                     elif not grad_output.is_contiguous():
                         grad_output = grad_output.contiguous()
-                    backward_inputs.append(_utils._ortvalue_from_torch_tensor(grad_output))
+                    backward_inputs.push_back(_utils._ortvalue_from_torch_tensor(grad_output))
+                backward_inputs.shrink_to_fit()
 
                 # Run and get results
                 backward_outputs = C.OrtValueVector()
