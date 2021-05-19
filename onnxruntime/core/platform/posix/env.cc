@@ -154,11 +154,6 @@ class PosixThread : public EnvThread {
 #endif
   }
 
-  // This function is called when the threadpool is cancelled.
-  // TODO: Find a way to avoid calling TerminateThread
-  void OnCancel() override {
-  }
-
  private:
   static void* ThreadMain(void* param) {
     std::unique_ptr<Param> p((Param*)param);
@@ -167,7 +162,7 @@ class PosixThread : public EnvThread {
       p->start_address(p->index, p->param);
     }
     ORT_CATCH(const std::exception&) {
-      p->param->Cancel();
+      //ignore any exceptions
     }
     return nullptr;
   }

@@ -68,7 +68,7 @@ Status ConvMulFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_ef
       return Status::OK();
     }
 
-    conv_B = onnxruntime::make_unique<Initializer>(*conv_B_tensor_proto, graph.ModelPath());
+    conv_B = std::make_unique<Initializer>(*conv_B_tensor_proto, graph.ModelPath());
   }
 
   // Calculate new value of initializers of conv node
@@ -119,7 +119,7 @@ bool ConvMulFusion::SatisfyCondition(const Graph& graph, const Node& node, const
   }
 
   const auto& next_node = *node.OutputNodesBegin();
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Mul", {7, 13}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Mul", {7, 13, 14}) ||
       next_node.GetInputEdgesCount() != 1 ||
       // Make sure the two nodes do not span execution providers.
       next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {

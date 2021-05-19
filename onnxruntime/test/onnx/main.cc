@@ -313,9 +313,18 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           0,
           0,
           nullptr,
-          0,
+          1000,
+          1,
           1 << 30,
           0,
+          0,
+          nullptr,
+          0,
+          0,
+          0,
+          0,
+          0,
+          nullptr,
           0,
           nullptr,
           0};
@@ -327,7 +336,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           0,
           true,
           0,
-          nullptr};
+          nullptr,
+          nullptr};  // TODO: Support arena configuration for users of test runner
 
       sf.AppendExecutionProvider_TensorRT(tensorrt_options);
       sf.AppendExecutionProvider_CUDA(cuda_options);
@@ -355,7 +365,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           0,
           true,
           0,
-          nullptr};
+          nullptr,
+          nullptr};  // TODO: Support arena configuration for users of test runner
       sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
       fprintf(stderr, "CUDA is not supported in this build");

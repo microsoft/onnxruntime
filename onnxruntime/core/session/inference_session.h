@@ -14,6 +14,7 @@
 #include "core/framework/framework_common.h"
 #include "core/framework/iexecutor.h"
 #include "core/framework/kernel_registry_manager.h"
+#include "core/framework/prepacked_weights_container.h"
 #include "core/framework/session_state.h"
 #include "core/graph/basic_types.h"
 #include "core/optimizer/graph_transformer_level.h"
@@ -29,6 +30,9 @@
 #include <TraceLoggingActivity.h>
 #endif
 
+#ifdef ENABLE_TRAINING
+#include "core/framework/partial_graph_execution_state.h"
+#endif
 namespace onnxruntime {  // forward declarations
 class GraphTransformer;
 class Environment;
@@ -302,6 +306,24 @@ class InferenceSession {
   virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding) ORT_MUST_USE_RESULT;
   common::Status Run(IOBinding& io_binding) ORT_MUST_USE_RESULT;
 
+#ifdef ENABLE_TRAINING
+  /**
+  * Partially run a pre-loaded and pre-intialized model.
+    * @param run_options run options. 
+    * @param feeds inputs owned by client code and should not be changed during
+    *        execution of this function.
+    * @param fetches outputs produced after the executin of this function.
+    * @param state State of the graph needed to resume partial graph run.
+    * @param feeds_fetches_manager Contains feed/fetches name to internal indices mapping and information for device
+    *                              copy/checks.
+  */
+  common::Status PartialRun(onnxruntime::RunOptions& run_options,
+                            const std::vector<OrtValue>& feeds,
+                            std::vector<OrtValue>& fetches,
+                            PartialGraphExecutionState& state,
+                            FeedsFetchesManager& feeds_fetches_manager);
+#endif
+
   /**
     * @return pair.first = OK; FAIL otherwise. pair.second is non-NULL when pair.first = OK.
     * @note lifetime of the returned pointer is valid as long as the Session object is live.
@@ -402,6 +424,18 @@ class InferenceSession {
     */
   const logging::Logger* GetLogger() const { return session_logger_; };
 
+  const SessionState& GetSessionState() const {
+    ORT_ENFORCE(session_state_ != nullptr, "Session must be initialized to create session state.");
+    return *session_state_;
+  }
+
+  /**
+    * Add a PrepackedWeightsContainer instance to the session so as to store the pre-packed weights 
+    *  of shared initializers to be shared across sessions.
+    * @param prepacked_weights_container PrepackedWeightsContainer instance 
+    */
+  Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
   /**
@@ -423,11 +457,6 @@ class InferenceSession {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   bool IsInitialized() const;
-
-  const SessionState& GetSessionState() const {
-    ORT_ENFORCE(session_state_ != nullptr, "Session must be initialized to create session state.");
-    return *session_state_;
-  }
 
   // Use these 2 threadpool methods to get access to the threadpools since they rely on
   // specific flags in session options
@@ -532,6 +561,22 @@ class InferenceSession {
 
   // Updates all providers with the allocators from the env based on OrtMemoryInfo
   void UpdateProvidersWithSharedAllocators();
+
+  /*
+   * Validate and parses the shrink arena request string from the user
+   * List format: "device_0:device_id_0;device_1:device_id_1"
+   * If we encounter an invalid request, we return an error
+   * back to the user.
+   */
+
+  common::Status ValidateAndParseShrinkArenaString(const std::string& ort_device_list,
+                                                   /*out*/ std::vector<AllocatorPtr>& arenas_to_shrink) const ORT_MUST_USE_RESULT;
+
+  /*
+   * Performs the shrinkage of arenas requested to be shrunk by the user
+   * The `arenas_to_shrink` parameter is got from ValidateAndParseShrinkArenaString()
+   */
+  void ShrinkMemoryArenas(const std::vector<AllocatorPtr>& arenas_to_shrink);
 
 #if !defined(ORT_MINIMAL_BUILD)
   virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
@@ -667,6 +712,11 @@ class InferenceSession {
   std::vector<uint8_t> ort_format_model_bytes_;
 
   std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;
+
+  // Container to store pre-packed weights to share between sessions.
+  // The life-cycle of the cache itself is maintained by the user and the user will ensure
+  // the cache is valid until any session reliant on it is still in scope.
+  PrepackedWeightsContainer* prepacked_weights_container_ = nullptr;
 };
 
 struct SessionIOBinding {
