@@ -122,7 +122,7 @@ RUN git clone --recursive https://github.com/microsoft/onnxruntime.git \
   && python3 tools/ci_build/build.py \
     --cmake_extra_defines ONNXRUNTIME_VERSION=`cat ./VERSION_NUMBER` \
     --build_dir build \
-    --config RelWithDebInfo \
+    --config Release \
     --parallel \
     --skip_tests \
     --build_wheel \
@@ -135,7 +135,7 @@ RUN git clone --recursive https://github.com/microsoft/onnxruntime.git \
   && ldconfig
 
 # ONNX Runtime Training Examples
-RUN pip3 install --no-cache-dir GPUtil azureml azureml-core datasets tokenizers ninja cerberus sympy
+RUN pip3 install --no-cache-dir GPUtil azureml azureml-core datasets tokenizers ninja cerberus sympy sacremoses
 WORKDIR $GITHUB_DIR
 RUN git clone https://github.com/microsoft/huggingface-transformers.git
 
