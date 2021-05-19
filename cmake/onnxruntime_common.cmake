@@ -92,8 +92,6 @@ onnxruntime_add_static_library(onnxruntime_common ${onnxruntime_common_src})
 
 if (onnxruntime_USE_CUDA)
   target_include_directories(onnxruntime_common PUBLIC ${onnxruntime_CUDA_HOME}/include ${onnxruntime_CUDA_HOME}/extras/CUPTI/include)
-  target_link_directories(onnxruntime_common PUBLIC ${onnxruntime_CUDA_HOME}/extras/CUPTI/lib64)
-  target_link_libraries(onnxruntime_common cupti)
 endif()
 
 if (onnxruntime_USE_TELEMETRY)

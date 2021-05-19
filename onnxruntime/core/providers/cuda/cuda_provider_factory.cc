@@ -6,6 +6,7 @@
 #include "core/providers/cuda/cuda_provider_factory.h"
 
 #include <memory>
+#include <cupti.h>
 
 #include "gsl/gsl"
 
@@ -130,6 +131,22 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
 
   void CUDAExecutionProviderInfo__FromProviderOptions(const ProviderOptions& options, CUDAExecutionProviderInfo& info) {
     info = CUDAExecutionProviderInfo::FromProviderOptions(options);
+  }
+
+  int cuptiActivityEnable(int kind) override {
+    return ::cuptiActivityEnable(CUpti_ActivityKind(kind));
+  }
+
+  int cuptiActivityGetNextRecord(uint8_t* buffer, size_t validBufferSizeBytes, void* record) override {
+    return ::cuptiActivityGetNextRecord(buffer, validBufferSizeBytes, reinterpret_cast<CUpti_Activity**>(record));
+  }
+
+  int cuptiActivityRegisterCallbacks(void* funcBufferRequested, void* funcBufferCompleted) override {
+    return ::cuptiActivityRegisterCallbacks(reinterpret_cast<CUpti_BuffersCallbackRequestFunc>(funcBufferRequested), reinterpret_cast<CUpti_BuffersCallbackCompleteFunc>(funcBufferCompleted));
+  }
+
+  int cuptiActivityFlushAll(uint32_t flag) override {
+    return ::cuptiActivityFlushAll(flag);
   }
 
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
