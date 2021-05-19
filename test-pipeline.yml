@@ -15,7 +15,7 @@ jobs:
       echo "git rev-parse HEAD = $(git rev-parse HEAD)"
 
   - script: |
-      sleep 120
+      sleep 180
 
 - job: secondJob
   dependsOn: firstJob
