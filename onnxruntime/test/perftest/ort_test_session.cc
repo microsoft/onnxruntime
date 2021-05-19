@@ -236,7 +236,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     session_options.AppendExecutionProvider_TensorRT(tensorrt_options);
 
     OrtCUDAProviderOptions cuda_options{
-        0,
+        device_id,
         static_cast<OrtCudnnConvAlgoSearch>(performance_test_config.run_config.cudnn_conv_algo),
         std::numeric_limits<size_t>::max(),
         0,
