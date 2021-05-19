@@ -8,7 +8,6 @@ jobs:
 
   steps:
   - checkout: self
-    fetchDepth: 1
     submodules: false
 
   - script: |
@@ -22,7 +21,6 @@ jobs:
 
   steps:
   - checkout: self
-    fetchDepth: 1
     submodules: false
 
   - script: |
