@@ -71,7 +71,7 @@ class TestOpGEMM(unittest.TestCase):
         graph = helper.make_graph([gemm1_node, clip_node, gemm2_node], graph_name,
                                   [input_tensor], [output_tensor], initializer=initializers)
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
-        model.ir_version = onnx.IR_VERSION
+        model.ir_version = 7 # use stable onnx ir version
 
         onnx.save(model, output_model_path)
 
