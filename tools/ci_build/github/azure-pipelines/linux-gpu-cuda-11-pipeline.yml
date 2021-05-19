@@ -1,4 +1,4 @@
-jobs:   
+jobs:
 - job: Linux_Build_CUDA10_NV6
   timeoutInMinutes: 180
   workspace:
