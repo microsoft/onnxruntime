@@ -39,8 +39,8 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
 
   // Create non-constant arguments for calling Python function.
   // Constant arguments are created in ctor.
-  std::vector<OrtValue*> args = contrib::CreateOrtValueArgs(context, 0);
-  // Place holder for Python returned values.
+  std::vector<OrtValue*> args = contrib::CreateOrtValueArgs(context, 0, context->InputCount());
+  // Placeholder for Python returned values.
   std::vector<void*> returned_args;
 
   // Invoke python calls.
@@ -64,7 +64,7 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   SetOtherOutputs(context, returned_args);
 
 #ifndef NDEBUG
-  RefCountTracker::GetInstance().DumpDetails("Backward Kernel Completed");
+  RefCountTracker::GetInstance().DumpDetails("Forward Kernel Completed");
 #endif
   return Status::OK();
 }
@@ -73,7 +73,7 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
   // Todo(pengwa): perf impact and how much, leave it now to guarantee correctness.
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
 
-  auto args = contrib::CreateOrtValueArgs(context, 1);
+  auto args = contrib::CreateOrtValueArgs(context, 1, (context->InputCount() - 1) / 2);
   // This is called "const" because that's how Pytorch calls all non-tensor inputs.
   const Tensor* context_id_tensor = context->Input<Tensor>(0);
   ORT_ENFORCE(context_id_tensor, "Context ID (first input) should not be null.");
@@ -94,8 +94,6 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
   // todo(pengwa): okay to remove it?
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
 
-  // It's safe to un-register the context now because this GPU kernel runs in "sync" mode.
-  OrtTorchFunctionPool::GetInstance().UnRegisterContext(*context_index_ptr);
   SetOutputs(context, returned_args);
 
 #ifndef NDEBUG

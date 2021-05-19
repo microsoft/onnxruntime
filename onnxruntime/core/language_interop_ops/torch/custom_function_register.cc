@@ -118,8 +118,16 @@ void OrtTorchFunctionPool::UnregisterTorchAutogradFunction(const std::string& ke
 void OrtTorchFunctionPool::RegisterObject(PyObject* obj) {
   ORT_ENFORCE(obj, "Cannot register NULL.");
   std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
-  Py_INCREF(obj);
+  // From binding parameter we stealed a PyObject reference already, don't need increase the ref count
   obj_pool.push_back(obj);
+}
+
+void OrtTorchFunctionPool::UnRegisterObject() {
+  std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
+  for (auto it = obj_pool.begin(); it != obj_pool.end(); ++it) {
+    Py_DECREF(*it);
+  }
+  obj_pool.clear();
 }
 
 static void RegisterEntry(
@@ -220,7 +228,9 @@ int64_t OrtTorchFunctionPool::RegisterContext(PyObject* auto_grad_context) {
                                                auto_grad_context, "autograd_context_register");
 #endif
   func_context_pool.insert({index_, auto_grad_context});
-  Py_INCREF(auto_grad_context);
+  // We don't need increase the context refcnt because PyTorch already did it during .apply.
+  // Similarly, we don't need unregister it as well, because PyTorch will
+  // do it once backward completed.
   return index_;
 }
 

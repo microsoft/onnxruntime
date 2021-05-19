@@ -18,6 +18,7 @@ class OrtTorchFunctionPool final {
     return instance_;
   }
   void RegisterObject(PyObject* obj);
+  void UnRegisterObject();
   void RegisterTorchAutogradFunction(const std::string& key, PyObject* obj, const bool override = false);
   void UnregisterTorchAutogradFunction(const std::string& key);
 

@@ -61,10 +61,9 @@ def call_python_forward_function(forward_function, requires_grad_flags, tensor_t
             # Must extract one valid context from result tensors.
             assert ctx is not None
 
-        onnxruntime.register_python_object(result)
         for value in unwrapped_values:
-            # Maintain their life time.
-            # This causes memory leak.
+            # Mitigate the timing between "returning pure address back to C++" and "assign the ortvalue to PythonOP's output".
+            # Todo: refine by returning Torch tensor back to C++, then we construct OrtValue from it.
             onnxruntime.register_python_object(value)
 
         unwrapped_ptrs = [int(id(ctx))]
@@ -118,11 +117,9 @@ def call_python_backward_function(backward_function, requires_grad_flags, tensor
             raise Exception('Unsupported returned type: ', type(
                 result), ' by calling ', backward_function)
 
-        # TODO: release resource at the beginning of each kernel computation.
-        onnxruntime.register_python_object(result)
         for value in unwrapped_values:
-            # Maintain their life time.
-            # This causes memory leak.
+            # Mitigate the timing between "returning pure address back to C++" and "assign the ortvalue to PythonOPGrad's output".
+            # Todo: refine by returning Torch tensor back to C++, then we construct OrtValue from it.
             onnxruntime.register_python_object(value)
 
         unwrapped_ptrs = []

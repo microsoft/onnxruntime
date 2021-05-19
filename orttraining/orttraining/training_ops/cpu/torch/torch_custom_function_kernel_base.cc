@@ -11,11 +11,13 @@ using namespace onnxruntime::language_interop_ops::torch;
 namespace onnxruntime {
 namespace contrib {
 
-std::vector<OrtValue*> CreateOrtValueArgs(OpKernelContext* context, const size_t begin_index) {
+std::vector<OrtValue*> CreateOrtValueArgs(OpKernelContext* context,
+                                          const size_t begin_index,
+                                          const size_t num_arg) {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
   std::vector<OrtValue*> args;
-  for (size_t i = begin_index; i < static_cast<size_t>(ctx_internal->InputCount()); ++i) {
-    args.push_back(const_cast<OrtValue*>(ctx_internal->GetInputMLValue(i)));
+  for (size_t i = 0; i < num_arg; ++i) {
+    args.push_back(const_cast<OrtValue*>(ctx_internal->GetInputMLValue(begin_index + i)));
   }
   return args;
 }
@@ -168,9 +170,6 @@ void PythonOpBase::SetContextOutput(OpKernelContext* context, std::vector<void*>
   // Other outputs are address of OrtValue we got from python script run.
   PyObject* ctx_addr = reinterpret_cast<PyObject*>(returned_args[0]);
   ORT_ENFORCE(ctx_addr, "Context object pointer should not be null");
-
-  // todo(pengwa): optional? re-visit this once we have better understanding on how PyTorch handle the ref cnt.
-  Py_INCREF(ctx_addr);
 
   Tensor* ctx_id_tensor = context->Output(0, {1});
   ORT_ENFORCE(ctx_id_tensor != nullptr, "Context tensor should not be null.");

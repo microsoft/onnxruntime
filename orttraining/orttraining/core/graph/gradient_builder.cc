@@ -1526,7 +1526,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
   std::vector<Dimension> orig_shape, repeat_shape;
   bool orig_has_shape = GetShape(I(0), orig_shape).IsOK();
   bool repeat_has_shape = GetShape(I(1), repeat_shape).IsOK();
-  
+
   if (orig_has_shape || repeat_has_shape) {
     int64_t limit = orig_has_shape ? orig_shape.size() : repeat_shape[0].dim_value();
     limit = 2 * limit;
@@ -1536,7 +1536,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
     for (int64_t i = 0; i < limit; i = i + 2) {
       even_indices.push_back(i);
     }
-   
+
     AddReduceSumNode(IA("reshape_tile_grad_op"), GI(0), even_indices, false, result);
 
   } else {
@@ -1663,6 +1663,12 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
     // input_args[i + 1] is typed to input_types[i].
     if (input_tensor_types.at(i - 1) != 9) {
       input_args.push_back(GO(i));
+    }
+  }
+  // Also connect forward outputs to PythonOpGrad for random segement fault issues.
+  for (int i = 1; i < GetSrcNodeOutputSize(); ++i) {
+    if (input_tensor_types.at(i - 1) != 9) {
+      input_args.push_back(O(i));
     }
   }
 

@@ -949,11 +949,19 @@ void addGlobalMethods(py::module& m, Environment& env) {
       });
   m.def("register_python_object", [](py::object obj) -> void {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    // Be noted: obj is constructed from a PyObject*, plus automatically increased the ref count.
+    // By default, after this function exit, obj destructor will decrease ref count.
+    // But here we steal the PyObject* (e.g. py::handle) directly from obj. Then obj won't release the
+    // ref count, so we need manage it well.
     py::handle h = obj.release();
     PyObject* raw = h.ptr();
     pool.RegisterObject(raw);
   });
   m.def("register_forward_runner", [](py::object obj, bool override) -> void {
+    // Be noted: obj is constructed from a PyObject*, plus automatically increased the ref count.
+    // By default, after this function exit, obj destructor will decrease ref count.
+    // But here we steal the PyObject* (e.g. py::handle) directly from obj. Then obj won't release the
+    // ref count, so we need manage it well.
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     py::handle h = obj.release();
     PyObject* raw = h.ptr();
@@ -964,6 +972,10 @@ void addGlobalMethods(py::module& m, Environment& env) {
     pool.UnregisterForwardRunner();
   });
   m.def("register_backward_runner", [](py::object obj, bool override) -> void {
+    // Be noted: obj is constructed from a PyObject*, plus automatically increased the ref count.
+    // By default, after this function exit, obj destructor will decrease ref count.
+    // But here we steal the PyObject* (e.g. py::handle) directly from obj. Then obj won't release the
+    // ref count, so we need manage it well.
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     py::handle h = obj.release();
     PyObject* raw = h.ptr();
@@ -974,6 +986,10 @@ void addGlobalMethods(py::module& m, Environment& env) {
     pool.UnregisterBackwardRunner();
   });
   m.def("register_torch_autograd_function", [](std::string key, py::object obj, bool override) -> void {
+    // Be noted: obj is constructed from a PyObject*, plus automatically increased the ref count.
+    // By default, after this function exit, obj destructor will decrease ref count.
+    // But here we steal the PyObject* (e.g. py::handle) directly from obj. Then obj won't release the
+    // ref count, so we need manage it well.
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     py::handle h = obj.release();
     PyObject* raw = h.ptr();

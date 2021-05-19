@@ -34,7 +34,7 @@ ONNX_OPERATOR_KERNEL_EX(
 Status PythonOp::Compute(OpKernelContext* context) const {
   // Create non-constant arguments for calling Python function.
   // Constant arguments are created in ctor.
-  std::vector<OrtValue*> args = CreateOrtValueArgs(context, 0);
+  std::vector<OrtValue*> args = CreateOrtValueArgs(context, 0, context->InputCount());
   // Placeholder for Python returned values.
   std::vector<void*> returned_args;
 
@@ -66,7 +66,7 @@ Status PythonOpGrad::Compute(OpKernelContext* context) const {
   RefCountTracker::GetInstance().DumpDetails("Backward Kernel Started");
 #endif
 
-  auto args = CreateOrtValueArgs(context, 1);
+  auto args = CreateOrtValueArgs(context, 1, (context->InputCount() - 1) / 2);
   // This is called "const" because that's how Pytorch calls all non-tensor inputs.
   const Tensor* context_id_tensor = context->Input<Tensor>(0);
   ORT_ENFORCE(context_id_tensor, "Context ID (first input) should not be null.");
@@ -87,8 +87,6 @@ Status PythonOpGrad::Compute(OpKernelContext* context) const {
       const_arg_positions_,
       returned_args);
 
-  // It's safe to un-register the context now for CPU kernels which run in sync mode.
-  OrtTorchFunctionPool::GetInstance().UnRegisterContext(*context_index_ptr);
   SetOutputs(context, returned_args);
 
 #ifndef NDEBUG

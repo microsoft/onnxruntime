@@ -2657,7 +2657,8 @@ Return true if all elements are true and false otherwise.
       .Input(
           1,
           "inputs",
-          "Inputs of autograd.Function.backward.",
+          "Inputs of autograd.Function.backward. There are 2*N inputs: \
+          N gradient inputs + N forward run activations of PythonOp (not including the context).",
           "T",
           OpSchema::Variadic,
           /*is_homogeneous*/ false,
@@ -2707,12 +2708,13 @@ Return true if all elements are true and false otherwise.
         ORT_ENFORCE(input_tensor_types_proto, "PythonOpGrad's must have \"input_tensor_types\" attribute.");
         // Check if the inferred input types match those described in the
         // "input_tensor_types" attributes.
-        ORT_ENFORCE(static_cast<size_t>(input_tensor_types_proto->ints_size()) == ctx.getNumInputs() - 1,
+        auto grad_input_count = (ctx.getNumInputs() - 1) / 2;  // Ignore the inputs that comes as forward run outputs.
+        ORT_ENFORCE(static_cast<size_t>(input_tensor_types_proto->ints_size()) == grad_input_count,
                     "PythonOp's input list should have one more element than \"input_tensor_types\" attribute.");
         // The first input is a pointer which points to
         // a Python object created by torch.autograd.Function.apply.
         // For details, see how we interpret it in PythonOpGrad implementation.
-        for (size_t i = 1; i < ctx.getNumInputs(); ++i) {
+        for (size_t i = 1; i < grad_input_count + 1; ++i) {
           const auto inferred_input_type = ctx.getInputType(i);
           ORT_ENFORCE(inferred_input_type, "PythonOpGrad's ", i, "th input type is missing.");
           ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
