@@ -858,7 +858,8 @@ def create_session(model_path, providers, session_options):
 
         return session
     except Exception as e:
-        if "shape inference" in e:
+        logger.info(e)
+        if "shape inference" in str(e):
             logger.info("Use symbolic_shape_infer.py")
 
             new_model_path = model_path[:].replace(".onnx", "_new_by_trt_perf.onnx")
