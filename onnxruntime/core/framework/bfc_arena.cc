@@ -10,7 +10,7 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
                    ArenaExtendStrategy arena_extend_strategy,
                    int initial_chunk_size_bytes,
                    int max_dead_bytes_per_chunk,
-                   int initial_regrowth_chunk_size_bytes)
+                   int initial_growth_chunk_size_bytes)
     : IArenaAllocator(OrtMemoryInfo(resource_allocator->Info().name,
                                     OrtAllocatorType::OrtArenaAllocator,
                                     resource_allocator->Info().device,
@@ -21,11 +21,11 @@ BFCArena::BFCArena(std::unique_ptr<IAllocator> resource_allocator,
       next_allocation_id_(1),
       initial_chunk_size_bytes_(initial_chunk_size_bytes),
       max_dead_bytes_per_chunk_(max_dead_bytes_per_chunk),
-      initial_regrowth_chunk_size_bytes_(initial_regrowth_chunk_size_bytes) {
+      initial_growth_chunk_size_bytes_(initial_growth_chunk_size_bytes) {
   LOGS_DEFAULT(INFO) << "Creating BFCArena for " << device_allocator_->Info().name
                      << " with following configs: initial_chunk_size_bytes: " << initial_chunk_size_bytes_
                      << " max_dead_bytes_per_chunk: " << max_dead_bytes_per_chunk_
-                     << " initial_regrowth_chunk_size_bytes: " << initial_regrowth_chunk_size_bytes_
+                     << " initial_growth_chunk_size_bytes: " << initial_growth_chunk_size_bytes_
                      << " memory limit: " << total_memory
                      << " arena_extend_strategy: " << static_cast<int32_t>(arena_extend_strategy);
 
@@ -491,7 +491,7 @@ Status BFCArena::Shrink() {
 
   // Will affect how the arena grows if the arena extend strategy is kNextPowerOfTwo
   // In case the extend strategy is kSameAsRequested, the arena growth is exactly the size of the memory request itself
-  curr_region_allocation_bytes_ = initial_regrowth_chunk_size_bytes_;
+  curr_region_allocation_bytes_ = initial_growth_chunk_size_bytes_;
 
   return Status::OK();
 }

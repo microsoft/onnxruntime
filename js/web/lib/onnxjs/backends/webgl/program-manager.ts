@@ -37,10 +37,7 @@ export class ProgramManager {
     this.repo.set(key, artifact);
   }
   run(buildArtifact: Artifact, runData: RunData): void {
-    const inputInfo = runData.inputTextureDatas.map((d, i) => `input${i}:[${d.shape}]`).join(', ');
-    const outputInfo = `output: [${runData.outputTextureData.shape}]`;
-
-    this.profiler.event('backend', `ProgramManager.run ${inputInfo} ; ${outputInfo}`, () => {
+    this.profiler.event('op', `ProgramManager.run ${buildArtifact.programInfo.name ?? 'unknown kernel'}`, () => {
       const gl = this.glContext.gl;
       const program = buildArtifact.program;
       gl.useProgram(program);
@@ -57,7 +54,7 @@ export class ProgramManager {
       this.profiler.event('backend', 'GlContext.draw()', () => {
         this.doDraw(buildArtifact, runData);
       });
-    });
+    }, this.glContext);
   }
   dispose(): void {
     if (this.vertexShader) {

@@ -146,7 +146,7 @@ bool FindCycleHelper(int i, const std::list<int>* adjacency_map, bool visited[],
 * Read calibration table for INT8 quantization
 * Two kind of calibration tables are supported,
 * 1. ORT generated calibration table
-* The table is pre-serialized by flatbuffers. 
+* The table is pre-serialized by flatbuffers.
 * Each entry in the table is a key-value pair,
 * key: tensor name, value: maximum absolute value in floating point
 * For example,
@@ -405,7 +405,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       int8_calibration_cache_name_ = info.int8_calibration_table_name;
       int8_use_native_tensorrt_calibration_table_ = info.int8_use_native_calibration_table;
     }
-    if (fp16_enable_ || int8_enable_) { // DLA can only be enabled with FP16 or INT8
+    if (fp16_enable_ || int8_enable_) {  // DLA can only be enabled with FP16 or INT8
       dla_enable_ = info.dla_enable;
       dla_core_ = info.dla_core;
     }
@@ -457,13 +457,13 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       }
     }
 
-    if (fp16_enable_ || int8_enable_) { // DLA can only be enabled with FP16 or INT8
+    if (fp16_enable_ || int8_enable_) {  // DLA can only be enabled with FP16 or INT8
       const std::string dla_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDLAEnable);
       if (!dla_enable_env.empty()) {
         dla_enable_ = (std::stoi(dla_enable_env) == 0 ? false : true);
       }
-	  
-	  if (dla_enable_) {
+
+      if (dla_enable_) {
         const std::string dla_core_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDLACore);
         if (!dla_core_env.empty()) {
           dla_core_ = std::stoi(dla_core_env);
@@ -489,12 +489,12 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
         LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_ENGINE_CACHE_PATH is deprecated! Please use ORT_TENSORRT_CACHE_PATH to specify engine cache path";
       }
     }
-    
+
     const std::string engine_decryption_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDecryptionEnable);
     if (!engine_decryption_enable_env.empty()) {
       engine_decryption_enable_ = (std::stoi(engine_decryption_enable_env) == 0 ? false : true);
     }
-    
+
     if (engine_decryption_enable_) {
       engine_decryption_lib_path_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDecryptionLibPath);
     }
@@ -511,15 +511,15 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     max_partition_iterations_ = 1000;
   }
   if (min_subgraph_size_ <= 0) {
-	LOGS_DEFAULT(WARNING) << "[TensorRT EP] TensorRT option trt_min_subgraph_size must be a positive integer value. Set it to 1";
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] TensorRT option trt_min_subgraph_size must be a positive integer value. Set it to 1";
     min_subgraph_size_ = 1;
-  }	
+  }
   if (max_workspace_size_ <= 0) {
-	LOGS_DEFAULT(WARNING) << "[TensorRT EP] TensorRT option trt_max_workspace_size must be a positive integer value. Set it to 1073741824 (1GB)";
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] TensorRT option trt_max_workspace_size must be a positive integer value. Set it to 1073741824 (1GB)";
     max_workspace_size_ = 1 << 30;
   }
   if (dla_core_ < 0) {
-	LOGS_DEFAULT(WARNING) << "[TensorRT EP] TensorRT option trt_dla_core must be a non-negative integer value. Set it to 0";
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] TensorRT option trt_dla_core must be a non-negative integer value. Set it to 0";
     dla_core_ = 0;
   }
 
@@ -535,11 +535,28 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   if (engine_decryption_enable_) {
     LIBTYPE handle = OPENLIB(engine_decryption_lib_path_.c_str());
     if (handle == nullptr) {
-      ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                      "TensorRT EP could not open shared library from " + engine_decryption_lib_path_);
+      ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                         "TensorRT EP could not open shared library from " + engine_decryption_lib_path_));
     }
     engine_decryption_ = (int (*)(const char*, char*, size_t*))LIBFUNC(handle, "decrypt");
   }
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT provider options: "
+                        << "device_id: " << device_id_
+                        << ", trt_max_partition_iterations: " << max_partition_iterations_
+                        << ", trt_min_subgraph_size: " << min_subgraph_size_
+                        << ", trt_max_workspace_size: " << max_workspace_size_
+                        << ", trt_fp16_enable: " << fp16_enable_
+                        << ", trt_int8_enable: " << int8_enable_
+                        << ", trt_int8_calibration_cache_name: " << int8_calibration_cache_name_
+                        << ", trt_int8_use_native_tensorrt_calibration_table: " << int8_use_native_tensorrt_calibration_table_
+                        << ", trt_dla_enable: " << dla_enable_
+                        << ", trt_dla_core: " << dla_core_
+                        << ", trt_dump_subgraphs: " << dump_subgraphs_
+                        << ", trt_engine_cache_enable: " << engine_cache_enable_
+                        << ", trt_cache_path: " << cache_path_
+                        << ", trt_engine_decryption_enable: " << engine_decryption_enable_
+                        << ", trt_engine_decryption_lib_path: " << engine_decryption_lib_path_
+                        << ", trt_force_sequential_engine_build: " << force_sequential_engine_build_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -863,7 +880,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         model_proto->SerializeToString(string_buf);
 
         if (dump_subgraphs_) {
-          // Dump TensorRT subgraph for debugging if enabled via ORT_TENSORRT_DUMP_SUBGRAPHS env variable.
+          // Dump TensorRT subgraph for debugging
           std::fstream dump("TensorrtExecutionProvider_TRT_Subgraph.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
           model_proto->SerializeToOstream(dump);
         }
@@ -1099,7 +1116,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
     model_proto->SerializeToString(string_buf);
 
     if (dump_subgraphs_) {
-      // Dump the TensorRT subgraph if enabled via ORT_TENSORRT_DUMP_SUBGRAPHS env variable.
+      // Dump TensorRT subgraphs
       std::fstream dump(fused_node->Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
       model_proto->SerializeToOstream(dump);
     }
@@ -1184,11 +1201,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
 
     // Set DLA
     if (fp16_enable_ || int8_enable_) {
-      if (dla_enable_ && dla_core_ >= 0) {//DLA can only run with FP16 and INT8
+      if (dla_enable_ && dla_core_ >= 0) {  //DLA can only run with FP16 and INT8
         int number_of_dla_core = trt_builder->getNbDLACores();
         if (number_of_dla_core == 0) {
           LOGS_DEFAULT(WARNING) << "[TensorRT EP] Try to use DLA core, but platform doesn't have any DLA core";
-		  dla_enable_ = false;
+          dla_enable_ = false;
         } else {
           if (dla_core_ >= number_of_dla_core) {
             LOGS_DEFAULT(WARNING) << "[TensorRT EP] Try to use DLA core #" << dla_core_ << ", but it exceeds platform's maximum DLA core number " << number_of_dla_core << ". Use DLA core 0 instead.";
@@ -1199,7 +1216,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           trt_config->setDefaultDeviceType(nvinfer1::DeviceType::kDLA);
           trt_config->setDLACore(dla_core_);
           trt_node_name_with_precision += "_dlacore" + std::to_string(dla_core_);
-		}
+        }
       }
     }
 
@@ -1319,7 +1336,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
       *p = {context->allocate_func, context->release_func, context->allocator_handle, &parsers_[context->node_name],
             &engines_[context->node_name], &contexts_[context->node_name], &builders_[context->node_name],
             &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
-            input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, dla_enable_, 
+            input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, dla_enable_,
             dla_core_, &max_workspace_size_, trt_node_name_with_precision, engine_cache_enable_, cache_path_, runtime_.get(), nullptr,
             allocator_, dynamic_range_map, engine_decryption_enable_, engine_decryption_};
       *state = p.release();
@@ -1580,10 +1597,10 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
 
         // Set DLA (DLA can only run with FP16 or INT8)
         if ((trt_state->fp16_enable || trt_state->int8_enable) && trt_state->dla_enable) {
-            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] use DLA core " << trt_state->dla_core;
-            trt_config->setFlag(nvinfer1::BuilderFlag::kGPU_FALLBACK);
-            trt_config->setDefaultDeviceType(nvinfer1::DeviceType::kDLA);
-            trt_config->setDLACore(trt_state->dla_core);
+          LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] use DLA core " << trt_state->dla_core;
+          trt_config->setFlag(nvinfer1::BuilderFlag::kGPU_FALLBACK);
+          trt_config->setDefaultDeviceType(nvinfer1::DeviceType::kDLA);
+          trt_config->setDLACore(trt_state->dla_core);
         }
 
         // Build engine

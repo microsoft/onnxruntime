@@ -94,7 +94,7 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
     int arena_extend_strategy = -1;
     int initial_chunk_size_bytes = -1;
     int max_dead_bytes_per_chunk = -1;
-    int initial_regrowth_chunk_size_bytes = -1;
+    int initial_growth_chunk_size_bytes = -1;
 
     // override with values from the user supplied arena_cfg object
     if (arena_cfg) {
@@ -110,11 +110,11 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
 
       initial_chunk_size_bytes = arena_cfg->initial_chunk_size_bytes;
       max_dead_bytes_per_chunk = arena_cfg->max_dead_bytes_per_chunk;
-      initial_regrowth_chunk_size_bytes = arena_cfg->initial_regrowth_chunk_size_bytes;
+      initial_growth_chunk_size_bytes = arena_cfg->initial_growth_chunk_size_bytes;
     }
 
     OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk,
-                            initial_regrowth_chunk_size_bytes};
+                            initial_growth_chunk_size_bytes};
     AllocatorCreationInfo alloc_creation_info{
         [mem_info](int) { return std::make_unique<TAllocator>(mem_info); },
         0,

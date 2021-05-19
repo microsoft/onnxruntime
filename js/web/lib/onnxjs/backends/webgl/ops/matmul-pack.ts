@@ -49,6 +49,7 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
           return value;
       }`;
     return {
+      name: 'WebGLMatMulPacked',
       inputLayouts: inputs.map((t, i) => handler.getOrCreateTextureLayout(t, 4, true, inputs[i].dims, true)),
       outputLayout:
           handler.createTextureLayoutFromShape(outputShape, 4, outputShape, {isPacked: true, reverseWH: true}),

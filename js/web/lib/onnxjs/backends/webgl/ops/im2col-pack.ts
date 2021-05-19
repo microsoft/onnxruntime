@@ -82,6 +82,7 @@ export class WebGLIm2ColPacked implements WebGLOperator {
     }
           `;
     return {
+      name: 'WebGLIm2ColPacked',
       inputLayouts: [inferenceHandler.getOrCreateTextureLayout(inputs[0], 4, true, xshape, true)],
       outputLayout:
           inferenceHandler.createTextureLayoutFromShape(im2colShape, 4, im2colShape, {isPacked: true, reverseWH: true}),

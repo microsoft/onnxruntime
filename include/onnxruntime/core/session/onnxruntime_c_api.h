@@ -1310,7 +1310,7 @@ struct OrtApi {
      Ultimately, the first allocation size is determined by the allocation memory request. 
   * "max_dead_bytes_per_chunk": Threshold of unused memory in an allocated chunk of arena memory after 
      crossing which the current chunk is chunked into 2.
-  * "initial_regrowth_chunk_size_bytes": (Possible) Size of the second allocation in the arena. 
+  * "initial_growth_chunk_size_bytes": (Possible) Size of the second allocation in the arena. 
      Only relevant if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
      Ultimately, the allocation size is determined by the allocation memory request.
      Further allocation sizes are governed by the arena extend strategy.
