@@ -134,15 +134,11 @@ RUN git clone --recursive https://github.com/microsoft/onnxruntime.git \
   && pip install $ORT_DIR/build/Release/dist/*.whl \
   && ldconfig
 
-# ONNX Runtime Training Examples
 RUN pip3 install --no-cache-dir GPUtil azureml azureml-core datasets tokenizers ninja cerberus sympy sacremoses
+
+# Huggingface Examples
 WORKDIR $GITHUB_DIR
 RUN git clone https://github.com/microsoft/huggingface-transformers.git
-
-ENV BERT_DIR=${WORKSPACE_DIR}/BERT
-ENV GPT2_DIR=${WORKSPACE_DIR}/GPT2
-ENV TRAIN_FILE=${WORKSPACE_DIR}/GPT2/${GPT2_DATASET}/wiki.train.tokens
-ENV TEST_FILE=${WORKSPACE_DIR}/GPT2/${GPT2_DATASET}/wiki.test.tokens
 
 # Enable ssh access without password needed
 RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config
