@@ -321,11 +321,13 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
                 if data_type == "fp16" and tensor_to_array.dtype == np.dtype(np.float32):
                     tensor_to_array = tensor_to_array.astype(np.float16)
                 input_data_pb.append(tensor_to_array)
-
+                print(input_data_pb[0].shape)
                 if not shape_flag:
                     all_inputs_shape.append(input_data_pb[-1].shape)
                 logger.info(all_inputs_shape[-1])
         inputs.append(input_data_pb)
+        print(input_data_pb[0].shape)
+        print("HERE")
         logger.info('Loaded {} inputs successfully.'.format(len(inputs)))
 
         # load outputs
@@ -851,22 +853,26 @@ def create_session(model_path, providers, session_options):
 
     logger.info(model_path)
     try:
+        print("creating session") 
         session = onnxruntime.InferenceSession(model_path, providers=providers, sess_options=session_options)
 
         return session
-    except:
-        logger.info("Use symbolic_shape_infer.py")
+    except Exception as e:
+        if "shape inference" in e:
+            logger.info("Use symbolic_shape_infer.py")
 
+            new_model_path = model_path[:].replace(".onnx", "_new_by_trt_perf.onnx")
+            exec = os.environ["SYMBOLIC_SHAPE_INFER"]
+            logger.info(exec)
 
-    new_model_path = model_path[:].replace(".onnx", "_new_by_trt_perf.onnx")
-    exec = os.environ["SYMBOLIC_SHAPE_INFER"]
-    logger.info(exec)
+            if not os.path.exists(new_model_path):
+                subprocess.run("python3 " + exec +" --input " + model_path + " --output " + new_model_path + " --auto_merge", shell=True, check=True)
+            print("symbolic creating session") 
+            session = onnxruntime.InferenceSession(new_model_path, providers=providers, sess_options=session_options)
 
-    if not os.path.exists(new_model_path):
-        subprocess.run("python3 " + exec +" --input " + model_path + " --output " + new_model_path + " --auto_merge", shell=True, check=True)
-    session = onnxruntime.InferenceSession(new_model_path, providers=providers, sess_options=session_options)
-
-    return session
+            return session
+        else: 
+            raise Exception(e) 
 
 def run_onnxruntime(args, models):
 
