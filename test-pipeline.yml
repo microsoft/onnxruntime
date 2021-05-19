@@ -11,7 +11,7 @@ jobs:
     submodules: false
 
   - script: |
-      echo "$Build.SourceVersion = $(Build.SourceVersion)"
+      echo "Build.SourceVersion = $(Build.SourceVersion)"
       echo "git rev-parse HEAD = $(git rev-parse HEAD)"
 
   - script: |
@@ -25,5 +25,5 @@ jobs:
     submodules: false
 
   - script: |
-      echo "$Build.SourceVersion = $(Build.SourceVersion)"
+      echo "Build.SourceVersion = $(Build.SourceVersion)"
       echo "git rev-parse HEAD = $(git rev-parse HEAD)"
