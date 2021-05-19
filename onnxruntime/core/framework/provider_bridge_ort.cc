@@ -1103,7 +1103,7 @@ CUptiResult CUPTIAPI cuptiActivityGetNextRecord(uint8_t* buffer, size_t validBuf
 CUptiResult CUPTIAPI cuptiActivityRegisterCallbacks(CUpti_BuffersCallbackRequestFunc funcBufferRequested, CUpti_BuffersCallbackCompleteFunc funcBufferCompleted) {
   auto* info = onnxruntime::GetProviderInfo_CUDA();
   if (info)
-    return CUptiResult(info->cuptiActivityRegisterCallbacks(funcBufferRequested, funcBufferCompleted));
+    return CUptiResult(info->cuptiActivityRegisterCallbacks(reinterpret_cast<void*>(funcBufferRequested), reinterpret_cast<void*>(funcBufferCompleted)));
   return CUPTI_ERROR_NOT_SUPPORTED;
 }
 
