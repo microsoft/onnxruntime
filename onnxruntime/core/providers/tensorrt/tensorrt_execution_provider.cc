@@ -866,7 +866,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
               auto dim_size = input_shape->dim_size();
               for (int i = 0; i < dim_size; ++i) {
                 auto &dim = input_shape->dim(i);
-                if (!dim.has_dim_value() and !dim.has_dim_param()) {
+                if (!dim.has_dim_value() && !dim.has_dim_param()) {
                   has_dim_value_or_param = false;
                   break;
                 }
