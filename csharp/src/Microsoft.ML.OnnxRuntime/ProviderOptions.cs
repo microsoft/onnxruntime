@@ -26,7 +26,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Constructs an empty OrtTensorRTProviderOptions instance
         /// </summary>
-        public OrtCUDAProviderOptions() : base(IntPtr.Zero, true)
+        public OrtTensorRTProviderOptions() : base(IntPtr.Zero, true)
         {
             NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateTensorRTProviderOptions(out handle));
         }
@@ -50,7 +50,7 @@ namespace Microsoft.ML.OnnxRuntime
                 var keysArray = NativeOnnxValueHelper.ConvertNamesToUtf8(providerOptions.Keys.ToArray(), n => n, cleanupList);
                 var valuesArray = NativeOnnxValueHelper.ConvertNamesToUtf8(providerOptions.Values.ToArray(), n => n, cleanupList);
 
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtTensorRTCUDAProviderOptions(handle, keysArray, valuesArray, (UIntPtr)providerOptions.Count));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtTensorRTProviderOptions(handle, keysArray, valuesArray, (UIntPtr)providerOptions.Count));
             }
         }
 
@@ -74,7 +74,7 @@ namespace Microsoft.ML.OnnxRuntime
         #region SafeHandle
         /// <summary>
         /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
-        /// the native instance of OrtCUDAProviderOptions
+        /// the native instance of OrtTensorRTProviderOptions
         /// </summary>
         /// <returns>always returns true</returns>
         protected override bool ReleaseHandle()
