@@ -82,7 +82,7 @@ Status GatherGrad::ComputeImpl(const TensorShape& data_shape, const Tensor& indi
     const int64_t indices_index = block_offset / block_size;
     const int64_t offset = block_offset % block_size;
     Tind idx = indices_data[indices_index];
-    if (idx < 0) idx += indices_max;
+    if (idx < 0) idx += static_cast<Tind>(indices_max);
     const int64_t input_index = input_block_index * input_block_size + idx * block_size + offset;
     //REVIEW(codemzs): This lock can become a performance bottleneck. An area for potential improvement.
     std::lock_guard<std::mutex> lck(mtx);
