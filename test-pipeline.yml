@@ -7,7 +7,7 @@ jobs:
 - job: firstJob
 
   steps:
-  - checkout: true
+  - checkout: self
     fetchDepth: 1
     submodules: false
 
