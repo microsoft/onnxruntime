@@ -710,7 +710,8 @@ TEST_P(ModelTest, Run) {
       ORT_TSTR("fp16_test_tiny_yolov2-Candy"),
       ORT_TSTR("fp16_coreml_FNS-Candy"),
       ORT_TSTR("fp16_test_tiny_yolov2"),
-      ORT_TSTR("fp16_test_shufflenet")};
+	  ORT_TSTR("fp16_test_shufflenet"),
+      ORT_TSTR("keras2coreml_SimpleRNN_ImageNet")};
   static const ORTCHAR_T* openvino_disabled_tests[] = {ORT_TSTR("tf_mobilenet_v1_1.0_224"),
                                                        ORT_TSTR("bertsquad"),
                                                        ORT_TSTR("yolov3"),
