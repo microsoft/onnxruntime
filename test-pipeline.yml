@@ -15,7 +15,7 @@ jobs:
       echo $(Build.SourceVersion)
 
   - script: |
-      sleep 30
+      sleep 120
 
 - job: secondJob
   dependsOn: firstJob
