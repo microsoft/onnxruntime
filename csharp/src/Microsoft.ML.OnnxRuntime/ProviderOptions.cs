@@ -50,7 +50,7 @@ namespace Microsoft.ML.OnnxRuntime
                 var keysArray = NativeOnnxValueHelper.ConvertNamesToUtf8(providerOptions.Keys.ToArray(), n => n, cleanupList);
                 var valuesArray = NativeOnnxValueHelper.ConvertNamesToUtf8(providerOptions.Values.ToArray(), n => n, cleanupList);
 
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtTensorRTProviderOptions(handle, keysArray, valuesArray, (UIntPtr)providerOptions.Count));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtUpdateTensorRTProviderOptions(handle, keysArray, valuesArray, (UIntPtr)providerOptions.Count));
             }
         }
 
