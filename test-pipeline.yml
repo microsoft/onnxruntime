@@ -4,10 +4,26 @@ pool:
   vmImage: 'macOS-10.15'
 
 jobs:
-- job: Job
+- job: firstJob
 
   steps:
-  - checkout: none
+  - checkout: true
+    fetchDepth: 1
+    submodules: false
 
   - script: |
-      /usr/bin/clang --version
+      echo $(Build.SourceVersion)
+
+  - script: |
+      sleep 30
+
+- job: secondJob
+  dependsOn: firstJob
+
+  steps:
+  - checkout: true
+    fetchDepth: 1
+    submodules: false
+
+  - script: |
+      echo $(Build.SourceVersion)
