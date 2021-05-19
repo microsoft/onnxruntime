@@ -259,6 +259,25 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
             }
         }
+
+        [Fact]
+        private void TestTensorRTProviderOptions()
+        {
+            using (var trtProviderOptions = new OrtProviderOptions())
+            {
+                var providerOptionsDict = new Dictionary<string, string>();
+                providerOptionsDict["device_id"] = "0";
+                providerOptionsDict["trt_fp16_enable"] = "1";
+                providerOptionsDict["trt_int8_enable"] = "1";
+
+                trtProviderOptions.UpdateOptions(providerOptionsDict);
+                using (var sessionOptions = new SessionOptions())
+                {
+                    sessionOptions.AppendExecutionProvider_Tensorrt(trtProviderOptions);
+                }
+            }
+        
+        }
 #endif
 
         [Theory]
