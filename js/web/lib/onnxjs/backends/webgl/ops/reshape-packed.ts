@@ -138,6 +138,8 @@ export class WebGLReshapePacked extends Reshape implements WebGLOperator {
       inputTDs = [originalInputTD];
     }
     let outputLayout = this.outputLayout;
+    outputLayout.shape = this.outputShape;
+    outputLayout.unpackedShape = this.outputShape;
     if (outputLayout === undefined) {
       outputLayout = handler.createTextureLayoutFromShape(
           this.outputShape, 4, this.outputShape, {isPacked: true, reverseWH: true});
