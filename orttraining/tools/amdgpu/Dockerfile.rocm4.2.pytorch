@@ -134,7 +134,7 @@ RUN git clone --recursive https://github.com/microsoft/onnxruntime.git \
   && pip install $ORT_DIR/build/Release/dist/*.whl \
   && ldconfig
 
-RUN pip3 install --no-cache-dir GPUtil azureml azureml-core datasets tokenizers ninja cerberus sympy sacremoses
+RUN pip3 install --no-cache-dir GPUtil azureml azureml-core datasets tokenizers ninja cerberus sympy sacremoses sacrebleu
 
 # Huggingface Examples
 WORKDIR $GITHUB_DIR
