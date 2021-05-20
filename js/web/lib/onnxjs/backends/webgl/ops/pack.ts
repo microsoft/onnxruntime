@@ -57,6 +57,7 @@ export class WebGLPack implements WebGLOperator {
       `;
 
     return {
+      name: 'WebGLPack',
       inputLayouts: [handler.getOrCreateTextureLayout(inputs[0], 1, false, [], true)],
       outputLayout,
       samplers: ['A'],

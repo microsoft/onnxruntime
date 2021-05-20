@@ -53,7 +53,7 @@ static SessionOptions SESSION_OPTION = {
     true,                              //use_per_session_threads
     true,                              //thread_pool_allow_spinning
     false,                             //use_deterministic_compute
-    {},                                //session_configurations
+    {},                                //config_options
     {},                                // initializers_to_share_map
 };
 
@@ -163,6 +163,8 @@ Status TrainingRunner::Initialize() {
 
   if (params_.use_gist) {
     TrainingSession::TrainingConfiguration::GistConfiguration gist{};
+    gist.op_type = params_.gist_config.op_type;
+    gist.compr_type = params_.gist_config.compr_type;
 
     config.gist_config = gist;
   }
@@ -183,7 +185,7 @@ Status TrainingRunner::Initialize() {
 
   // always configure the graph transformer
   {
-    TrainingSession::TrainingConfiguration::GraphTransformerConfiguration gt_config{};
+    TrainingGraphTransformerConfiguration gt_config{};
     gt_config.enable_gelu_approximation = params_.enable_gelu_approximation;
     gt_config.attn_dropout_recompute = params_.attn_dropout_recompute;
     gt_config.gelu_recompute = params_.gelu_recompute;

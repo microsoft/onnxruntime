@@ -73,18 +73,21 @@ class TrainingManager(GraphExecutionManager):
                                                       kwargs)
 
         # Reinitialize graph builder if the inputs or initializers requiring gradient have changed.
-        build_gradient_graph = build_gradient_graph or self._reinitialize_graph_builder(input_info)
+        # Order of or operation is important here because we always need to call
+        # _reinitialize_graph_builder irrespective of the value of build_gradient_graph.
+        build_gradient_graph = self._reinitialize_graph_builder(input_info) or build_gradient_graph
 
         # Build the gradient graph
         if build_gradient_graph:
             self._build_graph()
 
-        module_device = _utils.get_device_from_module(self._original_module)
+        device = _utils.get_device_from_module(self._original_module) or \
+            _utils.get_device_from_inputs(inputs, kwargs)
         # The _training_session/_inference_session should be created every time
         # the graph was built or if the device changed between calls to forward
-        create_execution_session = build_gradient_graph or self._device != module_device
-        if self._device != module_device:
-            self._device = module_device
+        create_execution_session = build_gradient_graph or self._device != device
+        if self._device != device:
+            self._device = device
         if create_execution_session:
             # Create execution session creates the training_session
             self._create_execution_agent()
@@ -171,27 +174,27 @@ class TrainingManager(GraphExecutionManager):
 
                 # Append gradients of initializer to results
                 # Go over each initializer, check if it required grad and append to results accordingly
-                initializer_names_to_train_set = set(self._graph_info.initializer_names_to_train)
                 initializer_index = num_user_input_grads
                 for initializer_name in self._graph_info.initializer_names:
-                    if initializer_name in initializer_names_to_train_set:
+                    if initializer_name in self._graph_initializer_names_to_train:
                         results.append(_utils._ortvalue_to_torch_tensor(backward_outputs[initializer_index]))
                         initializer_index += 1
                     else:
                         results.append(None)
-                
+
                 return tuple(results)
 
         return _io.unflatten_user_output(self._module_output_schema,
-                                        self._graph_info.user_output_names,
                                         _ORTModuleFunction.apply(
                                             *_io._combine_input_buffers_initializers(
-                                                self._flattened_module.named_parameters(),
+                                                [param for name, param in self._flattened_module.named_parameters()
+                                                    if name in self._graph_initializer_names],
                                                 self._graph_info.user_input_names,
                                                 self._input_info,
                                                 self._flattened_module.named_buffers(),
                                                 inputs,
-                                                kwargs)))
+                                                kwargs,
+                                                self._device)))
 
     def _build_graph(self):
         """Build an optimized gradient graph using the module_graph_builder"""
@@ -221,9 +224,7 @@ class TrainingManager(GraphExecutionManager):
 
         self._execution_agent = TrainingAgent(self._optimized_onnx_model.SerializeToString(),
                                               fw_feed_names,
-                                              self._graph_info.user_output_names,
                                               fw_outputs_device_info,
-                                              self._graph_info.module_output_gradient_name,
                                               bw_fetches_names,
                                               bw_outputs_device_info,
                                               session_options,
@@ -235,13 +236,11 @@ class TrainingManager(GraphExecutionManager):
 
         initializer_names_to_train_set_user_model = {name for name, param in
                                                      self._flattened_module.named_parameters() if param.requires_grad}
-        initializer_names_to_train_set_onnx_graph = set(self._graph_info.initializer_names_to_train) \
-            if self._graph_info else None
 
         # If inputs requiring gradient change from forward to the next, the module_gradient_graph_builder
         # needs to be reinitialized so it can compute the backward output for the new inputs that require_grad
         if input_info.require_grad_names != self._input_info.require_grad_names or \
-                initializer_names_to_train_set_user_model != initializer_names_to_train_set_onnx_graph:
+                initializer_names_to_train_set_user_model != self._graph_initializer_names_to_train:
             self._input_info = input_info
             self._initialize_graph_builder(training=True)
             return True

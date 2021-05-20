@@ -37,9 +37,11 @@ set(OBJC_ARC_COMPILE_OPTIONS "-fobjc-arc" "-fobjc-arc-exceptions")
 # explicitly list them here so it is easy to see what is included
 set(onnxruntime_objc_headers
     "${OBJC_ROOT}/include/onnxruntime.h"
-    "${OBJC_ROOT}/include/onnxruntime/ort_env.h"
-    "${OBJC_ROOT}/include/onnxruntime/ort_session.h"
-    "${OBJC_ROOT}/include/onnxruntime/ort_value.h")
+    "${OBJC_ROOT}/include/ort_enums.h"
+    "${OBJC_ROOT}/include/ort_env.h"
+    "${OBJC_ROOT}/include/ort_session.h"
+    "${OBJC_ROOT}/include/ort_value.h"
+    )
 
 file(GLOB onnxruntime_objc_srcs
     "${OBJC_ROOT}/src/*.h"
@@ -84,12 +86,29 @@ set_target_properties(onnxruntime_objc PROPERTIES
     FRAMEWORK_VERSION "A"
     PUBLIC_HEADER "${onnxruntime_objc_headers}"
     FOLDER "ONNXRuntime"
-    CXX_STANDARD 17) # TODO remove when everything else moves to 17
+    CXX_STANDARD 17 # TODO remove when everything else moves to 17
+    )
+
+target_link_options(onnxruntime_objc PRIVATE "-Wl,-headerpad_max_install_names")
+
+add_custom_command(TARGET onnxruntime_objc POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_BUNDLE_CONTENT_DIR:onnxruntime_objc>/Libraries"
+    COMMAND ${CMAKE_COMMAND} -E copy
+        "$<TARGET_FILE:onnxruntime>"
+        "$<TARGET_BUNDLE_CONTENT_DIR:onnxruntime_objc>/Libraries"
+    COMMAND install_name_tool
+        -change "@rpath/$<TARGET_FILE_NAME:onnxruntime>"
+                "@rpath/$<TARGET_NAME:onnxruntime_objc>.framework/Libraries/$<TARGET_FILE_NAME:onnxruntime>"
+        "$<TARGET_FILE:onnxruntime_objc>")
+
+install(TARGETS onnxruntime_objc
+    FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if(onnxruntime_BUILD_UNIT_TESTS)
     find_package(XCTest REQUIRED)
 
-    # onnxruntime_test_objc target
+    # onnxruntime_objc_test target
 
     file(GLOB onnxruntime_objc_test_srcs
         "${OBJC_ROOT}/test/*.h"

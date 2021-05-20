@@ -255,6 +255,8 @@ struct ProviderHost {
   virtual const std::string& TensorShapeProto_Dimension__dim_param(const ONNX_NAMESPACE::TensorShapeProto_Dimension* p) = 0;
   virtual int64_t TensorShapeProto_Dimension__dim_value(const ONNX_NAMESPACE::TensorShapeProto_Dimension* p) = 0;
   virtual void TensorShapeProto_Dimension__set_dim_value(ONNX_NAMESPACE::TensorShapeProto_Dimension* p, int64_t value) = 0;
+  virtual bool TensorShapeProto_Dimension__has_dim_value(const ONNX_NAMESPACE::TensorShapeProto_Dimension* p) = 0;
+  virtual bool TensorShapeProto_Dimension__has_dim_param(const ONNX_NAMESPACE::TensorShapeProto_Dimension* p) = 0;
   virtual void TensorShapeProto_Dimension__clear_dim_value(ONNX_NAMESPACE::TensorShapeProto_Dimension* p) = 0;
 
   // TensorShapeProto_Dimensions
@@ -626,6 +628,8 @@ struct TensorShapeProto_Dimension {
   const std::string& dim_param() const { return g_host->TensorShapeProto_Dimension__dim_param(this); }
   int64_t dim_value() const { return g_host->TensorShapeProto_Dimension__dim_value(this); }
   void set_dim_value(int64_t value) { return g_host->TensorShapeProto_Dimension__set_dim_value(this, value); }
+  bool has_dim_value() const { return g_host->TensorShapeProto_Dimension__has_dim_value(this); }
+  bool has_dim_param() const { return g_host->TensorShapeProto_Dimension__has_dim_param(this); }
   void clear_dim_value() { return g_host->TensorShapeProto_Dimension__clear_dim_value(this); }
 
   PROVIDER_DISALLOW_ALL(TensorShapeProto_Dimension)

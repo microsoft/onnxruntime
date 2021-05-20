@@ -191,12 +191,14 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
 #define BINARY_OP_TYPED_BF16(name, ver) BINARY_OP_TYPED(name, ver, BFloat16)
+#define BINARY_OP_VERSIONED_TYPED_BF16(name, startver, endver) BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, BFloat16)
 #define BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED_BF16(name, ver) BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(name, ver, BFloat16)
 #define BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED_BF16(name, ver) BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(name, ver, BFloat16)
 #define BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED_BF16(name, startver, endver) BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED(name, startver, endver, BFloat16)
 #define BINARY_OP_TYPED_VERSIONED_V_BF16(name, class_name, startver, endver) BINARY_OP_TYPED_VERSIONED_V(name, class_name, startver, endver, BFloat16)
 #else
 #define BINARY_OP_TYPED_BF16(name, ver)
+#define BINARY_OP_VERSIONED_TYPED_BF16(name, startver, endver)
 #define BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED_BF16(name, ver)
 #define BINARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED_BF16(name, ver)
 #define BINARY_ELEMENTWISE_REGISTER_KERNEL_VERSIONED_TYPED_BF16(name, startver, endver)
@@ -213,6 +215,14 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   BINARY_OP_VERSIONED_TYPED(name, startver, endver, uint64_t) \
   BINARY_OP_VERSIONED_TYPED(name, startver, endver, int32_t)  \
   BINARY_OP_VERSIONED_TYPED(name, startver, endver, int64_t)  \
+  BINARY_OP_VERSIONED_HFD(name, startver, endver)
+
+#define BINARY_OP_VERSIONED_UZILHFD_WITH_BF16(name, startver, endver) \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, uint32_t)         \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, uint64_t)         \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, int32_t)          \
+  BINARY_OP_VERSIONED_TYPED(name, startver, endver, int64_t)          \
+  BINARY_OP_VERSIONED_TYPED_BF16(name, startver, endver)              \
   BINARY_OP_VERSIONED_HFD(name, startver, endver)
 
 #define BINARY_OP_HFD(name, ver)        \
@@ -285,10 +295,15 @@ BINARY_OP_VERSIONED_UZILHFD(Sub, 7, 12)
 BINARY_OP_VERSIONED_UZILHFD(Mul, 7, 12)
 BINARY_OP_VERSIONED_UZILHFD(Div, 7, 12)
 
-BINARY_OP_UZILHFD(Add, 13)
-BINARY_OP_UZILHFD(Sub, 13)
-BINARY_OP_UZILHFD(Mul, 13)
-BINARY_OP_UZILHFD(Div, 13)
+BINARY_OP_VERSIONED_UZILHFD_WITH_BF16(Add, 13, 13)
+BINARY_OP_VERSIONED_UZILHFD_WITH_BF16(Sub, 13, 13)
+BINARY_OP_VERSIONED_UZILHFD_WITH_BF16(Mul, 13, 13)
+BINARY_OP_VERSIONED_UZILHFD_WITH_BF16(Div, 13, 13)
+
+BINARY_OP_UZILHFD(Add, 14)
+BINARY_OP_UZILHFD(Sub, 14)
+BINARY_OP_UZILHFD(Mul, 14)
+BINARY_OP_UZILHFD(Div, 14)
 
 BINARY_OP_REGISTER_VERSIONED_CLASS_HFD(Pow, Pow_7, 7, 11)
 BINARY_LOGICALOP_TYPED(And, 7, bool)

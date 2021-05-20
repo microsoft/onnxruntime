@@ -16,6 +16,7 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/graph_augmenter.h"
+#include "orttraining/training_ops/cpu/aten_ops/aten_op_config.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -352,9 +353,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
   bool transA = static_cast<bool>(attributes.at("transA").i());
   bool transB = static_cast<bool>(attributes.at("transB").i());
 
-  ArgDef A = I(0), B = I(1), C = I(2), dY = GO(0),
-         dA = GI(0), dB = GI(1), dC = GI(2);
-  int elem_type = OElemType(0);
+  ArgDef A = I(0), B = I(1), dY = GO(0),
+         dA = GI(0), dB = GI(1);
   AttributeProto transpose_first_input = MakeAttribute("transA", int64_t(1));
   AttributeProto transpose_second_input = MakeAttribute("transB", int64_t(1));
 
@@ -431,6 +431,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetGemmGradient) {
   if (IsGradientRequiredForSrcNodeInput(2)) {
     // Y = beta * C
     // dC = beta * dY
+    ArgDef C = I(2), dC = GI(2);
+    int elem_type = OElemType(0);
     bool has_beta = attributes.at("beta").has_f();
     float beta = attributes.at("beta").f();
     ORT_ENFORCE(beta != 0.0f);
@@ -1345,16 +1347,15 @@ IMPLEMENT_GRADIENT_BUILDER(GetSliceGradient) {
 
 IMPLEMENT_GRADIENT_BUILDER(GetWhereGradient) {
   std::vector<NodeDef> result;
-  const int64_t data_type = static_cast<int64_t>(IElemType(1));
+  NodeDef zero_constant_node = ZeroConstantNode(OElemType(0));
+  ArgDef ZERO = zero_constant_node.output_args[0];
+  result.push_back(zero_constant_node);
   if (IsGradientRequiredForSrcNodeInput(1)) {
-    result.push_back(NodeDef("Cast", {I(0)}, {IA("Positive_Mask")}, {MakeAttribute("to", data_type)}));
-    result.push_back(NodeDef("Mul", {GO(0), IA("Positive_Mask")}, {GI(1)}));
+    result.push_back(NodeDef("Where", {I(0), GO(0), ZERO}, {GI(1)}));
   }
 
   if (IsGradientRequiredForSrcNodeInput(2)) {
-    result.push_back(NodeDef("Not", {I(0)}, {IA("Not_Condition", IType(0))}));
-    result.push_back(NodeDef("Cast", {IA("Not_Condition")}, {IA("Negative_Mask")}, {MakeAttribute("to", data_type)}));
-    result.push_back(NodeDef("Mul", {GO(0), IA("Negative_Mask")}, {GI(2)}));
+    result.push_back(NodeDef("Where", {I(0), ZERO, GO(0)}, {GI(2)}));
   }
   return result;
 }
@@ -1431,6 +1432,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetExpGradient) {
       NodeDef("Mul",
               {GO(0), O(0)},
               {GI(0)})};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetIdentityGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Identity", {GO(0)}, {GI(0)})};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetFlattenGradient) {
@@ -1524,7 +1530,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
   std::vector<Dimension> orig_shape, repeat_shape;
   bool orig_has_shape = GetShape(I(0), orig_shape).IsOK();
   bool repeat_has_shape = GetShape(I(1), repeat_shape).IsOK();
-
+  
   if (orig_has_shape || repeat_has_shape) {
     int64_t limit = orig_has_shape ? orig_shape.size() : repeat_shape[0].dim_value();
     limit = 2 * limit;
@@ -1534,13 +1540,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
     for (int64_t i = 0; i < limit; i = i + 2) {
       even_indices.push_back(i);
     }
-    NodeDef even_indices_node = ConstantVectorNode(even_indices, Name("even_indices"));
-    result.push_back(even_indices_node);
-    int opset_version = SrcNodeDomain() == kOnnxDomain ? SrcNodeOpsetVersion() : OnnxOpSetVersion();
-    result.push_back(NodeDef(opset_version >= 13 ? OpDef{"ReduceSum", kOnnxDomain, opset_version} : OpDef{"ReduceSumTraining", kMSDomain, 1},
-                             {IA("reshape_tile_grad_op"), even_indices_node.output_args[0]},
-                             {GI(0)},
-                             {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", int64_t{0})}}));
+   
+    AddReduceSumNode(IA("reshape_tile_grad_op"), GI(0), even_indices, false, result);
 
   } else {
     NodeDef start_node = ConstantScalarNode(int64_t{0}, {}, Name("start_int64"));
@@ -1615,6 +1616,54 @@ IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
   }
 
   return result;
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
+  const auto& src_attrs = SrcNodeAttributes();
+  std::vector<AttributeProto> attrs;
+  ORT_ENFORCE(utils::HasString(src_attrs.at("name")));
+  const std::string name = src_attrs.at("name").s();
+  attrs.emplace_back(MakeAttribute("name", name));
+  if (src_attrs.find("custom_attributes_json") != src_attrs.end()) {
+    attrs.emplace_back(MakeAttribute("custom_attributes_json", src_attrs.at("custom_attributes_json").s()));
+  }
+
+  const auto* op_config_ptr = contrib::aten_ops::GetATenOperatorConfig(name);
+  ORT_ENFORCE(op_config_ptr, "ATen Op config for ", name, " is not found.");
+  const auto& op_config = *op_config_ptr;
+
+  std::vector<int64_t> grad_output_types;
+  std::vector<ArgDef> input_args;
+  std::vector<ArgDef> output_args;
+
+  for (size_t i = 0; i < op_config.backward_input_source_configs.size(); i++) {
+    size_t index = static_cast<size_t>(std::get<1>(op_config.backward_input_source_configs[i]));
+    switch (std::get<0>(op_config.backward_input_source_configs[i])) {
+      case contrib::aten_ops::GRAD_OUTPUT:
+        input_args.emplace_back(GO(index));
+        break;
+      case contrib::aten_ops::FORWARD_INPUT:
+        input_args.emplace_back(I(index));
+        break;
+      case contrib::aten_ops::FORWARD_OUTPUT:
+        input_args.emplace_back(O(index));
+        break;
+    }
+  }
+
+  for (size_t i = 0; i < op_config.gradient_input_indices.size(); i++) {
+    size_t index = static_cast<size_t>(op_config.gradient_input_indices[i]);
+    if (IsGradientRequiredForSrcNodeInput(index)) {
+      output_args.emplace_back(GI(index));
+    } else {
+      output_args.emplace_back(ArgDef("", nullptr));
+    }
+
+    grad_output_types.emplace_back(IElemType(index));
+  }
+
+  attrs.emplace_back(MakeAttribute("output_types", grad_output_types));
+  return std::vector<NodeDef>{NodeDef(OpDef{"ATenOpGrad", kMSDomain, 1}, input_args, output_args, attrs)};
 }
 
 }  // namespace training

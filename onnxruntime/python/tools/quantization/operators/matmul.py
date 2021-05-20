@@ -16,7 +16,7 @@ class MatMulInteger(QuantOperatorBase):
         assert (node.op_type == "MatMul")
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
-            self.quantizer.quantize_inputs(node, [0, 1])
+            self.quantizer.quantize_inputs(node, [0, 1], reduce_range=True, op_level_per_channel=True)
 
         matmul_integer_output = node.output[0] + "_output_quantized"
         matmul_integer_name = node.name + "_quant" if node.name != "" else ""
@@ -66,7 +66,7 @@ class QLinearMatMul(QuantOperatorBase):
         assert (node.op_type == "MatMul")
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
-            self.quantizer.quantize_inputs(node, [0, 1])
+            self.quantizer.quantize_inputs(node, [0, 1], reduce_range=True, op_level_per_channel=True)
 
         data_found, output_scale_name, output_zp_name, _, _ = \
             self.quantizer._get_quantization_params(node.output[0])

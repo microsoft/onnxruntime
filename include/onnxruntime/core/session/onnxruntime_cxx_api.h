@@ -284,6 +284,8 @@ struct RunOptions : Base<OrtRunOptions> {
   RunOptions& SetRunTag(const char* run_tag);
   const char* GetRunTag() const;
 
+  RunOptions& AddConfigEntry(const char* config_key, const char* config_value);
+
   // terminate ALL currently executing Session::Run calls that were made using this RunOptions instance
   RunOptions& SetTerminate();
   // unset the terminate flag so this RunOptions instance can be used in a new Session::Run call
@@ -347,6 +349,7 @@ struct ModelMetadata : Base<OrtModelMetadata> {
 struct Session : Base<OrtSession> {
   explicit Session(std::nullptr_t) {}
   Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);
+  Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options, OrtPrepackedWeightsContainer* prepacked_weights_container);
   Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options);
 
   // Run that will allocate the output values

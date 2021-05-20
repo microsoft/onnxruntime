@@ -4,6 +4,7 @@
 // this header contains the entire ONNX Runtime Objective-C API
 // the headers below can also be imported individually
 
-#import "onnxruntime/ort_env.h"
-#import "onnxruntime/ort_session.h"
-#import "onnxruntime/ort_value.h"
+#import "ort_enums.h"
+#import "ort_env.h"
+#import "ort_session.h"
+#import "ort_value.h"

@@ -14,6 +14,7 @@
 #include "core/framework/framework_common.h"
 #include "core/framework/iexecutor.h"
 #include "core/framework/kernel_registry_manager.h"
+#include "core/framework/prepacked_weights_container.h"
 #include "core/framework/session_state.h"
 #include "core/graph/basic_types.h"
 #include "core/optimizer/graph_transformer_level.h"
@@ -428,6 +429,13 @@ class InferenceSession {
     return *session_state_;
   }
 
+  /**
+    * Add a PrepackedWeightsContainer instance to the session so as to store the pre-packed weights 
+    *  of shared initializers to be shared across sessions.
+    * @param prepacked_weights_container PrepackedWeightsContainer instance 
+    */
+  Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
   /**
@@ -553,6 +561,22 @@ class InferenceSession {
 
   // Updates all providers with the allocators from the env based on OrtMemoryInfo
   void UpdateProvidersWithSharedAllocators();
+
+  /*
+   * Validate and parses the shrink arena request string from the user
+   * List format: "device_0:device_id_0;device_1:device_id_1"
+   * If we encounter an invalid request, we return an error
+   * back to the user.
+   */
+
+  common::Status ValidateAndParseShrinkArenaString(const std::string& ort_device_list,
+                                                   /*out*/ std::vector<AllocatorPtr>& arenas_to_shrink) const ORT_MUST_USE_RESULT;
+
+  /*
+   * Performs the shrinkage of arenas requested to be shrunk by the user
+   * The `arenas_to_shrink` parameter is got from ValidateAndParseShrinkArenaString()
+   */
+  void ShrinkMemoryArenas(const std::vector<AllocatorPtr>& arenas_to_shrink);
 
 #if !defined(ORT_MINIMAL_BUILD)
   virtual void AddPredefinedTransformers(GraphTransformerManager& transformer_manager,
@@ -688,6 +712,11 @@ class InferenceSession {
   std::vector<uint8_t> ort_format_model_bytes_;
 
   std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;
+
+  // Container to store pre-packed weights to share between sessions.
+  // The life-cycle of the cache itself is maintained by the user and the user will ensure
+  // the cache is valid until any session reliant on it is still in scope.
+  PrepackedWeightsContainer* prepacked_weights_container_ = nullptr;
 };
 
 struct SessionIOBinding {
