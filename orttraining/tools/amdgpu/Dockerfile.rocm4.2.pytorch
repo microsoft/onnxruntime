@@ -1,6 +1,6 @@
 # docker build --network=host --file Dockerfile.rocm4.2.pytorch --tag ort:rocm4.2-pytorch .
 
-FROM rocm/pytorch:rocm4.2_ubuntu18.04_py3.6_pytorch_1.8.0
+FROM rocm/pytorch:rocm4.2_ubuntu18.04_py3.6_pytorch_1.8.1
 
 RUN apt-get -y install gpg-agent
 RUN wget -q -O - http://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -
