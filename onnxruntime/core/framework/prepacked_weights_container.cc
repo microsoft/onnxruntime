@@ -31,7 +31,7 @@ AllocatorPtr PrepackedWeightsContainer::GetOrCreateAllocator(const std::string& 
 }
 
 const PrePackedWeights& PrepackedWeightsContainer::GetWeight(const std::string& key) const {
-  // .at() will throw if th key doesn't exist
+  // .at() will throw if the key doesn't exist
   return prepacked_weights_map_.at(key);
 }
 
