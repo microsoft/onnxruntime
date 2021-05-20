@@ -12,6 +12,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_typ
 
 import onnx
 import torch
+from torch.utils.dlpack import from_dlpack, to_dlpack
 
 
 class TrainingManager(GraphExecutionManager):
@@ -39,7 +40,7 @@ class TrainingManager(GraphExecutionManager):
         forward_inputs = C.OrtValueVector()
         forward_inputs.reserve(len(inputs))
         for input in inputs:
-            forward_inputs.push_back(_utils._ortvalue_from_torch_tensor(input))
+            forward_inputs.push_back(to_dlpack(input), input.dtype == torch.bool)
 
         forward_outputs = C.OrtValueVector()
         # Run and return module outputs.
@@ -148,7 +149,7 @@ class TrainingManager(GraphExecutionManager):
                             grad_output = torch.tensor(0., device=device, dtype=dtype)
                     elif not grad_output.is_contiguous():
                         grad_output = grad_output.contiguous()
-                    backward_inputs.push_back(_utils._ortvalue_from_torch_tensor(grad_output))
+                    backward_inputs.push_back(to_dlpack(grad_output), grad_output.dtype == torch.bool)
                 backward_inputs.shrink_to_fit()
 
                 # Run and get results
@@ -165,7 +166,9 @@ class TrainingManager(GraphExecutionManager):
                 for input_name in self._graph_info.user_input_names:
                     # Append to the results the backward output for each input that required grad
                     if input_name in require_grad_names_set:
-                        results.append(_utils._ortvalue_to_torch_tensor(backward_outputs[require_grad_names_index]))
+                        results.append(_utils._torch_tensor_from_dl_pack(
+                            backward_outputs.dlpack_at(require_grad_names_index),
+                            backward_outputs[require_grad_names_index]))
                         require_grad_names_index += 1
                     else:
                         # input_name is not found in the self._input_info.require_grad_names list
@@ -177,7 +180,9 @@ class TrainingManager(GraphExecutionManager):
                 initializer_index = num_user_input_grads
                 for initializer_name in self._graph_info.initializer_names:
                     if initializer_name in self._graph_initializer_names_to_train:
-                        results.append(_utils._ortvalue_to_torch_tensor(backward_outputs[initializer_index]))
+                        results.append(_utils._torch_tensor_from_dl_pack(
+                            backward_outputs.dlpack_at(initializer_index),
+                            backward_outputs[initializer_index]))
                         initializer_index += 1
                     else:
                         results.append(None)
