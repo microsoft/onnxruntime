@@ -337,6 +337,9 @@ def generate_files(list, args):
                           nuget_dependencies['providers_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['cuda_ep_shared_lib']) +
+                          runtimes_target + args.target_architecture + '\\native" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['tensorrt_ep_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
 
