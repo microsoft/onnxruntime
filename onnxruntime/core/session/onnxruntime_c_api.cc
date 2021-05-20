@@ -467,6 +467,9 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
 static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
                                         _In_ std::unique_ptr<::onnxruntime::InferenceSession>& sess,
                                         _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container = nullptr) {
+  // Add ONNX domain
+  ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterONNXOpsetSchema(options == nullptr ? onnxruntime::SessionOptions() : options->value));  
+  
   // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of
   // byte addressable memory
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
