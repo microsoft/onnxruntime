@@ -708,11 +708,12 @@ bool CommonFastReduceSwitch(OpKernelContext* ctx,
           case_rk(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
           return true;
         }
-        case FastReduceKind::kKRK: {
-          ValidateFastReduceKRK(fast_shape, *output);
-          case_krk(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
-          return true;
-        }
+        case FastReduceKind::kKRK:
+          if (fast_shape[0] > 1) {
+            ValidateFastReduceKRK(fast_shape, *output);
+            case_krk(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
+            return true;
+          }
         case FastReduceKind::kR:
         case FastReduceKind::kK:
         case FastReduceKind::kNone:
@@ -909,11 +910,12 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
         ReduceAggregatorSum<T>::FastReduceRK(input, fast_shape, output, tp);
         return output;
       }
-      case FastReduceKind::kKRK: {
-        ValidateFastReduceKRK(fast_shape, output);
-        ReduceAggregatorSum<T>::FastReduceKRK(input, fast_shape, output, tp);
-        return output;
-      }
+      case FastReduceKind::kKRK:
+        if (fast_shape[0] > 1) {
+          ValidateFastReduceKRK(fast_shape, output);
+          ReduceAggregatorSum<T>::FastReduceKRK(input, fast_shape, output, tp);
+          return output;
+        }
       case FastReduceKind::kR:
       case FastReduceKind::kK:
       case FastReduceKind::kNone:
