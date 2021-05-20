@@ -165,11 +165,9 @@ except ImportError as error:
 # Additional binaries
 if platform.system() == 'Linux':
   libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.2', 'libmklml_intel.so', 'libmklml_gnu.so', 'libiomp5.so', 'mimalloc.so']
+  dl_libs = ['libonnxruntime_providers_shared.so', 'libonnxruntime_providers_dnnl.so', 'libonnxruntime_providers_tensorrt.so', 'libonnxruntime_providers_openvino.so']
   # DNNL, TensorRT & OpenVINO EPs are built as shared libs
-  libs.extend(['libonnxruntime_providers_shared.so'])
-  libs.extend(['libonnxruntime_providers_dnnl.so'])
-  libs.extend(['libonnxruntime_providers_tensorrt.so'])
-  libs.extend(['libonnxruntime_providers_openvino.so'])
+  libs += dl_libs
   # Nuphar Libs
   libs.extend(['libtvm.so.0.5.1'])
   if nightly_build:
@@ -198,6 +196,7 @@ else:
 
 if is_manylinux:
     data = ['capi/libonnxruntime_pywrapper.so'] if nightly_build else []
+    data += [path.join('capi', x) for x in dl_libs if path.isfile(path.join('onnxruntime', 'capi', x))]
     ext_modules = [
         Extension(
             'onnxruntime.capi.onnxruntime_pybind11_state',

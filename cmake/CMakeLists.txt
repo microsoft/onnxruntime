@@ -11,6 +11,10 @@ if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.15")
   cmake_policy(SET CMP0092 NEW)
 endif()
 
+if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.16")
+  cmake_policy(SET CMP0095 NEW)
+endif()
+
 # Support OS X versions 10.12+
 # This variable is ignored on non-Apple platforms and needs to be set prior to the first project(...) invocation
 # TODO: Make the miniumum deployment target MacOSX version configurable
@@ -1029,6 +1033,22 @@ function(onnxruntime_set_compile_flags target_name)
     foreach(ORT_FLAG ${ORT_WARNING_FLAGS})
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options ${ORT_FLAG}>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:${ORT_FLAG}>")
     endforeach()
+endfunction()
+
+function(onnxruntime_set_rpath_origin target_name)
+  if(UNIX AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+    if(APPLE)
+        set_target_properties(${target_name} PROPERTIES
+          INSTALL_RPATH "@loader_path"
+          BUILD_WITH_INSTALL_RPATH TRUE
+          INSTALL_RPATH_USE_LINK_PATH FALSE)
+    else()
+        set_target_properties(${target_name} PROPERTIES
+          INSTALL_RPATH "$ORIGIN"
+          BUILD_WITH_INSTALL_RPATH TRUE
+          INSTALL_RPATH_USE_LINK_PATH FALSE)
+    endif()
+  endif()
 endfunction()
 
 function(onnxruntime_add_shared_library target_name)

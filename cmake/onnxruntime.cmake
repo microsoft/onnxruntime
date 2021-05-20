@@ -110,11 +110,7 @@ if (NOT WIN32)
         BUILD_WITH_INSTALL_NAME_DIR TRUE
         INSTALL_NAME_DIR @rpath)
       set(ONNXRUNTIME_SO_LINK_FLAG " -Wl,-exported_symbols_list,${SYMBOL_FILE}")
-    else()
-        set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
     endif()
-  elseif (NOT onnxruntime_BUILD_WEBASSEMBLY)
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
   endif()
 endif()
 
@@ -162,7 +158,7 @@ endif()
 
 set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
 set_target_properties(onnxruntime PROPERTIES LINK_DEPENDS ${SYMBOL_FILE})
-
+onnxruntime_set_rpath_origin(onnxruntime)
 
 set_target_properties(onnxruntime PROPERTIES VERSION ${ORT_VERSION})
 
