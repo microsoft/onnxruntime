@@ -24,9 +24,12 @@ jobs:
           #Merge the mulitple prof data into a single indexed profile data file
           llvm-profdata merge -sparse -o ort.profdata *.profraw
           #Create coverage report, output the result to 'report.json'
-          llvm-cov export -summary-only -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test  $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops > $(Build.BinariesDirectory)/report.json
-          llvm-cov show -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test  $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops --format=html -output-dir=$(Build.ArtifactStagingDirectory)
+          llvm-cov export -summary-only -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_api_tests_without_env -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test -object onnxruntime_api_tests_without_env $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops > $(Build.BinariesDirectory)/report.json
+
+          llvm-cov show -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_api_tests_without_env -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test -object onnxruntime_api_tests_without_env $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops --format=html -output-dir=$(Build.ArtifactStagingDirectory)
         workingDirectory: $(Build.BinariesDirectory)
+
+
 
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Pipeline Artifact'
@@ -34,12 +37,13 @@ jobs:
         targetPath: '$(Build.ArtifactStagingDirectory)'
         artifact: html
 
-    - task: CmdLine@2
+    - task: PythonScript@0
       displayName: 'Post code coverage data to the Dashboard'
       inputs:
-        script: |
-          python3 $(Build.SourcesDirectory)/tools/ci_build/github/windows/post_code_coverage_to_dashboard.py  --commit_hash=$(OnnxRuntimeGitCommitHash) --report_file="$(Build.BinariesDirectory)/report.json" --report_url="https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(Build.BuildId)"
+        scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/windows/post_code_coverage_to_dashboard.py
+        arguments: --commit_hash=$(OnnxRuntimeGitCommitHash) --report_file="$(Build.BinariesDirectory)/report.json" --report_url="https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(Build.BuildId)" --branch $(Build.SourceBranchName) --arch $(Agent.OSArchitecture) --os $(Agent.OS) --build_config default
         workingDirectory: $(Build.BinariesDirectory)
+        pythonInterpreter: '/usr/bin/python3'
       env: 
         DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
 
