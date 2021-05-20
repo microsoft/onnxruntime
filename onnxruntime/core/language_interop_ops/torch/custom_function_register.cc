@@ -115,21 +115,6 @@ void OrtTorchFunctionPool::UnregisterTorchAutogradFunction(const std::string& ke
   UnregisterEntry(key, backward_core_pool);
 }
 
-void OrtTorchFunctionPool::RegisterObject(PyObject* obj) {
-  ORT_ENFORCE(obj, "Cannot register NULL.");
-  std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
-  // From binding parameter we stealed a PyObject reference already, don't need increase the ref count
-  obj_pool.push_back(obj);
-}
-
-void OrtTorchFunctionPool::UnRegisterObject() {
-  std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
-  for (auto it = obj_pool.begin(); it != obj_pool.end(); ++it) {
-    Py_DECREF(*it);
-  }
-  obj_pool.clear();
-}
-
 static void RegisterEntry(
     PyObject* obj,
     PyObject** storage,
@@ -201,7 +186,6 @@ PyObject* OrtTorchFunctionPool::GetBackwardRunner() {
   return backward_runner;
 }
 
-// The "key" is the "name" attribute in PythonOp.
 PyObject* OrtTorchFunctionPool::GetForwardCore(const std::string& key) {
   ORT_ENFORCE(!key.empty(), "Cannot be empty string.");
   std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
@@ -210,7 +194,6 @@ PyObject* OrtTorchFunctionPool::GetForwardCore(const std::string& key) {
   return iter->second;
 }
 
-// The "key" is the "name" attribute in PythonOp.
 PyObject* OrtTorchFunctionPool::GetBackwardCore(const std::string& key) {
   ORT_ENFORCE(!key.empty(), "Cannot be empty string.");
   std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
@@ -228,10 +211,19 @@ int64_t OrtTorchFunctionPool::RegisterContext(PyObject* auto_grad_context) {
                                                auto_grad_context, "autograd_context_register");
 #endif
   func_context_pool.insert({index_, auto_grad_context});
-  // We don't need increase the context refcnt because PyTorch already did it during .apply.
-  // Similarly, we don't need unregister it as well, because PyTorch will
-  // do it once backward completed.
+  // We don't need increase the context refcnt because PyTorch already did it during .apply().
   return index_;
+}
+
+void OrtTorchFunctionPool::UnRegisterContext(int64_t context_index) {
+  std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
+  auto it = func_context_pool.find(context_index);
+
+  // We just need remove the context key value pair, the context itself
+  // will be removed, when forward outputs are destoyed.
+  ORT_ENFORCE(it != func_context_pool.end(),
+              "Cannot unregister unexisting key: ", context_index);
+  func_context_pool.erase(it);
 }
 
 PyObject* OrtTorchFunctionPool::GetContext(int64_t context_index) {
@@ -239,12 +231,6 @@ PyObject* OrtTorchFunctionPool::GetContext(int64_t context_index) {
   auto iter = func_context_pool.find(context_index);
   ORT_ENFORCE(iter != func_context_pool.end(), "No context registered for ", context_index);
   return iter->second;
-}
-
-void OrtTorchFunctionPool::UnRegisterContext(int64_t context_index) {
-  std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
-
-  UnregisterEntry(context_index, func_context_pool);
 }
 
 template <typename TKey>

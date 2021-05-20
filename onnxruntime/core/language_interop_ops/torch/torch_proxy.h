@@ -32,7 +32,7 @@ class TorchProxy {
       const std::vector<int64_t>& obj_indices,
       size_t raw_pointer_count,
       std::vector<void*>& returned_raw_pointers,
-      std::vector<OrtValue>& returned_dlpacks,
+      std::vector<OrtValue>& returned_ortvalues,
       bool is_training_mode);
 
   void Backward(

@@ -174,10 +174,10 @@ void PythonOpBase::SetContextOutput(OpKernelContext* context, std::vector<void*>
   *ctx_id_data = OrtTorchFunctionPool::GetInstance().RegisterContext(ctx_addr);
 }
 
-void PythonOpBase::SetOtherOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_dlpacks, size_t raw_pointer_count) const {
+void PythonOpBase::SetOtherOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues, size_t raw_pointer_count) const {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
-  for (size_t i = 0; i < returned_dlpacks.size(); ++i) {
-    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(raw_pointer_count + i, returned_dlpacks[i]));
+  for (size_t i = 0; i < returned_ortvalues.size(); ++i) {
+    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(raw_pointer_count + i, returned_ortvalues[i]));
   }
 }
 
@@ -206,14 +206,14 @@ void PythonOpGradBase::SetPositions() {
   }
 }
 
-void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_dlpacks) const {
+void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) const {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
   auto outputs_count = static_cast<size_t>(ctx_internal->OutputCount());
   // It's possible that Pytorch returns None as gradient and ORT Python side may skip them.
   // In that case, returned_args may contain less arguments.
-  outputs_count = outputs_count > returned_dlpacks.size() ? returned_dlpacks.size() : outputs_count;
+  outputs_count = outputs_count > returned_ortvalues.size() ? returned_ortvalues.size() : outputs_count;
   for (size_t i = 0; i < outputs_count; ++i) {
-    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(i, returned_dlpacks.at(i)));
+    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(i, returned_ortvalues.at(i)));
   }
 }
 

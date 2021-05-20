@@ -168,7 +168,7 @@ void InvokeRunner(
     bool is_training_mode,
     size_t raw_pointer_count,
     std::vector<void*>& returned_raw_pointers,
-    std::vector<OrtValue>& returned_dlpacks) {
+    std::vector<OrtValue>& returned_ortvalues) {
   PythonObjectPtr result_ptr(PyObject_CallObject(callback_runner, args));
 
   if (PyErr_Occurred()) {
@@ -200,7 +200,7 @@ void InvokeRunner(
     DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(dl_tensor_pointer, "dltensor");
     if (dlmanaged_tensor) {
       auto ort_value = onnxruntime::python::DlpackToOrtValue(dlmanaged_tensor);
-      returned_dlpacks.push_back(ort_value);
+      returned_ortvalues.push_back(ort_value);
     } else {
       ORT_THROW("Fail to create DLManagedTensor for Python function call result.");
     }
@@ -258,7 +258,7 @@ void Invoke(
     const std::vector<int64_t>& obj_indices,
     size_t raw_pointer_count,
     std::vector<void*>& returned_raw_pointers,
-    std::vector<OrtValue>& returned_dlpacks,
+    std::vector<OrtValue>& returned_ortvalues,
     bool is_training_mode) {
   const auto len = tensor_args.size() + obj_args.size();
   CheckArguments(len, requires_grads, tensor_args, tensor_indices, obj_args, obj_indices);
@@ -278,7 +278,7 @@ void Invoke(
 #ifndef NDEBUG
     RefCountTracker::GetInstance().DumpDetails("Before Invoke Python Call");
 #endif
-    InvokeRunner(runner, args->get(), is_training_mode, raw_pointer_count, returned_raw_pointers, returned_dlpacks);
+    InvokeRunner(runner, args->get(), is_training_mode, raw_pointer_count, returned_raw_pointers, returned_ortvalues);
   }
 #ifndef NDEBUG
   RefCountTracker::GetInstance().DumpDetails("After Python Call Completed");
@@ -294,7 +294,7 @@ void TorchProxy::Forward(
     const std::vector<int64_t>& obj_indices,
     size_t raw_pointer_count,
     std::vector<void*>& returned_raw_pointers,
-    std::vector<OrtValue>& returned_dlpacks,
+    std::vector<OrtValue>& returned_ortvalues,
     bool is_training_mode) {
   // Python-related calls should happen only if guard is alive.
   GilGuard guard;
@@ -309,7 +309,7 @@ void TorchProxy::Forward(
       obj_indices,
       raw_pointer_count,
       returned_raw_pointers,
-      returned_dlpacks,
+      returned_ortvalues,
       is_training_mode);
 }
 
@@ -320,7 +320,7 @@ void TorchProxy::Backward(
     const std::vector<int64_t>& tensor_indices,
     const std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
-    std::vector<OrtValue>& returned_dlpacks) {
+    std::vector<OrtValue>& returned_ortvalues) {
   // Python-related calls should happen only if guard is alive.
   GilGuard guard;
   auto runner = OrtTorchFunctionPool::GetInstance().GetBackwardRunner();
@@ -335,7 +335,7 @@ void TorchProxy::Backward(
       obj_indices,
       0,
       returned_raw_pointers,
-      returned_dlpacks,
+      returned_ortvalues,
       true /*is_training_mode*/
   );
 }
