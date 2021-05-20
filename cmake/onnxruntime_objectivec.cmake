@@ -56,19 +56,13 @@ file(GLOB onnxruntime_objc_srcs
     "${OBJC_ROOT}/src/*.m"
     "${OBJC_ROOT}/src/*.mm")
 
-# files common to implementation and test targets
-set(onnxruntime_objc_common_srcs
-    "${OBJC_ROOT}/common/assert_arc_enabled.mm")
-
 source_group(TREE "${OBJC_ROOT}" FILES
     ${onnxruntime_objc_headers}
-    ${onnxruntime_objc_srcs}
-    ${onnxruntime_objc_common_srcs})
+    ${onnxruntime_objc_srcs})
 
 add_library(onnxruntime_objc SHARED
     ${onnxruntime_objc_headers}
-    ${onnxruntime_objc_srcs}
-    ${onnxruntime_objc_common_srcs})
+    ${onnxruntime_objc_srcs})
 
 target_include_directories(onnxruntime_objc
     PUBLIC
@@ -127,8 +121,7 @@ if(onnxruntime_BUILD_UNIT_TESTS)
 
     xctest_add_bundle(onnxruntime_objc_test onnxruntime_objc
         ${onnxruntime_objc_headers}
-        ${onnxruntime_objc_test_srcs}
-        ${onnxruntime_objc_common_srcs})
+        ${onnxruntime_objc_test_srcs})
 
     target_include_directories(onnxruntime_objc_test
         PRIVATE
