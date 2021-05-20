@@ -17,7 +17,7 @@ using namespace onnxruntime::common;
 Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
                                          const OrtModuleGraphBuilderConfiguration& config) {
   if (ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetLoadedSchemaVersion() == -1) {
-      RegisterOnnxOperatorSetSchema();
+      ONNX_NAMESPACE::RegisterOnnxOperatorSetSchema();
   }
   // Save the model and config.
   ONNX_NAMESPACE::ModelProto model_proto;
