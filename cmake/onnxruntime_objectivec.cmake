@@ -5,8 +5,10 @@ if(NOT APPLE)
     message(FATAL_ERROR "The Objective-C API must be built on an Apple platform.")
 endif()
 
-if(CMAKE_VERSION VERSION_LESS "3.18")
-    message(FATAL_ERROR "The Objective-C API requires CMake 3.18+.")
+set(ONNXRUNTIME_OBJC_MIN_CMAKE_VERSION "3.18")
+
+if(CMAKE_VERSION VERSION_LESS ONNXRUNTIME_OBJC_MIN_CMAKE_VERSION)
+    message(FATAL_ERROR "The Objective-C API requires CMake ${ONNXRUNTIME_OBJC_MIN_CMAKE_VERSION}+.")
 endif()
 
 if(NOT onnxruntime_BUILD_SHARED_LIB)
@@ -51,7 +53,7 @@ set(onnxruntime_objc_headers
     "${OBJC_ROOT}/include/ort_value.h"
     )
 
-file(GLOB onnxruntime_objc_srcs
+file(GLOB onnxruntime_objc_srcs CONFIGURE_DEPENDS
     "${OBJC_ROOT}/src/*.h"
     "${OBJC_ROOT}/src/*.m"
     "${OBJC_ROOT}/src/*.mm")
@@ -112,7 +114,7 @@ if(onnxruntime_BUILD_UNIT_TESTS)
 
     # onnxruntime_objc_test target
 
-    file(GLOB onnxruntime_objc_test_srcs
+    file(GLOB onnxruntime_objc_test_srcs CONFIGURE_DEPENDS
         "${OBJC_ROOT}/test/*.h"
         "${OBJC_ROOT}/test/*.m"
         "${OBJC_ROOT}/test/*.mm")
