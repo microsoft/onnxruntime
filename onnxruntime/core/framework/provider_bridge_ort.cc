@@ -108,8 +108,6 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 
 namespace onnxruntime {
 
-//ProviderHost* g_host{};
-
 ProviderInfo_CUDA* GetProviderInfo_CUDA();
 
 struct TensorShapeProto_Dimension_Iterator_Impl : TensorShapeProto_Dimension_Iterator {
@@ -890,6 +888,7 @@ struct ProviderHostImpl : ProviderHost {
 #endif
 } provider_host_;
 
+#ifdef _WIN32
 struct ProviderSharedLibrary {
   bool Ensure() {
     if (handle_)
@@ -932,6 +931,9 @@ static ProviderSharedLibrary s_library_shared;
 bool InitProvidersSharedLibrary() {
   return s_library_shared.Ensure();
 }
+#else
+bool InitProvidersSharedLibrary() { return true; }  // Non windows just gets the function from the executable linked at runtime
+#endif
 
 struct ProviderLibrary {
   ProviderLibrary(const char* filename, bool unload = true) : filename_{filename}, unload_{unload} {}
@@ -1082,6 +1084,10 @@ INcclService& INcclService::GetInstance() {
 #endif
 
 }  // namespace onnxruntime
+
+#ifdef _WIN32
+onnxruntime::ProviderHost* Provider_GetHost() { return &onnxruntime::provider_host_; }
+#endif
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
   auto factory = onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena);
