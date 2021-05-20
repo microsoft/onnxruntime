@@ -159,7 +159,7 @@ class GraphTest : public ::testing::Test {
   GraphTest() {
     std::call_once(once, RegisterCustomSchemas);
     logger_ = DefaultLoggingManager().CreateLogger("GraphTest");
-    if (OpSchemaRegistry::Instance()->GetLoadedSchemaVersion() == -1) {
+    if (ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetLoadedSchemaVersion() == -1) {
       RegisterOnnxOperatorSetSchema();
     }
   }

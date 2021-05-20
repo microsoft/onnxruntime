@@ -2103,7 +2103,7 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 common::Status InferenceSession::RegisterONNXOpsetSchema(const SessionOptions& session_options) {
-  if (OpSchemaRegistry::Instance()->GetLoadedSchemaVersion() == -1) {
+  if (ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetLoadedSchemaVersion() == -1) {
     if (session_options.session_onnx_opset_version == 0) {
       // By default if session_onnx_opset_version=0, it registers all ONNX opset schema for all opset versions
       RegisterOnnxOperatorSetSchema();

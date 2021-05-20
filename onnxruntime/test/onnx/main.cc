@@ -23,7 +23,6 @@
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/schema.h"
 
-using namespace ONNX_NAMESPACE;
 using namespace onnxruntime;
 
 namespace {
@@ -116,8 +115,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool verbose_logging_required = false;
 
   bool pause = false;
-  if (OpSchemaRegistry::Instance()->GetLoadedSchemaVersion() == -1) {
-    RegisterOnnxOperatorSetSchema();
+  if (ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetLoadedSchemaVersion() == -1) {
+    ONNX_NAMESPACE::RegisterOnnxOperatorSetSchema();
   }
   {
     int ch;

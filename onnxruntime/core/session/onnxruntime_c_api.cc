@@ -412,8 +412,6 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
                                                 size_t model_data_length,
 
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {
-  // Add ONNX domain
-  ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterONNXOpsetSchema(options == nullptr ? onnxruntime::SessionOptions() : options->value));
   // quick check here to decide load path. InferenceSession will provide error message for invalid values.
   // TODO: Could move to a helper
   const Env& os_env = Env::Default();  // OS environment (!= ORT environment)
@@ -441,6 +439,7 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         env->GetEnvironment());
   }
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // Add custom domains
   if (options && !options->custom_op_domains_.empty()) {
@@ -467,9 +466,6 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
 static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
                                         _In_ std::unique_ptr<::onnxruntime::InferenceSession>& sess,
                                         _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container = nullptr) {
-  // Add ONNX domain
-  ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterONNXOpsetSchema(options == nullptr ? onnxruntime::SessionOptions() : options->value));  
-  
   // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of
   // byte addressable memory
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
@@ -2231,7 +2227,7 @@ static constexpr OrtApi ort_api_1_to_8 = {
     &OrtApis::CreateSessionWithPrepackedWeightsContainer,
     &OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer,
     // End of Version 8 - DO NOT MODIFY ABOVE (see above text for more information)
-  
+
     // Version 9 - In development, feel free to add/remove/rearrange here
     &OrtApis::SetSessionOnnxOpsetVersion,
 };
