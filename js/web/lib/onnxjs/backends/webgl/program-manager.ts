@@ -66,21 +66,15 @@ export class ProgramManager {
     return this.profiler.event('backend', 'ProgramManager.build', () => {
       const preprocessor = new GlslPreprocessor(this.glContext, programInfo);
       const fragScript = preprocessor.preprocess();
-      try {
-        const program = this.compile(fragScript);
-        const artifact = {
-          programInfo,
-          program,
-          uniformLocations: this.getUniformLocations(
-              program, preprocessor.context.programInfo.samplers, preprocessor.context.programInfo.variables),
-          attribLocations: this.getAttribLocations(program)
-        };
-        return artifact;
-
-      } catch (e) {
-        Logger.error('ProgramManager', fragScript);
-        throw e;
-      }
+      const program = this.compile(fragScript);
+      const artifact = {
+        programInfo,
+        program,
+        uniformLocations: this.getUniformLocations(
+            program, preprocessor.context.programInfo.samplers, preprocessor.context.programInfo.variables),
+        attribLocations: this.getAttribLocations(program)
+      };
+      return artifact;
     });
   }
   protected doDraw(artifact: Artifact, runData: RunData): void {
