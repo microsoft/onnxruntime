@@ -5,19 +5,33 @@
 #include "core/framework/tensorprotoutils.h"
 #include "onnx/defs/tensor_proto_util.h"
 
+#include "longformer_attention_base.h"
+
 namespace onnxruntime {
 namespace contrib {
+
+Status LongformerAttentionBase__CheckInputs(const LongformerAttentionBase* p,
+                                            const TensorShape& input_shape,
+                                            const TensorShape& weights_shape,
+                                            const TensorShape& bias_shape,
+                                            const TensorShape& mask_shape,
+                                            const TensorShape& global_weights_shape,
+                                            const TensorShape& global_bias_shape,
+                                            const TensorShape& global_shape) {
+  return p->CheckInputs(input_shape, weights_shape, bias_shape, mask_shape, global_weights_shape, global_bias_shape, global_shape);
+}
+
 namespace embed_layer_norm {
 
 Status CheckInputs(const OpKernelContext* context) {
   const Tensor* input_ids = context->Input<Tensor>(0);
-  const Tensor* segment_ids = context->Input<Tensor>(1); // optional. nullptr if it's distill-bert
+  const Tensor* segment_ids = context->Input<Tensor>(1);  // optional. nullptr if it's distill-bert
   const Tensor* word_embedding = context->Input<Tensor>(2);
   const Tensor* position_embedding = context->Input<Tensor>(3);
-  const Tensor* segment_embedding = context->Input<Tensor>(4); // optional. nullptr if it's distill-bert
+  const Tensor* segment_embedding = context->Input<Tensor>(4);  // optional. nullptr if it's distill-bert
   const Tensor* gamma = context->Input<Tensor>(5);
   const Tensor* beta = context->Input<Tensor>(6);
-  const Tensor* mask = context->Input<Tensor>(7); // optional. nullptr if not provided
+  const Tensor* mask = context->Input<Tensor>(7);  // optional. nullptr if not provided
 
   if (nullptr != segment_ids && input_ids->Shape() != segment_ids->Shape()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -28,7 +42,6 @@ Status CheckInputs(const OpKernelContext* context) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 0 and 7 (mask) shall have same shape");
   }
-
 
   const auto& input_dims = input_ids->Shape().GetDims();
   if (input_dims.size() != 2) {

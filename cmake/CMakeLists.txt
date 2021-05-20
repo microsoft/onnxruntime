@@ -194,7 +194,9 @@ if(onnxruntime_USE_VALGRIND AND NOT WIN32)
 endif()
 
 if (onnxruntime_ENABLE_NVTX_PROFILE)
-  add_definitions(-DENABLE_NVTX_PROFILE=1)
+  message(WARNING "NTVX profile temporarily disabled, will be fixed soon")
+# TODO: This doesn't work with the shared cuda provider. Disabling temporarily to do a clean fix later as it wasn't trivial
+#  add_definitions(-DENABLE_NVTX_PROFILE=1)
 endif()
 
 if (onnxruntime_ENABLE_BITCODE)

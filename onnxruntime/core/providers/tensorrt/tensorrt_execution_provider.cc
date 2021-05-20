@@ -10,6 +10,7 @@
 #include "tensorrt_execution_provider.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#include "core/providers/cuda/gpu_data_transfer.h"
 #include "cuda_runtime_api.h"
 #include "gsl/gsl"
 #include <experimental/filesystem>
@@ -573,16 +574,16 @@ AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type
 }
 
 void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
-  allocator_ = AllocatorManager__GetAllocator(allocator_manager.get(), device_id_, OrtMemTypeDefault);
+  allocator_ = allocator_manager->GetAllocator(device_id_, OrtMemTypeDefault);
   if (nullptr == allocator_) {
     AllocatorCreationInfo default_memory_info(
         [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); }, device_id_);
     allocator_ = CreateAllocator(default_memory_info);
-    AllocatorManager__InsertAllocator(allocator_manager.get(), allocator_);
+    allocator_manager->InsertAllocator(allocator_);
   }
   TryInsertAllocator(allocator_);
 
-  auto cuda_pinned_alloc = AllocatorManager__GetAllocator(allocator_manager.get(), DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput);
+  auto cuda_pinned_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput);
   if (nullptr == cuda_pinned_alloc) {
     AllocatorCreationInfo pinned_allocator_info(
         [](OrtDevice::DeviceId device_id) {
@@ -590,7 +591,7 @@ void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManag
         },
         DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
     cuda_pinned_alloc = CreateAllocator(pinned_allocator_info);
-    AllocatorManager__InsertAllocator(allocator_manager.get(), cuda_pinned_alloc);
+    allocator_manager->InsertAllocator(cuda_pinned_alloc);
   }
   TryInsertAllocator(cuda_pinned_alloc);
 }
