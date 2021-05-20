@@ -1,6 +1,6 @@
 jobs:
 - job: Linux_Build
-  timeoutInMinutes: 180
+  timeoutInMinutes: 360
   workspace:
     clean: all
   pool: Linux-GPU-CUDA10
@@ -32,14 +32,14 @@ jobs:
           onnxruntimecuda11build \
             /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
-              --config Release \
+              --config RelWithDebInfo \
               --skip_submodule_sync \
               --build_shared_lib \
               --parallel \
               --build_wheel \
               --enable_onnx_tests --use_cuda --cuda_version=11.0 --cuda_home=/usr/local/cuda-11.0 --cudnn_home=/usr/local/cuda-11.0 \
               --enable_pybind --build_java --build_nodejs \
-              --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so CMAKE_CUDA_ARCHITECTURES=75
+              --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so CMAKE_CUDA_ARCHITECTURES=75 onnxruntime_USE_VALGRIND=ON
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishTestResults@2
@@ -48,6 +48,20 @@ jobs:
       testResultsFiles: '**/*.results.xml'
       searchFolder: '$(Build.BinariesDirectory)'
       testRunTitle: 'Unit Test Run'
+    condition: succeededOrFailed()
+
+  - task: CopyFiles@2
+    displayName: 'Copy valgrind log to: $(Build.ArtifactStagingDirectory)'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)/RelWithDebInfo/Testing/Temporary/'
+      Contents: 'MemoryChecker.*.log'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
+    condition: succeededOrFailed()
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish Artifact'
+    inputs:
+      ArtifactName: onnxruntime
     condition: succeededOrFailed()
 
   - template: templates/component-governance-component-detection-steps.yml
