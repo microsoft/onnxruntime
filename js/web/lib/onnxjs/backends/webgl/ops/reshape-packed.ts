@@ -30,6 +30,11 @@ export class WebGLReshapePacked extends Reshape implements WebGLOperator {
     // TODO: optimize the algorithm -- in some cases, if the last two dims are
     // the same between input shape and output shape, the packed reshape can be
     // treated as no-op.
+    // TODO: the implementation is a bit complicated due to the fact tensor shape is
+    // immutable once the tensor is created, plus the tensor shape has a 1-to-1
+    // mapping with texture layout. In the future, we may consider relaxing this
+    // assumption.
+
     const originInputShape = inputs[0].dims;
     this.inputShape3D = processDims3D(inputs[0].dims);
     let inputLayout: TextureLayout;
@@ -138,6 +143,9 @@ export class WebGLReshapePacked extends Reshape implements WebGLOperator {
       inputTDs = [originalInputTD];
     }
     let outputLayout = this.outputLayout;
+    // Use original output shape for runData output layout.
+    outputLayout.shape = this.outputShape;
+    outputLayout.unpackedShape = this.outputShape;
     if (outputLayout === undefined) {
       outputLayout = handler.createTextureLayoutFromShape(
           this.outputShape, 4, this.outputShape, {isPacked: true, reverseWH: true});

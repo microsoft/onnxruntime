@@ -4,6 +4,9 @@
 [submodule "cmake/external/googletest"]
 	path = cmake/external/googletest
 	url = https://github.com/google/googletest.git
+[submodule "cmake/external/googlebenchmark"]
+	path = cmake/external/googlebenchmark
+	url = https://github.com/google/benchmark.git
 [submodule "cmake/external/onnx"]
 	path = cmake/external/onnx
 	url = https://github.com/onnx/onnx
