@@ -396,18 +396,6 @@ endif()
 
 set (onnxruntime_test_providers_dependencies ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
-if(onnxruntime_USE_CUDA)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda)
-endif()
-
-if(onnxruntime_USE_DNNL)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_dnnl onnxruntime_providers_shared)
-endif()
-
-if(onnxruntime_USE_OPENVINO)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino onnxruntime_providers_shared)
-endif()
-
 if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
 endif()
@@ -466,8 +454,7 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_session
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
-    ${PROVIDERS_CUDA}
-    # TENSORRT, DNNL, and OpenVINO are explicitly linked at runtime
+    # CUDA, TENSORRT, DNNL, and OpenVINO are dynamically loaded at runtime
     ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_NNAPI}
@@ -1139,6 +1126,7 @@ endif()
 
 # limit to only test on windows first, due to a runtime path issue on linux
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD 
+                                  AND NOT onnxruntime_ENABLE_TRAINING
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
                                   AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
                                   AND NOT onnxruntime_BUILD_WEBASSEMBLY

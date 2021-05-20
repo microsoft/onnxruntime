@@ -15,12 +15,6 @@
 
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"  // TODO: move with PipelineBatchPlanner
 
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_execution_provider.h"
-#elif USE_ROCM
-#include "core/providers/rocm/rocm_execution_provider.h"
-#endif
-
 using namespace onnxruntime::logging;
 using namespace onnxruntime::training;
 using namespace google::protobuf::util;
@@ -34,7 +28,7 @@ static void RunTrainingSessionLoadOptimTests(std::string optim_name, bool mixed_
   auto config = MakeBasicTrainingConfig();
   if (mixed_precision) {
     TrainingSession::TrainingConfiguration::MixedPrecisionConfiguration mp{};
-    mp.use_mixed_precision_initializers=true;
+    mp.use_mixed_precision_initializers = true;
     config.mixed_precision_config = mp;
   }
   GenerateOptimizerConfig(optim_name, mixed_precision_moments, config);
