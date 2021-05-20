@@ -787,5 +787,17 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
 }
 
 ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptions* ptr) {
+  if (ptr->trt_int8_calibration_table_name != nullptr) {
+    delete ptr->trt_int8_calibration_table_name;
+  }
+
+  if (ptr->trt_engine_cache_path != nullptr) {
+    delete ptr->trt_engine_cache_path;
+  }
+
+  if (ptr->trt_engine_decryption_lib_path != nullptr) {
+    delete ptr->trt_engine_decryption_lib_path;
+  }
+
   delete ptr;
 }

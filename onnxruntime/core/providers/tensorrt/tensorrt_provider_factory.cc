@@ -6,6 +6,7 @@
 #include <atomic>
 #include "tensorrt_execution_provider.h"
 #include "core/framework/provider_options.h"
+#include <cstring>
 
 using namespace onnxruntime;
 
@@ -71,15 +72,47 @@ struct Tensorrt_Provider : Provider {
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
-  void UpdateInfo (void* provider_options, const ProviderOptions& options) override {
+  void UpdateInfo(void* provider_options, const ProviderOptions& options) override {
     auto internal_options = onnxruntime::TensorrtExecutionProviderInfo::FromProviderOptions(options);
     auto& trt_options = *reinterpret_cast<OrtTensorRTProviderOptions*>(provider_options);
     trt_options.device_id = internal_options.device_id;
+    trt_options.trt_max_partition_iterations = internal_options.max_partition_iterations;
+    trt_options.trt_min_subgraph_size = internal_options.min_subgraph_size;
     trt_options.trt_max_workspace_size = internal_options.max_workspace_size;
     trt_options.trt_fp16_enable = internal_options.fp16_enable;
     trt_options.trt_int8_enable = internal_options.int8_enable;
-    trt_options.trt_int8_calibration_table_name = internal_options.int8_calibration_table_name.c_str();
+
+    if (internal_options.int8_calibration_table_name.size() == 0) {
+      trt_options.trt_int8_calibration_table_name = nullptr;
+    } else {
+      //trt_options.trt_int8_calibration_table_name = (const char*)malloc(sizeof(char*) * (internal_options.int8_calibration_table_name.length()+1));
+      trt_options.trt_int8_calibration_table_name = new char[internal_options.int8_calibration_table_name.size() + 1];
+      strcpy((char*)trt_options.trt_int8_calibration_table_name, internal_options.int8_calibration_table_name.c_str());
+    }
+
     trt_options.trt_int8_use_native_calibration_table = internal_options.int8_use_native_calibration_table;
+    trt_options.trt_dla_enable = internal_options.dla_enable;
+    trt_options.trt_dla_core = internal_options.dla_core;
+    trt_options.trt_dump_subgraphs = internal_options.dump_subgraphs;
+    trt_options.trt_engine_cache_enable = internal_options.engine_cache_enable;
+
+    if (internal_options.engine_cache_path.size() == 0) {
+      trt_options.trt_engine_cache_path = nullptr;
+    } else {
+      trt_options.trt_engine_cache_path = new char[internal_options.engine_cache_path.size() + 1];
+      strcpy((char*)trt_options.trt_engine_cache_path, internal_options.engine_cache_path.c_str());
+    }
+
+    trt_options.trt_engine_decryption_enable = internal_options.engine_decryption_enable;
+
+    if (internal_options.engine_decryption_lib_path.size() == 0) {
+      trt_options.trt_engine_decryption_lib_path = nullptr;
+    } else {
+      trt_options.trt_engine_decryption_lib_path = new char[internal_options.engine_decryption_lib_path.size() + 1];
+      strcpy((char*)trt_options.trt_engine_decryption_lib_path, internal_options.engine_decryption_lib_path.c_str());
+    }
+
+    trt_options.trt_force_sequential_engine_build = internal_options.force_sequential_engine_build;
   }
 
   void Shutdown() override {
