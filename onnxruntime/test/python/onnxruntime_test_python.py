@@ -595,13 +595,11 @@ class TestInferenceSession(unittest.TestCase):
         tags = ['pid', 'dur', 'ts', 'ph', 'X', 'name', 'args']
         with open(profile_file) as f:
             lines = f.readlines()
-            lines_len = len(lines)
-            self.assertTrue(lines_len > 8)
             self.assertTrue('[' in lines[0])
-            for i in range(1, lines_len-1):
+            for i in range(1, 8):
                 for tag in tags:
                     self.assertTrue(tag in lines[i])
-            self.assertTrue(']' in lines[-1])
+            self.assertTrue(']' in lines[8])
 
     def testProfilerGetStartTimeNs(self):
         def getSingleSessionProfilingStartTime():
