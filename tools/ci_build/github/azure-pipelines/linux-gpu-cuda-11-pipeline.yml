@@ -61,7 +61,7 @@ jobs:
   timeoutInMinutes: 180
   workspace:
     clean: all
-  pool: Linux-GPU-CUDA10-NV6
+  pool: Onnxruntime-Linux-GPU-NV6
   steps:
   - checkout: self
     clean: true
