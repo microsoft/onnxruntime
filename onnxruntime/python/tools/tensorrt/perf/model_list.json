@@ -68,49 +68,19 @@
     {
         "model_name": "squeezenet1.1-7",
         "working_directory": "./models/squeezenet1.1-7/",
-        "model_path": "./squeezenet1.1/._squeezenet1.1.onnx",
+        "model_path": "./squeezenet1.1/squeezenet1.1.onnx",
         "test_data_path": "./squeezenet1.1/"
-    },
-    {
-        "model_name": "squeezenet1.0-3",
-        "working_directory": "./models/squeezenet1.0-3/",
-        "model_path": "./squeezenet/model.onnx",
-        "test_data_path": "./squeezenet/"
-    },
-    {
-        "model_name": "squeezenet1.0-6",
-        "working_directory": "./models/squeezenet1.0-6/",
-        "model_path": "./squeezenet/model.onnx",
-        "test_data_path": "./squeezenet/"
-    },
-    {
-        "model_name": "squeezenet1.0-7",
-        "working_directory": "./models/squeezenet1.0-7/",
-        "model_path": "./squeezenet/model.onnx",
-        "test_data_path": "./squeezenet/"
-    },
-    {
-        "model_name": "squeezenet1.0-8",
-        "working_directory": "./models/squeezenet1.0-8/",
-        "model_path": "./squeezenet/model.onnx",
-        "test_data_path": "./squeezenet/"
-    },
-    {
-        "model_name": "squeezenet1.0-9",
-        "working_directory": "./models/squeezenet1.0-9/",
-        "model_path": "./squeezenet/model.onnx",
-        "test_data_path": "./squeezenet/"
     },
     {
         "model_name": "vgg16-7",
         "working_directory": "./models/vgg16-7/",
-        "model_path": "./vgg16/._vgg16.onnx",
+        "model_path": "./vgg16/vgg16.onnx",
         "test_data_path": "./vgg16/"
     },
     {
         "model_name": "vgg19-bn-7",
         "working_directory": "./models/vgg19-bn-7/",
-        "model_path": "./vgg19-bn/._vgg19-bn.onnx",
+        "model_path": "./vgg19-bn/vgg19-bn.onnx",
         "test_data_path": "./vgg19-bn/"
     },
     {
@@ -127,18 +97,6 @@
     },
     {
         "model_name": "caffenet-9",
-        "working_directory": "./models/caffenet-9/",
-        "model_path": "./bvlc_reference_caffenet/model.onnx",
-        "test_data_path": "./bvlc_reference_caffenet/"
-    },
-    {
-        "model_name": "rcnn-ilsvrc13-9",
-        "working_directory": "./models/rcnn-ilsvrc13-9/",
-        "model_path": "./bvlc_reference_rcnn_ilsvrc13/model.onnx",
-        "test_data_path": "./bvlc_reference_rcnn_ilsvrc13/"
-    },
-    {
-        "model_name": "densenet-9",
         "working_directory": "./models/densenet-9/",
         "model_path": "./densenet121/model.onnx",
         "test_data_path": "./densenet121/"
@@ -224,7 +182,7 @@
     {
         "model_name": "yolov4",
         "working_directory": "./models/yolov4/",
-        "model_path": "./yolov4/yolov4.onnx",
+        "model_path": "./yolov4/yolov4_shape.onnx",
         "test_data_path": "./yolov4/"
     },
     {
@@ -252,12 +210,6 @@
         "test_data_path": "./GPT-2-LM-HEAD/"
     },
     {
-        "model_name": "gpt2-10",
-        "working_directory": "./models/gpt2-10/",
-        "model_path": "./GPT2/model.onnx",
-        "test_data_path": "./GPT2/"
-    },
-    {
         "model_name": "zfnet512-9",
         "working_directory": "./models/zfnet512-9/",
         "model_path": "./zfnet512/model.onnx",
@@ -268,11 +220,5 @@
         "working_directory": "./models/arcfaceresnet100-8/",
         "model_path": "./resnet100/resnet100.onnx",
         "test_data_path": "./resnet100/"
-    },
-    {
-        "model_name": "mosaic-9",
-        "working_directory": "./models/mosaic-9/",
-        "model_path": "./mosaic/mosaic.onnx",
-        "test_data_path": "./mosaic/"
     }
 ]

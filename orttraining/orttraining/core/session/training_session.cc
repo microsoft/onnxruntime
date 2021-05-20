@@ -553,7 +553,8 @@ Status TrainingSession::ConfigureForTraining(
 
   // Add GIST encoding
   if (config.gist_config.has_value()) {
-    ORT_RETURN_IF_ERROR(AddGistEncoding());
+    const auto& gist_config = config.gist_config.value();
+    ORT_RETURN_IF_ERROR(AddGistEncoding(gist_config.op_type, gist_config.compr_type));
   }
 
   // If the current node is in rank0 or if the current session is running pipeline (in which case different rank would
@@ -715,7 +716,7 @@ static Status AddGradientAccumulationNodes(Graph& graph,
 }
 
 Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set<std::string>& weights_to_train,
-                                                        const TrainingConfiguration::GraphTransformerConfiguration& config) {
+                                                        const TrainingGraphTransformerConfiguration& config) {
   GraphTransformerManager graph_transformation_mgr{2};
   // TODO: ideally we can just reuse the CPU EP registered with the session, but in the training session case
   // the EPs are registered after ConfigureForTraining and before Initialize is called. Hence we don't have access
@@ -739,7 +740,7 @@ Status TrainingSession::ApplyTransformationsToMainGraph(const std::unordered_set
 void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execution_provider,
                                                  GraphTransformerManager& transformer_manager,
                                                  const std::unordered_set<std::string>& weights_to_train,
-                                                 const TrainingConfiguration::GraphTransformerConfiguration& config,
+                                                 const TrainingGraphTransformerConfiguration& config,
                                                  TransformerLevel graph_optimization_level) {
   ORT_ENFORCE(graph_optimization_level <= TransformerLevel::MaxLevel,
               "Exceeded max transformer level. Current level is set to " +
@@ -808,12 +809,12 @@ Status TrainingSession::ApplyModelParallelTransformationsToMainGraph(std::unorde
   return common::Status::OK();
 }
 
-Status TrainingSession::AddGistEncoding() {
+Status TrainingSession::AddGistEncoding(int op_type, std::string compr_type) {
   try {
     Graph& graph = model_->MainGraph();
 
     auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleGistTransformer1");
-    rule_transformer_L1->Register(std::make_unique<GistEncodeDecode>());
+    rule_transformer_L1->Register(std::make_unique<GistEncodeDecode>(op_type, compr_type));
     onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
     graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 

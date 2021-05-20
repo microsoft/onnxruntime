@@ -11,7 +11,7 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 bool ReluQuantFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& /*logger*/) const {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13, 14}) ||
       !optimizer_utils::CheckOutputEdges(graph, node, 1)) {
     return false;
   }

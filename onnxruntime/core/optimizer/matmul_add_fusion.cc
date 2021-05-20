@@ -40,7 +40,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     }
 
     const Node& next_node = (*next_node_itr);
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", {7, 13}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", {7, 13, 14}) ||
         next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
       continue;
     }
