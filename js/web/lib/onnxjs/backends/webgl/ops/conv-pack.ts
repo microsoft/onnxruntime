@@ -16,11 +16,12 @@ import {WebGLReshapePacked} from './reshape-packed';
 export class WebGLConvPacked extends Conv {
   protected artifacts: Artifact[];
   protected programInfo: ProgramInfo[];
+  protected outputShape: number[];
+
   private kernelReshape = new WebGLReshapePacked();
   private im2col: WebGLIm2ColPacked;
   private matmul = new WebGLMatMulPacked();
   private outputReshape = new WebGLReshapePacked();
-  protected outputShape: number[];
 
   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
     const programManager = inferenceHandler.session.programManager;
