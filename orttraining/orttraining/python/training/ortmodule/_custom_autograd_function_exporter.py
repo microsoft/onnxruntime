@@ -58,6 +58,7 @@ def _export(g, n, *args, **kwargs):
                     input_int_scalar_positions.append(i)
                     input_int_scalars.append(arg)
                 elif isinstance(arg, tuple):
+                    assert len(arg) > 0
                     # A tuple of int or float.
                     if all(isinstance(ele, int) for ele in arg):
                         # A tuple of ints.

@@ -1,13 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/language_interop_ops/torch/torch_proxy.h"
+
 #include <Python.h>
 #include "core/framework/tensorprotoutils.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
 #include "core/language_interop_ops/torch/object_pointer.h"
 #include "core/language_interop_ops/torch/refcount_tracker.h"
-#include "core/language_interop_ops/torch/torch_proxy.h"
 #include "core/platform/env.h"
+#include "core/language_interop_ops/torch/gil.h"
 #include "core/util/dlpack_convertor.h"
 
 namespace onnxruntime {
@@ -18,22 +20,6 @@ template <>
 void ObjectPointer<PyObject>::free() {
   Py_XDECREF(ptr);
 }
-
-// Holder of GIL
-// (Global Interpreter Lock, https://wiki.python.org/moin/GlobalInterpreterLock)
-// state. It automatically acquire the state upon creation and release the
-// acquired state after being destroyed.
-// This class is a standard design pattern for running Python function from
-// non-Python-created threads.
-// See https://docs.python.org/3/c-api/init.html#non-python-created-threads for details.
-class GilGuard {
- public:
-  GilGuard() : state_(PyGILState_Ensure()){};
-  ~GilGuard() { PyGILState_Release(state_); };
-
- private:
-  PyGILState_STATE state_;
-};
 
 void DlpackCapsuleDestructor(PyObject* data) {
   DLManagedTensor* dlmanged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data, "dltensor");
