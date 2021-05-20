@@ -21,7 +21,7 @@ profiling::Profiler::~Profiler() {}
 
 ::onnxruntime::TimePoint profiling::Profiler::StartTime() const {
   ORT_ENFORCE(enabled_);
-  return std::chrono::steady_clock::now();
+  return std::chrono::high_resolution_clock::now();
 }
 
 void Profiler::Initialize(const logging::Logger* session_logger) {
