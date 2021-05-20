@@ -87,18 +87,18 @@ If you want to build with an earlier version, you must temporarily remove the 'C
 
 ## TensorRT
 
-See more information on the TensorRT Execution Provider [here](../reference/execution-providers/TensorRT-ExecutionProvider.md).
+See more information on the TensorRT Execution Provider [here](../../reference/execution-providers/TensorRT-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
 
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 11.0 and cuDNN 8.0.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with CUDA 10.2/11.0/11.1 and cuDNN 8.0.
    * The path to the CUDA installation must be provided via the CUDA_PATH environment variable, or the `--cuda_home` parameter. The CUDA path should contain `bin`, `include` and `lib` directories.
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation (path to folder that contains libcudnn.so) must be provided via the cuDNN_PATH environment variable, or `--cudnn_home` parameter.
  * Install [TensorRT](https://developer.nvidia.com/nvidia-tensorrt-download)
-   * The TensorRT execution provider for ONNX Runtime is built on TensorRT 7.1 and is tested with TensorRT 7.1.3.4.
+   * The TensorRT execution provider for ONNX Runtime is built on TensorRT 7.2.2 and is tested with TensorRT 7.2.2.3.
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
 
 ### Build Instructions
