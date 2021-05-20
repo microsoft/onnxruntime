@@ -117,20 +117,33 @@ export ORT_TENSORRT_DUMP_SUBGRAPHS = 1
 
 ### Execution Provider Options
 TensorRT configurations can also be set by execution provider option APIs. It's useful when each model and inference session have their own configurations. In this case, execution provider option settings will override any environment variable settings. All configurations should be set explicitly, otherwise default value will be taken. There are one-to-one mappings between environment variables and execution provider options shown as below,
-* ORT_TENSORRT_MAX_WORKSPACE_SIZE <-> trt_max_workspace_size
-* ORT_TENSORRT_MAX_PARTITION_ITERATIONS <-> trt_max_partition_iterations
-* ORT_TENSORRT_MIN_SUBGRAPH_SIZE <-> trt_min_subgraph_size
-* ORT_TENSORRT_FP16_ENABLE <-> trt_fp16_enable
-* ORT_TENSORRT_INT8_ENABLE <-> trt_int8_enable
-* ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME <-> trt_int8_calibration_table_name
-* ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE <-> trt_int8_use_native_calibration_table
-* ORT_TENSORRT_DLA_ENABLE <-> trt_dla_enable
-* ORT_TENSORRT_DLA_CORE <-> trt_dla_core 
-* ORT_TENSORRT_ENGINE_CACHE_ENABLE <-> trt_engine_cache_enable
-* ORT_TENSORRT_CACHE_PATH <-> trt_engine_cache_path
-* ORT_TENSORRT_DUMP_SUBGRAPHS <-> trt_dump_subgraphs
-* ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD <-> trt_force_sequential_engine_build
-* Besides, device_id can also be set by execution provider option.
+ORT_TENSORRT_MAX_WORKSPACE_SIZE <-> trt_max_workspace_size
+
+ORT_TENSORRT_MAX_PARTITION_ITERATIONS <-> trt_max_partition_iterations
+
+ORT_TENSORRT_MIN_SUBGRAPH_SIZE <-> trt_min_subgraph_size
+
+ORT_TENSORRT_FP16_ENABLE <-> trt_fp16_enable
+
+ORT_TENSORRT_INT8_ENABLE <-> trt_int8_enable
+
+ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME <-> trt_int8_calibration_table_name
+
+ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE <-> trt_int8_use_native_calibration_table
+
+ORT_TENSORRT_DLA_ENABLE <-> trt_dla_enable
+
+ORT_TENSORRT_DLA_CORE <-> trt_dla_core
+
+ORT_TENSORRT_ENGINE_CACHE_ENABLE <-> trt_engine_cache_enable
+
+ORT_TENSORRT_CACHE_PATH <-> trt_engine_cache_path
+
+ORT_TENSORRT_DUMP_SUBGRAPHS <-> trt_dump_subgraphs
+
+ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD <-> trt_force_sequential_engine_build
+
+Besides, device_id can also be set by execution provider option.
 
 #### C++ API example
 ```
