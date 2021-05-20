@@ -430,7 +430,7 @@ if (onnxruntime_USE_TENSORRT)
   add_definitions("-DONNX_NAMESPACE=onnx")
   include_directories(${PROJECT_SOURCE_DIR}/external/protobuf)
   set(CUDA_INCLUDE_DIRS ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-  set(TENSORRT_ROOT ${onnxruntime_TENSORRT_HOME})
+  set(TENSORRT_ROOT ${onnxruntime_TENSORRT_HOME})#slx
   include_directories(${ONNXRUNTIME_ROOT}/../cmake/external/onnx)
   set(OLD_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
   if (WIN32)
@@ -449,7 +449,12 @@ if (onnxruntime_USE_TENSORRT)
   endif()
   set(CXX_VERSION_DEFINED TRUE)
   add_subdirectory(${ONNXRUNTIME_ROOT}/../cmake/external/onnx-tensorrt)
+  ##set(TENSORRT_ROOT ${onnxruntime_TENSORRT_HOME})#slx
+  ##include_directories(${TENSORRT_INCLUDE_DIR})#slx
   set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
+  if ( CMAKE_COMPILER_IS_GNUCC )##slx
+    set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
+  endif()
   if (WIN32)
     set(CMAKE_CUDA_FLAGS ${OLD_CMAKE_CUDA_FLAGS})
     unset(PROTOBUF_LIBRARY)
@@ -460,7 +465,7 @@ if (onnxruntime_USE_TENSORRT)
     target_compile_options(nvonnxparser PRIVATE /FIio.h /wd4100)
   endif()
   include_directories(${ONNXRUNTIME_ROOT}/../cmake/external/onnx-tensorrt)
-  include_directories(${TENSORRT_INCLUDE_DIR})
+  include_directories(${TENSORRT_INCLUDE_DIR})#slx
   set(trt_link_libs cudnn ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
   set(onnxparser_link_libs nvonnxparser_static)
 
