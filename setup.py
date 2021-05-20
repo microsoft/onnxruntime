@@ -165,7 +165,7 @@ except ImportError as error:
 # Additional binaries
 if platform.system() == 'Linux':
   libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.2', 'libmklml_intel.so', 'libmklml_gnu.so', 'libiomp5.so', 'mimalloc.so']
-  dl_libs = ['libonnxruntime_providers_shared.so', 'libonnxruntime_providers_dnnl.so', 'libonnxruntime_providers_tensorrt.so', 'libonnxruntime_providers_openvino.so']
+  dl_libs = ['libonnxruntime_providers_shared.so', 'libonnxruntime_providers_dnnl.so', 'libonnxruntime_providers_tensorrt.so', 'libonnxruntime_providers_openvino.so', 'libonnxruntime_providers_cuda.so']
   # DNNL, TensorRT & OpenVINO EPs are built as shared libs
   libs += dl_libs
   # Nuphar Libs
