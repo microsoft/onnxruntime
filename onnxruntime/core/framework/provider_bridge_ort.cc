@@ -54,10 +54,6 @@ Status LongformerAttentionBase__CheckInputs(const LongformerAttentionBase* p, co
 #include "contrib_ops/cpu/bert/attention_base.h"
 #endif
 
-#ifdef USE_CUDA
-#include <cupti.h>
-#endif
-
 #ifdef ENABLE_TRAINING
 #include "orttraining/training_ops/cpu/aten_ops/aten_op.h"
 #include "orttraining/training_ops/cpu/controlflow/group.h"
@@ -1084,36 +1080,6 @@ INcclService& INcclService::GetInstance() {
 #endif
 
 }  // namespace onnxruntime
-
-#if defined(USE_CUDA)
-CUptiResult CUPTIAPI cuptiActivityEnable(CUpti_ActivityKind kind) {
-  auto* info = onnxruntime::GetProviderInfo_CUDA();
-  if (info)
-    return CUptiResult(info->cuptiActivityEnable(kind));
-  return CUPTI_ERROR_NOT_SUPPORTED;
-}
-
-CUptiResult CUPTIAPI cuptiActivityGetNextRecord(uint8_t* buffer, size_t validBufferSizeBytes, CUpti_Activity** record) {
-  auto* info = onnxruntime::GetProviderInfo_CUDA();
-  if (info)
-    return CUptiResult(info->cuptiActivityGetNextRecord(buffer, validBufferSizeBytes, record));
-  return CUPTI_ERROR_NOT_SUPPORTED;
-}
-
-CUptiResult CUPTIAPI cuptiActivityRegisterCallbacks(CUpti_BuffersCallbackRequestFunc funcBufferRequested, CUpti_BuffersCallbackCompleteFunc funcBufferCompleted) {
-  auto* info = onnxruntime::GetProviderInfo_CUDA();
-  if (info)
-    return CUptiResult(info->cuptiActivityRegisterCallbacks(funcBufferRequested, funcBufferCompleted));
-  return CUPTI_ERROR_NOT_SUPPORTED;
-}
-
-CUptiResult CUPTIAPI cuptiActivityFlushAll(uint32_t flag) {
-  auto* info = onnxruntime::GetProviderInfo_CUDA();
-  if (info)
-    return CUptiResult(info->cuptiActivityFlushAll(flag));
-  return CUPTI_ERROR_NOT_SUPPORTED;
-}
-#endif
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
   auto factory = onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena);

@@ -316,11 +316,6 @@ if (onnxruntime_USE_CUDA)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES LINKER_LANGUAGE CUDA)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES FOLDER "ONNXRuntime")
 
-  # Add in Cupti profiling dependency
-  target_include_directories(onnxruntime_providers_cuda PUBLIC ${onnxruntime_CUDA_HOME}/include ${onnxruntime_CUDA_HOME}/extras/CUPTI/include)
-  target_link_directories(onnxruntime_providers_cuda PUBLIC ${onnxruntime_CUDA_HOME}/extras/CUPTI/lib64)
-  target_link_libraries(onnxruntime_providers_cuda PRIVATE cupti)
-
   if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${PROJECT_SOURCE_DIR}/external/cub)
   endif()

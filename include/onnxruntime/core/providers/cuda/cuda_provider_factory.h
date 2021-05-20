@@ -40,11 +40,6 @@ struct ProviderInfo_CUDA {
   virtual int cudaGetDeviceCount() = 0;
   virtual void CUDAExecutionProviderInfo__FromProviderOptions(const onnxruntime::ProviderOptions& options, onnxruntime::CUDAExecutionProviderInfo& info) = 0;
 
-  virtual int cuptiActivityEnable(int kind) = 0;
-  virtual int cuptiActivityGetNextRecord(uint8_t* buffer, size_t validBufferSizeBytes, void* record) = 0;
-  virtual int cuptiActivityRegisterCallbacks(void* funcBufferRequested, void* funcBufferCompleted) = 0;
-  virtual int cuptiActivityFlushAll(uint32_t flag) = 0;
-
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
   virtual onnxruntime::cuda::INcclService& GetINcclService() = 0;
 #endif
