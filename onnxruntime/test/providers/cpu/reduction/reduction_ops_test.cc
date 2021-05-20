@@ -8,6 +8,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/cpu/reduction/reduction_test_cases.h"
+#include "test/util/include/default_providers.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
 
 namespace onnxruntime {
@@ -807,7 +808,13 @@ TEST(ReductionOpTest, ReduceMean_default_axes_keepdims) {
                         55.0f, 1.0f,
                         60.0f, 2.0f});
   test.AddOutput<float>("reduced", {1, 1, 1}, {18.25f});
+#if defined(USE_DNNL)
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+#else
   test.Run();
+#endif
 }
 
 TEST(ReductionOpTest, ReduceMean_default_axes_keepdims_double) {
@@ -839,7 +846,13 @@ TEST(ReductionOpTest, ReduceMean_default_axes_do_not_keep_dims) {
                         55.0f, 1.0f,
                         60.0f, 2.0f});
   test.AddOutput<float>("reduced", {}, {18.25f});
+#if defined(USE_DNNL)
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+#else
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  //TensorRT: full reduce without keepDimensions is not supported with explicit batch
+#endif
 }
 
 TEST(ReductionOpTest, ReduceMean_default_axes_do_not_keep_dims_double) {
@@ -880,7 +893,13 @@ TEST(ReductionOpTest, ReduceMean_do_not_keepdims) {
   test.SetOutputRelErr("reduced", 1e-5f);
 #endif
 
+#if defined(USE_DNNL)
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+#else
   test.Run();
+#endif
 }
 
 TEST(ReductionOpTest, ReduceMean_do_not_keepdims_double) {
@@ -992,8 +1011,13 @@ TEST(ReductionOpTest, ReduceMean) {
                         9.0f, 10.0f,
                         11.0f, 12.0f});
   test.AddOutput<float>("reduced", {1, 2, 1}, {5.5f, 7.5f});
-
+#if defined(USE_DNNL)
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+#else 
   test.Run();
+#endif
 }
 
 TEST(ReductionOpTest, ReduceMean_double) {
