@@ -32,6 +32,9 @@ export class WebGLInferenceHandler implements InferenceHandler {
     let artifact = this.session.programManager.getArtifact(op);
     if (!artifact) {
       const programInfo = op.createProgramInfo(this, inputs);
+      if (!programInfo.name) {
+        programInfo.name = op.constructor?.name;
+      }
       artifact = this.session.programManager.build(programInfo);
       this.session.programManager.setArtifact(op, artifact);
     }

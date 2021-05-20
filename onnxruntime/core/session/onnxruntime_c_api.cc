@@ -410,6 +410,7 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
                                                 _In_opt_z_ const ORTCHAR_T* model_path,
                                                 _In_opt_ const void* model_data,
                                                 size_t model_data_length,
+
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {
   // quick check here to decide load path. InferenceSession will provide error message for invalid values.
   // TODO: Could move to a helper
@@ -463,7 +464,8 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
 }
 
 static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
-                                        _In_ std::unique_ptr<::onnxruntime::InferenceSession>& sess) {
+                                        _In_ std::unique_ptr<::onnxruntime::InferenceSession>& sess,
+                                        _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container = nullptr) {
   // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of
   // byte addressable memory
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
@@ -479,6 +481,11 @@ static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
     if (provider) {
       ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterExecutionProvider(std::move(provider)));
     }
+  }
+
+  if (prepacked_weights_container != nullptr) {
+    ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddPrePackedWeightsContainer(
+        reinterpret_cast<PrepackedWeightsContainer*>(prepacked_weights_container)));
   }
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Initialize());
@@ -1868,8 +1875,99 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_exte
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* const* arena_config_keys, _In_reads_(num_keys) const size_t* arena_config_values,
+                    _In_ size_t num_keys, _Outptr_ OrtArenaCfg** out) {
+  API_IMPL_BEGIN
+  auto cfg = std::make_unique<OrtArenaCfg>();
+
+  for (size_t i = 0; i < num_keys; ++i) {
+    if (strcmp(arena_config_keys[i], "max_mem") == 0) {
+      cfg->max_mem = arena_config_values[i];
+    } else if (strcmp(arena_config_keys[i], "arena_extend_strategy") == 0) {
+      cfg->arena_extend_strategy = static_cast<int>(arena_config_values[i]);
+    } else if (strcmp(arena_config_keys[i], "initial_chunk_size_bytes") == 0) {
+      cfg->initial_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
+    } else if (strcmp(arena_config_keys[i], "max_dead_bytes_per_chunk") == 0) {
+      cfg->max_dead_bytes_per_chunk = static_cast<int>(arena_config_values[i]);
+    } else if (strcmp(arena_config_keys[i], "initial_growth_chunk_size_bytes") == 0) {
+      cfg->initial_growth_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
+    } else {
+      std::ostringstream oss;
+      oss << "Invalid key found: " << arena_config_keys[i];
+
+      return CreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
+    }
+  }
+
+  *out = cfg.release();
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API(void, OrtApis::ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg* ptr) {
   delete ptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreatePrepackedWeightsContainer, _Outptr_ OrtPrepackedWeightsContainer** out) {
+  API_IMPL_BEGIN
+  std::unique_ptr<PrepackedWeightsContainer> container(new PrepackedWeightsContainer());
+  *out = reinterpret_cast<OrtPrepackedWeightsContainer*>(container.release());
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleasePrepackedWeightsContainer, _Frees_ptr_opt_ OrtPrepackedWeightsContainer* ptr) {
+  delete reinterpret_cast<PrepackedWeightsContainer*>(ptr);
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateSessionWithPrepackedWeightsContainer, _In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path,
+                    _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
+                    _Outptr_ OrtSession** out) {
+  API_IMPL_BEGIN
+  std::unique_ptr<onnxruntime::InferenceSession> sess;
+  OrtStatus* status = nullptr;
+  *out = nullptr;
+
+  ORT_TRY {
+    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, model_path, nullptr, 0, sess));
+    ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess, prepacked_weights_container));
+
+    *out = reinterpret_cast<OrtSession*>(sess.release());
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = OrtApis::CreateStatus(ORT_FAIL, e.what());
+    });
+  }
+
+  return status;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer, _In_ const OrtEnv* env,
+                    _In_ const void* model_data, size_t model_data_length,
+                    _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
+                    _Outptr_ OrtSession** out) {
+  API_IMPL_BEGIN
+  std::unique_ptr<onnxruntime::InferenceSession> sess;
+  OrtStatus* status = nullptr;
+  *out = nullptr;
+
+  ORT_TRY {
+    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, nullptr, model_data,
+                                                      model_data_length, sess));
+    ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess, prepacked_weights_container));
+
+    *out = reinterpret_cast<OrtSession*>(sess.release());
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = OrtApis::CreateStatus(ORT_FAIL, e.what());
+    });
+  }
+
+  return status;
+  API_IMPL_END
 }
 
 #if defined(ORT_MINIMAL_BUILD)
@@ -2120,9 +2218,17 @@ static constexpr OrtApi ort_api_1_to_8 = {
     &OrtApis::GetCurrentGpuDeviceId,
     // End of Version 7 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 8 - In development, feel free to add/remove/rearrange here
     &OrtApis::KernelInfoGetAttributeArray_float,
     &OrtApis::KernelInfoGetAttributeArray_int64,
+    &OrtApis::CreateArenaCfgV2,
+    &OrtApis::AddRunConfigEntry,
+    &OrtApis::CreatePrepackedWeightsContainer,
+    &OrtApis::ReleasePrepackedWeightsContainer,
+    &OrtApis::CreateSessionWithPrepackedWeightsContainer,
+    &OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer,
+    // End of Version 8 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Version 9 - In development, feel free to add/remove/rearrange here
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

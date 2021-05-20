@@ -982,13 +982,20 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
   }
   auto* nchwc_input = it->second.get();
 
-  // Only support the nearest interpolation mode (the default value).
+  // Support nearest (default) and linear modes.
   const auto* mode_attr = graph_utils::GetNodeAttribute(node, "mode");
+  bool nearest_mode = true;
   if (mode_attr != nullptr && utils::HasString(*mode_attr)) {
     if (mode_attr->s() != "nearest") {
-      return;
+      if (mode_attr->s() == "linear") {
+        nearest_mode = false;
+      } else {
+        return;
+      }
     }
   }
+
+  const ONNX_NAMESPACE::AttributeProto* transformation_mode_attr = nullptr;
 
   NodeArg* sizes_arg = nullptr;
   NodeArg* scales_arg = nullptr;
@@ -1001,20 +1008,30 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
       scales_arg = input_defs[2];
     }
 
-    // Only support the asymmetric coordinate transformation mode.
-    const auto* transform_mode_attr = graph_utils::GetNodeAttribute(node, "coordinate_transformation_mode");
-    if ((transform_mode_attr == nullptr) ||
-        !utils::HasString(*transform_mode_attr) ||
-        (transform_mode_attr->s() != "asymmetric")) {
+    transformation_mode_attr = graph_utils::GetNodeAttribute(node, "coordinate_transformation_mode");
+    if ((transformation_mode_attr == nullptr) ||
+        !utils::HasString(*transformation_mode_attr)) {
       return;
     }
+    if (transformation_mode_attr->s() != "asymmetric") {
+      // Nearest mode kernel support asymmetric transformation mode only.
+      if (nearest_mode) {
+        return;
+      }
+      if ((transformation_mode_attr->s() != "align_corners") &&
+          (transformation_mode_attr->s() != "half_pixel")) {
+        return;
+      }
+    }
 
-    // Only support the floor rounding mode.
-    const auto* nearest_mode_attr = graph_utils::GetNodeAttribute(node, "nearest_mode");
-    if ((nearest_mode_attr == nullptr) ||
-        !utils::HasString(*nearest_mode_attr) ||
-        (nearest_mode_attr->s() != "floor")) {
-      return;
+    if (nearest_mode) {
+      // Only support the floor rounding mode.
+      const auto* nearest_mode_attr = graph_utils::GetNodeAttribute(node, "nearest_mode");
+      if ((nearest_mode_attr == nullptr) ||
+          !utils::HasString(*nearest_mode_attr) ||
+          (nearest_mode_attr->s() != "floor")) {
+        return;
+      }
     }
   } else {
     scales_arg = input_defs[1];
@@ -1099,6 +1116,12 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
                                     kMSNchwcDomain);
   nchwc_node.SetExecutionProviderType(kCpuExecutionProvider);
   nchwc_node.AddAttribute("scales", scales_attr);
+  if (!nearest_mode) {
+    nchwc_node.AddAttribute("mode", mode_attr->s());
+    if (transformation_mode_attr != nullptr) {
+      nchwc_node.AddAttribute("coordinate_transformation_mode", transformation_mode_attr->s());
+    }
+  }
 
   nchwc_input->remaining_original_uses_--;
 
@@ -1147,18 +1170,18 @@ void NchwcTransformerImpl::Transform(Node& node) {
     // node may already have all inputs converted to NCHWc format and is not
     // needed for correct operation. This avoids doing extra string checks for
     // nodes unrelated to this transformer.
-    if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7, 13}) ||
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Add", {7, 13, 14}) ||
         graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sum", {6, 8, 13})) {
       TransformBinary(node, true);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Mul", {7, 13})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Mul", {7, 13, 14})) {
       TransformBinary(node, false);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Concat", {4, 11, 13})) {
       TransformConcat(node);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13}) ||
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13, 14}) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6, 13}) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(node, "Tanh", {6, 13})) {
       TransformActivation(node);
-    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "BatchNormalization", {7, 9})) {
+    } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "BatchNormalization", {7, 9, 14})) {
       TransformBatchNormalization(node);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(node, "Transpose", {1, 13})) {
       TransformTransposeToNhwc(node);

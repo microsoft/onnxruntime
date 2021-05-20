@@ -21,7 +21,17 @@ def float_tensor(name: str, shape: List[int], random=False):
     return helper.make_tensor(name, TensorProto.FLOAT, shape, weights)
 
 
-def create_bert_attention(input_hidden_size=16, pruned_num_heads=2, pruned_head_size=4, use_float_mask=False):
+def reverse_if(inputs, reverse=False):
+    if reverse:
+        inputs.reverse()
+    return inputs
+
+
+def create_bert_attention(input_hidden_size=16,
+                          pruned_num_heads=2,
+                          pruned_head_size=4,
+                          use_float_mask=False,
+                          switch_add_inputs=False):
     # unsqueeze in opset version 13 has two inputs (axis is moved from attribute to input).
     has_unsqueeze_two_inputs = (version.parse(onnx.__version__) >= version.parse('1.8.0'))
 
@@ -36,13 +46,13 @@ def create_bert_attention(input_hidden_size=16, pruned_num_heads=2, pruned_head_
 
         # q nodes
         helper.make_node("MatMul", ["layernorm_out", "matmul_q_weight"], ["matmul_q_out"], "matmul_q"),
-        helper.make_node("Add", ["matmul_q_out", "add_q_weight"], ["add_q_out"], "add_q"),
+        helper.make_node("Add", reverse_if(["matmul_q_out", "add_q_weight"], switch_add_inputs), ["add_q_out"], "add_q"),
         helper.make_node("Reshape", ["add_q_out", "reshape_weight_1"], ["reshape_q_out"], "reshape_q"),
         helper.make_node("Transpose", ["reshape_q_out"], ["transpose_q_out"], "transpose_q", perm=[0, 2, 1, 3]),
 
         # k nodes
         helper.make_node("MatMul", ["layernorm_out", "matmul_k_weight"], ["matmul_k_out"], "matmul_k"),
-        helper.make_node("Add", ["matmul_k_out", "add_k_weight"], ["add_k_out"], "add_k"),
+        helper.make_node("Add", reverse_if(["matmul_k_out", "add_k_weight"], switch_add_inputs), ["add_k_out"], "add_k"),
         helper.make_node("Reshape", ["add_k_out", "reshape_weight_1"], ["reshape_k_out"], "reshape_k"),
         helper.make_node("Transpose", ["reshape_k_out"], ["transpose_k_out"], "transpose_k", perm=[0, 2, 3, 1]),
 
@@ -60,7 +70,7 @@ def create_bert_attention(input_hidden_size=16, pruned_num_heads=2, pruned_head_
         # qk nodes
         helper.make_node("MatMul", ["transpose_q_out", "transpose_k_out"], ["matmul_qk_out"], "matmul_qk"),
         helper.make_node("Div", ["matmul_qk_out", "div_weight"], ["div_qk_out"], "div_qk"),
-        helper.make_node("Add", ["div_qk_out", "mul_mask_out"], ["add_qk_out"], "add_qk"),
+        helper.make_node("Add", reverse_if(["div_qk_out", "mul_mask_out"], switch_add_inputs), ["add_qk_out"], "add_qk"),
         helper.make_node("Softmax", ["add_qk_out"], ["softmax_qk_out"], "softmax_qk", axis=3),
 
         # v nodes
@@ -74,8 +84,8 @@ def create_bert_attention(input_hidden_size=16, pruned_num_heads=2, pruned_head_
         helper.make_node("Transpose", ["matmul_qkv_1_out"], ["transpose_qkv_out"], "transpose_qkv", perm=[0, 2, 1, 3]),
         helper.make_node("Reshape", ["transpose_qkv_out", "reshape_weight_2"], ["reshape_qkv_out"], "reshape_qkv"),
         helper.make_node("MatMul", ["reshape_qkv_out", "matmul_qkv_weight"], ["matmul_qkv_2_out"], "matmul_qkv_2"),
-        helper.make_node("Add", ["matmul_qkv_2_out", "add_qkv_weight"], ["add_qkv_out"], "add_qkv"),
-        helper.make_node("Add", ["add_qkv_out", "layernorm_out"], ["skip_output"], "add_skip"),
+        helper.make_node("Add", reverse_if(["matmul_qkv_2_out", "add_qkv_weight"], switch_add_inputs), ["add_qkv_out"], "add_qkv"),
+        helper.make_node("Add", reverse_if(["add_qkv_out", "layernorm_out"], switch_add_inputs), ["skip_output"], "add_skip"),
         helper.make_node("LayerNormalization", ["skip_output", "layer_norm_weight", "layer_norm_bias"], ["output"],
                          "layernorm2",
                          axis=-1,
@@ -127,6 +137,7 @@ def create_bert_attention(input_hidden_size=16, pruned_num_heads=2, pruned_head_
     model = helper.make_model(graph)
     return model
 
+
 def create_tf2onnx_attention_3d(input_hidden_size=16, num_heads=4, head_size=4, use_float_mask=False):
     # unsqueeze in opset version 13 has two inputs (axis is moved from attribute to input).
     has_unsqueeze_two_inputs = (version.parse(onnx.__version__) >= version.parse('1.8.0'))
@@ -143,7 +154,7 @@ def create_tf2onnx_attention_3d(input_hidden_size=16, num_heads=4, head_size=4, 
         # q nodes
         helper.make_node("Einsum", ["layernorm_out", "einsum_q_weight"], ["einsum_q_out"], "einsum_q", equation="abc,cde->abde"),
         helper.make_node("Add", ["einsum_q_out", "add_q_weight"], ["add_q_out"], "add_q"),
-        
+
         # k nodes
         helper.make_node("Einsum", ["layernorm_out", "einsum_k_weight"], ["einsum_k_out"], "einsum_k", equation="abc,cde->abde"),
         helper.make_node("Add", ["einsum_k_out", "add_k_weight"], ["add_k_out"], "add_k"),
@@ -229,5 +240,7 @@ def create_tf2onnx_attention_3d(input_hidden_size=16, num_heads=4, head_size=4, 
 if __name__ == "__main__":
     model = create_bert_attention()
     onnx.save(model, "pruned_bert_attention.onnx")
+    model = create_bert_attention(switch_add_inputs=True)
+    onnx.save(model, "bert_attention_reverse_add_order.onnx")
     model = create_tf2onnx_attention_3d()
     onnx.save(model, "bert_3d_attention.onnx")
