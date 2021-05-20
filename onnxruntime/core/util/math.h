@@ -16,8 +16,10 @@
 
 #pragma once
 
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
+#endif
 
 #ifndef CBLAS_ENUM_DEFINED_H
 #define CBLAS_ENUM_DEFINED_H

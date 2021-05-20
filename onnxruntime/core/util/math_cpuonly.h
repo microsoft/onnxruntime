@@ -57,7 +57,9 @@
 #pragma warning(pop)
 #endif
 
+#ifndef SHARED_PROVIDER
 #include "core/framework/tensor.h"
+#endif
 namespace onnxruntime {
 
 // common Eigen types that we will often use
