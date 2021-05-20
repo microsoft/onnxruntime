@@ -732,7 +732,8 @@ class PlannerImpl {
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
           AllocPlan(current).program_counter.AddStart(program_counter);
         } else if (!context_.IsParallelExecutionEnabled() &&
-                   FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
+                   FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused) &&
+                   (pnode->OutputNodesBegin() == pnode->OutputNodesEnd() || pnode->OutputNodesBegin()->OpType() != "YieldOp")) {
           // Reuse one of this node's input buffers as the output buffer (for in-place update)
           Reuse(reused, current, AllocKind::kReuse);
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
