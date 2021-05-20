@@ -166,8 +166,7 @@ void InvokeRunner(
     PyObject* callback_runner,
     PyObject* args,
     bool is_training_mode,
-    size_t raw_pointer_count,
-    std::vector<void*>& returned_raw_pointers,
+    void** diff_ctx,
     std::vector<OrtValue>& returned_ortvalues) {
   PythonObjectPtr result_ptr(PyObject_CallObject(callback_runner, args));
 
@@ -179,24 +178,30 @@ void InvokeRunner(
   ORT_ENFORCE(PyTuple_Check(result_ptr.get()), "Python function must return a tuple.");
 
   size_t i = 0;
-  for (; i < raw_pointer_count; ++i) {
-    PyObject* py_obj = PyTuple_GetItem(result_ptr.get(), i);
+  if (diff_ctx) {
+    // Assume that the first input element in the returned tuple is autograd context
+    // from Pytorch.
+    PyObject* py_obj = PyTuple_GetItem(result_ptr.get(), 0);
     if (is_training_mode) {
+      const auto& refcnt = Py_REFCNT(py_obj);
       // we don't need do ref increase here because, python return tensor.grad_fn as part of
       // tuple, who increased the refcnt already (and tensor persist until the backward kernels completed).
-      // Pytorch also increase refcnt before apply() return, so we should expect refcount = 2 here.
-      ORT_ENFORCE(Py_REFCNT(py_obj) == 2, "Ref count of context should be 2, but actually be ", Py_REFCNT(py_obj));
+      // Pytorch also increases refcnt before apply() return, so we should expect refcount = 2 here.
+      ORT_ENFORCE(refcnt == 2, "Ref count of context should be 2, but actually it's ", refcnt, ".");
     } else {
-      ORT_ENFORCE(py_obj == Py_None, "Inference model context shuld be Py_None");
+      ORT_ENFORCE(py_obj == Py_None, "Under inference mode, autograd context shuld be Py_None.");
     }
-
-    returned_raw_pointers.push_back(static_cast<void*>(py_obj));
+    *diff_ctx = py_obj;
+    ++i;
   }
 
+  // i is 1 if the first element is autograd context. Otherwise, i is 0, so we read from the
+  // first element.
   for (; i < static_cast<size_t>(PyTuple_Size(result_ptr.get())); ++i) {
     PyObject* dl_tensor_pointer = PyTuple_GetItem(result_ptr.get(), i);
-    ORT_ENFORCE(Py_REFCNT(dl_tensor_pointer) == 1, "Ref count of dl_tensor_pointer should be 1");
-    Py_INCREF(dl_tensor_pointer);  // increase one in case RAII release it.
+    ORT_ENFORCE(Py_REFCNT(dl_tensor_pointer) == 1, "Ref count of dl_tensor_pointer should be 1.");
+    // increase one in case RAII release it.
+    Py_INCREF(dl_tensor_pointer);
     DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(dl_tensor_pointer, "dltensor");
     if (dlmanaged_tensor) {
       auto ort_value = onnxruntime::python::DlpackToOrtValue(dlmanaged_tensor);
@@ -215,7 +220,7 @@ std::unique_ptr<PythonObjectPtr> CreateForwardArguments(
     const std::vector<int64_t>& tensor_indices,
     const std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
-    bool is_training_mode) {
+    const bool is_training_mode) {
   ORT_ENFORCE(PyCallable_Check(callback), "Forward callback is not callable.");
   int64_t num_args_without_inputs = 4;
 
@@ -256,10 +261,9 @@ void Invoke(
     const std::vector<int64_t>& tensor_indices,
     const std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
-    size_t raw_pointer_count,
-    std::vector<void*>& returned_raw_pointers,
+    void** diff_ctx,
     std::vector<OrtValue>& returned_ortvalues,
-    bool is_training_mode) {
+    const bool is_training_mode) {
   const auto len = tensor_args.size() + obj_args.size();
   CheckArguments(len, requires_grads, tensor_args, tensor_indices, obj_args, obj_indices);
   // #ifndef NDEBUG
@@ -278,7 +282,7 @@ void Invoke(
 #ifndef NDEBUG
     RefCountTracker::GetInstance().DumpDetails("Before Invoke Python Call");
 #endif
-    InvokeRunner(runner, args->get(), is_training_mode, raw_pointer_count, returned_raw_pointers, returned_ortvalues);
+    InvokeRunner(runner, args->get(), is_training_mode, diff_ctx, returned_ortvalues);
   }
 #ifndef NDEBUG
   RefCountTracker::GetInstance().DumpDetails("After Python Call Completed");
@@ -292,10 +296,9 @@ void TorchProxy::Forward(
     const std::vector<int64_t>& tensor_indices,
     const std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
-    size_t raw_pointer_count,
-    std::vector<void*>& returned_raw_pointers,
+    void** diff_ctx,
     std::vector<OrtValue>& returned_ortvalues,
-    bool is_training_mode) {
+    const bool is_training_mode) {
   // Python-related calls should happen only if guard is alive.
   GilGuard guard;
   auto runner = OrtTorchFunctionPool::GetInstance().GetForwardRunner();
@@ -307,8 +310,7 @@ void TorchProxy::Forward(
       tensor_indices,
       obj_args,
       obj_indices,
-      raw_pointer_count,
-      returned_raw_pointers,
+      diff_ctx,
       returned_ortvalues,
       is_training_mode);
 }
@@ -324,7 +326,6 @@ void TorchProxy::Backward(
   // Python-related calls should happen only if guard is alive.
   GilGuard guard;
   auto runner = OrtTorchFunctionPool::GetInstance().GetBackwardRunner();
-  std::vector<void*> returned_raw_pointers;
   Invoke(
       runner,
       reinterpret_cast<PyObject*>(callback),
@@ -333,8 +334,7 @@ void TorchProxy::Backward(
       tensor_indices,
       obj_args,
       obj_indices,
-      0,
-      returned_raw_pointers,
+      nullptr,
       returned_ortvalues,
       true /*is_training_mode*/
   );

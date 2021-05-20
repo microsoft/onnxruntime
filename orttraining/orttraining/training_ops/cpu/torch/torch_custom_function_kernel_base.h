@@ -24,8 +24,8 @@ class PythonOpBase {
   void CreateConstArgs();
   void CreateArgPositions();
 
-  void SetContextOutput(OpKernelContext* context, std::vector<void*>& returned_raw_pointers) const;
-  void SetOtherOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_args, size_t raw_pointer_count) const;
+  void SetContextOutput(OpKernelContext* context, void* diff_ctx) const;
+  void SetOtherOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_args) const;
 
   std::vector<int64_t> const_arg_positions_;
   std::vector<void*> const_args_;

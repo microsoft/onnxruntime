@@ -41,7 +41,7 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   // Constant arguments are created in ctor.
   std::vector<OrtValue*> args = contrib::CreateOrtValueArgs(context, 0, context->InputCount());
 
-  std::vector<void*> returned_raw_pointers;
+  void* diff_ctx = nullptr;
   std::vector<OrtValue> returned_ortvalues;
 
   // Invoke python calls.
@@ -53,20 +53,19 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
       arg_positions_,
       const_args_,
       const_arg_positions_,
-      1,
-      returned_raw_pointers,
+      &diff_ctx,
       returned_ortvalues,
       is_training_mode_);
 
   // todo(pengwa): okay to remove it?
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
 
-  ORT_ENFORCE(returned_raw_pointers.size() + returned_ortvalues.size() == static_cast<size_t>(context->OutputCount()),
+  ORT_ENFORCE(1 + returned_ortvalues.size() == static_cast<size_t>(context->OutputCount()),
               "Output count mismatch for PythonOp run");
   // First output of this op is Pytorch autograd's context.
-  SetContextOutput(context, returned_raw_pointers);
+  SetContextOutput(context, diff_ctx);
   // Other outputs are wrappers of Pytorch tensors.
-  SetOtherOutputs(context, returned_ortvalues, returned_raw_pointers.size());
+  SetOtherOutputs(context, returned_ortvalues);
 
 #ifndef NDEBUG
   RefCountTracker::GetInstance().DumpDetails("Forward Kernel Completed");

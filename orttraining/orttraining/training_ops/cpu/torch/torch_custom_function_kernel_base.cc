@@ -164,8 +164,8 @@ void PythonOpBase::CreateArgPositions() {
   }
 }
 
-void PythonOpBase::SetContextOutput(OpKernelContext* context, std::vector<void*>& returned_raw_pointers) const {
-  PyObject* ctx_addr = reinterpret_cast<PyObject*>(returned_raw_pointers[0]);
+void PythonOpBase::SetContextOutput(OpKernelContext* context, void* diff_ctx) const {
+  PyObject* ctx_addr = reinterpret_cast<PyObject*>(diff_ctx);
   ORT_ENFORCE(ctx_addr, "Context object pointer should not be null");
 
   Tensor* ctx_id_tensor = context->Output(0, {1});
@@ -174,10 +174,10 @@ void PythonOpBase::SetContextOutput(OpKernelContext* context, std::vector<void*>
   *ctx_id_data = OrtTorchFunctionPool::GetInstance().RegisterContext(ctx_addr);
 }
 
-void PythonOpBase::SetOtherOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues, size_t raw_pointer_count) const {
+void PythonOpBase::SetOtherOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) const {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
   for (size_t i = 0; i < returned_ortvalues.size(); ++i) {
-    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(raw_pointer_count + i, returned_ortvalues[i]));
+    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(i + 1, returned_ortvalues[i]));
   }
 }
 
