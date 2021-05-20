@@ -200,15 +200,14 @@ void InvokeRunner(
   for (; i < static_cast<size_t>(PyTuple_Size(result_ptr.get())); ++i) {
     PyObject* dl_tensor_pointer = PyTuple_GetItem(result_ptr.get(), i);
     ORT_ENFORCE(Py_REFCNT(dl_tensor_pointer) == 1, "Ref count of dl_tensor_pointer should be 1.");
-    // increase one in case RAII release it.
-    Py_INCREF(dl_tensor_pointer);
-    DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(dl_tensor_pointer, "dltensor");
-    if (dlmanaged_tensor) {
-      auto ort_value = onnxruntime::python::DlpackToOrtValue(dlmanaged_tensor);
-      returned_ortvalues.push_back(ort_value);
-    } else {
-      ORT_THROW("Fail to create DLManagedTensor for Python function call result.");
-    }
+    DLManagedTensor* dlmanaged_tensor = reinterpret_cast<DLManagedTensor*>(
+        PyCapsule_GetPointer(dl_tensor_pointer, "dltensor"));
+    // This must be a DLPack tensor.
+    ORT_ENFORCE(dlmanaged_tensor, "Fail to create DLManagedTensor for Python function call result.");
+    // Create OrtValue from DLPack tensor.
+    auto ort_value = onnxruntime::python::DlpackToOrtValue(dlmanaged_tensor);
+    PyCapsule_SetName(dl_tensor_pointer, "used_dltensor");
+    returned_ortvalues.push_back(ort_value);
   }
 }
 
