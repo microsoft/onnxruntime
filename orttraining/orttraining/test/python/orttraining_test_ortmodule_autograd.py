@@ -168,6 +168,7 @@ class GeLUFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
+        print("GeLUFunction(torch.autograd.Function) backward")
         input, bias = ctx.saved_tensors
         tmp = bias_gelu_back(grad_output, bias, input)
         return tmp, tmp
@@ -714,4 +715,4 @@ def test_TwoOutputFunction():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_evaluate_test_and_compare(model_builder, input_generator, label_input)
+    run_training_test_and_compare(model_builder, input_generator, label_input)

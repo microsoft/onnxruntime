@@ -243,7 +243,7 @@ std::unique_ptr<PythonObjectPtr> CreateForwardArguments(
   Ort_PyTuple_SetItem_NoIncref(args->get(), 1, requires_grad_flags, "requires_grad_flags");
   Ort_PyTuple_SetItem_NoIncref(args->get(), 2, tensor_flags, "tensor_flags");
   PyObject* is_training = is_training_mode ? Py_True : Py_False;
-  Ort_PyTuple_SetItem_NoIncref(args->get(), 3, is_training, "is_training_mode");
+  Ort_PyTuple_SetItem_Incref(args->get(), 3, is_training, "is_training_mode");
 
   for (size_t i = 0; i < tensor_args.size(); ++i) {
     // Wrap with DLPack, then transfer to Python for its release.
