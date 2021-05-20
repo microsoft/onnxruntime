@@ -36,7 +36,7 @@ const PrePackedWeights& PrepackedWeightsContainer::GetWeight(const std::string& 
 }
 
 bool PrepackedWeightsContainer::WriteWeight(const std::string& key, PrePackedWeights&& packed_weight) {
-  auto ret = prepacked_weights_map_.insert({key, std::move(packed_weight)});
+  auto ret = prepacked_weights_map_.insert(std::make_pair(key, std::move(packed_weight)));
   return ret.second;
 }
 
