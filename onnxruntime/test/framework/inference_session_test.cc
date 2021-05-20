@@ -649,16 +649,11 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
   ASSERT_TRUE(lines[size - 1].find("]") != string::npos);
   std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
 
-  bool has_kernel_info = false;
   for (size_t i = 1; i < size - 1; ++i) {
     for (auto& s : tags) {
       ASSERT_TRUE(lines[i].find(s) != string::npos);
-      has_kernel_info = has_kernel_info || (lines[i].find("Kernel") != string::npos);
     }
   }
-#ifdef USE_CUDA
-  ASSERT_TRUE(has_kernel_info);
-#endif
 }
 
 TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
@@ -679,23 +674,24 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
 
   std::ifstream profile(profile_file);
   std::string line;
-  std::vector<std::string> lines;
 
-  while (std::getline(profile, line)) {
-    lines.push_back(line);
-  }
-
-  auto size = lines.size();
-  ASSERT_TRUE(size > 1);
-  ASSERT_TRUE(lines[0].find("[") != string::npos);
-  ASSERT_TRUE(lines[1].find("mul_1_fence_before") != string::npos);
-  ASSERT_TRUE(lines[size - 1].find("]") != string::npos);
   std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
-
-  for (size_t i = 1; i < size - 1; ++i) {
-    for (auto& s : tags) {
-      ASSERT_TRUE(lines[i].find(s) != string::npos);
+  int count = 0;
+  while (std::getline(profile, line)) {
+    if (count == 0) {
+      ASSERT_TRUE(line.find("[") != string::npos);
+    } else if (count <= 5) {
+      for (auto& s : tags) {
+        ASSERT_TRUE(line.find(s) != string::npos);
+      }
+    } else {
+      ASSERT_TRUE(line.find("]") != string::npos);
     }
+
+    if (count == 1) {
+      ASSERT_TRUE(line.find("mul_1_fence_before") != string::npos);
+    }
+    count++;
   }
 }
 
