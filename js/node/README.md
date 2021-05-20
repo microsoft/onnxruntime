@@ -10,7 +10,7 @@ Install the latest stable version:
 npm install onnxruntime-node
 ```
 
-Refer to [Node.js samples](../../samples/nodejs/README.md) for samples and tutorials.
+Refer to [ONNX Runtime JavaScript examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js) for samples and tutorials.
 
 ## Requirements
 
