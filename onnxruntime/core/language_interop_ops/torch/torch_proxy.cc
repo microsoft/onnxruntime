@@ -249,7 +249,7 @@ std::unique_ptr<PythonObjectPtr> CreateForwardArguments(
                                "const_args");
   }
 
-  return args;
+  return std::move(args);
 }
 
 void Invoke(

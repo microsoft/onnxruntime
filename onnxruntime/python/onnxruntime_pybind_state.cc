@@ -1519,7 +1519,7 @@ void addObjectMethods(py::module& m, Environment& env) {
             PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor));
       })
       .def_static("from_dlpack", [](py::object data, bool is_bool_tensor = false) {
-        DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data.ptr(), "dltensor");
+        auto dlmanaged_tensor = reinterpret_cast<DLManagedTensor*>(PyCapsule_GetPointer(data.ptr(), "dltensor"));
         OrtValue ort_value = DlpackToOrtValue(dlmanaged_tensor, is_bool_tensor);
         // Make sure this capsule will never be used again.
         PyCapsule_SetName(data.ptr(), "used_dltensor");
