@@ -40,8 +40,9 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
   // Create non-constant arguments for calling Python function.
   // Constant arguments are created in ctor.
   std::vector<OrtValue*> args = contrib::CreateOrtValueArgs(context, 0, context->InputCount());
-  // Placeholder for Python returned values.
-  std::vector<void*> returned_args;
+
+  std::vector<void*> returned_raw_pointers;
+  std::vector<OrtValue> returned_dlpacks;
 
   // Invoke python calls.
   std::string err;
@@ -52,16 +53,20 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
       arg_positions_,
       const_args_,
       const_arg_positions_,
-      returned_args,
+      1,
+      returned_raw_pointers,
+      returned_dlpacks,
       is_training_mode_);
 
   // todo(pengwa): okay to remove it?
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
 
+  ORT_ENFORCE(returned_raw_pointers.size() + returned_dlpacks.size() == static_cast<size_t>(context->OutputCount()),
+              "Output count mismatch for PythonOp run");
   // First output of this op is Pytorch autograd's context.
-  SetContextOutput(context, returned_args);
+  SetContextOutput(context, returned_raw_pointers);
   // Other outputs are wrappers of Pytorch tensors.
-  SetOtherOutputs(context, returned_args);
+  SetOtherOutputs(context, returned_dlpacks, returned_raw_pointers.size());
 
 #ifndef NDEBUG
   RefCountTracker::GetInstance().DumpDetails("Forward Kernel Completed");
@@ -80,7 +85,7 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
   const int64_t* context_index_ptr = context_id_tensor->template Data<int64_t>();
   void* ctx_ptr = OrtTorchFunctionPool::GetInstance().GetContext(*context_index_ptr);
   auto const_args = {ctx_ptr};
-  std::vector<void*> returned_args;
+  std::vector<OrtValue> returned_dlpacks;
 
   std::string err;
   TorchProxy::GetInstance().Backward(
@@ -90,11 +95,11 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
       arg_positions_,
       const_args,
       const_arg_positions_,
-      returned_args);
+      returned_dlpacks);
   // todo(pengwa): okay to remove it?
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
 
-  SetOutputs(context, returned_args);
+  SetOutputs(context, returned_dlpacks);
 
 #ifndef NDEBUG
   RefCountTracker::GetInstance().DumpDetails("Backward Kernel Completed");

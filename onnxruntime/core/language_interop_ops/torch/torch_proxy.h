@@ -30,7 +30,9 @@ class TorchProxy {
       const std::vector<int64_t>& tensor_indices,
       const std::vector<void*>& obj_args,
       const std::vector<int64_t>& obj_indices,
-      std::vector<void*>& outputs,
+      size_t raw_pointer_count,
+      std::vector<void*>& returned_raw_pointers,
+      std::vector<OrtValue>& returned_dlpacks,
       bool is_training_mode);
 
   void Backward(
@@ -40,7 +42,7 @@ class TorchProxy {
       const std::vector<int64_t>& tensor_indices,
       const std::vector<void*>& obj_args,
       const std::vector<int64_t>& obj_indices,
-      std::vector<void*>& outputs);
+      std::vector<OrtValue>& return_args);
 
  private:
   TorchProxy(){};

@@ -164,11 +164,8 @@ void PythonOpBase::CreateArgPositions() {
   }
 }
 
-void PythonOpBase::SetContextOutput(OpKernelContext* context, std::vector<void*>& returned_args) const {
-  // Handle the outputs;
-  // The 1st output is context index of auto grad function.
-  // Other outputs are address of OrtValue we got from python script run.
-  PyObject* ctx_addr = reinterpret_cast<PyObject*>(returned_args[0]);
+void PythonOpBase::SetContextOutput(OpKernelContext* context, std::vector<void*>& returned_raw_pointers) const {
+  PyObject* ctx_addr = reinterpret_cast<PyObject*>(returned_raw_pointers[0]);
   ORT_ENFORCE(ctx_addr, "Context object pointer should not be null");
 
   Tensor* ctx_id_tensor = context->Output(0, {1});
@@ -177,15 +174,10 @@ void PythonOpBase::SetContextOutput(OpKernelContext* context, std::vector<void*>
   *ctx_id_data = OrtTorchFunctionPool::GetInstance().RegisterContext(ctx_addr);
 }
 
-void PythonOpBase::SetOtherOutputs(OpKernelContext* context, std::vector<void*>& returned_args) const {
+void PythonOpBase::SetOtherOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_dlpacks, size_t raw_pointer_count) const {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
-  for (size_t i = 1; i < static_cast<size_t>(ctx_internal->OutputCount()); ++i) {
-    // The returned pointer points to a OrtValue created on Python side.
-    // Here we just cast it to the right type.
-    OrtValue* ptr = reinterpret_cast<OrtValue*>(returned_args.at(i));
-    ORT_ENFORCE(ptr, "Returned argument from Python should not be null.");
-    // Set the output directly to Python-generated OrtValue value.
-    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(i, *ptr));
+  for (size_t i = 0; i < returned_dlpacks.size(); ++i) {
+    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(raw_pointer_count + i, returned_dlpacks[i]));
   }
 }
 
@@ -214,16 +206,14 @@ void PythonOpGradBase::SetPositions() {
   }
 }
 
-void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<void*>& returned_args) const {
+void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_dlpacks) const {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
   auto outputs_count = static_cast<size_t>(ctx_internal->OutputCount());
   // It's possible that Pytorch returns None as gradient and ORT Python side may skip them.
   // In that case, returned_args may contain less arguments.
-  outputs_count = outputs_count > returned_args.size() ? returned_args.size() : outputs_count;
+  outputs_count = outputs_count > returned_dlpacks.size() ? returned_dlpacks.size() : outputs_count;
   for (size_t i = 0; i < outputs_count; ++i) {
-    OrtValue* ptr = reinterpret_cast<OrtValue*>(returned_args.at(i));
-    ORT_ENFORCE(ptr, i, "th output from Python should not be null.");
-    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(i, *ptr));
+    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(i, returned_dlpacks.at(i)));
   }
 }
 

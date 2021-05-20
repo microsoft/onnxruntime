@@ -7,7 +7,7 @@ import onnxruntime
 import sys
 import torch
 
-from torch.utils.dlpack import from_dlpack
+from torch.utils.dlpack import from_dlpack, to_dlpack
 from . import _utils
 
 def call_python_forward_function(forward_function, requires_grad_flags, tensor_type_flags, is_training_mode, *args):
@@ -44,15 +44,16 @@ def call_python_forward_function(forward_function, requires_grad_flags, tensor_t
             result = forward_function(*new_wrapped_args)
 
             if isinstance(result, torch.Tensor):
-                ort_value = _utils._ortvalue_from_torch_tensor(result)
-                unwrapped_values = [ort_value]
                 ctx = result.grad_fn
+                unwrapped_values = [ctx, to_dlpack(result)]
             elif isinstance(result, tuple) or isinstance(result, list):
+                ctx = result[0].grad_fn
+                unwrapped_values.append(ctx)
                 for value in result:
-                    unwrapped_value = _utils._ortvalue_from_torch_tensor(value)
-                    unwrapped_values.append(unwrapped_value)
-                    if ctx is None and value is not None and hasattr(value, 'grad_fn'):
-                        ctx = value.grad_fn
+                    if not isinstance(value, torch.Tensor):
+                        raise Exception('Unsupported returned element type: ', type(
+                            value), ' by calling ', forward_function)
+                    unwrapped_values.append(to_dlpack(value))
             else:
                 raise Exception('Unsupported returned type: ', type(
                     result), ' by calling ', forward_function)
@@ -61,16 +62,7 @@ def call_python_forward_function(forward_function, requires_grad_flags, tensor_t
             # Must extract one valid context from result tensors.
             assert ctx is not None
 
-        for value in unwrapped_values:
-            # Mitigate the timing between "returning pure address back to C++" and "assign the ortvalue to PythonOP's output".
-            # Todo: refine by returning Torch tensor back to C++, then we construct OrtValue from it.
-            onnxruntime.register_python_object(value)
-
-        unwrapped_ptrs = [int(id(ctx))]
-        for v in unwrapped_values:
-            unwrapped_ptrs.append(int(v.ortvalue_ptr()))
-
-        return tuple(unwrapped_ptrs)
+        return tuple(unwrapped_values)
     except:
         # Flush buffers. Otherwise, calling this from C++ may lose them.
         sys.stdout.flush()
@@ -98,12 +90,7 @@ def call_python_backward_function(backward_function, requires_grad_flags, tensor
         unwrapped_values = []
         result = backward_function(*wrapped_args)
         if isinstance(result, torch.Tensor):
-            # TODO: We need to confirm
-            #   1. The ownership of result is transferred to DLPack tensor from Pytorch.
-            #   2. The ownership of result is transferred to ORTValue from DLPack.
-            # If they are all true, we can remove the object register code below.
-            ort_value = _utils._ortvalue_from_torch_tensor(result)
-            unwrapped_values = [ort_value]
+            unwrapped_values = [to_dlpack(result)]
         elif isinstance(result, tuple) or isinstance(result, list):
             for value in result:
                 if value is None:
@@ -111,22 +98,12 @@ def call_python_backward_function(backward_function, requires_grad_flags, tensor
                 if not isinstance(value, torch.Tensor):
                     raise Exception('Unsupported returned element type: ', type(
                         value), ' by calling ', backward_function)
-                unwrapped_value = _utils._ortvalue_from_torch_tensor(value)
-                unwrapped_values.append(unwrapped_value)
+                unwrapped_values.append(to_dlpack(value))
         else:
             raise Exception('Unsupported returned type: ', type(
                 result), ' by calling ', backward_function)
 
-        for value in unwrapped_values:
-            # Mitigate the timing between "returning pure address back to C++" and "assign the ortvalue to PythonOPGrad's output".
-            # Todo: refine by returning Torch tensor back to C++, then we construct OrtValue from it.
-            onnxruntime.register_python_object(value)
-
-        unwrapped_ptrs = []
-        for value in unwrapped_values:
-            unwrapped_ptrs.append(int(value.ortvalue_ptr()))
-
-        return tuple(unwrapped_ptrs)
+        return tuple(unwrapped_values)
     except:
         # Flush buffers. Otherwise, calling this from C++ may lose them.
         sys.stdout.flush()

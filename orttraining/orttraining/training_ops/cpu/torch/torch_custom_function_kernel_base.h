@@ -24,8 +24,8 @@ class PythonOpBase {
   void CreateConstArgs();
   void CreateArgPositions();
 
-  void SetContextOutput(OpKernelContext* context, std::vector<void*>& returned_args) const;
-  void SetOtherOutputs(OpKernelContext* context, std::vector<void*>& returned_args) const;
+  void SetContextOutput(OpKernelContext* context, std::vector<void*>& returned_raw_pointers) const;
+  void SetOtherOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_args, size_t raw_pointer_count) const;
 
   std::vector<int64_t> const_arg_positions_;
   std::vector<void*> const_args_;
@@ -74,7 +74,7 @@ class PythonOpGradBase {
   PythonOpGradBase(const OpKernelInfo& info);
 
   void SetPositions();
-  void SetOutputs(OpKernelContext* context, std::vector<void*>& returned_args) const;
+  void SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_args) const;
 
   // Name of containing class. For example, MyReLU.
   std::string name_;
