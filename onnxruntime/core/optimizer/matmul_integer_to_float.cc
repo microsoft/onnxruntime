@@ -64,7 +64,7 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
 
     ORT_RETURN_IF_ERROR(Recurse(mul_node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7, 13}) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7, 13, 14}) ||
         !graph_utils::IsSupportedProvider(mul_node, GetCompatibleExecutionProviders())) {
       continue;
     }

@@ -3,7 +3,8 @@
 
 # Stop at any error, show all commands
 set -ex
-
+yum install -y yum-plugin-versionlock
+yum versionlock cuda* libcudnn*
 # Set build environment variables
 MY_DIR=$(dirname "${BASH_SOURCE[0]}")
 . $MY_DIR/build_env.sh

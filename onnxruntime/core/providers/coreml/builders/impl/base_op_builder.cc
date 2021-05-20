@@ -5,6 +5,7 @@
 
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/helper.h"
+#include "core/providers/shared/utils/utils.h"
 
 #include "base_op_builder.h"
 
