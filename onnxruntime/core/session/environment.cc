@@ -39,7 +39,6 @@
 #include "orttraining/core/graph/optimizer_builder.h"
 #include "orttraining/core/graph/optimizer_graph_builder_registry.h"
 #endif
-#endif
 
 namespace onnxruntime {
 using namespace ::onnxruntime::common;
@@ -197,7 +196,6 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       training::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
       training::OptimizerGraphBuilderRegistry::GetInstance().RegisterGraphBuilders();
       // <training schemas>
-#endif
 #endif
     });
 
