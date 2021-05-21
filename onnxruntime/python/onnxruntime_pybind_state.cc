@@ -1269,20 +1269,6 @@ void addOpSchemaSubmodule(py::module& m) {
 
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
-#ifdef ENABLE_TRAINING
-void DlpackCapsuleDestructor(PyObject* data) {
-  DLManagedTensor* dlmanged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data, "dltensor");
-  if (dlmanged_tensor) {
-    // the dlmanged_tensor has not been consumed, call deleter ourselves.
-    dlmanged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanged_tensor));
-  } else {
-    // the dlmanged_tensor has been consumed,
-    // PyCapsule_GetPointer has set an error indicator.
-    PyErr_Clear();
-  }
-}
-#endif
-
 void addObjectMethods(py::module& m, Environment& env) {
   py::enum_<GraphOptimizationLevel>(m, "GraphOptimizationLevel")
       .value("ORT_DISABLE_ALL", GraphOptimizationLevel::ORT_DISABLE_ALL)

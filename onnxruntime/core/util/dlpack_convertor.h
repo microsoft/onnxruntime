@@ -5,6 +5,7 @@
 #ifdef ENABLE_TRAINING
 #include "core/framework/ml_value.h"
 #include <dlpack/dlpack.h>
+#include <Python.h>
 
 // This convertor will take an OrtValue and wrap it as a DLPack tensor
 
@@ -17,6 +18,7 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value);
 // tell ORT the data type when creating OrtValue.
 OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor = false);
 
+void DlpackCapsuleDestructor(PyObject* data); 
 }  // namespace python
 }  // namespace onnxruntime
 #endif

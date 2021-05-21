@@ -1,11 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/util/dlpack_convertor.h"
 #ifdef ENABLE_TRAINING
+#include "core/util/dlpack_convertor.h"
 namespace onnxruntime {
 namespace python {
-
 namespace {
 
 DLDataType GetDlpackDataType(const OrtValue& ort_value) {
@@ -197,6 +196,19 @@ bool IsContiguousTensor(const DLTensor& tensor) {
 
 }  // namespace
 
+void DlpackCapsuleDestructor(PyObject* data) {
+  DLManagedTensor* dlmanged_tensor = reinterpret_cast<DLManagedTensor*>(
+      PyCapsule_GetPointer(data, "dltensor"));
+  if (dlmanged_tensor) {
+    // the dlmanged_tensor has not been consumed, call deleter ourselves.
+    dlmanged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanged_tensor));
+  } else {
+    // the dlmanged_tensor has been consumed,
+    // PyCapsule_GetPointer has set an error indicator.
+    PyErr_Clear();
+  }
+};
+
 // This function returns a pointer to DLManagedTensor constructed from an OrtValue
 // The OrtValue inside OrtDLManagedTensor will increase its own buffer's ref count by one
 // When the consumer of DLManagedTensor is done with the tensor, it should invoke the deleter.
@@ -233,7 +245,6 @@ OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
   ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), deleter);
   return ort_value;
 }
-
 }  // namespace python
 }  // namespace onnxruntime
 #endif

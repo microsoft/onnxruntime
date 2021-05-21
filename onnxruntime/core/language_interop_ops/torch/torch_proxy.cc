@@ -21,18 +21,6 @@ void ObjectPointer<PyObject>::free() {
   Py_XDECREF(ptr);
 }
 
-void DlpackCapsuleDestructor(PyObject* data) {
-  DLManagedTensor* dlmanged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data, "dltensor");
-  if (dlmanged_tensor) {
-    // the dlmanged_tensor has not been consumed, call deleter ourselves.
-    dlmanged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanged_tensor));
-  } else {
-    // the dlmanged_tensor has been consumed,
-    // PyCapsule_GetPointer has set an error indicator.
-    PyErr_Clear();
-  }
-}
-
 #ifndef NDEBUG
 PyObject* Ort_PyTuple_New(const size_t len, std::string log_tag) {
   PyObject* item = PyTuple_New(len);
@@ -246,7 +234,10 @@ std::unique_ptr<PythonObjectPtr> CreateForwardArguments(
   for (size_t i = 0; i < tensor_args.size(); ++i) {
     // Wrap with DLPack, then transfer to Python for its release.
     DLManagedTensor* dlmanaged_tensor = onnxruntime::python::OrtValueToDlpack(*tensor_args[i]);
-    PyObject* dltensor = PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
+    PyObject* dltensor = PyCapsule_New(
+        dlmanaged_tensor,
+        "dltensor",
+        onnxruntime::python::DlpackCapsuleDestructor);
     Ort_PyTuple_SetItem_NoIncref(args->get(), num_control_args + tensor_indices[i], dltensor,
                                  "dltensor");
   }
