@@ -768,7 +768,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
   onnxruntime::ProviderOptions provider_options_map;
   for (size_t i = 0; i != num_keys; ++i) {
     if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
-        provider_options_values == nullptr || provider_options_values[i][0] == '\0') {
+        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "key/value cannot be empty");
     }
 
