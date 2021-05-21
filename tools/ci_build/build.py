@@ -168,7 +168,7 @@ def parse_arguments():
     parser.add_argument(
         "--nccl_home", help="Path to NCCL installation dir")
     parser.add_argument(
-        "--use_mpi", nargs='?', default=True, const=True, type=_str_to_bool)
+        "--use_mpi", nargs='?', default=False, const=False, type=_str_to_bool)
 
     # enable ONNX tests
     parser.add_argument(
