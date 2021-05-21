@@ -135,7 +135,7 @@ try:
                 copyfile(source, dest)
                 result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
                 print(result.stdout)
-                dependencies = ['librccl.so', 'libamdhip64.so', 'librocblas.so', 'libMIOpen.so', 'libhsa-runtime64.so', 'libhsakmt.so']
+                dependencies = ['libcublas.so', 'libcublasLt.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so', 'libcufft.so', 'libnvToolsExt.so', 'libonnxruntime_providers_shared.so', 'librccl.so', 'libamdhip64.so', 'librocblas.so', 'libMIOpen.so', 'libhsa-runtime64.so', 'libhsakmt.so']
                 to_preload = []
                 args = ['patchelf', '--debug']
                 for line in result.stdout.split('\n'):
@@ -154,7 +154,7 @@ try:
                 args = ['patchelf', '--debug']
                 for line in result.stdout.split('\n'):
                     for dependency in cuda_dependencies:
-                        if dependency in line:
+                        if dependency in line and not dependency in to_preload:
                             if not 'libonnxruntime_providers_shared.so' in line:
                               to_preload.append(line)
                             args.extend(['--remove-needed', line])
