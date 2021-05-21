@@ -227,7 +227,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-#if USE_TENSORRT
+
         [Fact]
         private void CanRunInferenceOnAModelWithTensorRT()
         {
@@ -263,22 +263,44 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact]
         private void TestTensorRTProviderOptions()
         {
-            using (var trtProviderOptions = new OrtProviderOptions())
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+            string calTablePath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet_calibration.flatbuffers");
+
+            using (var cleanUp = new DisposableListTest<IDisposable>())
             {
+                var trtProviderOptions = new OrtTensorRTProviderOptions();
+                cleanUp.Add(trtProviderOptions);
+
                 var providerOptionsDict = new Dictionary<string, string>();
                 providerOptionsDict["device_id"] = "0";
                 providerOptionsDict["trt_fp16_enable"] = "1";
                 providerOptionsDict["trt_int8_enable"] = "1";
-
+                providerOptionsDict["trt_int8_calibration_table_name"] = calTablePath;
                 trtProviderOptions.UpdateOptions(providerOptionsDict);
-                using (var sessionOptions = new SessionOptions())
+
+                SessionOptions options = new SessionOptions();
+                cleanUp.Add(options);
+
+                options.AppendExecutionProvider_Tensorrt(trtProviderOptions);
+
+                var session = new InferenceSession(modelPath, options);
+                cleanUp.Add(session);
+
+                var inputMeta = session.InputMetadata;
+                var container = new List<NamedOnnxValue>();
+                float[] inputData = LoadTensorFromFile(@"bench.in"); // this is the data for only one input tensor for this model
+                foreach (var name in inputMeta.Keys)
                 {
-                    sessionOptions.AppendExecutionProvider_Tensorrt(trtProviderOptions);
+                    Assert.Equal(typeof(float), inputMeta[name].ElementType);
+                    Assert.True(inputMeta[name].IsTensor);
+                    var tensor = new DenseTensor<float>(inputData, inputMeta[name].Dimensions);
+                    container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
                 }
+
+                session.Run(container);
             }
-        
         }
-#endif
+
 
         [Theory]
         [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, true)]
