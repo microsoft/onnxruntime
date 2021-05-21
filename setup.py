@@ -148,7 +148,7 @@ try:
 
                 dest = 'onnxruntime/capi/libonnxruntime_providers_cuda.so'
                 result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
-                cuda_dependencies = ['libcublas.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so', 'libcufft.so', 'libnvToolsExt.so', 'libonnxruntime_providers_shared.so']
+                cuda_dependencies = ['libcublas.so', 'libcublasLt.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so', 'libcufft.so', 'libnvToolsExt.so', 'libonnxruntime_providers_shared.so']
                 args = ['patchelf', '--debug']
                 for line in result.stdout.split('\n'):
                     for dependency in cuda_dependencies:
