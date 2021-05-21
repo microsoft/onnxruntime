@@ -81,7 +81,7 @@ elif [ $BUILD_OS = "yocto" ]; then
         --dockerfile $DOCKER_FILE --context .
 else
     if [ $BUILD_DEVICE = "gpu" ]; then
-        #This code path is only for training. Inferecing pipelines uses CentOS
+        #This code path is only for training. Inferecing pipeline uses CentOS
         IMAGE="$BUILD_OS-$CUDA_VER"
         INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -t"
         if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then
