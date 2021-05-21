@@ -3,7 +3,6 @@ set -e -o -x
 id
 SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 SOURCE_ROOT=$(realpath $SCRIPT_DIR/../../../../)
-CUDA_VER=cuda10.1-cudnn7.6
 YOCTO_VERSION="4.19"
 INSTALL_DEPS_DISTRIBUTED_SETUP=false
 ORTMODULE_BUILD=false
@@ -23,8 +22,6 @@ r) BUILD_DIR=${OPTARG};;
 p) PYTHON_VER=${OPTARG};;
 # "--build_wheel --use_openblas"
 x) BUILD_EXTR_PAR=${OPTARG};;
-# "cuda10.0-cudnn7.3, cuda9.1-cudnn7.1"
-c) CUDA_VER=${OPTARG};;
 # x86 or other, only for ubuntu16.04 os
 a) BUILD_ARCH=${OPTARG};;
 # openvino version tag: 2020.3 (OpenVINO EP 2.0 supports version starting 2020.3)
@@ -82,7 +79,7 @@ elif [ $BUILD_OS = "yocto" ]; then
 else
     if [ $BUILD_DEVICE = "gpu" ]; then
         #This code path is only for training. Inferecing pipeline uses CentOS
-        IMAGE="$BUILD_OS-$CUDA_VER"
+        IMAGE="ubuntu_gpu_training"
         INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -t"
         if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -m"
