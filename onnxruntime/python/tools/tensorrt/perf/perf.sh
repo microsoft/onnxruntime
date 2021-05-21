@@ -46,23 +46,13 @@ download_files() {
     wget --no-check-certificate -c $FLOAT_16_LINK 
 }
 
-run_environment_setup() {
-    if [ $ENVIRONMENT == "docker" ]
-    then 
-        cd $PERF_DIR
-	WORKING_DIR=./
-    else 
-        WORKING_DIR=/home/hcsuser/perf/
-    fi
-}
-
 setup() {
-    run_environment_setup
+    cd $PERF_DIR
     cleanup_files
     download_files
 }
 
 
 setup
-python3 benchmark_wrapper.py -r validate -m $MODEL_PATH -o result/$OPTION -w $WORKSPACE $RUN_EPS -d $WORKING_DIR
-python3 benchmark_wrapper.py -r benchmark -t 10 -m $MODEL_PATH -o result/$OPTION -w $WORKSPACE $RUN_EPS -d $WORKING_DIR
+python3 benchmark_wrapper.py -r validate -m $MODEL_PATH -o result/$OPTION -w $WORKSPACE $RUN_EPS
+python3 benchmark_wrapper.py -r benchmark -t 10 -m $MODEL_PATH -o result/$OPTION -w $WORKSPACE $RUN_EPS

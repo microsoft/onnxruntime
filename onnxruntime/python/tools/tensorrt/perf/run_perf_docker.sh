@@ -45,4 +45,4 @@ then
   VOLUME=$VOLUME$ONNX_ZOO_VOLUME$MANY_MODELS_VOLUME$PARTNER_VOLUME' -v /home/hcsuser/perf/subset_jsons/:/usr/share/perf/subset_jsons'
 fi
 
-sudo docker run --gpus all -v $VOLUME $DOCKER_IMAGE /bin/bash $PERF_SCRIPT -d $DOCKER_PERF_DIR -o $OPTION -m $MODEL_PATH -w $WORKSPACE -e "$EP_LIST" -v "docker"
+sudo docker run --gpus all -v $VOLUME $DOCKER_IMAGE /bin/bash $PERF_SCRIPT -d $DOCKER_PERF_DIR -o $OPTION -m $MODEL_PATH -w $WORKSPACE -e "$EP_LIST"

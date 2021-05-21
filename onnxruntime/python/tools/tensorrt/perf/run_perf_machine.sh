@@ -1,13 +1,12 @@
 #!/bin/bash
 
 # Parse Arguments
-while getopts o:m:e:p: parameter
+while getopts o:m:e: parameter
 do case "${parameter}"
 in 
 o) OPTION=${OPTARG};;
 m) MODEL_PATH=${OPTARG};;
 e) EP_LIST=${OPTARG};;
-p) PERF_DIR=${OPTARG};;
 esac
 done 
 
@@ -31,4 +30,4 @@ then
     MODEL_PATH='/home/hcsuser/perf/partner/partner_model_list.json'
 fi
 
-./perf.sh -d $HOME_PERF_DIR -o $OPTION -m $MODEL_PATH -w $WORKSPACE -e "$EP_LIST" -v "machine"
+./perf.sh -d $HOME_PERF_DIR -o $OPTION -m $MODEL_PATH -w $WORKSPACE -e "$EP_LIST" 
