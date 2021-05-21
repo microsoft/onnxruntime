@@ -177,7 +177,9 @@ target_compile_definitions(winml_lib_telemetry PRIVATE BINARY_NAME=\"${BINARY_NA
 target_precompiled_header(winml_lib_telemetry pch.h)
 
 # Includes
-target_include_directories(winml_lib_telemetry PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)
+target_include_directories(winml_lib_telemetry PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
+target_include_directories(winml_lib_telemetry PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
+target_include_directories(winml_lib_telemetry PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
 target_include_directories(winml_lib_telemetry PRIVATE ${CMAKE_SOURCE_DIR}/common/inc)
 target_include_directories(winml_lib_telemetry PRIVATE ${winml_lib_telemetry_dir})
 target_include_directories(winml_lib_telemetry PRIVATE ${winml_lib_common_dir}/inc)
