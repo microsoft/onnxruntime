@@ -5,6 +5,7 @@ search_enabled: true
 # Supports 1 - 6, default: 2
 search.heading_level: 2
 search.button: true
+markdown: GFM
 plugins:
   - jekyll-toc
 kramdown:
