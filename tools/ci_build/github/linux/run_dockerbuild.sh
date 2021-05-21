@@ -81,12 +81,9 @@ elif [ $BUILD_OS = "yocto" ]; then
         --dockerfile $DOCKER_FILE --context .
 else
     if [ $BUILD_DEVICE = "gpu" ]; then
+        #This code path is only for training. Inferecing pipelines uses CentOS
         IMAGE="$BUILD_OS-$CUDA_VER"
-        DOCKER_FILE=Dockerfile.ubuntu_gpu
-        if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
-            INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -t"
-            DOCKER_FILE=Dockerfile.ubuntu_gpu_training
-        fi
+        INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -t"
         if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -m"
         fi
@@ -95,7 +92,7 @@ else
         fi
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
             --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA}" \
-            --dockerfile $DOCKER_FILE --context .
+            --dockerfile Dockerfile.ubuntu_gpu_training --context .
     elif [ $BUILD_DEVICE = "tensorrt" ]; then
         # TensorRT container release 20.12
         IMAGE="$BUILD_OS-cuda11.1-cudnn8.0-tensorrt7.2"
