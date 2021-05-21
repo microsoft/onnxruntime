@@ -246,7 +246,7 @@ class FusionAttention(Fusion):
                 (_, einsum_node, transpose_qkv, matmul_qkv) = qkv_nodes
             else:
                 return
-        print("attention fusing...")
+
         other_inputs = []
         for i, input in enumerate(start_node.input):
             if input not in output_name_to_node:
@@ -280,7 +280,7 @@ class FusionAttention(Fusion):
                 root_input = mul_before_layernorm.output[0]
             else:
                 return
-        print("282")
+
         children = input_name_to_nodes[root_input]
         children_types = [child.op_type for child in children]
         if children_types.count('MatMul') != 3:
@@ -291,7 +291,7 @@ class FusionAttention(Fusion):
             logger.debug("fuse_attention: failed to match v path")
             return
         (_, reshape_v, add_v, matmul_v) = v_nodes
-        print("294")
+
         is_distill = False
         is_bart = False
         qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Div', 'MatMul'], [0, 0, None, 0])
@@ -307,7 +307,7 @@ class FusionAttention(Fusion):
                     if qk_nodes is None:
                         logger.debug("fuse_attention: failed to match qk path")
                         return
-        print("304")
+
         add_qk = None
         matmul_qk = None
         where_qk = None
@@ -330,7 +330,7 @@ class FusionAttention(Fusion):
         reshape_q = q_nodes[-3]
         add_q = q_nodes[-2]
         matmul_q = q_nodes[-1]
-        print("330")
+
         k_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, None])
         if k_nodes is None:
             k_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Transpose', 'Reshape', 'Add', 'MatMul'],
@@ -342,7 +342,7 @@ class FusionAttention(Fusion):
 
         add_k = k_nodes[-2]
         matmul_k = k_nodes[-1]
-        print("333")
+
         # Note that Cast might be removed by OnnxRuntime so we match two patterns here.
         mask_nodes = None
         if is_distill or is_bart:
@@ -358,7 +358,7 @@ class FusionAttention(Fusion):
         if mask_nodes is None:
             logger.debug("fuse_attention: failed to match mask path")
             return
-        print("348")
+
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_v.input[0] == root_input:
             mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
 
@@ -374,9 +374,18 @@ class FusionAttention(Fusion):
                                                   num_heads, hidden_size, root_input, attention_last_node.output[0])
             if new_node is None:
                 return
-            print("363")
+
+            if is_bart:
+                front_transpose = helper.make_node("Transpose", [new_node.input[0]], ["front_transpose_out_" + new_node.name], "front_transpose_" + new_node.name, perm=[1,0,2])
+                back_transpose = helper.make_node("Transpose", ["back_transpose_in_" + new_node.name], [new_node.output[0]], "back_transpose_" + new_node.name, perm=[1,0,2])
+                self.model.add_node(front_transpose, self.this_graph_name)
+                self.model.add_node(back_transpose, self.this_graph_name)
+                new_node.input[0] = "front_transpose_out_" + new_node.name
+                new_node.output[0] = "back_transpose_in_" + new_node.name
+
             self.nodes_to_add.append(new_node)
             self.node_name_to_graph_name[new_node.name] = self.this_graph_name
+
 
             if einsum_node is not None:
                 unique_index = einsum_node.input[0]
@@ -392,7 +401,6 @@ class FusionAttention(Fusion):
                     helper.make_node("Reshape", [attention_last_node.output[0], shape_tensor.name], [new_edge],
                                      "reshape_modified_" + unique_index), self.this_graph_name)
                 einsum_node.input[0] = new_edge
-            print("381")
 
             #reshape_nodes_1 = self.model.match_parent_path(reshape_v, ['Concat', 'Unsqueeze', 'Mul', 'Gather', 'Shape'], [1, 1, 0, 0, 0])
             #if reshape_nodes_1 is None:
