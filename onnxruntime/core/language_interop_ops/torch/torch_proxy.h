@@ -32,7 +32,8 @@ class TorchProxy {
       const std::vector<int64_t>& obj_indices,
       void** diff_ctx,
       std::vector<OrtValue>& returned_ortvalues,
-      const bool is_training_mode);
+      const bool is_training_mode,
+      const bool is_inplace);
 
   void Backward(
       void* callback,
@@ -41,7 +42,8 @@ class TorchProxy {
       const std::vector<int64_t>& tensor_indices,
       const std::vector<void*>& obj_args,
       const std::vector<int64_t>& obj_indices,
-      std::vector<OrtValue>& return_args);
+      std::vector<OrtValue>& return_args,
+      const bool is_inplace);
 
  private:
   TorchProxy(){};

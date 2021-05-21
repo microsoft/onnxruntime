@@ -55,7 +55,8 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
       const_arg_positions_,
       &diff_ctx,
       returned_ortvalues,
-      is_training_mode_);
+      is_training_mode_,
+      inplace_);
 
   // todo(pengwa): okay to remove it?
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
@@ -94,7 +95,8 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
       arg_positions_,
       const_args,
       const_arg_positions_,
-      returned_ortvalues);
+      returned_ortvalues,
+      inplace_);
   // todo(pengwa): okay to remove it?
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
 

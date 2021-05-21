@@ -10,14 +10,25 @@ import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
 from . import _utils
 
-def call_python_forward_function(forward_function, requires_grad_flags, tensor_type_flags, is_training_mode, *args):
+
+def call_python_forward_function(
+        forward_function,
+        requires_grad_flags,
+        tensor_type_flags,
+        is_training_mode,
+        inplace,
+        *args):
     try:
         wrapped_args = []
         for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, args):
             if tensor_flag:
                 # Got a tensor. Assume it's a DLPack tensor
                 # and convert it to Pytorch tensor.
-                wrapped_arg = from_dlpack(arg).detach().clone().contiguous()
+                if not inplace:
+                    wrapped_arg = from_dlpack(arg)
+                else:
+                    wrapped_arg = from_dlpack(arg).detach().contiguous()
+
                 if is_training_mode and grad_flag:
                     wrapped_arg.requires_grad = True
                 else:
@@ -70,15 +81,27 @@ def call_python_forward_function(forward_function, requires_grad_flags, tensor_t
         raise
 
 
-def call_python_backward_function(backward_function, requires_grad_flags, tensor_type_flags, is_training_mode, *args):
+def call_python_backward_function(
+        backward_function,
+        requires_grad_flags,
+        tensor_type_flags,
+        is_training_mode,
+        inplace,
+        *args):
     try:
         wrapped_args = []
-        for requires_grad, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, args):
+        for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, args):
             if tensor_flag:
                 # Got a tensor. Assume it's a DLPack tensor
                 # and convert it to Pytorch tensor.
-                wrapped_arg = from_dlpack(arg).clone().contiguous()
-                if requires_grad:
+                #wrapped_arg = from_dlpack(arg).clone().contiguous()
+                if not inplace:
+                    wrapped_arg = from_dlpack(arg).contiguous()
+                else:
+                    wrapped_arg = from_dlpack(arg).detach().contiguous()
+
+
+                if is_training_mode and grad_flag:
                     wrapped_arg.requires_grad = True
                 else:
                     wrapped_arg.requires_grad = False

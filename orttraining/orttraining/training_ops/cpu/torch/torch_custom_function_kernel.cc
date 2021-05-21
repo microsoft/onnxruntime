@@ -50,7 +50,8 @@ Status PythonOp::Compute(OpKernelContext* context) const {
       const_arg_positions_,
       &diff_ctx,
       returned_ortvalues,
-      is_training_mode_);
+      is_training_mode_,
+      inplace_ != 0);
 
   ORT_ENFORCE(1 + returned_ortvalues.size() == static_cast<size_t>(context->OutputCount()),
               "Output count mismatch for PythonOp run");
@@ -89,7 +90,8 @@ Status PythonOpGrad::Compute(OpKernelContext* context) const {
       arg_positions_,
       const_args,
       const_arg_positions_,
-      returned_ortvalues);
+      returned_ortvalues,
+      inplace_ != 0);
 
   SetOutputs(context, returned_ortvalues);
 

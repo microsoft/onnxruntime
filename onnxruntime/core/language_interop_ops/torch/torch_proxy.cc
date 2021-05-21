@@ -219,12 +219,17 @@ std::unique_ptr<PythonObjectPtr> CreateForwardArguments(
     const std::vector<int64_t>& tensor_indices,
     const std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
-    const bool is_training_mode) {
+    const bool is_training_mode,
+    const bool is_inplace) {
   ORT_ENFORCE(PyCallable_Check(callback), "Forward callback is not callable.");
-  int64_t num_args_without_inputs = 4;
+  // The number of variables before those of
+  // autograd.Function.apply and autograd.Function.backward.
+  // The extra variables are used to configure the launch
+  // forward and backward runners.
+  constexpr int64_t num_control_args = 5;
 
   // All arguments created for Python call will be destroyed along with PythonObjectPtr.
-  auto args = std::make_unique<PythonObjectPtr>(Ort_PyTuple_New(num_args_without_inputs + len,
+  auto args = std::make_unique<PythonObjectPtr>(Ort_PyTuple_New(num_control_args + len,
                                                                 "forward_arguments_tuple"));
   PyObject* tensor_flags = CreateTensorFlags(len, tensor_indices);
   PyObject* requires_grad_flags = CreateRequiresGradFlags(requires_grads);
@@ -232,20 +237,24 @@ std::unique_ptr<PythonObjectPtr> CreateForwardArguments(
   Ort_PyTuple_SetItem_Incref(args->get(), 0, callback, "callback_function");
   Ort_PyTuple_SetItem_NoIncref(args->get(), 1, requires_grad_flags, "requires_grad_flags");
   Ort_PyTuple_SetItem_NoIncref(args->get(), 2, tensor_flags, "tensor_flags");
-  PyObject* is_training = is_training_mode ? Py_True : Py_False;
-  Ort_PyTuple_SetItem_Incref(args->get(), 3, is_training, "is_training_mode");
+  PyObject* is_training_mode_arg = is_training_mode ? Py_True : Py_False;
+  Ort_PyTuple_SetItem_Incref(args->get(), 3, is_training_mode_arg, "is_training_mode");
+  PyObject* is_inplace_arg = is_inplace ? Py_True : Py_False;
+  Ort_PyTuple_SetItem_Incref(args->get(), 4, is_inplace_arg, "is_inplace_mode");
 
+  // Tensor inputs to call autograd.Function.apply or autograd.Function.backward.
   for (size_t i = 0; i < tensor_args.size(); ++i) {
     // Wrap with DLPack, then transfer to Python for its release.
     DLManagedTensor* dlmanaged_tensor = onnxruntime::python::OrtValueToDlpack(*tensor_args[i]);
     PyObject* dltensor = PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
-    Ort_PyTuple_SetItem_NoIncref(args->get(), num_args_without_inputs + tensor_indices[i], dltensor,
+    Ort_PyTuple_SetItem_NoIncref(args->get(), num_control_args + tensor_indices[i], dltensor,
                                  "dltensor");
   }
 
+  // Non-tensor inputs to call autograd.Function.apply or autograd.Function.backward.
   for (size_t i = 0; i < obj_args.size(); ++i) {
     PyObject* pyobj = reinterpret_cast<PyObject*>(obj_args[i]);
-    Ort_PyTuple_SetItem_Incref(args->get(), num_args_without_inputs + obj_indices[i], pyobj,
+    Ort_PyTuple_SetItem_Incref(args->get(), num_control_args + obj_indices[i], pyobj,
                                "const_args");
   }
 
@@ -262,7 +271,8 @@ void Invoke(
     const std::vector<int64_t>& obj_indices,
     void** diff_ctx,
     std::vector<OrtValue>& returned_ortvalues,
-    const bool is_training_mode) {
+    const bool is_training_mode,
+    const bool is_inplace) {
   const auto len = tensor_args.size() + obj_args.size();
   CheckArguments(len, requires_grads, tensor_args, tensor_indices, obj_args, obj_indices);
   // #ifndef NDEBUG
@@ -277,7 +287,8 @@ void Invoke(
         tensor_indices,
         obj_args,
         obj_indices,
-        is_training_mode);
+        is_training_mode,
+        is_inplace);
 #ifndef NDEBUG
     RefCountTracker::GetInstance().DumpDetails("Before Invoke Python Call");
 #endif
@@ -297,7 +308,8 @@ void TorchProxy::Forward(
     const std::vector<int64_t>& obj_indices,
     void** diff_ctx,
     std::vector<OrtValue>& returned_ortvalues,
-    const bool is_training_mode) {
+    const bool is_training_mode,
+    const bool is_inplace) {
   // Python-related calls should happen only if guard is alive.
   GilGuard guard;
   auto runner = OrtTorchFunctionPool::GetInstance().GetForwardRunner();
@@ -311,7 +323,8 @@ void TorchProxy::Forward(
       obj_indices,
       diff_ctx,
       returned_ortvalues,
-      is_training_mode);
+      is_training_mode,
+      is_inplace);
 }
 
 void TorchProxy::Backward(
@@ -321,7 +334,8 @@ void TorchProxy::Backward(
     const std::vector<int64_t>& tensor_indices,
     const std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
-    std::vector<OrtValue>& returned_ortvalues) {
+    std::vector<OrtValue>& returned_ortvalues,
+    const bool is_inplace) {
   // Python-related calls should happen only if guard is alive.
   GilGuard guard;
   auto runner = OrtTorchFunctionPool::GetInstance().GetBackwardRunner();
@@ -333,10 +347,10 @@ void TorchProxy::Backward(
       tensor_indices,
       obj_args,
       obj_indices,
-      nullptr,
+      nullptr /* context to store */,
       returned_ortvalues,
-      true /*is_training_mode*/
-  );
+      true /* is_training_mode */,
+      is_inplace);
 }
 }  // namespace torch
 }  // namespace language_interop_ops

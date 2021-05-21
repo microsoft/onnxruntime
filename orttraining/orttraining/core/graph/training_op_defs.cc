@@ -2676,6 +2676,11 @@ Return true if all elements are true and false otherwise.
           "Name of custom class.",
           AttributeProto::STRING)
       .Attr(
+          "inplace",
+          "Indicate if the output should reuse input memory.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
           "input_tensor_types",
           "Input types of autograd.Function.backward.",
           AttributeProto::INTS,

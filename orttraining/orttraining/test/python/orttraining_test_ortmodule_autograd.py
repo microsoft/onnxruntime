@@ -378,7 +378,7 @@ class InplaceUpdateInputAsOutputNotRequireGradModel(torch.nn.Module):
         out = y1 + y2
         return out
 
-
+@pytest.mark.skip(reason="This test is not correct. All tensors modified by in-place operattions should be mark_dirty(...).")
 def test_InplaceUpdateInputAsOutputNotRequireGrad():
     output_size = 1024
 
@@ -434,7 +434,7 @@ class InplaceUpdateInputNotAsOutputNotRequireGradModel(torch.nn.Module):
         out = y1 + y2
         return out
 
-
+@pytest.mark.skip(reason="This test is not correct. All tensors modified by in-place operattions should be mark_dirty(...).")
 def test_InplaceUpdateInputNotAsOutputNotRequireGrad():
     output_size = 1024
 

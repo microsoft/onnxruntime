@@ -183,6 +183,7 @@ void PythonOpBase::SetOtherOutputs(OpKernelContext* context, std::vector<OrtValu
 
 PythonOpGradBase::PythonOpGradBase(const OpKernelInfo& info) {
   ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
+  ORT_THROW_IF_ERROR(info.GetAttr("inplace", &inplace_));
   ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_tensor_types_));
   ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_tensor_types_));
   input_tensor_requires_grads_ = info.GetAttrsOrDefault("input_tensor_requires_grads", std::vector<int64_t>());

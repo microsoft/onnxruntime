@@ -78,6 +78,7 @@ class PythonOpGradBase {
 
   // Name of containing class. For example, MyReLU.
   std::string name_;
+  int64_t inplace_;
   // Input types of MyReLU.backward(...).
   std::vector<int64_t> input_tensor_types_;
   // Output types of MyReLU.apply(...).
