@@ -324,7 +324,7 @@ def parse_arguments():
     parser.add_argument(
         "--osx_arch",
         default="arm64" if platform.machine() == "arm64" else "x86_64",
-        choices=["arm64", "x86_64"],
+        choices=["arm64", "arm64e", "x86_64"],
         help="Specify the Target specific architectures for macOS and iOS, This is only supported on MacOS")
     parser.add_argument(
         "--apple_deploy_target", type=str,
@@ -1429,7 +1429,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                      source_dir, 'cmake\\codeconv.runsettings')] + executables,
                 cwd=cwd2, dll_path=dll_path)
         else:
-            ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", "3600"]
+            ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", "7200"]
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
 
         if args.enable_pybind:

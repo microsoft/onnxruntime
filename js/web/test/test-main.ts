@@ -22,26 +22,32 @@ const options = ORT_WEB_TEST_CONFIG.options;
 if (options.debug !== undefined) {
   ort.env.debug = options.debug;
 }
-if (ort.env.webgl && options.webglFlags && options.webglFlags.contextId !== undefined) {
-  ort.env.webgl.contextId = options.webglFlags.contextId;
+if (options.globalEnvFlags && options.globalEnvFlags.logLevel !== undefined) {
+  ort.env.logLevel = options.globalEnvFlags.logLevel;
 }
-if (ort.env.webgl && options.webglFlags && options.webglFlags.matmulMaxBatchSize !== undefined) {
-  ort.env.webgl.matmulMaxBatchSize = options.webglFlags.matmulMaxBatchSize;
+if (ort.env.webgl && options.globalEnvFlags && options.globalEnvFlags.webgl &&
+    options.globalEnvFlags.webgl.contextId !== undefined) {
+  ort.env.webgl.contextId = options.globalEnvFlags.webgl.contextId;
 }
-if (ort.env.webgl && options.webglFlags && options.webglFlags.textureCacheMode !== undefined) {
-  ort.env.webgl.textureCacheMode = options.webglFlags.textureCacheMode;
+if (ort.env.webgl && options.globalEnvFlags && options.globalEnvFlags.webgl &&
+    options.globalEnvFlags.webgl.matmulMaxBatchSize !== undefined) {
+  ort.env.webgl.matmulMaxBatchSize = options.globalEnvFlags.webgl.matmulMaxBatchSize;
 }
-if (ort.env.webgl && options.webglFlags && options.webglFlags.pack !== undefined) {
-  ort.env.webgl.pack = options.webglFlags.pack;
+if (ort.env.webgl && options.globalEnvFlags && options.globalEnvFlags.webgl &&
+    options.globalEnvFlags.webgl.textureCacheMode !== undefined) {
+  ort.env.webgl.textureCacheMode = options.globalEnvFlags.webgl.textureCacheMode;
 }
-if (ort.env.wasm && options.wasmFlags && options.wasmFlags.numThreads !== undefined) {
-  ort.env.wasm.numThreads = options.wasmFlags.numThreads;
+if (ort.env.webgl && options.globalEnvFlags && options.globalEnvFlags.webgl &&
+    options.globalEnvFlags.webgl.pack !== undefined) {
+  ort.env.webgl.pack = options.globalEnvFlags.webgl.pack;
 }
-if (ort.env.wasm && options.wasmFlags && options.wasmFlags.loggingLevel !== undefined) {
-  ort.env.wasm.loggingLevel = options.wasmFlags.loggingLevel;
+if (ort.env.wasm && options.globalEnvFlags && options.globalEnvFlags.wasm &&
+    options.globalEnvFlags.wasm.numThreads !== undefined) {
+  ort.env.wasm.numThreads = options.globalEnvFlags.wasm.numThreads;
 }
-if (ort.env.wasm && options.wasmFlags && options.wasmFlags.initTimeout !== undefined) {
-  ort.env.wasm.initTimeout = options.wasmFlags.initTimeout;
+if (ort.env.wasm && options.globalEnvFlags && options.globalEnvFlags.wasm &&
+    options.globalEnvFlags.wasm.initTimeout !== undefined) {
+  ort.env.wasm.initTimeout = options.globalEnvFlags.wasm.initTimeout;
 }
 
 // Set logging configuration

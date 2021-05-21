@@ -299,12 +299,20 @@ typedef struct OrtTensorRTProviderOptions {
   int device_id;                                // cuda device id.
   int has_user_compute_stream;                  // indicator of user specified CUDA compute stream.
   void* user_compute_stream;                    // user specified CUDA compute stream.
-  int has_trt_options;                          // override environment variables with following TensorRT settings at runtime.
+  int trt_max_partition_iterations;             // maximum iterations for TensorRT parser to get capability
+  int trt_min_subgraph_size;                    // minimum size of TensorRT subgraphs
   size_t trt_max_workspace_size;                // maximum workspace size for TensorRT.
   int trt_fp16_enable;                          // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
   int trt_int8_enable;                          // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
   const char* trt_int8_calibration_table_name;  // TensorRT INT8 calibration table name.
   int trt_int8_use_native_calibration_table;    // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
+  int trt_dla_enable;                           // enable DLA. Default 0 = false, nonzero = true
+  int trt_dla_core;                             // DLA core number. Default 0
+  int trt_dump_subgraphs;                       // dump TRT subgraph. Default 0 = false, nonzero = true
+  int trt_engine_cache_enable;                  // enable engine caching. Default 0 = false, nonzero = true
+  const char* trt_engine_cache_path;            // specify engine cache path
+  int trt_engine_decryption_enable;             // enable engine decryption. Default 0 = false, nonzero = true
+  const char* trt_engine_decryption_lib_path;   // specify engine decryption library path
   int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
 } OrtTensorRTProviderOptions;
 
@@ -777,13 +785,13 @@ struct OrtApi {
      * \name - name of the attribute to be parsed
      * \out - pointer to memory where the attribute's contents are to be stored
      * \size - actual size of string attribute
-     * (If `out` is nullptr, the value of `size` is set to the true size of the string 
+     * (If `out` is nullptr, the value of `size` is set to the true size of the string
         attribute, and a success status is returned.
-     
+
         If the `size` parameter is greater than or equal to the actual string attribute's size,
         the value of `size` is set to the true size of the string attribute, the provided memory
         is filled with the attribute's contents, and a success status is returned.
-        
+
         If the `size` parameter is lesser than the actual string attribute's size and `out`
         is not nullptr, the value of `size` is set to the true size of the string attribute
         and a failure status is returned.)
@@ -1250,14 +1258,14 @@ struct OrtApi {
      * \name - name of the attribute to be parsed
      * \out - pointer to memory where the attribute's contents are to be stored
      * \size - actual size of attribute array
-     * (If `out` is nullptr, the value of `size` is set to the true size of the attribute 
+     * (If `out` is nullptr, the value of `size` is set to the true size of the attribute
         array's size, and a success status is returned.
-     
+
         If the `size` parameter is greater than or equal to the actual attribute array's size,
         the value of `size` is set to the true size of the attribute array's size,
-        the provided memory is filled with the attribute's contents, 
+        the provided memory is filled with the attribute's contents,
         and a success status is returned.
-        
+
         If the `size` parameter is lesser than the actual attribute array's size and `out`
         is not nullptr, the value of `size` is set to the true size of the attribute array's size
         and a failure status is returned.)
@@ -1271,14 +1279,14 @@ struct OrtApi {
      * \name - name of the attribute to be parsed
      * \out - pointer to memory where the attribute's contents are to be stored
      * \size - actual size of attribute array
-     * (If `out` is nullptr, the value of `size` is set to the true size of the attribute 
+     * (If `out` is nullptr, the value of `size` is set to the true size of the attribute
         array's size, and a success status is returned.
-     
+
         If the `size` parameter is greater than or equal to the actual attribute array's size,
         the value of `size` is set to the true size of the attribute array's size,
-        the provided memory is filled with the attribute's contents, 
+        the provided memory is filled with the attribute's contents,
         and a success status is returned.
-        
+
         If the `size` parameter is lesser than the actual attribute array's size and `out`
         is not nullptr, the value of `size` is set to the true size of the attribute array's size
         and a failure status is returned.)
@@ -1302,7 +1310,7 @@ struct OrtApi {
      Ultimately, the first allocation size is determined by the allocation memory request. 
   * "max_dead_bytes_per_chunk": Threshold of unused memory in an allocated chunk of arena memory after 
      crossing which the current chunk is chunked into 2.
-  * "initial_regrowth_chunk_size_bytes": (Possible) Size of the second allocation in the arena. 
+  * "initial_growth_chunk_size_bytes": (Possible) Size of the second allocation in the arena. 
      Only relevant if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
      Ultimately, the allocation size is determined by the allocation memory request.
      Further allocation sizes are governed by the arena extend strategy.

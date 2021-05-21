@@ -81,12 +81,13 @@ class TrainingManager(GraphExecutionManager):
         if build_gradient_graph:
             self._build_graph()
 
-        module_device = _utils.get_device_from_module(self._original_module)
+        device = _utils.get_device_from_module(self._original_module) or \
+            _utils.get_device_from_inputs(inputs, kwargs)
         # The _training_session/_inference_session should be created every time
         # the graph was built or if the device changed between calls to forward
-        create_execution_session = build_gradient_graph or self._device != module_device
-        if self._device != module_device:
-            self._device = module_device
+        create_execution_session = build_gradient_graph or self._device != device
+        if self._device != device:
+            self._device = device
         if create_execution_session:
             # Create execution session creates the training_session
             self._create_execution_agent()
@@ -184,7 +185,6 @@ class TrainingManager(GraphExecutionManager):
                 return tuple(results)
 
         return _io.unflatten_user_output(self._module_output_schema,
-                                        self._graph_info.user_output_names,
                                         _ORTModuleFunction.apply(
                                             *_io._combine_input_buffers_initializers(
                                                 [param for name, param in self._flattened_module.named_parameters()

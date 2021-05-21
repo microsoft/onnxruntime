@@ -99,7 +99,6 @@ class InferenceManager(GraphExecutionManager):
                                                                              self._device))
 
         return _io.unflatten_user_output(self._module_output_schema,
-                                         self._graph_info.user_output_names,
                                          user_outputs)
 
     def _build_graph(self):

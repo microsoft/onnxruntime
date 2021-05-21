@@ -2,10 +2,9 @@
 // Licensed under the MIT License.
 
 #include "attention.h"
-#include "core/framework/tensorprotoutils.h"
+#include "attention_impl.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
-#include "attention_impl.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -22,7 +21,7 @@ namespace cuda {
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Attention<T>);
 

@@ -881,9 +881,9 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
 }
 
 template <typename T>
-Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes,
-                          AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,
-                          const TensorShape* input_shape_override) {
+std::unique_ptr<Tensor> ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes,
+                                           AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,
+                                           const TensorShape* input_shape_override) {
   std::vector<int64_t> axes;
   std::vector<int64_t> output_shape, fast_shape, fast_axes;
   TensorShape new_input_shape = input_shape_override == nullptr ? input.Shape() : *input_shape_override;
@@ -892,12 +892,12 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
   FastReduceKind fast_kind = OptimizeShapeForFastReduce(
       reduced_dims, reduce_axes, fast_shape, output_shape, fast_axes, keep_dims, false);
 
-  Tensor output(input.DataType(), keep_dims ? output_shape : std::vector<int64_t>(), allocator);
+  auto output = make_unique<Tensor>(input.DataType(), keep_dims ? output_shape : std::vector<int64_t>(), allocator);
 
   if (fast_kind == FastReduceKind::kEmpty) {
     if (new_input_shape.Size() == 1) {
       const T* from_data = input.template Data<T>();
-      T* to_data = output.template MutableData<T>();
+      T* to_data = output->template MutableData<T>();
       *to_data = *from_data;
     } else {
       ValidateKeepDims(new_input_shape, keep_dims);
@@ -908,22 +908,23 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
   if (IsFastReduceKindAvailable(fast_kind, ReduceAggregatorSum<T>::WhichFastReduce())) {
     switch (fast_kind) {
       case FastReduceKind::kKR: {
-        ValidateFastReduceKR(fast_shape, output);
-        ReduceAggregatorSum<T>::FastReduceKR(input, fast_shape, output, tp);
+        ValidateFastReduceKR(fast_shape, *output);
+        ReduceAggregatorSum<T>::FastReduceKR(input, fast_shape, *output, tp);
         return output;
       }
       case FastReduceKind::kRK:
-        ValidateFastReduceRK(fast_shape, output);
-        if (fast_shape[1] > concurrency::ThreadPool::DegreeOfParallelism(tp) * 4) {
-          ReduceAggregatorSum<T>::FastReduceRK(input, fast_shape, output, tp);
+        ValidateFastReduceRK(fast_shape, *output);
+        if (std::max(fast_shape[0], fast_shape[1]) >
+            concurrency::ThreadPool::DegreeOfParallelism(tp) * 256) {
+          ReduceAggregatorSum<T>::FastReduceRK(input, fast_shape, *output, tp);
           return output;
         } else {
           break;
         }
       case FastReduceKind::kKRK:
-        ValidateFastReduceKRK(fast_shape, output);
-        if (fast_shape[0] > concurrency::ThreadPool::DegreeOfParallelism(tp)) {
-          ReduceAggregatorSum<T>::FastReduceKRK(input, fast_shape, output, tp);
+        ValidateFastReduceKRK(fast_shape, *output);
+        if (fast_shape[0] >= std::max(2, concurrency::ThreadPool::DegreeOfParallelism(tp))) {
+          ReduceAggregatorSum<T>::FastReduceKRK(input, fast_shape, *output, tp);
           return output;
         } else {
           break;
@@ -938,7 +939,7 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
   }
 
   ResultsNoTransposePrepareForReduce last_results;
-  NoTransposeReduce1Loop<ReduceAggregatorSum<T>>(&output, fast_shape, input, fast_axes, tp, last_results);
+  NoTransposeReduce1Loop<ReduceAggregatorSum<T>>(output.get(), fast_shape, input, fast_axes, tp, last_results);
   return output;
 }
 
