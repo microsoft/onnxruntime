@@ -70,7 +70,7 @@ function buildConfig({ filename, format, target, mode, devtool }) {
           }
         ]
       }, {
-        test: /\.worker.js$/,
+        test: /^ort-wasm.*\.worker\.js$/,
         type: 'asset/source'
       }]
     },
