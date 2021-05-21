@@ -47,11 +47,11 @@ jobs:
   variables:
     - name: runenv
       ${{ if eq(parameters.RunDocker, true) }}:
-        value: _docker.sh -d ort-$(branch) 
+        value: _docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf
       ${{ if ne(parameters.RunDocker, true) }}:
         value: _machine.sh
     - name: args
-      value: $(runenv) -e "$(ep_list)" -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf
+      value: $(runenv) -e "$(ep_list)" 
   timeoutInMinutes: 3000 
       
   steps:
