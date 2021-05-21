@@ -1,7 +1,7 @@
 Pod::Spec.new do |spec|
   spec.name         = "OnnxRuntimeBase"
   spec.version      = "1.7.0"
-  spec.summary      = "Base package of Onnx Runtime"
+  spec.summary      = "Onnx Runtime C/C++ Package"
   spec.description  = <<-DESC
   Onnx Runtime C/C++ framework pod.
                    DESC
