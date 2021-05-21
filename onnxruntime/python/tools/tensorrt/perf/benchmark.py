@@ -217,6 +217,7 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
             logger.info("ORT session outputs:")
             logger.info(sess_outputs)
 
+        p = None # keep track of process to kill upon error
         try:
             if args.track_memory and track_ep_memory(ep): 
 
@@ -230,6 +231,9 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
 
         except Exception as e:
             logger.error(e)
+            if args.track_memory: 
+                logger.info("terminating memory tracking for process {}".format(p))
+                p.kill()
             return None
 
     logger.info(runtimes)
@@ -814,15 +818,16 @@ def parse_models_info_from_file(root_dir, path, models):
 
 
 def convert_model_from_float_to_float16(model_path):
-    # from onnxmltools.utils.float16_converter import convert_float_to_float16
     from onnxmltools.utils import load_model, save_model
     from float16 import convert_float_to_float16
 
-    onnx_model = load_model(model_path)
-    new_onnx_model = convert_float_to_float16(onnx_model)
-    save_model(new_onnx_model, 'new_fp16_model_by_trt_perf.onnx')
+    new_model_path = os.path.join(os.getcwd(), "new_fp16_model_by_trt_perf.onnx")
+    if not os.path.exists(new_model_path):
+        onnx_model = load_model(model_path)
+        new_onnx_model = convert_float_to_float16(onnx_model)
+        save_model(new_onnx_model, 'new_fp16_model_by_trt_perf.onnx')
 
-    return os.path.join(os.getcwd(), "new_fp16_model_by_trt_perf.onnx")
+    return new_model_path
 
 def get_test_data(fp16, test_data_dir, all_inputs_shape):
     inputs = []
@@ -918,11 +923,12 @@ def run_onnxruntime(args, models):
             model_path = model_info["model_path"]
             test_data_dir = model_info["test_data_path"]
 
-            if ep == cuda_fp16:
-                logger.info("[Initialize]  model = {}, ep = {} ,FP16 = True ...".format(name, ep))
-                fp16 = True
-                os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1"
-
+            fp16 = True if "fp16" in ep else False
+            os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1" if "fp16" in ep else "0"
+            logger.info("[Initialize]  model = {}, ep = {} ,FP16 = {} ...".format(name, ep, fp16))
+            
+            if "fp16" in ep: 
+                
                 # handle model
                 if "model_path_fp16" in model_info:
                     model_path = model_info["model_path_fp16"]
@@ -939,33 +945,9 @@ def run_onnxruntime(args, models):
                 # handle test data
                 if "test_data_path_fp16" in model_info:
                     test_data_dir = model_info["test_data_path_fp16"]
-                    inputs, ref_outputs = get_test_data(False, test_data_dir, all_inputs_shape)
-                else:
-                    inputs, ref_outputs = get_test_data(True, test_data_dir, all_inputs_shape)
+                    fp16 = False 
             
-            elif ep == standalone_trt_fp16:
-                logger.info("[Initialize]  model = {}, ep = {} ,FP16 = True ...".format(name, ep))
-                fp16 = True
-                inputs, ref_outputs = get_test_data(False, test_data_dir, all_inputs_shape)
-            
-            elif ep == standalone_trt: 
-                logger.info("[Initialize]  model = {}, ep = {} ,FP16 = False ...".format(name, ep))
-                fp16 = False
-                inputs, ref_outputs = get_test_data(False, test_data_dir, all_inputs_shape)
-
-            elif ep == trt_fp16:
-                logger.info("[Initialize]  model = {}, ep = {} ,FP16 = True ...".format(name, ep))
-                fp16 = True
-                os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1"
-
-                inputs, ref_outputs = get_test_data(False, test_data_dir, all_inputs_shape)
-            else:
-                logger.info("[Initialize]  model = {}, ep = {} ,FP16 = False ...".format(name, ep))
-                fp16 = False
-                os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"
-
-                inputs, ref_outputs = get_test_data(False, test_data_dir, all_inputs_shape)
-
+            inputs, ref_outputs = get_test_data(fp16, test_data_dir, all_inputs_shape)
 
             # generate random input data
             if args.input_data == "random":
@@ -995,9 +977,9 @@ def run_onnxruntime(args, models):
                     update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
                     continue
                 
+                # get standalone TensorRT perf
                 if standalone_trt in ep and args.trtexec:
-                    
-                    # get standalone TensorRT perf
+                    p = None # keep track of process to kill upon error
                     try: 
                         if args.track_memory: 
                             p = start_memory_tracking()            
@@ -1011,7 +993,12 @@ def run_onnxruntime(args, models):
                     except Exception as e: 
                         logger.error(e)
                         update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
+                        if args.track_memory:
+                            logger.info("terminating memory tracking for process {}".format(p))
+                            p.kill()
                         continue
+
+                # inference with ort
                 else:
                         
                     logger.info("start to inference {} with {} ...".format(name, ep))

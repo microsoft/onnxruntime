@@ -185,7 +185,7 @@ def main():
         print('writing status to database')
         write_table(engine, status, 'ep_models_status')
         print('writing latency over time to database')
-        insert_latency(args.commit_hash, args.report_url, latency)
+        #insert_latency(args.commit_hash, args.report_url, latency)
 
     except BaseException as e: 
         print(str(e))
