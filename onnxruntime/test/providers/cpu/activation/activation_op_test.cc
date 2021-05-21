@@ -55,7 +55,7 @@ TEST_F(ActivationOpTest, Relu) {
                            input_values_int8,
                            [](int8_t x) { return std::max(x, static_cast<int8_t>(0)); },
                            {},
-                           /*is_tensorrt_supported=*/ true,
+                           /*is_tensorrt_supported=*/ false,
                            /*opset_version= */ 14);
 }
 
