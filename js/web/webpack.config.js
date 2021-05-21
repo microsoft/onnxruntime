@@ -161,7 +161,6 @@ function buildTestRunnerConfig({
     },
     resolve: {
       extensions: ['.ts', '.js'],
-      aliasFields: [],
       fallback: {
         './binding/ort-wasm.js': false,
         './binding/ort-wasm-threaded.js': false,
@@ -184,7 +183,7 @@ function buildTestRunnerConfig({
           }
         ]
       }, {
-        test: /\.worker\.js$/,
+        test: /ort-wasm.*\.worker\.js$/,
         type: 'asset/source'
       }]
     },
