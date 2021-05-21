@@ -705,14 +705,21 @@ bool CommonFastReduceSwitch(OpKernelContext* ctx,
         }
         case FastReduceKind::kRK: {
           ValidateFastReduceRK(fast_shape, *output);
-          case_rk(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
-          return true;
+          if (std::max(fast_shape[0], fast_shape[1]) >
+              concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()) * 256) {
+            case_rk(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
+            return true;
+          } else {
+            break;
+          }
         }
         case FastReduceKind::kKRK:
-          if (fast_shape[0] > 1) {
-            ValidateFastReduceKRK(fast_shape, *output);
+          ValidateFastReduceKRK(fast_shape, *output);
+          if (fast_shape[0] >= std::max(2, concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()))) {
             case_krk(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
             return true;
+          } else {
+            break;
           }
         case FastReduceKind::kR:
         case FastReduceKind::kK:
@@ -905,16 +912,21 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
         ReduceAggregatorSum<T>::FastReduceKR(input, fast_shape, output, tp);
         return output;
       }
-      case FastReduceKind::kRK: {
+      case FastReduceKind::kRK:
         ValidateFastReduceRK(fast_shape, output);
-        ReduceAggregatorSum<T>::FastReduceRK(input, fast_shape, output, tp);
-        return output;
-      }
+        if (fast_shape[1] > concurrency::ThreadPool::DegreeOfParallelism(tp) * 4) {
+          ReduceAggregatorSum<T>::FastReduceRK(input, fast_shape, output, tp);
+          return output;
+        } else {
+          break;
+        }
       case FastReduceKind::kKRK:
-        if (fast_shape[0] > 1) {
-          ValidateFastReduceKRK(fast_shape, output);
+        ValidateFastReduceKRK(fast_shape, output);
+        if (fast_shape[0] > concurrency::ThreadPool::DegreeOfParallelism(tp)) {
           ReduceAggregatorSum<T>::FastReduceKRK(input, fast_shape, output, tp);
           return output;
+        } else {
+          break;
         }
       case FastReduceKind::kR:
       case FastReduceKind::kK:
