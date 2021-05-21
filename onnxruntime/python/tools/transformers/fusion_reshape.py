@@ -24,6 +24,59 @@ class FusionReshape(Fusion):
         if concat_node.op_type != 'Concat' or len(concat_node.input) < 3 or len(concat_node.input) > 4:
             return
 
+        if reshape_node not in self.model.graph().node:
+            return
+
+        hard_delete = True # fluency bart
+        if hard_delete:
+            self.nodes_to_remove.extend([concat_node])
+
+            path_10 = self.model.match_parent_path(concat_node,
+                                                ['Unsqueeze', 'Mul', 'Gather', 'Shape'], [0, 0, 0, 0],
+                                                output_name_to_node)
+            if path_10 is not None:
+                self.nodes_to_remove.extend(path_10)
+            path_11 = self.model.match_parent_path(concat_node,
+                                                ['Unsqueeze', 'Mul', 'Gather', 'Shape'], [1, 0, 0, 0],
+                                                output_name_to_node)
+            if path_11 is not None:
+                self.nodes_to_remove.extend(path_11)
+
+
+            path_21 = self.model.match_parent_path(concat_node,
+                                                ['Unsqueeze', 'Gather', 'Shape'], [0, 0, 0],
+                                                output_name_to_node)
+            if path_21 is not None:
+                self.nodes_to_remove.extend(path_21)
+
+            path_22 = self.model.match_parent_path(concat_node,
+                                                ['Unsqueeze', 'Gather', 'Shape'], [1, 0, 0],
+                                                output_name_to_node)
+            if path_22 is not None:
+                self.nodes_to_remove.extend(path_22)
+
+            path_23 = self.model.match_parent_path(concat_node,
+                                                ['Unsqueeze', 'Gather', 'Shape'], [2, 0, 0],
+                                                output_name_to_node)
+            if path_23 is not None:
+                self.nodes_to_remove.extend(path_23)
+
+
+
+            path_32 = self.model.match_parent_path(concat_node,
+                                                ['Unsqueeze', 'Gather', 'Shape', 'Transpose', 'Reshape'], [2, 0, 0, 0, 0],
+                                                output_name_to_node)
+            if path_32 is not None:
+                self.nodes_to_remove.extend(path_32[:-1])
+            path_33 = self.model.match_parent_path(concat_node,
+                                                ['Unsqueeze', 'Gather', 'Shape', 'Transpose', 'Reshape'], [3, 0, 0, 0, 0],
+                                                output_name_to_node)
+            if path_33 is not None:
+                self.nodes_to_remove.extend(path_33[:-1])
+            return
+
+        ######################################################################################################
+
         path0 = self.model.match_parent_path(concat_node, ['Unsqueeze', 'Gather', 'Shape'], [0, 0, 0],
                                              output_name_to_node)
         if path0 is None:
@@ -53,7 +106,7 @@ class FusionReshape(Fusion):
         path3 = []
         shape_nodes = [shape_0, shape_1]
         if len(concat_node.input) == 3 and self.model.get_initializer(concat_node.input[2]) is None:
-            path2 = self.model.match_parent_path(concat_node, ['Unsqueeze', 'Mul', 'Gather', 'Shape'], [2, 0, 0, 0],
+            path2 = self.model.match_parent_path(concat_node, ['Unsqueeze', 'Mul', 'Gather', 'Shape'], [None, 0, 0, 0],
                                                  output_name_to_node)
             if path2 is None:
                 path2 = self.model.match_parent_path(
@@ -62,7 +115,7 @@ class FusionReshape(Fusion):
                 if path2 is None:
                     return
 
-            path3 = self.model.match_parent_path(concat_node, ['Unsqueeze', 'Mul', 'Gather', 'Shape'], [2, 0, 1, 0],
+            path3 = self.model.match_parent_path(concat_node, ['Unsqueeze', 'Mul', 'Gather', 'Shape'], [None, 0, 1, 0],
                                                  output_name_to_node)
             if path3 is None:
                 path3 = self.model.match_parent_path(
@@ -130,6 +183,7 @@ class FusionReshape(Fusion):
                                                              raw=True))
         reshape_node.input[1] = constant_shape_name
         reshape_node.name = self.model.create_node_name('Reshape', 'Reshape_Fuse')
+
         self.nodes_to_remove.extend([concat_node])
         self.nodes_to_remove.extend(path0)
         self.nodes_to_remove.extend(path1)

@@ -221,6 +221,7 @@ class FusionAttention(Fusion):
         return attention_node
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
+
         # Sometimes we can not fuse skiplayernormalization since the add before layernorm has an output that used by nodes outside skiplayernorm
         # Conceptually we treat add before layernorm as skiplayernorm node since they share the same pattern
         start_node = normalize_node
@@ -245,7 +246,7 @@ class FusionAttention(Fusion):
                 (_, einsum_node, transpose_qkv, matmul_qkv) = qkv_nodes
             else:
                 return
-
+        print("attention fusing...")
         other_inputs = []
         for i, input in enumerate(start_node.input):
             if input not in output_name_to_node:
@@ -279,7 +280,7 @@ class FusionAttention(Fusion):
                 root_input = mul_before_layernorm.output[0]
             else:
                 return
-
+        print("282")
         children = input_name_to_nodes[root_input]
         children_types = [child.op_type for child in children]
         if children_types.count('MatMul') != 3:
@@ -289,9 +290,10 @@ class FusionAttention(Fusion):
         if v_nodes is None:
             logger.debug("fuse_attention: failed to match v path")
             return
-        (_, _, add_v, matmul_v) = v_nodes
-
+        (_, reshape_v, add_v, matmul_v) = v_nodes
+        print("294")
         is_distill = False
+        is_bart = False
         qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Div', 'MatMul'], [0, 0, None, 0])
         if qk_nodes is None:
             qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Mul', 'MatMul'], [0, 0, None, 0])
@@ -299,14 +301,20 @@ class FusionAttention(Fusion):
                 qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Where', 'MatMul', 'Div'], [0, 0, 2, 0])
                 is_distill = True
                 if qk_nodes is None:
-                    logger.debug("fuse_attention: failed to match qk path")
-                    return
-
+                    qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Reshape', 'Where', 'Reshape', 'MatMul'], [0, 0, 0, 2, 0])
+                    is_bart = True
+                    is_distill = False
+                    if qk_nodes is None:
+                        logger.debug("fuse_attention: failed to match qk path")
+                        return
+        print("304")
         add_qk = None
         matmul_qk = None
         where_qk = None
         if is_distill:
             (_, where_qk, matmul_qk, _) = qk_nodes
+        elif is_bart:
+            (_, _, where_qk, _, matmul_qk) = qk_nodes
         else:
             (_, add_qk, _, matmul_qk) = qk_nodes
 
@@ -315,27 +323,32 @@ class FusionAttention(Fusion):
             q_nodes = self.model.match_parent_path(matmul_qk, ['Div', 'Transpose', 'Reshape', 'Add', 'MatMul'],
                                                    [0, 0, 0, 0, None])
             if q_nodes is None:
-                logger.debug("fuse_attention: failed to match q path")
-                return
+                q_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Mul', 'Add', 'MatMul'], [0, 0, 0, 0, None])
+                if q_nodes is None:
+                    logger.debug("fuse_attention: failed to match q path")
+                    return
         reshape_q = q_nodes[-3]
         add_q = q_nodes[-2]
         matmul_q = q_nodes[-1]
-
+        print("330")
         k_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, None])
         if k_nodes is None:
             k_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Transpose', 'Reshape', 'Add', 'MatMul'],
                                                    [1, 0, 0, 0, None])
+
             if k_nodes is None:
                 logger.debug("fuse_attention: failed to match k path")
                 return
+
         add_k = k_nodes[-2]
         matmul_k = k_nodes[-1]
-
+        print("333")
         # Note that Cast might be removed by OnnxRuntime so we match two patterns here.
         mask_nodes = None
-        if is_distill:
+        if is_distill or is_bart:
             _, mask_nodes, _ = self.model.match_parent_paths(where_qk,
                                                              [(['Expand', 'Reshape', 'Equal'], [0, 0, 0]),
+                                                              (['Unsqueeze', 'Unsqueeze', 'Equal'], [0, 0, 0]),
                                                               (['Cast', 'Expand', 'Reshape', 'Equal'], [0, 0, 0, 0])],
                                                              output_name_to_node)
         else:
@@ -345,13 +358,14 @@ class FusionAttention(Fusion):
         if mask_nodes is None:
             logger.debug("fuse_attention: failed to match mask path")
             return
-
+        print("348")
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_v.input[0] == root_input:
             mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
 
             attention_last_node = reshape_qkv if einsum_node is None else transpose_qkv
 
-            num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
+            #num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
+            num_heads, hidden_size = 8, 512
             if num_heads <= 0 or hidden_size <= 0 or (hidden_size % num_heads) != 0:
                 logger.debug("fuse_attention: failed to detect num_heads or hidden_size")
                 return
@@ -360,7 +374,7 @@ class FusionAttention(Fusion):
                                                   num_heads, hidden_size, root_input, attention_last_node.output[0])
             if new_node is None:
                 return
-
+            print("363")
             self.nodes_to_add.append(new_node)
             self.node_name_to_graph_name[new_node.name] = self.this_graph_name
 
@@ -378,6 +392,12 @@ class FusionAttention(Fusion):
                     helper.make_node("Reshape", [attention_last_node.output[0], shape_tensor.name], [new_edge],
                                      "reshape_modified_" + unique_index), self.this_graph_name)
                 einsum_node.input[0] = new_edge
+            print("381")
+
+            #reshape_nodes_1 = self.model.match_parent_path(reshape_v, ['Concat', 'Unsqueeze', 'Mul', 'Gather', 'Shape'], [1, 1, 0, 0, 0])
+            #if reshape_nodes_1 is None:
+            #    print("did not find reshape nodes for fluency bart model")
+            #self.nodes_to_remove.extend(reshape_nodes_1)
 
             self.nodes_to_remove.extend([attention_last_node, transpose_qkv, matmul_qkv])
             self.nodes_to_remove.extend(qk_nodes)
@@ -386,5 +406,5 @@ class FusionAttention(Fusion):
             self.nodes_to_remove.extend(v_nodes)
 
             # Use prune graph to remove mask nodes since they are shared by all attention nodes.
-            #self.nodes_to_remove.extend(mask_nodes)
+            self.nodes_to_remove.extend(mask_nodes)
             self.prune_graph = True
