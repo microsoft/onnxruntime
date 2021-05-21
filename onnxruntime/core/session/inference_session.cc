@@ -212,10 +212,10 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 #if !defined(ORT_MINIMAL_BUILD)
   // Update the number of steps for the graph transformer manager using the "finalized" session options
   ORT_ENFORCE(graph_transformation_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps).IsOK());
-#endif
   status = ORTRegisterONNXOpsetSchema(session_options_.session_onnx_opset_version);
   ORT_ENFORCE(status.IsOK(), "Fail to register ONNX Opset schema: ",
               status.ErrorMessage());
+#endif
   bool set_denormal_as_zero =
       session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSetDenormalAsZero, "0") == "1";
 
