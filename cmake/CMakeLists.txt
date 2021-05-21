@@ -287,6 +287,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO)
     # "-g3" generates DWARF format debug info.
+    # NOTE: With debug info enabled, web assembly artifacts will be very huge (>1GB). So we offer an option to build without debug info.
     set(CMAKE_CXX_FLAGS_DEBUG "-g3")
   else()
     # do not generate any debug info. This helps to accelerate building process and reduce binary size.

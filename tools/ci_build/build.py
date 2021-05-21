@@ -1867,8 +1867,8 @@ def main():
         if args.test and args.disable_wasm_exception_catching and not args.minimal_build:
             raise BuildError("WebAssembly tests need exception catching enabled to run if it's not minimal build")
         if args.test and args.enable_wasm_debug_info:
-            # With flag --enable_wasm_debug_info, onnxruntime_test_all.wasm will be very huge (>1GB). This will fail Node.js when trying to load
-            # the .wasm file.
+            # With flag --enable_wasm_debug_info, onnxruntime_test_all.wasm will be very huge (>1GB). This will fail
+            # Node.js when trying to load the .wasm file.
             # To debug ONNX Runtime WebAssembly, use ONNX Runtime Web to debug ort-wasm.wasm in browsers.
             raise BuildError("WebAssembly tests cannot be enabled with flag --enable_wasm_debug_info")
 
