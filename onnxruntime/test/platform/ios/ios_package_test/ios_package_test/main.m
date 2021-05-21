@@ -1,8 +1,8 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 //
 //  main.m
 //  ios_package_test
-//
-//  Created by gwang on 5/21/21.
 //
 
 #import <UIKit/UIKit.h>
