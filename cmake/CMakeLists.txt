@@ -124,6 +124,7 @@ option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with suppor
 option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support to a minimal build." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
 option(onnxruntime_DISABLE_ORT_FORMAT_LOAD "Disable loading an ORT format model when onnxruntime_MINIMAL_BUILD=OFF (i.e. in a full build)." OFF)
+option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
 
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
 #The option has no effect on Windows.
@@ -150,7 +151,7 @@ option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 option(onnxruntime_BUILD_WEBASSEMBLY "Enable this option to create WebAssembly byte codes" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_THREADS "Enable this option to create WebAssembly byte codes with multi-threads support" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
-option(onnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP "Enable this option to turn on sourcemap" OFF)
+option(onnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO "Enable this option to turn on DWARF format debug info" OFF)
 
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
@@ -193,7 +194,9 @@ if(onnxruntime_USE_VALGRIND AND NOT WIN32)
 endif()
 
 if (onnxruntime_ENABLE_NVTX_PROFILE)
-  add_definitions(-DENABLE_NVTX_PROFILE=1)
+  message(WARNING "NTVX profile temporarily disabled, will be fixed soon")
+# TODO: This doesn't work with the shared cuda provider. Disabling temporarily to do a clean fix later as it wasn't trivial
+#  add_definitions(-DENABLE_NVTX_PROFILE=1)
 endif()
 
 if (onnxruntime_ENABLE_BITCODE)
@@ -282,12 +285,13 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
     string(APPEND CMAKE_CXX_FLAGS " -flto")
   endif()
 
-  if (onnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP)
-    # Build with sourcemap support
-    set(CMAKE_CXX_FLAGS_DEBUG "-g4 --source-map-base ${onnxruntime_WEBASSEMBLY_SOURCEMAP_BASE}")
+  if (onnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO)
+    # "-g3" generates DWARF format debug info.
+    # NOTE: With debug info enabled, web assembly artifacts will be very huge (>1GB). So we offer an option to build without debug info.
+    set(CMAKE_CXX_FLAGS_DEBUG "-g3")
   else()
-    # override default "-g3" as it generates super huge (1GB+) WASM targets which fails to load
-    set(CMAKE_CXX_FLAGS_DEBUG "-g2")
+    # do not generate any debug info. This helps to accelerate building process and reduce binary size.
+    set(CMAKE_CXX_FLAGS_DEBUG "-g0")
   endif()
 
   # Build WebAssembly with multi-threads support.
@@ -361,6 +365,10 @@ endif()
 
 if (onnxruntime_REDUCED_OPS_BUILD)
   add_compile_definitions(REDUCED_OPS_BUILD)
+endif()
+
+if(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS)
+  add_definitions(-DDISABLE_EXTERNAL_INITIALIZERS=1)
 endif()
 
 if(onnxruntime_DISABLE_RTTI)
@@ -659,7 +667,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
     set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "Disable benchmark testing as we don't need it.")
     # We will not need to install benchmark since we link it statically.
     set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "Disable benchmark install to avoid overwriting vendor install.")
-    add_subdirectory(${PROJECT_SOURCE_DIR}/external/onnx/third_party/benchmark EXCLUDE_FROM_ALL)
+    add_subdirectory(${PROJECT_SOURCE_DIR}/external/googlebenchmark EXCLUDE_FROM_ALL)
     add_library(benchmark::benchmark ALIAS benchmark)
   endif()
 endif()
@@ -690,9 +698,9 @@ if(Protobuf_FOUND OR Protobuf_FOUND)
     #We have a check here but most of the cmake users don't know the Protobuf_USE_STATIC_LIBS
     # variable exists and may leave it in a wrong state.
     if(NOT Protobuf_USE_STATIC_LIBS)
-      #Indeed here should be a warning, not a fatal error. ONNX Runtime itself can work in such a
-      #setting but it may cause compatibility issue when ONNX Runtime is integrated with the other ONNX ecosystem softwares.
-      message(FATAL_ERROR "Please enable Protobuf_USE_STATIC_LIBS")
+      # ONNX Runtime itself can work in such a setting but it may cause compatibility issues
+      # when ONNX Runtime is integrated with the other ONNX ecosystem softwares.
+      message(WARNING "Use Protobuf_USE_STATIC_LIBS to ensure compatibility with other ONNX ecosystem components.")
     endif()
   else()
     set(PROTOBUF_LIB protobuf::libprotobuf-lite)

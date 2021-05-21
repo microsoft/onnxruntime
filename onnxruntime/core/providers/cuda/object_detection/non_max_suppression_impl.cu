@@ -22,7 +22,6 @@ limitations under the License.
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 
-#include "core/framework/tensor.h"
 
 #include <cub/cub.cuh>
 //TODO:fix the warnings

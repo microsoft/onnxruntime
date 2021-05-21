@@ -566,7 +566,7 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
   Status status = Status::OK();
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.Now();
+    tp = session_profiler_.StartTime();
   }
   ORT_TRY {
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
@@ -1136,7 +1136,7 @@ common::Status InferenceSession::Initialize() {
   Status status = Status::OK();
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.Now();
+    tp = session_profiler_.StartTime();
   }
 
   ORT_TRY {
@@ -1161,6 +1161,18 @@ common::Status InferenceSession::Initialize() {
 
       have_cpu_ep = execution_providers_.Get(onnxruntime::kCpuExecutionProvider) != nullptr;
     }
+
+    // Verify that there are no external initializers in the graph if external data is disabled.
+    onnxruntime::Graph& graph = model_->MainGraph();
+#ifdef DISABLE_EXTERNAL_INITIALIZERS
+    const InitializedTensorSet& initializers = graph.GetAllInitializedTensors();
+    for (const auto& it: initializers) {
+      if (utils::HasExternalData(*it.second)) {
+        return common::Status(common::ONNXRUNTIME, common::FAIL,
+                  "Initializer tensors with external data is not allowed.");
+      }
+    }
+#endif
 
     // Register default CPUExecutionProvider if user didn't provide it through the Register() calls.
     // RegisterExecutionProvider locks the session_mutex_ so we can't be holding it when we call that
@@ -1211,8 +1223,6 @@ common::Status InferenceSession::Initialize() {
         session_options_.use_deterministic_compute,
         session_options_.enable_mem_reuse,
         prepacked_weights_container_);
-
-    onnxruntime::Graph& graph = model_->MainGraph();
 
     // Collect the kernel registries from execution provider instances;
     // There are 2 kinds of kernel registries with priority from high to low as below,
@@ -1604,7 +1614,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.Now();
+    tp = session_profiler_.StartTime();
   }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT

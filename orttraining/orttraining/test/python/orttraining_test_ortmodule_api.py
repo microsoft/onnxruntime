@@ -46,6 +46,8 @@ class NeuralNetMultiplePositionalArgumentsMultiOutputsWithoutDependency(torch.nn
         self.fc2 = torch.nn.Linear(input_size, hidden_size)
         self.softmax1 = torch.nn.Softmax(dim=1)
         self.softmax2 = torch.nn.Softmax(dim=1)
+        self.relu1 = torch.nn.ReLU()
+        self.relu2 = torch.nn.ReLU()
 
     def forward(self, input1, input2):
         model_input = input1 + input2
@@ -53,11 +55,8 @@ class NeuralNetMultiplePositionalArgumentsMultiOutputsWithoutDependency(torch.nn
         out2 = self.fc2(model_input)
         out1 = self.softmax1(out1)
         out2 = self.softmax2(out2)
-        # TODO: Using relu here will cause the forward prediction error
-        # ORT's Relu output is sharing the same buffer as input,
-        # and this buffer is returned as ORTModule's output to Pytorch
-        # out1 = self.relu1(out1)
-        # out2 = self.relu2(out2)
+        out1 = self.relu1(out1)
+        out2 = self.relu2(out2)
         return out1, out2
 
 class NeuralNetMultiplePositionalArgumentsMultiOutputsWithDependency(torch.nn.Module):
@@ -249,6 +248,13 @@ class UnusedMiddleParameterNet(torch.nn.Module):
         out = self.fc3(out)
         out = out + self.buffer
         return out
+
+class StatelessModel(torch.nn.Module):
+    def __init__(self):
+        super(StatelessModel, self).__init__()
+
+    def forward(self, x):
+        return x
 
 # TODO: This is a workaround for the problem that pytest is still cleaning up the previous test
 # while the next task already start. 
@@ -586,7 +592,7 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
         
         if use_fp16:
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-3)
-            _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=1e-2, atol=1e-2)
+            _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=1e-2, atol=1.1e-2)
         else:
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-5)
             _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=5e-3, atol=4e-3)
@@ -2562,3 +2568,32 @@ def test_output_order():
     assert len(out_pt) == len(out_ort)
     for x, y in zip(out_pt, out_ort):
         _test_helpers.assert_values_are_close(x, y)
+
+@pytest.mark.parametrize("device", ['cuda', 'cpu', None])
+def test_stateless_model_specified_device(device):
+
+    N, D_in, H, D_out = 32, 784, 500, 10
+    pt_model = StatelessModel().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.randn(N, D_in, device=device)
+    ort_x = pt_x.clone()
+
+    pt_y = pt_model(pt_x)
+    ort_y = ort_model(ort_x)
+
+    _test_helpers.assert_values_are_close(pt_y, ort_y)
+
+def test_stateless_model_unspecified_device():
+
+    N, D_in, H, D_out = 32, 784, 500, 10
+    pt_model = StatelessModel()
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.randn(N, D_in)
+    ort_x = pt_x.clone()
+
+    pt_y = pt_model(pt_x)
+    ort_y = ort_model(ort_x)
+
+    _test_helpers.assert_values_are_close(pt_y, ort_y)

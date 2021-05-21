@@ -2497,9 +2497,13 @@ Return true if all elements are true and false otherwise.
       .Input(0, "module_outputs", "Module outputs to be returned to pytorch.", "T", OpSchema::Variadic,
              /*is_homogeneous*/ false,
              /*min_arity*/ 1)
+      /*
+      For a situation where there are no trainable parameters in a model, the YieldOp minimum
+      number of arguments expected for module_output_grad should be 0.
+      */
       .Output(0, "module_outputs_grad", "Gradient of module outputs returned from pytorch.", "T", OpSchema::Variadic,
               /*is_homogeneous*/ false,
-              /*min_arity*/ 1)
+              /*min_arity*/ 0)
       .Attr("non_differentiable_outputs", "The indices of the module outputs that doesn't have a gradient.", AttributeProto::INTS, OPTIONAL_VALUE)
       .Attr("full_shape_outputs", "The indices of the module outputs that must have full shape.", AttributeProto::INTS)
       .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")

@@ -785,13 +785,13 @@ struct OrtApi {
      * \name - name of the attribute to be parsed
      * \out - pointer to memory where the attribute's contents are to be stored
      * \size - actual size of string attribute
-     * (If `out` is nullptr, the value of `size` is set to the true size of the string 
+     * (If `out` is nullptr, the value of `size` is set to the true size of the string
         attribute, and a success status is returned.
-     
+
         If the `size` parameter is greater than or equal to the actual string attribute's size,
         the value of `size` is set to the true size of the string attribute, the provided memory
         is filled with the attribute's contents, and a success status is returned.
-        
+
         If the `size` parameter is lesser than the actual string attribute's size and `out`
         is not nullptr, the value of `size` is set to the true size of the string attribute
         and a failure status is returned.)
@@ -1258,14 +1258,14 @@ struct OrtApi {
      * \name - name of the attribute to be parsed
      * \out - pointer to memory where the attribute's contents are to be stored
      * \size - actual size of attribute array
-     * (If `out` is nullptr, the value of `size` is set to the true size of the attribute 
+     * (If `out` is nullptr, the value of `size` is set to the true size of the attribute
         array's size, and a success status is returned.
-     
+
         If the `size` parameter is greater than or equal to the actual attribute array's size,
         the value of `size` is set to the true size of the attribute array's size,
-        the provided memory is filled with the attribute's contents, 
+        the provided memory is filled with the attribute's contents,
         and a success status is returned.
-        
+
         If the `size` parameter is lesser than the actual attribute array's size and `out`
         is not nullptr, the value of `size` is set to the true size of the attribute array's size
         and a failure status is returned.)
@@ -1279,14 +1279,14 @@ struct OrtApi {
      * \name - name of the attribute to be parsed
      * \out - pointer to memory where the attribute's contents are to be stored
      * \size - actual size of attribute array
-     * (If `out` is nullptr, the value of `size` is set to the true size of the attribute 
+     * (If `out` is nullptr, the value of `size` is set to the true size of the attribute
         array's size, and a success status is returned.
-     
+
         If the `size` parameter is greater than or equal to the actual attribute array's size,
         the value of `size` is set to the true size of the attribute array's size,
-        the provided memory is filled with the attribute's contents, 
+        the provided memory is filled with the attribute's contents,
         and a success status is returned.
-        
+
         If the `size` parameter is lesser than the actual attribute array's size and `out`
         is not nullptr, the value of `size` is set to the true size of the attribute array's size
         and a failure status is returned.)
@@ -1310,7 +1310,7 @@ struct OrtApi {
      Ultimately, the first allocation size is determined by the allocation memory request. 
   * "max_dead_bytes_per_chunk": Threshold of unused memory in an allocated chunk of arena memory after 
      crossing which the current chunk is chunked into 2.
-  * "initial_regrowth_chunk_size_bytes": (Possible) Size of the second allocation in the arena. 
+  * "initial_growth_chunk_size_bytes": (Possible) Size of the second allocation in the arena. 
      Only relevant if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
      Ultimately, the allocation size is determined by the allocation memory request.
      Further allocation sizes are governed by the arena extend strategy.

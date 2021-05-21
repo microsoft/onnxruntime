@@ -152,7 +152,11 @@ function buildTestRunnerConfig({
     resolve: {
       extensions: ['.ts', '.js'],
       aliasFields: [],
-      fallback: { './binding/ort-wasm-threaded.js': false, './binding/ort-wasm.js': false }
+      fallback: {
+        './binding/ort-wasm.js': false,
+        './binding/ort-wasm-threaded.js': false,
+        './binding/ort-wasm-threaded.worker.js': false
+      }
     },
     plugins: [
       new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] }),

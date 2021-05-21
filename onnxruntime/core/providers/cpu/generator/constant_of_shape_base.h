@@ -3,6 +3,7 @@
 
 #pragma once
 
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/common/type_list.h"
 #include "core/framework/data_types.h"
@@ -10,6 +11,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/op_kernel_type_control_utils.h"
+#endif
 
 namespace onnxruntime {
 
@@ -25,11 +27,17 @@ template <typename EnabledOutputTypeList = ConstantOfShapeDefaultOutputTypes>
 class ConstantOfShapeBase {
  protected:
   ConstantOfShapeBase(const OpKernelInfo& info) {
+#ifndef SHARED_PROVIDER
     ONNX_NAMESPACE::TensorProto t_proto;
-    if (info.GetAttr<ONNX_NAMESPACE::TensorProto>("value", &t_proto).IsOK()) {
-      ORT_ENFORCE(t_proto.dims_size() == 1, "Must have a single dimension");
-      ORT_ENFORCE(t_proto.dims()[0] == 1, "Must have a single dimension of 1");
-      SetValueFromTensorProto(t_proto);
+    auto* t_proto_p = &t_proto;
+#else
+    auto t_proto = ONNX_NAMESPACE::TensorProto::Create();
+    auto* t_proto_p = t_proto.get();
+#endif
+    if (info.GetAttr<ONNX_NAMESPACE::TensorProto>("value", t_proto_p).IsOK()) {
+      ORT_ENFORCE(t_proto_p->dims_size() == 1, "Must have a single dimension");
+      ORT_ENFORCE(t_proto_p->dims()[0] == 1, "Must have a single dimension of 1");
+      SetValueFromTensorProto(*t_proto_p);
     } else {
       float f_value = 0.f;
       SetValue(sizeof(float), reinterpret_cast<void*>(&f_value));

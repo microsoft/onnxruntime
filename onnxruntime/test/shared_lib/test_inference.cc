@@ -1327,7 +1327,7 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
                     nullptr);
 }
 
-TEST(CApiTest, TestSharingOfInitializerWithPrepackedWeightsCaching) {
+TEST(CApiTest, TestSharingOfInitializerAndItsPrepackedVersion) {
   // simple inference test
   // prepare inputs
   std::vector<Input> inputs(1);
@@ -1442,7 +1442,7 @@ TEST(CApiTest, TestIncorrectInputTypeToModel_SequenceTensors) {
 }
 #endif
 
-TEST(CApiTest, allocate_initializers_from_non_arena_memory) {
+TEST(CApiTest, AllocateInitializersFromNonArenaMemory) {
   Ort::SessionOptions session_options;
 
 #ifdef USE_CUDA
@@ -1464,12 +1464,12 @@ TEST(CApiTest, allocate_initializers_from_non_arena_memory) {
 #ifdef USE_CUDA
 
 // Usage example showing how to use CreateArenaCfgV2() API to configure the default memory CUDA arena allocator
-TEST(CApiTest, configure_cuda_arena_and_demonstrate_memory_arena_shrinkage) {
+TEST(CApiTest, ConfigureCudaArenaAndDemonstrateMemoryArenaShrinkage) {
   const auto& api = Ort::GetApi();
 
   Ort::SessionOptions session_options;
 
-  const char* keys[] = {"max_mem", "arena_extend_strategy", "initial_chunk_size_bytes", "max_dead_bytes_per_chunk", "initial_regrowth_chunk_size_bytes"};
+  const char* keys[] = {"max_mem", "arena_extend_strategy", "initial_chunk_size_bytes", "max_dead_bytes_per_chunk", "initial_growth_chunk_size_bytes"};
   const size_t values[] = {0 /*let ort pick default max memory*/, 0, 1024, 0, 256};
 
   OrtArenaCfg* arena_cfg = nullptr;

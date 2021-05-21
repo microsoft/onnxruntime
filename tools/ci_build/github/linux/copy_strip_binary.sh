@@ -21,6 +21,10 @@ mkdir $BINARY_DIR/$ARTIFACT_NAME/lib
 mkdir $BINARY_DIR/$ARTIFACT_NAME/include
 echo "Directories created"
 cp $BINARY_DIR/$BUILD_CONFIG/$LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/lib
+if [[ -f "$BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_cuda.so" ]]; then
+    cp $BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_shared.so $BINARY_DIR/$ARTIFACT_NAME/lib
+    cp $BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_cuda.so $BINARY_DIR/$ARTIFACT_NAME/lib
+fi
 echo "Copy debug symbols in a separate file and strip the original binary."
 if [[ $LIB_NAME == *.dylib ]]
 then
