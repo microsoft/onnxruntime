@@ -705,8 +705,9 @@ bool CommonFastReduceSwitch(OpKernelContext* ctx,
         }
         case FastReduceKind::kRK: {
           ValidateFastReduceRK(fast_shape, *output);
-          if (std::max(fast_shape[0], fast_shape[1]) >
-              concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()) * 256) {
+          if ((fast_shape[0] > concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()) * 16) && 
+              (std::max(fast_shape[0], fast_shape[1]) >
+                concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()) * 256)) {
             case_rk(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
             return true;
           } else {
