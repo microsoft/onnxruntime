@@ -4,7 +4,7 @@ pool:
   vmImage: 'macOS-10.15'
 
 jobs:
-- job: firstJob
+- job: j0
 
   steps:
   - checkout: self
@@ -13,15 +13,10 @@ jobs:
   - script: |
       echo "Build.SourceVersion = $(Build.SourceVersion)"
       echo "git rev-parse HEAD = $(git rev-parse HEAD)"
+      sleep 120
 
-  - script: |
-      sleep 600
-
-- job: secondJob
-  dependsOn: firstJob
-
-  strategy:
-    parallel: 2
+- job: j1
+  dependsOn: j0
 
   steps:
   - checkout: self
@@ -30,3 +25,40 @@ jobs:
   - script: |
       echo "Build.SourceVersion = $(Build.SourceVersion)"
       echo "git rev-parse HEAD = $(git rev-parse HEAD)"
+      sleep 120
+
+- job: j2
+  dependsOn: j1
+
+  steps:
+  - checkout: self
+    submodules: false
+
+  - script: |
+      echo "Build.SourceVersion = $(Build.SourceVersion)"
+      echo "git rev-parse HEAD = $(git rev-parse HEAD)"
+      sleep 120
+
+- job: j3
+  dependsOn: j2
+
+  steps:
+  - checkout: self
+    submodules: false
+
+  - script: |
+      echo "Build.SourceVersion = $(Build.SourceVersion)"
+      echo "git rev-parse HEAD = $(git rev-parse HEAD)"
+      sleep 120
+
+- job: j4
+  dependsOn: j3
+
+  steps:
+  - checkout: self
+    submodules: false
+
+  - script: |
+      echo "Build.SourceVersion = $(Build.SourceVersion)"
+      echo "git rev-parse HEAD = $(git rev-parse HEAD)"
+      sleep 120
