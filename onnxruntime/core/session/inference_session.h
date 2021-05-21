@@ -22,6 +22,9 @@
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/framework/session_options.h"
 #include "core/framework/allocatormgr.h"
+#include "onnx/defs/operator_sets.h"
+#include "onnx/defs/schema.h"
+
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
@@ -436,7 +439,19 @@ class InferenceSession {
     */
   Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
 
-  common::Status RegisterONNXOpsetSchema(const SessionOptions& session_options) ORT_MUST_USE_RESULT;
+  static common::Status ORTRegisterONNXOpsetSchema(int onnx_opset_version) {
+    if (ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetLoadedSchemaVersion() == -1) {
+      if (onnx_opset_version == 0) {
+        // By default if session_onnx_opset_version=0, it registers all ONNX opset schema for all opset versions
+        ONNX_NAMESPACE::RegisterOnnxOperatorSetSchema();
+      } else {
+        // If giving session_onnx_opset_version, only load the latest ones for each opset before specified onnx_opset_version
+        ONNX_NAMESPACE::RegisterOnnxOperatorSetSchema(onnx_opset_version);
+      }
+    }
+    return Status::OK();
+  }
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
   /**

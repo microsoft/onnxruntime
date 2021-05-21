@@ -59,9 +59,6 @@
 #include "core/session/custom_ops.h"
 #endif
 
-#include "onnx/defs/operator_sets.h"
-#include "onnx/defs/schema.h"
-
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::experimental;
 using namespace onnxruntime::common;
@@ -216,7 +213,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   // Update the number of steps for the graph transformer manager using the "finalized" session options
   ORT_ENFORCE(graph_transformation_mgr_.SetSteps(session_options_.max_num_graph_transformation_steps).IsOK());
 #endif
-  status = RegisterONNXOpsetSchema(session_options_);
+  status = ORTRegisterONNXOpsetSchema(session_options_.session_onnx_opset_version);
   ORT_ENFORCE(status.IsOK(), "Fail to register ONNX Opset schema: ",
               status.ErrorMessage());
   bool set_denormal_as_zero =
@@ -2101,19 +2098,6 @@ void InferenceSession::AddPredefinedTransformers(GraphTransformerManager& transf
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
-
-common::Status InferenceSession::RegisterONNXOpsetSchema(const SessionOptions& session_options) {
-  if (ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetLoadedSchemaVersion() == -1) {
-    if (session_options.session_onnx_opset_version == 0) {
-      // By default if session_onnx_opset_version=0, it registers all ONNX opset schema for all opset versions
-      RegisterOnnxOperatorSetSchema();
-    } else {
-      // If giving session_onnx_opset_version, only load the latest ones for each opset before specified onnx_opset_version
-      RegisterOnnxOperatorSetSchema(session_options.session_onnx_opset_version);
-    }
-  }
-  return Status::OK();
-}
 
 common::Status InferenceSession::WaitForNotification(Notification* p_executor_done, int64_t timeout_in_ms) {
   if (timeout_in_ms > 0) {
