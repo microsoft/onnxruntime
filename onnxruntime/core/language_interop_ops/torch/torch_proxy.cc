@@ -88,6 +88,14 @@ void CheckArguments(
     const std::vector<int64_t>& tensor_indices,
     const std::vector<void*> obj_args,
     const std::vector<int64_t>& obj_indices) {
+#ifndef NDEBUG
+  ORT_UNUSED_PARAMETER(len);
+  ORT_UNUSED_PARAMETER(requires_grads);
+  ORT_UNUSED_PARAMETER(tensor_args);
+  ORT_UNUSED_PARAMETER(tensor_indices);
+  ORT_UNUSED_PARAMETER(obj_args);
+  ORT_UNUSED_PARAMETER(obj_indices);
+#else
   ORT_ENFORCE(requires_grads.size() == len);
   ORT_ENFORCE(tensor_args.size() + obj_args.size() == len);
   ORT_ENFORCE(tensor_args.size() == tensor_indices.size());
@@ -110,6 +118,7 @@ void CheckArguments(
   for (size_t i = 0; i < len; ++i) {
     ORT_ENFORCE(counts.at(i) == 1, "Duplicated or unused argument index detected: ", i);
   }
+#endif
 }
 
 // len: the number of input arguments.
