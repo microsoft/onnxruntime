@@ -212,7 +212,7 @@ void DlpackCapsuleDestructor(PyObject* data) {
 // This function returns a pointer to DLManagedTensor constructed from an OrtValue
 // The OrtValue inside OrtDLManagedTensor will increase its own buffer's ref count by one
 // When the consumer of DLManagedTensor is done with the tensor, it should invoke the deleter.
-DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
+DLManagedTensor* OrtValueToDlpack(OrtValue ort_value) {
   ORT_ENFORCE(ort_value.IsTensor(), "Only tensor type OrtValues are supported");
   OrtDLManagedTensor* ort_dlmanaged_tensor(new OrtDLManagedTensor);
   Tensor& tensor = *ort_value.GetMutable<Tensor>();

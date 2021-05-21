@@ -84,7 +84,7 @@ void Ort_PyList_SetItem_NoIncref(PyObject* py_list, size_t index, PyObject* item
 void CheckArguments(
     const size_t len,
     const std::vector<int64_t>& requires_grads,
-    const std::vector<OrtValue*>& tensor_args,
+    const std::vector<OrtValue>& tensor_args,
     const std::vector<int64_t>& tensor_indices,
     const std::vector<void*> obj_args,
     const std::vector<int64_t>& obj_indices) {
@@ -98,6 +98,7 @@ void CheckArguments(
   }
 
   std::vector<int64_t> counts(len, 0);
+
   for (const auto i : tensor_indices) {
     ORT_ENFORCE(i >= 0 && static_cast<size_t>(i) < len, "Index range is from 0 to ", len - 1, ", but found ", i);
     counts.at(i) += 1;
@@ -203,7 +204,7 @@ std::unique_ptr<PythonObjectPtr> CreateForwardArguments(
     PyObject* callback,
     const size_t len,
     const std::vector<int64_t>& requires_grads,
-    const std::vector<OrtValue*>& tensor_args,
+    const std::vector<OrtValue>& tensor_args,
     const std::vector<int64_t>& tensor_indices,
     const std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
@@ -233,7 +234,8 @@ std::unique_ptr<PythonObjectPtr> CreateForwardArguments(
   // Tensor inputs to call autograd.Function.apply or autograd.Function.backward.
   for (size_t i = 0; i < tensor_args.size(); ++i) {
     // Wrap with DLPack, then transfer to Python for its release.
-    DLManagedTensor* dlmanaged_tensor = onnxruntime::python::OrtValueToDlpack(*tensor_args[i]);
+    DLManagedTensor* dlmanaged_tensor = onnxruntime::python::OrtValueToDlpack(
+        tensor_args[i]);
     PyObject* dltensor = PyCapsule_New(
         dlmanaged_tensor,
         "dltensor",
@@ -256,7 +258,7 @@ void Invoke(
     PyObject* runner,
     PyObject* callback,
     const std::vector<int64_t>& requires_grads,
-    const std::vector<OrtValue*>& tensor_args,
+    const std::vector<OrtValue>& tensor_args,
     const std::vector<int64_t>& tensor_indices,
     const std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
@@ -293,7 +295,7 @@ void Invoke(
 void TorchProxy::Forward(
     void* callback,
     const std::vector<int64_t>& requires_grads,
-    const std::vector<OrtValue*>& tensor_args,
+    const std::vector<OrtValue>& tensor_args,
     const std::vector<int64_t>& tensor_indices,
     const std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,
@@ -322,7 +324,7 @@ void TorchProxy::Forward(
 void TorchProxy::Backward(
     void* callback,
     const std::vector<int64_t>& requires_grads,
-    const std::vector<OrtValue*>& tensor_args,
+    const std::vector<OrtValue>& tensor_args,
     const std::vector<int64_t>& tensor_indices,
     const std::vector<void*>& obj_args,
     const std::vector<int64_t>& obj_indices,

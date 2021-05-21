@@ -11,15 +11,15 @@ using namespace onnxruntime::language_interop_ops::torch;
 namespace onnxruntime {
 namespace contrib {
 
-std::vector<OrtValue*> CreateOrtValueArgs(OpKernelContext* context,
-                                          const size_t begin_index,
-                                          const size_t num_arg) {
+std::vector<OrtValue> CreateOrtValueArgs(OpKernelContext* context,
+                                         const size_t begin_index,
+                                         const size_t num_arg) {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
-  std::vector<OrtValue*> args;
+  std::vector<OrtValue> args;
   for (size_t i = 0; i < num_arg; ++i) {
-    args.push_back(const_cast<OrtValue*>(ctx_internal->GetInputMLValue(begin_index + i)));
+    args.push_back(*ctx_internal->GetInputMLValue(begin_index + i));
   }
-  return args;
+  return std::move(args);
 }
 
 PythonOpBase::PythonOpBase(const OpKernelInfo& info) {

@@ -39,7 +39,7 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
 
   // Create non-constant arguments for calling Python function.
   // Constant arguments are created in ctor.
-  std::vector<OrtValue*> args = contrib::CreateOrtValueArgs(context, 0, context->InputCount());
+  std::vector<OrtValue> args = contrib::CreateOrtValueArgs(context, 0, context->InputCount());
 
   void* diff_ctx = nullptr;
   std::vector<OrtValue> returned_ortvalues;

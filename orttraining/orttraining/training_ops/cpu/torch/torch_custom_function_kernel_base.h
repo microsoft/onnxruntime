@@ -9,9 +9,9 @@
 namespace onnxruntime {
 namespace contrib {
 
-std::vector<OrtValue*> CreateOrtValueArgs(OpKernelContext* context,
-                                          const size_t begin_index,
-                                          const size_t num_arg);
+std::vector<OrtValue> CreateOrtValueArgs(OpKernelContext* context,
+                                         const size_t begin_index,
+                                         const size_t num_arg);
 
 class PythonOpBase {
  protected:
