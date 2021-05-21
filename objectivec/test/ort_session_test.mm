@@ -7,6 +7,8 @@
 #import "ort_session.h"
 #import "ort_value.h"
 
+#import "test/assertion_utils.h"
+
 #include <vector>
 
 NS_ASSUME_NONNULL_BEGIN
@@ -24,9 +26,10 @@ NS_ASSUME_NONNULL_BEGIN
 
   self.continueAfterFailure = NO;
 
+  NSError* err = nil;
   _ortEnv = [[ORTEnv alloc] initWithLoggingLevel:ORTLoggingLevelWarning
-                                           error:nil];
-  XCTAssertNotNil(_ortEnv);
+                                           error:&err];
+  ORTAssertNullableResultSuccessful(_ortEnv, err);
 }
 
 - (void)tearDown {
@@ -40,8 +43,8 @@ NS_ASSUME_NONNULL_BEGIN
 // output: C = A + B
 + (NSString*)getAddModelPath {
   NSBundle* bundle = [NSBundle bundleForClass:[ORTSessionTest class]];
-  NSString* path = [bundle pathForResource:@"single_add"
-                                    ofType:@"onnx"];
+  NSString* path = [bundle pathForResource:@"single_add.basic"
+                                    ofType:@"ort"];
   return path;
 }
 
@@ -57,24 +60,21 @@ NS_ASSUME_NONNULL_BEGIN
                                                 elementType:ORTTensorElementDataTypeFloat
                                                       shape:shape
                                                       error:&err];
-  XCTAssertNotNil(ortValue);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(ortValue, err);
   return ortValue;
 }
 
 + (ORTSessionOptions*)makeSessionOptions {
   NSError* err = nil;
   ORTSessionOptions* sessionOptions = [[ORTSessionOptions alloc] initWithError:&err];
-  XCTAssertNotNil(sessionOptions);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(sessionOptions, err);
   return sessionOptions;
 }
 
 + (ORTRunOptions*)makeRunOptions {
   NSError* err = nil;
   ORTRunOptions* runOptions = [[ORTRunOptions alloc] initWithError:&err];
-  XCTAssertNotNil(runOptions);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(runOptions, err);
   return runOptions;
 }
 
@@ -92,15 +92,13 @@ NS_ASSUME_NONNULL_BEGIN
                                               modelPath:[ORTSessionTest getAddModelPath]
                                          sessionOptions:[ORTSessionTest makeSessionOptions]
                                                   error:&err];
-  XCTAssertNotNil(session);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(session, err);
 
   BOOL runResult = [session runWithInputs:@{@"A" : a, @"B" : b}
                                   outputs:@{@"C" : c}
                                runOptions:[ORTSessionTest makeRunOptions]
                                     error:&err];
-  XCTAssertTrue(runResult);
-  XCTAssertNil(err);
+  ORTAssertBoolResultSuccessful(runResult, err);
 
   const float cExpected = 3.0f;
   float cActual;
@@ -120,23 +118,20 @@ NS_ASSUME_NONNULL_BEGIN
                                               modelPath:[ORTSessionTest getAddModelPath]
                                          sessionOptions:[ORTSessionTest makeSessionOptions]
                                                   error:&err];
-  XCTAssertNotNil(session);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(session, err);
 
   NSDictionary<NSString*, ORTValue*>* outputs =
       [session runWithInputs:@{@"A" : a, @"B" : b}
                  outputNames:[NSSet setWithArray:@[ @"C" ]]
                   runOptions:[ORTSessionTest makeRunOptions]
                        error:&err];
-  XCTAssertNotNil(outputs);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(outputs, err);
 
   ORTValue* cOutput = outputs[@"C"];
   XCTAssertNotNil(cOutput);
 
   NSData* cData = [cOutput tensorDataWithError:&err];
-  XCTAssertNotNil(cData);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(cData, err);
 
   const float cExpected = 3.0f;
   float cActual;
@@ -145,14 +140,13 @@ NS_ASSUME_NONNULL_BEGIN
 }
 
 - (void)testInitFailsWithInvalidPath {
-  NSString* invalidModelPath = @"invalid/path/to/model.onnx";
+  NSString* invalidModelPath = @"invalid/path/to/model.ort";
   NSError* err = nil;
   ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
                                               modelPath:invalidModelPath
                                          sessionOptions:[ORTSessionTest makeSessionOptions]
                                                   error:&err];
-  XCTAssertNil(session);
-  XCTAssertNotNil(err);
+  ORTAssertNullableResultUnsuccessful(session, err);
 }
 
 - (void)testRunFailsWithInvalidInput {
@@ -167,15 +161,13 @@ NS_ASSUME_NONNULL_BEGIN
                                               modelPath:[ORTSessionTest getAddModelPath]
                                          sessionOptions:[ORTSessionTest makeSessionOptions]
                                                   error:&err];
-  XCTAssertNotNil(session);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(session, err);
 
   BOOL runResult = [session runWithInputs:@{@"D" : d}
                                   outputs:@{@"C" : c}
                                runOptions:[ORTSessionTest makeRunOptions]
                                     error:&err];
-  XCTAssertFalse(runResult);
-  XCTAssertNotNil(err);
+  ORTAssertBoolResultUnsuccessful(runResult, err);
 }
 
 @end

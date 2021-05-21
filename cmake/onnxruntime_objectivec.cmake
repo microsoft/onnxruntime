@@ -70,7 +70,7 @@ target_include_directories(onnxruntime_objc
     PUBLIC
         "${OBJC_ROOT}/include"
     PRIVATE
-        "${ONNXRUNTIME_ROOT}"
+        "${ONNXRUNTIME_ROOT}/include/onnxruntime/core/session"
         "${OBJC_ROOT}")
 
 find_library(FOUNDATION_LIB Foundation REQUIRED)
