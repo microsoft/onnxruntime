@@ -146,10 +146,7 @@ try:
                 if len(to_preload) > 0:
                     subprocess.run(args, check=True, stdout=subprocess.PIPE)
 
-                source = 'onnxruntime/capi/libonnxruntime_providers_cuda.so'
-                dest = 'onnxruntime/capi/libonnxruntime_providers_cuda_manylinux1.so'
-                logger.info('copying %s -> %s', source, dest)
-                copyfile(source, dest)
+                dest = 'onnxruntime/capi/libonnxruntime_providers_cuda.so'
                 result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
                 cuda_dependencies = ['libcublas.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so', 'libcufft.so', 'libnvToolsExt.so', 'libonnxruntime_providers_shared.so']
                 args = ['patchelf', '--debug']
@@ -181,7 +178,7 @@ except ImportError as error:
 # Additional binaries
 if platform.system() == 'Linux':
   libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.2', 'libmklml_intel.so', 'libmklml_gnu.so', 'libiomp5.so', 'mimalloc.so']
-  dl_libs = ['libonnxruntime_providers_shared.so', 'libonnxruntime_providers_cuda_manylinux1.so']
+  dl_libs = ['libonnxruntime_providers_shared.so', 'libonnxruntime_providers_cuda.so']
   # DNNL, TensorRT & OpenVINO EPs are built as shared libs
   libs.extend(['libonnxruntime_providers_shared.so'])
   libs.extend(['libonnxruntime_providers_dnnl.so'])
