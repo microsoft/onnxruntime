@@ -945,8 +945,10 @@ struct ProviderLibrary {
     if (provider_)
       return provider_;
 
+#ifdef _WIN32
     if (!s_library_shared.Ensure())
       return nullptr;
+#endif
 
     std::string full_path = Env::Default().GetRuntimePath() + std::string(filename_);
     auto error = Env::Default().LoadDynamicLibrary(full_path, &handle_);
@@ -999,7 +1001,9 @@ void UnloadSharedProviders() {
   s_library_openvino.Unload();
   s_library_tensorrt.Unload();
   s_library_cuda.Unload();
+#ifdef _WIN32
   s_library_shared.Unload();
+#endif
 }
 
 // Used by test code
