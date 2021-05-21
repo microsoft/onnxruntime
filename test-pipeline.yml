@@ -15,10 +15,13 @@ jobs:
       echo "git rev-parse HEAD = $(git rev-parse HEAD)"
 
   - script: |
-      sleep 180
+      sleep 600
 
 - job: secondJob
   dependsOn: firstJob
+
+  strategy:
+    parallel: 2
 
   steps:
   - checkout: self
