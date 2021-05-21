@@ -169,6 +169,7 @@ if (onnxruntime_USE_TELEMETRY)
 endif()
 
 # Compiler flags
+target_compile_definitions(winml_lib_telemetry PRIVATE WINML_ROOT_NS=${winml_root_ns})
 target_compile_definitions(winml_lib_telemetry PRIVATE PLATFORM_WINDOWS)
 target_compile_definitions(winml_lib_telemetry PRIVATE _SCL_SECURE_NO_WARNINGS)      # remove warnings about unchecked iterators
 target_compile_definitions(winml_lib_telemetry PRIVATE BINARY_NAME=\"${BINARY_NAME}\")
@@ -177,6 +178,7 @@ target_compile_definitions(winml_lib_telemetry PRIVATE BINARY_NAME=\"${BINARY_NA
 target_precompiled_header(winml_lib_telemetry pch.h)
 
 # Includes
+target_include_directories(winml_lib_telemetry PRIVATE ${CMAKE_CURRENT_BINARY_DIR})                             # windows machine learning generated component headers
 target_include_directories(winml_lib_telemetry PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)                   # windows machine learning generated component headers
 target_include_directories(winml_lib_telemetry PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated)    # windows machine learning generated component headers
 target_include_directories(winml_lib_telemetry PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include)  # sdk cppwinrt headers
@@ -190,6 +192,12 @@ set_target_properties(winml_lib_telemetry
   PROPERTIES
   FOLDER
   ${target_folder})
+
+# Add deps
+add_dependencies(winml_lib_telemetry winml_sdk_cppwinrt)
+add_dependencies(winml_lib_telemetry winml_api)
+add_dependencies(winml_lib_telemetry winml_api_native)
+add_dependencies(winml_lib_telemetry winml_api_native_internal)
 
 # Link libraries
 target_link_libraries(winml_lib_telemetry PRIVATE wil)
