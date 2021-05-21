@@ -7,6 +7,55 @@
 namespace onnxruntime {
 namespace test {
 
+#if defined(ENABLE_TRAINING_OPS)
+namespace {
+void TestElementwiseGradientOp(
+    const char* op,
+    const std::vector<std::pair<std::string, std::vector<float>>>& inputs,
+    std::function<float(const std::vector<float>&)> expected_func,
+    const std::unordered_map<std::string, float> attrs = {},
+    int opset_version = 7, const char* domain = kOnnxDomain) {
+  const auto first_input = inputs.begin();
+  ASSERT_NE(first_input, inputs.end());
+  for (auto input = first_input; input != inputs.end(); ++input) {
+    if (input == first_input) continue;
+    ASSERT_EQ(first_input->second.size(), input->second.size());
+  }
+
+  OpTester test(op, opset_version, domain);
+
+  for (auto attr : attrs) {
+    test.AddAttribute(attr.first, attr.second);
+  }
+
+  const auto input_size = first_input->second.size();
+  std::vector<int64_t> dims{static_cast<int64_t>(input_size)};
+
+  std::vector<float> expected_vals;
+  for (size_t i = 0; i < input_size; i++) {
+    std::vector<float> params(inputs.size());
+    std::transform(
+        inputs.begin(), inputs.end(), params.begin(),
+        [i](const std::pair<std::string, std::vector<float>>& input) {
+          return input.second[i];
+        });
+    expected_vals.push_back(expected_func(params));
+  }
+
+  for (const auto& input : inputs) {
+    test.AddInput<float>(input.first.c_str(), dims, input.second);
+  }
+  test.AddOutput<float>("dX", dims, expected_vals);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {});
+}
+
+float ReluGrad(float dy, float x) {
+  return x > 0 ? dy : 0;
+}
+}
+#endif
+
 TEST_F(ActivationOpTest, Sigmoid) {
   TestActivationOp<float>("Sigmoid",
                           input_values,
@@ -209,6 +258,24 @@ TEST_F(ActivationOpNoInfTest, Softsign) {
       },
       {}, false);  // Disable TensorRT because result mismatches
 }
+
+#if defined(ENABLE_TRAINING_OPS)
+TEST(ReluGradTest, Basic) {
+  const std::vector<float> x_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
+  const std::vector<float> dY(7, 1.0f);
+
+  TestElementwiseGradientOp(
+      "ReluGrad",
+      {{"dY", dY}, {"X", x_vals}},
+      [](const std::vector<float>& params) {
+        ORT_ENFORCE(params.size() == 2);
+        const auto dy = params[0], x = params[1];
+
+        return ReluGrad(dy, x);
+      },
+      {}, 1, kMSDomain);
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
