@@ -3,10 +3,11 @@
 
 #pragma once
 #include <Python.h>
-#include "core/platform/env.h"
+#include <mutex>
 #include "core/framework/ml_value.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/language_interop_ops/torch/object_pointer.h"
+#include "core/platform/env.h"
 
 namespace onnxruntime {
 namespace language_interop_ops {
@@ -50,6 +51,9 @@ class TorchProxy {
   ~TorchProxy(){};
   TorchProxy(const TorchProxy&) = delete;
   TorchProxy& operator=(const TorchProxy&) = delete;
+  // All member functions should be exclusively used because
+  // Python has a global interpreter.
+  std::mutex mutex_;
 };
 }  // namespace torch
 }  // namespace language_interop_ops

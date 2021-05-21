@@ -8,8 +8,8 @@
 #include "core/language_interop_ops/torch/custom_function_register.h"
 #include "core/language_interop_ops/torch/object_pointer.h"
 #include "core/language_interop_ops/torch/refcount_tracker.h"
-#include "core/platform/env.h"
 #include "core/language_interop_ops/torch/gil.h"
+#include "core/platform/env.h"
 #include "core/util/dlpack_convertor.h"
 
 namespace onnxruntime {
@@ -302,6 +302,7 @@ void TorchProxy::Forward(
     const bool is_training_mode,
     const bool is_inplace) {
   // Python-related calls should happen only if guard is alive.
+  std::lock_guard<std::mutex> lock(mutex_);
   GilGuard guard;
   auto runner = OrtTorchFunctionPool::GetInstance().GetForwardRunner();
   Invoke(
@@ -328,6 +329,7 @@ void TorchProxy::Backward(
     std::vector<OrtValue>& returned_ortvalues,
     const bool is_inplace) {
   // Python-related calls should happen only if guard is alive.
+  std::lock_guard<std::mutex> lock(mutex_);
   GilGuard guard;
   auto runner = OrtTorchFunctionPool::GetInstance().GetBackwardRunner();
   Invoke(
