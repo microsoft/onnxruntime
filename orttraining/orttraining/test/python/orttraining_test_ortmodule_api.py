@@ -46,6 +46,8 @@ class NeuralNetMultiplePositionalArgumentsMultiOutputsWithoutDependency(torch.nn
         self.fc2 = torch.nn.Linear(input_size, hidden_size)
         self.softmax1 = torch.nn.Softmax(dim=1)
         self.softmax2 = torch.nn.Softmax(dim=1)
+        self.relu1 = torch.nn.ReLU()
+        self.relu2 = torch.nn.ReLU()
 
     def forward(self, input1, input2):
         model_input = input1 + input2
@@ -53,11 +55,8 @@ class NeuralNetMultiplePositionalArgumentsMultiOutputsWithoutDependency(torch.nn
         out2 = self.fc2(model_input)
         out1 = self.softmax1(out1)
         out2 = self.softmax2(out2)
-        # TODO: Using relu here will cause the forward prediction error
-        # ORT's Relu output is sharing the same buffer as input,
-        # and this buffer is returned as ORTModule's output to Pytorch
-        # out1 = self.relu1(out1)
-        # out2 = self.relu2(out2)
+        out1 = self.relu1(out1)
+        out2 = self.relu2(out2)
         return out1, out2
 
 class NeuralNetMultiplePositionalArgumentsMultiOutputsWithDependency(torch.nn.Module):
@@ -593,7 +592,7 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
         
         if use_fp16:
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-3)
-            _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=1e-2, atol=1e-2)
+            _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=1e-2, atol=1.1e-2)
         else:
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-5)
             _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=5e-3, atol=4e-3)
