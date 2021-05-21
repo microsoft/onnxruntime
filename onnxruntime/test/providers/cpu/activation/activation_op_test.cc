@@ -260,7 +260,7 @@ TEST_F(ActivationOpNoInfTest, Softsign) {
 }
 
 #if defined(ENABLE_TRAINING_OPS)
-TEST(ReluGradTest, Basic) {
+TEST(ReluGradInferenceTest, Basic) {
   const std::vector<float> x_vals = {-1.0f, 0, 1.0f, 100.0f, -100.0f, 1000.0f, -1000.0f};
   const std::vector<float> dY(7, 1.0f);
 
