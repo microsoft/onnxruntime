@@ -160,6 +160,10 @@ function buildTestRunnerConfig({
       '../../node': '../../node'
     },
     resolve: {
+      alias: {
+        // make sure to refer to original source files instead of generated bundle in test-main.
+        '..$': '../lib/index'
+      },
       extensions: ['.ts', '.js'],
       fallback: {
         './binding/ort-wasm.js': false,
