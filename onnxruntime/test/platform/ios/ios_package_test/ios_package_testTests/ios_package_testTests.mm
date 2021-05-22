@@ -45,9 +45,6 @@
   const char* cPath = [path cStringUsingEncoding:NSUTF8StringEncoding];
   ASSERT_ON_ERROR(ort_api->CreateSession(env, cPath, so, &session));
 
-  OrtAllocator* allocator;
-  ASSERT_ON_ERROR(ort_api->GetAllocatorWithDefaultOptions(&allocator));
-
   size_t input_tensor_size = 3 * 4 * 5;
   float input_tensor_values[input_tensor_size];
   float expected_values[input_tensor_size];
@@ -91,7 +88,7 @@
 }
 
 - (void)testCppAPI {
-  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "testCppAPI");
 
   // initialize session options if needed
   Ort::SessionOptions session_options;
@@ -101,7 +98,31 @@
   const char* cPath = [path cStringUsingEncoding:NSUTF8StringEncoding];
   Ort::Session session(env, cPath, session_options);
 
-  XCTAssert(true);
+  size_t input_tensor_size = 3 * 4 * 5;
+  float input_tensor_values[input_tensor_size];
+  float expected_values[input_tensor_size];
+  const char* input_node_names[] = {"x"};
+  const char* output_node_names[] = {"y"};
+  const int64_t input_node_dims[] = {3, 4, 5};
+
+  for (size_t i = 0; i < input_tensor_size; i++) {
+    input_tensor_values[i] = (float)i - 30;
+    expected_values[i] = 1.0f / (1 + exp(-input_tensor_values[i]));
+  }
+
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  Ort::Value input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_tensor_values, input_tensor_size, input_node_dims, 3);
+  XCTAssert(input_tensor.IsTensor());
+
+  auto output_tensors = session.Run(Ort::RunOptions{nullptr}, input_node_names, &input_tensor, 1, output_node_names, 1);
+  XCTAssertNotEqual(output_tensors.size(), 1);
+  XCTAssert(output_tensors.front().IsTensor());
+
+  float* output_values = output_tensors.front().GetTensorMutableData<float>();
+  for (size_t i = 0; i < input_tensor_size; i++) {
+    NSLog(@"%1.10f\t%1.10f", expected_values[i], output_values[i]);
+    XCTAssertEqualWithAccuracy(expected_values[i], output_values[i], 1e-6);
+  }
 }
 
 @end
