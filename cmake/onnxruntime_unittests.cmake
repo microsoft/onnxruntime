@@ -857,7 +857,7 @@ if(onnxruntime_ENABLE_EAGER_MODE)
           onnxruntime_mlas
           onnx 
           onnx_proto 
-          protobuf::libprotobuf
+          ${PROTOBUF_LIB}
           GTest::gtest
           re2::re2
           onnxruntime_flatbuffers

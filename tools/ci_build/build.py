@@ -655,6 +655,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_WINML_TESTS=" + ("OFF" if args.skip_winml_tests else "ON"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
         "-Donnxruntime_DEV_MODE=" + use_dev_mode(args),
+        "-DPython_EXECUTABLE=" + sys.executable,
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
         "-Donnxruntime_CUDA_VERSION=" + (args.cuda_version if args.use_cuda else ""),
@@ -709,7 +710,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_MINIMAL_BUILD_CUSTOM_OPS=" + ("ON" if args.minimal_build and 'custom_ops' in args.minimal_build
                                                      else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
-        "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
         # enable pyop if it is nightly build
         "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
@@ -746,6 +746,17 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
     ]
+
+    if args.enable_msvc_static_runtime:
+        cmake_args += ["-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>",
+                       "-DONNX_USE_MSVC_STATIC_RUNTIME=ON",
+                       "-Dprotobuf_MSVC_STATIC_RUNTIME=ON",
+                       "-Dgtest_force_shared_crt=OFF"]
+    else:
+        cmake_args += ["-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>DLL",
+                       "-DONNX_USE_MSVC_STATIC_RUNTIME=OFF",
+                       "-Dprotobuf_MSVC_STATIC_RUNTIME=OFF",
+                       "-Dgtest_force_shared_crt=ON"]
 
     if acl_home and os.path.exists(acl_home):
         cmake_args += ["-Donnxruntime_ACL_HOME=" + acl_home]
@@ -1847,6 +1858,9 @@ def main():
 
     if args.build_nuget and cross_compiling:
         raise BuildError('Currently nuget package creation is not supported while cross-compiling')
+
+    if args.enable_pybind and args.disable_rtti:
+        raise BuildError("Python bindings use typeid so you can't disable RTTI")
 
     if args.enable_pybind and args.disable_exceptions:
         raise BuildError('Python bindings require exceptions to be enabled.')

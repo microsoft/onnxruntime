@@ -24,7 +24,7 @@ target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
 
 target_link_libraries(onnxruntime_webassembly PRIVATE
   nsync_cpp
-  protobuf::libprotobuf-lite
+  ${PROTOBUF_LIB}
   onnx
   onnx_proto
   onnxruntime_common

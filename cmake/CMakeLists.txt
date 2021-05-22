@@ -3,12 +3,14 @@
 # Licensed under the MIT License.
 
 # Minimum CMake required
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.18)
 cmake_policy(SET CMP0069 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
 
-if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.15")
-  cmake_policy(SET CMP0092 NEW)
+cmake_policy(SET CMP0092 NEW)
+cmake_policy(SET CMP0091 NEW)
+if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.20")
+  cmake_policy(SET CMP0117 NEW)
 endif()
 
 # Support OS X versions 10.12+
@@ -61,7 +63,6 @@ option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_FEATURIZERS "Build ML Featurizers support" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
-option(onnxruntime_MSVC_STATIC_RUNTIME "Compile for the static CRT" OFF)
 option(onnxruntime_GCC_STATIC_CPP_RUNTIME "Compile for the static libstdc++" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
@@ -379,6 +380,12 @@ if(onnxruntime_DISABLE_RTTI)
   else()
     add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>")
   endif()
+else()
+  #MSVC RTTI flag /GR is not added to CMAKE_CXX_FLAGS by default. But, anyway VC++2019 treats "/GR" default on.
+  #So we don't need the following three lines. But it's better to make it more explicit.
+  if(MSVC)
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/GR>")
+  endif()
 endif()
 
 # If this is only enabled in an onnxruntime_ORT_MODEL_FORMAT_ONLY build we don't need ONNX changes
@@ -472,33 +479,6 @@ endmacro()
 #Set global compile flags for all the source code(including third_party code like protobuf)
 #This section must be before any add_subdirectory, otherwise build may fail because /MD,/MT mismatch
 if (MSVC)
-  if (onnxruntime_MSVC_STATIC_RUNTIME)
-    # set all of our submodules to static runtime
-    set(ONNX_USE_MSVC_STATIC_RUNTIME ON)
-    set(protobuf_MSVC_STATIC_RUNTIME ON CACHE BOOL "" FORCE)
-    set(gtest_force_shared_crt OFF CACHE BOOL "" FORCE)
-
-    # In case we are building static libraries, link also the runtime library statically
-    # so that MSVCR*.DLL is not required at runtime.
-    # https://msdn.microsoft.com/en-us/library/2kzt1wy3.aspx
-    # This is achieved by replacing msvc option /MD with /MT and /MDd with /MTd
-    # https://gitlab.kitware.com/cmake/community/wikis/FAQ#how-can-i-build-my-msvc-application-with-a-static-runtime
-    foreach(flag_var
-        CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
-        CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO
-        CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
-        CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO)
-      if(${flag_var} MATCHES "/MD")
-        string(REGEX REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
-      endif(${flag_var} MATCHES "/MD")
-    endforeach(flag_var)
-  else()
-    set(ONNX_USE_MSVC_STATIC_RUNTIME OFF)
-    set(protobuf_WITH_ZLIB  OFF CACHE BOOL "" FORCE)
-    set(protobuf_MSVC_STATIC_RUNTIME OFF CACHE BOOL "Link protobuf to static runtime libraries" FORCE)
-    set(gtest_force_shared_crt ON CACHE BOOL "Use shared (DLL) run-time lib for gtest" FORCE)
-  endif()
-
   #Always enable exception handling, even for Windows ARM
   if(NOT onnxruntime_DISABLE_EXCEPTIONS)
     string(APPEND CMAKE_CXX_FLAGS " /EHsc /wd26812")
@@ -648,10 +628,9 @@ endif()
 #Need python to generate def file
 if(onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
   if(onnxruntime_ENABLE_PYTHON)
-    find_package(PythonInterp 3.5 REQUIRED)
-    find_package(PythonLibs 3.5 REQUIRED)
+    find_package(Python 3.5 COMPONENTS Interpreter Development.Module NumPy)
   else()
-    find_package(PythonInterp 3.4 REQUIRED)
+    find_package(Python 3.5 COMPONENTS Interpreter)
   endif()
 endif()
 
@@ -711,8 +690,8 @@ else()
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "Build protobuf tests" FORCE)
   endif()
-
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
+  
   if(TARGET libprotoc)
     set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
     add_executable(protobuf::protoc ALIAS protoc)
@@ -721,10 +700,8 @@ else()
     set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
   endif()
   if (onnxruntime_USE_FULL_PROTOBUF)
-    add_library(protobuf::libprotobuf ALIAS libprotobuf)
     set(PROTOBUF_LIB libprotobuf)
   else()
-    add_library(protobuf::libprotobuf ALIAS libprotobuf-lite)
     set(PROTOBUF_LIB libprotobuf-lite)
   endif()
 endif()
