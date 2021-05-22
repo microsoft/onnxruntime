@@ -15,6 +15,7 @@ from typing import Iterator, Optional, Tuple, TypeVar
 # Needed to override PyTorch methods
 T = TypeVar('T', bound='Module')
 
+
 class ORTModule(torch.nn.Module):
     """Specializes a user torch.nn.Module to leverage ONNX Runtime graph execution.
 
@@ -40,7 +41,7 @@ class ORTModule(torch.nn.Module):
         of nested structures is not supported at the moment)
     """
 
-    def __init__(self, module, onnx_export_type=torch.onnx.OperatorExportTypes.ONNX):
+    def __init__(self, module, **kwargs):
         assert isinstance(
             module, torch.nn.Module), "'module' must be a torch.nn.Module"
 
@@ -74,7 +75,11 @@ class ORTModule(torch.nn.Module):
         # Get the module that flattens both input and output
         self._flattened_module = _io._FlattenedModule(self._original_module)
 
-        self._execution_manager = GraphExecutionManagerFactory(self._flattened_module, onnx_export_type)
+        onnx_export_type = torch.onnx.OperatorExportTypes.ONNX
+        if 'onnx_export_type' in kwargs:
+            onnx_export_type = kwargs['onnx_export_type']
+        self._execution_manager = GraphExecutionManagerFactory(self._flattened_module,
+                                                               onnx_export_type=onnx_export_type)
 
     def _is_training(self):
         return self._flattened_module.training and torch.is_grad_enabled()
@@ -98,7 +103,8 @@ class ORTModule(torch.nn.Module):
 
     def register_buffer(self, name: str, tensor: Optional[torch.Tensor], persistent: bool = True) -> None:
         """Override original method to delegate execution to the base module"""
-        self._original_module.register_buffer(name, tensor, persistent=persistent)
+        self._original_module.register_buffer(
+            name, tensor, persistent=persistent)
 
     def register_parameter(self, name: str, param: Optional[torch.nn.Parameter]) -> None:
         """Override original method to delegate execution to the base module"""

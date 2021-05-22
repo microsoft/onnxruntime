@@ -50,7 +50,7 @@ def run_with_ort_on_device(device, model, input_list, label_input, is_eval_mode=
     print('Use ORTModule for CUDA run on {} ....'.format(device))
     model = copy.deepcopy(model)
     model.to(device)
-    model = ORTModule(model, torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH)
+    model = ORTModule(model, onnx_export_type=torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH)
     if is_eval_mode:
         print("evalation mode.............")
         model.eval()
