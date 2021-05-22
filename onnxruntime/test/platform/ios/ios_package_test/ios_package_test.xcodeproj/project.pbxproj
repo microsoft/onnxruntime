@@ -14,7 +14,7 @@
 		229E592C265869C2006E41AE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 229E592B265869C2006E41AE /* Assets.xcassets */; };
 		229E592F265869C2006E41AE /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 229E592D265869C2006E41AE /* LaunchScreen.storyboard */; };
 		229E5932265869C2006E41AE /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 229E5931265869C2006E41AE /* main.m */; };
-		229E593C265869C2006E41AE /* ios_package_testTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 229E593B265869C2006E41AE /* ios_package_testTests.m */; };
+		229E593C265869C2006E41AE /* ios_package_testTests.mm in Sources */ = {isa = PBXBuildFile; fileRef = 229E593B265869C2006E41AE /* ios_package_testTests.mm */; };
 		229E595926586B4A006E41AE /* sigmoid.ort in Resources */ = {isa = PBXBuildFile; fileRef = 229E595826586B4A006E41AE /* sigmoid.ort */; };
 		229E595A26586B4A006E41AE /* sigmoid.ort in Resources */ = {isa = PBXBuildFile; fileRef = 229E595826586B4A006E41AE /* sigmoid.ort */; };
 /* End PBXBuildFile section */
@@ -43,7 +43,7 @@
 		229E5930265869C2006E41AE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		229E5931265869C2006E41AE /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		229E5937265869C2006E41AE /* ios_package_testTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ios_package_testTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		229E593B265869C2006E41AE /* ios_package_testTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ios_package_testTests.m; sourceTree = "<group>"; };
+		229E593B265869C2006E41AE /* ios_package_testTests.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = ios_package_testTests.mm; sourceTree = "<group>"; };
 		229E593D265869C2006E41AE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		229E595826586B4A006E41AE /* sigmoid.ort */ = {isa = PBXFileReference; lastKnownFileType = file; path = sigmoid.ort; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -106,7 +106,7 @@
 		229E593A265869C2006E41AE /* ios_package_testTests */ = {
 			isa = PBXGroup;
 			children = (
-				229E593B265869C2006E41AE /* ios_package_testTests.m */,
+				229E593B265869C2006E41AE /* ios_package_testTests.mm */,
 				229E593D265869C2006E41AE /* Info.plist */,
 			);
 			path = ios_package_testTests;
@@ -232,7 +232,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				229E593C265869C2006E41AE /* ios_package_testTests.m in Sources */,
+				229E593C265869C2006E41AE /* ios_package_testTests.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

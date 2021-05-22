@@ -8,11 +8,12 @@
 #import <XCTest/XCTest.h>
 #include <math.h>
 #include <onnxruntime/onnxruntime_c_api.h>
+#include <onnxruntime/onnxruntime_cxx_api.h>
 
-#define ASSERT_ON_ERROR(expr)                                                                            \
-  do {                                                                                                   \
-    OrtStatus* status = (expr);                                                                          \
-    XCTAssertEqual(NULL, status, @"Failed with error message: %@", @(ort_api->GetErrorMessage(status))); \
+#define ASSERT_ON_ERROR(expr)                                                                               \
+  do {                                                                                                      \
+    OrtStatus* status = (expr);                                                                             \
+    XCTAssertEqual(nullptr, status, @"Failed with error message: %@", @(ort_api->GetErrorMessage(status))); \
   } while (0);
 
 @interface ios_package_testTests : XCTestCase
@@ -30,9 +31,10 @@
 }
 
 - (void)testCAPI {
+  // This is an e2e test for ORT C API
   const OrtApi* ort_api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   OrtEnv* env = NULL;
-  ASSERT_ON_ERROR(ort_api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
+  ASSERT_ON_ERROR(ort_api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "testCAPI", &env));
 
   // initialize session options if needed
   OrtSessionOptions* so;
@@ -86,6 +88,20 @@
   ort_api->ReleaseSession(session);
   ort_api->ReleaseSessionOptions(so);
   ort_api->ReleaseEnv(env);
+}
+
+- (void)testCppAPI {
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
+
+  // initialize session options if needed
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(1);
+
+  NSString* path = [[NSBundle mainBundle] pathForResource:@"sigmoid" ofType:@"ort"];
+  const char* cPath = [path cStringUsingEncoding:NSUTF8StringEncoding];
+  Ort::Session session(env, cPath, session_options);
+
+  XCTAssert(true);
 }
 
 @end
