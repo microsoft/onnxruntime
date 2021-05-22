@@ -33,9 +33,6 @@
 }
 
 - (void)testCAPI {
-  // This is an example of a functional test case.
-  // Use XCTAssert and related functions to verify your tests produce the correct results.
-
   OrtEnv* env = NULL;
   ASSERT_ON_ERROR(g_ort->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "test", &env));
 

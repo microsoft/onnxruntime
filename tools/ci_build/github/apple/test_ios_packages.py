@@ -23,25 +23,25 @@ def _test_ios_packages(args):
 
     # Now we need to create a zip file contains the framework and the podspec file, both of these 2 files
     # should be under the c_framework_dir
-    base_dir = args.c_framework_dir.resolve()
-    if not base_dir.is_dir():
-        raise FileNotFoundError('c_framework_dir {} is not a folder.'.format(base_dir))
+    c_framework_dir = args.c_framework_dir.resolve()
+    if not c_framework_dir.is_dir():
+        raise FileNotFoundError('c_framework_dir {} is not a folder.'.format(c_framework_dir))
 
-    framework_path = os.path.join(base_dir, 'onnxruntime.framework')
+    framework_path = os.path.join(c_framework_dir, 'onnxruntime.framework')
     if not pathlib.Path(framework_path).exists():
-        raise FileNotFoundError('{} does not have onnxruntime.framework'.format(base_dir))
+        raise FileNotFoundError('{} does not have onnxruntime.framework'.format(c_framework_dir))
 
     # create a temp folder under repo dir
     import tempfile
     with tempfile.TemporaryDirectory() as temp_dir:
-        temp_dir = '/Users/gwang/temp/eee'
+        # temp_dir = '/Users/gwang/temp/eee'
 
         # create a zip file contains the framework
         local_pods_dir = os.path.join(temp_dir, 'local_pods')
         os.makedirs(local_pods_dir, exist_ok=True)
         zip_base_filename = os.path.join(local_pods_dir, 'OnnxRuntimeBase')
         zip_filename = zip_base_filename + '.zip'
-        shutil.make_archive(zip_base_filename, 'zip', root_dir=base_dir, base_dir='onnxruntime.framework')
+        shutil.make_archive(zip_base_filename, 'zip', root_dir=c_framework_dir, base_dir='onnxruntime.framework')
 
         # copy the test project to the temp_dir
         test_proj_path = os.path.join(REPO_DIR, 'onnxruntime', 'test', 'platform', 'ios', 'ios_package_test')
@@ -66,6 +66,7 @@ def _test_ios_packages(args):
 
         # install pods first
         subprocess.run(['pod', 'install'], shell=False, check=True, cwd=target_proj_path)
+
         # run the test
         subprocess.run(['xcodebuild', 'test',
                         '-workspace', 'ios_package_test.xcworkspace',
