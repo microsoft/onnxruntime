@@ -77,12 +77,7 @@ def _test_ios_packages(args):
 def parse_args():
     parser = argparse.ArgumentParser(
         os.path.basename(__file__),
-        description='''Create iOS framework and podspec for one or more osx_archs (fat framework)
-        and building properties specified in the given build config file, see
-        tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json for details.
-        The output of the final framework and podspec can be found under [build_dir]/framework_out.
-        Please note, this building script will only work on macOS.
-        '''
+        description='Test iOS framework using CocoaPods package.'
     )
 
     parser.add_argument('--fail_if_cocoapods_missing', action='store_true',
@@ -90,7 +85,7 @@ def parse_args():
                         'will not throw error unless fail_if_cocoapod_missing is set.')
 
     parser.add_argument('--c_framework_dir', type=pathlib.Path, required=True,
-                        help='Provide the directory for C/C++ framework')
+                        help='Provide the parent directory for C/C++ framework')
 
     return parser.parse_args()
 
