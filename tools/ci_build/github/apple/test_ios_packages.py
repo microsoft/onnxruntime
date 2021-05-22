@@ -39,8 +39,9 @@ def _test_ios_packages(args):
         # create a zip file contains the framework
         local_pods_dir = os.path.join(temp_dir, 'local_pods')
         os.makedirs(local_pods_dir, exist_ok=True)
+        # shutil.make_archive require target file as full path without extension
         zip_base_filename = os.path.join(local_pods_dir, 'OnnxRuntimeBase')
-        zip_filename = zip_base_filename + '.zip'
+        zip_file_path = zip_base_filename + '.zip'
         shutil.make_archive(zip_base_filename, 'zip', root_dir=c_framework_dir, base_dir='onnxruntime.framework')
 
         # copy the test project to the temp_dir
@@ -55,19 +56,19 @@ def _test_ios_packages(args):
         with open(local_podspec_path, 'r') as file:
             file_data = file.read()
 
-        # Replace the target string
-        file_data = file_data.replace('${ORT_BASE_FRAMEWORK_FILE}', zip_filename)
+        # replace the target strings
+        file_data = file_data.replace('${ORT_BASE_FRAMEWORK_FILE}', zip_file_path)
         with open(os.path.join(REPO_DIR, 'VERSION_NUMBER')) as version_file:
             file_data = file_data.replace('${ORT_VERSION}', version_file.readline().strip())
 
-        # Write the file out again
+        # overwrite the file
         with open(local_podspec_path, 'w') as file:
             file.write(file_data)
 
         # install pods first
         subprocess.run(['pod', 'install'], shell=False, check=True, cwd=target_proj_path)
 
-        # run the test
+        # run the tests
         subprocess.run(['xcodebuild', 'test',
                         '-workspace', 'ios_package_test.xcworkspace',
                         '-scheme', 'ios_package_test',

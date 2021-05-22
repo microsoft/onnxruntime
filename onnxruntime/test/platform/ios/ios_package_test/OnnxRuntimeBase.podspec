@@ -7,7 +7,7 @@ Pod::Spec.new do |spec|
                    DESC
 
   spec.homepage     = "https://github.com/microsoft/onnxruntime"
-  spec.license = { :type => 'MIT' }
+  spec.license      = { :type => 'MIT' }
   spec.authors      = { "ONNX Runtime" => "onnxruntime@microsoft.com" }
   spec.platform     = :ios
   spec.platform     = :ios, '13.0'
