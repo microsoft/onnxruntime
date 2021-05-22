@@ -4,6 +4,8 @@
 //  ios_package_test_c_api.m
 //  ios_package_testTests
 //
+//  This file hosts the tests of ORT C API, for tests of ORT C++ API, please see ios_package_test_cpp_api.mm
+//
 
 #import <XCTest/XCTest.h>
 #include <math.h>
@@ -41,6 +43,7 @@
   // initialize session options if needed
   OrtSessionOptions* so;
   ASSERT_ON_ERROR(g_ort->CreateSessionOptions(&so));
+  ASSERT_ON_ERROR(g_ort->SetIntraOpNumThreads(so, 1));
 
   OrtSession* session;
   NSString* path = [[NSBundle mainBundle] pathForResource:@"sigmoid" ofType:@"ort"];

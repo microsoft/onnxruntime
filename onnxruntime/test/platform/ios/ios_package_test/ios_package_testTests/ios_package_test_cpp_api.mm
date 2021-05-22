@@ -4,6 +4,8 @@
 //  ios_package_test_cpp_api.mm
 //  ios_package_testTests
 //
+//  This file hosts the tests of ORT C++ API, for tests of ORT C API, please see ios_package_test_c_api.mm
+//
 
 #import <XCTest/XCTest.h>
 #include <math.h>
@@ -48,8 +50,8 @@
   }
 
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-  Ort::Value input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_tensor_values, input_tensor_size,
-                                                            input_node_dims, 3);
+  Ort::Value input_tensor =
+      Ort::Value::CreateTensor<float>(memory_info, input_tensor_values, input_tensor_size, input_node_dims, 3);
   XCTAssert(input_tensor.IsTensor());
 
   auto output_tensors = session.Run(Ort::RunOptions{nullptr}, input_node_names,
