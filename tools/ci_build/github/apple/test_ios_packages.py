@@ -7,7 +7,6 @@ import os
 import pathlib
 import shutil
 import subprocess
-import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", "..", ".."))
@@ -95,6 +94,7 @@ def parse_args():
 def main():
     args = parse_args()
     _test_ios_packages(args)
+
 
 if __name__ == '__main__':
     main()

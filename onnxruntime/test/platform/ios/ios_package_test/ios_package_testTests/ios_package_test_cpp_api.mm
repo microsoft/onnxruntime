@@ -33,9 +33,9 @@
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(1);
 
-  NSString* path = [[NSBundle mainBundle] pathForResource:@"sigmoid" ofType:@"ort"];
-  const char* cPath = [path cStringUsingEncoding:NSUTF8StringEncoding];
-  Ort::Session session(env, cPath, session_options);
+  NSString* ns_model_path = [[NSBundle mainBundle] pathForResource:@"sigmoid" ofType:@"ort"];
+  const char* model_path = [ns_model_path cStringUsingEncoding:NSUTF8StringEncoding];
+  Ort::Session session(env, model_path, session_options);
 
   size_t input_tensor_size = 3 * 4 * 5;
   float input_tensor_values[input_tensor_size];
