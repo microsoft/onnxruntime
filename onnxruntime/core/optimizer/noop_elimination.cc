@@ -35,7 +35,7 @@ bool NoopElimination::SatisfyCondition(const Graph& graph, const Node& node, con
   bool input0_is_initializer = graph_utils::IsConstantInitializer(graph, node.InputDefs()[0]->Name());
   bool input1_is_initializer = graph_utils::IsConstantInitializer(graph, node.InputDefs()[1]->Name());
 
-  // reject if both or neither inpuits are initializers for now
+  // reject if both or neither inputs are initializers for now
   if (input0_is_initializer == input1_is_initializer) {
     return false;
   }
