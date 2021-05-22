@@ -791,7 +791,7 @@ struct ProviderHost {
   virtual Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) = 0;
   virtual Status contrib__YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) = 0;
 
-#if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(ORT_USE_NCCL)
   virtual training::DistributedRunContext& GetDistributedRunContextInstance() = 0;
 #endif
 #endif

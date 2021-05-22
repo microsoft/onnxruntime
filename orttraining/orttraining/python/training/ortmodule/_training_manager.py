@@ -12,6 +12,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_typ
 
 import onnx
 import torch
+from torch.utils.dlpack import from_dlpack, to_dlpack
 
 
 class TrainingManager(GraphExecutionManager):
@@ -37,8 +38,9 @@ class TrainingManager(GraphExecutionManager):
         # have the need for passing IOBinding.
         state = C.PartialGraphExecutionState()
         forward_inputs = C.OrtValueVector()
+        forward_inputs.reserve(len(inputs))
         for input in inputs:
-            forward_inputs.append(_utils._ortvalue_from_torch_tensor(input))
+            forward_inputs.push_back(to_dlpack(input), input.dtype == torch.bool)
 
         forward_outputs = C.OrtValueVector()
         # Run and return module outputs.
@@ -127,7 +129,9 @@ class TrainingManager(GraphExecutionManager):
 
                 # Use IO binding
                 # Push user output grads to ONNX backend.
-                contiguous_grad_outputs = []
+                backward_inputs = C.OrtValueVector()
+                # Preallocate length of the vector. And then delete as required towards the end.
+                backward_inputs.reserve(len(grad_outputs))
                 for idx, grad_output in enumerate(grad_outputs):
                     if idx in self._graph_info.output_grad_indices_non_differentiable:
                         assert grad_output is None, "ORT found the {}-th module output '{}' is " \
@@ -145,13 +149,10 @@ class TrainingManager(GraphExecutionManager):
                             grad_output = torch.tensor(0., device=device, dtype=dtype)
                     elif not grad_output.is_contiguous():
                         grad_output = grad_output.contiguous()
-                    contiguous_grad_outputs.append(grad_output)
+                    backward_inputs.push_back(to_dlpack(grad_output), grad_output.dtype == torch.bool)
+                backward_inputs.shrink_to_fit()
 
                 # Run and get results
-                backward_inputs = C.OrtValueVector()
-                for input in contiguous_grad_outputs:
-                    backward_inputs.append(_utils._ortvalue_from_torch_tensor(input))
-
                 backward_outputs = C.OrtValueVector()
                 self._execution_agent.run_backward(backward_inputs, backward_outputs, ctx.run_info.state)
                 # Destroy the state immediately (as opposed to be at the mercy of garbage collector) so it does not
@@ -165,7 +166,9 @@ class TrainingManager(GraphExecutionManager):
                 for input_name in self._graph_info.user_input_names:
                     # Append to the results the backward output for each input that required grad
                     if input_name in require_grad_names_set:
-                        results.append(_utils._ortvalue_to_torch_tensor(backward_outputs[require_grad_names_index]))
+                        results.append(_utils._torch_tensor_from_dl_pack(
+                            backward_outputs.dlpack_at(require_grad_names_index),
+                            backward_outputs[require_grad_names_index]))
                         require_grad_names_index += 1
                     else:
                         # input_name is not found in the self._input_info.require_grad_names list
@@ -177,7 +180,9 @@ class TrainingManager(GraphExecutionManager):
                 initializer_index = num_user_input_grads
                 for initializer_name in self._graph_info.initializer_names:
                     if initializer_name in self._graph_initializer_names_to_train:
-                        results.append(_utils._ortvalue_to_torch_tensor(backward_outputs[initializer_index]))
+                        results.append(_utils._torch_tensor_from_dl_pack(
+                            backward_outputs.dlpack_at(initializer_index),
+                            backward_outputs[initializer_index]))
                         initializer_index += 1
                     else:
                         results.append(None)
@@ -211,16 +216,18 @@ class TrainingManager(GraphExecutionManager):
 
         session_options, providers, provider_options = self._get_session_config()
         fw_feed_names = [input.name for input in self._optimized_onnx_model.graph.input]
-        fw_outputs_device_info = []
-        for idx in range(len(self._graph_info.user_output_names)):
-            fw_outputs_device_info.append(C.OrtDevice(get_ort_device_type(self._device.type),
-            C.OrtDevice.default_memory(), _utils.get_device_index(self._device)))
+        fw_outputs_device_info = [
+            C.OrtDevice(get_ort_device_type(self._device.type),
+                        C.OrtDevice.default_memory(),
+                        _utils.get_device_index(self._device)
+            )] * len(self._graph_info.user_output_names)
 
         bw_fetches_names = [output.name for output in self._optimized_onnx_model.graph.output]
-        bw_outputs_device_info = []
-        for idx in range(len(bw_fetches_names)):
-            bw_outputs_device_info.append(C.OrtDevice(get_ort_device_type(self._device.type),
-            C.OrtDevice.default_memory(), _utils.get_device_index(self._device)))
+        bw_outputs_device_info = [
+            C.OrtDevice(get_ort_device_type(self._device.type),
+                        C.OrtDevice.default_memory(),
+                        _utils.get_device_index(self._device)
+            )] * len(bw_fetches_names)
 
         self._execution_agent = TrainingAgent(self._optimized_onnx_model.SerializeToString(),
                                               fw_feed_names,

@@ -16,105 +16,17 @@ ONNX Runtime Web can run on both CPU and GPU. For running on CPU, [WebAssembly](
 
 See [Compatibility](#Compatibility) and [Operators Supported](#Operators) for a list of platforms and operators ONNX Runtime Web currently supports.
 
-## Getting Started
+## Usage
 
-There are multiple ways to use ONNX Runtime Web in a project:
-
-### Using `<script>` tag
-
-This is the most straightforward way to use ONNX Runtime Web. The following HTML example shows how to use it:
-
-```html
-<html>
-  <head> </head>
-
-  <body>
-    <!-- Load ONNX Runtime Web -->
-    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
-    <!-- Code that consume ONNX Runtime Web -->
-    <script>
-      async function runMyModel() {
-        // create a session
-        const myOrtSession = await ort.InferenceSession.create(
-          "./my-model.onnx"
-        );
-        // generate model input
-        const input0 = new ort.Tensor(
-          new Float32Array([1.0, 2.0, 3.0, 4.0]) /* data */,
-          [2, 2] /* dims */
-        );
-        // execute the model
-        const outputs = await myOrtSession.run({ input_0: input0 });
-        // consume the output
-        const outputTensor = outputs["output_0"];
-        console.log(`model output tensor: ${outputTensor.data}.`);
-      }
-      runMyModel();
-    </script>
-  </body>
-</html>
-```
-
-<!-- TODO: Refer to [browser/Add](./examples/browser/add) for an example. -->
-
-### Using NPM and bundling tools
-
-Modern browser based applications are usually built by frameworks like [Angular](https://angular.io/), [React](https://reactjs.org/), [Vue.js](https://vuejs.org/) and so on. This solution usually builds the source code into one or more bundle file(s). The following TypeScript example shows how to use ONNX Runtime Web in an async context:
-
-1. Import `Tensor` and `InferenceSession`.
-
-```ts
-import { Tensor, InferenceSession } from "onnxruntime-web";
-```
-
-2. Create an instance of `InferenceSession` and load ONNX model.
-
-```ts
-// use the following in an async method
-const url = "./data/models/resnet/model.onnx";
-const session = await InferenceSession.create(url);
-```
-
-3. Create your input Tensor(s) similar to the example below. You need to do any pre-processing required by
-   your model at this stage. For that refer to the documentation of the model you have:
-
-```javascript
-// creating an array of input Tensors is the easiest way. For other options see the API documentation
-const input0 = new Tensor(new Float32Array([1.0, 2.0, 3.0, 4.0]), [2, 2]);
-```
-
-4. Run the model with the input Tensors. The output Tensor(s) are available once the run operation is complete:
-
-```javascript
-// run this in an async method:
-// assume model's input name is 'input_0' and output name is 'output_0'
-const outputs = await session.run({ input_0: input0 });
-const outputTensor = outputs.output_0;
-```
-
-5. Bundle your code. All web application frameworks offer bundling tools and instructions. Specifically, you can specify onnxruntime-web as an external dependency:
-
-```js
-  // a webpack example
-  externals: {
-    'onnxruntime-web': 'ort', // add this line in your webpack.config.js
-    // ...
-  }
-```
-
-so that you can consume the file `ort.min.js` from a CDN provider demonstrated as above.
-
-<!-- TODO More verbose examples on how to use ONNX Runtime Web are located under the `examples` folder. For further info see [Examples](./examples/README.md) -->
+Refer to [ONNX Runtime JavaScript examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js) for samples and tutorials.
 
 ## Documents
 
 ### Developers
 
-<!-- TODO development documents and API -->
+Refer to [Using VSCode](../README.md#Using-VSCode) for setting up development environment.
 
-For information on ONNX.js development, please check [Development](./docs/development.md)
-
-For API reference, please check [API](./docs/api.md).
+For information about building ONNX Runtime Web development, please check [Build](../README.md#build-2).
 
 ### Getting ONNX models
 
