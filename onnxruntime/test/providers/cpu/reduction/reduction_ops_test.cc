@@ -557,6 +557,25 @@ TEST(ReductionOpTest, ReduceLogSumExp_double) {
   test.Run();
 }
 
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST(ReductionOpTest, ReduceLogSumExp_half) {
+  OpTester test("ReduceLogSumExp");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<MLFloat16>("data", {3, 2, 2},
+                           FloatsToMLFloat16s({1.0f, 2.0f,
+                                               3.0f, 4.0f,
+
+                                               5.0f, 6.0f,
+                                               7.0f, 8.0f,
+
+                                               9.0f, 10.0f,
+                                               11.0f, 12.0f}));
+  test.AddOutput<MLFloat16>("reduced", {1, 2, 1}, FloatsToMLFloat16s({10.33174133f, 12.33174133f}));
+  test.Run();
+}
+#endif  // defined(USE_CUDA) || defined(USE_ROCM)
+
 TEST(ReductionOpTest, ReduceLogSumExp_int32) {
   OpTester test("ReduceLogSumExp");
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
@@ -699,6 +718,25 @@ TEST(ReductionOpTest, ReduceMax_double) {
   test.AddOutput<double>("reduced", {3, 1, 1}, {4.0f, 8.0f, 12.0f});
   test.Run();
 }
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST(ReductionOpTest, ReduceMax_half) {
+  OpTester test("ReduceMax");
+  test.AddAttribute("axes", std::vector<int64_t>{1, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<MLFloat16>("data", {3, 2, 2},
+                           FloatsToMLFloat16s({1.0f, 2.0f,
+                                               3.0f, 4.0f,
+
+                                               5.0f, 6.0f,
+                                               7.0f, 8.0f,
+
+                                               9.0f, 10.0f,
+                                               11.0f, 12.0f}));
+  test.AddOutput<MLFloat16>("reduced", {3, 1, 1}, FloatsToMLFloat16s({4.0f, 8.0f, 12.0f}));
+  test.Run();
+}
+#endif  // defined(USE_CUDA) || defined(USE_ROCM)
 
 TEST(ReductionOpTest, ReduceMax_int32) {
   OpTester test("ReduceMax");
@@ -1166,6 +1204,25 @@ TEST(ReductionOpTest, ReduceMin_double) {
   test.AddOutput<double>("reduced", {1, 2, 1}, {1.0f, 3.0f});
   test.Run();
 }
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST(ReductionOpTest, ReduceMin_half) {
+  OpTester test("ReduceMin");
+  test.AddAttribute("axes", std::vector<int64_t>{0, 2});
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<MLFloat16>("data", {3, 2, 2},
+                           FloatsToMLFloat16s({1.0f, 2.0f,
+                                               3.0f, 4.0f,
+
+                                               5.0f, 6.0f,
+                                               7.0f, 8.0f,
+
+                                               9.0f, 10.0f,
+                                               11.0f, 12.0f}));
+  test.AddOutput<MLFloat16>("reduced", {1, 2, 1}, FloatsToMLFloat16s({1.0f, 3.0f}));
+  test.Run();
+}
+#endif  // defined(USE_CUDA) || defined(USE_ROCM)
 
 TEST(ReductionOpTest, ReduceMin_int32) {
   OpTester test("ReduceMin");
