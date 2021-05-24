@@ -16,7 +16,7 @@ from collections import OrderedDict
 from collections import namedtuple
 from inspect import signature
 
-from onnxruntime.training.ortmodule import ORTModule, _utils
+from onnxruntime.training.ortmodule import ORTModule, _utils, _io
 import _test_helpers
 
 # Import autocasting libs
@@ -2597,3 +2597,25 @@ def test_stateless_model_unspecified_device():
     ort_y = ort_model(ort_x)
 
     _test_helpers.assert_values_are_close(pt_y, ort_y)
+
+@pytest.mark.parametrize("model",
+        [(UnusedBeginParameterNet(784, 500, 400, 10)),
+         (UnusedMiddleParameterNet(784, 500, 400, 10)),
+         (UnusedEndParameterNet(784, 500, 400, 10))])
+def test_unused_parameters_does_not_unnecssarily_reinitilize(model):
+    device = 'cuda'
+
+    N, D_in, H1, H2, D_out = 64, 784, 500, 400, 10
+    model = model.to(device)
+    ort_model = ORTModule(copy.deepcopy(model))
+    training_manager = ort_model._execution_manager(ort_model._is_training())
+
+    x = torch.randn(N, D_in, device=device)
+    _ = ort_model(x)
+
+    input_info = _io.parse_inputs_for_onnx_export(training_manager._module_parameters,
+                                                  training_manager._onnx_model,
+                                                  x,
+                                                  {})
+
+    assert not training_manager._reinitialize_graph_builder(input_info)

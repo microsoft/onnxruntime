@@ -1336,20 +1336,6 @@ void addOpSchemaSubmodule(py::module& m) {
 
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
-#ifdef ENABLE_TRAINING
-void DlpackCapsuleDestructor(PyObject* data) {
-  DLManagedTensor* dlmanged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data, "dltensor");
-  if (dlmanged_tensor) {
-    // the dlmanged_tensor has not been consumed, call deleter ourselves.
-    dlmanged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanged_tensor));
-  } else {
-    // the dlmanged_tensor has been consumed,
-    // PyCapsule_GetPointer has set an error indicator.
-    PyErr_Clear();
-  }
-}
-#endif
-
 void addObjectMethods(py::module& m, Environment& env) {
   py::enum_<GraphOptimizationLevel>(m, "GraphOptimizationLevel")
       .value("ORT_DISABLE_ALL", GraphOptimizationLevel::ORT_DISABLE_ALL)
@@ -1577,16 +1563,10 @@ void addObjectMethods(py::module& m, Environment& env) {
       })
 #ifdef ENABLE_TRAINING
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
-        DLManagedTensor* dlmanaged_tensor = dlpack::OrtValueToDlpack(*ort_value);
-        return py::reinterpret_steal<py::object>(
-            PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor));
+        return ToDlpack(*ort_value);
       })
       .def_static("from_dlpack", [](py::object data, bool is_bool_tensor = false) {
-        DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data.ptr(), "dltensor");
-        OrtValue ort_value = dlpack::DlpackToOrtValue(dlmanaged_tensor, is_bool_tensor);
-        // Make sure this capsule will never be used again.
-        PyCapsule_SetName(data.ptr(), "used_dltensor");
-        return ort_value;
+        return FromDlpack(data, is_bool_tensor);
       })
 #endif
       ;

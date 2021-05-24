@@ -175,9 +175,8 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
 
 
 def deepcopy_model_input(*inputs, **kwargs):
-    sample_inputs_copy = []
-    for model_input in inputs:
-        sample_inputs_copy.append(model_input.data if isinstance(model_input, torch.Tensor) else model_input)
+    sample_inputs_copy = [model_input.data if isinstance(model_input, torch.Tensor) else model_input
+                          for model_input in inputs]
     sample_inputs_copy = copy.deepcopy(tuple(sample_inputs_copy))
 
     sample_kwargs_copy = {}
@@ -406,7 +405,7 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
     # ONNX exporter may remove unused inputs
     onnx_graph_input_names = []
     if onnx_graph is not None:
-        onnx_graph_input_names = set([inp.name for inp in onnx_graph.graph.input])
+        onnx_graph_input_names = {inp.name for inp in onnx_graph.graph.input}
 
     input_names = []
     dynamic_axes = {}

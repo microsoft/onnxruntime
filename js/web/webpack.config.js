@@ -43,7 +43,20 @@ function buildConfig({ filename, format, target, mode, devtool }) {
         type: format
       }
     },
-    resolve: { extensions: ['.ts', '.js'] },
+    resolve: {
+      extensions: ['.ts', '.js'],
+      alias: {
+        "util": false,
+      },
+      fallback: {
+        "fs": false,
+        "path": false,
+        "util": false,
+        "os": false,
+        "worker_threads": false,
+        "perf_hooks": false,
+      }
+    },
     plugins: [new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] })],
     module: {
       rules: [{
@@ -57,7 +70,7 @@ function buildConfig({ filename, format, target, mode, devtool }) {
           }
         ]
       }, {
-        test: /\.worker.js$/,
+        test: /ort-wasm.*\.worker\.js$/,
         type: 'asset/source'
       }]
     },
@@ -66,10 +79,9 @@ function buildConfig({ filename, format, target, mode, devtool }) {
   };
 
   if (mode === 'production') {
-    config.resolve.alias = {
-      './binding/ort-wasm-threaded.js': './binding/ort-wasm-threaded.min.js',
-      './binding/ort-wasm-threaded.worker.js': './binding/ort-wasm-threaded.min.worker.js'
-    };
+    config.resolve.alias['./binding/ort-wasm-threaded.js'] = './binding/ort-wasm-threaded.min.js';
+    config.resolve.alias['./binding/ort-wasm-threaded.worker.js'] = './binding/ort-wasm-threaded.min.worker.js';
+
     const options = defaultTerserPluginOptions();
     options.terserOptions.format.preamble = COPYRIGHT_BANNER;
     config.plugins.push(new TerserPlugin(options));
@@ -90,8 +102,6 @@ function buildOrtConfig({
   const config = buildConfig({ filename: `ort${suffix}.js`, format: 'umd', target, mode, devtool });
   // set global name 'ort'
   config.output.library.name = 'ort';
-  // do not use those node builtin modules in browser
-  config.resolve.fallback = { path: false, fs: false, util: false };
   return config;
 }
 
@@ -150,8 +160,11 @@ function buildTestRunnerConfig({
       '../../node': '../../node'
     },
     resolve: {
+      alias: {
+        // make sure to refer to original source files instead of generated bundle in test-main.
+        '..$': '../lib/index'
+      },
       extensions: ['.ts', '.js'],
-      aliasFields: [],
       fallback: {
         './binding/ort-wasm.js': false,
         './binding/ort-wasm-threaded.js': false,
@@ -174,7 +187,7 @@ function buildTestRunnerConfig({
           }
         ]
       }, {
-        test: /\.worker\.js$/,
+        test: /ort-wasm.*\.worker\.js$/,
         type: 'asset/source'
       }]
     },

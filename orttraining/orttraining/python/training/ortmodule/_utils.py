@@ -22,6 +22,11 @@ def _ortvalue_from_torch_tensor(torch_tensor):
     return C.OrtValue.from_dlpack(to_dlpack(torch_tensor), torch_tensor.dtype == torch.bool)
 
 
+def _torch_tensor_from_dl_pack(dlpack, ortvalue):
+    torch_tensor = from_dlpack(dlpack)
+    return torch_tensor.to(torch.bool) if ortvalue.data_type() == 'tensor(bool)' else torch_tensor
+
+
 def _check_same_device(device, argument_str, *args):
     '''Check that all tensor arguments in *args reside on the same device as the input device'''
 
