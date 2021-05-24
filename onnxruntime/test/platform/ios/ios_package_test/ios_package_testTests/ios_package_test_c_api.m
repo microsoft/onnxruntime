@@ -85,7 +85,6 @@
   ASSERT_ON_ERROR(g_ort->GetTensorMutableData(output_tensor, (void**)&output_values));
 
   for (size_t i = 0; i < input_tensor_size; i++) {
-    NSLog(@"%1.10f\t%1.10f", expected_output_values[i], output_values[i]);
     XCTAssertEqualWithAccuracy(expected_output_values[i], output_values[i], 1e-6);
   }
 

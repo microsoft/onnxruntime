@@ -62,7 +62,6 @@
   // Get pointer to output tensor float values
   float* output_values = output_tensors.front().GetTensorMutableData<float>();
   for (size_t i = 0; i < input_tensor_size; i++) {
-    NSLog(@"%1.10f\t%1.10f", expected_output_values[i], output_values[i]);
     XCTAssertEqualWithAccuracy(expected_output_values[i], output_values[i], 1e-6);
   }
 }
