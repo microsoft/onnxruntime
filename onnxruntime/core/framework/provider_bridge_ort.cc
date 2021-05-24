@@ -705,6 +705,13 @@ ProviderOptions GetProviderInfo_Tensorrt() {
 
 }  // namespace onnxruntime
 
+static char* StrDup(const std::string& str, _Inout_ OrtAllocator* allocator) {
+  char* output_string = reinterpret_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
+  memcpy(output_string, str.c_str(), str.size());
+  output_string[str.size()] = '\0';
+  return output_string;
+}
+
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
   auto factory = onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena);
   if (!factory) {
@@ -796,8 +803,6 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
   return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
 #endif
 }
-
-extern char* StrDup(const std::string& str, _Inout_ OrtAllocator* allocator);
 
 ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptions, _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** ptr) {
