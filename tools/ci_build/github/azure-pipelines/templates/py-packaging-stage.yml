@@ -203,7 +203,7 @@ stages:
                   --skip_submodule_sync \
                   --parallel \
                   --build_wheel \
-                  --enable_onnx_tests --use_cuda --cuda_version=11.1 --cuda_home=/usr/local/cuda-11.1 --cudnn_home=/usr/local/cuda-11.1 \
+                  --enable_onnx_tests --use_cuda --cuda_version=11.1 --cuda_home=/usr/local/cuda-11.1 --cudnn_home=/usr/local/cuda-11.1 --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=35;37;50;52;60;61;70;75;80;86'\
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-9/root/usr/bin/cc
           workingDirectory: $(Build.SourcesDirectory)
