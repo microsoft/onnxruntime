@@ -20,6 +20,7 @@
 #include "core/framework/provider_bridge_ort.h"
 #include "core/framework/provider_options_utils.h"
 #include "core/framework/random_seed.h"
+#include "core/framework/sparse_tensor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
 #include "core/graph/graph_viewer.h"
@@ -1033,7 +1034,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
         }
       });
 #ifdef ENABLE_TRAINING
-   m.def(
+  m.def(
       "register_aten_op_executor", [](const std::string& aten_op_executor_address_str) -> void {
         size_t aten_op_executor_address_int;
         ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
@@ -1321,11 +1322,13 @@ void addOpSchemaSubmodule(py::module& m) {
       .value("INT", ONNX_NAMESPACE::AttributeProto::INT)
       .value("STRING", ONNX_NAMESPACE::AttributeProto::STRING)
       .value("TENSOR", ONNX_NAMESPACE::AttributeProto::TENSOR)
+      .value("SPARSE_TENSOR", ONNX_NAMESPACE::AttributeProto::SPARSE_TENSOR)
       .value("GRAPH", ONNX_NAMESPACE::AttributeProto::GRAPH)
       .value("FLOATS", ONNX_NAMESPACE::AttributeProto::FLOATS)
       .value("INTS", ONNX_NAMESPACE::AttributeProto::INTS)
       .value("STRINGS", ONNX_NAMESPACE::AttributeProto::STRINGS)
       .value("TENSORS", ONNX_NAMESPACE::AttributeProto::TENSORS)
+      .value("SPARSE_TENSORS", ONNX_NAMESPACE::AttributeProto::SPARSE_TENSORS)
       .value("GRAPHS", ONNX_NAMESPACE::AttributeProto::GRAPHS);
 
   // Keep this binding local to this module
@@ -1405,7 +1408,7 @@ void addObjectMethods(py::module& m, Environment& env) {
   ortvalue_binding
       // Factory method to create an OrtValue (Tensor) from the given Numpy object
       // The Tensor allocates and manages its own memory (on the specified device) and copies data from the Numpy data buffer
-      .def_static("ortvalue_from_numpy", [](py::object& array_on_cpu, OrtDevice& device) {
+      .def_static("ortvalue_from_numpy", [](py::object& array_on_cpu, const OrtDevice& device) {
         if (!IsNumericNumpyArray(array_on_cpu)) {
           throw std::runtime_error("Creation of OrtValues is currently only supported from non-string numpy arrays");
         }
@@ -1454,7 +1457,7 @@ void addObjectMethods(py::module& m, Environment& env) {
 
       // Factory method to create an OrtValue (Tensor) from the given shape and element type with memory on the specified device
       // The memory is left uninitialized
-      .def_static("ortvalue_from_shape_and_type", [](std::vector<int64_t>& shape, py::object& element_type, OrtDevice& device) {
+      .def_static("ortvalue_from_shape_and_type", [](const std::vector<int64_t>& shape, py::object& element_type, const OrtDevice& device) {
         PyArray_Descr* dtype;
         if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
           throw std::runtime_error("Not a valid numpy type");
@@ -1497,6 +1500,7 @@ void addObjectMethods(py::module& m, Environment& env) {
 
         return ml_value;
       })
+      // Get a pointer to Tensor data
       .def("data_ptr", [](OrtValue* ml_value) -> int64_t {
         // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
@@ -1510,18 +1514,22 @@ void addObjectMethods(py::module& m, Environment& env) {
         // Should cover x86 and x64 platforms
         return reinterpret_cast<int64_t>(tensor->MutableDataRaw());
       })
-      .def("device_name", [](OrtValue* ml_value) -> std::string {
-        // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
-        ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
-
-        return std::string(GetDeviceName(ml_value->Get<Tensor>().Location().device));
+      .def("device_name", [](const OrtValue* ort_value) -> std::string {
+        if (ort_value->IsTensor()) {
+          return std::string(GetDeviceName(ort_value->Get<Tensor>().Location().device));
+        } else {
+          ORT_THROW("Only OrtValues that are Tensors are currently supported");
+        }
       })
-      .def("shape", [](OrtValue* ml_value) -> py::list {
-        // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
-        ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
+      .def("shape", [](const OrtValue* ort_value) -> py::list {
+        // OrtValue can only be a Tensor/SparseTensor, make this generic to handle non-Tensors
+        ORT_ENFORCE(ort_value->IsTensor() || ort_value->IsSparseTensor(),
+                    "Only OrtValues that are Tensors/SpareTensors are currently supported");
 
         py::list shape_arr;
-        const auto& dims = ml_value->Get<Tensor>().Shape().GetDims();
+        const auto& dims = (ort_value->IsTensor())
+                               ? ort_value->Get<Tensor>().Shape().GetDims()
+                               : ort_value->Get<SparseTensor>().Shape().GetDims();
 
         for (auto dim : dims) {
           // For sequence tensors - we would append a list of dims to the outermost list
@@ -1531,23 +1539,38 @@ void addObjectMethods(py::module& m, Environment& env) {
 
         return shape_arr;
       })
-      .def("data_type", [](OrtValue* ml_value) -> std::string {
-        // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
-        ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
+      .def("data_type", [](const OrtValue* ort_value) -> std::string {
+        const ONNX_NAMESPACE::TypeProto* type_proto;
+        // Handle gutless types first to get the actual type
+        if (ort_value->IsTensor()) {
+          auto elem_type = ort_value->Get<Tensor>().GetElementType();
+          type_proto = DataTypeImpl::TensorTypeFromONNXEnum(elem_type)->GetTypeProto();
+        } else if (ort_value->IsSparseTensor()) {
+          auto elem_type = ort_value->Get<SparseTensor>().Values().GetElementType();
+          type_proto = DataTypeImpl::SparseTensorTypeFromONNXEnum(elem_type)->GetTypeProto();
+        } else if (ort_value->IsTensorSequence()) {
+          auto elem_type = ort_value->Get<TensorSeq>().DataType()->AsPrimitiveDataType()->GetDataType();
+          type_proto = DataTypeImpl::SequenceTensorTypeFromONNXEnum(elem_type)->GetTypeProto();
+        } else {
+          // Plane sequences and maps probably have their specific type
+          type_proto = ort_value->Type()->GetTypeProto();
+        }
 
-        // Currently only "tensor" OrtValues are supported
-        std::ostringstream ostr;
-        ostr << "tensor";
-        ostr << "(";
-        ostr << DataTypeImpl::ToString(ml_value->Get<Tensor>().DataType());
-        ostr << ")";
+        ORT_ENFORCE(type_proto != nullptr, "Unknown type of OrtValue: ", ort_value->Type());
 
-        return ostr.str();
+        return *ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto);
       })
-      .def("is_tensor", [](OrtValue* ml_value) -> bool {
-        return ml_value->IsTensor();
+      .def("is_tensor", [](const OrtValue* ort_value) -> bool {
+        return ort_value->IsTensor();
       })
-      .def("numpy", [](OrtValue* ml_value) -> py::object {
+      .def("is_sparse_tensor", [](const OrtValue* ort_value) -> bool {
+        return ort_value->IsSparseTensor();
+      })
+      .def("is_tensor_sequence", [](const OrtValue* ort_value) -> bool {
+        return ort_value->IsTensorSequence();
+      })
+      // Converts Tensor into a numpy array
+      .def("numpy", [](const OrtValue* ml_value) -> py::object {
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are convertible to Numpy objects");
 
         py::object obj;
@@ -1577,6 +1600,7 @@ void addObjectMethods(py::module& m, Environment& env) {
         auto sess_io_binding = std::make_unique<SessionIOBinding>(sess->GetSessionHandle());
         return sess_io_binding;
       }))
+      // May create Tensor/Sequence based OrtValues. Use bind_ortvalue_input for universal binding.
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, py::object& arr_on_cpu) -> void {
         InferenceSession* sess = io_binding->GetInferenceSession();
         auto px = sess->GetModelInputs();
@@ -1592,7 +1616,7 @@ void addObjectMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Only binding Tensors is currently supported");
         }
 
-        ORT_ENFORCE(type_proto.tensor_type().has_elem_type());
+        ORT_ENFORCE(utils::HasTensorType(type_proto) && utils::HasElemType(type_proto.tensor_type()));
         if (type_proto.tensor_type().elem_type() == onnx::TensorProto::STRING) {
           throw std::runtime_error("Only binding non-string Tensors is currently supported");
         }
@@ -1606,6 +1630,7 @@ void addObjectMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when bind input: " + status.ErrorMessage());
         }
       })
+      // This binds input as a Tensor that wraps memory pointer along with the OrtMemoryInfo
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object& element_type, std::vector<int64_t>& shape, int64_t data_ptr) -> void {
         ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is not valid");
 
@@ -1630,12 +1655,15 @@ void addObjectMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when binding input: " + status.ErrorMessage());
         }
       })
-      .def("bind_ortvalue_input", [](SessionIOBinding* io_binding, const std::string& name, OrtValue& ml_value) -> void {
+      // This binds input as an OrtValue which may contain various types and point to the user pre-allocated
+      // buffers
+      .def("bind_ortvalue_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtValue& ml_value) -> void {
         auto status = io_binding->Get()->BindInput(name, ml_value);
         if (!status.IsOK()) {
           throw std::runtime_error("Error when binding input: " + status.ErrorMessage());
         }
       })
+      // This binds output to a pre-allocated memory as a Tensor
       .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, py::object& element_type, std::vector<int64_t>& shape, int64_t data_ptr) -> void {
         ORT_ENFORCE(data_ptr != 0, "Pointer to data memory is not valid");
 
@@ -1646,7 +1674,6 @@ void addObjectMethods(py::module& m, Environment& env) {
         }
 
         // For now, limit binding support to only non-string Tensors
-        // TODO: Support non-tensors
         const auto& def_list = *px.second;
         onnx::TypeProto type_proto;
         if (!CheckIfTensor(def_list, name, type_proto)) {
@@ -1679,13 +1706,15 @@ void addObjectMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when binding output: " + status.ErrorMessage());
         }
       })
+      // This binds output to a device. Meaning that the output OrtValue must be allocated on a specific device.
       .def("bind_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device) -> void {
         auto status = io_binding->Get()->BindOutput(name, device);
         if (!status.IsOK()) {
           throw std::runtime_error("Error when binding output: " + status.ErrorMessage());
         }
       })
-      .def("bind_ortvalue_output", [](SessionIOBinding* io_binding, const std::string& name, OrtValue& ml_value) -> void {
+      // Binds output to a pre-constructed OrtValue which may contain various elements (e.g. Tensor/SparseTensor/TensorSequece)
+      .def("bind_ortvalue_output", [](SessionIOBinding* io_binding, const std::string& name, const OrtValue& ml_value) -> void {
         auto status = io_binding->Get()->BindOutput(name, ml_value);
         if (!status.IsOK()) {
           throw std::runtime_error("Error when binding output: " + status.ErrorMessage());
@@ -1697,18 +1726,20 @@ void addObjectMethods(py::module& m, Environment& env) {
       .def("clear_binding_outputs", [](SessionIOBinding* io_binding) -> void {
         io_binding->Get()->ClearOutputs();
       })
-      .def("get_outputs", [](SessionIOBinding* io_binding) -> std::vector<OrtValue>& {
-        return io_binding->Get()->GetOutputs();
-      })
-      .def("copy_outputs_to_cpu", [](SessionIOBinding* io_binding) -> std::vector<py::object> {
+      .def(
+          "get_outputs", [](const SessionIOBinding* io_binding) -> const std::vector<OrtValue>& {
+            return io_binding->Get()->GetOutputs();
+          },
+          py::return_value_policy::reference_internal)
+      .def("copy_outputs_to_cpu", [](const SessionIOBinding* io_binding) -> std::vector<py::object> {
         const std::vector<OrtValue>& outputs = io_binding->Get()->GetOutputs();
         std::vector<py::object> rfetch;
         rfetch.reserve(outputs.size());
-        for (const auto& _ : outputs) {
-          if (_.IsTensor()) {
-            AddTensorAsPyObj(_, rfetch, &io_binding->GetInferenceSession()->GetDataTransferManager(), nullptr);
+        for (const auto& ort_value : outputs) {
+          if (ort_value.IsTensor()) {
+            AddTensorAsPyObj(ort_value, rfetch, &io_binding->GetInferenceSession()->GetDataTransferManager(), nullptr);
           } else {
-            AddNonTensorAsPyObj(_, rfetch, &io_binding->GetInferenceSession()->GetDataTransferManager(), nullptr);
+            AddNonTensorAsPyObj(ort_value, rfetch, &io_binding->GetInferenceSession()->GetDataTransferManager(), nullptr);
           }
         }
         return rfetch;
@@ -1833,7 +1864,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           R"pbdoc(Set a single session configuration entry as a pair of strings.)pbdoc")
       .def(
           "get_session_config_entry",
-          [](PySessionOptions* options, const char* config_key) -> std::string {
+          [](const PySessionOptions* options, const char* config_key) -> std::string {
             const std::string key(config_key);
             std::string value;
             if (!options->config_options.TryGetConfigEntry(key, value))
@@ -1844,8 +1875,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
           R"pbdoc(Get a single session configuration value using the given configuration key.)pbdoc")
       .def(
           "register_custom_ops_library",
-          [](PySessionOptions* options, const char* library_path)
-              -> void {
+          [](PySessionOptions* options, const char* library_path) -> void {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
             // We need to pass in an `OrtSessionOptions` instance because the exported method in the shared library expects that
             // Once we have access to the `OrtCustomOpDomains` within the passed in `OrtSessionOptions` instance, we place it
@@ -1872,7 +1902,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             // The user needs to ensure that the python OrtValue being provided as an overriding initializer
             // is not destructed as long as any session that uses the provided OrtValue initializer is still in scope
             // This is no different than the native APIs
-            OrtValue* ml_value = ml_value_pyobject.attr(PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR).cast<OrtValue*>();
+            const OrtValue* ml_value = ml_value_pyobject.attr(PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR).cast<OrtValue*>();
             options->AddInitializer(name, ml_value);
           });
 
@@ -2050,42 +2080,56 @@ including arg name, arg type (contains both type and shape).)pbdoc")
              }
              return rfetch;
            })
-      .def("end_profiling", [](PyInferenceSession* sess) -> std::string {
+      .def("end_profiling", [](const PyInferenceSession* sess) -> std::string {
         return sess->GetSessionHandle()->EndProfiling();
       })
       .def_property_readonly("get_profiling_start_time_ns", [](const PyInferenceSession* sess) -> uint64_t {
         return sess->GetSessionHandle()->GetProfiling().GetStartTimeNs();
       })
-      .def("get_providers", [](PyInferenceSession* sess) -> const std::vector<std::string>& {
-        return sess->GetSessionHandle()->GetRegisteredProviderTypes();
-      })
-      .def("get_provider_options", [](const PyInferenceSession* sess) -> const ProviderOptionsMap& {
-        return sess->GetSessionHandle()->GetAllProviderOptions();
-      })
-      .def_property_readonly("session_options", [](PyInferenceSession* sess) -> const PySessionOptions& {
-        const auto& session_options = sess->GetSessionHandle()->GetSessionOptions();
-        return static_cast<const PySessionOptions&>(session_options);
-      })
-      .def_property_readonly("inputs_meta", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
-        auto res = sess->GetSessionHandle()->GetModelInputs();
-        OrtPybindThrowIfError(res.first);
-        return *(res.second);
-      })
-      .def_property_readonly("outputs_meta", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
-        auto res = sess->GetSessionHandle()->GetModelOutputs();
-        OrtPybindThrowIfError(res.first);
-        return *(res.second);
-      })
-      .def_property_readonly("overridable_initializers", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
-        auto res = sess->GetSessionHandle()->GetOverridableInitializers();
-        OrtPybindThrowIfError(res.first);
-        return *(res.second);
-      })
-      .def_property_readonly("model_meta", [](const PyInferenceSession* sess) -> const onnxruntime::ModelMetadata& {
-        auto res = sess->GetSessionHandle()->GetModelMetadata();
-        OrtPybindThrowIfError(res.first);
-        return *(res.second);
-      })
+      .def(
+          "get_providers", [](const PyInferenceSession* sess) -> const std::vector<std::string>& {
+            return sess->GetSessionHandle()->GetRegisteredProviderTypes();
+          },
+          py::return_value_policy::reference_internal)
+      .def(
+          "get_provider_options", [](const PyInferenceSession* sess) -> const ProviderOptionsMap& {
+            return sess->GetSessionHandle()->GetAllProviderOptions();
+          },
+          py::return_value_policy::reference_internal)
+      .def_property_readonly(
+          "session_options", [](const PyInferenceSession* sess) -> const PySessionOptions& {
+            const auto& session_options = sess->GetSessionHandle()->GetSessionOptions();
+            return static_cast<const PySessionOptions&>(session_options);
+          },
+          py::return_value_policy::reference_internal)
+      .def_property_readonly(
+          "inputs_meta", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
+            auto res = sess->GetSessionHandle()->GetModelInputs();
+            OrtPybindThrowIfError(res.first);
+            return *(res.second);
+          },
+          py::return_value_policy::reference_internal)
+      .def_property_readonly(
+          "outputs_meta", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
+            auto res = sess->GetSessionHandle()->GetModelOutputs();
+            OrtPybindThrowIfError(res.first);
+            return *(res.second);
+          },
+          py::return_value_policy::reference_internal)
+      .def_property_readonly(
+          "overridable_initializers", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
+            auto res = sess->GetSessionHandle()->GetOverridableInitializers();
+            OrtPybindThrowIfError(res.first);
+            return *(res.second);
+          },
+          py::return_value_policy::reference_internal)
+      .def_property_readonly(
+          "model_meta", [](const PyInferenceSession* sess) -> const onnxruntime::ModelMetadata& {
+            auto res = sess->GetSessionHandle()->GetModelMetadata();
+            OrtPybindThrowIfError(res.first);
+            return *(res.second);
+          },
+          py::return_value_policy::reference_internal)
       .def("run_with_iobinding", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
         Status status;
         if (!run_options)

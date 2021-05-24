@@ -24,6 +24,14 @@ class TestIOBinding(unittest.TestCase):
     def create_expected_output_alternate(self):
         return np.array([[2.0, 8.0], [18.0, 32.0], [50.0, 72.0]], dtype=np.float32)
 
+    def test_ort_value_properties(self):
+        ort_value = onnxruntime.OrtValue.ortvalue_from_numpy(np.array([2.0, 4.0]), 'cpu', 0)
+        self.assertTrue(ort_value.is_tensor())
+        shape = ort_value.shape()
+        self.assertTrue([2], shape)
+        type_str = ort_value.data_type()
+        self.assertEqual('tensor(float)', type_str)
+
     def test_bind_input_to_cpu_arr(self):
         input = self.create_numpy_input()
 
