@@ -91,9 +91,8 @@ source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 onnxruntime_add_static_library(onnxruntime_common ${onnxruntime_common_src})
 
 if (onnxruntime_USE_CUDA)
-  target_include_directories(onnxruntime_common PUBLIC ${onnxruntime_CUDA_HOME}/include ${onnxruntime_CUDA_HOME}/extras/CUPTI/include)
-  target_link_directories(onnxruntime_common PUBLIC ${onnxruntime_CUDA_HOME}/extras/CUPTI/lib64)
-  target_link_libraries(onnxruntime_common cupti)
+  # Some files, like the provider_bridge_ort include files that depend on cuda headers
+  target_include_directories(onnxruntime_common PUBLIC ${onnxruntime_CUDA_HOME}/include)
 endif()
 
 if (onnxruntime_USE_TELEMETRY)

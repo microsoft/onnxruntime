@@ -22,10 +22,10 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(0)   /* CPU variable */
-        .InputMemoryType<OrtMemTypeCPUInput>(1)   /* CPU variable */
-        .OutputMemoryType<OrtMemTypeCPUOutput>(0) /* CPU variable */
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0)   /* CPU variable */
+        .InputMemoryType(OrtMemTypeCPUInput, 1)   /* CPU variable */
+        .OutputMemoryType(OrtMemTypeCPUOutput, 0) /* CPU variable */
         .TypeConstraint("TBool", DataTypeImpl::GetTensorType<bool>())
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
@@ -67,10 +67,10 @@ void Send::SendData(
 
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
     CUDA_CALL(cudaMemcpyAsync(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
-                         tensor_sizes_in_bytes[i], cudaMemcpyDeviceToDevice, Stream()));
+                              tensor_sizes_in_bytes[i], cudaMemcpyDeviceToDevice, Stream()));
 #else
     CUDA_CALL(cudaMemcpyAsync(buffer.get() + tensor_offsets_in_bytes[i], tensor->DataRaw(),
-                         tensor_sizes_in_bytes[i], cudaMemcpyDeviceToHost, Stream()));
+                              tensor_sizes_in_bytes[i], cudaMemcpyDeviceToHost, Stream()));
 #endif
   }
 

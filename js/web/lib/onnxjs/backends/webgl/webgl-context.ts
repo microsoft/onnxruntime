@@ -520,6 +520,7 @@ export class WebGLContext {
     if (this.version === 2) {
       const gl2 = this.gl as WebGL2RenderingContext;
       timeElapsed = gl2.getQueryParameter(query, gl2.QUERY_RESULT);
+      gl2.deleteQuery(query);
     } else {
       // TODO: add webgl 1 handling.
       throw new Error('WebGL1 profiling currently not supported');

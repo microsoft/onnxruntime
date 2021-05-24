@@ -34,9 +34,6 @@
 
 // execution provider factory creator headers
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_provider_factory_creator.h"
-#endif
 #ifdef USE_ROCM
 #include "core/providers/rocm/rocm_provider_factory_creator.h"
 #endif
@@ -146,9 +143,7 @@ struct OrtStatus {
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 #ifdef USE_CUDA
-#include "core/providers/cuda/shared_inc/cuda_call.h"
-#include "core/providers/cuda/cuda_execution_provider.h"
-#include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
 // TODO remove deprecated global config
 OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
 // TODO remove deprecated global config
@@ -170,6 +165,9 @@ size_t gpu_mem_limit = std::numeric_limits<size_t>::max();
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
 
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_factory.h"
+#endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #endif
@@ -208,11 +206,16 @@ const OrtDevice::DeviceType OrtDevice::GPU;
 namespace onnxruntime {
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* params);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
+#ifdef USE_CUDA
+ProviderInfo_CUDA* GetProviderInfo_CUDA();
+#endif
 #ifdef USE_OPENVINO
-const ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
+ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
 #endif
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id);
@@ -468,8 +471,7 @@ static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
 #ifdef USE_CUDA
 
 static bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
-  int num_devices = 0;
-  CUDA_CALL_THROW(cudaGetDeviceCount(&num_devices));
+  int num_devices = GetProviderInfo_CUDA()->cudaGetDeviceCount();
 
   if (0 == num_devices) {
     LOGS(logger, WARNING) << "your system does not have a CUDA capable device.";
@@ -487,22 +489,23 @@ static bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int 
 static AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
   // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
   // multi-threaded CUDA allocation work we need to maintain a per-thread CUDA allocator
-  static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
 
-  if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
+  static auto* id_to_allocator_map = new std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>();
+
+  if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
     // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
-    id_to_allocator_map.insert({id, CUDAExecutionProvider::CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, nullptr)});
+    id_to_allocator_map->insert({id, GetProviderInfo_CUDA()->CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, nullptr)});
   }
 
-  return id_to_allocator_map[id];
+  return (*id_to_allocator_map)[id];
 }
 
 static void CpuToCudaMemCpy(void* dst, const void* src, size_t num_bytes) {
-  CUDA_CALL_THROW(cudaMemcpy(dst, src, num_bytes, cudaMemcpyHostToDevice));
+  GetProviderInfo_CUDA()->cudaMemcpy_HostToDevice(dst, src, num_bytes);
 }
 
 static void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
-  CUDA_CALL_THROW(cudaMemcpy(dst, src, num_bytes, cudaMemcpyDeviceToHost));
+  GetProviderInfo_CUDA()->cudaMemcpy_DeviceToHost(dst, src, num_bytes);
 }
 
 static const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
@@ -575,29 +578,28 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
                                           sess->GetSessionOptions().enable_cpu_mem_arena));
     } else if (type == kTensorrtExecutionProvider) {
 #ifdef USE_TENSORRT
-      OrtTensorRTProviderOptions params{
-          0,
-          0,
-          nullptr,
-          1000,
-          1,
-          1 << 30,
-          0,
-          0,
-          nullptr,
-          0,
-          0,
-          0,
-          0,
-          0,
-          nullptr,
-          0,
-          nullptr,
-          0};
-
       std::string calibration_table, cache_path, lib_path;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
+        OrtTensorRTProviderOptions params{
+            0,
+            0,
+            nullptr,
+            1000,
+            1,
+            1 << 30,
+            0,
+            0,
+            nullptr,
+            0,
+            0,
+            0,
+            0,
+            0,
+            nullptr,
+            0,
+            nullptr,
+            0};
         for (auto option : it->second) {
           if (option.first == "device_id") {
             if (!option.second.empty()) {
@@ -718,8 +720,10 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
           }
         }
+        RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Tensorrt(&params));
+      } else {
+        RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Tensorrt(cuda_device_id));
       }
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Tensorrt(&params));
 #endif
     } else if (type == kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
@@ -728,26 +732,23 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
       const auto it = provider_options_map.find(type);
-      const CUDAExecutionProviderInfo info =
-          it != provider_options_map.end()
-              ? CUDAExecutionProviderInfo::FromProviderOptions(it->second)
-              : [&]() {
-                  CUDAExecutionProviderInfo info{};
-                  info.device_id = cuda_device_id;
-                  info.gpu_mem_limit = gpu_mem_limit;
-                  info.arena_extend_strategy = arena_extend_strategy;
-                  info.cudnn_conv_algo_search = cudnn_conv_algo_search;
-                  info.do_copy_in_default_stream = do_copy_in_default_stream;
-                  info.external_allocator_info = external_allocator_info;
-                  return info;
-                }();
+      CUDAExecutionProviderInfo info{};
+      if (it != provider_options_map.end())
+        GetProviderInfo_CUDA()->CUDAExecutionProviderInfo__FromProviderOptions(it->second, info);
+      else {
+        info.device_id = cuda_device_id;
+        info.gpu_mem_limit = gpu_mem_limit;
+        info.arena_extend_strategy = arena_extend_strategy;
+        info.cudnn_conv_algo_search = cudnn_conv_algo_search;
+        info.do_copy_in_default_stream = do_copy_in_default_stream;
+        info.external_allocator_info = external_allocator_info;
+      }
 
       // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
       // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
       // since FromProviderOptions might contain external CUDA allocator.
       external_allocator_info = info.external_allocator_info;
-      RegisterExecutionProvider(
-          sess, *onnxruntime::CreateExecutionProviderFactory_CUDA(info));
+      RegisterExecutionProvider(sess, *GetProviderInfo_CUDA()->CreateExecutionProviderFactory(info));
 #endif
     } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
@@ -1335,20 +1336,6 @@ void addOpSchemaSubmodule(py::module& m) {
 
 #endif  //onnxruntime_PYBIND_EXPORT_OPSCHEMA
 
-#ifdef ENABLE_TRAINING
-void DlpackCapsuleDestructor(PyObject* data) {
-  DLManagedTensor* dlmanged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data, "dltensor");
-  if (dlmanged_tensor) {
-    // the dlmanged_tensor has not been consumed, call deleter ourselves.
-    dlmanged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanged_tensor));
-  } else {
-    // the dlmanged_tensor has been consumed,
-    // PyCapsule_GetPointer has set an error indicator.
-    PyErr_Clear();
-  }
-}
-#endif
-
 void addObjectMethods(py::module& m, Environment& env) {
   py::enum_<GraphOptimizationLevel>(m, "GraphOptimizationLevel")
       .value("ORT_DISABLE_ALL", GraphOptimizationLevel::ORT_DISABLE_ALL)
@@ -1576,16 +1563,10 @@ void addObjectMethods(py::module& m, Environment& env) {
       })
 #ifdef ENABLE_TRAINING
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
-        DLManagedTensor* dlmanaged_tensor = dlpack::OrtValueToDlpack(*ort_value);
-        return py::reinterpret_steal<py::object>(
-            PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor));
+        return ToDlpack(*ort_value);
       })
       .def_static("from_dlpack", [](py::object data, bool is_bool_tensor = false) {
-        DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data.ptr(), "dltensor");
-        OrtValue ort_value = dlpack::DlpackToOrtValue(dlmanaged_tensor, is_bool_tensor);
-        // Make sure this capsule will never be used again.
-        PyCapsule_SetName(data.ptr(), "used_dltensor");
-        return ort_value;
+        return FromDlpack(data, is_bool_tensor);
       })
 #endif
       ;

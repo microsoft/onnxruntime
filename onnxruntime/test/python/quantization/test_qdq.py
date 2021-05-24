@@ -56,7 +56,7 @@ class TestQDQFormatConv(TestQDQFormat):
         graph = helper.make_graph([conv_node], graph_name,
                                   [input_tensor], [output_tensor], initializer=initializers)
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
-        model.ir_version = onnx.IR_VERSION
+        model.ir_version = 7 # use stable onnx ir version
 
         onnx.save(model, output_model_path)
 
@@ -141,7 +141,7 @@ class TestQDQFormatConvClip(TestQDQFormat):
         graph = helper.make_graph([conv_node, clip_node], graph_name,
                                   [input_tensor], [output_tensor], initializer=initializers)
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
-        model.ir_version = onnx.IR_VERSION
+        model.ir_version = 7 # use stable onnx ir version
 
         onnx.save(model, output_model_path)
 

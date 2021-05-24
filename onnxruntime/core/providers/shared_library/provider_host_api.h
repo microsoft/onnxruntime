@@ -12,7 +12,7 @@ struct Provider {
   // Old simple device_id API to create provider factories, currently used by DNNL And TensorRT
   virtual std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int /*device_id*/) { return nullptr; }
 
-  virtual const void* GetInfo() { return nullptr; }  // Returns a provider specific information interface if it exists
+  virtual void* GetInfo() { return nullptr; }  // Returns a provider specific information interface if it exists
 
   virtual const ProviderOptions GetProviderOptions() { return {}; }  // Returns a provider specific information interface if it exists
 

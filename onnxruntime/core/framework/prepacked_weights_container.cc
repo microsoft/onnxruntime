@@ -31,12 +31,12 @@ AllocatorPtr PrepackedWeightsContainer::GetOrCreateAllocator(const std::string& 
 }
 
 const PrePackedWeights& PrepackedWeightsContainer::GetWeight(const std::string& key) const {
-  // .at() will throw if th key doesn't exist
+  // .at() will throw if the key doesn't exist
   return prepacked_weights_map_.at(key);
 }
 
 bool PrepackedWeightsContainer::WriteWeight(const std::string& key, PrePackedWeights&& packed_weight) {
-  auto ret = prepacked_weights_map_.insert({key, std::move(packed_weight)});
+  auto ret = prepacked_weights_map_.insert(std::make_pair(key, std::move(packed_weight)));
   return ret.second;
 }
 
