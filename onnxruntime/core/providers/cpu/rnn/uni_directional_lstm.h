@@ -109,6 +109,17 @@ class UniDirectionalLstm {
   ActivationInfo<deepcpu::LstmMergeGatesFuncPtr> activation_h_;
 
   concurrency::ThreadPool* thread_pool_;
+
+  // Quantized operation related allocation members
+  template <typename WeightT>
+  void AllocateQuantizeBuffers(int max_sequence_length);
+
+  // Buffer shared for quantized input whole, and quantized a each sequence step
+  IAllocatorUniquePtr<uint8_t> quantized_input_or_a_ptr_;
+  gsl::span<uint8_t> quantized_input_or_a_;
+
+  IAllocatorUniquePtr<int32_t> quantize_agg_C_ptr_;
+  gsl::span<int32_t> quantize_agg_C_;
 };
 
 }  // namespace lstm
