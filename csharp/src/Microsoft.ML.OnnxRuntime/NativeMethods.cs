@@ -203,6 +203,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CreateSessionFromArrayWithPrepackedWeightsContainer;
         public IntPtr CreateTensorRTProviderOptions;
         public IntPtr UpdateTensorRTProviderOptions;
+        public IntPtr GetTensorRTProviderOptions;
         public IntPtr ReleaseTensorRTProviderOptions;
     }
 
@@ -361,6 +362,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             OrtCreateTensorRTProviderOptions = (DOrtCreateTensorRTProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateTensorRTProviderOptions, typeof(DOrtCreateTensorRTProviderOptions));
             OrtUpdateTensorRTProviderOptions = (DOrtUpdateTensorRTProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.UpdateTensorRTProviderOptions, typeof(DOrtUpdateTensorRTProviderOptions));
+            OrtGetTensorRTProviderOptions = (DOrtGetTensorRTProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.GetTensorRTProviderOptions, typeof(DOrtGetTensorRTProviderOptions));
             OrtReleaseTensorRTProviderOptions = (DOrtReleaseTensorRTProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseTensorRTProviderOptions, typeof(DOrtReleaseTensorRTProviderOptions));
 
         }
@@ -407,6 +409,16 @@ namespace Microsoft.ML.OnnxRuntime
             IntPtr[] /*(const char* const *)*/ providerOptionsValues,
             UIntPtr /*(size_t)*/ numKeys);
         public static DOrtUpdateTensorRTProviderOptions OrtUpdateTensorRTProviderOptions;
+
+        /// <summary>
+        /// Updates native OrtTensorRTProviderOptions instance using given key/value pairs
+        /// </summary>
+        /// <param name="allocator"></param>
+        /// <param name="ptr"></param>
+        public delegate IntPtr /* OrtStatus* */DOrtGetTensorRTProviderOptions(
+                                                IntPtr /*(OrtAllocator*)*/ allocator,
+                                                out IntPtr /*(char**)*/ptr);
+        public static DOrtGetTensorRTProviderOptions OrtGetTensorRTProviderOptions;
 
         /// <summary>
         /// Releases native OrtTensorRTProviderOptions instance

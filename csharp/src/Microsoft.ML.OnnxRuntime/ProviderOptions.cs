@@ -21,6 +21,8 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        //private string _options;
+
         #region Constructor
 
         /// <summary>
@@ -36,12 +38,31 @@ namespace Microsoft.ML.OnnxRuntime
         #region Public Methods
 
         /// <summary>
+        /// Get TensorRT EP provider options
+        /// </summary>
+        /// <returns> return C# UTF-16 encoded string </returns>
+        public string GetOptions()
+        {
+            var allocator = OrtAllocator.DefaultInstance;
+
+            // Process provider options string
+            IntPtr providerOptions = IntPtr.Zero;
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorRTProviderOptions(allocator.Pointer, out providerOptions));
+            using (var ortAllocation = new OrtMemoryAllocation(allocator, providerOptions, 0))
+            {
+                //_options = NativeOnnxValueHelper.StringFromNativeUtf8(providerOptions);
+                return NativeOnnxValueHelper.StringFromNativeUtf8(providerOptions);
+            }
+
+            //return _options;
+        }
+
+        /// <summary>
         /// Updates  the configuration knobs of OrtTensorRTProviderOptions that will eventually be used to configure a TensorRT EP
         /// Please refer to the following on different key/value pairs to configure a TensorRT EP and their meaning:
         /// https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html
         /// </summary>
         /// <param name="providerOptions">key/value pairs used to configure a TensorRT Execution Provider</param>
-
         public void UpdateOptions(Dictionary<string, string> providerOptions)
         {
 
@@ -85,6 +106,26 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         #endregion
+    }
+
+    /// <summary>
+    /// This helper class contains methods to handle values of provider options
+    /// </summary>
+    public class ProviderOptionsValueHelper
+    {
+        /// <summary>
+        /// Parse from string and save to dictionary
+        /// </summary>
+        public static void StringToDict(string s, Dictionary<string, string> dict)
+        {
+            string[] paris = s.Split(';');
+
+            foreach (var p in paris)
+            {
+                string[] keyValue = p.Split('=');
+                dict.Add(keyValue[0], keyValue[1]);
+            }
+        }
     }
 
 }

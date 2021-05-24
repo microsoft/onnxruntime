@@ -281,5 +281,6 @@ ORT_API_STATUS_IMPL(UpdateTensorRTProviderOptions, _Inout_ OrtTensorRTProviderOp
                     _In_reads_(num_keys) const char* const* provider_options_keys,
                     _In_reads_(num_keys) const char* const* provider_options_values,
                     size_t num_keys);
+ORT_API_STATUS_IMPL(GetTensorRTProviderOptions, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 ORT_API(void, ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptions*);
 }  // namespace OrtApis

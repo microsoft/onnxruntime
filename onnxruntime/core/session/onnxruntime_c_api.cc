@@ -2229,6 +2229,7 @@ static constexpr OrtApi ort_api_1_to_8 = {
     &OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer,
     &OrtApis::CreateTensorRTProviderOptions,
     &OrtApis::UpdateTensorRTProviderOptions,
+    &OrtApis::GetTensorRTProviderOptions,
     &OrtApis::ReleaseTensorRTProviderOptions,
 };
 

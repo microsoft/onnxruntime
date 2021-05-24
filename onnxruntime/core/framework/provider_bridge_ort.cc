@@ -19,6 +19,7 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
 #include "core/framework/provider_options.h"
+#include <iostream>
 
 
 #ifdef USE_TENSORRT
@@ -695,7 +696,25 @@ void UpdateProviderInfo_Tensorrt(OrtTensorRTProviderOptions* provider_options, c
   }
 }
 
+ProviderOptions GetProviderInfo_Tensorrt() {
+  if (auto provider = s_library_tensorrt.Get()) {
+    return provider->GetProviderOptions();
+  }
+
+  return {};
+}
+
 }  // namespace onnxruntime
+
+static char* StrDup(const std::string& str, _Inout_ OrtAllocator* allocator) {
+  std::cout << "In StrDup" << std::endl;
+  std::cout << str << std::endl;
+  char* output_string = reinterpret_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
+  memcpy(output_string, str.c_str(), str.size());
+  output_string[str.size()] = '\0';
+  std::cout << output_string << std::endl;
+  return output_string;
+}
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
   auto factory = onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena);
@@ -752,6 +771,9 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtS
 ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptions** out) {
 #ifdef USE_TENSORRT
   *out = new OrtTensorRTProviderOptions();
+  (*out)->trt_int8_calibration_table_name = nullptr;
+  (*out)->trt_engine_cache_path = nullptr;
+  (*out)->trt_engine_decryption_lib_path = nullptr;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);
@@ -782,6 +804,55 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
   ORT_UNUSED_PARAMETER(provider_options_keys);
   ORT_UNUSED_PARAMETER(provider_options_values);
   ORT_UNUSED_PARAMETER(num_keys);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
+}
+
+/*
+ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptions,
+                    _Outptr_ char** ptr) {
+#ifdef USE_TENSORRT
+  onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Tensorrt();
+  onnxruntime::ProviderOptions::iterator it = options.begin();
+  std::string serialized_str = "";
+
+  while (it != options.end()) {
+    if (serialized_str == "") {
+      serialized_str = it->first + "=" + it->second;
+    }
+    serialized_str = serialized_str + ";" + it->first + "=" + it->second;
+  }
+
+  *ptr = (char*)serialized_str.c_str();
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
+}
+*/
+
+ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptions, _Inout_ OrtAllocator* allocator,
+                    _Outptr_ char** ptr) {
+#ifdef USE_TENSORRT
+  std::cout << "in GetTensorRTProviderOptions" << std::endl;
+  onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Tensorrt();
+  onnxruntime::ProviderOptions::iterator it = options.begin();
+  std::string options_str = "";
+
+  while (it != options.end()) {
+    if (options_str == "") {
+      options_str = it->first + "=" + it->second;
+    } else {
+      options_str += ";" + it->first + "=" + it->second;
+    }
+    it++;
+  }
+  std::cout << options_str << std::endl;
+  *ptr = StrDup(options_str, allocator);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ptr);
   return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
 #endif
 }

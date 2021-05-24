@@ -264,7 +264,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestTensorRTProviderOptions()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
-            string calTablePath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet_calibration.flatbuffers");
+            string calTablePath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet_calibration.flatbuffers"); // file must exists
+            string enginePath = Path.Combine(Directory.GetCurrentDirectory(), "engine.cache.dummy"); // fake path for testing provider options only
+            string engineDecrptLibPath = Path.Combine(Directory.GetCurrentDirectory(), "engine_decryp.lib.dummy"); // fake path for testing provider options only
+
 
             using (var cleanUp = new DisposableListTest<IDisposable>())
             {
@@ -276,8 +279,35 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 providerOptionsDict["trt_fp16_enable"] = "1";
                 providerOptionsDict["trt_int8_enable"] = "1";
                 providerOptionsDict["trt_int8_calibration_table_name"] = calTablePath;
+                providerOptionsDict["trt_engine_cache_enable"] = "0";
+                providerOptionsDict["trt_engine_cache_path"] = enginePath;
+                providerOptionsDict["trt_engine_decryption_enable"] = "0";
+                providerOptionsDict["trt_engine_decryption_lib_path"] = engineDecrptLibPath;
                 trtProviderOptions.UpdateOptions(providerOptionsDict);
 
+                var resultProviderOptionsDict = new Dictionary<string, string>();
+                ProviderOptionsValueHelper.StringToDict(trtProviderOptions.GetOptions(), resultProviderOptionsDict);
+
+                // test provider options configuration
+                string value;
+                value = resultProviderOptionsDict["device_id"];
+                Assert.Equal("0", value);
+                value = resultProviderOptionsDict["trt_fp16_enable"];
+                Assert.Equal("1", value);
+                value = resultProviderOptionsDict["trt_int8_enable"];
+                Assert.Equal("1", value);
+                value = resultProviderOptionsDict["trt_int8_calibration_table_name"];
+                Assert.Equal(value, calTablePath);
+                value = resultProviderOptionsDict["trt_engine_cache_enable"];
+                Assert.Equal("0", value);
+                value = resultProviderOptionsDict["trt_engine_cache_path"];
+                Assert.Equal(value, enginePath);
+                value = resultProviderOptionsDict["trt_engine_decryption_enable"];
+                Assert.Equal("0", value);
+                value = resultProviderOptionsDict["trt_engine_decryption_lib_path"];
+                Assert.Equal(value, engineDecrptLibPath);
+
+                // test correctness of provider options
                 SessionOptions options = new SessionOptions();
                 cleanUp.Add(options);
 
@@ -300,7 +330,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 session.Run(container);
             }
         }
-
 
         [Theory]
         [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, true)]

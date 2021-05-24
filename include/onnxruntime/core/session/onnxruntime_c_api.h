@@ -1383,18 +1383,32 @@ struct OrtApi {
                   _Outptr_ OrtSession** out);
 
   /**
-  * Use this API to create the configuration of a Tensorrt Execution Provider
+  * Use this API to create the configuration of a TensorRT Execution Provider.
   */
   ORT_API2_STATUS(CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptions** out);
 
-
+  /**
+  * Use this API to set appropriate configuration knobs of a TensorRT Execution Provider.
+  * \tensorrt_provider_options - OrtTensorRTProviderOptions instance
+  * \provider_options_keys - array of UTF-8 null-terminated string for provider options keys
+  * \provider_options_values - array of UTF-8 null-terminated string for provider options values
+  * \num_keys - number of keys
+  */
   ORT_API2_STATUS(UpdateTensorRTProviderOptions, _Inout_ OrtTensorRTProviderOptions* tensorrt_provider_options,
                   _In_reads_(num_keys) const char* const* provider_options_keys,
                   _In_reads_(num_keys) const char* const* provider_options_values,
                   _In_ size_t num_keys);
 
   /**
-  * Use this API to release the configuration of a TensorRT Execution Provider
+  * Get configuration of a TensorRT Execution Provider.
+  * \param  allocator - a ptr to an instance of OrtAllocator obtained with CreateAllocator() or GetAllocatorWithDefaultOptions()
+  *                      the specified allocator will be used to allocate continuous buffers for output strings and lengths.
+  * \param buffer - pointer to a continuous buffer of non-zero terminated UTF-8 encoded strings.
+  */
+  ORT_API2_STATUS(GetTensorRTProviderOptions, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
+
+  /**
+  * Use this API to release the configuration of a TensorRT Execution Provider.
   */
   ORT_CLASS_RELEASE(TensorRTProviderOptions);
 };

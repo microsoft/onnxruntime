@@ -7,6 +7,7 @@
 #include "tensorrt_execution_provider.h"
 #include "core/framework/provider_options.h"
 #include <cstring>
+#include <iostream>
 
 using namespace onnxruntime;
 
@@ -85,7 +86,6 @@ struct Tensorrt_Provider : Provider {
     if (internal_options.int8_calibration_table_name.size() == 0) {
       trt_options.trt_int8_calibration_table_name = nullptr;
     } else {
-      //trt_options.trt_int8_calibration_table_name = (const char*)malloc(sizeof(char*) * (internal_options.int8_calibration_table_name.length()+1));
       trt_options.trt_int8_calibration_table_name = new char[internal_options.int8_calibration_table_name.size() + 1];
       strcpy((char*)trt_options.trt_int8_calibration_table_name, internal_options.int8_calibration_table_name.c_str());
     }
@@ -113,11 +113,20 @@ struct Tensorrt_Provider : Provider {
     }
 
     trt_options.trt_force_sequential_engine_build = internal_options.force_sequential_engine_build;
+
+    trt_options_ = trt_options;
+  }
+
+  const ProviderOptions GetProviderOptions() override {
+    return onnxruntime::TensorrtExecutionProviderInfo::ToProviderOptions(trt_options_);
   }
 
   void Shutdown() override {
     Shutdown_DeleteRegistry();
   }
+
+  private:
+   OrtTensorRTProviderOptions trt_options_;
 
 } g_provider;
 

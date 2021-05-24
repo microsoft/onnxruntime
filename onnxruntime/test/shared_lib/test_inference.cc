@@ -1515,8 +1515,6 @@ TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
 
   std::vector<const char*> values{"0", "1", "0", "1", engine_cache_path};
 
-    
-
   ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), 5) == nullptr);
 
   Ort::SessionOptions session_options;
