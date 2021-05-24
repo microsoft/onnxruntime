@@ -30,12 +30,17 @@ def GenerateModel(model_name):
         helper.make_node("Identity", ["X3"], ["id_5"], "id_5"),
         helper.make_node("Add", ["id_5", "int64_1"], ["add_3"], "add_3"),
         helper.make_node("Identity", ["add_3"], ["Y3"], "id_6"),
+        # int64
+        helper.make_node("Identity", ["X4"], ["id_7"], "id_7"),
+        helper.make_node("Add", ["id_7", "int64_2"], ["add_4"], "add_4"),
+        helper.make_node("Identity", ["add_4"], ["Y4"], "id_8"),
     ]
 
     inputs = [  # inputs
             helper.make_tensor_value_info('X1', TensorProto.FLOAT, ['M', 'K']),
             helper.make_tensor_value_info('X2', TensorProto.FLOAT16, ['M', 'K']),
             helper.make_tensor_value_info('X3', TensorProto.INT64, ['M', 'K']),
+            helper.make_tensor_value_info('X4', TensorProto.INT64, ['M', 'K']),
         ]
 
     initializers = [
@@ -43,6 +48,8 @@ def GenerateModel(model_name):
             helper.make_tensor('float16_1', TensorProto.FLOAT16, [1], [0]),
             # int64 - set tensor size to 0
             helper.make_tensor('int64_1', TensorProto.INT64, (), [0]),
+            # higher rank
+            helper.make_tensor('int64_2', TensorProto.INT64, [1,1,1], [0]),
         ]
 
     graph = helper.make_graph(
@@ -53,6 +60,7 @@ def GenerateModel(model_name):
             helper.make_tensor_value_info('Y1', TensorProto.FLOAT, ['M', 'K']),
             helper.make_tensor_value_info('Y2', TensorProto.FLOAT16, ['M', 'K']),
             helper.make_tensor_value_info('Y3', TensorProto.INT64, ['M', 'K']),
+            helper.make_tensor_value_info('Y4', TensorProto.INT64, ['M', 'K', 1]),
         ],
         initializers)
 
