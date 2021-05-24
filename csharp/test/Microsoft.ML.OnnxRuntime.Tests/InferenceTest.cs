@@ -297,15 +297,15 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 value = resultProviderOptionsDict["trt_int8_enable"];
                 Assert.Equal("1", value);
                 value = resultProviderOptionsDict["trt_int8_calibration_table_name"];
-                Assert.Equal(value, calTablePath);
+                Assert.Equal(calTablePath, value);
                 value = resultProviderOptionsDict["trt_engine_cache_enable"];
                 Assert.Equal("0", value);
                 value = resultProviderOptionsDict["trt_engine_cache_path"];
-                Assert.Equal(value, enginePath);
+                Assert.Equal(enginePath, value);
                 value = resultProviderOptionsDict["trt_engine_decryption_enable"];
                 Assert.Equal("0", value);
                 value = resultProviderOptionsDict["trt_engine_decryption_lib_path"];
-                Assert.Equal(value, engineDecrptLibPath);
+                Assert.Equal(engineDecrptLibPath, value);
 
                 // test correctness of provider options
                 SessionOptions options = new SessionOptions();
