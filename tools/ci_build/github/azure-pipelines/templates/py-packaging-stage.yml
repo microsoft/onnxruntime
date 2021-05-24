@@ -1228,7 +1228,7 @@ stages:
 
   - ${{ if eq(parameters.enable_linux_arm, true) }}:
     - job: Linux_ARM_py_Wheels
-      timeoutInMinutes: 60
+      timeoutInMinutes: 120
       workspace:
         clean: all
       pool: 'Linux-CPU'
@@ -1257,7 +1257,6 @@ stages:
         inputs:
           script: |
             set -e -x
-            sudo apt-get install -y qemu-user-static
             docker run --rm \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
