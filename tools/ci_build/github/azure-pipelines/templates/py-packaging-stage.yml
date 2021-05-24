@@ -288,7 +288,7 @@ stages:
                 /onnxruntime_src/tools/ci_build/build.py \
                   --config Release \
                   --use_rocm \
-                    --rocm_version=4.1 \
+                    --rocm_version=4.2 \
                     --rocm_home=/opt/rocm \
                     --nccl_home=/opt/rocm \
                   --update \

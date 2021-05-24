@@ -1,4 +1,4 @@
-ARG BASEIMAGE=rocm/pytorch:rocm4.1.1_centos7_py3.6_pytorch
+ARG BASEIMAGE=rocm/pytorch:rocm4.2_centos7_py3.6_pytorch
 ARG POLICY=manylinux2014
 ARG PLATFORM=x86_64
 ARG DEVTOOLSET_ROOTPATH=
