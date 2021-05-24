@@ -21,10 +21,19 @@ namespace cuda {
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       BatchNorm<T>);                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                       \
+      BatchNormalization,                                         \
+      kOnnxDomain,                                                \
+      9, 13,                                                      \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      BatchNorm<T>);                                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       BatchNormalization,                                         \
       kOnnxDomain,                                                \
-      9,                                                          \
+      14,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
