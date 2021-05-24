@@ -19,7 +19,6 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
 #include "core/framework/provider_options.h"
-#include <iostream>
 
 
 #ifdef USE_TENSORRT
@@ -706,16 +705,6 @@ ProviderOptions GetProviderInfo_Tensorrt() {
 
 }  // namespace onnxruntime
 
-static char* StrDup(const std::string& str, _Inout_ OrtAllocator* allocator) {
-  std::cout << "In StrDup" << std::endl;
-  std::cout << str << std::endl;
-  char* output_string = reinterpret_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
-  memcpy(output_string, str.c_str(), str.size());
-  output_string[str.size()] = '\0';
-  std::cout << output_string << std::endl;
-  return output_string;
-}
-
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
   auto factory = onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena);
   if (!factory) {
@@ -808,34 +797,11 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
 #endif
 }
 
-/*
-ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptions,
-                    _Outptr_ char** ptr) {
-#ifdef USE_TENSORRT
-  onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Tensorrt();
-  onnxruntime::ProviderOptions::iterator it = options.begin();
-  std::string serialized_str = "";
-
-  while (it != options.end()) {
-    if (serialized_str == "") {
-      serialized_str = it->first + "=" + it->second;
-    }
-    serialized_str = serialized_str + ";" + it->first + "=" + it->second;
-  }
-
-  *ptr = (char*)serialized_str.c_str();
-  return nullptr;
-#else
-  ORT_UNUSED_PARAMETER(ptr);
-  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
-#endif
-}
-*/
+extern char* StrDup(const std::string& str, _Inout_ OrtAllocator* allocator);
 
 ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptions, _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** ptr) {
 #ifdef USE_TENSORRT
-  std::cout << "in GetTensorRTProviderOptions" << std::endl;
   onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Tensorrt();
   onnxruntime::ProviderOptions::iterator it = options.begin();
   std::string options_str = "";
@@ -848,7 +814,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptions, _Inout_ OrtAllocator* a
     }
     it++;
   }
-  std::cout << options_str << std::endl;
+
   *ptr = StrDup(options_str, allocator);
   return nullptr;
 #else

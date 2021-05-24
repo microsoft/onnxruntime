@@ -6,8 +6,6 @@
 #include <atomic>
 #include "tensorrt_execution_provider.h"
 #include "core/framework/provider_options.h"
-#include <cstring>
-#include <iostream>
 
 using namespace onnxruntime;
 

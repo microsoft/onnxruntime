@@ -50,7 +50,6 @@ namespace Microsoft.ML.OnnxRuntime
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorRTProviderOptions(allocator.Pointer, out providerOptions));
             using (var ortAllocation = new OrtMemoryAllocation(allocator, providerOptions, 0))
             {
-                //_options = NativeOnnxValueHelper.StringFromNativeUtf8(providerOptions);
                 return NativeOnnxValueHelper.StringFromNativeUtf8(providerOptions);
             }
 

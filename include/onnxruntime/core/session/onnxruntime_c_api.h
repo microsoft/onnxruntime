@@ -1401,9 +1401,9 @@ struct OrtApi {
 
   /**
   * Get configuration of a TensorRT Execution Provider.
-  * \param  allocator - a ptr to an instance of OrtAllocator obtained with CreateAllocator() or GetAllocatorWithDefaultOptions()
+  * \param allocator - a ptr to an instance of OrtAllocator obtained with CreateAllocator() or GetAllocatorWithDefaultOptions()
   *                      the specified allocator will be used to allocate continuous buffers for output strings and lengths.
-  * \param buffer - pointer to a continuous buffer of non-zero terminated UTF-8 encoded strings.
+  * \param ptr - is a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
   */
   ORT_API2_STATUS(GetTensorRTProviderOptions, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 
