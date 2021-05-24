@@ -10,7 +10,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Concat,
                                   kOnnxDomain,
                                   4, 10,
                                   kCudaExecutionProvider,
-                                  KernelDefBuilder()
+                                  (*KernelDefBuilder::Create())
                                       .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   Concat);
 
@@ -19,7 +19,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Concat,
                                   kOnnxDomain,
                                   11, 12,
                                   kCudaExecutionProvider,
-                                  KernelDefBuilder()
+                                  (*KernelDefBuilder::Create())
                                       .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   Concat);
 
@@ -27,7 +27,7 @@ ONNX_OPERATOR_KERNEL_EX(Concat,
                         kOnnxDomain,
                         13,
                         kCudaExecutionProvider,
-                        KernelDefBuilder()
+                        (*KernelDefBuilder::Create())
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                         Concat);
 

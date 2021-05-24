@@ -170,6 +170,7 @@ if platform.system() == 'Linux':
   libs.extend(['libonnxruntime_providers_dnnl.so'])
   libs.extend(['libonnxruntime_providers_tensorrt.so'])
   libs.extend(['libonnxruntime_providers_openvino.so'])
+  libs.extend(['libonnxruntime_providers_cuda.so'])
   # Nuphar Libs
   libs.extend(['libtvm.so.0.5.1'])
   if nightly_build:
@@ -180,6 +181,7 @@ elif platform.system() == "Darwin":
   libs.extend(['libonnxruntime_providers_shared.dylib'])
   libs.extend(['libonnxruntime_providers_dnnl.dylib'])
   libs.extend(['libonnxruntime_providers_tensorrt.dylib'])
+  libs.extend(['libonnxruntime_providers_cuda.dylib'])
   if nightly_build:
     libs.extend(['libonnxruntime_pywrapper.dylib'])
 else:
@@ -189,6 +191,7 @@ else:
   libs.extend(['onnxruntime_providers_dnnl.dll'])
   libs.extend(['onnxruntime_providers_tensorrt.dll'])
   libs.extend(['onnxruntime_providers_openvino.dll'])
+  libs.extend(['onnxruntime_providers_cuda.dll'])
   # DirectML Libs
   libs.extend(['DirectML.dll'])
   # Nuphar Libs
@@ -384,12 +387,14 @@ if enable_training:
 
                 # cudart_versions are integers
                 cudart_versions = find_cudart_versions(build_env=True)
-                if len(cudart_versions) == 1:
+                if cudart_versions and len(cudart_versions) == 1:
                     f.write("cudart_version = {}\n".format(cudart_versions[0]))
                 else:
                     print(
                         "Error getting cudart version. ",
-                        "did not find any cudart library" if len(cudart_versions) == 0 else "found multiple cudart libraries")
+                        "did not find any cudart library"
+                        if not cudart_versions or len(cudart_versions) == 0
+                        else "found multiple cudart libraries")
             else:
                 # TODO: rocm
                 pass

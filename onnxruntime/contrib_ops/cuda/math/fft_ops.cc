@@ -35,7 +35,7 @@ void SetFFTState(FFTState* state,
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Rfft<T>);                                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
@@ -44,7 +44,7 @@ void SetFFTState(FFTState* state,
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Irfft<T>);
 
