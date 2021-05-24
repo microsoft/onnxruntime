@@ -13,7 +13,8 @@ jobs:
           --apple_deploy_target 12.1 \
           --use_xcode \
           --config RelWithDebInfo \
-          --parallel
+          --parallel \
+          --build_apple_framework
       displayName: (CPU EP) Build onnxruntime for iOS x86_64 and run tests using simulator
     - script: |
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
