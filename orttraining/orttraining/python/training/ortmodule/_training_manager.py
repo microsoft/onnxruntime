@@ -241,8 +241,12 @@ class TrainingManager(GraphExecutionManager):
     def _reinitialize_graph_builder(self, input_info):
         """Return true if the module graph builder was reinitialized"""
 
+        # Model could have unused parameters which are dropped after export and so not a part of self._graph_initializer_names_to_train.
+        # To see if any trainable initializers changed, compare self._graph_initializer_names_to_train
+        # with initializers in module named_parameters that are known to the onnx graph.
         initializer_names_to_train_set_user_model = {name for name, param in
-                                                     self._flattened_module.named_parameters() if param.requires_grad}
+                                                     self._flattened_module.named_parameters()
+                                                     if param.requires_grad and name in self._graph_initializer_names}
 
         # If inputs requiring gradient change from forward to the next, the module_gradient_graph_builder
         # needs to be reinitialized so it can compute the backward output for the new inputs that require_grad
