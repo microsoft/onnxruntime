@@ -11,7 +11,18 @@ from packaging import version
 ################################################################################
 ONNX_OPSET_VERSION = 12
 MINIMUM_TORCH_VERSION_STR = '1.8.1'
-TORCH_CPP_BUILD_DIR = os.path.join(os.path.dirname(__file__),'torch_inline_extensions')
+
+# Check Torch CPP extension build directory
+home_dir = os.path.expanduser("~")
+python_package_dir = os.path.dirname(__file__)
+TORCH_CPP_BUILD_DIR = os.path.join(python_package_dir,'torch_inline_extensions')
+TORCH_CPP_BUILD_DIR_BACKUP = os.path.join(home_dir, '.cache', 'torch_ort_extensions')
+if not os.access(python_package_dir, os.X_OK | os.W_OK):
+    if os.access(home_dir, os.X_OK | os.W_OK):
+        TORCH_CPP_BUILD_DIR = TORCH_CPP_BUILD_DIR_BACKUP
+    else:
+        raise PermissionError('ORTModule could not find a writable directory to cache its internal files.',
+                              f'Make {python_package_dir} or {home_dir} writable and try again.')
 
 # Check whether Torch C++ extension compilation was aborted in previous runs
 if not os.path.exists(TORCH_CPP_BUILD_DIR):
