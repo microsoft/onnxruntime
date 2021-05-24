@@ -1271,7 +1271,6 @@ def run_ios_tests(args, source_dir, config, cwd):
                        cwd=cwd).check_returncode()
 
 
-
 def run_orttraining_test_orttrainer_frontend_separately(cwd):
     class TestNameCollecterPlugin:
         def __init__(self):
