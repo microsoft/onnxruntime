@@ -122,63 +122,50 @@ ONNX_CPU_OPERATOR_KERNEL(Loop,
                              .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
                          Loop);
 
-struct Loop::Info {
-  Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in)
-      : subgraph(subgraph_in) {
-    num_loop_carried_vars = static_cast<int>(node.InputDefs().size()) - 2;  // skip 'M' and 'cond'
-    num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
-    num_subgraph_inputs = 2 + num_loop_carried_vars;  // iter_num, cond, loop carried vars
-    num_outputs = static_cast<int>(node.OutputDefs().size());
+Loop::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in)
+    : subgraph(subgraph_in) {
+  num_loop_carried_vars = static_cast<int>(node.InputDefs().size()) - 2;  // skip 'M' and 'cond'
+  num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
+  num_subgraph_inputs = 2 + num_loop_carried_vars;  // iter_num, cond, loop carried vars
+  num_outputs = static_cast<int>(node.OutputDefs().size());
 
-    auto& subgraph_inputs = subgraph.GetInputs();
-    auto& subgraph_outputs = subgraph.GetOutputs();
+  auto& subgraph_inputs = subgraph.GetInputs();
+  auto& subgraph_outputs = subgraph.GetOutputs();
 
-    // we know how many inputs we are going to call the subgraph with based on the Loop inputs,
-    // and that value is in num_subgraph_inputs.
-    // validate that the subgraph has that many inputs.
-    ORT_ENFORCE(static_cast<size_t>(num_subgraph_inputs) == subgraph_inputs.size(),
-                "Graph in 'body' attribute of Loop should have ", num_subgraph_inputs, " inputs. Found:",
-                subgraph_inputs.size());
+  // we know how many inputs we are going to call the subgraph with based on the Loop inputs,
+  // and that value is in num_subgraph_inputs.
+  // validate that the subgraph has that many inputs.
+  ORT_ENFORCE(static_cast<size_t>(num_subgraph_inputs) == subgraph_inputs.size(),
+              "Graph in 'body' attribute of Loop should have ", num_subgraph_inputs, " inputs. Found:",
+              subgraph_inputs.size());
 
-    // check num outputs are correct. the 'cond' output from the subgraph is not a Loop output, so diff is 1
-    num_subgraph_outputs = static_cast<int>(subgraph_outputs.size());
-    ORT_ENFORCE(num_subgraph_outputs - 1 == num_outputs,
-                "'Loop' node has ", num_outputs, " outputs so the subgraph requires ", num_outputs + 1,
-                " but has ", num_subgraph_outputs);
+  // check num outputs are correct. the 'cond' output from the subgraph is not a Loop output, so diff is 1
+  num_subgraph_outputs = static_cast<int>(subgraph_outputs.size());
+  ORT_ENFORCE(num_subgraph_outputs - 1 == num_outputs,
+              "'Loop' node has ", num_outputs, " outputs so the subgraph requires ", num_outputs + 1,
+              " but has ", num_subgraph_outputs);
 
-    subgraph_input_names.reserve(num_subgraph_inputs);
-    for (int i = 0; i < num_subgraph_inputs; ++i) {
-      subgraph_input_names.push_back(subgraph_inputs[i]->Name());
-    }
-
-    // save list of subgraph output names in their provided order to use when fetching the results
-    // from each subgraph execution. the Loop outputs will match this order.
-    subgraph_output_names.reserve(num_subgraph_outputs);
-    for (int i = 0; i < num_subgraph_outputs; ++i) {
-      auto& output = subgraph_outputs[i];
-      subgraph_output_names.push_back(output->Name());
-    }
+  subgraph_input_names.reserve(num_subgraph_inputs);
+  for (int i = 0; i < num_subgraph_inputs; ++i) {
+    subgraph_input_names.push_back(subgraph_inputs[i]->Name());
   }
 
-  const GraphViewer& subgraph;
-
-  int num_loop_carried_vars;
-  int num_implicit_inputs;
-  int num_outputs;
-
-  int num_subgraph_inputs;
-  int num_subgraph_outputs;
-
-  std::vector<std::string> subgraph_input_names;
-  std::vector<std::string> subgraph_output_names;
-};
+  // save list of subgraph output names in their provided order to use when fetching the results
+  // from each subgraph execution. the Loop outputs will match this order.
+  subgraph_output_names.reserve(num_subgraph_outputs);
+  for (int i = 0; i < num_subgraph_outputs; ++i) {
+    auto& output = subgraph_outputs[i];
+    subgraph_output_names.push_back(output->Name());
+  }
+}
 
 class LoopImpl {
  public:
   LoopImpl(OpKernelContextInternal& context,
            const SessionState& session_state,
            const Loop::Info& info,
-           const Loop::ConcatOutput& concat_output_func);
+           const Loop::ConcatOutput& concat_output_func,
+           void* stream);
 
   // Initialize by validating all the inputs, and allocating the output tensors
   Status Initialize();
@@ -211,9 +198,11 @@ class LoopImpl {
   std::vector<std::vector<OrtValue>> loop_output_tensors_;
 
   const Loop::ConcatOutput& concat_output_func_;
+  void* stream_;
 };
 
-static Status ConcatenateCpuOutput(std::vector<OrtValue>& per_iteration_output,
+static Status ConcatenateCpuOutput(void* /*stream*/,
+                                   std::vector<OrtValue>& per_iteration_output,
                                    void* output, size_t output_size_in_bytes) {
   const auto& first_output = per_iteration_output.front().Get<Tensor>();
   const auto& per_iteration_shape = first_output.Shape();
@@ -243,7 +232,7 @@ static Status ConcatenateCpuOutput(std::vector<OrtValue>& per_iteration_output,
   return Status::OK();
 }
 
-Loop::Loop(const OpKernelInfo& info) : IControlFlowKernel(info) {
+void Loop::Init(const OpKernelInfo& info) {
   // make sure the attribute was present even though we don't need it here.
   // The GraphProto is loaded as a Graph instance by main Graph::Resolve,
   // and a SessionState instance for executing the subgraph is created by InferenceSession.
@@ -253,10 +242,15 @@ Loop::Loop(const OpKernelInfo& info) : IControlFlowKernel(info) {
   ORT_IGNORE_RETURN_VALUE(proto);
 
   concat_output_func_ = ConcatenateCpuOutput;
+  stream_ = nullptr;
 }
 
-// we need this to be in the .cc so 'unique_ptr<Info> info_' can be handled
-Loop::~Loop() = default;
+std::unique_ptr<OpKernel> Loop::Create(const OpKernelInfo& info, const ConcatOutput& concat_output_func, void* stream) {
+  auto result = std::make_unique<Loop>(info);
+  result->SetConcatOutputFunc(concat_output_func);
+  result->SetComputeStream(stream);
+  return result;
+}
 
 common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_state,
                                                 const std::string& attribute_name,
@@ -265,7 +259,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
   ORT_UNUSED_PARAMETER(attribute_name);
 
   const auto& node = Node();
-  info_ = onnxruntime::make_unique<Loop::Info>(node, subgraph_session_state.GetGraphViewer());
+  info_ = std::make_unique<Loop::Info>(node, subgraph_session_state.GetGraphViewer());
 
   // the Loop inputs are matched to subgraph feeds based on order.
   // we first need the names of the Loop inputs to determine what device they are available on
@@ -345,7 +339,7 @@ Status Loop::Compute(OpKernelContext* ctx) const {
   ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
   ORT_ENFORCE(feeds_fetches_manager_, "CreateFeedsFetchesManager must be called prior to execution of graph.");
 
-  LoopImpl loop_impl{*ctx_internal, *session_state, *info_, concat_output_func_};
+  LoopImpl loop_impl{*ctx_internal, *session_state, *info_, concat_output_func_, stream_};
 
   auto status = loop_impl.Initialize();
   ORT_RETURN_IF_ERROR(status);
@@ -358,12 +352,14 @@ Status Loop::Compute(OpKernelContext* ctx) const {
 LoopImpl::LoopImpl(OpKernelContextInternal& context,
                    const SessionState& session_state,
                    const Loop::Info& subgraph_info,
-                   const Loop::ConcatOutput& concat_output_func)
+                   const Loop::ConcatOutput& concat_output_func,
+                   void* stream)
     : context_(context),
       session_state_(session_state),
       info_(subgraph_info),
       implicit_inputs_(context_.GetImplicitInputs()),
-      concat_output_func_(concat_output_func) {
+      concat_output_func_(concat_output_func),
+      stream_(stream) {
   auto* max_trip_count_tensor = context.Input<Tensor>(0);
   max_trip_count_ = max_trip_count_tensor ? *max_trip_count_tensor->Data<int64_t>() : INT64_MAX;
 
@@ -392,6 +388,12 @@ Status LoopImpl::Initialize() {
   }
 
   auto& subgraph_inputs = info_.subgraph.GetInputs();
+
+  // we need to know if the subgraph expects a rank 0 or rank 1 value for these, so a shape is required.
+  ORT_RETURN_IF(subgraph_inputs[0]->Shape() == nullptr, "Loop subgraph input 0 has unknown shape: ",
+                subgraph_inputs[0]->Name());
+  ORT_RETURN_IF(subgraph_inputs[1]->Shape() == nullptr, "Loop subgraph input 1 has unknown shape: ",
+                subgraph_inputs[1]->Name());
 
   auto iter_num_rank = subgraph_inputs[0]->Shape()->dim_size();
   auto condition_rank = subgraph_inputs[1]->Shape()->dim_size();
@@ -457,7 +459,7 @@ Status LoopImpl::ConcatenateLoopOutput(std::vector<OrtValue>& per_iteration_outp
   TensorShape output_shape{dims};
   Tensor* output = context_.Output(output_index, output_shape);
 
-  ORT_RETURN_IF_ERROR(concat_output_func_(per_iteration_output, output->MutableDataRaw(), output->SizeInBytes()));
+  ORT_RETURN_IF_ERROR(concat_output_func_(stream_, per_iteration_output, output->MutableDataRaw(), output->SizeInBytes()));
 
   return Status::OK();
 }

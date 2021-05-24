@@ -760,7 +760,7 @@ class Graph {
     if (iter != node_args_.end()) {
       return *(iter->second);
     }
-    auto result = node_args_.insert(std::make_pair(name, onnxruntime::make_unique<NodeArg>(name, p_arg_type)));
+    auto result = node_args_.insert(std::make_pair(name, std::make_unique<NodeArg>(name, p_arg_type)));
     return *(result.first->second);
   }
 
@@ -921,10 +921,17 @@ class Graph {
   @returns Node with fused subgraph.
   @remarks As a new Graph instance for the fused nodes is not created, a GraphViewer can be constructed with the
            IndexedSubGraph information to provide a view of the subgraph. The original nodes are left in place
-           while this is in use. 
+           while this is in use.
 		   Call FinalizeFuseSubGraph to remove them once the fused replacement node is fully created.
   */
   Node& BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
+
+  /**
+  If we have BeginFuseSubGraph, but somehow hit errors, such as Compile of an EP failed on thesub_graph.
+  We can call CancelFuseSubGraph to undo the changes of BeginFuseSubGraph
+  @param fused_node The fused node and it's function body to be removed from the graph
+  */
+  void CancelFuseSubGraph(const Node& fused_node);
 
   void FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_node);
 #endif
@@ -933,6 +940,15 @@ class Graph {
   /** Gets the GraphProto representation of this Graph. */
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
   ONNX_NAMESPACE::GraphProto ToGraphProto() const;
+
+  /** Gets the GraphProto representation of this Graph
+  @params external_file_name name of the binary file to use for initializers
+  @param initializer_size_threshold initializers larger or equal to this threshold (in bytes) are saved
+  in the external file. Initializer smaller than this threshold are included in the onnx file.
+  @returns GraphProto serialization of the graph.
+  */
+  ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
+                                                                  size_t initializer_size_threshold) const;
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
@@ -1015,6 +1031,16 @@ class Graph {
     for (Node* node : nodes) {
       node_arg_to_consumer_nodes_[node_arg_name].insert(node->Index());
     }
+  }
+
+  // Without removing the existing consumers, add a consumer to the give node arg name.
+  void AddConsumerNode(const std::string& node_arg_name, Node* consumer) {
+    node_arg_to_consumer_nodes_[node_arg_name].insert(consumer->Index());
+  }
+
+  // Remove a consumer from the set
+  void RemoveConsumerNode(const std::string& node_arg_name, Node* consumer) {
+    node_arg_to_consumer_nodes_[node_arg_name].erase(consumer->Index());
   }
 
   /** During constant folding it may become possible to infer the shape for a node.

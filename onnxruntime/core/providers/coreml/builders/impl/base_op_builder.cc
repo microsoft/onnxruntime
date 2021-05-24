@@ -5,6 +5,7 @@
 
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/helper.h"
+#include "core/providers/shared/utils/utils.h"
 
 #include "base_op_builder.h"
 
@@ -48,6 +49,13 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
   return Status::OK();
 }
 
+/* static */ std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> BaseOpBuilder::CreateNNLayer(const Node& node) {
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer =
+      std::make_unique<COREML_SPEC::NeuralNetworkLayer>();
+  layer->set_name(node.Name());
+  return layer;
+}
+
 // Operator support related
 
 bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
@@ -66,12 +74,7 @@ bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, cons
 }
 
 bool BaseOpBuilder::HasSupportedInputs(const Node& node, const logging::Logger& logger) const {
-  std::string node_name = "Node [";
-  node_name += node.Name();
-  node_name += "] type [";
-  node_name += node.OpType();
-  node_name += "]";
-
+  const auto node_name = MakeString("Node [", node.Name(), "] type [", node.OpType(), "]");
   for (const auto* input : node.InputDefs()) {
     if (!IsInputSupported(*input, node_name, logger)) {
       return false;

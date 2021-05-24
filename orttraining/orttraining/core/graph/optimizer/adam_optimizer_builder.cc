@@ -71,17 +71,15 @@ Status AdamOptimizerBuilder::Build(
 
       // Get shape of weight tensor.
       std::vector<int64_t> weight_dims;
-      ORT_RETURN_IF_NOT(
-          weight_argdefs[i].type_proto &&
-          weight_argdefs[i].type_proto->has_tensor_type() &&
-          weight_argdefs[i].type_proto->tensor_type().has_shape());
+      ORT_RETURN_IF_NOT(weight_argdefs[i].type_proto &&
+                            weight_argdefs[i].type_proto->has_tensor_type() &&
+                            weight_argdefs[i].type_proto->tensor_type().has_shape(),
+                        "weight_argsdefs[", i, "] did not have tensor with shape");
       for (const auto& dim : weight_argdefs[i].type_proto->tensor_type().shape().dim()) {
         weight_dims.push_back(dim.dim_value());
       }
 
-      const auto element_type = opt_configs[i].use_mixed_precision_moments ? 
-                                ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16 : 
-                                ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
+      const auto element_type = opt_configs[i].use_mixed_precision_moments ? ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16 : ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
       // Add first- and second-order momentums to input list.
       for (const auto& moments_prefix : MOMENTS_PREFIXES) {
         const std::string gradient_moment_name = moments_prefix + "_" + weight_name;

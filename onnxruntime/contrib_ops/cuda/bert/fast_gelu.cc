@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/common.h"
+#include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cudnn_common.h"
-#include "core/framework/tensorprotoutils.h"
 #include "fast_gelu.h"
 #include "fast_gelu_impl.h"
 #include "contrib_ops/cpu/bert/bias_gelu_helper.h"
@@ -19,7 +18,7 @@ namespace cuda {
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       FastGelu<T>);
 
@@ -47,7 +46,7 @@ Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
   int64_t bias_length = (nullptr == bias) ? 0 : bias->Shape().Size();
   typedef typename ToCudaType<T>::MappedType CudaT;
   if (!LaunchFastGeluKernel<CudaT>(GetDeviceProp(),
-                                   nullptr,
+                                   Stream(),
                                    static_cast<int>(input_length),
                                    static_cast<int>(bias_length),
                                    reinterpret_cast<const CudaT*>(input->template Data<T>()),

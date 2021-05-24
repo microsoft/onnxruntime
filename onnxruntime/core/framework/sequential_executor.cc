@@ -285,7 +285,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                      node_name_for_profiling + "_fence_before",
                                                      sync_time_begin,
                                                      {{"op_name", p_op_kernel->KernelDef().OpName()}});
-
+      concurrency::ThreadPool::StartProfiling(session_state.GetThreadPool());
       // call compute on the kernel
       VLOGS(logger, 1) << "Computing kernel: " << node_name_for_profiling;
 
@@ -369,8 +369,8 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                          {"activation_size", std::to_string(input_activation_sizes)},
                                                          {"parameter_size", std::to_string(input_parameter_sizes)},
                                                          {"output_size", std::to_string(total_output_sizes)},
+                                                         {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state.GetThreadPool())},
                                                      });
-
       sync_time_begin = session_state.Profiler().StartTime();
     }
 
@@ -467,7 +467,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
     if (all_tensors) {
-      auto mem_patterns = onnxruntime::make_unique<MemoryPatternGroup>();
+      auto mem_patterns = std::make_unique<MemoryPatternGroup>();
       ORT_RETURN_IF_ERROR(frame.GeneratePatterns(mem_patterns.get()));
       ORT_RETURN_IF_ERROR(session_state.UpdateMemoryPatternGroupCache(input_shapes, std::move(mem_patterns)));
     }

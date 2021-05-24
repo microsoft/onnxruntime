@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/shared_library/provider_api.h"
 #include "layer_norm.h"
 #include "layer_norm_impl.h"
-
-#include "core/providers/common.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
@@ -18,7 +17,7 @@ namespace cuda {
       1,                                                          \
       T##_##U,                                                    \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
           .TypeConstraint("U", DataTypeImpl::GetTensorType<U>()), \
       LayerNorm<T, U, false>);                                    \
@@ -28,7 +27,7 @@ namespace cuda {
       1,                                                          \
       T##_##U,                                                    \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
           .TypeConstraint("U", DataTypeImpl::GetTensorType<U>()), \
       LayerNorm<T, U, true>);
@@ -59,7 +58,7 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
 
   auto X_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
   auto scale_data = reinterpret_cast<const CudaT*>(scale->template Data<T>());
-  auto bias_data = simplified ? nullptr: reinterpret_cast<const CudaT*>(bias->template Data<T>());
+  auto bias_data = (simplified || (nullptr == bias)) ? nullptr : reinterpret_cast<const CudaT*>(bias->template Data<T>());
 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
@@ -91,14 +90,14 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
       mean_data = reinterpret_cast<CudaU*>(mean->template MutableData<U>());
     }
   }
-  
+
   Tensor* var = ctx->Output(output_index, TensorShape(mean_inv_std_var_dim));
   CudaU* inv_var_data = nullptr;
   if (var != nullptr) {
     inv_var_data = reinterpret_cast<CudaU*>(var->template MutableData<U>());
   }
 
-  HostApplyLayerNorm<CudaT, CudaU, simplified>(GetDeviceProp(), Y_data, mean_data, inv_var_data, X_data, n1, n2, epsilon_, scale_data, bias_data);
+  HostApplyLayerNorm<CudaT, CudaU, simplified>(GetDeviceProp(), Stream(), Y_data, mean_data, inv_var_data, X_data, n1, n2, epsilon_, scale_data, bias_data);
   return Status::OK();
 }
 

@@ -4,14 +4,13 @@
 #pragma once
 #include <stdint.h>
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
-#include "core/framework/data_types.h"
-#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
 void RoiAlignImpl(
+    cudaStream_t stream,
     const int64_t nthreads,
     const T* bottom_data,
     const T spatial_scale,

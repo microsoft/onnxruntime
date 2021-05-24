@@ -4,6 +4,7 @@
 #pragma once
 
 #include <core/common/status.h>
+#include <core/graph/basic_types.h>
 
 namespace onnxruntime {
 
@@ -16,16 +17,17 @@ class Logger;
 
 namespace coreml {
 
-common::Status GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape);
-
-// TODO, move this to shared_library
-bool GetType(const NodeArg& node_arg, int32_t& type, const logging::Logger& logger);
+bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger);
 
 bool IsInputSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger);
 
 // Get a list of groups of supported nodes, each group represents a subgraph supported by CoreML EP
-std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_viewer,
-                                                   const logging::Logger& logger);
+std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer,
+                                                      const logging::Logger& logger);
+
+// CoreML is more efficient running using Apple Neural Engine
+// This is to detect if the current system has Apple Neural Engine
+bool HasNeuralEngine(const logging::Logger& logger);
 
 }  // namespace coreml
 }  // namespace onnxruntime

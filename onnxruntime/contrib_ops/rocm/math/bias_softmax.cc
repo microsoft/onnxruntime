@@ -15,6 +15,7 @@ namespace rocm {
 
 template <typename T>
 void DispatchBiasSoftmaxForwardImpl(
+    hipStream_t stream,
     Tensor* output_tensor,
     const Tensor* input_tensor,
     const Tensor* input_bias_tensor,
@@ -25,6 +26,7 @@ void DispatchBiasSoftmaxForwardImpl(
 
 template <typename T>
 void DispatchBiasSoftMaxForwardViaDnnLibraryImpl(
+    hipStream_t stream,
     miopenHandle_t miopenHandle,
     int element_count,
     int batch_count,
@@ -63,16 +65,15 @@ Status BiasSoftmax::ComputeInternal(OpKernelContext* ctx) const {
   const int broadcast_size = N / static_cast<int>(X_shape.SizeToDimension(broadcast_axis));
 
   const size_t elem_size = X->DataType()->Size();
+  utils::MLTypeCallDispatcher<float, MLFloat16> t_disp(X->GetElementType());
+
   if (D <= 1024 && D * elem_size <= 4096) {
     // expect thread blocks can fill SM at high occupancy without overflowing registers
-    utils::MLTypeCallDispatcher<DispatchBiasSoftmaxForward, float, MLFloat16>
-        t_disp(X->GetElementType());
-    t_disp.Invoke(Y, X, B, D, N, D, broadcast_size);
+    t_disp.Invoke<DispatchBiasSoftmaxForward>(Stream(), Y, X, B, D, N, D, broadcast_size);
   } else {
     // need to fallback to add kernel + CUDA DNN library softmax call :/
-    utils::MLTypeCallDispatcher<DispatchBiasSoftMaxForwardViaDnnLibrary, float, MLFloat16>
-        t_disp(X->GetElementType());
-    t_disp.Invoke(MiopenHandle(), D, N, broadcast_axis, softmax_axis, X_shape, X, B_shape, B, Y);
+    t_disp.Invoke<DispatchBiasSoftMaxForwardViaDnnLibrary>(
+        Stream(), MiopenHandle(), D, N, broadcast_axis, softmax_axis, X_shape, X, B_shape, B, Y);
   }
 
   return Status::OK();
@@ -80,6 +81,7 @@ Status BiasSoftmax::ComputeInternal(OpKernelContext* ctx) const {
 
 template <typename T>
 void DispatchBiasSoftmaxForward<T>::operator()(
+      hipStream_t stream,
       Tensor* output,
       const Tensor* input,
       const Tensor* input_bias,
@@ -88,6 +90,7 @@ void DispatchBiasSoftmaxForward<T>::operator()(
       int batch_stride,
       int bias_broadcast_size_per_batch) {
     DispatchBiasSoftmaxForwardImpl<T>(
+        stream,
         output,
         input,
         input_bias,
@@ -99,6 +102,7 @@ void DispatchBiasSoftmaxForward<T>::operator()(
 
 template <typename T>
 void DispatchBiasSoftMaxForwardViaDnnLibrary<T>::operator()(
+      hipStream_t stream,
       miopenHandle_t miopenHandle,
       int element_count,
       int batch_count,
@@ -110,6 +114,7 @@ void DispatchBiasSoftMaxForwardViaDnnLibrary<T>::operator()(
       const onnxruntime::Tensor* B,
       onnxruntime::Tensor* Y) {
     DispatchBiasSoftMaxForwardViaDnnLibraryImpl<T>(
+        stream,
         miopenHandle,
         element_count,
         batch_count,

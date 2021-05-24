@@ -14,7 +14,7 @@ jobs:
   - template: templates/run-docker-build-steps.yml
     parameters:
       RunDockerBuildArgs: |
-        -o ubuntu16.04 -d gpu -r $(Build.BinariesDirectory) \
+        -o ubuntu18.04 -d gpu -r $(Build.BinariesDirectory) \
         -t onnxruntime_ortmodule_tests_image \
         -x " \
           --config RelWithDebInfo \
@@ -22,6 +22,8 @@ jobs:
           --update --build \
           --build_wheel \
           " \
+        -u \
+        -e
       DisplayName: 'Build'
 
   - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/mnist" -d "/mnist"
@@ -32,7 +34,13 @@ jobs:
     displayName: 'Mount bert-data'
     condition: succeededOrFailed()
 
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
+    displayName: 'Mount hf-models-cache'
+    condition: succeededOrFailed()
+
     # Entry point for all ORTModule tests
+    # The onnxruntime folder is deleted in the build directory
+    # to enforce use of the onnxruntime wheel
   - script: |
       docker run \
         --gpus all \
@@ -42,13 +50,12 @@ jobs:
         --volume $(Build.BinariesDirectory):/build \
         --volume /mnist:/mnist \
         --volume /bert_data:/bert_data \
+        --volume /hf_models_cache:/hf_models_cache \
         onnxruntime_ortmodule_tests_image \
-          /build/RelWithDebInfo/launch_test.py \
-            --cmd_line_with_args "python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw" \
-            --cwd /build/RelWithDebInfo \
+          bash -c "python3 -m pip install /build/RelWithDebInfo/dist/onnxruntime*.whl ; rm -rf /build/RelWithDebInfo/onnxruntime/ ; /build/RelWithDebInfo/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/RelWithDebInfo" \
     displayName: 'Run orttraining_ortmodule_tests.py'
     condition: succeededOrFailed()
-    timeoutInMinutes: 30
+    timeoutInMinutes: 60
 
   - template: templates/component-governance-component-detection-steps.yml
     parameters:

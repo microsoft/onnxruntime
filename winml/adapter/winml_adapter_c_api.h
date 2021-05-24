@@ -202,6 +202,12 @@ struct WinmlAdapterApi {
     */
   OrtStatus*(ORT_API_CALL* ModelEnsureNoFloat16)(_In_ const OrtModel* model)NO_EXCEPTION;
 
+  /**
+  * SaveModel
+  * This api save the model to the fiven file
+  */
+  OrtStatus*(ORT_API_CALL* SaveModel)(_In_ const OrtModel* in, _In_ const wchar_t* const file_name, _In_ size_t len)NO_EXCEPTION;
+
   // OrtSessionOptions methods
 
   /**
@@ -295,6 +301,14 @@ struct WinmlAdapterApi {
     * WinML uses this to determine that the correct number of threads was set correctly through OrtSessionOptions.
     */
   OrtStatus*(ORT_API_CALL* SessionGetNumberOfIntraOpThreads)(_In_ OrtSession* session, _Out_ uint32_t* num_threads)NO_EXCEPTION;
+
+    /**
+    * SessionGetIntrapOpThreadSpinning
+     * This api returns false if the ort session options config entry "session.intra_op.allow_spinning" is set to "0", and true otherwise
+    * 
+    * WinML uses this to determine that the intra op thread spin policy was set correctly through OrtSessionOptions
+    */
+  OrtStatus*(ORT_API_CALL* SessionGetIntraOpThreadSpinning)(_In_ OrtSession* session, _Out_ bool* allow_spinning)NO_EXCEPTION;
 
       /**
     * SessionGetNamedDimensionsOverrides
@@ -424,6 +438,54 @@ struct WinmlAdapterApi {
     * WinML uses this to determine if an OrtValue is created on the needed device.
     */
   OrtStatus*(ORT_API_CALL* SessionGetInputRequiredDeviceId)(_In_ OrtSession* session, _In_ const char* const input_name, _Out_ int16_t* device_id)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* CreateTensorTypeInfo)(_In_ const int64_t* shape, size_t shape_len,
+                                                 ONNXTensorElementDataType type, _Out_ OrtTypeInfo** type_info)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* CreateSequenceTypeInfo)(_Out_ OrtTypeInfo** type_info)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* CreateMapTypeInfo)(_Out_ OrtTypeInfo** type_info)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* CreateModel)(_In_ int64_t opset, _Outptr_ OrtModel** out)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelAddInput)(_In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelAddConstantInput)(_In_ OrtModel* model, _In_ const char* const input_name, _In_ OrtTypeInfo* info, _In_ OrtValue* value)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelAddOutput)(_In_ OrtModel* model, _In_ const char* const output_name, _In_ OrtTypeInfo* info)NO_EXCEPTION;
+  OrtStatus*(ORT_API_CALL* ModelAddOperator)(
+      _In_ OrtModel* model,
+      _In_ const char* const op_type,
+      _In_ const char* const op_name,
+      _In_ int64_t opset,
+      _In_ const char* const op_domain,
+      _In_ const char* const* input_names, _In_ size_t num_inputs,
+      _In_ const char* const* output_names, _In_ size_t num_outputs,
+      _In_ const char* const* attribute_names, _In_ OrtValue** attribute_values, _In_ size_t num_attributes)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* ModelGetOpsetVersion)(_In_ OrtModel* model, _In_ const char* const domain, _Out_ int32_t* version)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* OperatorGetNumInputs)(
+      _In_ const char* const op_type,
+      _In_ int64_t opset,
+      _In_ const char* const op_domain, 
+      _Out_ size_t* num_inputs)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* OperatorGetInputName)(
+      _In_ const char* const op_type,
+      _In_ int64_t opset,
+      _In_ const char* const op_domain,
+      _In_ size_t index,
+      _Out_ const char** const name
+      )NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* OperatorGetNumOutputs)(
+      _In_ const char* const op_type,
+      _In_ int64_t opset,
+      _In_ const char* const op_domain,
+      _Out_ size_t* num_inputs)NO_EXCEPTION;
+
+  OrtStatus*(ORT_API_CALL* OperatorGetOutputName)(
+      _In_ const char* const op_type,
+      _In_ int64_t opset,
+      _In_ const char* const op_domain,
+      _In_ size_t index,
+      _Out_ const char** const name)NO_EXCEPTION;
 
   ORT_CLASS_RELEASE(Model);
 };

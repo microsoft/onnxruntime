@@ -89,17 +89,17 @@ void Recv::ReceiveData(
     assert(tensor_offset_in_bytes + tensor->SizeInBytes() <= aggregated_aligned_tensor_bytes);
     // Copy data out from buffer.
 #if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-    CUDA_CALL(cudaMemcpy(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
-                         tensor->SizeInBytes(), cudaMemcpyDeviceToDevice));
+    CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
+                              tensor->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
 #else
-    CUDA_CALL(cudaMemcpy(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
-                         tensor->SizeInBytes(), cudaMemcpyHostToDevice));
+    CUDA_CALL(cudaMemcpyAsync(tensor->MutableDataRaw(), buffer.get() + tensor_offset_in_bytes,
+                              tensor->SizeInBytes(), cudaMemcpyHostToDevice, Stream()));
 #endif
 
 #ifndef NDEBUG
-  // In addition to the first output, other tensors are allocated on GPU.
-  // We check if the allocated memory is on the current CUDA device.
-  CheckIfMemoryOnCurrentGpuDevice(tensor->DataRaw());
+    // In addition to the first output, other tensors are allocated on GPU.
+    // We check if the allocated memory is on the current CUDA device.
+    CheckIfMemoryOnCurrentGpuDevice(tensor->DataRaw());
 #endif
     tensor_offset_in_bytes += tensor->SizeInBytes();
   }
@@ -121,10 +121,10 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(0)   /* CPU variable */
-        .InputMemoryType<OrtMemTypeCPUInput>(1)   /* CPU variable */
-        .OutputMemoryType<OrtMemTypeCPUOutput>(0) /* CPU variable */
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0)   /* CPU variable */
+        .InputMemoryType(OrtMemTypeCPUInput, 1)   /* CPU variable */
+        .OutputMemoryType(OrtMemTypeCPUOutput, 0) /* CPU variable */
         .TypeConstraint("TBool", DataTypeImpl::GetTensorType<bool>())
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),

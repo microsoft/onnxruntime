@@ -614,10 +614,11 @@ OnnxruntimeDescriptorConverter::OnnxruntimeDescriptorConverter(
     const std::unordered_map<std::string, std::string>& metadata) : engine_factory_(engine_factory), metadata_(metadata) {}
 
 wfc::IVector<winml::ILearningModelFeatureDescriptor>
-OnnxruntimeDescriptorConverter::ConvertToLearningModelDescriptors(const std::vector<OnnxruntimeValueInfoWrapper>& descriptors) {
+OnnxruntimeDescriptorConverter::ConvertToLearningModelDescriptors(const OnnxruntimeValueInfoWrapper* descriptors, size_t num_descriptors) {
   auto features = winrt::single_threaded_vector<winml::ILearningModelFeatureDescriptor>();
 
-  for (const auto& descriptor : descriptors) {
+  for (size_t i = 0; i < num_descriptors;  i++) {
+    const auto& descriptor = descriptors[i];
     auto learning_model_descriptor = _winml::CreateFeatureDescriptor(engine_factory_.Get(), &descriptor, metadata_);
     features.Append(learning_model_descriptor);
   }

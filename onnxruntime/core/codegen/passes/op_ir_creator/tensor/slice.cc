@@ -20,7 +20,7 @@ Status SliceCommon(const tvm::Array<tvm::Tensor>& inputs,
                    const std::vector<int64_t>& ends,
                    const std::vector<int64_t>& axes1,
                    const std::vector<int64_t>& steps1) {
-  ORT_RETURN_IF_NOT(nullptr != node.InputDefs()[0]);
+  ORT_RETURN_IF_NOT(nullptr != node.InputDefs()[0], "nullptr == node.InputDefs()[0]");
 
   std::vector<int64_t> axes;
   if (axes1.size() == 0) {
@@ -60,7 +60,7 @@ Status GENERIC_OP_IR_CREATOR_CLASS(Slice)::Evaluate(
   std::vector<int64_t> starts, ends, steps;
   ORT_RETURN_IF_ERROR(info.GetAttrs<int64_t>("starts", starts));
   ORT_RETURN_IF_ERROR(info.GetAttrs<int64_t>("ends", ends));
-  ORT_RETURN_IF_NOT(starts.size() == ends.size());
+  ORT_RETURN_IF_NOT(starts.size() == ends.size(), "starts.size() != ends.size()");
 
   auto axes = info.GetAttrsOrDefault<int64_t>("axes");
 

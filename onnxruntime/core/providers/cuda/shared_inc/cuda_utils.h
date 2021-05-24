@@ -10,7 +10,6 @@
 #include <type_traits>
 #include <vector>
 
-#include "core/common/common.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
 
 namespace onnxruntime {
@@ -34,14 +33,14 @@ template <typename T>
 class IConstantBuffer {
  public:
   virtual ~IConstantBuffer(){};
-  virtual const T* GetBuffer(size_t count) = 0;
+  virtual const T* GetBuffer(cudaStream_t stream, size_t count) = 0;
 };
 
 template <typename T>
 std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes();
 
 template <typename T>
-void Fill(T* output, T value, int64_t count);
+void Fill(cudaStream_t stream, T* output, T value, int64_t count);
 
 /*
   This is a utility wrapper for arbitrary type array
@@ -60,10 +59,7 @@ struct TArray {
   }
 
   TArray(const std::vector<T>& vec) : TArray(static_cast<int32_t>(vec.size())) {
-// std::is_trivially_copyable is not implemented in older versions of GCC
-#if !defined(__GNUC__) || __GNUC__ >= 5
     static_assert(std::is_trivially_copyable<T>::value, "T must be trivially copyable.");
-#endif
     memcpy(data_, vec.data(), vec.size() * sizeof(T));
   }
 

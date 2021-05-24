@@ -22,14 +22,14 @@ CoreMLExecutionProvider::CoreMLExecutionProvider(uint32_t coreml_flags)
       coreml_flags_(coreml_flags) {
   AllocatorCreationInfo device_info(
       [](int) {
-        return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(COREML, OrtAllocatorType::OrtDeviceAllocator));
+        return std::make_unique<CPUAllocator>(OrtMemoryInfo(COREML, OrtAllocatorType::OrtDeviceAllocator));
       });
 
   InsertAllocator(CreateAllocator(device_info));
 
   AllocatorCreationInfo cpu_memory_info(
       [](int) {
-        return onnxruntime::make_unique<CPUAllocator>(
+        return std::make_unique<CPUAllocator>(
             OrtMemoryInfo(COREML, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
       });
 
@@ -67,6 +67,13 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   */
 
   const auto& logger = *GetLogger();
+
+  bool has_neural_engine = coreml::HasNeuralEngine(logger);
+  if ((coreml_flags_ & COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE) && !has_neural_engine) {
+    LOGS(logger, VERBOSE) << "The current system does not have Apple Neural Engine";
+    return result;
+  }
+
   const auto node_groups = coreml::GetSupportedNodes(graph_viewer, logger);
 
   if (node_groups.empty()) {
@@ -91,7 +98,7 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       node_set.insert(index);
     }
 
-    std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
+    std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
 
     std::unordered_set<const NodeArg*> node_outputs;
     std::unordered_set<const NodeArg*> subgraph_inputs;
@@ -137,7 +144,7 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     // Assign inputs and outputs to subgraph's meta_def
     uint64_t model_hash;
     int metadef_id = GenerateMetaDefId(graph_viewer, model_hash);
-    auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+    auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
     meta_def->name = "COREML_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
     meta_def->domain = kMSDomain;
     meta_def->since_version = 1;
@@ -153,13 +160,23 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
     sub_graph->SetMetaDef(std::move(meta_def));
 
-    result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+    result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
   }
 
-  LOGS(logger, INFO) << "CoreMLExecutionProvider::GetCapability,"
-                     << " number of partitions supported by CoreML: " << result.size()
-                     << " number of nodes in the graph: " << graph_viewer.NumberOfNodes()
-                     << " number of nodes supported by CoreML: " << num_of_supported_nodes;
+  auto num_of_partitions = result.size();
+  const auto summary_msg = MakeString(
+      "CoreMLExecutionProvider::GetCapability,",
+      " number of partitions supported by CoreML: ", num_of_partitions,
+      " number of nodes in the graph: ", graph_viewer.NumberOfNodes(),
+      " number of nodes supported by CoreML: ", num_of_supported_nodes);
+
+  // If the graph is partitioned in multiple subgraphs, and this may impact performance,
+  // we want to give users a summary message at warning level.
+  if (num_of_partitions > 1) {
+    LOGS(logger, WARNING) << summary_msg;
+  } else {
+    LOGS(logger, INFO) << summary_msg;
+  }
 
   return result;
 }

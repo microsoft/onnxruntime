@@ -9,7 +9,8 @@
 
 #ifndef BUILD_INBOX
 
-#include "Dummy.h"
+#include "LearningModelBuilder.h"
+#include "LearningModelOperator.h"
 #include "LearningModelSessionOptionsExperimental.h"
 #include "LearningModelSessionExperimental.h"
 
@@ -20,18 +21,6 @@
 
 using namespace winmlp;
 
-void __stdcall OnErrorReported(bool alreadyReported, wil::FailureInfo const& failure) WI_NOEXCEPT {
-  if (!alreadyReported) {
-    winrt::hstring message(failure.pszMessage ? failure.pszMessage : L"");
-    telemetry_helper.LogRuntimeError(
-        failure.hr,
-        winrt::to_string(message),
-        failure.pszFile,
-        failure.pszFunction,
-        failure.uLineNumber);
-  }
-}
-
 extern "C" BOOL WINAPI DllMain(_In_ HINSTANCE hInstance, DWORD dwReason, _In_ void* lpvReserved) {
   switch (dwReason) {
     case DLL_PROCESS_ATTACH:
@@ -40,7 +29,6 @@ extern "C" BOOL WINAPI DllMain(_In_ HINSTANCE hInstance, DWORD dwReason, _In_ vo
       // Register the TraceLogging provider feeding telemetry.  It's OK if this fails;
       // trace logging calls just become no-ops.
       telemetry_helper.Register();
-      wil::SetResultTelemetryFallback(&OnErrorReported);
       break;
     case DLL_PROCESS_DETACH:
       telemetry_helper.LogWinMLShutDown();
@@ -106,14 +94,24 @@ STDAPI DllGetExperimentalActivationFactory(void* classId, void** factory) noexce
       return std::equal(left.rbegin(), left.rend(), right.rbegin(), right.rend());
     };
 
-    winrt::hstring winml_namespace = winrt::to_hstring(XSTRINGIFY(WINML_ROOT_NS));
-
-    if (requal(name, winml_namespace + L".AI.MachineLearning.Experimental.Dummy")) {
-      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::Dummy>());
+    std::wostringstream learning_model_builder_class;
+    learning_model_builder_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelBuilder";
+    if (requal(name, learning_model_builder_class.str())) {
+      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelBuilder>());
       return 0;
     }
 
-    if (requal(name, winml_namespace + L".AI.MachineLearning.Experimental.LearningModelSessionExperimental")) {
+    std::wostringstream learning_model_operator_class;
+    learning_model_operator_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelOperator";
+    if (requal(name, learning_model_operator_class.str())) {
+      *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelOperator>());
+
+      return 0;
+    }
+
+    std::wostringstream learning_model_session_experimental_class;
+    learning_model_session_experimental_class << XSTRINGIFY(WINML_ROOT_NS) << ".AI.MachineLearning.Experimental.LearningModelSessionExperimental";
+    if (requal(name, learning_model_session_experimental_class.str())) {
       *factory = winrt::detach_abi(winrt::make<WINML_EXPERIMENTAL::factory_implementation::LearningModelSessionExperimental>());
       return 0;
     }

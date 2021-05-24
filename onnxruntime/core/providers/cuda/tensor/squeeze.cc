@@ -11,7 +11,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     1, 10,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Squeeze);
@@ -22,7 +22,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     11, 12,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Squeeze);
@@ -33,10 +33,10 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     13,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .Alias(0, 0)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
-        .InputMemoryType<OrtMemTypeCPUInput>(1),
+        .InputMemoryType(OrtMemTypeCPUInput, 1),
     Squeeze);
 
 Status Squeeze::ComputeInternal(OpKernelContext* ctx) const {
@@ -68,7 +68,7 @@ Status Squeeze::ComputeInternal(OpKernelContext* ctx) const {
 
   auto count = X->Shape().Size();
   auto element_bytes = X->DataType()->Size();
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output, input, count * element_bytes, cudaMemcpyDeviceToDevice));
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output, input, count * element_bytes, cudaMemcpyDeviceToDevice, Stream()));
 
   return Status::OK();
 }

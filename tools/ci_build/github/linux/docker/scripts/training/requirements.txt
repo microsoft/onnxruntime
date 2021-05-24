@@ -1,13 +1,11 @@
 --pre
--f https://download.pytorch.org/whl/nightly/cu101/torch_nightly.html
+-f https://download.pytorch.org/whl/torch_stable.html
 # transformers requires sklearn
-pandas
 sklearn
 numpy==1.16.6
 transformers==v2.10.0
-torch
-torchvision
-torchtext
+torch==1.8.1+cu102
+torchvision==0.9.1+cu102
+torchtext==0.9.1
 tensorboard==v2.0.0
 h5py
-wget

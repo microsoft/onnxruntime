@@ -19,8 +19,8 @@ namespace cuda {
       end,                                                        \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
-          .InputMemoryType<OrtMemTypeCPUInput>(1)                 \
+      (*KernelDefBuilder::Create())                               \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Upsample<T>)
 
@@ -87,7 +87,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
     size_t temp_buffer_size = CalcResizeBufferSize(mode_, output_dims);
     auto dims_mapping_buffer = GetScratchBuffer<unsigned char>(temp_buffer_size);
     void* dims_mapping = reinterpret_cast<void*>(dims_mapping_buffer.get());
-    ResizeImpl(mode_, (int)rank, input_shape, output_shape,
+    ResizeImpl(Stream(), mode_, (int)rank, input_shape, output_shape,
                input_strides, output_div_pitches, scales_vals, roi_vals,
                reinterpret_cast<const CudaT*>(X->template Data<T>()),
                reinterpret_cast<CudaT*>(Y->template MutableData<T>()),
@@ -102,7 +102,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
       scales_div[i] = fast_divmod(gsl::narrow_cast<int>(ceil(scales[i])));
     }
 
-    UpampleImpl(mode_,
+    UpampleImpl(Stream(),
+                mode_,
                 rank,
                 (UpsampleMode::LINEAR == mode_) ? (rank == 2 ? X_dims[0] : X_dims[2]) : 0,
                 input_strides,

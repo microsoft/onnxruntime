@@ -18,9 +18,9 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     10,
     int8_t,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(2)
-        .InputMemoryType<OrtMemTypeCPUInput>(3)
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
+        .InputMemoryType(OrtMemTypeCPUInput, 3)
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<int8_t>())
         .TypeConstraint("T3", DataTypeImpl::GetTensorType<int32_t>()),
@@ -70,19 +70,20 @@ Status MatMulInteger<int8_t, int8_t>::ComputeInternal(OpKernelContext* ctx) cons
   IAllocatorUniquePtr<int32_t> a_row_buf;
   if (b_offset != 0) {
     a_row_buf = GetScratchBuffer<int32_t>(helper.OutputShape().Size() / helper.N());
-    ORT_RETURN_IF_ERROR(ReduceRowSumOnMatrixA(a_ptr, a_row_buf.get(), b_offset, helper));
+    ORT_RETURN_IF_ERROR(ReduceRowSumOnMatrixA(Stream(), a_ptr, a_row_buf.get(), b_offset, helper));
   }
 
   IAllocatorUniquePtr<int32_t> b_col_buf;
   if (a_offset != 0) {
     b_col_buf = GetScratchBuffer<int32_t>(helper.OutputShape().Size() / helper.M());
-    ORT_RETURN_IF_ERROR(ReduceColSumOnMatrixB(b_ptr, b_col_buf.get(), a_offset, helper));
+    ORT_RETURN_IF_ERROR(ReduceColSumOnMatrixB(Stream(), b_ptr, b_col_buf.get(), a_offset, helper));
   }
 
   int alpha = 1;
   int beta = 0;
   if (a_offset != 0 || b_offset != 0) {
-    OffsetOutput(a_row_buf.get(),
+    OffsetOutput(Stream(),
+                 a_row_buf.get(),
                  b_col_buf.get(),
                  output_ptr,
                  a_offset,

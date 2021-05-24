@@ -12,8 +12,10 @@
 #include "core/framework/random_seed.h"
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
 #ifdef USE_CUDA
-#include "core/providers/cuda/cuda_allocator.h"
-#include "core/providers/cuda/cuda_provider_factory_creator.h"
+namespace onnxruntime {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
+}  // namespace onnxruntime
 #endif
 #ifdef USE_ROCM
 #include "core/providers/rocm/rocm_allocator.h"
@@ -33,6 +35,30 @@ using namespace onnxruntime::training;
 using namespace onnxruntime::training::tensorboard;
 using namespace std;
 
+static SessionOptions session_options = {
+    ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
+    ExecutionOrder::PRIORITY_BASED,    //execution_order
+    false,                             //enable_profiling
+    ORT_TSTR(""),                      //optimized_model_filepath
+    true,                              //enable_mem_pattern
+    true,                              //enable_mem_reuse
+    true,                              //enable_cpu_mem_arena
+    ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
+    "",                                //session_logid
+    -1,                                //session_log_severity_level
+    0,                                 //session_log_verbosity_level
+    5,                                 //max_num_graph_transformation_steps
+    TransformerLevel::Level1,          //graph_optimization_level
+    {},                                //intra_op_param
+    {},                                //inter_op_param
+    {},                                //free_dimension_overrides
+    true,                              //use_per_session_threads
+    true,                              //thread_pool_allow_spinning
+    false,                             //use_deterministic_compute
+    {},                                //config_options
+    {},                                // initializers_to_share_map
+};
+
 struct BertParameters : public TrainingRunner::Parameters {
   int max_sequence_length = 512;
   int max_predictions_per_sequence = 80;
@@ -41,7 +67,7 @@ struct BertParameters : public TrainingRunner::Parameters {
   float initial_lr_phase2;
   size_t num_train_steps_phase2;
   float warmup_ratio_phase2;
-  float cuda_mem_limit_in_gb = -1;
+  float gpu_mem_limit_in_gb = -1;
   bool debug_break = false;
   PathString train_data_dir_phase2;
   PathString test_data_dir_phase2;
@@ -109,6 +135,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       ("iterations_per_loop", "How many steps to make in each estimator call.", cxxopts::value<int>()->default_value("1000"))
       ("max_eval_steps", "Maximum number of eval steps.", cxxopts::value<int>()->default_value("100"))
       ("seed", "Random seed.", cxxopts::value<int64_t>()->default_value("-1"))
+      ("use_deterministic_compute", "Whether to enable deterministic compute.", cxxopts::value<bool>()->default_value("false"))
       ("use_mixed_precision", "Whether to use a mix of fp32 and fp16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
       ("use_bfloat16", "Whether to use BFloat16 arithmetic on GPU.", cxxopts::value<bool>()->default_value("false"))
       ("enable_adasum", "Whether to use Adasum for allreduction.", cxxopts::value<bool>()->default_value("false"))
@@ -121,6 +148,9 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         cxxopts::value<bool>()->default_value("true"))
       ("use_nccl", "Whether to use NCCL for distributed training.", cxxopts::value<bool>()->default_value("false"))
       ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
+      ("use_gist", "Whether to use GIST encoding/decoding.")
+      ("gist_op", "Opearator type(s) to which GIST is applied.", cxxopts::value<int>()->default_value("0"))
+      ("gist_compr", "Compression type used for GIST", cxxopts::value<std::string>()->default_value("GistPack8"))
       ("max_profile_records", "Maximum number of runtime profile data records to collect. 0 means use the default value.",
         cxxopts::value<size_t>()->default_value("0"))
       ("mode", "mode for running, can be one of [train|perf]", cxxopts::value<std::string>()->default_value("train"))
@@ -157,7 +187,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
         cxxopts::value<int64_t>()->default_value("0"))
       ("ratio_min", "Lamb min ratio parameter", cxxopts::value<float>()->default_value("0.05"))
       ("ratio_max", "Lamb max ratio parameter", cxxopts::value<float>()->default_value("5.0"))
-      ("cuda_mem_limit_in_gb", "Max cuda memory ort can use, in GB", cxxopts::value<float>()->default_value("-1.0"))
+      ("gpu_mem_limit_in_gb", "Max cuda memory ort can use, in GB", cxxopts::value<float>()->default_value("-1.0"))
       ("data_parallel_size", "Data parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("pipeline_parallel_size", "Number of pipeline stages.", cxxopts::value<int>()->default_value("1"))
@@ -214,7 +244,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     }
     params.lr_params.warmup_ratio = ratio;
 
-    params.cuda_mem_limit_in_gb = flags["cuda_mem_limit_in_gb"].as<float>();
+    params.gpu_mem_limit_in_gb = flags["gpu_mem_limit_in_gb"].as<float>();
 
     float ratio_phase2 = flags["warmup_ratio_phase2"].as<float>();
     if (ratio_phase2 > 1.f || ratio_phase2 < 0.f) {
@@ -226,6 +256,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
     params.num_train_steps_phase2 = flags["num_train_steps_phase2"].as<int>();
 
     params.batch_size = flags["train_batch_size"].as<int>();
+    params.gist_config.op_type = flags["gist_op"].as<int>();
+    params.gist_config.compr_type = flags["gist_compr"].as<std::string>();
     if (flags.count("eval_batch_size")) {
       params.eval_batch_size = flags["eval_batch_size"].as<int>();
     } else {
@@ -348,6 +380,7 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
 
     params.deepspeed_zero = ZeROConfig(flags["deepspeed_zero_stage"].as<int>());
     params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
+    params.use_gist = flags.count("use_gist") > 0;
 
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();
@@ -469,6 +502,8 @@ Status ParseArguments(int argc, char* argv[], BertParameters& params, OrtParamet
       std::cout << "Random seed is set to: " << seed << std::endl;
     }
 
+    session_options.use_deterministic_compute = flags["use_deterministic_compute"].as<bool>();
+
     params.enable_gelu_approximation = flags["enable_gelu_approximation"].as<bool>();
     params.attn_dropout_recompute = flags["attn_dropout_recompute"].as<bool>();
     params.gelu_recompute = flags["gelu_recompute"].as<bool>();
@@ -542,6 +577,7 @@ void setup_training_params(BertParameters& params) {
   params.model_with_loss_func_path = model_name_base + ORT_TSTR("_with_cost.onnx");
   params.model_with_training_graph_path = model_name_base + ORT_TSTR("_bw.onnx");
   params.model_actual_running_graph_path = model_name_base + ORT_TSTR("_bw_running.onnx");
+  params.model_with_gist_nodes_path = model_name_base + ORT_TSTR("_with_gist.onnx");
 
 #if defined(USE_MPI)
   if (params.pipeline_parallel_size > 1) {
@@ -573,15 +609,23 @@ void setup_training_params(BertParameters& params) {
 
 #ifdef USE_CUDA
   {
-    CUDAExecutionProviderInfo info{};
-    info.device_id = gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
-    if (params.cuda_mem_limit_in_gb > 0) {
-      info.cuda_mem_limit = gsl::narrow<size_t>(params.cuda_mem_limit_in_gb * 1024 * 1024 * 1024);
+    OrtCUDAProviderOptions info{
+        gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank()),
+        OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+        std::numeric_limits<size_t>::max(),
+        0,
+        true,
+        0,
+        nullptr,
+        nullptr};
+
+    if (params.gpu_mem_limit_in_gb > 0) {
+      info.gpu_mem_limit = gsl::narrow<size_t>(params.gpu_mem_limit_in_gb * 1024 * 1024 * 1024);
     }
     info.cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
 
-    params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(info));
-    params.input_allocator = std::make_shared<CUDAPinnedAllocator>(info.device_id, CUDA_PINNED);
+    params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_Cuda(&info));
+    params.input_allocator = CreateCUDAPinnedAllocator(info.device_id, CUDA_PINNED);
   }
 #endif
 
@@ -744,9 +788,9 @@ static Status RunPerformanceTest(const BertParameters& params, const Environment
                                                           onnx::TensorProto_DataType_INT64};
   const size_t num_of_perf_samples = params.num_train_steps * params.batch_size;
   auto random_perf_data = std::make_shared<RandomDataSet>(num_of_perf_samples, tensor_names, tensor_shapes, tensor_types);
-  auto random_perf_data_loader = onnxruntime::make_unique<SingleDataLoader>(random_perf_data, tensor_names);
+  auto random_perf_data_loader = std::make_unique<SingleDataLoader>(random_perf_data, tensor_names);
 
-  TrainingRunner runner{params, env};
+  TrainingRunner runner{params, env, session_options};
   ORT_RETURN_IF_ERROR(runner.Initialize());
   ORT_RETURN_IF_ERROR(runner.Run(random_perf_data_loader.get(), random_perf_data_loader.get()));
 
@@ -756,25 +800,25 @@ static Status RunPerformanceTest(const BertParameters& params, const Environment
 static Status RunTraining(const BertParameters& params, const Environment& env) {
   const size_t max_num_files_preload = 2;
 
-  auto runner = onnxruntime::make_unique<TrainingRunner>(params, env);
+  auto runner = std::make_unique<TrainingRunner>(params, env, session_options);
   ORT_RETURN_IF_ERROR(runner->Initialize());
 
   BertParameters params_for_phase;
   while (GetParametersForPhase(runner->GetRound(), params, params_for_phase)) {
     ORT_RETURN_IF_ERROR(runner->UpdateParams(params_for_phase));
     auto rank_in_data_parallel_group = (MPIContext::GetInstance().GetWorldRank() / params_for_phase.horizontal_parallel_size) % params_for_phase.data_parallel_size;
-    auto training_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
-                                                                     params_for_phase.train_data_dir,
-                                                                     max_num_files_preload,
-                                                                     rank_in_data_parallel_group,
-                                                                     params_for_phase.data_parallel_size);
+    auto training_data_loader = std::make_unique<DataLoader>(params_for_phase.input_name_map,
+                                                             params_for_phase.train_data_dir,
+                                                             max_num_files_preload,
+                                                             rank_in_data_parallel_group,
+                                                             params_for_phase.data_parallel_size);
 
     auto test_data_loader = std::unique_ptr<DataLoader>{};
     // Evaluation is only done in device #0
     if (MPIContext::GetInstance().GetWorldRank() == 0) {
-      test_data_loader = onnxruntime::make_unique<DataLoader>(params_for_phase.input_name_map,
-                                                              params_for_phase.test_data_dir,
-                                                              max_num_files_preload);
+      test_data_loader = std::make_unique<DataLoader>(params_for_phase.input_name_map,
+                                                      params_for_phase.test_data_dir,
+                                                      max_num_files_preload);
     }
 
     if (!params.perf_output_dir.empty()) {
@@ -802,7 +846,8 @@ int main(int argc, char* argv[]) {
   OrtParameters ort_params{};
   RETURN_IF_FAIL(ParseArguments(argc, argv, params, ort_params));
   bool keep_looping = params.debug_break;
-  while(keep_looping);
+  while (keep_looping)
+    ;
 
   // setup logger, be noted: LOGS_DEFAULT must be after logging manager initialization.
   string default_logger_id{"Default"};

@@ -6,6 +6,7 @@
 #include <vector>
 #include <type_traits>
 
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/common/path.h"
 #include "core/common/status.h"
@@ -26,11 +27,15 @@ bool operator==(const TensorShapeProto_Dimension& l, const TensorShapeProto_Dime
 bool operator!=(const TensorShapeProto_Dimension& l, const TensorShapeProto_Dimension& r);
 
 }  // namespace ONNX_NAMESPACE
+#endif
 
 namespace onnxruntime {
-class Tensor;
 namespace utils {
+#ifndef SHARED_PROVIDER
+
 TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto);
+
+std::vector<int64_t> GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
 /**
  * deserialize a TensorProto into a preallocated memory buffer.
@@ -39,8 +44,18 @@ TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShape
  *                        relative path or an absolute path.
  */
 common::Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* tensor_proto_path,
-                                    const ONNX_NAMESPACE::TensorProto& input, const MemBuffer& m, OrtValue& value,
-                                    OrtCallback& deleter);
+                                    const ONNX_NAMESPACE::TensorProto& input, const MemBuffer& m, OrtValue& value);
+/**
+ * @brief Deserialize a TensorProto into a preallocated empty Tensor
+ * @param env 
+ * @param model_path 
+ * @param tensor_proto  source data
+ * @param tensorp       destination empty tensor
+ * @return 
+*/
+common::Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
+                                   const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                   Tensor& tensor);
 
 /** Creates a TensorProto from a Tensor.
     @param[in] tensor the Tensor whose data and shape will be used to create the TensorProto.
@@ -87,6 +102,7 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
                                               const Path& model_path,
                                               ONNX_NAMESPACE::SparseTensorProto& sparse);
 #endif  // !ORT_MINIMAL_BUILD
+#endif
 
 inline bool HasDimValue(const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim) {
   return dim.value_case() == ONNX_NAMESPACE::TensorShapeProto_Dimension::kDimValue;
@@ -110,10 +126,12 @@ inline bool HasShape(const ONNX_NAMESPACE::TypeProto_Tensor& ten_proto) {
   return ten_proto.has_shape();
 }
 
+#ifndef SHARED_PROVIDER
 inline bool HasShape(const ONNX_NAMESPACE::TypeProto_SparseTensor& ten_proto) {
   // XXX: Figure out how do in proto3
   return ten_proto.has_shape();
 }
+#endif
 
 inline bool HasRawData(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   // Can not be UNDEFINED and can not be STRING but test for STRING is usually performed separately
@@ -133,6 +151,7 @@ inline bool HasDataType(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   return ten_proto.data_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
 }
 
+#ifndef SHARED_PROVIDER
 inline bool HasName(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   return ten_proto.has_name();  // XXX
 }
@@ -156,11 +175,13 @@ inline bool HasKeyType(const ONNX_NAMESPACE::TypeProto_Map& map_proto) {
 inline bool HasValueType(const ONNX_NAMESPACE::TypeProto_Map& map_proto) {
   return map_proto.value_type().value_case() != ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET;
 }
+#endif
 
 inline bool HasType(const ONNX_NAMESPACE::ValueInfoProto& vi_proto) {
   return vi_proto.type().value_case() != ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET;
 }
 
+#ifndef SHARED_PROVIDER
 inline bool HasName(const ONNX_NAMESPACE::ValueInfoProto& vi_proto) {
   return vi_proto.has_name();  // XXX: Figure out proto3 way
 }
@@ -172,6 +193,7 @@ inline bool HasDomain(const ONNX_NAMESPACE::TypeProto_Opaque& op_proto) {
 inline bool HasName(const ONNX_NAMESPACE::TypeProto_Opaque& op_proto) {
   return !op_proto.name().empty();
 }
+#endif
 
 inline bool HasType(const ONNX_NAMESPACE::AttributeProto& at_proto) {
   return at_proto.type() != ONNX_NAMESPACE::AttributeProto::AttributeType::AttributeProto_AttributeType_UNDEFINED;
@@ -217,6 +239,7 @@ inline bool HasGraphs(const ONNX_NAMESPACE::AttributeProto& at_proto) {
   return at_proto.type() == ONNX_NAMESPACE::AttributeProto::AttributeType::AttributeProto_AttributeType_GRAPHS;
 }
 
+#ifndef SHARED_PROVIDER
 inline bool HasName(const ONNX_NAMESPACE::AttributeProto& at_proto) {
   return at_proto.has_name();  // XXX: Fugure out proto3
 }
@@ -237,16 +260,7 @@ inline bool HasName(const ONNX_NAMESPACE::NodeProto& node_proto) {
   //XXX: Figure out proto3 style
   return node_proto.has_name();
 }
-
-#if !defined(ORT_MINIMAL_BUILD)
-// Unpack tensor which contains external data. Uses the tensor_proto_dir to construct the full path for external data.
-// If tensor_proto_dir == nullptr then uses the current directory instead.
-// This function does not unpack string_data of a tensor
-template <typename T>
-Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
-                                    const ORTCHAR_T* tensor_proto_dir, size_t expected_size,
-                                    /*out*/ T* p_data);
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#endif
 
 // UnpackTensor from raw data or the type specific data field. Does not handle external data.
 // If the tensor does not contain raw data then raw_data should be nullptr and raw_data_len should be 0.
@@ -258,38 +272,21 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
 // Uses the model path to construct the full path for loading external data. In case when model_path is empty
 // it uses current directory.
 template <typename T>
-Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path, /*out*/ T* p_data, size_t expected_size) {
-#if !defined(ORT_MINIMAL_BUILD)
-  if (HasExternalData(tensor)) {
-    return UnpackTensorWithExternalData(
-        tensor,
-        model_path.IsEmpty() ? nullptr : model_path.ParentPath().ToPathString().c_str(),
-        expected_size,
-        p_data);
-  }
-#else
-  ORT_UNUSED_PARAMETER(model_path);
-  ORT_RETURN_IF(HasExternalData(tensor), "TensorProto with external data is not supported in ORT minimal build.");
-#endif
-
-  return HasRawData(tensor)
-             ? UnpackTensor(tensor, tensor.raw_data().data(), tensor.raw_data().size(), p_data, expected_size)
-             : UnpackTensor(tensor, nullptr, 0, p_data, expected_size);
-}
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const Path& model_path,
+                    /*out*/ T* p_data, size_t expected_size);
 
 /**
  * Unpack the data from an initializer tensor
  * Please note, this function does not unpack string_data of an initializer tensor
  * @param initializer       given initializer tensor
  * @param initializer_dir   model_path to construct external data dir path. When this is empty, current dir is used.
- * @param unpacked_tensor   the data from the initaizlier in uint8_t* form
+ * @param unpacked_tensor   the data from the initializer in byte form
  * @param tensor_byte_size  the byte size of the unpacked_tensor
  * @returns                 Status::OK() if data is unpacked successfully
  */
 common::Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
                                      const Path& model_path,
-                                     std::unique_ptr<uint8_t[]>& unpacked_tensor,
+                                     std::unique_ptr<unsigned char[]>& unpacked_tensor,
                                      size_t& tensor_byte_size) ORT_MUST_USE_RESULT;
-
 }  // namespace utils
 }  // namespace onnxruntime

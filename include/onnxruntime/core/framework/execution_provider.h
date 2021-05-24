@@ -3,10 +3,10 @@
 
 #pragma once
 
-#ifndef PROVIDER_BRIDGE_PROVIDER
+#ifndef SHARED_PROVIDER
 #include <unordered_map>
 #include <unordered_set>
-
+#include <memory>
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/tensor.h"
@@ -20,6 +20,8 @@ struct ComputeCapability;
 class KernelRegistry;
 class KernelRegistryManager;
 }  // namespace onnxruntime
+#else
+#include <memory>
 #endif
 
 #include "core/framework/provider_options.h"
@@ -51,7 +53,7 @@ class IExecutionProvider {
   IExecutionProvider(const std::string& type, bool use_metadef_id_creator = false)
       : type_{type} {
     if (use_metadef_id_creator) {
-      metadef_id_generator_ = onnxruntime::make_unique<ModelMetadefIdGenerator>();
+      metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
     }
   }
 
@@ -164,6 +166,9 @@ class IExecutionProvider {
      clean up its temporary resources to reduce memory and ensure the first run is fast.
   */
   virtual common::Status OnSessionInitializationEnd() { return Status::OK(); }
+
+  virtual common::Status SetComputeStream(void*) { return Status::OK(); }
+  virtual void* GetComputeStream() const { return nullptr; }
 
   void InsertAllocator(AllocatorPtr allocator);
   void ReplaceAllocator(AllocatorPtr allocator);

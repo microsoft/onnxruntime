@@ -1,5 +1,6 @@
 import onnx
 from .base_operator import QuantOperatorBase
+from .qdq_base_operator import QDQOperatorBase
 from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from onnx import onnx_pb as onnx_proto
 
@@ -19,15 +20,6 @@ class QLinearActivation(QuantOperatorBase):
             self.quantizer.new_nodes += [node]
             return
 
-        if node.op_type == 'Clip':
-            if len(node.attribute) != 2:
-                self.quantizer.new_nodes += [node]
-                return
-            for attr_idx in [0, 1]:
-                if node.attribute[attr_idx].name not in ['min', 'max']:
-                    self.quantizer.new_nodes += [node]
-                    return
-
         quantized_value = self.quantizer.quantized_value_map[node.input[0]]
         self.quantizer.quantized_value_map[node.output[0]] = quantized_value
 
@@ -37,9 +29,17 @@ class QLinearActivation(QuantOperatorBase):
             self.QuantizeClipRelu()
             return
 
+        nnapi_sigmoid_option = 'extra.Sigmoid.nnapi'
+        sigmoid_nnapi_mode = (node.op_type == 'Sigmoid' and
+                              nnapi_sigmoid_option in self.quantizer.extra_options and
+                              self.quantizer.extra_options[nnapi_sigmoid_option])
+        use_scale = 1 / 256.0 if sigmoid_nnapi_mode else None
+        use_zeropoint = 0 if sigmoid_nnapi_mode else None
+
         # No assert on op_type as it is controlled by registry
         # only try to quantize when given quantization parameters for it
-        data_found, output_scale_name, output_zp_name, _, _ = self.quantizer._get_quantization_params(node.output[0])
+        data_found, output_scale_name, output_zp_name, _, _ = \
+            self.quantizer._get_quantization_params(node.output[0], use_scale, use_zeropoint)
         if not data_found:
             super().quantize()
             return
@@ -69,3 +69,14 @@ class QLinearActivation(QuantOperatorBase):
 
         nodes.append(qlinear_activation_node)
         self.quantizer.new_nodes += nodes
+
+
+class QDQRemovableActivation(QDQOperatorBase):
+    def __init__(self, onnx_quantizer, onnx_node):
+        super().__init__(onnx_quantizer, onnx_node)
+
+    def quantize(self):
+        node = self.node
+
+        if self.quantizer.try_replacing_upstream_output(node.input[0], node.output[0]):
+            self.quantizer.remove_node(self.node)

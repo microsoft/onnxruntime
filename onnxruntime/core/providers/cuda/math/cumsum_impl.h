@@ -11,6 +11,7 @@ namespace cuda {
 
 template <typename T>
 void CumSumImpl(
+    cudaStream_t stream,
     const T* input_data,
     const fast_divmod& input_dim_along_axis,
     const fast_divmod& input_stride_along_axis,

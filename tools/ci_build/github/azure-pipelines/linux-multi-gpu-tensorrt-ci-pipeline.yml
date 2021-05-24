@@ -3,7 +3,7 @@ jobs:
   parameters:
     AgentPool : 'Linux-Multi-GPU'
     JobName: 'Linux_CI_Multi_GPU_TensorRT_Dev'
-    # The latest TensorRT container only supports ubuntu18.04
-    RunDockerBuildArgs: '-o ubuntu18.04 -d tensorrt -r $(Build.BinariesDirectory) -p 3.6 -x "--enable_multi_device_test"'
+    # The latest TensorRT container only supports ubuntu20.04 and python 3.8
+    RunDockerBuildArgs: '-o ubuntu20.04 -d tensorrt -r $(Build.BinariesDirectory) -p 3.8 -x "--enable_multi_device_test"'
     DoNugetPack:  'false'
     ArtifactName: 'drop-linux'

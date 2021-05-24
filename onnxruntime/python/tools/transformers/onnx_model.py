@@ -7,11 +7,11 @@ from typing import List, Tuple
 import logging
 import os
 import sys
-import argparse
 from pathlib import Path
 import numpy as np
 from collections import deque
-from onnx import ModelProto, TensorProto, numpy_helper, helper, external_data_helper, save_model
+from onnx import onnx_pb, AttributeProto, ModelProto, TensorProto, numpy_helper, helper, external_data_helper, save_model
+from shape_infer_helper import SymbolicShapeInferenceHelper
 
 logger = logging.getLogger(__name__)
 
@@ -20,10 +20,29 @@ class OnnxModel:
     def __init__(self, model):
         self.model = model
         self.node_name_counter = {}
+        self.shape_infer_helper = None
+        self.all_graphs = None
+
+    def infer_runtime_shape(self, dynamic_axis_mapping, update=False):
+        shape_infer_helper = None
+        if update:
+            shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
+            self.shape_infer_helper = shape_infer_helper
+        else:
+            if self.shape_infer_helper is None:
+                self.shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
+            shape_infer_helper = self.shape_infer_helper
+        try:
+            if shape_infer_helper.infer(dynamic_axis_mapping):
+                return shape_infer_helper
+        except:
+            print("failed in shape inference", sys.exc_info()[0])
+
+        return None
 
     def input_name_to_nodes(self):
         input_name_to_nodes = {}
-        for node in self.model.graph.node:
+        for node in self.nodes():
             for input_name in node.input:
                 if input_name not in input_name_to_nodes:
                     input_name_to_nodes[input_name] = [node]
@@ -33,36 +52,97 @@ class OnnxModel:
 
     def output_name_to_node(self):
         output_name_to_node = {}
-        for node in self.model.graph.node:
+        for node in self.nodes():
             for output_name in node.output:
                 output_name_to_node[output_name] = node
         return output_name_to_node
 
     def nodes(self):
-        return self.model.graph.node
+        all_nodes = []
+        for graph in self.graphs():
+            for node in graph.node:
+                all_nodes.append(node)
+        return all_nodes
 
     def graph(self):
         return self.model.graph
 
+    def graphs(self):
+        if self.all_graphs is not None:
+            return self.all_graphs
+        self.all_graphs = []
+        graph_queue = [self.model.graph]
+        while graph_queue:
+            graph = graph_queue.pop(0)
+            self.all_graphs.append(graph)
+            for node in graph.node:
+                for attr in node.attribute:
+                    if attr.type == AttributeProto.AttributeType.GRAPH:
+                        assert (isinstance(attr.g, onnx_pb.GraphProto))
+                        graph_queue.append(attr.g)
+                    if attr.type == AttributeProto.AttributeType.GRAPHS:
+                        for g in attr.graphs:
+                            assert (isinstance(g, onnx_pb.GraphProto))
+                            graph_queue.append(g)
+        return self.all_graphs
+
+    def get_graph_by_node(self, node):
+        for graph in self.graphs():
+            if node in graph.node:
+                return graph
+        return None
+
+    def get_graph_by_name(self, graph_name):
+        for graph in self.graphs():
+            if graph_name == graph.name:
+                return graph
+        return None
+
+    def get_topological_insert_id(self, graph, outputs):
+        for idx, node in enumerate(graph.node):
+            for input in node.input:
+                if input in outputs:
+                    return idx
+        return len(graph.node)
+
     def remove_node(self, node):
-        if node in self.model.graph.node:
-            self.model.graph.node.remove(node)
+        for graph in self.graphs():
+            if node in graph.node:
+                graph.node.remove(node)
 
     def remove_nodes(self, nodes_to_remove):
         for node in nodes_to_remove:
             self.remove_node(node)
 
-    def add_node(self, node):
-        self.model.graph.node.extend([node])
+    def add_node(self, node, graph_name=None):
+        if graph_name is None or graph_name == self.model.graph.name:
+            self.model.graph.node.extend([node])
+        else:
+            graph = self.get_graph_by_name(graph_name)
+            insert_idx = self.get_topological_insert_id(graph, node.output)
+            graph.node.insert(insert_idx, node)
 
-    def add_nodes(self, nodes_to_add):
-        self.model.graph.node.extend(nodes_to_add)
+    def add_nodes(self, nodes_to_add, node_name_to_graph_name=None):
+        if node_name_to_graph_name is None:
+            self.model.graph.node.extend(nodes_to_add)
+        else:
+            for node in nodes_to_add:
+                graph_name = node_name_to_graph_name[node.name]
+                self.add_node(node, graph_name)
 
-    def add_initializer(self, tensor):
-        self.model.graph.initializer.extend([tensor])
+    def add_initializer(self, tensor, graph_name=None):
+        if graph_name is None or graph_name == self.model.graph.name:
+            self.model.graph.initializer.extend([tensor])
+        else:
+            graph = self.get_graph_by_name(graph_name)
+            graph.initializer.extend([tensor])
 
-    def add_input(self, input):
-        self.model.graph.input.extend([input])
+    def add_input(self, input, graph_name=None):
+        if graph_name is None or graph_name == self.model.graph.name:
+            self.model.graph.input.extend([input])
+        else:
+            graph = self.get_graph_by_name(graph_name)
+            graph.input.extend([input])
 
     @staticmethod
     def replace_node_input(node, old_input_name, new_input_name):
@@ -71,6 +151,7 @@ class OnnxModel:
             if node.input[j] == old_input_name:
                 node.input[j] = new_input_name
 
+    # This function is deprecated since we use onnxconverter-common
     def replace_input_of_all_nodes(self, old_input_name, new_input_name):
         for node in self.model.graph.node:
             OnnxModel.replace_node_input(node, old_input_name, new_input_name)
@@ -82,18 +163,24 @@ class OnnxModel:
             if node.output[j] == old_output_name:
                 node.output[j] = new_output_name
 
+    # This function is deprecated since we use onnxconverter-common
     def replace_output_of_all_nodes(self, old_output_name, new_output_name):
         for node in self.model.graph.node:
             OnnxModel.replace_node_output(node, old_output_name, new_output_name)
 
     def get_initializer(self, name):
-        for tensor in self.model.graph.initializer:
-            if tensor.name == name:
-                return tensor
+        for graph in self.graphs():
+            for tensor in graph.initializer:
+                if tensor.name == name:
+                    return tensor
         return None
 
     def get_nodes_by_op_type(self, op_type):
-        return [n for n in self.model.graph.node if n.op_type == op_type]
+        nodes = []
+        for node in self.nodes():
+            if node.op_type == op_type:
+                nodes.append(node)
+        return nodes
 
     def get_children(self, node, input_name_to_nodes=None):
         if (input_name_to_nodes is None):
@@ -405,7 +492,10 @@ class OnnxModel:
         self.model.opset_import[0].version = original_opset_version
 
     def convert_model_float32_to_float16(self, cast_input_output=True):
-        """ Convert a graph to FLOAT16
+        """Convert a graph to FLOAT16. By default, we will keep data types of inputs and outputs.
+           For decoder model with past_key_values, it is recommended to set cast_input_output=False for better performance.
+        Args:
+            cast_input_output (bool, optional): keep data type of inputs and outputs, and add Cast nodes to convert float32 inputs to float16, and float16 to float32 for outputs. Defaults to True.
         """
         from packaging.version import Version
         import onnxconverter_common as oc
@@ -566,6 +656,14 @@ class OnnxModel:
         Args:
             outputs (list): a list of graph outputs to retain. If it is None, all graph outputs will be kept.
         """
+
+        for node in self.model.graph.node:
+            # Some operators with inner graph in attributes like 'body' 'else_branch' or 'then_branch'
+            if node.op_type in ['Loop', 'Scan', 'If']:
+                # TODO: handle inner graph
+                logger.debug(f"Skip prune_graph since graph has operator: {node.op_type}")
+                return
+
         if outputs is None:
             outputs = [output.name for output in self.model.graph.output]
 
@@ -614,6 +712,10 @@ class OnnxModel:
 
         remaining_input_names = []
         for node in graph.node:
+            if node.op_type in ['Loop', 'Scan', 'If']:
+                # TODO: handle inner graph
+                logger.debug(f"Skip update_graph since graph has operator: {node.op_type}")
+                return
             if node.op_type != "Constant":
                 for input_name in node.input:
                     if input_name not in remaining_input_names:

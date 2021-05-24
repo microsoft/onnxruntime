@@ -1,4 +1,5 @@
 import onnx
+import itertools
 from .quant_utils import find_by_name
 from pathlib import Path
 
@@ -172,14 +173,14 @@ class ONNXModel:
                         'MatMul',
                         inputs=[node.input[0], inputB],
                         outputs=[node.output[0] + ('_MatMul' if len(node.input) > 2 else '')],
-                        name=node.name + '_MatMul')
+                        name=node.name + '_MatMul' if node.name else "")
                     new_nodes.append(matmul_node)
 
                     if len(node.input) > 2:
                         add_node = onnx.helper.make_node('Add',
                                                          inputs=[node.output[0] + '_MatMul', node.input[2]],
                                                          outputs=node.output,
-                                                         name=node.name + '_Add')
+                                                         name=node.name + '_Add' if node.name else "")
                         new_nodes.append(add_node)
 
                 # unsupported
@@ -197,8 +198,100 @@ class ONNXModel:
         '''
         Save model to external data, which is needed for model size > 2GB
         '''
+        self.topological_sort()
         if use_external_data_format:
             onnx.external_data_helper.convert_model_to_external_data(self.model,
                                                                      all_tensors_to_one_file=True,
                                                                      location=Path(output_path).name + ".data")
         onnx.save_model(self.model, output_path)
+
+    @staticmethod
+    def replace_node_input(node, old_input_name, new_input_name):
+        assert isinstance(old_input_name, str) and isinstance(new_input_name, str)
+        for j in range(len(node.input)):
+            if node.input[j] == old_input_name:
+                node.input[j] = new_input_name
+
+    def replace_input_of_all_nodes(self, old_input_name, new_input_name):
+        for node in self.model.graph.node:
+            ONNXModel.replace_node_input(node, old_input_name, new_input_name)
+
+    @staticmethod
+    def replace_node_output(node, old_output_name, new_output_name):
+        assert isinstance(old_output_name, str) and isinstance(new_output_name, str)
+        for j in range(len(node.output)):
+            if node.output[j] == old_output_name:
+                node.output[j] = new_output_name
+
+    def replace_output_of_all_nodes(self, old_output_name, new_output_name):
+        for node in self.model.graph.node:
+            ONNXModel.replace_node_output(node, old_output_name, new_output_name)
+
+    def remove_unused_constant(self):
+        input_name_to_nodes = self.input_name_to_nodes()
+
+        #remove unused constant
+        unused_nodes = []
+        nodes = self.nodes()
+        for node in nodes:
+            if node.op_type == "Constant" and not self.is_graph_output(
+                    node.output[0]) and node.output[0] not in input_name_to_nodes:
+                unused_nodes.append(node)
+
+        self.remove_nodes(unused_nodes)
+
+        ununsed_weights = []
+        for w in self.initializer():
+            if w.name not in input_name_to_nodes and not self.is_graph_output(w.name):
+                ununsed_weights.append(w)
+                # Remove from graph.input
+                for graph_input in self.graph().input:
+                    if graph_input.name == w.name:
+                        self.graph().input.remove(graph_input)
+
+        self.remove_initializers(ununsed_weights)
+
+    def is_graph_output(self, output_name):
+        for output in self.model.graph.output:
+            if output.name == output_name:
+                return True
+        return False
+
+    def topological_sort(self):
+        deps_count = [0]*len(self.nodes()) # dependency count of each node
+        deps_to_nodes = {} # input to node indice
+        for node_idx, node in enumerate(self.nodes()):
+            # CANNOT use len(node.input) directly because input can be optional
+            deps_count[node_idx] = sum(1 for _ in node.input if _ )
+            for input_name in node.input:
+                if input_name not in deps_to_nodes:
+                    deps_to_nodes[input_name] = [node_idx]
+                else:
+                    deps_to_nodes[input_name].append(node_idx)
+
+        # initialize sorted_nodes
+        sorted_nodes = []
+        for input in itertools.chain(self.initializer(), self.model.graph.input):
+            if input.name in deps_to_nodes:
+                for node_idx in deps_to_nodes[input.name]:
+                    deps_count[node_idx] = deps_count[node_idx] - 1
+                    if deps_count[node_idx] == 0:
+                        sorted_nodes.append(self.nodes()[node_idx])
+
+        s = 0
+        e = len(sorted_nodes)
+
+        while s < e:
+            for output in sorted_nodes[s].output:
+                if output in deps_to_nodes:
+                    for node_idx in deps_to_nodes[output]:
+                        deps_count[node_idx] = deps_count[node_idx] - 1
+                        if deps_count[node_idx] == 0:
+                            sorted_nodes.append(self.nodes()[node_idx])
+                            e = e + 1
+            s = s + 1
+
+        assert(e == len(self.graph().node)), "Graph is not a DAG"
+        self.graph().ClearField('node')
+        self.graph().node.extend(sorted_nodes)
+

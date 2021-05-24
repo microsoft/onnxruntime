@@ -115,13 +115,13 @@ class DnnlSum : public DnnlKernel {
       }
     }
 
-    primitive_dst_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+    primitive_dst_md_ = std::make_unique<dnnl::memory::desc>(
         dnnl::memory::desc({dst_dims_mkl}, DnnnType<T>(), dnnl::memory::format_tag::any));
     if (!gpu_available_) {
-      sum_pd_ = onnxruntime::make_unique<dnnl::sum::primitive_desc>(
+      sum_pd_ = std::make_unique<dnnl::sum::primitive_desc>(
           dnnl::sum::primitive_desc(*primitive_dst_md_, coeff, srcs_pd_, cpu_engine));
     } else {  // gpu_available_
-      sum_pd_ = onnxruntime::make_unique<dnnl::sum::primitive_desc>(
+      sum_pd_ = std::make_unique<dnnl::sum::primitive_desc>(
           dnnl::sum::primitive_desc(*primitive_dst_md_, coeff, srcs_pd_, gpu_engine));
     }
 
@@ -131,21 +131,21 @@ class DnnlSum : public DnnlKernel {
         if (primitive_dst_desc_ != ort_source_desc_) {
           // reorder neded. Use primitive output as input to reorder and
           // allocate buffer for reorder output, final output of this subgraph
-          primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+          primitive_dst_mem_ = std::make_unique<dnnl::memory>(
               dnnl::memory(sum_pd_->dst_desc(), cpu_engine));
         } else {
           // Last node but re-order not needed. Allocate buffer to output of this node
-          primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+          primitive_dst_mem_ = std::make_unique<dnnl::memory>(
               dnnl::memory(sum_pd_->dst_desc(), cpu_engine, nullptr));
         }
       } else {
         // Intermediate node. Use Dnnl kernel internal memory for output and
         // use this as input to next node.
-        primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+        primitive_dst_mem_ = std::make_unique<dnnl::memory>(
             dnnl::memory(sum_pd_->dst_desc(), cpu_engine));
       }
     } else {  // gpu_available_
-      primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+      primitive_dst_mem_ = std::make_unique<dnnl::memory>(
           dnnl::memory(sum_pd_->dst_desc(), gpu_engine));
     }
     primitive_dst_desc_ = sum_pd_->dst_desc();

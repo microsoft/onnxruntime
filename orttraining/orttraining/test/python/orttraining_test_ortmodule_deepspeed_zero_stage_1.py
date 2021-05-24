@@ -10,14 +10,13 @@ $ deepspeed orttraining_test_ortmodule_deepspeed_zero_stage_1.py \
 """
 import argparse
 import logging
-import os
 import torch
 import time
 from torchvision import datasets, transforms
 import torch.distributed as dist
 
 import onnxruntime
-from onnxruntime.training import ORTModule
+from onnxruntime.training.ortmodule import ORTModule
 
 import deepspeed
 
@@ -146,7 +145,7 @@ def main():
                         help='number of epochs to train (default: 10)')
     parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], default='WARNING',
                         help='Log level (default: WARNING)')
-    parser.add_argument('--data_dir', type=str, default='./mnist',
+    parser.add_argument('--data-dir', type=str, default='./mnist',
                         help='Path to the mnist data directory')
 
     # DeepSpeed-related settings

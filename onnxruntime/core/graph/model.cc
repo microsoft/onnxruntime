@@ -271,6 +271,15 @@ ModelProto Model::ToProto() {
   return result;
 }
 
+ModelProto Model::ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
+                                                       size_t initializer_size_threshold) {
+  ModelProto result(model_proto_);
+  const auto& graph = *graph_;
+  *(result.mutable_graph()) = graph.ToGraphProtoWithExternalInitializers(external_file_name,
+                                                                         initializer_size_threshold);
+  return result;
+}
+
 Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
   if (!model_istream.good()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid istream object.");
@@ -445,6 +454,32 @@ Status Model::Save(Model& model, const std::wstring& file_path) {
 }
 #endif
 
+template <typename T>
+static Status SaveModelWithExternalInitializers(Model& model,
+                                                const T& file_path,
+                                                const std::string& external_file_name,
+                                                size_t initializer_size_threshold) {
+  int fd = 0;
+  Status status = Env::Default().FileOpenWr(file_path, fd);
+  ORT_RETURN_IF_ERROR(status);
+
+  ORT_TRY {
+    status = Model::SaveWithExternalInitializers(model, fd, external_file_name,
+                                                 initializer_size_threshold);
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ONNXRUNTIME, FAIL, ex.what());
+    });
+  }
+  if (!status.IsOK()) {
+    GSL_SUPPRESS(es .84)
+    ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+    return status;
+  }
+  return Env::Default().FileClose(fd);
+}
+
 Status Model::Load(const PathString& file_path,
                    ONNX_NAMESPACE::ModelProto& model_proto) {
   return LoadModel(file_path, model_proto);
@@ -460,6 +495,12 @@ Status Model::Load(const PathString& file_path, std::shared_ptr<Model>& p_model,
 
 Status Model::Save(Model& model, const std::string& file_path) {
   return SaveModel(model, file_path);
+}
+
+Status Model::SaveWithExternalInitializers(Model& model, const PathString& file_path,
+                                           const std::string& external_file_name,
+                                           size_t initializer_size_threshold) {
+  return SaveModelWithExternalInitializers(model, file_path, external_file_name, initializer_size_threshold);
 }
 
 Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) {
@@ -562,6 +603,25 @@ Status Model::Save(Model& model, int p_fd) {
 
   auto model_proto = model.ToProto();
   google::protobuf::io::FileOutputStream output(p_fd);
+  const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
+  if (result) {
+    return Status::OK();
+  }
+  return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf serialization failed.");
+}
+
+Status Model::SaveWithExternalInitializers(Model& model,
+                                           int fd,
+                                           const std::string& external_file_name,
+                                           size_t initializer_size_threshold) {
+  if (fd < 0) {
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<fd> is less than 0.");
+  }
+
+  ORT_RETURN_IF_ERROR(model.MainGraph().Resolve());
+
+  auto model_proto = model.ToGraphProtoWithExternalInitializers(external_file_name, initializer_size_threshold);
+  google::protobuf::io::FileOutputStream output(fd);
   const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
   if (result) {
     return Status::OK();

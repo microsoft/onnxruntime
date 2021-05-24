@@ -15,6 +15,7 @@
 #include "core/providers/rocm/rocm_execution_provider_info.h"
 #include "core/providers/rocm/rocm_pch.h"
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
+#include "core/providers/rocm/shared_inc/rocm_call.h"
 
 namespace onnxruntime {
 
@@ -36,6 +37,20 @@ class ROCMExecutionProvider : public IExecutionProvider {
     // The HIP interface does not return anything interesting.
     return nullptr;
   }
+
+  Status SetComputeStream(void* stream) override {
+    if (stream != stream_) {
+      if (stream_) {
+        HIP_CALL(hipStreamDestroy(stream_));
+      }
+
+      external_stream_ = true;
+      stream_ = static_cast<hipStream_t>(stream);
+    }
+    return Status::OK();
+  }
+
+  void* GetComputeStream() const override { return static_cast<void*>(stream_); }
 
   rocblas_handle PerThreadRocblasHandle() {
     return GetPerThreadContext().RocblasHandle();
@@ -73,10 +88,16 @@ class ROCMExecutionProvider : public IExecutionProvider {
   ProviderOptions GetProviderOptions() const override {
     return ROCMExecutionProviderInfo::ToProviderOptions(info_);
   }
+  
+  void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) override;
+  static AllocatorPtr CreateRocmAllocator(OrtDevice::DeviceId device_id, size_t rocm_mem_limit, ArenaExtendStrategy arena_extend_strategy,
+                                          ROCMExecutionProviderExternalAllocatorInfo external_alloc_info);
 
  private:
   ROCMExecutionProviderInfo info_;
   hipDeviceProp_t device_prop_;
+  bool external_stream_ = false;
+  hipStream_t stream_ = nullptr;
 
   struct DeferredReleaseCPUPtrs {
     bool recorded = false;
@@ -88,7 +109,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   class PerThreadContext final {
    public:
-    PerThreadContext(OrtDevice::DeviceId device_id, size_t hip_mem_limit, ArenaExtendStrategy arena_extend_strategy);
+    PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t gpu_mem_limit, ArenaExtendStrategy arena_extend_strategy,
+                     ROCMExecutionProviderExternalAllocatorInfo external_alloc_info);
     ~PerThreadContext();
 
     rocblas_handle RocblasHandle() const {
@@ -109,17 +131,17 @@ class ROCMExecutionProvider : public IExecutionProvider {
         if (!constant_ones_float_) {
           constant_ones_float_ = rocm::CreateConstantOnes<float>();
         }
-        return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(count));
+        return reinterpret_cast<const T*>(constant_ones_float_->GetBuffer(stream_, count));
       } else if (std::is_same<T, double>::value) {
         if (!constant_ones_double_) {
           constant_ones_double_ = rocm::CreateConstantOnes<double>();
         }
-        return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(count));
+        return reinterpret_cast<const T*>(constant_ones_double_->GetBuffer(stream_, count));
       } else if (std::is_same<T, half>::value) {
         if (!constant_ones_half_) {
           constant_ones_half_ = rocm::CreateConstantOnes<half>();
         }
-        return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(count));
+        return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(stream_, count));
       } else {
         return nullptr;
       }
@@ -130,6 +152,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
     }
 
    private:
+    hipStream_t stream_ = nullptr;
     rocblas_handle rocblas_handle_ = nullptr;
     miopenHandle_t miopen_handle_ = nullptr;
 

@@ -11,6 +11,7 @@ namespace cuda {
 
 template <typename T>
 void SoftMaxCrossEntropyImpl(
+    cudaStream_t stream,
     const T* log_prob,
     const T* label,
     size_t normalize_factor,
@@ -19,6 +20,7 @@ void SoftMaxCrossEntropyImpl(
 
 template <typename T>
 void SoftMaxCrossEntropyGradImpl(
+    cudaStream_t stream,
     const T* dY,
     const T* log_prob,
     const T* label,
@@ -28,6 +30,7 @@ void SoftMaxCrossEntropyGradImpl(
 
 template <typename T, typename Tin>
 void SparseSoftmaxCrossEntropyImpl(
+    cudaStream_t stream,
     const T* log_prob,
     const Tin* label,
     const T* weight,
@@ -38,6 +41,7 @@ void SparseSoftmaxCrossEntropyImpl(
 
 template <typename T, typename Tin>
 void SparseSoftmaxCrossEntropyGradImpl(
+    cudaStream_t stream,
     const T* dY,
     const T* log_prob,
     const Tin* label,
@@ -103,7 +107,6 @@ class SparseSoftmaxCrossEntropyGrad final : public LossBase {
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
-
 
 }  // namespace cuda
 }  // namespace onnxruntime

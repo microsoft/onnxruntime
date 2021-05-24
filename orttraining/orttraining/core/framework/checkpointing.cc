@@ -49,7 +49,7 @@ Status SaveRuntimeTensor(
     const PathString& relative_data_path,
     std::ofstream& data_file,
     ONNX_NAMESPACE::TensorProto& tensor_proto) {
-  ORT_RETURN_IF(tensor.DataType() == DataTypeImpl::GetType<std::string>());
+  ORT_RETURN_IF(tensor.DataType() == DataTypeImpl::GetType<std::string>(), "tensor.DataType() is std::string");
 
   VLOGS_DEFAULT(1) << "Saving tensor " << tensor_name;
 
@@ -143,7 +143,7 @@ Status SaveRuntimeTensors(
 
   for (const auto& tensor_name : ordered_tensor_names) {
     const OrtValue& ort_value = ort_values.at(tensor_name);
-    ORT_RETURN_IF_NOT(ort_value.IsTensor());
+    ORT_RETURN_IF_NOT(ort_value.IsTensor(), "ort_value.IsTensor() was false");
     const Tensor& tensor = ort_value.Get<Tensor>();
 
     tensor_data_buffer.resize(tensor.SizeInBytes());
@@ -242,7 +242,7 @@ Status UpdateTensorsExternalDataLocations(
     auto location_it = std::find_if(
         external_data.begin(), external_data.end(),
         [](ONNX_NAMESPACE::StringStringEntryProto& kvp) { return kvp.key() == "location"; });
-    ORT_RETURN_IF_NOT(location_it != external_data.end());
+    ORT_RETURN_IF_NOT(location_it != external_data.end(), "location_it == external_data.end()");
 
     // TODO is the encoding correct? https://github.com/onnx/onnx/issues/2392
     location_it->set_value(ToMBString(external_data_path));

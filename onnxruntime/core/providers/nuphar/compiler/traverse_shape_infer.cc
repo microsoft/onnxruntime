@@ -56,7 +56,8 @@ static Status CreateOutputs(
             if (shape[d] > 0) {
               output_shape[d] = DimExpr(shape[d]);
             } else {
-              ORT_RETURN_IF_NOT(shape_proto->dim_size() > d && utils::HasDimParam(shape_proto->dim(d)));
+              ORT_RETURN_IF_NOT(shape_proto->dim_size() > d && utils::HasDimParam(shape_proto->dim(d)),
+                                "shape_proto->dim_size() > d && utils::HasDimParam(shape_proto->dim(d) was false");
               output_shape[d] = DimExpr(shape_proto->dim(d).dim_param());
             }
           }

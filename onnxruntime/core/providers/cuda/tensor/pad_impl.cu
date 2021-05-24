@@ -69,6 +69,7 @@ __global__ void _PadKernel(
 
 template <typename T>
 void PadImpl(
+    cudaStream_t stream,
     const size_t shape_rank,
     const TArray<int64_t>& input_dims,
     const TArray<int64_t>& input_strides,
@@ -86,17 +87,17 @@ void PadImpl(
   int blocksPerGrid = (int)(ceil(static_cast<float>(N) / GridDim::maxThreadsPerBlock));
   switch (pad_mode) {
     case 0:
-      _PadKernel<T, 0><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _PadKernel<T, 0><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           shape_rank, input_dims, input_strides, lower_pads, upper_pads,
           pad_value, input_data, fdm_output_strides, output_data, N);
       break;
     case 1:
-      _PadKernel<T, 1><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _PadKernel<T, 1><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           shape_rank, input_dims, input_strides, lower_pads, upper_pads,
           pad_value, input_data, fdm_output_strides, output_data, N);
       break;
     case 2:
-      _PadKernel<T, 2><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0>>>(
+      _PadKernel<T, 2><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
           shape_rank, input_dims, input_strides, lower_pads, upper_pads,
           pad_value, input_data, fdm_output_strides, output_data, N);
       break;
@@ -104,7 +105,7 @@ void PadImpl(
 }
 
 #define SPECIALIZED_IMPL(T) \
-  template void PadImpl<T>(const size_t shape_rank, const TArray<int64_t>& input_dims, const TArray<int64_t>& input_strides, const TArray<int64_t>& lower_pads, const TArray<int64_t>& upper_pads, const T pad_value, const int pad_mode, const T* input_data, const TArray<fast_divmod>& fdm_output_strides, T* output_data, const size_t N);
+  template void PadImpl<T>(cudaStream_t stream, const size_t shape_rank, const TArray<int64_t>& input_dims, const TArray<int64_t>& input_strides, const TArray<int64_t>& lower_pads, const TArray<int64_t>& upper_pads, const T pad_value, const int pad_mode, const T* input_data, const TArray<fast_divmod>& fdm_output_strides, T* output_data, const size_t N);
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)

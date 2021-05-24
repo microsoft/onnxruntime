@@ -18,14 +18,15 @@
 namespace onnxruntime {
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(
-    const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads);
+    const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads, bool use_compiled_network, const char* blob_dump_path);
 
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(uint32_t);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
@@ -43,7 +44,26 @@ std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_aren
 
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
 #ifdef USE_TENSORRT
-  if (auto factory = CreateExecutionProviderFactory_Tensorrt(0))
+  OrtTensorRTProviderOptions params{
+      0,
+      0,
+      nullptr,
+      1000,
+      1,
+      1 << 30,
+      0,
+      0,
+      nullptr,
+      0,
+      0,
+      0,
+      0,
+      0,
+      nullptr,
+      0,
+      nullptr,
+      0};
+  if (auto factory = CreateExecutionProviderFactory_Tensorrt(&params))
     return factory->CreateProvider();
 #endif
   return nullptr;
@@ -68,10 +88,12 @@ std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #ifdef USE_CUDA
-  return CreateExecutionProviderFactory_CUDA(CUDAExecutionProviderInfo{})->CreateProvider();
-#else
-  return nullptr;
+  OrtCUDAProviderOptions provider_options{};
+  provider_options.do_copy_in_default_stream = true;
+  if (auto factory = CreateExecutionProviderFactory_Cuda(&provider_options))
+    return factory->CreateProvider();
 #endif
+  return nullptr;
 }
 
 std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider(bool enable_arena) {

@@ -6,8 +6,10 @@
 #include <cstdint>
 #include <functional>
 
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
+#endif
 
 namespace onnxruntime {
 
@@ -140,9 +142,10 @@ inline bool Contains(const Map& map, const Key& key) {
   return map.find(key) != map.end();
 }
 
+// Note: This helper function will not have overflow protection
 template <template <typename...> class Container, typename T>
 T Product(const Container<T>& c) {
-  return static_cast<T>(accumulate(c.cbegin(), c.cend(), 1, std::multiplies<T>()));
+  return accumulate(c.cbegin(), c.cend(), 1, std::multiplies<T>());
 }
 
 }  // namespace onnxruntime

@@ -29,6 +29,46 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateTransposeOpBuilder("Transpose", op_registrations);
   }
 
+  {  // Conv
+    CreateConvOpBuilder("Conv", op_registrations);
+  }
+
+  {  // Batch Normalization
+    CreateBatchNormalizationOpBuilder("BatchNormalization", op_registrations);
+  }
+
+  {  // Reshape
+    CreateReshapeOpBuilder("Reshape", op_registrations);
+  }
+
+  {  // Pool
+    CreatePoolOpBuilder("GlobalAveragePool", op_registrations);
+    CreatePoolOpBuilder("GlobalMaxPool", op_registrations);
+    CreatePoolOpBuilder("AveragePool", op_registrations);
+    CreatePoolOpBuilder("MaxPool", op_registrations);
+  }
+
+  {  // Concat
+    CreateConcatOpBuilder("Concat", op_registrations);
+  }
+
+  {  // Resize
+    CreateResizeOpBuilder("Resize", op_registrations);
+  }
+
+  {  // Gemm/MatMul
+    CreateGemmOpBuilder("Gemm", op_registrations);
+    CreateGemmOpBuilder("MatMul", op_registrations);
+  }
+
+  {  // Clip
+    CreateClipOpBuilder("Clip", op_registrations);
+  }
+
+  {  // Squeeze
+    CreateSqueezeOpBuilder("Squeeze", op_registrations);
+  }
+
   return op_registrations;
 }
 

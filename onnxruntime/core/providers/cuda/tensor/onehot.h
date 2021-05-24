@@ -2,8 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-
-#include "core/common/common.h"
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
@@ -11,6 +10,7 @@ namespace cuda {
 
 template <typename in_type, typename out_type>
 void OneHotImpl(
+    cudaStream_t stream,
     const in_type* indices,
     const fast_divmod fdm_depth_suffix,
     const fast_divmod fdm_suffix,
@@ -22,6 +22,7 @@ void OneHotImpl(
 
 template <typename in_type, typename out_type>
 void OneHotWithZeroOffValueImpl(
+    cudaStream_t stream,
     const in_type* indices,
     const fast_divmod fdm_suffix,
     const int64_t depth_val,

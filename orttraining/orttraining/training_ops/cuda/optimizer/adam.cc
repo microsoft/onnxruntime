@@ -18,16 +18,16 @@ namespace cuda {
       1,                                                                                               \
       T1##_##T2##_##T3##_##T4##_##T_GRAD##_##T_GRAD_NORM##_##T_MIXED_PRECISION_FP,                     \
       kCudaExecutionProvider,                                                                          \
-      KernelDefBuilder()                                                                               \
+      (*KernelDefBuilder::Create())                                                                    \
           .Alias(1, 0)                              /* Update step count in-place */                   \
           .Alias(2, 3)                              /* Update weights in-place */                      \
           .Alias(3, 4)                              /* Update gradients in-place */                    \
           .Alias(4, 1)                              /* Update moment-1 in-place */                     \
           .Alias(5, 2)                              /* Update moment-2 in-place */                     \
           .Alias(6, 5)                              /* Update mixed_precision weights in-place */      \
-          .InputMemoryType<OrtMemTypeCPUInput>(1)   /* Keep step count in CPU */                       \
-          .InputMemoryType<OrtMemTypeCPUInput>(9)   /* Keep do_update in CPU */                        \
-          .OutputMemoryType<OrtMemTypeCPUOutput>(0) /* Keep step count in CPU */                       \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)   /* Keep step count in CPU */                       \
+          .InputMemoryType(OrtMemTypeCPUInput, 9)   /* Keep do_update in CPU */                        \
+          .OutputMemoryType(OrtMemTypeCPUOutput, 0) /* Keep step count in CPU */                       \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                                     \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                                     \
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())                                     \
@@ -115,20 +115,20 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP>:
   if (do_update_tensor != nullptr) {
     const bool do_update = *(do_update_tensor->template Data<bool>());
     if (!do_update) {
-      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T4>(M1, NM1));
-      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T4>(M2, NM2));
+      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T4>(Stream(), M1, NM1));
+      ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T4>(Stream(), M2, NM2));
 
       if (S_in != S_out) {
         *(S_out) = *(S_in);
       }
       if (NW != nullptr) {
-        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T3>(W, *NW));
+        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T3>(Stream(), W, *NW));
       }
       if (NG != nullptr) {
-        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T_GRAD>(G, *NG));
+        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T_GRAD>(Stream(), G, *NG));
       }
       if (W_MIXED_FP != nullptr && NW_MIXED_FP != nullptr) {
-        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T_MIXED_PRECISION_FP>(*W_MIXED_FP, *NW_MIXED_FP));
+        ORT_RETURN_IF_ERROR(CopyIfNotSameBuffer<T_MIXED_PRECISION_FP>(Stream(), *W_MIXED_FP, *NW_MIXED_FP));
       }
 
       return Status::OK();
@@ -136,6 +136,7 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP>:
   }
 
   AdamOptimizerImpl(
+      Stream(),
       reinterpret_cast<const CudaT1*>(ETA.template Data<T1>()),
       *S_in,
       reinterpret_cast<const CudaT3*>(W.template Data<T3>()),
@@ -144,11 +145,11 @@ Status AdamOptimizer<T1, T2, T3, T4, T_GRAD, T_GRAD_NORM, T_MIXED_PRECISION_FP>:
       reinterpret_cast<const CudaT4*>(M2.template Data<T4>()),
       loss_scale,
       G_norm,
-      ToCudaType<T4>::FromFloat(alpha_),
-      ToCudaType<T4>::FromFloat(beta_),
-      ToCudaType<T4>::FromFloat(lambda_),
-      ToCudaType<T4>::FromFloat(epsilon_),
-      ToCudaType<T4>::FromFloat(max_norm_clip_),
+      alpha_,
+      beta_,
+      lambda_,
+      epsilon_,
+      max_norm_clip_,
       do_bias_correction_,
       weight_decay_mode_,
       reinterpret_cast<CudaT4*>(NM1.template MutableData<T4>()),

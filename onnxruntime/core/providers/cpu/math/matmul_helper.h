@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #pragma once
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
+#endif
 
 namespace onnxruntime {
 template <typename T>
@@ -32,7 +34,7 @@ class MatMulComputeHelper {
 
     size_t left_num_dims = left_shape.NumDimensions();
     size_t right_num_dims = right_shape.NumDimensions();
-    ORT_RETURN_IF_NOT(left_num_dims >= 1 && right_num_dims >= 1);
+    ORT_RETURN_IF_NOT(left_num_dims >= 1 && right_num_dims >= 1, "left_num_dims and right_num_dims must be >= 1");
 
     // Special cases below for right_shape being 2D and left_shape > 2D by flattening left_shape to 2D
     // Note that padding 1s in front of the right_shape can be flattened too
@@ -115,23 +117,25 @@ class MatMulComputeHelper {
     }
 
     if (!has_1D_input) {
-      ORT_RETURN_IF_NOT(K_ == right_shape[transb ? right_num_dims - 1 : right_num_dims - 2], "MatMul dimension mismatch");
+      ORT_RETURN_IF_NOT(K_ == right_shape[transb ? right_num_dims - 1 : right_num_dims - 2],
+                        "MatMul dimension mismatch");
       // left (...M x K), right (...K x N), output (...M x N)
-      ORT_RETURN_IF_NOT(num_dims_with_pad == num_output_dims);
+      ORT_RETURN_IF_NOT(num_dims_with_pad == num_output_dims, "num_dims_with_pad != num_output_dims");
       output_dims[num_output_dims - 2] = M_;
       output_dims[num_output_dims - 1] = N_;
     } else {
       if (num_output_dims == 0) {
         // for left and right being both vector, output is scalar thus no shape
-        ORT_RETURN_IF_NOT(M_ == 1 && N_ == 1);
+        ORT_RETURN_IF_NOT(M_ == 1 && N_ == 1, "M_ == 1 && N_ == 1 was false");
       } else {
         if (left_num_dims == 1) {
-          ORT_RETURN_IF_NOT(num_dims_with_pad - 1 == num_output_dims);
-          ORT_RETURN_IF_NOT(K_ == right_shape[transb ? right_num_dims - 1 : right_num_dims - 2], "MatMul dimension mismatch");
+          ORT_RETURN_IF_NOT(num_dims_with_pad - 1 == num_output_dims, "num_dims_with_pad - 1 != num_output_dims");
+          ORT_RETURN_IF_NOT(K_ == right_shape[transb ? right_num_dims - 1 : right_num_dims - 2],
+                            "MatMul dimension mismatch");
           // left (K), right (...K,N), output (...N)
           output_dims[num_output_dims - 1] = N_;
         } else {
-          ORT_RETURN_IF_NOT(num_dims_with_pad - 2 == num_output_dims);
+          ORT_RETURN_IF_NOT(num_dims_with_pad - 2 == num_output_dims, "num_dims_with_pad - 2 != num_output_dims");
           ORT_RETURN_IF_NOT(K_ == right_shape[0], "MatMul dimension mismatch");
           // left(...K), right (K), output (...), already assigned
         }
@@ -143,6 +147,33 @@ class MatMulComputeHelper {
 
     // compute broadcast offsets
     ComputeBroadcastOffsets();
+
+    return Status::OK();
+  }
+
+  Status Compute(const TensorShape& left_shape, const TensorShape& right_shape,
+                 const TensorShape* right_scale_shape, const TensorShape* right_zp_shape,
+                 bool transa = false, bool transb = false) {
+    ORT_RETURN_IF_ERROR(Compute(left_shape, right_shape, transa, transb));
+    right_zp_offsets_.clear();
+    right_scale_offsets_.clear();
+    right_zp_offsets_.resize(right_offsets_.size());
+    right_scale_offsets_.resize(right_offsets_.size());
+
+    auto SetRightMatrixQuantParam = [this, &right_shape](const TensorShape* param_shape, std::vector<size_t>& quant_param_offsets) {
+      if (nullptr != param_shape && param_shape->NumDimensions() > 1) {
+        ORT_RETURN_IF_NOT(param_shape->NumDimensions() == right_shape.NumDimensions() && param_shape->Size() * K_ == right_shape.Size(),
+                          "Per-column quantization parameter of batched matrix should have same dimension as the matrix,"
+                          "and its size by K should be equal to the matrix's size.");
+        for (size_t batch_id = 0; batch_id < quant_param_offsets.size(); batch_id++) {
+          quant_param_offsets[batch_id] = right_offsets_[batch_id] / K_;
+        }
+      }
+      return Status::OK();
+    };
+
+    ORT_RETURN_IF_ERROR(SetRightMatrixQuantParam(right_zp_shape, right_zp_offsets_));
+    ORT_RETURN_IF_ERROR(SetRightMatrixQuantParam(right_scale_shape, right_scale_offsets_));
 
     return Status::OK();
   }
@@ -226,6 +257,9 @@ class MatMulComputeHelper {
   std::vector<size_t> right_offsets_;
   std::vector<size_t> output_offsets_;
 
+  std::vector<size_t> right_zp_offsets_;
+  std::vector<size_t> right_scale_offsets_;
+
  public:
   // output shape
   const TensorShape& OutputShape() const {
@@ -260,6 +294,16 @@ class MatMulComputeHelper {
   // Batched Gemm offsets in output matrices
   const std::vector<size_t>& OutputOffsets() const {
     return output_offsets_;
+  }
+
+  // Batched Scale Offset for right matrices
+  const std::vector<size_t>& RightScaleOffsets() const {
+    return right_scale_offsets_;
+  }
+
+  // Batched Zero Point Offset for right matrices
+  const std::vector<size_t>& RightZeroPointOffsets() const {
+    return right_zp_offsets_;
   }
 
   template <typename T>

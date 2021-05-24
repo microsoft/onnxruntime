@@ -22,7 +22,7 @@ SYS_LONG_BIT=$(getconf LONG_BIT)
 
 
 #see: https://docs.microsoft.com/en-us/dotnet/core/linux-prerequisites?tabs=netcore21
-if [ "$OS_VERSION" = "16.04" ]; then
+if [ "$OS_VERSION" = "18.04" ]; then
     PACKAGE_LIST="autotools-dev \
         automake \
         build-essential \
@@ -39,12 +39,11 @@ if [ "$OS_VERSION" = "16.04" ]; then
         gfortran \
         python3-dev \
         language-pack-en \
-        libopenblas-dev \
         liblttng-ust0 \
-        libcurl3 \
+        libcurl4 \
         libssl1.0.0 \
         libkrb5-3 \
-        libicu55 \
+        libicu60 \
         libtinfo-dev \
         libtool \
         openssh-server \
@@ -52,10 +51,10 @@ if [ "$OS_VERSION" = "16.04" ]; then
         bzip2 \
         unzip \
         zip \
-        rsync libunwind8 libpng16-dev libexpat1-dev \
+        rsync libunwind8 libpng-dev libexpat1-dev \
         python3-setuptools python3-numpy python3-wheel python python3-pip python3-pytest \
-        openjdk-8-jdk"
-else # ubuntu18.04
+        openjdk-11-jdk"
+else # ubuntu20.04
     PACKAGE_LIST="autotools-dev \
         automake \
         build-essential \
@@ -72,12 +71,11 @@ else # ubuntu18.04
         gfortran \
         python3-dev \
         language-pack-en \
-        libopenblas-dev \
         liblttng-ust0 \
         libcurl4 \
-        libssl1.0.0 \
+        libssl1.1 \
         libkrb5-3 \
-        libicu60 \
+        libicu66 \
         libtinfo-dev \
         libtool \
         openssh-server \
@@ -98,7 +96,6 @@ apt-get update && apt-get install -y --no-install-recommends $PACKAGE_LIST
 locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
 
-echo "Installing dotnet-sdk"
 if [ "$SYS_LONG_BIT" = "64" ]; then
   mkdir -p /tmp/dotnet
   aria2c -q -d /tmp/dotnet https://packages.microsoft.com/config/ubuntu/${OS_VERSION}/packages-microsoft-prod.deb
@@ -109,21 +106,8 @@ if [ "$SYS_LONG_BIT" = "64" ]; then
 fi
 
 if [ "$OS_VERSION" = "16.04" ]; then
-    if [ "$PYTHON_VER" != "3.5" ]; then
-        add-apt-repository -y ppa:deadsnakes/ppa
-        apt-get update
-        apt-get install -y --no-install-recommends \
-                python${PYTHON_VER} \
-                python${PYTHON_VER}-dev
-        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
-        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.5 2
-        update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
-        #TODO: the old one(/usr/bin/pip3) should be uninstalled first. Because the one will be
-        #put at /usr/local/. Then there will be two pips.
-        /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
-    fi
-    
-else # ubuntu18.04
+    exit 1
+elif [ "$OS_VERSION" = "18.04" ]; then
     if [ "$PYTHON_VER" != "3.6" ]; then
 	    add-apt-repository -y ppa:deadsnakes/ppa
         apt-get update
@@ -137,14 +121,32 @@ else # ubuntu18.04
         #put at /usr/local/. Then there will be two pips.
         /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
     fi
+
+else # ubuntu20.04
+    if [ "$PYTHON_VER" != "3.8" ]; then
+	    add-apt-repository -y ppa:deadsnakes/ppa
+        apt-get update
+        apt-get install -y --no-install-recommends \
+                python${PYTHON_VER} \
+                python${PYTHON_VER}-dev
+        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
+        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 2
+        update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
+        #TODO: the old one(/usr/bin/pip3) should be uninstalled first. Because the one will be
+        #put at /usr/local/. Then there will be two pips.
+        /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
+    fi
 fi
 
 rm -rf /var/lib/apt/lists/*
 
 if [ "$SYS_LONG_BIT" = "64" ]; then
     if [ "$DEVICE_TYPE" = "Normal" ]; then
-	aria2c -q -d /tmp -o llvm.tar.xz http://releases.llvm.org/9.0.0/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-${OS_VERSION}.tar.xz
+        if [ "$OS_VERSION" = "20.04" ]; then
+            aria2c -q -d /tmp -o llvm.tar.xz https://github.com/llvm/llvm-project/releases/download/llvmorg-11.0.0/llvm-project-11.0.0.tar.xz
+        else			
+	        aria2c -q -d /tmp -o llvm.tar.xz http://releases.llvm.org/9.0.0/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-${OS_VERSION}.tar.xz
+        fi	
 	tar --strip 1 -Jxf /tmp/llvm.tar.xz -C /usr
     fi
 fi
-

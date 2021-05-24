@@ -40,6 +40,7 @@ Status CheckBatchDimensionsMatch(
 
 template <typename TIndex>
 Status GatherNDBase::PrepareCompute(
+    cudaStream_t stream,
     const int64_t batch_dims,
     const TensorShape& input_shape,
     const TensorShape& indices_shape,
@@ -70,13 +71,14 @@ Status GatherNDBase::PrepareCompute(
       sizes_from_slice_dims_buffer.get(),
       sizes_from_slice_dims.data(),
       sizes_from_slice_dims.size() * sizeof(int64_t),
-      cudaMemcpyHostToDevice));
+      cudaMemcpyHostToDevice, stream));
 
   input_slice_offsets_buffer = GetScratchBuffer<int64_t>(num_slices);
 
   TArray<int64_t> input_dims(input_shape.GetDims());
 
   ComputeSliceOffsetsImpl(
+      stream,
       batch_dims,
       input_dims,
       num_slices,
@@ -98,7 +100,7 @@ Status GatherNDBase::PrepareCompute(
       endver,                                                               \
       TIndex,                                                               \
       kCudaExecutionProvider,                                               \
-      KernelDefBuilder()                                                    \
+      (*KernelDefBuilder::Create())                                         \
           .TypeConstraint("T",                                              \
                           std::vector<MLDataType>{                          \
                               DataTypeImpl::GetTensorType<float>(),         \
@@ -110,17 +112,19 @@ Status GatherNDBase::PrepareCompute(
       GatherND<TIndex>);
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-#define GATHER_ND_T_TENSOR_TYPES {DataTypeImpl::GetTensorType<float>(),      \
-                                  DataTypeImpl::GetTensorType<double>(),     \
-                                  DataTypeImpl::GetTensorType<MLFloat16>(),  \
-                                  DataTypeImpl::GetTensorType<BFloat16>(),   \
-                                  DataTypeImpl::GetTensorType<int64_t>()}
+#define GATHER_ND_T_TENSOR_TYPES              \
+  { DataTypeImpl::GetTensorType<float>(),     \
+    DataTypeImpl::GetTensorType<double>(),    \
+    DataTypeImpl::GetTensorType<MLFloat16>(), \
+    DataTypeImpl::GetTensorType<BFloat16>(),  \
+    DataTypeImpl::GetTensorType<int64_t>() }
 #define GATHER_ND_T_DATA_TYPES float, MLFloat16, double, int64_t, BFloat16
 #else
-#define GATHER_ND_T_TENSOR_TYPES {DataTypeImpl::GetTensorType<float>(),      \
-                                  DataTypeImpl::GetTensorType<double>(),     \
-                                  DataTypeImpl::GetTensorType<MLFloat16>(),  \
-                                  DataTypeImpl::GetTensorType<int64_t>()}
+#define GATHER_ND_T_TENSOR_TYPES              \
+  { DataTypeImpl::GetTensorType<float>(),     \
+    DataTypeImpl::GetTensorType<double>(),    \
+    DataTypeImpl::GetTensorType<MLFloat16>(), \
+    DataTypeImpl::GetTensorType<int64_t>() }
 #define GATHER_ND_T_DATA_TYPES float, MLFloat16, double, int64_t
 #endif
 
@@ -131,7 +135,7 @@ Status GatherNDBase::PrepareCompute(
       ver,                                                                \
       TIndex,                                                             \
       kCudaExecutionProvider,                                             \
-      KernelDefBuilder()                                                  \
+      (*KernelDefBuilder::Create())                                       \
           .TypeConstraint("T", GATHER_ND_T_TENSOR_TYPES)                  \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIndex>()), \
       GatherND<TIndex>);
@@ -145,13 +149,15 @@ REGISTER_KERNEL_VERSIONED_TYPED_GATHER_ND(int64_t, 12, 12)
 
 template <typename T>
 struct GatherNDComputeImpl {
-  void operator()(const int64_t num_slices,
+  void operator()(cudaStream_t stream,
+                  const int64_t num_slices,
                   const int64_t slice_size,
                   const void* const kernel_input_data,
                   void* const kernel_output_data,
                   int64_t* const input_slice_offsets_data) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
-    GatherNDImpl<CudaT>(num_slices, kernel_input_data,
+    GatherNDImpl<CudaT>(stream,
+                        num_slices, kernel_input_data,
                         kernel_output_data, slice_size,
                         input_slice_offsets_data);
   }
@@ -161,8 +167,8 @@ template <typename TIndex>
 Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
   auto input_tensor = context->Input<Tensor>(0);
   auto indices_tensor = context->Input<Tensor>(1);
-  ORT_RETURN_IF_NOT(input_tensor != nullptr);
-  ORT_RETURN_IF_NOT(indices_tensor != nullptr);
+  ORT_RETURN_IF_NOT(input_tensor != nullptr, "input_tensor == nullptr");
+  ORT_RETURN_IF_NOT(indices_tensor != nullptr, "indices_tensor == nullptr");
 
   auto input_shape = input_tensor->Shape();
   auto indices_shape = indices_tensor->Shape();
@@ -191,14 +197,15 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
   int64_t num_slices;
   int64_t slice_size;
   IAllocatorUniquePtr<int64_t> input_slice_offsets_buffer;
-  ORT_RETURN_IF_ERROR(PrepareCompute<TIndex>(batch_dims_, input_shape, indices_shape, indices_tensor,
+  ORT_RETURN_IF_ERROR(PrepareCompute<TIndex>(Stream(),
+                                             batch_dims_, input_shape, indices_shape, indices_tensor,
                                              num_slices, slice_size, input_slice_offsets_buffer));
 
   const void* const kernel_input_data = input_tensor->DataRaw();
   void* const kernel_output_data = output_tensor->MutableDataRaw();
-  utils::MLTypeCallDispatcher<GatherNDComputeImpl, GATHER_ND_T_DATA_TYPES>
-      t_disp(input_tensor->GetElementType());
-  t_disp.Invoke(num_slices, slice_size, kernel_input_data, kernel_output_data, input_slice_offsets_buffer.get());
+  utils::MLTypeCallDispatcher<GATHER_ND_T_DATA_TYPES> t_disp(input_tensor->GetElementType());
+  t_disp.Invoke<GatherNDComputeImpl>(
+      Stream(), num_slices, slice_size, kernel_input_data, kernel_output_data, input_slice_offsets_buffer.get());
 
   return Status::OK();
 }

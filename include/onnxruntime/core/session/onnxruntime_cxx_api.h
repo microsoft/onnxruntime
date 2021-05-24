@@ -284,6 +284,8 @@ struct RunOptions : Base<OrtRunOptions> {
   RunOptions& SetRunTag(const char* run_tag);
   const char* GetRunTag() const;
 
+  RunOptions& AddConfigEntry(const char* config_key, const char* config_value);
+
   // terminate ALL currently executing Session::Run calls that were made using this RunOptions instance
   RunOptions& SetTerminate();
   // unset the terminate flag so this RunOptions instance can be used in a new Session::Run call
@@ -325,7 +327,9 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
 
   SessionOptions& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);
+  SessionOptions& AppendExecutionProvider_ROCM(const OrtROCMProviderOptions& provider_options);
   SessionOptions& AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options);
+  SessionOptions& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options);
 };
 
 struct ModelMetadata : Base<OrtModelMetadata> {
@@ -345,6 +349,7 @@ struct ModelMetadata : Base<OrtModelMetadata> {
 struct Session : Base<OrtSession> {
   explicit Session(std::nullptr_t) {}
   Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options);
+  Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options, OrtPrepackedWeightsContainer* prepacked_weights_container);
   Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options);
 
   // Run that will allocate the output values
@@ -564,7 +569,6 @@ struct ArenaCfg : Base<OrtArenaCfg> {
   * \param arena_extend_strategy -  use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
   * \param initial_chunk_size_bytes - use -1 to allow ORT to choose the default
   * \param max_dead_bytes_per_chunk - use -1 to allow ORT to choose the default
-  * \return an instance of ArenaCfg
   * See docs/C_API.md for details on what the following parameters mean and how to choose these values
   */
   ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk);
@@ -577,7 +581,7 @@ struct ArenaCfg : Base<OrtArenaCfg> {
 struct CustomOpApi {
   CustomOpApi(const OrtApi& api) : api_(api) {}
 
-  template <typename T>  // T is only implemented for float, int64_t, and string
+  template <typename T>  // T is only implemented for std::vector<float>, std::vector<int64_t>, float, int64_t, and string
   T KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name);
 
   OrtTensorTypeAndShapeInfo* GetTensorTypeAndShape(_In_ const OrtValue* value);
@@ -622,10 +626,23 @@ struct CustomOpBase : OrtCustomOp {
 
     OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) { static_cast<TKernel*>(op_kernel)->Compute(context); };
     OrtCustomOp::KernelDestroy = [](void* op_kernel) { delete static_cast<TKernel*>(op_kernel); };
+
+    OrtCustomOp::GetInputCharacteristic = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetInputCharacteristic(index); };
+    OrtCustomOp::GetOutputCharacteristic = [](const OrtCustomOp* this_, size_t index) { return static_cast<const TOp*>(this_)->GetOutputCharacteristic(index); };
   }
 
   // Default implementation of GetExecutionProviderType that returns nullptr to default to the CPU provider
   const char* GetExecutionProviderType() const { return nullptr; }
+
+  // Default implementations of GetInputCharacteristic() and GetOutputCharacteristic() below
+  // (inputs and outputs are required by default)
+  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t /*index*/) const {
+    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
+  }
+
+  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t /*index*/) const {
+    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
+  }
 };
 
 }  // namespace Ort

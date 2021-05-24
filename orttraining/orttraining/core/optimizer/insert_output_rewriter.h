@@ -42,21 +42,4 @@ class InsertSoftmaxCrossEntropyLossOutput : public RewriteRule {
   Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const override;
 };
 
-// Rewrite rule that adjust Batch Normalization nodes to have 5 outputs for training mode
-// instead of 1 for inference mode
-class AdjustBatchNormOutputs : public RewriteRule {
- public:
-  AdjustBatchNormOutputs() noexcept
-      : RewriteRule("AdjustBatchNormOutputs") {
-  }
-
-  std::vector<std::string> TargetOpTypes() const noexcept override {
-    return {"BatchNormalization"};
-  }
-
- private:
-  bool SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const override;
-
-  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const override;
-};
 }  // namespace onnxruntime

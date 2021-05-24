@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
+#endif
 
 namespace onnxruntime {
 
@@ -44,14 +46,14 @@ class SliceBase {
                                   SliceOp::PrepareForComputeMetadata& compute_metadata);
 
   // Slice V10 & DynamicSlice
-  static void FillVectorsFromInput(const Tensor& start_tensor,
-                                   const Tensor& ends_tensor,
-                                   const Tensor* axes_tensor,
-                                   const Tensor* steps_tensor,
-                                   std::vector<int64_t>& input_starts,
-                                   std::vector<int64_t>& input_ends,
-                                   std::vector<int64_t>& input_axes,
-                                   std::vector<int64_t>& input_steps);
+  static Status FillVectorsFromInput(const Tensor& start_tensor,
+                                     const Tensor& ends_tensor,
+                                     const Tensor* axes_tensor,
+                                     const Tensor* steps_tensor,
+                                     std::vector<int64_t>& input_starts,
+                                     std::vector<int64_t>& input_ends,
+                                     std::vector<int64_t>& input_axes,
+                                     std::vector<int64_t>& input_steps);
 
  protected:
   SliceBase(const OpKernelInfo& info, bool dynamic = false)

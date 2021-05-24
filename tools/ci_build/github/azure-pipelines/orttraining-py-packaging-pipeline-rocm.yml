@@ -1,0 +1,15 @@
+trigger: none
+
+stages:
+- template: templates/py-packaging-stage.yml
+  parameters:
+    build_py_parameters: --enable_training
+    enable_linux_cpu: false
+    enable_linux_gpu: false
+    enable_linux_gpu_training_cu102: false
+    enable_linux_gpu_training_cu111: false
+    enable_linux_rocm_training: true
+    enable_windows_cpu: false
+    enable_windows_gpu: false
+    enable_mac_cpu: false
+    enable_linux_arm: false

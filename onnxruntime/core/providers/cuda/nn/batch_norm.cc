@@ -11,24 +11,33 @@ using namespace std;
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                     \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                           \
-      BatchNormalization,                                            \
-      kOnnxDomain,                                                   \
-      7, 8,                                                          \
-      T,                                                             \
-      kCudaExecutionProvider,                                        \
-      KernelDefBuilder()                                             \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),    \
-      BatchNorm<T>);                                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                     \
-      BatchNormalization,                                            \
-      kOnnxDomain,                                                   \
-      9,                                                             \
-      T,                                                             \
-      kCudaExecutionProvider,                                        \
-      KernelDefBuilder()                                             \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),    \
+#define REGISTER_KERNEL_TYPED(T)                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      BatchNormalization,                                         \
+      kOnnxDomain,                                                \
+      7, 8,                                                       \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      BatchNorm<T>);                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                       \
+      BatchNormalization,                                         \
+      kOnnxDomain,                                                \
+      9, 13,                                                      \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      BatchNorm<T>);                                              \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      BatchNormalization,                                         \
+      kOnnxDomain,                                                \
+      14,                                                         \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       BatchNorm<T>);
 
 template <typename T>
@@ -81,10 +90,10 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
     auto f_B = GetScratchBuffer<float>(C);
     auto f_mean = GetScratchBuffer<float>(C);
     auto f_var = GetScratchBuffer<float>(C);
-    Impl_Cast<CudaT, float>(scale_data, f_scale.get(), C);
-    Impl_Cast<CudaT, float>(b_data, f_B.get(), C);
-    Impl_Cast<CudaT, float>(mean_data, f_mean.get(), C);
-    Impl_Cast<CudaT, float>(var_data, f_var.get(), C);
+    Impl_Cast<CudaT, float>(Stream(), scale_data, f_scale.get(), C);
+    Impl_Cast<CudaT, float>(Stream(), b_data, f_B.get(), C);
+    Impl_Cast<CudaT, float>(Stream(), mean_data, f_mean.get(), C);
+    Impl_Cast<CudaT, float>(Stream(), var_data, f_var.get(), C);
 
     CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardInference(
         CudnnHandle(),

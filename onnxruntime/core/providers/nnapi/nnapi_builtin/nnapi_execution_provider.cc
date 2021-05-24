@@ -25,14 +25,14 @@ NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags)
       nnapi_flags_(nnapi_flags) {
   AllocatorCreationInfo device_info(
       [](int) {
-        return onnxruntime::make_unique<CPUAllocator>(OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator));
+        return std::make_unique<CPUAllocator>(OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator));
       });
 
   InsertAllocator(CreateAllocator(device_info));
 
   AllocatorCreationInfo cpu_memory_info(
       [](int) {
-        return onnxruntime::make_unique<CPUAllocator>(
+        return std::make_unique<CPUAllocator>(
             OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeCPUOutput));
       });
 
@@ -96,7 +96,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
       node_set.insert(node_index[index]);
     }
 
-    std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
+    std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
     // Find inputs and outputs of the subgraph
     std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add;
     std::unordered_set<const NodeArg*> erased;
@@ -177,7 +177,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     }
 
     // Assign inputs and outputs to subgraph's meta_def
-    auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+    auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
     meta_def->name = "NNAPI_" + std::to_string(metadef_id_++);
     meta_def->domain = kMSDomain;
 
@@ -193,13 +193,23 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     meta_def->since_version = 1;
     sub_graph->SetMetaDef(std::move(meta_def));
 
-    result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+    result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
   }
 
-  LOGS_DEFAULT(INFO) << "NnapiExecutionProvider::GetCapability,"
-                     << " number of partitions supported by NNAPI: " << result.size()
-                     << " number of nodes in the graph: " << graph_view.NumberOfNodes()
-                     << " number of nodes supported by NNAPI: " << num_of_supported_nodes;
+  auto num_of_partitions = result.size();
+  const auto summary_msg = MakeString(
+      "NnapiExecutionProvider::GetCapability,",
+      " number of partitions supported by NNAPI: ", num_of_partitions,
+      " number of nodes in the graph: ", graph_view.NumberOfNodes(),
+      " number of nodes supported by NNAPI: ", num_of_supported_nodes);
+
+  // If the graph is partitioned in multiple subgraphs, and this may impact performance,
+  // we want to give users a summary message at warning level.
+  if (num_of_partitions > 1) {
+    LOGS_DEFAULT(WARNING) << summary_msg;
+  } else {
+    LOGS_DEFAULT(INFO) << summary_msg;
+  }
 
   return result;
 }
@@ -256,6 +266,10 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     nnapi::ModelBuilder builder(graph_viewer);
     builder.SetUseNCHW(nnapi_flags_ & NNAPI_FLAG_USE_NCHW);
     builder.SetUseFp16(nnapi_flags_ & NNAPI_FLAG_USE_FP16);
+    if (nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED) {
+      builder.SetTargetDeviceOption(nnapi::ModelBuilder::TargetDeviceOption::CPU_DISABLED);
+    }
+
     std::unique_ptr<nnapi::Model> nnapi_model;
     ORT_RETURN_IF_ERROR(builder.Compile(nnapi_model));
 

@@ -14,10 +14,11 @@ namespace cuda {
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       onnxruntime::cuda::MatMul<T>);
 
+// TransposeMatMul is kept here for backward compatibility
 REGISTER_KERNEL_TYPED(TransposeMatMul, float)
 REGISTER_KERNEL_TYPED(TransposeMatMul, double)
 REGISTER_KERNEL_TYPED(TransposeMatMul, MLFloat16)

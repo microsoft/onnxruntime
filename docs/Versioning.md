@@ -20,12 +20,14 @@ models that are stamped with ONNX opset versions in the range [7-9].
 
 
 ### Version matrix
-The following table summarizes the relationship between the ONNX Runtime version and the ONNX opset version implemented in that release. 
+The following table summarizes the relationship between the ONNX Runtime version and the ONNX opset version implemented in that release.
 Please note the backward compatibility notes above.
 For more details on ONNX Release versions, see [this page](https://github.com/onnx/onnx/blob/master/docs/Versioning.md).
 
 | ONNX Runtime release version | ONNX release version | ONNX opset version | ONNX ML opset version | Supported ONNX IR version | [Windows ML Availability](https://docs.microsoft.com/en-us/windows/ai/windows-ml/release-notes/)|
 |------------------------------|--------------------|--------------------|----------------------|------------------|------------------|
+| 1.8.0 | **1.8** down to 1.2 | 13 | 2 | 7 | Windows AI 1.8+ |
+| 1.7.0 | **1.8** down to 1.2 | 13 | 2 | 7 | Windows AI 1.7+ |
 | 1.6.0 | **1.8** down to 1.2 | 13 | 2 | 7 | Windows AI 1.6+ |
 | 1.5.3 | **1.7** down to 1.2 | 12 | 2 | 7 | Windows AI 1.5+ |
 | 1.5.2 | **1.7** down to 1.2 | 12 | 2 | 7 | Windows AI 1.5+ |

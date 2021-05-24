@@ -4,10 +4,12 @@
 #pragma once
 
 #include <cmath>
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "core/providers/cpu/nn/pool_attributes.h"
 #include "core/util/math.h"
+#endif
+#include "core/providers/cpu/nn/pool_attributes.h"
 #include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
@@ -88,7 +90,7 @@ class LpPool {
 
   template <typename T>
   static void Process(const T& x_data, T& y_data, const PoolProcessContext& cxt) {
-    y_data += static_cast<T>(std::pow(x_data, cxt.p_));
+    y_data += static_cast<T>(std::pow(std::abs(x_data), cxt.p_));
   }
 
   template <typename T>
@@ -106,7 +108,7 @@ class PoolBase {
 
  protected:
   PoolBase(const OpKernelInfo& info)
-      : op_name_(info.GetKernelDef().OpName()),
+      : op_name_(info.GetKernelDef().OpName().rfind("QLinear", 0) != 0 ? info.GetKernelDef().OpName() : info.GetKernelDef().OpName().substr(7)),
         pool_attrs_(info, op_name_, GetStartVersion(info)) {
   }
 

@@ -9,7 +9,8 @@
 namespace onnxruntime {
 namespace cuda {
 
-Status ConcatImpl(const size_t element_bytes,
+Status ConcatImpl(cudaStream_t stream,
+                  const size_t element_bytes,
                   const int block_size_including_axis_dim,
                   const int block_size_inside_axis_dim,
                   const int64_t* concat_sizes,

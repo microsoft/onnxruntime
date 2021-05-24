@@ -22,14 +22,13 @@ class TransposeOpBuilder : public BaseOpBuilder {
 
 Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                  const Node& node,
-                                                 const logging::Logger& /* logger */) const {
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = std::make_unique<COREML_SPEC::NeuralNetworkLayer>();
-  layer->set_name(node.Name());
+                                                 const logging::Logger& logger) const {
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(node);
 
   NodeAttrHelper helper(node);
   std::vector<int64_t> perm = helper.Get("perm", std::vector<int64_t>());
   std::vector<int64_t> input_shape;
-  ORT_RETURN_IF_ERROR(GetShape(*node.InputDefs()[0], input_shape));
+  ORT_RETURN_IF_NOT(GetShape(*node.InputDefs()[0], input_shape, logger), "Cannot get shape");
   auto input_dims = input_shape.size();
   if (perm.empty()) {
     for (int64_t i = input_dims - 1; i >= 0; i--)
@@ -43,12 +42,12 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
   *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
 
-  model_builder.AddLayer(layer.release());
+  model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
 
 void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  op_registrations.builders.push_back(onnxruntime::make_unique<TransposeOpBuilder>());
+  op_registrations.builders.push_back(std::make_unique<TransposeOpBuilder>());
   op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
 

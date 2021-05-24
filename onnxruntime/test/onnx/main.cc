@@ -36,7 +36,7 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', "
-      "'openvino', 'nuphar', 'migraphx', 'acl' or 'armnn'. "
+      "'openvino', 'nuphar', 'rocm', 'migraphx', 'acl', 'armnn', 'nnapi' or 'coreml'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
@@ -98,9 +98,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_tensorrt = false;
   bool enable_mem_pattern = true;
   bool enable_nnapi = false;
+  bool enable_coreml = false;
   bool enable_dml = false;
   bool enable_acl = false;
   bool enable_armnn = false;
+  bool enable_rocm = false;
   bool enable_migraphx = false;
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
@@ -165,12 +167,16 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_tensorrt = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
             enable_nnapi = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("coreml"))) {
+            enable_coreml = true;
           } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
             enable_dml = true;
           } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
             enable_acl = true;
           } else if (!CompareCString(optarg, ORT_TSTR("armnn"))) {
             enable_armnn = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("rocm"))) {
+            enable_rocm = true;
           } else if (!CompareCString(optarg, ORT_TSTR("migraphx"))) {
             enable_migraphx = true;
           } else {
@@ -285,8 +291,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     double per_sample_tolerance = 1e-3;
     // when cuda is enabled, set it to a larger value for resolving random MNIST test failure
     // when openvino is enabled, set it to a larger value for resolving MNIST accuracy mismatch
-    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009
-                                                                                 : 1e-3;
+    double relative_per_sample_tolerance = enable_cuda ? 0.017 : enable_openvino ? 0.009 : 1e-3;
 
     Ort::SessionOptions sf;
 
@@ -304,8 +309,18 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
+      OrtCUDAProviderOptions cuda_options{
+          device_id,
+          OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+          std::numeric_limits<size_t>::max(),
+          0,
+          true,
+          0,
+          nullptr,
+          nullptr};  // TODO: Support arena configuration for users of test runner
+
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(sf, device_id));
+      sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
       return -1;
@@ -328,7 +343,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           OrtCudnnConvAlgoSearch::EXHAUSTIVE,
           std::numeric_limits<size_t>::max(),
           0,
-          true};
+          true,
+          0,
+          nullptr,
+          nullptr};  // TODO: Support arena configuration for users of test runner
       sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
       fprintf(stderr, "CUDA is not supported in this build");
@@ -359,6 +377,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       return -1;
 #endif
     }
+    if (enable_coreml) {
+#ifdef USE_COREML
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(sf, 0));
+#else
+      fprintf(stderr, "CoreML is not supported in this build");
+      return -1;
+#endif
+    }
     if (enable_dml) {
 #ifdef USE_DML
       fprintf(stderr, "Disabling mem pattern and forcing single-threaded execution since DML is used");
@@ -385,6 +411,19 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(sf, enable_cpu_mem_arena ? 1 : 0));
 #else
       fprintf(stderr, "ArmNN is not supported in this build\n");
+      return -1;
+#endif
+    }
+    if (enable_rocm) {
+#ifdef USE_ROCM
+      OrtROCMProviderOptions rocm_options{
+          0,
+          0,
+          std::numeric_limits<size_t>::max(),
+          0};
+      sf.AppendExecutionProvider_ROCM(rocm_options);
+#else
+      fprintf(stderr, "ROCM is not supported in this build");
       return -1;
 #endif
     }
@@ -767,7 +806,6 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     broken_tests.insert({"tf_inception_v1", "flaky test"});  //TODO: Investigate cause for flakiness
     broken_tests.insert({"faster_rcnn", "Linux: faster_rcnn:output=6383:shape mismatch, expect {77} got {57}"});
     broken_tests.insert({"split_zero_size_splits", "alloc failed"});
-    broken_tests.insert({"convtranspose_3d", "3d convtranspose not supported yet"});
   }
 
   if (enable_dml) {

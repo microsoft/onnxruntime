@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "core/framework/data_types.h"
 #include "core/util/math.h"
 
@@ -95,6 +96,7 @@ TEST(Einsum, ExplicitEinsumAsReduceOp_2D_input_1) {
   test.AddOutput<float>("y", {2}, {4.f, 6.f});
   test.Run();
 }
+
 TEST(Einsum, ExplicitEinsumAsBatchedReduceOp_3D_input_0) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "...ji->...j");
@@ -509,6 +511,25 @@ TEST(Einsum, ExplicitEinsumAsTensorContraction) {
   test.Run();
 }
 
+TEST(Einsum, ExplicitEinsumAsTensorContractionReshapeFinal) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "sbcd,es,eh->bce");
+  test.AddInput<float>("x", {2, 2, 2, 2}, {1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f});
+  test.AddInput<float>("y", {2, 2}, {1.f, 2.f, -6.f, 2.f});
+  test.AddInput<float>("z", {2, 2}, {3.f, 4.f, 5.f, 6.f});
+  test.AddOutput<float>("o", {2, 2, 2}, {63.f, -132.f, 63.f, -132.f, 63.f, -132.f, 63.f, -132.f});
+  test.Run();
+}
+
+TEST(Einsum, ExplicitEinsumAsTensorContractionReshapeLeft) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "bsnh,btnh->bnts");
+  test.AddInput<float>("x", {2, 1, 2, 2}, {1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f});
+  test.AddInput<float>("y", {2, 2, 2, 1}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f});
+  test.AddOutput<float>("o", {2, 2, 2, 1}, {3.f, 9.f, 6.f, 12.f, 15.f, 21.f, 18.f, 24.f});
+  test.Run();
+}
+
 // Implicit
 TEST(Einsum, ImplicitEinsumAsTensorContraction) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
@@ -516,6 +537,180 @@ TEST(Einsum, ImplicitEinsumAsTensorContraction) {
   test.AddInput<float>("x", {2, 2, 2, 2}, {1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f});
   test.AddInput<float>("y", {2, 2}, {1.f, 2.f, 1.f, 2.f});
   test.AddOutput<float>("o", {2, 2, 2, 2}, {3.f, 3.f, 6.f, 6.f, 3.f, 3.f, 6.f, 6.f, 3.f, 3.f, 6.f, 6.f, 3.f, 3.f, 6.f, 6.f});
+  test.Run();
+}
+
+// Test each theme for half support
+TEST(Einsum, ExplicitEinsumAsIdentity_1D_input_Half) {
+  if (!HasCudaEnvironment(600)) {
+    return;
+  }
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "i->i");
+  std::vector<float> input_x_f = {0.9f, 2.5f, 2.3f, 1.5f, -4.5f};
+  std::vector<float> output_f = {0.9f, 2.5f, 2.3f, 1.5f, -4.5f};
+  std::vector<MLFloat16> input_x(5);
+  std::vector<MLFloat16> output(5);
+  ConvertFloatToMLFloat16(input_x_f.data(), input_x.data(), 5);
+  ConvertFloatToMLFloat16(output_f.data(), output.data(), 5);
+  test.AddInput<MLFloat16>("x", {5}, input_x);
+  test.AddOutput<MLFloat16>("y", {5}, output);
+  test.Run();
+}
+
+TEST(Einsum, ExplicitEinsumAsTransposeOp_2D_input_Half) {
+  if (!HasCudaEnvironment(600)) {
+    return;
+  }
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "ji->ij");
+  std::vector<float> input_x_f = {1.f, 2.f, 3.f, 4.f};
+  std::vector<float> output_f = {1.f, 3.f, 2.f, 4.f};
+  std::vector<MLFloat16> input_x(4);
+  std::vector<MLFloat16> output(4);
+  ConvertFloatToMLFloat16(input_x_f.data(), input_x.data(), 4);
+  ConvertFloatToMLFloat16(output_f.data(), output.data(), 4);
+  test.AddInput<MLFloat16>("x", {2, 2}, input_x);
+  test.AddOutput<MLFloat16>("y", {2, 2}, output);
+  test.Run();
+}
+
+TEST(Einsum, ExplicitEinsumAsReduceOp_2D_input_0_Half) {
+  if (!HasCudaEnvironment(600)) {
+    return;
+  }
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "ij->i");
+  std::vector<float> input_x_f = {1.f, 2.f, 3.f, 4.f};
+  std::vector<float> output_f = {3.f, 7.f};
+  std::vector<MLFloat16> input_x(4);
+  std::vector<MLFloat16> output(2);
+  ConvertFloatToMLFloat16(input_x_f.data(), input_x.data(), 4);
+  ConvertFloatToMLFloat16(output_f.data(), output.data(), 2);
+  test.AddInput<MLFloat16>("x", {2, 2}, input_x);
+  test.AddOutput<MLFloat16>("y", {2}, output);
+  test.Run();
+}
+
+TEST(Einsum, ExplicitEinsumAsOuterProductOp_2D_input_Half) {
+  if (!HasCudaEnvironment(600)) {
+    return;
+  }
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "i,j->ij");
+  std::vector<float> input_x_f = {1.f, 2.f};
+  std::vector<float> input_y_f = {3.f, 4.f};
+  std::vector<float> output_f = {3.f, 4.f, 6.f, 8.f};
+  std::vector<MLFloat16> input_x(2);
+  std::vector<MLFloat16> input_y(2);
+  std::vector<MLFloat16> output(4);
+  ConvertFloatToMLFloat16(input_x_f.data(), input_x.data(), 2);
+  ConvertFloatToMLFloat16(input_y_f.data(), input_y.data(), 2);
+  ConvertFloatToMLFloat16(output_f.data(), output.data(), 4);
+  test.AddInput<MLFloat16>("x", {2}, input_x);
+  test.AddInput<MLFloat16>("y", {2}, input_y);
+  test.AddOutput<MLFloat16>("o", {2, 2}, output);
+  test.Run();
+}
+
+TEST(Einsum, ExplicitEinsumAsMatmul_Half) {
+  if (!HasCudaEnvironment(600)) {
+    return;
+  }
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "ij,jk->ik");
+  std::vector<float> input_x_f = {1.f, 2.f, 3.f, 4.f};
+  std::vector<float> input_y_f = {1.f, 2.f, 3.f, 4.f};
+  std::vector<float> output_f = {7.f, 10.f, 15.f, 22.f};
+  std::vector<MLFloat16> input_x(4);
+  std::vector<MLFloat16> input_y(4);
+  std::vector<MLFloat16> output(4);
+  ConvertFloatToMLFloat16(input_x_f.data(), input_x.data(), 4);
+  ConvertFloatToMLFloat16(input_y_f.data(), input_y.data(), 4);
+  ConvertFloatToMLFloat16(output_f.data(), output.data(), 4);
+  test.AddInput<MLFloat16>("x", {2, 2}, input_x);
+  test.AddInput<MLFloat16>("y", {2, 2}, input_y);
+  test.AddOutput<MLFloat16>("o", {2, 2}, output);
+  test.Run();
+}
+
+TEST(Einsum, ExplicitEinsumAsBatchedMatmul_Half) {
+  if (!HasCudaEnvironment(600)) {
+    return;
+  }
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "bij,bjk->bik");
+  std::vector<float> input_x_f = {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f};
+  std::vector<float> input_y_f = {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f};
+  std::vector<float> output_f = {7.f, 10.f, 15.f, 22.f, 7.f, 10.f, 15.f, 22.f};
+  std::vector<MLFloat16> input_x(8);
+  std::vector<MLFloat16> input_y(8);
+  std::vector<MLFloat16> output(8);
+  ConvertFloatToMLFloat16(input_x_f.data(), input_x.data(), 8);
+  ConvertFloatToMLFloat16(input_y_f.data(), input_y.data(), 8);
+  ConvertFloatToMLFloat16(output_f.data(), output.data(), 8);
+  test.AddInput<MLFloat16>("x", {2, 2, 2}, input_x);
+  test.AddInput<MLFloat16>("y", {2, 2, 2}, input_y);
+  test.AddOutput<MLFloat16>("o", {2, 2, 2}, output);
+  test.Run();
+}
+
+TEST(Einsum, ExplicitEinsumAsDiagonalOp_Half) {
+  if (!HasCudaEnvironment(600)) {
+    return;
+  }
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "ii->i");
+  std::vector<float> input_x_f = {1.f, 2.f, 3.f, 4.f};
+  std::vector<float> output_f = {1.f, 4.f};
+  std::vector<MLFloat16> input_x(4);
+  std::vector<MLFloat16> output(2);
+  ConvertFloatToMLFloat16(input_x_f.data(), input_x.data(), 4);
+  ConvertFloatToMLFloat16(output_f.data(), output.data(), 2);
+  test.AddInput<MLFloat16>("x", {2, 2}, input_x);
+  test.AddOutput<MLFloat16>("o", {2}, output);
+  test.Run();
+}
+
+TEST(Einsum, ExplicitEinsumAsElementwiseMulOpWithOneScalar_Half) {
+  if (!HasCudaEnvironment(600)) {
+    return;
+  }
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", ",...i->...i");
+  std::vector<float> input_x_f = {10.f};
+  std::vector<float> input_y_f = {1.f, 2.f, 3.f, 4.f};
+  std::vector<float> output_f = {10.f, 20.f, 30.f, 40.f};
+  std::vector<MLFloat16> input_x(1);
+  std::vector<MLFloat16> input_y(4);
+  std::vector<MLFloat16> output(4);
+  ConvertFloatToMLFloat16(input_x_f.data(), input_x.data(), 1);
+  ConvertFloatToMLFloat16(input_y_f.data(), input_y.data(), 4);
+  ConvertFloatToMLFloat16(output_f.data(), output.data(), 4);
+  test.AddInput<MLFloat16>("x", {}, input_x);
+  test.AddInput<MLFloat16>("y", {2, 2}, input_y);
+  test.AddOutput<MLFloat16>("o", {2, 2}, output);
+  test.Run();
+}
+
+TEST(Einsum, ExplicitEinsumAsTensorContraction_Half) {
+  if (!HasCudaEnvironment(600)) {
+    return;
+  }
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "abcd,ea->bcde");
+  std::vector<float> input_x_f = {1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f};
+  std::vector<float> input_y_f = {1.f, 2.f, 1.f, 2.f};
+  std::vector<float> output_f = {3.f, 3.f, 6.f, 6.f, 3.f, 3.f, 6.f, 6.f, 3.f, 3.f, 6.f, 6.f, 3.f, 3.f, 6.f, 6.f};
+  std::vector<MLFloat16> input_x(16);
+  std::vector<MLFloat16> input_y(4);
+  std::vector<MLFloat16> output(16);
+  ConvertFloatToMLFloat16(input_x_f.data(), input_x.data(), 16);
+  ConvertFloatToMLFloat16(input_y_f.data(), input_y.data(), 4);
+  ConvertFloatToMLFloat16(output_f.data(), output.data(), 16);
+  test.AddInput<MLFloat16>("x", {2, 2, 2, 2}, input_x);
+  test.AddInput<MLFloat16>("y", {2, 2}, input_y);
+  test.AddOutput<MLFloat16>("o", {2, 2, 2, 2}, output);
   test.Run();
 }
 

@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/tensor/onehot.h"
-#include "core/providers/cpu/tensor/onehot.h"
 
 using namespace onnxruntime::common;
 
@@ -17,9 +16,9 @@ namespace cuda {
       11,                                                                  \
       in_type##_##out_type##_##depth_type,                                 \
       kCudaExecutionProvider,                                              \
-      KernelDefBuilder()                                                   \
-          .InputMemoryType<OrtMemTypeCPUInput>(1) /* Keep depth in CPU */  \
-          .InputMemoryType<OrtMemTypeCPUInput>(2) /* Keep values in CPU */ \
+      (*KernelDefBuilder::Create())                                        \
+          .InputMemoryType(OrtMemTypeCPUInput, 1) /* Keep depth in CPU */  \
+          .InputMemoryType(OrtMemTypeCPUInput, 2) /* Keep values in CPU */ \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<in_type>())    \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<depth_type>()) \
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<out_type>()),  \
@@ -66,8 +65,9 @@ Status OneHotOp<in_type, out_type, depth_type>::ComputeInternal(OpKernelContext*
   auto* output_data = reinterpret_cast<CudaT_Out*>(output->MutableData<out_type>());
 
   if (values_data[0] == CudaT_Out(0.f)) {
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output->MutableDataRaw(), 0, output->SizeInBytes()));
-    OneHotWithZeroOffValueImpl(indices_data,
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output->MutableDataRaw(), 0, output->SizeInBytes(), Stream()));
+    OneHotWithZeroOffValueImpl(Stream(),
+                               indices_data,
                                fdm_suffix,
                                depth_val,
                                values_data[1],
@@ -77,7 +77,8 @@ Status OneHotOp<in_type, out_type, depth_type>::ComputeInternal(OpKernelContext*
   }
 
   const fast_divmod fdm_depth_suffix(gsl::narrow_cast<int>(depth_val * suffix_dim_size));
-  OneHotImpl(indices_data, fdm_depth_suffix, fdm_suffix, depth_val,
+  OneHotImpl(Stream(),
+             indices_data, fdm_depth_suffix, fdm_suffix, depth_val,
              values_data[1],
              values_data[0],
              output_data,

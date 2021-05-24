@@ -24,6 +24,7 @@ limitations under the License.
 #include <cuda_fp16.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "attention_impl.h"
 #include "attention_softmax.h"
 
@@ -71,8 +72,10 @@ bool QkvToContext(
   T* scratch2 = scratch1 + (bytes / element_size);
   T* scratch3 = scratch2 + (bytes / element_size);
 
+  const int max_threads_per_block(prop.maxThreadsPerBlock);
+
   // input should be BxSx3xNxH => scratch3: 3xBxNxSxH
-  if (!LaunchTransQkv(stream, sequence_length, batch_size, head_size, num_heads, input, scratch3)) {
+  if (!LaunchTransQkv(stream, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, input, scratch3)) {
     return false;
   }
 
@@ -86,14 +89,13 @@ bool QkvToContext(
   const T* v = k + total_size;
 
   cublasSetStream(cublas, stream);
-  CublasMathModeSetter helper(prop, cublas, CUBLAS_TENSOR_OP_MATH);
 
   // Concat past (2xBxNxS'xH) to present (2xBxNxS*xH):
   // past_k (BxNxS'xH) + k (BxNxSxH) => present_k (BxNxS*xH)
   // past_v (BxNxS'xH) + v (BxNxSxH) => present_v (BxNxS*xH)
   const int present_size_per_batch = all_sequence_length * head_size;
   if (nullptr != present) {
-    if (!LaunchConcatPastToPresent(stream, all_sequence_length, sequence_length, batch_size, head_size, num_heads, past, k, present)) {
+    if (!LaunchConcatPastToPresent(stream, all_sequence_length, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, past, k, present)) {
       return false;
     }
 
@@ -109,17 +111,25 @@ bool QkvToContext(
   // Q: BxNxSxH, K (present_k): BxNxS*xH, Q*K': BxNxSxS*
   const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(head_size));
   const int temp_matrix_size = sequence_length * all_sequence_length;
+  T one = (T)(1.0f);
+  T zero = (T)(0.f);
+
   // For raw attention mask, the scalar if 1/sqrt(H) is moved to softmax computation.
-  T alpha = (T)(use_raw_attention_mask ? 1.0f : rsqrt_head_size);
-  if (!CUBLAS_CALL(CublasGemmStridedBatched(
-          cublas, CUBLAS_OP_T, CUBLAS_OP_N, all_sequence_length, sequence_length, head_size, alpha, k, head_size, present_size_per_batch,
-          q, head_size, size_per_batch, 0.f, scratch1, all_sequence_length, temp_matrix_size, batches))) {
+  // TODO: move scalar to softmax computation since converting 1/Sqrt(H) to half might have loss in precision.
+  T alpha = use_raw_attention_mask ? one : (T)(rsqrt_head_size);
+
+  if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
+          cublas, CUBLAS_OP_T, CUBLAS_OP_N, all_sequence_length, sequence_length, head_size, &alpha, k, head_size, present_size_per_batch,
+          q, head_size, size_per_batch, &zero, scratch1, all_sequence_length, temp_matrix_size, batches, prop))) {
     return false;
   }
 
   // apply softmax and store result P to scratch2: BxNxSxS*
-  if (use_raw_attention_mask) {  // 2d or 3d attention mask
-    if (!ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, scratch1, scratch2, is_unidirectional, rsqrt_head_size, static_cast<int>(mask_index_dims->size()))) {
+  if (use_raw_attention_mask) {  // 2d, 3d or 4d attention mask
+    const int mask_dimension = static_cast<int>(mask_index_dims->size());
+    const int64_t max_sequence_length = mask_dimension == 4 ? mask_index_dims->at(3) : 0;
+    if (!ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, scratch1, scratch2, is_unidirectional,
+                                      rsqrt_head_size, mask_dimension, static_cast<int>(max_sequence_length))) {
       return false;
     }
   } else if (nullptr != mask_index) {  // 1d mask index
@@ -136,18 +146,19 @@ bool QkvToContext(
   }
 
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
-  if (!CUBLAS_CALL(CublasGemmStridedBatched(
-          cublas, CUBLAS_OP_N, CUBLAS_OP_N, head_size, sequence_length, all_sequence_length, 1.f, v, head_size, present_size_per_batch,
-          scratch2, all_sequence_length, temp_matrix_size, 0.f, scratch3, head_size, size_per_batch, batches))) {
+  if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
+          cublas, CUBLAS_OP_N, CUBLAS_OP_N, head_size, sequence_length, all_sequence_length, &one, v, head_size, present_size_per_batch,
+          scratch2, all_sequence_length, temp_matrix_size, &zero, scratch3, head_size, size_per_batch, batches, prop))) {
     return false;
   }
 
   // scratch3 is BxNxSxH, transpose to output BxSxNxH
-  return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads, scratch3, output);
+  return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads, max_threads_per_block, scratch3, output);
 }
 
 bool LaunchAttentionKernel(
     const cudaDeviceProp& prop,
+    cudaStream_t stream,
     const void* input,
     const int* mask_index,
     const std::vector<int64_t>* mask_index_dims,
@@ -163,9 +174,6 @@ bool LaunchAttentionKernel(
     int past_sequence_length,
     const void* past,
     void* present) {
-  // use default stream
-  const cudaStream_t stream = nullptr;
-
   if (element_size == 2) {
     return QkvToContext(prop, cublas, stream,
                         batch_size, sequence_length, num_heads, head_size, element_size,

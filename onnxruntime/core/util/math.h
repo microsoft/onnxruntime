@@ -16,18 +16,27 @@
 
 #pragma once
 
-// This is a simple translation from the old Caffe math interfaces. We aim to
-// still keep it simple, so all platforms would be able to support it fairly
-// easily.
-
-
-// We include the cblas header here so that we can obtain the macros from cblas.
-extern "C" {
-#include "core/framework/cblas.h"
-}
-
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
+#endif
+
+#ifndef CBLAS_ENUM_DEFINED_H
+#define CBLAS_ENUM_DEFINED_H
+enum CBLAS_ORDER { CblasRowMajor = 101,
+                   CblasColMajor = 102 };
+enum CBLAS_TRANSPOSE {
+  CblasNoTrans = 111,
+  CblasTrans = 112,
+  CblasConjTrans = 113
+};
+enum CBLAS_UPLO { CblasUpper = 121,
+                  CblasLower = 122 };
+enum CBLAS_DIAG { CblasNonUnit = 131,
+                  CblasUnit = 132 };
+enum CBLAS_SIDE { CblasLeft = 141,
+                  CblasRight = 142 };
+#endif
 
 namespace onnxruntime {
 namespace concurrency {
@@ -48,7 +57,6 @@ template <typename T, class Provider>
 void Log(int N, const T* x, T* y, Provider* provider);
 template <typename T, class Provider>
 void Sqr(int N, const T* x, T* y, Provider* provider);
-
 
 #define DECLARE_BINARY_OP(name)                                                     \
   template <typename T, class Provider>                                             \
@@ -240,6 +248,20 @@ struct Im2col<T, StorageOrder::NHWC> {
       ptrdiff_t rank,
       T* data_col,
       T padding_value = 0);
+  void operator()(
+      const T* data_im,
+      int64_t input_channels,
+      const int64_t* input_shape,
+      const int64_t* output_shape,
+      const int64_t* kernel_shape,
+      const int64_t* stride,
+      const int64_t* dilation,
+      const int64_t* pad,
+      ptrdiff_t rank,
+      int64_t output_start,
+      int64_t output_count,
+      T const** data_indirection,
+      const T* padding_ptr);
 };
 
 template <typename T, class Provider, int order>

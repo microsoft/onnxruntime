@@ -4,7 +4,6 @@
 #include "pad.h"
 #include "pad_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/cpu/tensor/pad.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -16,7 +15,7 @@ namespace cuda {
       2, 10,                                                      \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Pad<T>);                                                    \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
@@ -25,9 +24,9 @@ namespace cuda {
       11,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
-          .InputMemoryType<OrtMemTypeCPUInput>(1)                 \
-          .InputMemoryType<OrtMemTypeCPUInput>(2)                 \
+      (*KernelDefBuilder::Create())                               \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Pad<T>);
 
@@ -123,7 +122,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
         output_tensor.template MutableData<T>(), input_tensor.template Data<T>(),
         sizeof(typename ToCudaType<T>::MappedType) * output_shape.Size(),
-        cudaMemcpyDeviceToDevice, 0));
+        cudaMemcpyDeviceToDevice, Stream()));
     return Status::OK();
   }
 
@@ -134,6 +133,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   PadImpl(
+      Stream(),
       dimension_count,
       input_dims,
       input_strides,

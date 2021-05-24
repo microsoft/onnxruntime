@@ -9,14 +9,14 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define CONTRIB_BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(x, ver, T)             \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      x,                                                                        \
-      kMSDomain,                                                                \
-      ver,                                                                      \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define CONTRIB_BINARY_ELEMENTWISE_REGISTER_KERNEL_TYPED(x, ver, T)                        \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      x,                                                                                   \
+      kMSDomain,                                                                           \
+      ver,                                                                                 \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       x<T>);
 
 #define CONTRIB_BINARY_ELEMENTWISE_COMPUTE(x, T)                                                                 \
@@ -25,6 +25,7 @@ namespace cuda {
     BinaryElementwisePreparation prepare;                                                                        \
     ORT_RETURN_IF_ERROR(Prepare(context, &prepare));                                                             \
     Impl_##x<typename ToCudaType<T>::MappedType>(                                                                \
+        Stream(),                                                                                                \
         prepare.output_rank_or_simple_broadcast,                                                                 \
         &prepare.lhs_padded_strides,                                                                             \
         reinterpret_cast<const typename ToCudaType<T>::MappedType*>(prepare.lhs_tensor->template Data<T>()),     \

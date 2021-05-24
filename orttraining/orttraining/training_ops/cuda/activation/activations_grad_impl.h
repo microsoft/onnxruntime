@@ -18,7 +18,8 @@ typedef onnxruntime::cuda::CtxNull CtxReluGrad;
 
 #define BINARY_ELEMENTWISE_IMPL_DECLARATION(name) \
   template <typename T>                           \
-  void Impl_##name(const T* lhs_data,             \
+  void Impl_##name(cudaStream_t stream,     \
+                   const T* lhs_data,             \
                    const T* rhs_data,             \
                    T* output_data,                \
                    const Ctx##name* func_ctx,     \

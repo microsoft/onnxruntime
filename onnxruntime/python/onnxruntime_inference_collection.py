@@ -50,8 +50,8 @@ def check_and_normalize_provider_args(providers, provider_options, available_pro
 
     def set_provider_options(name, options):
         if name not in available_provider_names:
-            raise ValueError("Specified provider '{}' is unavailable. Available providers: '{}'".format(
-                name, ", ".join(available_provider_names)))
+            warnings.warn("Specified provider '{}' is not in available provider names."
+                          "Available providers: '{}'".format(name, ", ".join(available_provider_names)))
 
         if name in provider_name_to_options:
             warnings.warn("Duplicate provider '{}' encountered, ignoring.".format(name))
@@ -233,7 +233,7 @@ class InferenceSession(Session):
     """
     This is the main class used to run a model.
     """
-    def __init__(self, path_or_bytes, sess_options=None, providers=None, provider_options=None):
+    def __init__(self, path_or_bytes, sess_options=None, providers=None, provider_options=None, **kwargs):
         """
         :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
         :param sess_options: session options
@@ -276,9 +276,12 @@ class InferenceSession(Session):
         self._enable_fallback = True
         self._read_config_from_model = os.environ.get('ORT_LOAD_CONFIG_FROM_MODEL') == '1'
 
+        # internal parameters that we don't expect to be used in general so aren't documented
+        disabled_optimizers = kwargs['disabled_optimizers'] if 'disabled_optimizers' in kwargs else None
+
         try:
-            self._create_inference_session(providers, provider_options)
-        except RuntimeError:
+            self._create_inference_session(providers, provider_options, disabled_optimizers)
+        except ValueError:
             if self._enable_fallback:
                 print("EP Error using {}".format(providers))
                 print("Falling back to {} and retrying.".format(self._fallback_providers))
@@ -288,13 +291,8 @@ class InferenceSession(Session):
             else:
                 raise
 
-    def _create_inference_session(self, providers, provider_options):
+    def _create_inference_session(self, providers, provider_options, disabled_optimizers=None):
         available_providers = C.get_available_providers()
-
-        # validate providers and provider_options before other initialization
-        providers, provider_options = check_and_normalize_provider_args(providers,
-                                                                        provider_options,
-                                                                        available_providers)
 
         # Tensorrt can fall back to CUDA. All others fall back to CPU.
         if 'TensorrtExecutionProvider' in available_providers:
@@ -302,14 +300,25 @@ class InferenceSession(Session):
         else:
             self._fallback_providers = ['CPUExecutionProvider']
 
+        # validate providers and provider_options before other initialization
+        providers, provider_options = check_and_normalize_provider_args(providers,
+                                                                        provider_options,
+                                                                        available_providers)
+
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
         if self._model_path:
             sess = C.InferenceSession(session_options, self._model_path, True, self._read_config_from_model)
         else:
             sess = C.InferenceSession(session_options, self._model_bytes, False, self._read_config_from_model)
 
+        if disabled_optimizers is None:
+            disabled_optimizers = set()
+        elif not isinstance(disabled_optimizers, set):
+            # convert to set. assumes iterable
+            disabled_optimizers = set(disabled_optimizers)
+
         # initialize the C++ InferenceSession
-        sess.initialize_session(providers, provider_options)
+        sess.initialize_session(providers, provider_options, disabled_optimizers)
 
         self._sess = sess
         self._sess_options = self._sess.session_options
@@ -522,6 +531,3 @@ class OrtValue:
         Valid only for OrtValues holding Tensors. Throws for OrtValues holding non-Tensors.
         '''
         return self._ortvalue.numpy()
-
-    def to_dlpack(self):
-        return self._ortvalue.to_dlpack()

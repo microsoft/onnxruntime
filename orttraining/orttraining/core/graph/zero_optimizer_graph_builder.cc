@@ -83,7 +83,7 @@ static Status AddL2NormNcclAllReduce(
                                   {norm_squared},
                                   {allreduce_output},
                                   {ONNX_NAMESPACE::MakeAttribute("group_type",
-                                                                static_cast<int64_t>(WorkerGroupType::DataParallel))},
+                                                                 static_cast<int64_t>(WorkerGroupType::DataParallel))},
                                   allreduce_output.name)});
 
   // Sqrt the reduced L2 norm.
@@ -124,7 +124,7 @@ static std::vector<ArgDef> AddPartitionsForParameter(
         ORT_ENFORCE(dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
         // Find the initializer partition to read out.
-        auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+        auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
         const float* initializer_data = initializer->data<float>();
 
         // Create new initializer tensor proto.
@@ -205,13 +205,13 @@ void PartitionOptimizerState(
 
       if (utils::IsPrimitiveDataType<float>(element_type)) {
         float* data_buffer = init_tensor->MutableData<float>();
-        p_tensor = onnxruntime::make_unique<Tensor>(element_type,
+        p_tensor = std::make_unique<Tensor>(element_type,
                                                     shape,
                                                     data_buffer + partition_offset,
                                                     info);
       } else if (utils::IsPrimitiveDataType<MLFloat16>(element_type)) {
         MLFloat16* data_buffer = init_tensor->MutableData<MLFloat16>();
-        p_tensor = onnxruntime::make_unique<Tensor>(element_type,
+        p_tensor = std::make_unique<Tensor>(element_type,
                                                     shape,
                                                     data_buffer + partition_offset,
                                                     info);
@@ -454,7 +454,7 @@ Status ZeROOptimizerGraphBuilder::BuildInternal(
   // add gradient scaling
   ArgDef fused_gradient_argdef;
   const auto total_num_accumulations = opt_graph_config_.gradient_accumulation_steps * opt_graph_config_.data_parallel_group_size;
-  ORT_RETURN_IF_NOT(total_num_accumulations > 0);
+  ORT_RETURN_IF_NOT(total_num_accumulations > 0, "total_num_accumulations <= 0");
   const float scale = 1.0f / total_num_accumulations;
   ORT_RETURN_IF_ERROR(AddGradientScalingNodes(nodearg_name_generator, scale, gradient_argdefs, fused_gradient_argdef, graph_defs,
                                               opt_graph_config_.AllReduceDataType(), false));

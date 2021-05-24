@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include <cstddef>
-#include <iomanip>
-#include <sstream>
+#include <cstdio>
+#include <string>
 
 #include "boost/mp11.hpp"
 
@@ -11,63 +11,65 @@
 
 #include "core/common/common.h"
 #include "core/common/type_list.h"
-#include "core/framework/data_types.h"
 #include "core/framework/data_types_internal.h"
+#include "core/framework/data_types.h"
+#include "core/framework/element_type_lists.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/op_kernel_type_control.h"
 #include "core/util/math_cpuonly.h"
 
+#include "Eigen/src/Core/arch/Default/BFloat16.h"
 #include "Eigen/src/Core/arch/Default/Half.h"
 
-#if defined(_M_AMD64)
+#if defined(_M_AMD64) && !defined(_M_ARM64EC)
 #include "core/mlas/inc/mlas.h"
 #endif
-
-using namespace ONNX_NAMESPACE;
-using namespace boost::mp11;
 
 namespace onnxruntime {
 
 namespace op_kernel_type_control {
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
+// we're using one set of types for all opsets of Cast
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
-    bool,
-    float, double,
-    uint8_t, uint16_t, uint32_t, uint64_t,
-    int8_t, int16_t, int32_t, int64_t,
-    MLFloat16, BFloat16,
-    std::string);
+    element_type_lists::All);
 
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES(
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
+    bool, int32_t, int64_t);
+
+
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
-    bool,
-    float, double,
-    uint8_t, uint16_t, uint32_t, uint64_t,
-    int8_t, int16_t, int32_t, int64_t,
-    MLFloat16, BFloat16,
-    std::string);
+    element_type_lists::All);
+
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
+    bool, int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
 namespace {
+using SrcTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                Cast, Input, 0);
+using DstTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                Cast, Output, 0);
+using EnabledSrcTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                       Cast, Input, 0);
+using EnabledDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                       Cast, Output, 0);
 
-using EnabledSrcTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0);
-using EnabledDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0);
-
-using IndirectCastTypes = TypeList<MLFloat16, BFloat16>;
-
-template <typename Type>
-using IsDirectCastType = mp_not<mp_contains<IndirectCastTypes, Type>>;
-
-template <typename... Types>
-using AreAllDirectCastTypes = mp_all<IsDirectCastType<Types>...>;
+template <typename T>
+using IsOrtFloat16Type = boost::mp11::mp_contains<TypeList<BFloat16, MLFloat16>, T>;
 
 // string cast helpers
+// Note: when C++17 is available, use <charconv> functions
 
-// handle floating point input separately
+// handle floating point output separately
 template <typename SrcType>
 typename std::enable_if<std::is_floating_point<SrcType>::value, void>::type
 CastToString(const SrcType& input, std::string& output) {
+  static_assert(sizeof(SrcType) <= sizeof(double),
+                "largest supported floating point type is double");
   if (std::isnan(input)) {
     output = "NaN";
   } else if (std::isinf(input)) {
@@ -77,19 +79,46 @@ CastToString(const SrcType& input, std::string& output) {
       output = "INF";
     }
   } else {
-    // setprecision to 8 to match numpy default behavior
-    std::ostringstream convert;
-    convert << std::setprecision(8) << input;
-    output = convert.str();
+    // set precision to 8 to match numpy default behavior
+    constexpr const char* format = "%.8g";
+    const double value = static_cast<double>(input);
+
+    char static_buffer[256];
+    std::unique_ptr<char[]> dynamic_buffer{};
+
+    gsl::span<char> buffer_span = gsl::make_span(static_buffer);
+
+    auto snprintf_result = std::snprintf(buffer_span.data(), buffer_span.size(), format, value);
+    ORT_ENFORCE(snprintf_result > 0, "snprintf() failed with return value: ", snprintf_result);
+
+    // include trailing '\0'
+    const size_t required_buffer_size = gsl::narrow_cast<size_t>(snprintf_result) + 1;
+
+    if (required_buffer_size > buffer_span.size()) {
+      // didn't get it all, allocate a bigger buffer and retry
+      dynamic_buffer = std::make_unique<char[]>(required_buffer_size);
+      buffer_span = gsl::make_span(dynamic_buffer.get(), required_buffer_size);
+      snprintf_result = std::snprintf(buffer_span.data(), buffer_span.size(), format, value);
+      ORT_ENFORCE(
+          snprintf_result > 0 &&
+              gsl::narrow_cast<size_t>(snprintf_result) == buffer_span.size() - 1,
+          "Failed to write value with snprintf().");
+    }
+
+    output.assign(buffer_span.data(), required_buffer_size - 1);
   }
 }
 
 template <typename SrcType>
-typename std::enable_if<!std::is_floating_point<SrcType>::value, void>::type
+typename std::enable_if<std::is_integral<SrcType>::value, void>::type
 CastToString(const SrcType& input, std::string& output) {
-  std::ostringstream convert;
-  convert << input;
-  output = convert.str();
+  output = std::to_string(input);
+}
+
+template <typename SrcType>
+typename std::enable_if<IsOrtFloat16Type<SrcType>::value, void>::type
+CastToString(const SrcType& input, std::string& output) {
+  CastToString(static_cast<float>(input), output);
 }
 
 template <typename DstType>
@@ -116,113 +145,119 @@ CastFromString(const std::string& input, DstType& output) {
   output = gsl::narrow_cast<DstType>(std::stoll(input));
 }
 
-// generic scalar X -> Y
-template <typename SrcType, typename DstType>
-struct ScalarDirectCaster {
-  void Cast(const SrcType& in, DstType& out) const {
-    out = static_cast<DstType>(in);
-  }
-};
-
-// scalar X -> string
-template <typename SrcType>
-struct ScalarDirectCaster<SrcType, std::string> {
-  void Cast(const SrcType& in, std::string& out) const {
-    CastToString<SrcType>(in, out);
-  }
-};
-
-// scalar string -> X
 template <typename DstType>
-struct ScalarDirectCaster<std::string, DstType> {
-  void Cast(const std::string& in, DstType& out) const {
-    CastFromString<DstType>(in, out);
-  }
+typename std::enable_if<IsOrtFloat16Type<DstType>::value, void>::type
+CastFromString(const std::string& input, DstType& output) {
+  float intermediate;
+  CastFromString(input, intermediate);
+  output = static_cast<DstType>(intermediate);
+}
+
+// type that is usable with Eigen cast
+template <typename T>
+struct EigenCastType {
+  using type = T;
 };
 
-// helper for indirect cast types
-template <typename SrcType, typename DstType, typename IntermediateType>
-struct ScalarIndirectCaster {
-  void Cast(const SrcType& in, DstType& out) const {
-    IntermediateType intermediate;
-    ScalarDirectCaster<SrcType, IntermediateType>{}.Cast(in, intermediate);
-    ScalarDirectCaster<IntermediateType, DstType>{}.Cast(intermediate, out);
-  }
+// ORT float16 types don't support Eigen cast, so map them to Eigen ones
+
+template <>
+struct EigenCastType<MLFloat16> {
+  using type = Eigen::half;
 };
 
-template <typename SrcType, typename DstType, class Enable = void>
-struct ScalarCaster;
-
-template <typename SrcType, typename DstType>
-struct ScalarCaster<
-    SrcType, DstType,
-    typename std::enable_if<AreAllDirectCastTypes<SrcType, DstType>::value>::type> {
-  void Cast(const SrcType& in, DstType& out) const {
-    ScalarDirectCaster<SrcType, DstType>{}.Cast(in, out);
-  }
-};
-
-template <typename SrcType, typename DstType>
-struct ScalarCaster<
-    SrcType, DstType,
-    typename std::enable_if<!AreAllDirectCastTypes<SrcType, DstType>::value>::type> {
-  void Cast(const SrcType& in, DstType& out) const {
-    ScalarIndirectCaster<SrcType, DstType, float>{}.Cast(in, out);
-  }
+template <>
+struct EigenCastType<BFloat16> {
+  using type = Eigen::bfloat16;
 };
 
 // generic tensor X -> Y
-template <typename SrcType, typename DstType>
+template <typename SrcType, typename DstType, typename Enable = void>
 struct TensorCaster {
-  void Cast(const Tensor& in, Tensor& out, const TensorShape& shape) const {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    using SrcEigenCastType = typename EigenCastType<SrcType>::type;
+    using DstEigenCastType = typename EigenCastType<DstType>::type;
+
     const std::ptrdiff_t shape_size = gsl::narrow<std::ptrdiff_t>(shape.Size());
-    const auto in_vector = ConstEigenVectorMap<SrcType>(in.Data<SrcType>(), shape_size);
-    auto out_vector = EigenVectorMap<DstType>(out.MutableData<DstType>(), shape_size);
-    out_vector = in_vector.unaryExpr([](const SrcType& in_scalar) {
-      DstType out_scalar;
-      ScalarCaster<SrcType, DstType>{}.Cast(in_scalar, out_scalar);
-      return out_scalar;
-    });
+    const auto in_vector =
+        ConstEigenVectorMap<SrcEigenCastType>(reinterpret_cast<const SrcEigenCastType*>(in.Data<SrcType>()), shape_size);
+    auto out_vector =
+        EigenVectorMap<DstEigenCastType>(reinterpret_cast<DstEigenCastType*>(out.MutableData<DstType>()), shape_size);
+    out_vector = in_vector.template cast<DstEigenCastType>();
   }
 };
-
-template <typename SrcType, typename DstType>
-void CastStringTensor(const Tensor& in, Tensor& out, const TensorShape& shape) {
-  static_assert(std::is_same<SrcType, std::string>::value || std::is_same<DstType, std::string>::value,
-                "Either SrcType or DstType must be std::string.");
-  const std::ptrdiff_t shape_size = gsl::narrow<std::ptrdiff_t>(shape.Size());
-  const auto in_data = in.DataAsSpan<SrcType>();
-  const auto out_data = out.MutableDataAsSpan<DstType>();
-  for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
-    ScalarCaster<SrcType, DstType>{}.Cast(in_data[i], out_data[i]);
-  }
-}
 
 // tensor X -> string
 template <typename SrcType>
 struct TensorCaster<SrcType, std::string> {
-  void Cast(const Tensor& in, Tensor& out, const TensorShape& shape) const {
-    CastStringTensor<SrcType, std::string>(in, out, shape);
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const std::ptrdiff_t shape_size = gsl::narrow<std::ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<SrcType>();
+    auto* out_data = out.MutableData<std::string>();
+    for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
+      CastToString(in_data[i], out_data[i]);
+    }
   }
 };
 
 // tensor string -> X
 template <typename DstType>
 struct TensorCaster<std::string, DstType> {
-  void Cast(const Tensor& in, Tensor& out, const TensorShape& shape) const {
-    CastStringTensor<std::string, DstType>(in, out, shape);
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const std::ptrdiff_t shape_size = gsl::narrow<std::ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<std::string>();
+    auto* out_data = out.MutableData<DstType>();
+    for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
+      CastFromString(in_data[i], out_data[i]);
+    }
   }
 };
 
-#if defined(_M_AMD64)
+#if defined(_M_AMD64) && !defined(_M_ARM64EC)
+// specializations to use optimized and Windows x64-specific
+// MlasConvertHalfToFloatBuffer() routine for MLFloat16 -> float conversion
+
 // tensor MLFloat16 -> float
 template <>
 struct TensorCaster<MLFloat16, float> {
-  void Cast(const Tensor& in, Tensor& out, const TensorShape& shape) const {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     auto out_data = out.MutableData<float>();
     auto in_data = in.Data<MLFloat16>();
     const size_t shape_size = gsl::narrow<size_t>(shape.Size());
     MlasConvertHalfToFloatBuffer(&in_data[0].val, out_data, shape_size);
+  }
+};
+
+Tensor GetIntermediateMLFloat16ToFloatTensor(
+    const OpKernelContext& context, const TensorShape& shape, const Tensor& in) {
+  AllocatorPtr allocator;
+  ORT_THROW_IF_ERROR(context.GetTempSpaceAllocator(&allocator));
+  Tensor out{DataTypeImpl::GetType<float>(), shape, allocator};
+  TensorCaster<MLFloat16, float>{}.Cast(context, shape, in, out);
+  return out;
+}
+
+template <typename DstType>
+void CastMLFloat16ThroughFloatTensor(
+    const OpKernelContext& context, const TensorShape& shape, const Tensor& in, Tensor& out) {
+  // use optimized MLFloat16 -> float, then float -> DstType
+  Tensor intermediate_tensor = GetIntermediateMLFloat16ToFloatTensor(context, shape, in);
+  TensorCaster<float, DstType>{}.Cast(context, shape, intermediate_tensor, out);
+}
+
+// tensor MLFloat16 -> X
+template <typename DstType>
+struct TensorCaster<MLFloat16, DstType> {
+  void Cast(const OpKernelContext& context, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    CastMLFloat16ThroughFloatTensor<DstType>(context, shape, in, out);
+  }
+};
+
+// tensor MLFloat16 -> string
+template <>
+struct TensorCaster<MLFloat16, std::string> {
+  void Cast(const OpKernelContext& context, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    CastMLFloat16ThroughFloatTensor<std::string>(context, shape, in, out);
   }
 };
 #endif
@@ -244,17 +279,19 @@ class Cast final : public OpKernel {
 
 template <typename TSrc, typename TDst>
 struct Dispatcher {
-  void operator()(const Tensor& src, Tensor& dst, const TensorShape& shape) {
-    TensorCaster<TSrc, TDst>{}.Cast(src, dst, shape);
+  void operator()(const OpKernelContext& context, const TensorShape& shape, const Tensor& src, Tensor& dst) {
+    TensorCaster<TSrc, TDst>{}.Cast(context, shape, src, dst);
   }
 };
 
 template <typename TSrc>
 struct SrcDispatcher {
-  void operator()(int32_t to, const Tensor& src, Tensor& dst, const TensorShape& shape) {
-    using DstTypes = mp_remove_if_q<EnabledDstTypes, mp_bind_front<std::is_same, TSrc>>;
-    utils::MLTypeCallDispatcherFromTypeList<DstTypes> dispatcher{to};
-    dispatcher.template InvokeWithLeadingTemplateArgs<Dispatcher, TypeList<TSrc>>(src, dst, shape);
+  void operator()(
+      int32_t to, const OpKernelContext& context, const TensorShape& shape, const Tensor& src, Tensor& dst) {
+    using EnabledDstTypesWithoutSrcType =
+        boost::mp11::mp_remove_if_q<EnabledDstTypes, boost::mp11::mp_bind_front<std::is_same, TSrc>>;
+    utils::MLTypeCallDispatcherFromTypeList<EnabledDstTypesWithoutSrcType> dispatcher{to};
+    dispatcher.template InvokeWithLeadingTemplateArgs<Dispatcher, TypeList<TSrc>>(context, shape, src, dst);
   }
 };
 
@@ -276,16 +313,15 @@ Status Cast::Compute(OpKernelContext* context) const {
   }
 
   utils::MLTypeCallDispatcherFromTypeList<EnabledSrcTypes> dispatcher{from};
-  dispatcher.Invoke<SrcDispatcher>(to_, *X, *Y, shape);
+  dispatcher.Invoke<SrcDispatcher>(to_, *context, shape, *X, *Y);
 
   return Status::OK();
 }
 
-const std::vector<MLDataType> castSrcTypeConstraints =
-    BuildKernelDefConstraintsFunctorFromTypeList<EnabledSrcTypes>{}();
-
-const std::vector<MLDataType> castDstTypeConstraints =
-    BuildKernelDefConstraintsFunctorFromTypeList<EnabledDstTypes>{}();
+const auto src_type_constraints = BuildKernelDefConstraintsFromTypeList<SrcTypes>();
+const auto dst_type_constraints = BuildKernelDefConstraintsFromTypeList<DstTypes>();
+const auto enabled_src_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>();
+const auto enabled_dst_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>();
 
 }  // namespace
 
@@ -294,8 +330,8 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     6,
     12,
     KernelDefBuilder()
-        .TypeConstraint("T1", castSrcTypeConstraints)
-        .TypeConstraint("T2", castDstTypeConstraints)
+        .TypeConstraint("T1", src_type_constraints, enabled_src_type_constraints)
+        .TypeConstraint("T2", dst_type_constraints, enabled_dst_type_constraints)
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
     Cast);
 
@@ -303,8 +339,8 @@ ONNX_CPU_OPERATOR_KERNEL(
     Cast,
     13,
     KernelDefBuilder()
-        .TypeConstraint("T1", castSrcTypeConstraints)
-        .TypeConstraint("T2", castDstTypeConstraints)
+        .TypeConstraint("T1", src_type_constraints, enabled_src_type_constraints)
+        .TypeConstraint("T2", dst_type_constraints, enabled_dst_type_constraints)
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
     Cast);
 

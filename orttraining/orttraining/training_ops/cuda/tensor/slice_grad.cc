@@ -13,12 +13,12 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(1)
-        .InputMemoryType<OrtMemTypeCPUInput>(2)
-        .InputMemoryType<OrtMemTypeCPUInput>(3)
-        .InputMemoryType<OrtMemTypeCPUInput>(4)
-        .InputMemoryType<OrtMemTypeCPUInput>(5)
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
+        .InputMemoryType(OrtMemTypeCPUInput, 3)
+        .InputMemoryType(OrtMemTypeCPUInput, 4)
+        .InputMemoryType(OrtMemTypeCPUInput, 5)
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("Tind", std::vector<MLDataType>{
@@ -52,8 +52,9 @@ Status SliceGrad::CallSliceImp(size_t element_size, size_t dimension_count, cons
                                const TArray<fast_divmod>& output_strides, OpKernelContext* ctx,
                                const TensorShape& output_shape) const {
   Tensor* gradient_out_tensor = GetOutputGradientTensor(ctx);
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(gradient_out_tensor->MutableDataRaw(), 0, gradient_out_tensor->SizeInBytes()));
-  return SliceImplGrad(element_size,
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(gradient_out_tensor->MutableDataRaw(), 0, gradient_out_tensor->SizeInBytes(), Stream()));
+  return SliceImplGrad(Stream(),
+                       element_size,
                        gsl::narrow_cast<int32_t>(dimension_count),
                        starts_buffer,
                        steps_buffer,

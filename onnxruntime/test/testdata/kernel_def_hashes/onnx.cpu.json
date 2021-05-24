@@ -1,0 +1,2526 @@
+[
+    [
+        "Abs ai.onnx CPUExecutionProvider",
+        504798580737304624
+    ],
+    [
+        "Abs ai.onnx CPUExecutionProvider",
+        2183148449174722344
+    ],
+    [
+        "Abs ai.onnx CPUExecutionProvider",
+        2655036503625551040
+    ],
+    [
+        "Abs ai.onnx CPUExecutionProvider",
+        3009851702411644032
+    ],
+    [
+        "Abs ai.onnx CPUExecutionProvider",
+        3190939484633723656
+    ],
+    [
+        "Abs ai.onnx CPUExecutionProvider",
+        6055268975966688000
+    ],
+    [
+        "Abs ai.onnx CPUExecutionProvider",
+        6145569101795971584
+    ],
+    [
+        "Abs ai.onnx CPUExecutionProvider",
+        7827897323524555008
+    ],
+    [
+        "Abs ai.onnx CPUExecutionProvider",
+        8502448309239022272
+    ],
+    [
+        "Abs ai.onnx CPUExecutionProvider",
+        8971473958183026704
+    ],
+    [
+        "Abs ai.onnx CPUExecutionProvider",
+        9434261760991393328
+    ],
+    [
+        "Abs ai.onnx CPUExecutionProvider",
+        10431403221717028816
+    ],
+    [
+        "Abs ai.onnx CPUExecutionProvider",
+        11069696326942726312
+    ],
+    [
+        "Abs ai.onnx CPUExecutionProvider",
+        11486507016884713936
+    ],
+    [
+        "Abs ai.onnx CPUExecutionProvider",
+        11869111214782765680
+    ],
+    [
+        "Abs ai.onnx CPUExecutionProvider",
+        14387905014097763280
+    ],
+    [
+        "Abs ai.onnx CPUExecutionProvider",
+        15605730591228317016
+    ],
+    [
+        "Abs ai.onnx CPUExecutionProvider",
+        16777769116337640080
+    ],
+    [
+        "Abs ai.onnx CPUExecutionProvider",
+        17083986781747169264
+    ],
+    [
+        "Abs ai.onnx CPUExecutionProvider",
+        17122435461807292320
+    ],
+    [
+        "Acos ai.onnx CPUExecutionProvider",
+        12559777476169161176
+    ],
+    [
+        "Acosh ai.onnx CPUExecutionProvider",
+        8147308773618631360
+    ],
+    [
+        "Add ai.onnx CPUExecutionProvider",
+        2809400508152416640
+    ],
+    [
+        "Add ai.onnx CPUExecutionProvider",
+        4765849540931245312
+    ],
+    [
+        "Add ai.onnx CPUExecutionProvider",
+        7755855355830999664
+    ],
+    [
+        "Add ai.onnx CPUExecutionProvider",
+        9430048329647241312
+    ],
+    [
+        "Add ai.onnx CPUExecutionProvider",
+        2811294571843125440
+    ],
+    [
+        "Add ai.onnx CPUExecutionProvider",
+        3911830094991457848
+    ],
+    [
+        "Add ai.onnx CPUExecutionProvider",
+        7526632132387248720
+    ],
+    [
+        "Add ai.onnx CPUExecutionProvider",
+        10898881467681895920
+    ],
+    [
+        "Add ai.onnx CPUExecutionProvider",
+        10954442170366922400
+    ],
+    [
+        "Add ai.onnx CPUExecutionProvider",
+        14227555443561151544
+    ],
+    [
+        "Add ai.onnx CPUExecutionProvider",
+        17163619535281201712
+    ],
+    [
+        "Add ai.onnx CPUExecutionProvider",
+        17837365715369996800
+    ],
+    [
+        "And ai.onnx CPUExecutionProvider",
+        7931711152704979424
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
+        2317240841713684752
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
+        2424977109168024608
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
+        2722235460370749928
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
+        3530049861321274904
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
+        3776111440658888968
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
+        12157492629288967928
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
+        13027735142126919896
+    ],
+    [
+        "ArgMax ai.onnx CPUExecutionProvider",
+        14910778597193697496
+    ],
+    [
+        "ArgMin ai.onnx CPUExecutionProvider",
+        3259714541817453752
+    ],
+    [
+        "ArgMin ai.onnx CPUExecutionProvider",
+        6306867649701766768
+    ],
+    [
+        "ArgMin ai.onnx CPUExecutionProvider",
+        7388204937281788320
+    ],
+    [
+        "ArgMin ai.onnx CPUExecutionProvider",
+        9847316221864129112
+    ],
+    [
+        "ArgMin ai.onnx CPUExecutionProvider",
+        15228181434236004952
+    ],
+    [
+        "ArgMin ai.onnx CPUExecutionProvider",
+        15675055269913165744
+    ],
+    [
+        "ArgMin ai.onnx CPUExecutionProvider",
+        17063009147054142544
+    ],
+    [
+        "ArgMin ai.onnx CPUExecutionProvider",
+        18140858399351623728
+    ],
+    [
+        "Asin ai.onnx CPUExecutionProvider",
+        2279037228747137360
+    ],
+    [
+        "Asinh ai.onnx CPUExecutionProvider",
+        4335637335083209024
+    ],
+    [
+        "Atan ai.onnx CPUExecutionProvider",
+        6156207978523300880
+    ],
+    [
+        "Atanh ai.onnx CPUExecutionProvider",
+        7281471694245287776
+    ],
+    [
+        "AveragePool ai.onnx CPUExecutionProvider",
+        1691409737937146952
+    ],
+    [
+        "AveragePool ai.onnx CPUExecutionProvider",
+        7064530023477327152
+    ],
+    [
+        "AveragePool ai.onnx CPUExecutionProvider",
+        10567645262006979816
+    ],
+    [
+        "BatchNormalization ai.onnx CPUExecutionProvider",
+        3151445409522059920
+    ],
+    [
+        "BatchNormalization ai.onnx CPUExecutionProvider",
+        8260480971610783200
+    ],
+    [
+        "BatchNormalization ai.onnx CPUExecutionProvider",
+        12009127760899929456
+    ],
+    [
+        "BatchNormalization ai.onnx CPUExecutionProvider",
+        18128921553709069152
+    ],
+    [
+        "BatchNormalization ai.onnx CPUExecutionProvider",
+        13094179255141648608
+    ],
+    [
+        "BatchNormalization ai.onnx CPUExecutionProvider",
+        17832136363477464736
+    ],
+    [
+        "BitShift ai.onnx CPUExecutionProvider",
+        4758677670685660688
+    ],
+    [
+        "BitShift ai.onnx CPUExecutionProvider",
+        6590346922848896960
+    ],
+    [
+        "BitShift ai.onnx CPUExecutionProvider",
+        8765933529403563240
+    ],
+    [
+        "Cast ai.onnx CPUExecutionProvider",
+        4892631558605514456
+    ],
+    [
+        "Cast ai.onnx CPUExecutionProvider",
+        13977811166737747504
+    ],
+    [
+        "Ceil ai.onnx CPUExecutionProvider",
+        2776352081059075072
+    ],
+    [
+        "Ceil ai.onnx CPUExecutionProvider",
+        8175374217867982592
+    ],
+    [
+        "Celu ai.onnx CPUExecutionProvider",
+        6586235226200663216
+    ],
+    [
+        "Clip ai.onnx CPUExecutionProvider",
+        10165399686383129936
+    ],
+    [
+        "Clip ai.onnx CPUExecutionProvider",
+        11050032992058305024
+    ],
+    [
+        "Clip ai.onnx CPUExecutionProvider",
+        15464277967303611680
+    ],
+    [
+        "Clip ai.onnx CPUExecutionProvider",
+        15835199378384293888
+    ],
+    [
+        "Compress ai.onnx CPUExecutionProvider",
+        7362152988702475176
+    ],
+    [
+        "Compress ai.onnx CPUExecutionProvider",
+        12011480601252498104
+    ],
+    [
+        "Concat ai.onnx CPUExecutionProvider",
+        6735462296507386696
+    ],
+    [
+        "Concat ai.onnx CPUExecutionProvider",
+        13881250836434776192
+    ],
+    [
+        "Concat ai.onnx CPUExecutionProvider",
+        17984471790875795296
+    ],
+    [
+        "ConcatFromSequence ai.onnx CPUExecutionProvider",
+        12684746449905165864
+    ],
+    [
+        "ConstantOfShape ai.onnx CPUExecutionProvider",
+        11399309062544840088
+    ],
+    [
+        "Conv ai.onnx CPUExecutionProvider",
+        8328794455908578232
+    ],
+    [
+        "Conv ai.onnx CPUExecutionProvider",
+        16516917846545343592
+    ],
+    [
+        "ConvInteger ai.onnx CPUExecutionProvider",
+        100167825365193136
+    ],
+    [
+        "ConvTranspose ai.onnx CPUExecutionProvider",
+        35623394092856472
+    ],
+    [
+        "ConvTranspose ai.onnx CPUExecutionProvider",
+        4454044225968077856
+    ],
+    [
+        "Cos ai.onnx CPUExecutionProvider",
+        1499142588988375424
+    ],
+    [
+        "Cosh ai.onnx CPUExecutionProvider",
+        15345496796160944720
+    ],
+    [
+        "CumSum ai.onnx CPUExecutionProvider",
+        5082944229190913256
+    ],
+    [
+        "CumSum ai.onnx CPUExecutionProvider",
+        10469673094092328264
+    ],
+    [
+        "CumSum ai.onnx CPUExecutionProvider",
+        10623377395346323656
+    ],
+    [
+        "CumSum ai.onnx CPUExecutionProvider",
+        11339703050808462936
+    ],
+    [
+        "CumSum ai.onnx CPUExecutionProvider",
+        12655022500731400520
+    ],
+    [
+        "CumSum ai.onnx CPUExecutionProvider",
+        13407812519646293824
+    ],
+    [
+        "CumSum ai.onnx CPUExecutionProvider",
+        14253657812461767552
+    ],
+    [
+        "CumSum ai.onnx CPUExecutionProvider",
+        15718188077307851520
+    ],
+    [
+        "DepthToSpace ai.onnx CPUExecutionProvider",
+        1243399198864605832
+    ],
+    [
+        "DepthToSpace ai.onnx CPUExecutionProvider",
+        2375217984187160248
+    ],
+    [
+        "DepthToSpace ai.onnx CPUExecutionProvider",
+        8969883522517745168
+    ],
+    [
+        "DequantizeLinear ai.onnx CPUExecutionProvider",
+        659465705888746048
+    ],
+    [
+        "DequantizeLinear ai.onnx CPUExecutionProvider",
+        4681578354178800352
+    ],
+    [
+        "DequantizeLinear ai.onnx CPUExecutionProvider",
+        10633816119191824336
+    ],
+    [
+        "DequantizeLinear ai.onnx CPUExecutionProvider",
+        11078037650349877208
+    ],
+    [
+        "DequantizeLinear ai.onnx CPUExecutionProvider",
+        12063337043167780184
+    ],
+    [
+        "DequantizeLinear ai.onnx CPUExecutionProvider",
+        13994311551260810568
+    ],
+    [
+        "Det ai.onnx CPUExecutionProvider",
+        4355346295804324544
+    ],
+    [
+        "Div ai.onnx CPUExecutionProvider",
+        3765227735719542728
+    ],
+    [
+        "Div ai.onnx CPUExecutionProvider",
+        6096830237778328064
+    ],
+    [
+        "Div ai.onnx CPUExecutionProvider",
+        8806467529483118056
+    ],
+    [
+        "Div ai.onnx CPUExecutionProvider",
+        10863732091582123872
+    ],
+    [
+        "Div ai.onnx CPUExecutionProvider",
+        1070579688547233192
+    ],
+    [
+        "Div ai.onnx CPUExecutionProvider",
+        3530003233152221064
+    ],
+    [
+        "Div ai.onnx CPUExecutionProvider",
+        4576785625651393824
+    ],
+    [
+        "Div ai.onnx CPUExecutionProvider",
+        4887042330757426576
+    ],
+    [
+        "Div ai.onnx CPUExecutionProvider",
+        10014579724542017176
+    ],
+    [
+        "Div ai.onnx CPUExecutionProvider",
+        15607446330033001248
+    ],
+    [
+        "Div ai.onnx CPUExecutionProvider",
+        15682512038856025312
+    ],
+    [
+        "Div ai.onnx CPUExecutionProvider",
+        18087152238491883272
+    ],
+    [
+        "Dropout ai.onnx CPUExecutionProvider",
+        959924377557845840
+    ],
+    [
+        "Dropout ai.onnx CPUExecutionProvider",
+        2832535737534577496
+    ],
+    [
+        "Dropout ai.onnx CPUExecutionProvider",
+        4039545479597223936
+    ],
+    [
+        "Dropout ai.onnx CPUExecutionProvider",
+        4144638777043373176
+    ],
+    [
+        "Dropout ai.onnx CPUExecutionProvider",
+        7435465647001245928
+    ],
+    [
+        "Dropout ai.onnx CPUExecutionProvider",
+        10786060100999379200
+    ],
+    [
+        "Dropout ai.onnx CPUExecutionProvider",
+        10811776928758670648
+    ],
+    [
+        "Dropout ai.onnx CPUExecutionProvider",
+        13037112407948355832
+    ],
+    [
+        "Dropout ai.onnx CPUExecutionProvider",
+        17469316612540314360
+    ],
+    [
+        "Dropout ai.onnx CPUExecutionProvider",
+        17666880288828056264
+    ],
+    [
+        "DynamicQuantizeLinear ai.onnx CPUExecutionProvider",
+        15568473034242820680
+    ],
+    [
+        "Einsum ai.onnx CPUExecutionProvider",
+        14280390279553192696
+    ],
+    [
+        "Elu ai.onnx CPUExecutionProvider",
+        3332615861526569160
+    ],
+    [
+        "Equal ai.onnx CPUExecutionProvider",
+        465760068542515872
+    ],
+    [
+        "Equal ai.onnx CPUExecutionProvider",
+        2485312216842316792
+    ],
+    [
+        "Equal ai.onnx CPUExecutionProvider",
+        5003664709567541688
+    ],
+    [
+        "Equal ai.onnx CPUExecutionProvider",
+        5513564698408644984
+    ],
+    [
+        "Equal ai.onnx CPUExecutionProvider",
+        6741326113368386488
+    ],
+    [
+        "Equal ai.onnx CPUExecutionProvider",
+        6935339698501351552
+    ],
+    [
+        "Equal ai.onnx CPUExecutionProvider",
+        7519280692663295968
+    ],
+    [
+        "Equal ai.onnx CPUExecutionProvider",
+        9545015110259334152
+    ],
+    [
+        "Equal ai.onnx CPUExecutionProvider",
+        10522089514617653216
+    ],
+    [
+        "Equal ai.onnx CPUExecutionProvider",
+        11314599873697707856
+    ],
+    [
+        "Equal ai.onnx CPUExecutionProvider",
+        12332165502849781208
+    ],
+    [
+        "Equal ai.onnx CPUExecutionProvider",
+        13454187278267603432
+    ],
+    [
+        "Equal ai.onnx CPUExecutionProvider",
+        13975464527332248864
+    ],
+    [
+        "Equal ai.onnx CPUExecutionProvider",
+        16427932130421637448
+    ],
+    [
+        "Equal ai.onnx CPUExecutionProvider",
+        16722605182207544888
+    ],
+    [
+        "Erf ai.onnx CPUExecutionProvider",
+        260353630666949200
+    ],
+    [
+        "Erf ai.onnx CPUExecutionProvider",
+        16431777616328093792
+    ],
+    [
+        "Exp ai.onnx CPUExecutionProvider",
+        4663516500907248816
+    ],
+    [
+        "Exp ai.onnx CPUExecutionProvider",
+        7129230664682662520
+    ],
+    [
+        "Exp ai.onnx CPUExecutionProvider",
+        10374157387442478048
+    ],
+    [
+        "Exp ai.onnx CPUExecutionProvider",
+        12745858707361077304
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        511570327851406656
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        999468057623660600
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        1198571072854699920
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        1971417416603291272
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        1981128892509939080
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        4183894922616455816
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        4263550559080595904
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        5514423297929304016
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        6347847198186518064
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        6784735496995453856
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        6974166611804396280
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        6977454377250272128
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        7035613483753156272
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        9054423380544288056
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        9206973352625403832
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        13173453356648366440
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        14040663054230481832
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        14528904907882240528
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        14796966018183006720
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        15910553252200910392
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        16797173020098987784
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        16840132632255706048
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        17054642365717222176
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        17179539307526447632
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        17988714816908604160
+    ],
+    [
+        "Expand ai.onnx CPUExecutionProvider",
+        18204147471244917832
+    ],
+    [
+        "EyeLike ai.onnx CPUExecutionProvider",
+        14424733160521273664
+    ],
+    [
+        "Flatten ai.onnx CPUExecutionProvider",
+        2834436778710670368
+    ],
+    [
+        "Flatten ai.onnx CPUExecutionProvider",
+        15460288903846889664
+    ],
+    [
+        "Flatten ai.onnx CPUExecutionProvider",
+        15671451779761409376
+    ],
+    [
+        "Flatten ai.onnx CPUExecutionProvider",
+        16880471824466361464
+    ],
+    [
+        "Floor ai.onnx CPUExecutionProvider",
+        4415851876932201928
+    ],
+    [
+        "Floor ai.onnx CPUExecutionProvider",
+        10741594030400229240
+    ],
+    [
+        "Gather ai.onnx CPUExecutionProvider",
+        625186873870077080
+    ],
+    [
+        "Gather ai.onnx CPUExecutionProvider",
+        7462749543760614528
+    ],
+    [
+        "Gather ai.onnx CPUExecutionProvider",
+        11761559382112736008
+    ],
+    [
+        "GatherElements ai.onnx CPUExecutionProvider",
+        4500561021631132744
+    ],
+    [
+        "GatherElements ai.onnx CPUExecutionProvider",
+        8274891310147440848
+    ],
+    [
+        "GatherND ai.onnx CPUExecutionProvider",
+        646512416908411600
+    ],
+    [
+        "GatherND ai.onnx CPUExecutionProvider",
+        14033689580222898712
+    ],
+    [
+        "GatherND ai.onnx CPUExecutionProvider",
+        15019893097608892000
+    ],
+    [
+        "Gemm ai.onnx CPUExecutionProvider",
+        924315840375058080
+    ],
+    [
+        "Gemm ai.onnx CPUExecutionProvider",
+        2778484524162833808
+    ],
+    [
+        "Gemm ai.onnx CPUExecutionProvider",
+        8509578291145888416
+    ],
+    [
+        "Gemm ai.onnx CPUExecutionProvider",
+        9230597922178086344
+    ],
+    [
+        "Gemm ai.onnx CPUExecutionProvider",
+        9404518639984045696
+    ],
+    [
+        "Gemm ai.onnx CPUExecutionProvider",
+        11532684775587515192
+    ],
+    [
+        "Gemm ai.onnx CPUExecutionProvider",
+        11876146058839305680
+    ],
+    [
+        "Gemm ai.onnx CPUExecutionProvider",
+        13401942613499179992
+    ],
+    [
+        "GlobalAveragePool ai.onnx CPUExecutionProvider",
+        13997705024068872760
+    ],
+    [
+        "GlobalLpPool ai.onnx CPUExecutionProvider",
+        12804454614028655440
+    ],
+    [
+        "GlobalMaxPool ai.onnx CPUExecutionProvider",
+        1549541000860714808
+    ],
+    [
+        "Greater ai.onnx CPUExecutionProvider",
+        449531580553467312
+    ],
+    [
+        "Greater ai.onnx CPUExecutionProvider",
+        6244347306129731472
+    ],
+    [
+        "Greater ai.onnx CPUExecutionProvider",
+        9673327496509586840
+    ],
+    [
+        "Greater ai.onnx CPUExecutionProvider",
+        9970070545282376512
+    ],
+    [
+        "Greater ai.onnx CPUExecutionProvider",
+        10403955381817977536
+    ],
+    [
+        "Greater ai.onnx CPUExecutionProvider",
+        11554950443553084568
+    ],
+    [
+        "Greater ai.onnx CPUExecutionProvider",
+        15279867060861067528
+    ],
+    [
+        "Greater ai.onnx CPUExecutionProvider",
+        16240681799461676968
+    ],
+    [
+        "Greater ai.onnx CPUExecutionProvider",
+        16777287786353424024
+    ],
+    [
+        "Greater ai.onnx CPUExecutionProvider",
+        16852011221046024392
+    ],
+    [
+        "GreaterOrEqual ai.onnx CPUExecutionProvider",
+        3999586969438630368
+    ],
+    [
+        "GreaterOrEqual ai.onnx CPUExecutionProvider",
+        8317279776362716048
+    ],
+    [
+        "GreaterOrEqual ai.onnx CPUExecutionProvider",
+        14896183015337647264
+    ],
+    [
+        "GreaterOrEqual ai.onnx CPUExecutionProvider",
+        17416867432093505280
+    ],
+    [
+        "GRU ai.onnx CPUExecutionProvider",
+        5656895183302764352
+    ],
+    [
+        "GRU ai.onnx CPUExecutionProvider",
+        2706165712066264784
+    ],
+    [
+        "Hardmax ai.onnx CPUExecutionProvider",
+        3471079605532327368
+    ],
+    [
+        "Hardmax ai.onnx CPUExecutionProvider",
+        4275195189155928568
+    ],
+    [
+        "Hardmax ai.onnx CPUExecutionProvider",
+        17512886821071582168
+    ],
+    [
+        "HardSigmoid ai.onnx CPUExecutionProvider",
+        8073874088399301792
+    ],
+    [
+        "Identity ai.onnx CPUExecutionProvider",
+        16879814636194901248
+    ],
+    [
+        "Identity ai.onnx CPUExecutionProvider",
+        18001636502361632792
+    ],
+    [
+        "Identity ai.onnx CPUExecutionProvider",
+        16515685968327103576
+    ],
+    [
+        "If ai.onnx CPUExecutionProvider",
+        2236645891232685176
+    ],
+    [
+        "If ai.onnx CPUExecutionProvider",
+        8375779015031532008
+    ],
+    [
+        "If ai.onnx CPUExecutionProvider",
+        17525337343748410800
+    ],
+    [
+        "InstanceNormalization ai.onnx CPUExecutionProvider",
+        17511351958774814976
+    ],
+    [
+        "IsInf ai.onnx CPUExecutionProvider",
+        17892003161986514744
+    ],
+    [
+        "IsNaN ai.onnx CPUExecutionProvider",
+        1410678655050221856
+    ],
+    [
+        "IsNaN ai.onnx CPUExecutionProvider",
+        4005964532771713904
+    ],
+    [
+        "IsNaN ai.onnx CPUExecutionProvider",
+        6643135320397294616
+    ],
+    [
+        "IsNaN ai.onnx CPUExecutionProvider",
+        8601031213185457224
+    ],
+    [
+        "LeakyRelu ai.onnx CPUExecutionProvider",
+        7020782930120154768
+    ],
+    [
+        "Less ai.onnx CPUExecutionProvider",
+        2529281912870061232
+    ],
+    [
+        "Less ai.onnx CPUExecutionProvider",
+        2613688346938587336
+    ],
+    [
+        "Less ai.onnx CPUExecutionProvider",
+        2728241242035668880
+    ],
+    [
+        "Less ai.onnx CPUExecutionProvider",
+        2895263051054160696
+    ],
+    [
+        "Less ai.onnx CPUExecutionProvider",
+        9397354372953308456
+    ],
+    [
+        "Less ai.onnx CPUExecutionProvider",
+        15035453610574415224
+    ],
+    [
+        "Less ai.onnx CPUExecutionProvider",
+        15639388961500593472
+    ],
+    [
+        "Less ai.onnx CPUExecutionProvider",
+        15763680961107898296
+    ],
+    [
+        "Less ai.onnx CPUExecutionProvider",
+        16996631125248308216
+    ],
+    [
+        "Less ai.onnx CPUExecutionProvider",
+        17960128831236491008
+    ],
+    [
+        "LessOrEqual ai.onnx CPUExecutionProvider",
+        1261667279452953168
+    ],
+    [
+        "LessOrEqual ai.onnx CPUExecutionProvider",
+        2051143717905239376
+    ],
+    [
+        "LessOrEqual ai.onnx CPUExecutionProvider",
+        4697898477799165704
+    ],
+    [
+        "LessOrEqual ai.onnx CPUExecutionProvider",
+        8848289292300988248
+    ],
+    [
+        "Log ai.onnx CPUExecutionProvider",
+        268464912229648680
+    ],
+    [
+        "Log ai.onnx CPUExecutionProvider",
+        3112553152557524648
+    ],
+    [
+        "Log ai.onnx CPUExecutionProvider",
+        11759591563691157568
+    ],
+    [
+        "Log ai.onnx CPUExecutionProvider",
+        17676497422436172176
+    ],
+    [
+        "LogSoftmax ai.onnx CPUExecutionProvider",
+        115736193724605672
+    ],
+    [
+        "LogSoftmax ai.onnx CPUExecutionProvider",
+        2520466664629116256
+    ],
+    [
+        "LogSoftmax ai.onnx CPUExecutionProvider",
+        4492727363140130712
+    ],
+    [
+        "LogSoftmax ai.onnx CPUExecutionProvider",
+        7315901443224771096
+    ],
+    [
+        "LogSoftmax ai.onnx CPUExecutionProvider",
+        11503158751336478728
+    ],
+    [
+        "LogSoftmax ai.onnx CPUExecutionProvider",
+        14810560469352034472
+    ],
+    [
+        "Loop ai.onnx CPUExecutionProvider",
+        4722530828690003040
+    ],
+    [
+        "Loop ai.onnx CPUExecutionProvider",
+        12504563769172665504
+    ],
+    [
+        "Loop ai.onnx CPUExecutionProvider",
+        18226282479886582688
+    ],
+    [
+        "LpNormalization ai.onnx CPUExecutionProvider",
+        5940113166682524360
+    ],
+    [
+        "LpNormalization ai.onnx CPUExecutionProvider",
+        7839016206143985376
+    ],
+    [
+        "LpPool ai.onnx CPUExecutionProvider",
+        2659465814558270816
+    ],
+    [
+        "LpPool ai.onnx CPUExecutionProvider",
+        8193428427416727168
+    ],
+    [
+        "LRN ai.onnx CPUExecutionProvider",
+        12835456436860157072
+    ],
+    [
+        "LRN ai.onnx CPUExecutionProvider",
+        15047083116516536152
+    ],
+    [
+        "LSTM ai.onnx CPUExecutionProvider",
+        4392316607181063320
+    ],
+    [
+        "LSTM ai.onnx CPUExecutionProvider",
+        5860801277476873352
+    ],
+    [
+        "MatMul ai.onnx CPUExecutionProvider",
+        52556316079319400
+    ],
+    [
+        "MatMul ai.onnx CPUExecutionProvider",
+        3037708961966197464
+    ],
+    [
+        "MatMul ai.onnx CPUExecutionProvider",
+        3051970820885644088
+    ],
+    [
+        "MatMul ai.onnx CPUExecutionProvider",
+        3074778955695403856
+    ],
+    [
+        "MatMul ai.onnx CPUExecutionProvider",
+        4366527517563157992
+    ],
+    [
+        "MatMul ai.onnx CPUExecutionProvider",
+        6380816295259527720
+    ],
+    [
+        "MatMul ai.onnx CPUExecutionProvider",
+        9907944282496968536
+    ],
+    [
+        "MatMul ai.onnx CPUExecutionProvider",
+        10090084904454358640
+    ],
+    [
+        "MatMul ai.onnx CPUExecutionProvider",
+        12944936747196752560
+    ],
+    [
+        "MatMul ai.onnx CPUExecutionProvider",
+        16997422825780227992
+    ],
+    [
+        "MatMulInteger ai.onnx CPUExecutionProvider",
+        8304157459354278720
+    ],
+    [
+        "Max ai.onnx CPUExecutionProvider",
+        11384130473520199552
+    ],
+    [
+        "Max ai.onnx CPUExecutionProvider",
+        11400391412664954200
+    ],
+    [
+        "Max ai.onnx CPUExecutionProvider",
+        13265498576778444128
+    ],
+    [
+        "Max ai.onnx CPUExecutionProvider",
+        15826943726640087288
+    ],
+    [
+        "MaxPool ai.onnx CPUExecutionProvider",
+        8090321298879394920
+    ],
+    [
+        "MaxPool ai.onnx CPUExecutionProvider",
+        8183201210657604880
+    ],
+    [
+        "MaxPool ai.onnx CPUExecutionProvider",
+        9018732444147417520
+    ],
+    [
+        "MaxRoiPool ai.onnx CPUExecutionProvider",
+        15885844739553398488
+    ],
+    [
+        "MaxUnpool ai.onnx CPUExecutionProvider",
+        32284576063639008
+    ],
+    [
+        "MaxUnpool ai.onnx CPUExecutionProvider",
+        12239285446297040368
+    ],
+    [
+        "Mean ai.onnx CPUExecutionProvider",
+        674524861415863432
+    ],
+    [
+        "Mean ai.onnx CPUExecutionProvider",
+        15995564204118007280
+    ],
+    [
+        "Mean ai.onnx CPUExecutionProvider",
+        17663800684295189072
+    ],
+    [
+        "MeanVarianceNormalization ai.onnx CPUExecutionProvider",
+        4538073571749444680
+    ],
+    [
+        "MeanVarianceNormalization ai.onnx CPUExecutionProvider",
+        17242016597551698064
+    ],
+    [
+        "Min ai.onnx CPUExecutionProvider",
+        5444634510407971152
+    ],
+    [
+        "Min ai.onnx CPUExecutionProvider",
+        6810496931206290712
+    ],
+    [
+        "Min ai.onnx CPUExecutionProvider",
+        8711551713147301744
+    ],
+    [
+        "Min ai.onnx CPUExecutionProvider",
+        9049294222697989120
+    ],
+    [
+        "Mod ai.onnx CPUExecutionProvider",
+        7252013141748353440
+    ],
+    [
+        "Mod ai.onnx CPUExecutionProvider",
+        10733303722078722368
+    ],
+    [
+        "Mul ai.onnx CPUExecutionProvider",
+        6564441461158321512
+    ],
+    [
+        "Mul ai.onnx CPUExecutionProvider",
+        12026653868244773992
+    ],
+    [
+        "Mul ai.onnx CPUExecutionProvider",
+        12682993328532509792
+    ],
+    [
+        "Mul ai.onnx CPUExecutionProvider",
+        15671930608208592024
+    ],
+    [
+        "Mul ai.onnx CPUExecutionProvider",
+        2785903326433781024
+    ],
+    [
+        "Mul ai.onnx CPUExecutionProvider",
+        4791260151803733872
+    ],
+    [
+        "Mul ai.onnx CPUExecutionProvider",
+        4865785170965629472
+    ],
+    [
+        "Mul ai.onnx CPUExecutionProvider",
+        6426675508006464640
+    ],
+    [
+        "Mul ai.onnx CPUExecutionProvider",
+        7050294657620187432
+    ],
+    [
+        "Mul ai.onnx CPUExecutionProvider",
+        7162660788918165080
+    ],
+    [
+        "Mul ai.onnx CPUExecutionProvider",
+        10589749217942850296
+    ],
+    [
+        "Mul ai.onnx CPUExecutionProvider",
+        13192662774919983744
+    ],
+    [
+        "Multinomial ai.onnx CPUExecutionProvider",
+        4035027560640217112
+    ],
+    [
+        "Neg ai.onnx CPUExecutionProvider",
+        299941700632775384
+    ],
+    [
+        "Neg ai.onnx CPUExecutionProvider",
+        941339082116483920
+    ],
+    [
+        "Neg ai.onnx CPUExecutionProvider",
+        5647833637661484080
+    ],
+    [
+        "Neg ai.onnx CPUExecutionProvider",
+        5951204590602223848
+    ],
+    [
+        "Neg ai.onnx CPUExecutionProvider",
+        8536718915610937776
+    ],
+    [
+        "Neg ai.onnx CPUExecutionProvider",
+        9219512640203829032
+    ],
+    [
+        "Neg ai.onnx CPUExecutionProvider",
+        10410816017567060816
+    ],
+    [
+        "Neg ai.onnx CPUExecutionProvider",
+        11383475793879864256
+    ],
+    [
+        "Neg ai.onnx CPUExecutionProvider",
+        11497410339400054552
+    ],
+    [
+        "Neg ai.onnx CPUExecutionProvider",
+        13062264815462063544
+    ],
+    [
+        "NonMaxSuppression ai.onnx CPUExecutionProvider",
+        1370201499365506920
+    ],
+    [
+        "NonMaxSuppression ai.onnx CPUExecutionProvider",
+        5599941468729814576
+    ],
+    [
+        "NonZero ai.onnx CPUExecutionProvider",
+        4582779599163399952
+    ],
+    [
+        "NonZero ai.onnx CPUExecutionProvider",
+        5030526776968826448
+    ],
+    [
+        "NonZero ai.onnx CPUExecutionProvider",
+        7409810841275121112
+    ],
+    [
+        "NonZero ai.onnx CPUExecutionProvider",
+        9279205752738594840
+    ],
+    [
+        "NonZero ai.onnx CPUExecutionProvider",
+        9946863128009620032
+    ],
+    [
+        "NonZero ai.onnx CPUExecutionProvider",
+        10368470876283158368
+    ],
+    [
+        "NonZero ai.onnx CPUExecutionProvider",
+        11258950761227257408
+    ],
+    [
+        "NonZero ai.onnx CPUExecutionProvider",
+        14796541421586107008
+    ],
+    [
+        "NonZero ai.onnx CPUExecutionProvider",
+        15791942659448002792
+    ],
+    [
+        "NonZero ai.onnx CPUExecutionProvider",
+        17784759486752176416
+    ],
+    [
+        "Not ai.onnx CPUExecutionProvider",
+        10232409728231027688
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        978583397600040800
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        1520450948168779496
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        2271501714099757272
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        3388280028895725048
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        5791206859684296928
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        6100777310996997520
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        6920116261827618000
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        7709731812980042552
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        8289807350985807680
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        8313592734779484512
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        8361965853380969048
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        8392130661000703936
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        8728814239843992472
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        9133480318268319368
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        10784514718782139952
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        11582157536088100696
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        11996617401421737624
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        13987905095574261288
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        14326347270202402576
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        14331450753330761992
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        14348901166058188912
+    ],
+    [
+        "OneHot ai.onnx CPUExecutionProvider",
+        15162687909384154912
+    ],
+    [
+        "Or ai.onnx CPUExecutionProvider",
+        18295541712828245416
+    ],
+    [
+        "Pad ai.onnx CPUExecutionProvider",
+        9596174091174553032
+    ],
+    [
+        "Pad ai.onnx CPUExecutionProvider",
+        15778168444418158464
+    ],
+    [
+        "Pad ai.onnx CPUExecutionProvider",
+        17900876414644757728
+    ],
+    [
+        "Pow ai.onnx CPUExecutionProvider",
+        2732884601395419376
+    ],
+    [
+        "Pow ai.onnx CPUExecutionProvider",
+        8377308095432624176
+    ],
+    [
+        "Pow ai.onnx CPUExecutionProvider",
+        12963226513247425672
+    ],
+    [
+        "PRelu ai.onnx CPUExecutionProvider",
+        3282999003886175808
+    ],
+    [
+        "PRelu ai.onnx CPUExecutionProvider",
+        18013428254891374496
+    ],
+    [
+        "QLinearConv ai.onnx CPUExecutionProvider",
+        6630340551594954312
+    ],
+    [
+        "QLinearMatMul ai.onnx CPUExecutionProvider",
+        17071666635484846840
+    ],
+    [
+        "QuantizeLinear ai.onnx CPUExecutionProvider",
+        1532667988771795616
+    ],
+    [
+        "QuantizeLinear ai.onnx CPUExecutionProvider",
+        2341045801698043944
+    ],
+    [
+        "QuantizeLinear ai.onnx CPUExecutionProvider",
+        7634601085712939440
+    ],
+    [
+        "QuantizeLinear ai.onnx CPUExecutionProvider",
+        11284864816493289608
+    ],
+    [
+        "RandomNormal ai.onnx CPUExecutionProvider",
+        11106330559691891632
+    ],
+    [
+        "RandomNormalLike ai.onnx CPUExecutionProvider",
+        16132637741722034712
+    ],
+    [
+        "RandomUniform ai.onnx CPUExecutionProvider",
+        13265289781964897352
+    ],
+    [
+        "RandomUniformLike ai.onnx CPUExecutionProvider",
+        16430898061899701520
+    ],
+    [
+        "Range ai.onnx CPUExecutionProvider",
+        3325111002682387088
+    ],
+    [
+        "Reciprocal ai.onnx CPUExecutionProvider",
+        2850891354519740808
+    ],
+    [
+        "Reciprocal ai.onnx CPUExecutionProvider",
+        11806012495947779832
+    ],
+    [
+        "Reciprocal ai.onnx CPUExecutionProvider",
+        12484092722323390008
+    ],
+    [
+        "Reciprocal ai.onnx CPUExecutionProvider",
+        17341443694738537648
+    ],
+    [
+        "ReduceL1 ai.onnx CPUExecutionProvider",
+        1139813399733469792
+    ],
+    [
+        "ReduceL1 ai.onnx CPUExecutionProvider",
+        3243638789933182864
+    ],
+    [
+        "ReduceL1 ai.onnx CPUExecutionProvider",
+        6808199264646043248
+    ],
+    [
+        "ReduceL1 ai.onnx CPUExecutionProvider",
+        12784657175698452520
+    ],
+    [
+        "ReduceL1 ai.onnx CPUExecutionProvider",
+        14869942543039134512
+    ],
+    [
+        "ReduceL1 ai.onnx CPUExecutionProvider",
+        16118051457711035712
+    ],
+    [
+        "ReduceL2 ai.onnx CPUExecutionProvider",
+        867424791763712096
+    ],
+    [
+        "ReduceL2 ai.onnx CPUExecutionProvider",
+        7648877332496785568
+    ],
+    [
+        "ReduceL2 ai.onnx CPUExecutionProvider",
+        11351012496150467016
+    ],
+    [
+        "ReduceL2 ai.onnx CPUExecutionProvider",
+        11760351378486873352
+    ],
+    [
+        "ReduceL2 ai.onnx CPUExecutionProvider",
+        12635395574144286256
+    ],
+    [
+        "ReduceL2 ai.onnx CPUExecutionProvider",
+        14689639463724553808
+    ],
+    [
+        "ReduceLogSum ai.onnx CPUExecutionProvider",
+        2332039309841303536
+    ],
+    [
+        "ReduceLogSum ai.onnx CPUExecutionProvider",
+        4047536642033380384
+    ],
+    [
+        "ReduceLogSum ai.onnx CPUExecutionProvider",
+        5847333566715597800
+    ],
+    [
+        "ReduceLogSum ai.onnx CPUExecutionProvider",
+        7095373462244394120
+    ],
+    [
+        "ReduceLogSum ai.onnx CPUExecutionProvider",
+        14147219412305287720
+    ],
+    [
+        "ReduceLogSum ai.onnx CPUExecutionProvider",
+        14876792603687228632
+    ],
+    [
+        "ReduceLogSumExp ai.onnx CPUExecutionProvider",
+        1578137980614546184
+    ],
+    [
+        "ReduceLogSumExp ai.onnx CPUExecutionProvider",
+        2444082231177199048
+    ],
+    [
+        "ReduceLogSumExp ai.onnx CPUExecutionProvider",
+        2552318884715787112
+    ],
+    [
+        "ReduceLogSumExp ai.onnx CPUExecutionProvider",
+        2802074054827186944
+    ],
+    [
+        "ReduceLogSumExp ai.onnx CPUExecutionProvider",
+        4954470811027637464
+    ],
+    [
+        "ReduceLogSumExp ai.onnx CPUExecutionProvider",
+        7534771629024139208
+    ],
+    [
+        "ReduceLogSumExp ai.onnx CPUExecutionProvider",
+        8383855610701728736
+    ],
+    [
+        "ReduceLogSumExp ai.onnx CPUExecutionProvider",
+        9293246934181404656
+    ],
+    [
+        "ReduceLogSumExp ai.onnx CPUExecutionProvider",
+        14893941010795227112
+    ],
+    [
+        "ReduceMax ai.onnx CPUExecutionProvider",
+        1506640785403361944
+    ],
+    [
+        "ReduceMax ai.onnx CPUExecutionProvider",
+        2151353831968849952
+    ],
+    [
+        "ReduceMax ai.onnx CPUExecutionProvider",
+        2985763464867451504
+    ],
+    [
+        "ReduceMax ai.onnx CPUExecutionProvider",
+        3762588521304654072
+    ],
+    [
+        "ReduceMax ai.onnx CPUExecutionProvider",
+        5551647046811272248
+    ],
+    [
+        "ReduceMax ai.onnx CPUExecutionProvider",
+        6269158263682288056
+    ],
+    [
+        "ReduceMax ai.onnx CPUExecutionProvider",
+        6953345132994073600
+    ],
+    [
+        "ReduceMax ai.onnx CPUExecutionProvider",
+        8407340488798592744
+    ],
+    [
+        "ReduceMax ai.onnx CPUExecutionProvider",
+        8759268275556416800
+    ],
+    [
+        "ReduceMax ai.onnx CPUExecutionProvider",
+        9625377663291722928
+    ],
+    [
+        "ReduceMax ai.onnx CPUExecutionProvider",
+        10803038243496953112
+    ],
+    [
+        "ReduceMax ai.onnx CPUExecutionProvider",
+        11991870565148818504
+    ],
+    [
+        "ReduceMax ai.onnx CPUExecutionProvider",
+        12690494510801443616
+    ],
+    [
+        "ReduceMax ai.onnx CPUExecutionProvider",
+        12851170686026716664
+    ],
+    [
+        "ReduceMax ai.onnx CPUExecutionProvider",
+        13618950924415359360
+    ],
+    [
+        "ReduceMax ai.onnx CPUExecutionProvider",
+        13664399148702906192
+    ],
+    [
+        "ReduceMax ai.onnx CPUExecutionProvider",
+        15032536557946298480
+    ],
+    [
+        "ReduceMax ai.onnx CPUExecutionProvider",
+        15302447573039984352
+    ],
+    [
+        "ReduceMax ai.onnx CPUExecutionProvider",
+        15968588025975286400
+    ],
+    [
+        "ReduceMax ai.onnx CPUExecutionProvider",
+        17355842716358289032
+    ],
+    [
+        "ReduceMean ai.onnx CPUExecutionProvider",
+        1841014235270425536
+    ],
+    [
+        "ReduceMean ai.onnx CPUExecutionProvider",
+        2483440124489784048
+    ],
+    [
+        "ReduceMean ai.onnx CPUExecutionProvider",
+        3218961468728384336
+    ],
+    [
+        "ReduceMean ai.onnx CPUExecutionProvider",
+        7017607560662713312
+    ],
+    [
+        "ReduceMean ai.onnx CPUExecutionProvider",
+        7620337157139517672
+    ],
+    [
+        "ReduceMean ai.onnx CPUExecutionProvider",
+        10980558378895407008
+    ],
+    [
+        "ReduceMean ai.onnx CPUExecutionProvider",
+        12368118057245055784
+    ],
+    [
+        "ReduceMean ai.onnx CPUExecutionProvider",
+        14968655452447684912
+    ],
+    [
+        "ReduceMean ai.onnx CPUExecutionProvider",
+        16630173800581470640
+    ],
+    [
+        "ReduceMin ai.onnx CPUExecutionProvider",
+        268786330812272408
+    ],
+    [
+        "ReduceMin ai.onnx CPUExecutionProvider",
+        2781368088787513656
+    ],
+    [
+        "ReduceMin ai.onnx CPUExecutionProvider",
+        3131568620751235160
+    ],
+    [
+        "ReduceMin ai.onnx CPUExecutionProvider",
+        5314914069158001048
+    ],
+    [
+        "ReduceMin ai.onnx CPUExecutionProvider",
+        5697549792153090816
+    ],
+    [
+        "ReduceMin ai.onnx CPUExecutionProvider",
+        5749891696478874968
+    ],
+    [
+        "ReduceMin ai.onnx CPUExecutionProvider",
+        6050316872530083912
+    ],
+    [
+        "ReduceMin ai.onnx CPUExecutionProvider",
+        6981923349123980904
+    ],
+    [
+        "ReduceMin ai.onnx CPUExecutionProvider",
+        7357167418382928448
+    ],
+    [
+        "ReduceMin ai.onnx CPUExecutionProvider",
+        7385064883153786808
+    ],
+    [
+        "ReduceMin ai.onnx CPUExecutionProvider",
+        10018537486271003776
+    ],
+    [
+        "ReduceMin ai.onnx CPUExecutionProvider",
+        11291266537870182088
+    ],
+    [
+        "ReduceMin ai.onnx CPUExecutionProvider",
+        13294165344051481168
+    ],
+    [
+        "ReduceMin ai.onnx CPUExecutionProvider",
+        15207099834172347424
+    ],
+    [
+        "ReduceMin ai.onnx CPUExecutionProvider",
+        16456448302154466592
+    ],
+    [
+        "ReduceMin ai.onnx CPUExecutionProvider",
+        16859238740139814880
+    ],
+    [
+        "ReduceMin ai.onnx CPUExecutionProvider",
+        16937803876974883736
+    ],
+    [
+        "ReduceMin ai.onnx CPUExecutionProvider",
+        17340745031509256168
+    ],
+    [
+        "ReduceMin ai.onnx CPUExecutionProvider",
+        17758190144581814176
+    ],
+    [
+        "ReduceMin ai.onnx CPUExecutionProvider",
+        17784882475811026608
+    ],
+    [
+        "ReduceProd ai.onnx CPUExecutionProvider",
+        1183314972083054304
+    ],
+    [
+        "ReduceProd ai.onnx CPUExecutionProvider",
+        5737910396606289640
+    ],
+    [
+        "ReduceProd ai.onnx CPUExecutionProvider",
+        6038794103189808640
+    ],
+    [
+        "ReduceProd ai.onnx CPUExecutionProvider",
+        6535050096259888824
+    ],
+    [
+        "ReduceProd ai.onnx CPUExecutionProvider",
+        7402146841475223544
+    ],
+    [
+        "ReduceProd ai.onnx CPUExecutionProvider",
+        8181303911764095056
+    ],
+    [
+        "ReduceProd ai.onnx CPUExecutionProvider",
+        8637768506869245832
+    ],
+    [
+        "ReduceProd ai.onnx CPUExecutionProvider",
+        12584354805776722856
+    ],
+    [
+        "ReduceProd ai.onnx CPUExecutionProvider",
+        16349073532452506688
+    ],
+    [
+        "ReduceSum ai.onnx CPUExecutionProvider",
+        1980255433118254864
+    ],
+    [
+        "ReduceSum ai.onnx CPUExecutionProvider",
+        5051926940187829840
+    ],
+    [
+        "ReduceSum ai.onnx CPUExecutionProvider",
+        5506740466752429664
+    ],
+    [
+        "ReduceSum ai.onnx CPUExecutionProvider",
+        6035268158473211448
+    ],
+    [
+        "ReduceSum ai.onnx CPUExecutionProvider",
+        6869090123498269616
+    ],
+    [
+        "ReduceSum ai.onnx CPUExecutionProvider",
+        8382746145639334288
+    ],
+    [
+        "ReduceSum ai.onnx CPUExecutionProvider",
+        9380715542666407912
+    ],
+    [
+        "ReduceSum ai.onnx CPUExecutionProvider",
+        9402732746386583360
+    ],
+    [
+        "ReduceSum ai.onnx CPUExecutionProvider",
+        11742441148498967432
+    ],
+    [
+        "ReduceSum ai.onnx CPUExecutionProvider",
+        12554723003393183392
+    ],
+    [
+        "ReduceSum ai.onnx CPUExecutionProvider",
+        15179274571338977128
+    ],
+    [
+        "ReduceSum ai.onnx CPUExecutionProvider",
+        17432693777620803080
+    ],
+    [
+        "ReduceSumSquare ai.onnx CPUExecutionProvider",
+        1312654986065495352
+    ],
+    [
+        "ReduceSumSquare ai.onnx CPUExecutionProvider",
+        2140627660946213648
+    ],
+    [
+        "ReduceSumSquare ai.onnx CPUExecutionProvider",
+        3963605022599305624
+    ],
+    [
+        "ReduceSumSquare ai.onnx CPUExecutionProvider",
+        4704537570264301616
+    ],
+    [
+        "ReduceSumSquare ai.onnx CPUExecutionProvider",
+        9885037980564018056
+    ],
+    [
+        "ReduceSumSquare ai.onnx CPUExecutionProvider",
+        10444747001582642680
+    ],
+    [
+        "ReduceSumSquare ai.onnx CPUExecutionProvider",
+        10952132708040173936
+    ],
+    [
+        "ReduceSumSquare ai.onnx CPUExecutionProvider",
+        11399363300408446304
+    ],
+    [
+        "ReduceSumSquare ai.onnx CPUExecutionProvider",
+        16124074064020394392
+    ],
+    [
+        "Relu ai.onnx CPUExecutionProvider",
+        6348137465784795920
+    ],
+    [
+        "Relu ai.onnx CPUExecutionProvider",
+        8714935363812984712
+    ],
+    [
+        "Relu ai.onnx CPUExecutionProvider",
+        9308941683254701488
+    ],
+    [
+        "Relu ai.onnx CPUExecutionProvider",
+        11010461083452725976
+    ],
+    [
+        "Relu ai.onnx CPUExecutionProvider",
+        12612615492664612000
+    ],
+    [
+        "Relu ai.onnx CPUExecutionProvider",
+        17992752176767437224
+    ],
+    [
+        "Reshape ai.onnx CPUExecutionProvider",
+        15585679549439997664
+    ],
+    [
+        "Reshape ai.onnx CPUExecutionProvider",
+        312434585414181376
+    ],
+    [
+        "Reshape ai.onnx CPUExecutionProvider",
+        2930053564253999576
+    ],
+    [
+        "Reshape ai.onnx CPUExecutionProvider",
+        7420064847738548128
+    ],
+    [
+        "Resize ai.onnx CPUExecutionProvider",
+        2176125637575734736
+    ],
+    [
+        "Resize ai.onnx CPUExecutionProvider",
+        4943403435871631024
+    ],
+    [
+        "Resize ai.onnx CPUExecutionProvider",
+        5590380249602790576
+    ],
+    [
+        "Resize ai.onnx CPUExecutionProvider",
+        6635061613257537184
+    ],
+    [
+        "Resize ai.onnx CPUExecutionProvider",
+        6688747786976434096
+    ],
+    [
+        "Resize ai.onnx CPUExecutionProvider",
+        7586529787086160288
+    ],
+    [
+        "Resize ai.onnx CPUExecutionProvider",
+        8129711815686221072
+    ],
+    [
+        "Resize ai.onnx CPUExecutionProvider",
+        9417332069479988832
+    ],
+    [
+        "Resize ai.onnx CPUExecutionProvider",
+        16654410418270805888
+    ],
+    [
+        "ReverseSequence ai.onnx CPUExecutionProvider",
+        777686786711298232
+    ],
+    [
+        "RNN ai.onnx CPUExecutionProvider",
+        1524012948315159160
+    ],
+    [
+        "RNN ai.onnx CPUExecutionProvider",
+        7150196822928564664
+    ],
+    [
+        "RoiAlign ai.onnx CPUExecutionProvider",
+        11912523891622051440
+    ],
+    [
+        "RoiAlign ai.onnx CPUExecutionProvider",
+        18084231515768318048
+    ],
+    [
+        "Round ai.onnx CPUExecutionProvider",
+        6445503327475574168
+    ],
+    [
+        "Round ai.onnx CPUExecutionProvider",
+        7643555187101537632
+    ],
+    [
+        "Round ai.onnx CPUExecutionProvider",
+        13985378343775212776
+    ],
+    [
+        "Scan ai.onnx CPUExecutionProvider",
+        2560955351529676608
+    ],
+    [
+        "Scan ai.onnx CPUExecutionProvider",
+        11384233164992114368
+    ],
+    [
+        "Scan ai.onnx CPUExecutionProvider",
+        12198479371038564912
+    ],
+    [
+        "Scatter ai.onnx CPUExecutionProvider",
+        15759064509848656392
+    ],
+    [
+        "ScatterElements ai.onnx CPUExecutionProvider",
+        6975525526054194192
+    ],
+    [
+        "ScatterElements ai.onnx CPUExecutionProvider",
+        18432023504032212784
+    ],
+    [
+        "ScatterND ai.onnx CPUExecutionProvider",
+        3058556000123462920
+    ],
+    [
+        "ScatterND ai.onnx CPUExecutionProvider",
+        8479082925474841976
+    ],
+    [
+        "Selu ai.onnx CPUExecutionProvider",
+        17981896312364280064
+    ],
+    [
+        "SequenceAt ai.onnx CPUExecutionProvider",
+        4973237574994879072
+    ],
+    [
+        "SequenceConstruct ai.onnx CPUExecutionProvider",
+        1758418193363705792
+    ],
+    [
+        "SequenceEmpty ai.onnx CPUExecutionProvider",
+        1140894844554479184
+    ],
+    [
+        "SequenceErase ai.onnx CPUExecutionProvider",
+        9132449567156154920
+    ],
+    [
+        "SequenceInsert ai.onnx CPUExecutionProvider",
+        13543825903947046128
+    ],
+    [
+        "SequenceLength ai.onnx CPUExecutionProvider",
+        12782512452558492336
+    ],
+    [
+        "Shape ai.onnx CPUExecutionProvider",
+        7116832049885431040
+    ],
+    [
+        "Shape ai.onnx CPUExecutionProvider",
+        14989007508280400584
+    ],
+    [
+        "Shrink ai.onnx CPUExecutionProvider",
+        4706529740707835200
+    ],
+    [
+        "Sigmoid ai.onnx CPUExecutionProvider",
+        394481973749682984
+    ],
+    [
+        "Sigmoid ai.onnx CPUExecutionProvider",
+        5082642407570374784
+    ],
+    [
+        "Sigmoid ai.onnx CPUExecutionProvider",
+        11065037976771470120
+    ],
+    [
+        "Sigmoid ai.onnx CPUExecutionProvider",
+        17627299285547200664
+    ],
+    [
+        "Sign ai.onnx CPUExecutionProvider",
+        7242670280432058360
+    ],
+    [
+        "Sign ai.onnx CPUExecutionProvider",
+        15771057264632726008
+    ],
+    [
+        "Sin ai.onnx CPUExecutionProvider",
+        4888589719281923384
+    ],
+    [
+        "Sin ai.onnx CPUExecutionProvider",
+        17128842231045328968
+    ],
+    [
+        "Sinh ai.onnx CPUExecutionProvider",
+        4576126796107617992
+    ],
+    [
+        "Size ai.onnx CPUExecutionProvider",
+        217840791673793560
+    ],
+    [
+        "Size ai.onnx CPUExecutionProvider",
+        17016678530831229680
+    ],
+    [
+        "Slice ai.onnx CPUExecutionProvider",
+        5357620905248938008
+    ],
+    [
+        "Slice ai.onnx CPUExecutionProvider",
+        11391608604339585104
+    ],
+    [
+        "Slice ai.onnx CPUExecutionProvider",
+        13519381513691870136
+    ],
+    [
+        "Slice ai.onnx CPUExecutionProvider",
+        18363944821618547616
+    ],
+    [
+        "Softmax ai.onnx CPUExecutionProvider",
+        3465130326277671496
+    ],
+    [
+        "Softmax ai.onnx CPUExecutionProvider",
+        9903615929201046200
+    ],
+    [
+        "Softmax ai.onnx CPUExecutionProvider",
+        10498752306304274880
+    ],
+    [
+        "Softmax ai.onnx CPUExecutionProvider",
+        11571890266623078672
+    ],
+    [
+        "Softmax ai.onnx CPUExecutionProvider",
+        14127813883883160600
+    ],
+    [
+        "Softmax ai.onnx CPUExecutionProvider",
+        17624244089184427864
+    ],
+    [
+        "Softplus ai.onnx CPUExecutionProvider",
+        1453844285936857688
+    ],
+    [
+        "Softsign ai.onnx CPUExecutionProvider",
+        6090105046651540184
+    ],
+    [
+        "SpaceToDepth ai.onnx CPUExecutionProvider",
+        9873252942934071232
+    ],
+    [
+        "SpaceToDepth ai.onnx CPUExecutionProvider",
+        12194265012469761912
+    ],
+    [
+        "Split ai.onnx CPUExecutionProvider",
+        3088983478592774216
+    ],
+    [
+        "Split ai.onnx CPUExecutionProvider",
+        12436994357532875256
+    ],
+    [
+        "Split ai.onnx CPUExecutionProvider",
+        15368382353097470168
+    ],
+    [
+        "SplitToSequence ai.onnx CPUExecutionProvider",
+        8162957939300717576
+    ],
+    [
+        "Sqrt ai.onnx CPUExecutionProvider",
+        2567720088904231480
+    ],
+    [
+        "Sqrt ai.onnx CPUExecutionProvider",
+        10412643283809566304
+    ],
+    [
+        "Sqrt ai.onnx CPUExecutionProvider",
+        10542781197602744432
+    ],
+    [
+        "Sqrt ai.onnx CPUExecutionProvider",
+        10587863051847811344
+    ],
+    [
+        "Squeeze ai.onnx CPUExecutionProvider",
+        12889825108950034784
+    ],
+    [
+        "Squeeze ai.onnx CPUExecutionProvider",
+        14725795030460042064
+    ],
+    [
+        "Squeeze ai.onnx CPUExecutionProvider",
+        16122603335179721968
+    ],
+    [
+        "StringNormalizer ai.onnx CPUExecutionProvider",
+        14259324427750852648
+    ],
+    [
+        "Sub ai.onnx CPUExecutionProvider",
+        2039033718071997632
+    ],
+    [
+        "Sub ai.onnx CPUExecutionProvider",
+        4778873438453976024
+    ],
+    [
+        "Sub ai.onnx CPUExecutionProvider",
+        10264597047275083736
+    ],
+    [
+        "Sub ai.onnx CPUExecutionProvider",
+        12226892770165869472
+    ],
+    [
+        "Sub ai.onnx CPUExecutionProvider",
+        419566716728265872
+    ],
+    [
+        "Sub ai.onnx CPUExecutionProvider",
+        2727932803080255528
+    ],
+    [
+        "Sub ai.onnx CPUExecutionProvider",
+        6712677947990193048
+    ],
+    [
+        "Sub ai.onnx CPUExecutionProvider",
+        8541521562748754016
+    ],
+    [
+        "Sub ai.onnx CPUExecutionProvider",
+        9330359905365434456
+    ],
+    [
+        "Sub ai.onnx CPUExecutionProvider",
+        13039184128400389864
+    ],
+    [
+        "Sub ai.onnx CPUExecutionProvider",
+        16924361586861576328
+    ],
+    [
+        "Sub ai.onnx CPUExecutionProvider",
+        17828222941588972448
+    ],
+    [
+        "Sum ai.onnx CPUExecutionProvider",
+        590100139402794968
+    ],
+    [
+        "Sum ai.onnx CPUExecutionProvider",
+        5647171547812521792
+    ],
+    [
+        "Sum ai.onnx CPUExecutionProvider",
+        11630776365971756320
+    ],
+    [
+        "Sum ai.onnx CPUExecutionProvider",
+        17085797681836391096
+    ],
+    [
+        "Sum ai.onnx CPUExecutionProvider",
+        17995615846776008176
+    ],
+    [
+        "Sum ai.onnx CPUExecutionProvider",
+        18320202736703015384
+    ],
+    [
+        "Tan ai.onnx CPUExecutionProvider",
+        3500007982075582512
+    ],
+    [
+        "Tanh ai.onnx CPUExecutionProvider",
+        9604368444687947576
+    ],
+    [
+        "Tanh ai.onnx CPUExecutionProvider",
+        10324147978489520384
+    ],
+    [
+        "Tanh ai.onnx CPUExecutionProvider",
+        11123828994494025000
+    ],
+    [
+        "Tanh ai.onnx CPUExecutionProvider",
+        12012944136719804976
+    ],
+    [
+        "TfIdfVectorizer ai.onnx CPUExecutionProvider",
+        12361724165659823144
+    ],
+    [
+        "ThresholdedRelu ai.onnx CPUExecutionProvider",
+        4781858005566667480
+    ],
+    [
+        "Tile ai.onnx CPUExecutionProvider",
+        13093106569145134440
+    ],
+    [
+        "Tile ai.onnx CPUExecutionProvider",
+        14102078343076871784
+    ],
+    [
+        "TopK ai.onnx CPUExecutionProvider",
+        1153626550939059536
+    ],
+    [
+        "TopK ai.onnx CPUExecutionProvider",
+        1432673385034650208
+    ],
+    [
+        "TopK ai.onnx CPUExecutionProvider",
+        2297925672512898808
+    ],
+    [
+        "TopK ai.onnx CPUExecutionProvider",
+        9888321934045104504
+    ],
+    [
+        "TopK ai.onnx CPUExecutionProvider",
+        12624528444405735856
+    ],
+    [
+        "TopK ai.onnx CPUExecutionProvider",
+        12652594006657629568
+    ],
+    [
+        "TopK ai.onnx CPUExecutionProvider",
+        13224909753327646984
+    ],
+    [
+        "TopK ai.onnx CPUExecutionProvider",
+        15636662090924439512
+    ],
+    [
+        "Transpose ai.onnx CPUExecutionProvider",
+        4324835766923221184
+    ],
+    [
+        "Transpose ai.onnx CPUExecutionProvider",
+        17267477159887372848
+    ],
+    [
+        "Trilu ai.onnx CPUExecutionProvider",
+        9981347960818883600
+    ],
+    [
+        "Unique ai.onnx CPUExecutionProvider",
+        248906295587923264
+    ],
+    [
+        "Unsqueeze ai.onnx CPUExecutionProvider",
+        9466011545409597224
+    ],
+    [
+        "Unsqueeze ai.onnx CPUExecutionProvider",
+        15964030255371555232
+    ],
+    [
+        "Unsqueeze ai.onnx CPUExecutionProvider",
+        16989589986691430224
+    ],
+    [
+        "Upsample ai.onnx CPUExecutionProvider",
+        1134372751280084232
+    ],
+    [
+        "Upsample ai.onnx CPUExecutionProvider",
+        1504517427294670632
+    ],
+    [
+        "Upsample ai.onnx CPUExecutionProvider",
+        2377927852844585288
+    ],
+    [
+        "Upsample ai.onnx CPUExecutionProvider",
+        12301152523715249896
+    ],
+    [
+        "Upsample ai.onnx CPUExecutionProvider",
+        13679625484942243168
+    ],
+    [
+        "Upsample ai.onnx CPUExecutionProvider",
+        17854969343220970496
+    ],
+    [
+        "Where ai.onnx CPUExecutionProvider",
+        4809895774227191528
+    ],
+    [
+        "Where ai.onnx CPUExecutionProvider",
+        6240304355560301824
+    ],
+    [
+        "Where ai.onnx CPUExecutionProvider",
+        8769536045886744832
+    ],
+    [
+        "Where ai.onnx CPUExecutionProvider",
+        14651270063533962384
+    ],
+    [
+        "Where ai.onnx CPUExecutionProvider",
+        18032063618220677104
+    ],
+    [
+        "Where ai.onnx CPUExecutionProvider",
+        18237388578268294064
+    ],
+    [
+        "Xor ai.onnx CPUExecutionProvider",
+        14631049987911195736
+    ]
+]

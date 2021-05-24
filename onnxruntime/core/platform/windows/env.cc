@@ -64,16 +64,12 @@ class WindowsThread : public EnvThread {
     FAIL_FAST_LAST_ERROR_IF(waitStatus == WAIT_FAILED);
   }
 
-  // This function is called when the threadpool is cancelled.
-  // TODO: Find a way to avoid calling TerminateThread
-  void OnCancel() {
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
-    TerminateThread(hThread.get(), 1);
-#endif
-  }
 
  private:
   typedef HRESULT(WINAPI* SetThreadDescriptionFunc)(HANDLE hThread, PCWSTR lpThreadDescription);
+
+#pragma warning(push)
+#pragma warning(disable : 6387)
   static unsigned __stdcall ThreadMain(void* param) {
     std::unique_ptr<Param> p((Param*)param);
     // TODO: should I try to use SetThreadSelectedCpuSets?
@@ -82,9 +78,11 @@ class WindowsThread : public EnvThread {
 #if WINVER >= _WIN32_WINNT_WIN10
     constexpr SetThreadDescriptionFunc pSetThrDesc = SetThreadDescription;
 #elif WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+    HMODULE kernelModule = GetModuleHandle(TEXT("kernel32.dll"));
     // kernel32.dll is always loaded
+    assert(kernelModule != nullptr);
     auto pSetThrDesc =
-        (SetThreadDescriptionFunc)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "SetThreadDescription");
+        (SetThreadDescriptionFunc)GetProcAddress(kernelModule, "SetThreadDescription");
 #else
     constexpr SetThreadDescriptionFunc pSetThrDesc = nullptr;
 #endif
@@ -107,6 +105,8 @@ class WindowsThread : public EnvThread {
     }
     return ret;
   }
+#pragma warning(pop)
+
   unsigned threadID = 0;
   wil::unique_handle hThread;
 };
@@ -231,9 +231,9 @@ class WindowsEnv : public Env {
 
   Status ReadFileIntoBuffer(_In_z_ const ORTCHAR_T* const file_path, const FileOffsetType offset, const size_t length,
                             const gsl::span<char> buffer) const override {
-    ORT_RETURN_IF_NOT(file_path);
-    ORT_RETURN_IF_NOT(offset >= 0);
-    ORT_RETURN_IF_NOT(length <= buffer.size());
+    ORT_RETURN_IF_NOT(file_path, "file_path == nullptr");
+    ORT_RETURN_IF_NOT(offset >= 0, "offset < 0");
+    ORT_RETURN_IF_NOT(length <= buffer.size(), "length > buffer.size()");
 #if WINVER >= _WIN32_WINNT_WIN8
     wil::unique_hfile file_handle{
         CreateFile2(file_path, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, NULL)};

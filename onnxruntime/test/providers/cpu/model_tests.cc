@@ -57,7 +57,7 @@ TEST_P(ModelTest, Run) {
     relative_per_sample_tolerance = 0.009;
   }
 
-  std::unique_ptr<OnnxModelInfo> model_info = onnxruntime::make_unique<OnnxModelInfo>(model_path.c_str());
+  std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
   if (model_info->GetONNXOpSetVersion() != 8 && provider_name == "tensorrt") {
     // TensorRT can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
@@ -76,6 +76,11 @@ TEST_P(ModelTest, Run) {
 #endif
   // TODO: filter model based on opset
   std::set<BrokenTest> broken_tests = {
+      {"slice_neg_steps", "Type parameter (Tind) bound to different types (tensor(int64) and tensor(int32) in node ()."},
+      {"cast_BFLOAT16_to_FLOAT", "Unexpected input data type"},
+      {"loop13_seq", "Creation of empty sequences is currently not supported in the test runner"},
+      {"sequence_insert_at_front", "shape mismatch, expect {4} got {3}"},
+      {"cast_FLOAT_to_BFLOAT16", "expect uint16 got bfloat16"},
       {"mnist", "Input data isn't in valid range"},
       {"BERT_Squad", "test data bug"},
       {"constantofshape_float_ones", "test data bug", {"onnx141", "onnx150"}},
@@ -121,6 +126,40 @@ TEST_P(ModelTest, Run) {
       {"momentum", "not a registered function/op", {}},                 // Op not registered.
       {"momentum_multiple", "not a registered function/op", {}},        // Op not registered.
       {"nesterov_momentum", "not a registered function/op", {}},        // Op not registered.
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1_mean_weight_negative_ignore_index_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_weight_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index_3d", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index_4d_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index_4d", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_3d_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_none_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_3d", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index_3d_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index_3d_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_none_weights_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_sum_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_weight_ignore_index", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index_3d", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3_sum_weight_high_ignore_index", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_sum", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_none_weights", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index_4d_log_prob", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_none", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1_mean_weight_negative_ignore_index", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_weight", "type error", {"onnx170"}},
+      {"softmax_cross_entropy_mean_no_weight_ignore_index_4d", "type error", {"onnx170"}},
 #endif
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
 
@@ -473,6 +512,8 @@ TEST_P(ModelTest, Run) {
       InferenceSession session_object(so, (**ort_env).GetEnvironment());
       if (provider_name == "cuda") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+      } else if (provider_name == "rocm") {
+        ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
       } else if (provider_name == "dnnl") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultDnnlExecutionProvider()));
       } else if (provider_name == "nuphar") {
@@ -592,6 +633,9 @@ TEST_P(ModelTest, Run) {
 #ifdef USE_CUDA
   provider_names.push_back(ORT_TSTR("cuda"));
 #endif
+#ifdef USE_ROCM
+  provider_names.push_back(ORT_TSTR("rocm"));
+#endif
 #ifdef USE_DNNL
   provider_names.push_back(ORT_TSTR("dnnl"));
 #endif
@@ -666,7 +710,8 @@ TEST_P(ModelTest, Run) {
       ORT_TSTR("fp16_test_tiny_yolov2-Candy"),
       ORT_TSTR("fp16_coreml_FNS-Candy"),
       ORT_TSTR("fp16_test_tiny_yolov2"),
-      ORT_TSTR("fp16_test_shufflenet")};
+      ORT_TSTR("fp16_test_shufflenet"),
+      ORT_TSTR("keras2coreml_SimpleRNN_ImageNet")};
   static const ORTCHAR_T* openvino_disabled_tests[] = {ORT_TSTR("tf_mobilenet_v1_1.0_224"),
                                                        ORT_TSTR("bertsquad"),
                                                        ORT_TSTR("yolov3"),
@@ -802,8 +847,8 @@ TEST_P(ModelTest, Run) {
 #endif
 #endif
 
-// TENSORRT has too many test failures in the single node tests
-#if !defined(_WIN32) && !defined(USE_TENSORRT)
+// TENSORRT/OpenVino has too many test failures in the single node tests
+#if !defined(_WIN32) && !defined(USE_TENSORRT) && !defined(USE_OPENVINO)
     paths.push_back("/data/onnx");
 #endif
     while (!paths.empty()) {

@@ -29,6 +29,6 @@ Abstract:
 // Generate the GEMM kernel.
 //
 
-FgemmKernelAvxFunction C_UNDERSCORE(MlasGemmDoubleKernelAvx)
+FgemmKernelAvxFunction MlasGemmDoubleKernelAvx
 
         .end

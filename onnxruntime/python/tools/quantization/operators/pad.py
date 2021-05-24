@@ -39,8 +39,8 @@ class QPad(QuantOperatorBase):
                     scale_array = onnx.numpy_helper.to_array(scale_tensor)
                     scale_value = scale_array.item() if scale_array.ndim == 0 else scale_array[0]
                     padding_constant_array = onnx.numpy_helper.to_array(padding_constant_initializer)
-                    quantized_padding_constant_array = quantize_nparray(
-                        quantized_input_value.qType, padding_constant_array, scale_value, zp_value)
+                    quantized_padding_constant_array = quantize_nparray(self.quantizer.input_qType,
+                                                                        padding_constant_array, scale_value, zp_value)
                     quantized_padding_constant_name = node.input[2] + "_quantized"
                     quantized_padding_constant_initializer = onnx.numpy_helper.from_array(
                         quantized_padding_constant_array, quantized_padding_constant_name)
@@ -49,9 +49,9 @@ class QPad(QuantOperatorBase):
                     self.quantizer.model.add_initializer(quantized_padding_constant_initializer)
                     node.input[2] = quantized_padding_constant_name
                 else:
-                    pad_value_qnodes = self.quantizer._get_quantize_input_nodes(
-                        node, 2, quantized_input_value.qType,
-                        quantized_input_value.scale_name, quantized_input_value.zp_name)
+                    pad_value_qnodes = self.quantizer._get_quantize_input_nodes(node, 2, self.quantizer.input_qType,
+                                                                                quantized_input_value.scale_name,
+                                                                                quantized_input_value.zp_name)
                     self.quantizer.new_nodes += [pad_value_qnodes]
                     node.input[2] = pad_value_qnodes.output[0]
             else:

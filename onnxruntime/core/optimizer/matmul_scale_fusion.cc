@@ -44,11 +44,11 @@ optional<float> GetScalarConstantInitializer(const Graph& graph, const NodeArg& 
   }
 
   float scalar{};
-  utils::MLTypeCallDispatcherRet<
-      Status, ExtractScalarAsFloatDispatchTarget,
+  utils::MLTypeCallDispatcher<
       uint32_t, uint64_t, int32_t, int64_t, MLFloat16, float, double, BFloat16>
       dispatcher{initializer->data_type()};
-  ORT_THROW_IF_ERROR(dispatcher.Invoke(*initializer, graph.ModelPath(), scalar));
+  ORT_THROW_IF_ERROR(
+      (dispatcher.InvokeRet<Status, ExtractScalarAsFloatDispatchTarget>(*initializer, graph.ModelPath(), scalar)));
 
   return {scalar};
 }
@@ -62,7 +62,7 @@ optional<std::pair<float, int>> GetScaleFromNode(
         return excluded_initializer_names.find(node_arg.Name()) != excluded_initializer_names.end();
       };
 
-  if (graph_utils::IsSupportedOptypeVersionAndDomain(scale_node, "Div", {7, 13})) {
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(scale_node, "Div", {7, 13, 14})) {
     // (x / scale_reciprocal)
     const auto div_inputs = scale_node.InputDefs();
     ORT_ENFORCE(div_inputs.size() == 2);
@@ -79,7 +79,7 @@ optional<std::pair<float, int>> GetScaleFromNode(
     return {std::make_pair(1.0f / divisor.value(), scale_reciprocal_arg_index)};
   }
 
-  if (graph_utils::IsSupportedOptypeVersionAndDomain(scale_node, "Mul", {7, 13})) {
+  if (graph_utils::IsSupportedOptypeVersionAndDomain(scale_node, "Mul", {7, 13, 14})) {
     // (x * scale) or (scale * x)
     const auto mul_inputs = scale_node.InputDefs();
     ORT_ENFORCE(mul_inputs.size() == 2);
@@ -171,6 +171,7 @@ bool IsMatMulInputTypeSupported(const Node& node) {
   // if no matching key is present, any data type is allowed
   static const std::map<std::string, std::vector<std::string>> k_supported_data_types{
       {kCudaExecutionProvider, {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}},
+      {kRocmExecutionProvider, {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"}},
       {kCpuExecutionProvider, {"tensor(float)"}},
   };
 
@@ -187,8 +188,7 @@ Status ProcessNode(
   }
 
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "MatMul", {9, 13}) &&
-      !graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedMatMul", {1}, kMSDomain) &&
-      !graph_utils::IsSupportedOptypeVersionAndDomain(node, "TransposeMatMul", {1}, kMSDomain)) {
+      !graph_utils::IsSupportedOptypeVersionAndDomain(node, "FusedMatMul", {1}, kMSDomain)) {
     return Status::OK();
   }
 
@@ -206,7 +206,7 @@ Status ProcessNode(
   }
 
   NodeAttributes fused_node_attrs =
-      (node.OpType() == "TransposeMatMul") || (node.OpType() == "FusedMatMul") ? node.GetAttributes() : NodeAttributes{};
+      node.OpType() == "FusedMatMul" ? node.GetAttributes() : NodeAttributes{};
 
   {
     ONNX_NAMESPACE::AttributeProto& alpha_attr = fused_node_attrs["alpha"];

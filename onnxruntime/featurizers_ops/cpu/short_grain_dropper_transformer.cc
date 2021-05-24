@@ -89,10 +89,10 @@ void ShortGrainDropperTransformerImpl(OpKernelContext* ctx) {
 
     const auto elem_type = variadic_input_tensor->GetElementType();
 
-    utils::MLTypeCallDispatcher<CopyNonDroppedColumnsImpl,
-                                int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t,
-                                float, double, bool, std::string> t_disp(elem_type);
-    t_disp.Invoke(variadic_input_tensor, output_after_drop_tensor, rows_to_drop, input_row_size);
+    utils::MLTypeCallDispatcher<int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t,
+                                float, double, bool, std::string>
+        t_disp(elem_type);
+    t_disp.Invoke<CopyNonDroppedColumnsImpl>(variadic_input_tensor, output_after_drop_tensor, rows_to_drop, input_row_size);
   }
 };
 

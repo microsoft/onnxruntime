@@ -204,7 +204,7 @@ TEST(ConvTest, Conv2D_1) {
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 
-  // NNAPI EP requires weight to be an initializer
+  // NNAPI/CoreML EP requires weight to be an initializer
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
@@ -297,7 +297,7 @@ TEST(ConvTest, Conv2D_2) {
                         -0.18779225647449493f};
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 
-  // NNAPI EP requires weight to be an initializer
+  // NNAPI/CoreML EP requires weight to be an initializer
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
@@ -323,7 +323,7 @@ TEST(ConvTest, Conv2D_Bias_1) {
 
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 
-  // NNAPI EP requires weight to be an initializer
+  // NNAPI/CoreML EP requires weight to be an initializer
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
 }
 
@@ -404,7 +404,7 @@ TEST(ConvTest, Conv2D_AutoPad1) {
                         12.0f, 15.0f, 15.0f, 15.0f, 8.0f};
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 
-  // NNAPI EP requires weight to be an initializer
+  // NNAPI/CoreML EP requires weight to be an initializer
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
@@ -438,7 +438,7 @@ TEST(ConvTest, Conv2D_AutoPad2) {
                         5.0f, 10.0f, 5.0f, 10.0f, 5.0f};
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 
-  // NNAPI EP requires weight to be an initializer
+  // NNAPI/CoreML EP requires weight to be an initializer
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
@@ -626,7 +626,7 @@ TEST(ConvTest, Conv2D_group) {
 
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 
-  // NNAPI EP requires weight to be an initializer
+  // NNAPI/CoreML EP requires weight to be an initializer
   TestConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 

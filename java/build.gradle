@@ -78,6 +78,23 @@ spotless {
 compileJava {
 	dependsOn spotlessJava
 	options.compilerArgs += ["-h", "${project.buildDir}/headers/"]
+	if (!JavaVersion.current().isJava8()) {
+		// Ensures only methods present in Java 8 are used
+		options.compilerArgs.addAll(['--release', '8'])
+		// Gradle versions before 6.6 require that these flags are unset when using "-release"
+		java.sourceCompatibility = null
+		java.targetCompatibility = null
+	}
+}
+
+compileTestJava {
+	if (!JavaVersion.current().isJava8()) {
+		// Ensures only methods present in Java 8 are used
+		options.compilerArgs.addAll(['--release', '8'])
+		// Gradle versions before 6.6 require that these flags are unset when using "-release"
+		java.sourceCompatibility = null
+		java.targetCompatibility = null
+	}
 }
 
 sourceSets.test {

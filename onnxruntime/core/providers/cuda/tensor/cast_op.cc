@@ -9,22 +9,23 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-const std::vector<MLDataType> castOpTypeConstraints{
-    DataTypeImpl::GetTensorType<MLFloat16>(),
+const DeleteOnUnloadPtr<std::vector<MLDataType>> castOpTypeConstraints = new std::vector<MLDataType> {
+  DataTypeImpl::GetTensorType<MLFloat16>(),
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-    DataTypeImpl::GetTensorType<BFloat16>(),
+      DataTypeImpl::GetTensorType<BFloat16>(),
 #endif
-    DataTypeImpl::GetTensorType<float>(),
-    DataTypeImpl::GetTensorType<double>(),
-    DataTypeImpl::GetTensorType<int8_t>(),
-    DataTypeImpl::GetTensorType<int16_t>(),
-    DataTypeImpl::GetTensorType<int32_t>(),
-    DataTypeImpl::GetTensorType<int64_t>(),
-    DataTypeImpl::GetTensorType<uint8_t>(),
-    DataTypeImpl::GetTensorType<uint16_t>(),
-    DataTypeImpl::GetTensorType<uint32_t>(),
-    DataTypeImpl::GetTensorType<uint64_t>(),
-    DataTypeImpl::GetTensorType<bool>()};
+      DataTypeImpl::GetTensorType<float>(),
+      DataTypeImpl::GetTensorType<double>(),
+      DataTypeImpl::GetTensorType<int8_t>(),
+      DataTypeImpl::GetTensorType<int16_t>(),
+      DataTypeImpl::GetTensorType<int32_t>(),
+      DataTypeImpl::GetTensorType<int64_t>(),
+      DataTypeImpl::GetTensorType<uint8_t>(),
+      DataTypeImpl::GetTensorType<uint16_t>(),
+      DataTypeImpl::GetTensorType<uint32_t>(),
+      DataTypeImpl::GetTensorType<uint64_t>(),
+      DataTypeImpl::GetTensorType<bool>()
+};
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
@@ -33,29 +34,29 @@ const std::vector<MLDataType> castOpTypeConstraints{
       6, 8,                                                       \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
-          .TypeConstraint("T2", castOpTypeConstraints),           \
+          .TypeConstraint("T2", *castOpTypeConstraints),          \
       Cast<T>);                                                   \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       Cast,                                                       \
       kOnnxDomain,                                                \
-      9, 12,                                                       \
+      9, 12,                                                      \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
-          .TypeConstraint("T2", castOpTypeConstraints),           \
+          .TypeConstraint("T2", *castOpTypeConstraints),          \
       Cast<T>);                                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       Cast,                                                       \
       kOnnxDomain,                                                \
-      13,                                                          \
+      13,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
-          .TypeConstraint("T2", castOpTypeConstraints),           \
+          .TypeConstraint("T2", *castOpTypeConstraints),          \
       Cast<T>);
 
 template <typename SrcT>
@@ -71,6 +72,7 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
   case TP_TYPE:                                                                                      \
     if (count > 0) {                                                                                 \
       Impl_Cast<CudaSrcT, typename ToCudaType<DstT>::MappedType>(                                    \
+          Stream(),                                                                                  \
           x_data,                                                                                    \
           reinterpret_cast<typename ToCudaType<DstT>::MappedType*>(Y->template MutableData<DstT>()), \
           count);                                                                                    \

@@ -124,7 +124,7 @@ class ORTGlueTest(unittest.TestCase):
     def test_bert_fp16_with_mrpc(self):
         expected_acc = 0.84
         expected_f1 = 0.88
-        expected_loss = 0.44
+        expected_loss = 0.46
 
         results = self.run_glue(model_name="bert-base-cased", task_name="MRPC", fp16=True)
 

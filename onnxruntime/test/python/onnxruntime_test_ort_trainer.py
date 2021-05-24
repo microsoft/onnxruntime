@@ -249,6 +249,23 @@ class MNISTWrapper():
         return ModelDescription([input_desc, label_desc], [loss_desc, probability_desc])
 
     def get_loaders(self):
+        # TODO: Remove this temporary fix for urllib.error.HTTPError: HTTP Error 403: Forbidden
+        # once a more permanent solution can be found.
+        # Fix as per https://github.com/pytorch/vision/issues/1938#issuecomment-789986996
+        from six.moves import urllib
+        opener = urllib.request.build_opener()
+        opener.addheaders = [('User-agent', 'Mozilla/5.0')]
+        urllib.request.install_opener(opener)
+
+        # TODO: Remove this temporary fix when the issue https://github.com/pytorch/vision/issues/3549 is resolved
+        # Resource http://yann.lecun.com/exdb/mnist/ is not available
+        datasets.MNIST.resources = [
+            ('https://ossci-datasets.s3.amazonaws.com/mnist/train-images-idx3-ubyte.gz', 'f68b3c2dcbeaaa9fbdd348bbdeb94873'),
+            ('https://ossci-datasets.s3.amazonaws.com/mnist/train-labels-idx1-ubyte.gz', 'd53e105ee54ea40749a09fcbcd1e9432'),
+            ('https://ossci-datasets.s3.amazonaws.com/mnist/t10k-images-idx3-ubyte.gz', '9fb629c4189551a2d022fa330f9573f3'),
+            ('https://ossci-datasets.s3.amazonaws.com/mnist/t10k-labels-idx1-ubyte.gz', 'ec29112dd5afa0611ce80d1b7f02629c')
+        ]
+
         args_batch_size = 64
         args_test_batch_size = 1000
 
@@ -312,6 +329,7 @@ class TestOrtTrainer(unittest.TestCase):
                         0.39458805322647095, 0.38380366563796997, 0.2722422480583191, 0.24230478703975677,
                         0.23505745828151703, 0.33442264795303345, 0.21140924096107483, 0.31545233726501465,
                         0.18556523323059082, 0.3453553020954132, 0.29598352313041687, 0.3595045208930969]
+
         expected_test_losses = [0.3145490005493164, 0.256188737487793]
         expected_test_accuracies = [0.9075, 0.9265]
 
@@ -360,6 +378,7 @@ class TestOrtTrainer(unittest.TestCase):
         expected_losses = [0.26509523391723633, 0.24135658144950867, 0.2397943139076233, 0.3351520597934723,
                         0.20998981595039368, 0.31488314270973206, 0.18481917679309845, 0.34727591276168823,
                         0.2971782684326172, 0.3609251379966736]
+
         expected_test_losses = [0.25632242965698243]
         expected_test_accuracies = [0.9264]
 

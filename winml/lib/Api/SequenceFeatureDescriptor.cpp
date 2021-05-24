@@ -62,4 +62,14 @@ SequenceFeatureDescriptor::GetDescription(
   *cchDescription = static_cast<uint32_t>(description_.size());
   return S_OK;
 }
+
+HRESULT
+SequenceFeatureDescriptor::GetDescriptorInfo(
+    _winml::IEngineFactory* engine_factory,
+    _winml::IDescriptorInfo** info) {
+  engine_factory->CreateSequenceDescriptorInfo(info);
+  return S_OK;
+};
+
+
 }  // namespace WINMLP

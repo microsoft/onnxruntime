@@ -13,9 +13,11 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 
 ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
+                                 bool skip_dequantize_linear,
                                  const std::unordered_set<std::string>& compatible_execution_providers,
                                  const std::unordered_set<std::string>& excluded_initializers) noexcept
     : GraphTransformer("ConstantFolding", compatible_execution_providers),
+      skip_dequantize_linear_(skip_dequantize_linear),
       excluded_initializers_(excluded_initializers),
       execution_provider_(execution_provider) {
 }
@@ -63,6 +65,11 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   for (NodeIndex i : order) {
     auto* node = graph.GetNode(i);
     if (!node) {
+      continue;
+    }
+
+    // avoid to constant fold DequantizeLinear for QDQ format
+    if (skip_dequantize_linear_ && node->OpType().compare("DequantizeLinear") == 0) {
       continue;
     }
 
@@ -175,9 +182,16 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     if (converted_to_constant) {
       // Remove single-output node chain for inputs of the node
-      for (auto p_ip_node = node->InputNodesBegin(); p_ip_node != node->InputNodesEnd(); ++p_ip_node) {
-        graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *p_ip_node);
+      auto p_ip_node = node->InputNodesBegin();
+      const auto p_ip_node_end = node->InputNodesEnd();
+      while (p_ip_node != p_ip_node_end) {
+        const auto& input_node = *p_ip_node;
+        // Update the node iterator before removing the corresponding node because removing
+        // the node will invalidate the node iterator
+        ++p_ip_node;
+        graph_utils::RemoveNodesWithOneOutputBottomUp(graph, input_node);
       }
+
       // Remove the output edges of the constant node and then remove the node itself.
       graph_utils::RemoveNodeOutputEdges(graph, *node);
       graph.RemoveNode(node->Index());

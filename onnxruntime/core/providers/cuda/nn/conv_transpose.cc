@@ -8,22 +8,22 @@ namespace cuda {
 
 // Op Set 11 for ConvTranspose only update document to clearify default dilations and strides value.
 // which are already covered by op set 11 cpu version, so simply add declaration.
-#define REGISTER_KERNEL_TYPED(T)                                                \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      ConvTranspose,                                                            \
-      kOnnxDomain,                                                              \
-      1, 10,                                                                    \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      ConvTranspose<T>);                                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      ConvTranspose,                                                            \
-      kOnnxDomain,                                                              \
-      11,                                                                       \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED(T)                                                           \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      ConvTranspose,                                                                       \
+      kOnnxDomain,                                                                         \
+      1, 10,                                                                               \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      ConvTranspose<T>);                                                                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      ConvTranspose,                                                                       \
+      kOnnxDomain,                                                                         \
+      11,                                                                                  \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       ConvTranspose<T>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -45,10 +45,9 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   auto x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
 
   auto x_dimensions = X->Shape().NumDimensions();
-  if (x_dimensions != 4 && x_dimensions != 3) {
-    // This condition is not true for test_convtranspose_3d in ONNX tests series.
+  if (x_dimensions < 3 || x_dimensions > 5) {
     // TODO: the error message should tell which operator raises it.
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must be 3- or 4-dimensional.",
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input X must be 3-, 4- or 5-dimensional.",
                            " X: ", X->Shape().ToString().c_str());
   }
   const Tensor* W = context->Input<Tensor>(1);
@@ -108,10 +107,9 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
       ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims, CudnnTensor::GetDataType<CudaT>()));
 
       cudnnConvolutionMode_t mode = CUDNN_CROSS_CORRELATION;
-      ORT_RETURN_IF_ERROR(s_.conv_desc.Set(p.kernel_shape.size(), p.pads, p.strides,
-                                           p.dilations, mode, CudnnTensor::GetDataType<CudaT>()));
-      CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionGroupCount(s_.conv_desc,
-                                                          gsl::narrow_cast<int>(conv_transpose_attrs_.group)));
+      ORT_RETURN_IF_ERROR(s_.conv_desc.Set(p.kernel_shape.size(), p.pads, p.strides, p.dilations,
+                                           gsl::narrow_cast<int>(conv_transpose_attrs_.group),
+                                           mode, CudnnTensor::GetDataType<CudaT>()));
 
       if (has_bias) {
         const auto& b_shape = p.B->Shape();

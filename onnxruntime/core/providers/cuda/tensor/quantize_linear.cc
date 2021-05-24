@@ -4,8 +4,6 @@
 #include "quantize_linear.h"
 #include "quantize_linear.cuh"
 
-#include "core/providers/common.h"
-
 namespace onnxruntime {
 namespace cuda {
 
@@ -32,7 +30,7 @@ Status QuantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
   const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.template Data<U>());
   const auto num_of_elements = x_shape.Size();
 
-  CudaQuantizeLinear(input, output, scale, zero_point, num_of_elements);
+  CudaQuantizeLinear(Stream(), input, output, scale, zero_point, num_of_elements);
 
   return Status::OK();
 }
@@ -59,7 +57,7 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
   const CudaU* scale = reinterpret_cast<const CudaU*>(y_scale.template Data<U>());
   const auto num_of_elements = x_shape.Size();
 
-  CudaDequantizeLinear(input, output, scale, zero_point, num_of_elements);
+  CudaDequantizeLinear(Stream(), input, output, scale, zero_point, num_of_elements);
 
   return Status::OK();
 }
@@ -72,7 +70,7 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
       10,                                                             \
       T,                                                              \
       kCudaExecutionProvider,                                         \
-      KernelDefBuilder()                                              \
+      (*KernelDefBuilder::Create())                                   \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
       QuantizeLinear<T, float>);
@@ -88,7 +86,7 @@ REGISTER_Q_KERNEL_TYPED(uint8_t)
       10,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       DequantizeLinear<T, float>);
 

@@ -1,10 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/common.h"
 #include "core/providers/cuda/cuda_common.h"
-#include "core/framework/tensorprotoutils.h"
-#include "onnx/defs/tensor_proto_util.h"
 #include "skip_layer_norm.h"
 #include "skip_layer_norm_impl.h"
 
@@ -19,7 +16,7 @@ namespace cuda {
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       SkipLayerNorm<T>);
 
@@ -65,14 +62,16 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
                            "Last dimension of gamma and input does not match");
   }
 
-  const auto& beta_dims = beta->Shape().GetDims();
-  if (beta_dims.size() != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "beta is expected to have 1 dimension, got ", beta_dims.size());
-  }
-  if (beta_dims[0] != input_dims[2]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Last dimension of beta and input does not match");
+  if (nullptr != beta) {
+    const auto& beta_dims = beta->Shape().GetDims();
+    if (beta_dims.size() != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "beta is expected to have 1 dimension, got ", beta_dims.size());
+    }
+    if (beta_dims[0] != input_dims[2]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Last dimension of beta and input does not match");
+    }
   }
 
   if (nullptr != bias) {
@@ -93,11 +92,12 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   size_t element_size = sizeof(T);
 
   if (!LaunchSkipLayerNormKernel(
+          Stream(),
           output->template MutableData<T>(),
           input->template Data<T>(),
           skip->template Data<T>(),
           gamma->template Data<T>(),
-          beta->template Data<T>(),
+          beta != nullptr ? beta->template Data<T>() : nullptr,
           bias != nullptr ? bias->template Data<T>() : nullptr,
           epsilon_,
           hidden_size,

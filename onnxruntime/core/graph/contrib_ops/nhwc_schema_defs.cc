@@ -4,6 +4,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
+#include "core/graph/contrib_ops/quantization_defs.h"
 
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(
@@ -18,7 +19,6 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace contrib {
-
 class NhwcInferenceContext : public InferenceContext {
  public:
   NhwcInferenceContext(InferenceContext& ctx) : ctx_(ctx) {
@@ -169,6 +169,23 @@ void RegisterNhwcSchemas() {
         }
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NhwcMaxPool)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "x", "", "T")
+      .Output(0, "y", "", "T")
+      .TypeConstraint("T", {"tensor(int8)", "tensor(uint8)"}, "")
+      .Attr("auto_pad", "", AttributeProto::STRING, std::string("NOTSET"))
+      .Attr("kernel_shape", "", AttributeProto::INTS)
+      .Attr("dilations", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("strides", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("pads", "", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("ceil_mode", "", AttributeProto::INT, static_cast<int64_t>(0))
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        convPoolShapeInferenceNhwc(ctx, true, true, 0, 1);
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearGlobalAveragePool)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -244,6 +261,156 @@ equal to the spatial dimension of input tensor. Input is of type uint8_t or int8
           output_shape->mutable_dim(image_dim_index)->clear_dim_param();
           output_shape->mutable_dim(image_dim_index)->set_dim_value(1);
           ++image_dim_index;
+        }
+      });
+
+  const char* QLinearAveragePoolDoc_ver1 = R"DOC(
+ QLinearAveragePool consumes an input tensor X and applies average pooling across
+ the tensor according to kernel sizes, stride sizes, and pad lengths.
+ average pooling consisting of computing the average on all values of a
+ subset of the input tensor according to the kernel size and downsampling the
+ data into the output tensor Y for further processing. The output spatial shape will be following:
+ ```
+ output_spatial_shape[i] = floor((input_spatial_shape[i] + pad_shape[i] - kernel_spatial_shape[i]) / strides_spatial_shape[i] + 1)
+ ```
+ or
+ ```
+ output_spatial_shape[i] = ceil((input_spatial_shape[i] + pad_shape[i] - kernel_spatial_shape[i]) / strides_spatial_shape[i] + 1)
+ ```
+ if ceil_mode is enabled
+
+ ```
+ * pad_shape[i] is sum of pads along axis i
+ ```
+
+ `auto_pad` is a DEPRECATED attribute. If you are using them currently, the output spatial shape will be following:
+ ```
+ VALID: output_spatial_shape[i] = ceil((input_spatial_shape[i] - kernel_spatial_shape[i] + 1) / strides_spatial_shape[i])
+ SAME_UPPER or SAME_LOWER: output_spatial_shape[i] = ceil(input_spatial_shape[i] / strides_spatial_shape[i])
+ ```
+ And pad shape will be following if `SAME_UPPER` or `SAME_LOWER`:
+ ```
+ pad_shape[i] = (output_spatial_shape[i] - 1) * strides_spatial_shape[i] + kernel_spatial_shape[i] - input_spatial_shape[i]
+ ```
+
+The output of each pooling window is divided by the number of elements (exclude pad when attribute count_include_pad is zero).
+
+Input and output scales and zero points are used to convert the output to a new quantization range.
+Output = Dequantize(Input) -> AveragePool on fp32 data -> Quantize(output)
+)DOC";
+
+  static const char* contrib_ops_pads_doc =
+      "Padding for the beginning and ending along each spatial axis, it can take any value greater "
+      "than or equal to 0. The value represent the number of pixels added to the beginning "
+      "and end part of the corresponding axis. `pads` format should be as follow "
+      "[x1_begin, x2_begin...x1_end, x2_end,...], where xi_begin the number of pixels "
+      "added at the beginning of axis `i` and xi_end, the number of pixels added at "
+      "the end of axis `i`. This attribute cannot be used simultaneously with "
+      "auto_pad attribute. If not present, the padding defaults to 0 along start and end of each spatial axis.";
+  static const char* contrib_ops_auto_pad_doc =
+      "auto_pad must be either NOTSET, SAME_UPPER, SAME_LOWER or VALID. Where "
+      "default value is NOTSET, which means explicit padding is used. "
+      "SAME_UPPER or SAME_LOWER mean pad the input so that the output spatial size match the input."
+      "In case of odd number add the extra padding at the end for SAME_UPPER and at the "
+      "beginning for SAME_LOWER. VALID mean no padding.";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QLinearAveragePool)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(QLinearAveragePoolDoc_ver1)
+      .Attr(
+          "count_include_pad",
+          "Whether include pad pixels when calculating values for the edges. Default is 0, doesn't count include pad.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "kernel_shape",
+          "The size of the kernel along each axis.",
+          AttributeProto::INTS)
+      .Attr(
+          "strides",
+          "Stride along each spatial axis. If not present, the stride defaults to 1 along each spatial axis.",
+          AttributeProto::INTS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "auto_pad",
+          contrib_ops_auto_pad_doc,
+          AttributeProto::STRING,
+          std::string("NOTSET"))
+      .Attr("pads", contrib_ops_pads_doc, AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr(
+          "ceil_mode",
+          "Whether to use ceil or floor (default) to compute the output shape.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr("channels_last", "Works on NHWC layout or not? Default not.", AttributeProto::INT, static_cast<int64_t>(0))
+      .Input(
+          0,
+          "X",
+          "Input data tensor from the previous operator; "
+          "dimensions for image case are (N x C x H x W), "
+          "where N is the batch size, C is the number of "
+          "channels, and H and W are the height and the "
+          "width of the data. For non image case, the "
+          "dimensions are in the form of "
+          "(N x C x D1 x D2 ... Dn), where N is the batch "
+          "size. Optionally, if dimension denotation is "
+          "in effect, the operation expects the input "
+          "data tensor to arrive with the dimension denotation "
+          "of [DATA_BATCH, DATA_CHANNEL, DATA_FEATURE, DATA_FEATURE ...].",
+          "T")
+      .Input(
+          1,
+          "x_scale",
+          "Input scale. It's a scalar, which means a per-tensor/layer quantization.",
+          "tensor(float)")
+      .Input(
+          2,
+          "x_zero_point",
+          "Input zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+          "T",
+          OpSchema::Optional)
+      .Input(
+          3,
+          "y_scale",
+          "Output scale. It's a scalar, which means a per-tensor/layer quantization.",
+          "tensor(float)")
+      .Input(
+          4,
+          "y_zero_point",
+          "Output zero point. Default value is 0 if it's not specified. It's a scalar, which means a per-tensor/layer quantization.",
+          "T",
+          OpSchema::Optional)
+      .Output(
+          0,
+          "Y",
+          "Output data tensor from average or max pooling across "
+          "the input tensor. Dimensions will vary based "
+          "on various kernel, stride, and pad sizes. Floor value of "
+          "the dimension is used",
+          "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(uint8)", "tensor(int8)"},
+          "Constrain input and output types to 8 bit tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        auto data_type = ctx.getInputType(0);
+        if (nullptr == data_type || data_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
+          fail_type_inference("inputs are expected to have tensor type.");
+        }
+
+        // validate scale and zero points
+        ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, true);
+        ValidateTypeAndShapeForScaleAndZP(ctx, 2, data_type->tensor_type().elem_type(), true);
+        ValidateTypeAndShapeForScaleAndZP(ctx, 3, ONNX_NAMESPACE::TensorProto::FLOAT, true);
+        ValidateTypeAndShapeForScaleAndZP(ctx, 4, data_type->tensor_type().elem_type(), true);
+
+        if (getAttribute(ctx, "channels_last", 0) == 0) {
+          ONNX_NAMESPACE::convPoolShapeInference(ctx, false, true, 0, 5);
+        } else {
+          convPoolShapeInferenceNhwc(ctx, false, true, 0, 5);
         }
       });
 }

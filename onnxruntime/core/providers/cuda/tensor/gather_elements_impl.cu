@@ -83,6 +83,7 @@ __global__ void _GatherElementsKernel(
 }
 
 void GatherElementsImpl(
+    cudaStream_t stream,
     const int64_t rank,
     const void* input_data,
     const int64_t input_dim_along_axis,
@@ -103,7 +104,7 @@ void GatherElementsImpl(
     switch (element_size) {
       case sizeof(int8_t): {
         using CudaType = typename ToCudaType<int8_t>::MappedType;
-        _GatherElementsKernel<<<blocksPerGrid, block, 0>>>(
+        _GatherElementsKernel<<<blocksPerGrid, block, 0, stream>>>(
             rank, reinterpret_cast<const CudaType*>(input_data), input_dim_along_axis, input_strides,
             indices_data, indices_size, index_element_size, indices_strides,
             axis, reinterpret_cast<CudaType*>(output_data));
@@ -111,7 +112,7 @@ void GatherElementsImpl(
 
       case sizeof(int16_t): {
         using CudaType = typename ToCudaType<int16_t>::MappedType;
-        _GatherElementsKernel<<<blocksPerGrid, block, 0>>>(
+        _GatherElementsKernel<<<blocksPerGrid, block, 0, stream>>>(
             rank, reinterpret_cast<const CudaType*>(input_data), input_dim_along_axis, input_strides,
             indices_data, indices_size, index_element_size, indices_strides,
             axis, reinterpret_cast<CudaType*>(output_data));
@@ -119,7 +120,7 @@ void GatherElementsImpl(
 
       case sizeof(int32_t): {
         using CudaType = typename ToCudaType<int32_t>::MappedType;
-        _GatherElementsKernel<<<blocksPerGrid, block, 0>>>(
+        _GatherElementsKernel<<<blocksPerGrid, block, 0, stream>>>(
             rank, reinterpret_cast<const CudaType*>(input_data), input_dim_along_axis, input_strides,
             indices_data, indices_size, index_element_size, indices_strides,
             axis, reinterpret_cast<CudaType*>(output_data));
@@ -127,7 +128,7 @@ void GatherElementsImpl(
 
       case sizeof(int64_t): {
         using CudaType = typename ToCudaType<int64_t>::MappedType;
-        _GatherElementsKernel<<<blocksPerGrid, block, 0>>>(
+        _GatherElementsKernel<<<blocksPerGrid, block, 0, stream>>>(
             rank, reinterpret_cast<const CudaType*>(input_data), input_dim_along_axis, input_strides,
             indices_data, indices_size, index_element_size, indices_strides,
             axis, reinterpret_cast<CudaType*>(output_data));

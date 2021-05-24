@@ -4,7 +4,6 @@
 #include "core/providers/cuda/tensor/split.h"
 #include "core/providers/cuda/tensor/split_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -12,7 +11,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
                                   kOnnxDomain,
                                   2, 10,
                                   kCudaExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                  (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   Split);
 
 // explicitly supports negative axis
@@ -20,7 +19,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
                                   kOnnxDomain,
                                   11, 12,
                                   kCudaExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                  (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   Split);
 
 // explicitly supports 'split' as optional input
@@ -28,8 +27,8 @@ ONNX_OPERATOR_KERNEL_EX(Split,
                         kOnnxDomain,
                         13,
                         kCudaExecutionProvider,
-                        KernelDefBuilder()
-                            .InputMemoryType<OrtMemTypeCPUInput>(1)
+                        (*KernelDefBuilder::Create())
+                            .InputMemoryType(OrtMemTypeCPUInput, 1)
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                         Split);
 
@@ -44,9 +43,8 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
   int block_size_inside_axis_dim = 0;
   std::vector<int64_t> split_sizes(num_outputs);
 
-  size_t num_inputs = ctx->InputCount();
-  if (num_inputs == 2) {
-    const Tensor* split_tensor = ctx->Input<Tensor>(1);
+  const Tensor* split_tensor = ctx->Input<Tensor>(1);
+  if (split_tensor != nullptr) {
     ORT_ENFORCE(split_tensor->Shape().NumDimensions() == 1, "An split tensor must be a vector tensor.");
     auto nDims = static_cast<size_t>(split_tensor->Shape()[0]);
     const int64_t* data = split_tensor->template Data<int64_t>();
@@ -103,7 +101,8 @@ Status Split::ComputeInternal(OpKernelContext* ctx) const {
     axis_dimension_input_output_mapping_gpu.CopyToGpu();
 
     size_t element_size = input_tensor->DataType()->Size();
-    ORT_RETURN_IF_ERROR(SplitImpl(element_size,
+    ORT_RETURN_IF_ERROR(SplitImpl(Stream(),
+                                  element_size,
                                   block_size_including_axis_dim,
                                   block_size_inside_axis_dim,
                                   split_sizes_gpu.GpuPtr(),

@@ -3,11 +3,11 @@
 
 #include "orttraining/core/session/tensor_helper.h"
 
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_common.h"
-#endif
-
 namespace onnxruntime {
+
+// Copy a chunk of memory to CPU from GPU.
+void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const OrtMemoryInfo& dst_location, const OrtMemoryInfo& src_location);
+
 namespace training {
 
 // Return the shape of a tensor slice.
@@ -44,7 +44,7 @@ OrtValue CreateCpuTensorValue(
   AllocatorPtr cpu_allocator = session_state.GetAllocator(cpu_location);
 
   // Given a shape, allocate a tensor using CPU allocator.
-  auto cpu_tensor = onnxruntime::make_unique<Tensor>(elem_type, shape, cpu_allocator);
+  auto cpu_tensor = std::make_unique<Tensor>(elem_type, shape, cpu_allocator);
 
   // Create type definition for the created tensor.
   auto tensor_type = DataTypeImpl::GetType<Tensor>();
@@ -53,41 +53,6 @@ OrtValue CreateCpuTensorValue(
   OrtValue cpu_value{cpu_tensor.release(), tensor_type, tensor_type->GetDeleteFunc()};
 
   return cpu_value;
-}
-
-// Copy a chunk of memory to CPU from GPU.
-void CopyGpuToCpu(
-    void* dst_ptr,
-    const void* src_ptr,
-    const size_t size,
-    const OrtMemoryInfo& dst_location,
-    const OrtMemoryInfo& src_location) {
-  ORT_ENFORCE(dst_location.device.Type() == OrtDevice::CPU);
-
-#ifdef USE_CUDA
-  // Current CUDA device.
-  int device;
-  CUDA_CALL(cudaGetDevice(&device));
-
-  if (device != src_location.id) {
-    // Need to switch to the allocating device.
-    CUDA_CALL(cudaSetDevice(src_location.id));
-    // Copy from GPU to CPU.
-    CUDA_CALL(cudaMemcpy(dst_ptr, src_ptr, size, cudaMemcpyDeviceToHost));
-    // Switch back to current device.
-    CUDA_CALL(cudaSetDevice(device));
-  } else {
-    // Copy from GPU to CPU.
-    CUDA_CALL(cudaMemcpy(dst_ptr, src_ptr, size, cudaMemcpyDeviceToHost));
-  }
-#else
-  ORT_UNUSED_PARAMETER(dst_ptr);
-  ORT_UNUSED_PARAMETER(src_ptr);
-  ORT_UNUSED_PARAMETER(size);
-  ORT_UNUSED_PARAMETER(dst_location);
-  ORT_UNUSED_PARAMETER(src_location);
-  ORT_THROW("CPU-to-CPU copy is not implemented.");
-#endif
 }
 
 // Copy a chunk of memory to CPU from CPU.
@@ -270,7 +235,7 @@ void CopyConcat(
       auto chunk_size = src_shape[concat_axis] * segment_size;
 
       // Bias of the i_seg-th segment in input tensor. Its unit is the number of tensor elements.
-      // chunk_size * 
+      // chunk_size *
       auto src_bias = UpdateLinearIndex(i_seg, 0, src_shape[concat_axis]) * segment_size;
       auto dst_bias = UpdateLinearIndex(i_seg, anchor_bias, dst_shape[concat_axis]) * segment_size;
 

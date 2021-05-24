@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef USE_CUDA
+#if 0  // TODO: Can't call these directly from external code as Cuda is now a shared library
+//#ifdef USE_CUDA
 
 #include <memory>
 
@@ -71,18 +72,21 @@ void TestReduceRowToScalarApis(int size, float relative_error_tolerance = 1e-4f)
   cudaMemcpy(device_input.get(), input.data(), size * sizeof(float), cudaMemcpyHostToDevice);
 
   ASSERT_STATUS_OK(reduce_sum(
+      0,
       device_input.get(),
       device_output_sum.get(),
       size,
       buffer.get(),
       buffer_size_in_bytes));
   ASSERT_STATUS_OK(reduce_square_sum(
+      0,
       device_input.get(),
       device_output_square_sum.get(),
       size,
       buffer.get(),
       buffer_size_in_bytes));
   ASSERT_STATUS_OK(reduce_mean(
+      0,
       device_input.get(),
       device_output_mean.get(),
       size,
@@ -121,11 +125,11 @@ void TestReduceRowsToRow(int m, int n, bool reset_initial_output, float relative
 
   if (!reset_initial_output) {
     // manually initialize output data
-    Fill(d_out.get(), initial_value, n);
+    Fill(0, d_out.get(), initial_value, n);
   }
 
   ASSERT_STATUS_OK(reduce_matrix_rows(
-      d_in.get(), d_out.get(),
+      0, d_in.get(), d_out.get(),
       m, n,
       reset_initial_output));
 
@@ -164,6 +168,7 @@ void TestReduceColumnsToColumn(int m, int n, float relative_error_tolerance = 1e
   auto d_buffer = AllocateDeviceMemory<char>(buffer_size_in_bytes);
 
   ASSERT_STATUS_OK(reduce_matrix_columns(
+      0,
       d_in.get(), d_out.get(),
       m, n,
       d_buffer.get(), buffer_size_in_bytes));
@@ -223,6 +228,7 @@ TEST(ReductionFunctionsTest, BufferOffsets) {
     cudaMemcpy(d_input.get(), input.data(), m * n * sizeof(double), cudaMemcpyHostToDevice);
 
     ASSERT_STATUS_OK(reduce_matrix_columns(
+        0,
         d_input.get(), d_output.get(),
         m, n,
         d_buffer.get() + buffer_offset,
@@ -250,7 +256,7 @@ TEST(ReductionFunctionsTest, InvalidBufferSize) {
   cudaMemcpy(d_input.get(), input.data(), m * n * sizeof(float), cudaMemcpyHostToDevice);
 
   const auto status =
-      reduce_matrix_columns(d_input.get(), d_output.get(), m, n, d_buffer.get(), buffer_size_in_bytes);
+      reduce_matrix_columns(0, d_input.get(), d_output.get(), m, n, d_buffer.get(), buffer_size_in_bytes);
   ASSERT_FALSE(status.IsOK());
 }
 

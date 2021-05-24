@@ -43,11 +43,12 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
     }
     bool has_z = nullptr != Base::s_.z_data;
     bool has_b = nullptr != Base::s_.b_data;
-    auto alpha = &(Base::alpha_);
-    auto beta = &(Base::beta_);
+    typedef typename onnxruntime::cuda::ToCudaType<T>::MappedType CudaT;
+    const auto alpha = onnxruntime::cuda::Consts<CudaT>::One;
+    const auto beta = onnxruntime::cuda::Consts<CudaT>::Zero;
     IAllocatorUniquePtr<void> workspace = Base::GetWorkSpace();
     auto cudnn_status = cudnnConvolutionBiasActivationForward(Base::CudnnHandle(),
-                                                              alpha,
+                                                              &alpha,
                                                               Base::s_.x_tensor,
                                                               Base::s_.x_data,
                                                               Base::s_.w_desc,
@@ -56,7 +57,7 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
                                                               Base::s_.algo,
                                                               workspace.get(),
                                                               Base::s_.workspace_bytes,
-                                                              has_z ? alpha : beta,
+                                                              has_z ? &alpha : &beta,
                                                               has_z ? Base::s_.z_tensor : Base::s_.y_tensor,
                                                               has_z ? Base::s_.z_data : Base::s_.y_data,
                                                               Base::s_.b_tensor,
@@ -66,7 +67,7 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
                                                               Base::s_.y_data);
     if (CUDNN_STATUS_SUCCESS != cudnn_status) {
       CUDNN_RETURN_IF_ERROR(cudnnConvolutionForward(Base::CudnnHandle(),
-                                                    alpha,
+                                                    &alpha,
                                                     Base::s_.x_tensor,
                                                     Base::s_.x_data,
                                                     Base::s_.w_desc,
@@ -75,22 +76,22 @@ class FusedConv : public onnxruntime::cuda::Conv<T> {
                                                     Base::s_.algo,
                                                     workspace.get(),
                                                     Base::s_.workspace_bytes,
-                                                    beta,
+                                                    &beta,
                                                     Base::s_.y_tensor,
                                                     Base::s_.y_data));
       if (has_b) {
-        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(Base::CudnnHandle(), alpha, Base::s_.b_tensor, Base::s_.b_data,
-                                             alpha, Base::s_.y_tensor, Base::s_.y_data));
+        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(Base::CudnnHandle(), &alpha, Base::s_.b_tensor, Base::s_.b_data,
+                                             &alpha, Base::s_.y_tensor, Base::s_.y_data));
       }
       if (has_z) {
-        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(Base::CudnnHandle(), alpha, Base::s_.z_tensor, Base::s_.z_data,
-                                             alpha, Base::s_.y_tensor, Base::s_.y_data));
+        CUDNN_RETURN_IF_ERROR(cudnnAddTensor(Base::CudnnHandle(), &alpha, Base::s_.z_tensor, Base::s_.z_data,
+                                             &alpha, Base::s_.y_tensor, Base::s_.y_data));
       }
-      CUDNN_RETURN_IF_ERROR(cudnnActivationForward(Base::CudnnHandle(), activation_desc_, alpha, Base::s_.y_tensor,
-                                                   Base::s_.y_data, beta, Base::s_.y_tensor, Base::s_.y_data));
+      CUDNN_RETURN_IF_ERROR(cudnnActivationForward(Base::CudnnHandle(), activation_desc_, &alpha, Base::s_.y_tensor,
+                                                   Base::s_.y_data, &beta, Base::s_.y_tensor, Base::s_.y_data));
     }
     if (Base::s_.post_slicing_required) {
-      onnxruntime::cuda::SliceOutUnwantedOutputSection(Base::s_.y_data, Base::s_.y_dims_with_adjusted_pads, Base::s_.Y->MutableDataRaw(),
+      onnxruntime::cuda::SliceOutUnwantedOutputSection(this->Stream(), Base::s_.y_data, Base::s_.y_dims_with_adjusted_pads, Base::s_.Y->MutableDataRaw(),
                                                        Base::s_.y_dims, Base::s_.slice_starts, Base::s_.slice_ends, Base::s_.slice_axes, Base::s_.element_size);
     }
     return Status::OK();
@@ -118,7 +119,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     1,
     float,
     kCudaExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     FusedConv<float>);
 
 }  // namespace cuda

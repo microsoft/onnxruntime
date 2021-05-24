@@ -21,7 +21,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", BuildKernelDefConstraints<ALL_IEEE_FLOAT_DATA_TYPES>())
         .MayInplace(0, 0),
     BiasGeluGrad_dX<gelu_computation_mode::Default>);
@@ -31,7 +31,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", BuildKernelDefConstraints<ALL_IEEE_FLOAT_DATA_TYPES>())
         .MayInplace(0, 0),
     BiasGeluGrad_dX<gelu_computation_mode::Approximation>);
@@ -39,12 +39,14 @@ ONNX_OPERATOR_KERNEL_EX(
 template <typename GeluComputationMode>
 template <typename T>
 void BiasGeluGrad_dX<GeluComputationMode>::KernelLaunchDispatcher<T>::operator()(
+    cudaStream_t stream,
     int64_t input_size, int64_t bias_size,
     const Tensor& dY, const Tensor& X, const Tensor& B,
     Tensor& dX) const {
   using CudaT = typename ToCudaType<T>::MappedType;
 
   LaunchBiasGeluGradDxKernel<CudaT, GeluComputationMode>(
+      stream,
       input_size, bias_size,
       reinterpret_cast<const CudaT*>(dY.template Data<T>()),
       reinterpret_cast<const CudaT*>(X.template Data<T>()),
@@ -74,11 +76,8 @@ Status BiasGeluGrad_dX<GeluComputationMode>::ComputeInternal(OpKernelContext* co
 
   const auto input_size = input_shape.Size(), bias_size = bias_shape.Size();
 
-  utils::MLTypeCallDispatcher<
-      KernelLaunchDispatcher,
-      ALL_IEEE_FLOAT_DATA_TYPES>
-      dispatcher{X->GetElementType()};
-  dispatcher.Invoke(input_size, bias_size, *dY, *X, *B, *dX);
+  utils::MLTypeCallDispatcher<ALL_IEEE_FLOAT_DATA_TYPES> dispatcher{X->GetElementType()};
+  dispatcher.Invoke<KernelLaunchDispatcher>(Stream(), input_size, bias_size, *dY, *X, *B, *dX);
 
   return Status::OK();
 }
