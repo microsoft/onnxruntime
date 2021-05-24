@@ -1275,7 +1275,7 @@ stages:
       - task: PublishBuildArtifacts@1
         displayName: 'Publish Artifact: ONNXRuntime python wheel'
         inputs:
-          PathtoPublish: '$(Build.BinariesDirectory)/dist'
+          PathtoPublish: '$(Build.BinariesDirectory)/Release/dist'
           ArtifactName: onnxruntime
 
       - template: component-governance-component-detection-steps.yml
