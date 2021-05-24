@@ -12,8 +12,8 @@ ONNX_OPERATOR_KERNEL_EX(SplitTraining,
                         kMSDomain,
                         1,
                         kCudaExecutionProvider,
-                        KernelDefBuilder()
-                            .InputMemoryType<OrtMemTypeCPUInput>(1)
+                        (*KernelDefBuilder::Create())
+                            .InputMemoryType(OrtMemTypeCPUInput, 1)
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                         SplitTraining);
 

@@ -8,7 +8,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets_ml.h"
-#if defined(ENABLE_TRAINING)
+#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
 #include "onnx/defs/operator_sets_training.h"
 #endif
 #endif
@@ -30,8 +30,10 @@
 #include "core/platform/tracing.h"
 #endif
 
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
 #include "orttraining/core/graph/training_op_defs.h"
+#endif
+#ifdef ENABLE_TRAINING
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/graph/optimizer_builder.h"
@@ -180,17 +182,20 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       RegisterOnnxMLOperatorSetSchema();
 #endif
 
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
       RegisterOnnxTrainingOperatorSetSchema();
 #endif
 
-#ifdef ENABLE_TRAINING
-      // preserve this order: this depends on operatorsetschema registration.
+#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
+      // preserve this order until <training schemas>: this depends on operatorsetschema registration.
       training::RegisterTrainingOpSchemas();
+#endif
+#ifdef ENABLE_TRAINING
       training::GradientBuilderRegistry::GetInstance().RegisterGradientBuilders();
       training::LossFunctionRegistry::GetInstance().RegisterNonOperatorLossFunctions();
       training::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
       training::OptimizerGraphBuilderRegistry::GetInstance().RegisterGraphBuilders();
+      // <training schemas>
 #endif
     });
 
