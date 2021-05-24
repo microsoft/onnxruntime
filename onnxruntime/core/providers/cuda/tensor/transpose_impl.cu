@@ -79,39 +79,23 @@ Status Transpose3DImpl(cudaStream_t stream, size_t element_size,
   return Status::OK();
 }
 
-__global__ void Transpose4DKernel(const TArray<int64_t> input_strides, const void* input_data,
-                                  const TArray<int64_t> output_strides, void* output_data,
-                                  unsigned int num_elements_per_thread, bool multiple_elements_per_thread_in_last_dim,
-                                  CUDA_LONG N) {
-  CUDA_LONG input_index = 0;
-  CUDA_LONG output_index = 0;
+__global__ void Transpose4DKernelParallelizeMultipleElementsPerThreadInInnermostDim(
+    const TArray<int64_t> input_strides, const void* input_data,
+    const TArray<int64_t> output_strides, void* output_data,
+    size_t element_size,
+    CUDA_LONG N) {
+  // output coordinates will be: blockIdx.y, blockIdx.x, threadIdx.y, threadIdx.x
+  CUDA_LONG input_index = (blockIdx.y * input_strides[0] +
+                           blockIdx.x * input_strides[1] +
+                           threadIdx.y * input_strides[2]) /
+                              (4 * sizeof(int) / element_size) +
+                          threadIdx.x * input_strides[3];
 
-  if (multiple_elements_per_thread_in_last_dim) {
-    // output coordinates will be: blockIdx.y, blockIdx.x, threadIdx.y, threadIdx.x
-    input_index = (blockIdx.y * input_strides[0] +
-                   blockIdx.x * input_strides[1] +
-                   threadIdx.y * input_strides[2]) /
-                      num_elements_per_thread +
-                  threadIdx.x * input_strides[3];
-
-    output_index = (blockIdx.y * output_strides[0] +
-                    blockIdx.x * output_strides[1] +
-                    threadIdx.y * output_strides[2]) /
-                       num_elements_per_thread +
-                   threadIdx.x * output_strides[3];
-  } else {
-    input_index = (blockIdx.y * input_strides[0] +
-                   blockIdx.x * input_strides[1] +
-                   threadIdx.x * input_strides[3]) /
-                      num_elements_per_thread +
-                  threadIdx.y * input_strides[2];
-
-    output_index = (blockIdx.y * output_strides[0] +
-                    blockIdx.x * output_strides[1] +
-                    threadIdx.x * output_strides[3]) /
-                       num_elements_per_thread +
-                   threadIdx.y * output_strides[2];
-  }
+  CUDA_LONG output_index = (blockIdx.y * output_strides[0] +
+                            blockIdx.x * output_strides[1] +
+                            threadIdx.y * output_strides[2]) /
+                               (4 * sizeof(int) / element_size) +
+                           threadIdx.x * output_strides[3];
 
   const int4* v_input = reinterpret_cast<const int4*>(input_data);
   int4* v_output = reinterpret_cast<int4*>(output_data);
@@ -121,71 +105,123 @@ __global__ void Transpose4DKernel(const TArray<int64_t> input_strides, const voi
   }
 }
 
-bool CanDoTranspose4D(const cudaDeviceProp& prop,
-                      size_t element_size,
-                      int32_t rank,
-                      const std::vector<int64_t>& input_dims,
-                      const std::vector<size_t>& permutations) {
+bool CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(const cudaDeviceProp& prop,
+                                                                        size_t element_size,
+                                                                        int32_t rank,
+                                                                        const std::vector<int64_t>& input_dims,
+                                                                        const std::vector<size_t>& permutations) {
   if (rank == 4 &&
       // the permutations is not on the last dimension.
-      permutations[rank - 1] == (rank - 1)) {
-    // The block size will be set based on the last two dimensions of 4D tensor.
+      permutations[3] == 3) {
+    // The block size will be set based on the outer-most two dimensions of 4D tensor.
     // the number threads per block will be calculated as below.
     unsigned int num_elements_per_thread = 4 * sizeof(int) / static_cast<unsigned int>(element_size);  // int4 is used in the kernel to access data.
-    int64_t num_elements_in_last_two_dimensions = input_dims[rank - 2] * input_dims[rank - 1];
+    int64_t num_elements_in_last_two_dimensions = input_dims[2] * input_dims[3];
     int64_t num_threads_per_block = num_elements_in_last_two_dimensions / num_elements_per_thread;
 
     if (((num_elements_in_last_two_dimensions & (num_elements_per_thread - 1)) == 0) &&
         num_threads_per_block <= prop.maxThreadsPerBlock &&
         num_threads_per_block >= prop.warpSize &&
-        // num_threads_per_block must be aligned with warp size: 32
-        ((num_threads_per_block & (prop.warpSize - 1)) == 0)) {
+        // num_threads_per_block must be a multiple of warp size (32)
+        ((num_threads_per_block & (prop.warpSize - 1)) == 0) &&
+        // input_dims[3] must be a multiple of `num_elements_per_thread`
+        ((input_dims[3] % num_elements_per_thread) == 0)) {
       return true;
     }
   }
   return false;
 }
 
-Status Transpose4DImpl(cudaStream_t stream, size_t element_size, const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides, const void* input_data,
-                       const TArray<int64_t>& output_strides, void* output_data, int N) {
+Status Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(
+    cudaStream_t stream, size_t element_size,
+    const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides,
+    const void* input_data, const TArray<int64_t>& output_strides,
+    void* output_data, int N) {
+  if (element_size != sizeof(int8_t) &&
+      element_size != sizeof(int16_t) &&
+      element_size != sizeof(int32_t) &&
+      element_size != sizeof(int64_t)) {
+    // User will not hit this as this kernel is for fixed element size tensors only
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for transpose on CUDA. Element size was ",
+                           element_size);
+  }
+
   unsigned int num_elements_per_thread = 4 * sizeof(int) / static_cast<unsigned int>(element_size);  // int4 is used in the kernel to access data.
   dim3 block_size(static_cast<unsigned int>(input_shape[3] / num_elements_per_thread), static_cast<unsigned int>(input_shape[2]));
-  bool multiple_elements_per_thread_in_last_dim = true;
-
-  if (block_size.x == 0) {
-    // Entering this means that input_shape[3] was less than num_elements_per_thread,
-    // hence have a thread process multiple elements in axis = 2 instead
-    block_size.x = static_cast<unsigned int>(input_shape[3]);
-    block_size.y = static_cast<unsigned int>(input_shape[2] / num_elements_per_thread);
-    multiple_elements_per_thread_in_last_dim = false;
-  }
   dim3 grid_size(static_cast<unsigned int>(input_shape[1]), static_cast<unsigned int>(input_shape[0]));
 
-  switch (element_size) {
-    case sizeof(int8_t):
-      Transpose4DKernel<<<grid_size, block_size, 0, stream>>>(
-          input_strides, input_data,
-          output_strides, output_data, num_elements_per_thread, multiple_elements_per_thread_in_last_dim, N / num_elements_per_thread);
-      break;
-    case sizeof(int16_t):
-      Transpose4DKernel<<<grid_size, block_size, 0, stream>>>(
-          input_strides, input_data,
-          output_strides, output_data, num_elements_per_thread, multiple_elements_per_thread_in_last_dim, N / num_elements_per_thread);
-      break;
-    case sizeof(int32_t):
-      Transpose4DKernel<<<grid_size, block_size, 0, stream>>>(
-          input_strides, input_data,
-          output_strides, output_data, num_elements_per_thread, multiple_elements_per_thread_in_last_dim, N / num_elements_per_thread);
-      break;
-    case sizeof(int64_t):
-      Transpose4DKernel<<<grid_size, block_size, 0, stream>>>(
-          input_strides, input_data,
-          output_strides, output_data, num_elements_per_thread, multiple_elements_per_thread_in_last_dim, N / num_elements_per_thread);
-      break;
-    default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for transpose on CUDA. Element size was ",
-                             element_size);
+  Transpose4DKernelParallelizeMultipleElementsPerThreadInInnermostDim<<<grid_size, block_size, 0, stream>>>(
+      input_strides, input_data,
+      output_strides, output_data, element_size, N / num_elements_per_thread);
+
+  return Status::OK();
+}
+
+__global__ void Transpose4DKernelParallelizeOneElementPerThread(
+    const TArray<int64_t> input_strides, const int8_t* input_data,
+    const TArray<int64_t> output_strides, int8_t* output_data,
+    size_t element_size,
+    CUDA_LONG N) {
+  CUDA_LONG input_index = blockIdx.y * input_strides[0] +
+                          blockIdx.x * input_strides[1] +
+                          threadIdx.y * input_strides[2] +
+                          threadIdx.x * input_strides[3];
+
+  CUDA_LONG output_index = blockIdx.y * output_strides[0] +
+                           blockIdx.x * output_strides[1] +
+                           threadIdx.y * output_strides[2] +
+                           threadIdx.x * output_strides[3];
+
+  if (input_index < N && output_index < N) {
+    const int8_t* input_data_to_be_copied = input_data + (input_index * element_size);
+    int8_t* output_data_to_be_copied = output_data + (output_index * element_size);
+
+    // copy over the bytes
+    memcpy(output_data_to_be_copied, input_data_to_be_copied, element_size);
   }
+}
+
+bool CanDoTranspose4DParallelizeOneElementPerThread(const cudaDeviceProp& prop,
+                                                    size_t element_size,
+                                                    int32_t rank,
+                                                    const std::vector<int64_t>& input_dims,
+                                                    const std::vector<size_t>& permutations) {
+  if (rank == 4) {
+    // The block size will be set based on the outer-most two dimensions of 4D tensor.
+    // the number threads per block will be calculated as below.
+    int64_t number_of_threads_per_block = input_dims[2] * input_dims[3];
+
+    if (number_of_threads_per_block <= prop.maxThreadsPerBlock &&
+        number_of_threads_per_block >= prop.warpSize &&
+        // num_threads_per_block must be a multiple of warp size (32)
+        ((number_of_threads_per_block & (prop.warpSize - 1)) == 0)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+Status Transpose4DParallelizeOneElementPerThread(
+    cudaStream_t stream, size_t element_size,
+    const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides,
+    const void* input_data, const TArray<int64_t>& output_strides,
+    void* output_data, int N) {
+  if (element_size != sizeof(int8_t) &&
+      element_size != sizeof(int16_t) &&
+      element_size != sizeof(int32_t) &&
+      element_size != sizeof(int64_t)) {
+    // User will not hit this as this kernel is for fixed element size tensors only
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for transpose on CUDA. Element size was ",
+                           element_size);
+  }
+
+  dim3 block_size(static_cast<unsigned int>(input_shape[3]), static_cast<unsigned int>(input_shape[2]));
+  dim3 grid_size(static_cast<unsigned int>(input_shape[1]), static_cast<unsigned int>(input_shape[0]));
+
+  Transpose4DKernelParallelizeOneElementPerThread<<<grid_size, block_size, 0, stream>>>(
+      input_strides, reinterpret_cast<const int8_t*>(input_data),
+      output_strides, reinterpret_cast<int8_t*>(output_data),
+      element_size, N);
 
   return Status::OK();
 }
