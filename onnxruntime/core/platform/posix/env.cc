@@ -413,7 +413,7 @@ class PosixEnv : public Env {
 
   common::Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const override {
     dlerror();  // clear any old error_str
-    *handle = dlopen(library_filename.c_str(), RTLD_NOW | RTLD_LOCAL);
+    *handle = dlopen(library_filename.c_str(), RTLD_NOW | RTLD_GLOBAL);
     char* error_str = dlerror();
     if (!*handle) {
       return common::Status(common::ONNXRUNTIME, common::FAIL,
