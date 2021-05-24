@@ -3137,16 +3137,15 @@ TEST(ReductionOpTest, ReduceMax_RK_parallel) {
   OpTester test("ReduceMax");
   test.AddAttribute("axes", std::vector<int64_t>{0});
   test.AddAttribute("keepdims", (int64_t)0);
-  std::vector<float> in_data(128);
+  std::vector<float> in_data(65536);
   for (size_t i = 0; i < in_data.size(); ++i)
-    in_data[i] = (float)i;
-  test.AddInput<float>("data", {4, 32}, in_data);
+    in_data[i] = 1.f + (float)(i % 17) / 17.f;
+  test.AddInput<float>("data", {2048, 32}, in_data);
   std::vector<float> expected(32);
   for (size_t i = 0; i < expected.size(); ++i) {
     expected[i] = 0;
-    for (size_t j = 0; j < 4; ++j) {
-      if (in_data[i + j * expected.size()] > expected[i])
-        expected[i] = in_data[i + j * expected.size()];
+    for (size_t j = 0; j < 2048; ++j) {
+      expected[i] = std::max(expected[i], in_data[i + j * expected.size()]);
     }
   }
   test.AddOutput<float>("reduced", {32}, expected);
@@ -3465,16 +3464,15 @@ TEST(ReductionOpTest, ReduceMin_RK_parallel) {
   OpTester test("ReduceMin");
   test.AddAttribute("axes", std::vector<int64_t>{0});
   test.AddAttribute("keepdims", (int64_t)0);
-  std::vector<float> in_data(128);
+  std::vector<float> in_data(65536);
   for (size_t i = 0; i < in_data.size(); ++i)
-    in_data[i] = (float)i;
-  test.AddInput<float>("data", {4, 32}, in_data);
+    in_data[i] = 1.f + (float)(i % 17) / 17.f;
+  test.AddInput<float>("data", {2048, 32}, in_data);
   std::vector<float> expected(32);
   for (size_t i = 0; i < expected.size(); ++i) {
-    expected[i] = 1000000000;
-    for (size_t j = 0; j < 4; ++j) {
-      if (in_data[i + j * expected.size()] < expected[i])
-        expected[i] = in_data[i + j * expected.size()];
+    expected[i] = 10.f;
+    for (size_t j = 0; j < 2048; ++j) {
+      expected[i] = std::min(expected[i], in_data[i + j * expected.size()]);
     }
   }
   test.AddOutput<float>("reduced", {32}, expected);
@@ -3692,7 +3690,7 @@ TEST(ReductionOpTest, ReduceSum_RK_parallel) {
   test.AddAttribute("keepdims", (int64_t)0);
   std::vector<float> in_data(65536);
   for (size_t i = 0; i < in_data.size(); ++i)
-    in_data[i] = (float)i;
+    in_data[i] = 1.f + (float)(i % 17) / 17.f;
   test.AddInput<float>("data", {2048, 32}, in_data);
   std::vector<float> expected(32);
   for (size_t i = 0; i < expected.size(); ++i) {

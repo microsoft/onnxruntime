@@ -705,9 +705,10 @@ bool CommonFastReduceSwitch(OpKernelContext* ctx,
         }
         case FastReduceKind::kRK: {
           ValidateFastReduceRK(fast_shape, *output);
-          if ((fast_shape[0] > concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()) * 16) && 
+          if ((fast_shape[0] > concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()) * 16) &&
               (std::max(fast_shape[0], fast_shape[1]) >
-                concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()) * 256)) {
+               concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()) * 256)) {
+            // See benchmarks in PR #7719.
             case_rk(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
             return true;
           } else {
@@ -717,6 +718,7 @@ bool CommonFastReduceSwitch(OpKernelContext* ctx,
         case FastReduceKind::kKRK:
           ValidateFastReduceKRK(fast_shape, *output);
           if (fast_shape[0] >= std::max(2, concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()))) {
+            // See benchmarks in PR #7719.
             case_krk(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
             return true;
           } else {
@@ -917,6 +919,7 @@ std::unique_ptr<Tensor> ReduceSum<T>::Impl(const Tensor& input, const std::vecto
         ValidateFastReduceRK(fast_shape, *output);
         if (std::max(fast_shape[0], fast_shape[1]) >
             concurrency::ThreadPool::DegreeOfParallelism(tp) * 256) {
+          // See benchmarks in PR #7719.
           ReduceAggregatorSum<T>::FastReduceRK(input, fast_shape, *output, tp);
           return output;
         } else {
@@ -925,6 +928,7 @@ std::unique_ptr<Tensor> ReduceSum<T>::Impl(const Tensor& input, const std::vecto
       case FastReduceKind::kKRK:
         ValidateFastReduceKRK(fast_shape, *output);
         if (fast_shape[0] >= std::max(2, concurrency::ThreadPool::DegreeOfParallelism(tp))) {
+          // See benchmarks in PR #7719.
           ReduceAggregatorSum<T>::FastReduceKRK(input, fast_shape, *output, tp);
           return output;
         } else {
