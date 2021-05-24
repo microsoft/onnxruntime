@@ -41,14 +41,14 @@
   ASSERT_ON_ERROR(g_ort->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "testCAPI", &env));
 
   // initialize session options if needed
-  OrtSessionOptions* so;
-  ASSERT_ON_ERROR(g_ort->CreateSessionOptions(&so));
-  ASSERT_ON_ERROR(g_ort->SetIntraOpNumThreads(so, 1));
+  OrtSessionOptions* session_options;
+  ASSERT_ON_ERROR(g_ort->CreateSessionOptions(&session_options));
+  ASSERT_ON_ERROR(g_ort->SetIntraOpNumThreads(session_options, 1));
 
   OrtSession* session;
-  NSString* path = [[NSBundle mainBundle] pathForResource:@"sigmoid" ofType:@"ort"];
-  const char* cPath = [path cStringUsingEncoding:NSUTF8StringEncoding];
-  ASSERT_ON_ERROR(g_ort->CreateSession(env, cPath, so, &session));
+  NSString* ns_model_path = [[NSBundle mainBundle] pathForResource:@"sigmoid" ofType:@"ort"];
+  const char* model_path = [ns_model_path cStringUsingEncoding:NSUTF8StringEncoding];
+  ASSERT_ON_ERROR(g_ort->CreateSession(env, model_path, session_options, &session));
 
   size_t input_tensor_size = 3 * 4 * 5;
   float input_tensor_values[input_tensor_size];
@@ -85,14 +85,13 @@
   ASSERT_ON_ERROR(g_ort->GetTensorMutableData(output_tensor, (void**)&output_values));
 
   for (size_t i = 0; i < input_tensor_size; i++) {
-    NSLog(@"%1.10f\t%1.10f", expected_output_values[i], output_values[i]);
     XCTAssertEqualWithAccuracy(expected_output_values[i], output_values[i], 1e-6);
   }
 
   g_ort->ReleaseValue(output_tensor);
   g_ort->ReleaseValue(input_tensor);
   g_ort->ReleaseSession(session);
-  g_ort->ReleaseSessionOptions(so);
+  g_ort->ReleaseSessionOptions(session_options);
   g_ort->ReleaseEnv(env);
 }
 
