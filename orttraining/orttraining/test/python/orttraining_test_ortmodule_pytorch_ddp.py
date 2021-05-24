@@ -14,7 +14,7 @@ import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 import onnxruntime
-from onnxruntime.training import ORTModule
+from onnxruntime.training.ortmodule import ORTModule
 
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
