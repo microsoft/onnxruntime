@@ -8,10 +8,10 @@
 namespace onnxruntime {
 namespace contrib {
 
-template <bool is_backward>
-class ATenOpBase final : public OpKernel {
+class ATenOpBase : public OpKernel {
  public:
-  ATenOpBase(const OpKernelInfo& info);
+  ATenOpBase(const OpKernelInfo& info, bool is_backward) : OpKernel(info) { Init(info, is_backward); }
+  void Init(const OpKernelInfo& info, bool is_backward);  // Separated into a regular member for shared provider access
   Status Compute(OpKernelContext* p_ctx) const override;
 
  private:
@@ -24,6 +24,16 @@ class ATenOpBase final : public OpKernel {
   std::vector<std::pair<size_t, int64_t>> int_arguments_;
   std::vector<std::pair<size_t, float>> float_arguments_;
   std::vector<std::pair<size_t, bool>> bool_arguments_;
+};
+
+class ATenOpForward final : public ATenOpBase {
+ public:
+  ATenOpForward(const OpKernelInfo& info) : ATenOpBase(info, false) {}
+};
+
+class ATenOpBackward final : public ATenOpBase {
+ public:
+  ATenOpBackward(const OpKernelInfo& info) : ATenOpBase(info, true) {}
 };
 
 }  // namespace contrib

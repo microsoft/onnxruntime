@@ -13,14 +13,13 @@ namespace contrib {
 
 ONNX_OPERATOR_KERNEL_EX(ATenOp, kMSDomain, 1, kCpuExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
-                        ATenOpBase<false>);
+                        ATenOpForward);
 
 ONNX_OPERATOR_KERNEL_EX(ATenOpGrad, kMSDomain, 1, kCpuExecutionProvider,
                         KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
-                        ATenOpBase<true>);
+                        ATenOpBackward);
 
-template <bool is_backward>
-ATenOpBase<is_backward>::ATenOpBase(const OpKernelInfo& info) : OpKernel(info) {
+void ATenOpBase::Init(const OpKernelInfo& info, bool is_backward) {
   std::string op_name;
   ORT_THROW_IF_ERROR(info.GetAttr("name", &op_name));
   const auto* op_config_ptr = aten_ops::ATenOperatorConfigs::Instance().GetConfig(op_name);
@@ -72,8 +71,7 @@ ATenOpBase<is_backward>::ATenOpBase(const OpKernelInfo& info) : OpKernel(info) {
   }
 }
 
-template <bool is_backward>
-Status ATenOpBase<is_backward>::Compute(OpKernelContext* p_ctx) const {
+Status ATenOpBase::Compute(OpKernelContext* p_ctx) const {
   auto* p_ctx_internal = static_cast<OpKernelContextInternal*>(p_ctx);
   std::vector<std::pair<size_t, DLManagedTensor*>> tensor_arguments;
   for (size_t i = 0; i < tensor_argument_indices_.size(); i++) {

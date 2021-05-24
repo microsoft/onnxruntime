@@ -1434,6 +1434,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetExpGradient) {
               {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetIdentityGradient) {
+  return std::vector<NodeDef>{
+      NodeDef("Identity", {GO(0)}, {GI(0)})};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetFlattenGradient) {
   return std::vector<NodeDef>{
       NodeDef("Shape", {I(0)}, {IA("input_shape")}),

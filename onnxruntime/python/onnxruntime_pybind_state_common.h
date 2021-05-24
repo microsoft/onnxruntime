@@ -8,6 +8,10 @@
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
 
+#ifdef ENABLE_TRAINING
+#include "core/dlpack/dlpack_converter.h"
+#endif
+
 namespace onnxruntime {
 namespace python {
 
@@ -134,6 +138,18 @@ void InitializeSession(InferenceSession* sess,
 
 // Checks if PyErrOccured, fetches status and throws.
 void ThrowIfPyErrOccured();
+
+#ifdef ENABLE_TRAINING
+
+namespace py = pybind11;
+
+void DlpackCapsuleDestructor(PyObject* data);
+
+py::object ToDlpack(OrtValue& ort_value);
+
+OrtValue FromDlpack(py::object dlpack_tensor, const bool is_bool_tensor);
+
+#endif
 
 }  // namespace python
 }  // namespace onnxruntime

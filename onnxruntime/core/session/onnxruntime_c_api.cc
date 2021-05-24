@@ -1826,25 +1826,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ const OrtSessi
 
 // End support for non-tensor types
 
-#ifndef USE_CUDA
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA,
-                    _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(cuda_options);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
-}
-
-ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
-  ORT_UNUSED_PARAMETER(device_id);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
-}
-
-ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
-  ORT_UNUSED_PARAMETER(device_id);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
-}
-#endif
-
 #ifndef USE_ROCM
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM,
                     _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* rocm_options) {
@@ -1860,6 +1841,24 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO,
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(provider_options);
   return CreateStatus(ORT_FAIL, "OpenVINO execution provider is not enabled.");
+}
+#endif
+
+#if defined(ORT_MINIMAL_BUILD)
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* provider_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(provider_options);
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
+  ORT_UNUSED_PARAMETER(device_id);
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
+  ORT_UNUSED_PARAMETER(device_id);
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
 }
 #endif
 
@@ -1889,8 +1888,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* 
       cfg->initial_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
     } else if (strcmp(arena_config_keys[i], "max_dead_bytes_per_chunk") == 0) {
       cfg->max_dead_bytes_per_chunk = static_cast<int>(arena_config_values[i]);
-    } else if (strcmp(arena_config_keys[i], "initial_regrowth_chunk_size_bytes") == 0) {
-      cfg->initial_regrowth_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
+    } else if (strcmp(arena_config_keys[i], "initial_growth_chunk_size_bytes") == 0) {
+      cfg->initial_growth_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
     } else {
       std::ostringstream oss;
       oss << "Invalid key found: " << arena_config_keys[i];
@@ -2218,7 +2217,6 @@ static constexpr OrtApi ort_api_1_to_8 = {
     &OrtApis::GetCurrentGpuDeviceId,
     // End of Version 7 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 8 - In development, feel free to add/remove/rearrange here
     &OrtApis::KernelInfoGetAttributeArray_float,
     &OrtApis::KernelInfoGetAttributeArray_int64,
     &OrtApis::CreateArenaCfgV2,
@@ -2227,6 +2225,9 @@ static constexpr OrtApi ort_api_1_to_8 = {
     &OrtApis::ReleasePrepackedWeightsContainer,
     &OrtApis::CreateSessionWithPrepackedWeightsContainer,
     &OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer,
+    // End of Version 8 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Version 9 - In development, feel free to add/remove/rearrange here
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

@@ -146,14 +146,11 @@ export interface TestRunnerCliArgs {
   times?: number;
 
   cpuOptions?: InferenceSession.CpuExecutionProviderOption;
-  cpuFlags?: Record<string, unknown>;
   cudaOptions?: InferenceSession.CudaExecutionProviderOption;
   cudaFlags?: Record<string, unknown>;
   wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
-  wasmFlags?: Env.WebAssemblyFlags;
   webglOptions?: InferenceSession.WebGLExecutionProviderOption;
-  webglFlags?: Env.WebGLFlags;
-
+  globalEnvFlags?: Env;
   noSandbox?: boolean;
 }
 
@@ -282,6 +279,13 @@ function parseWebglFlags(args: minimist.ParsedArgs): Env.WebGLFlags {
   return {contextId, matmulMaxBatchSize, textureCacheMode, pack};
 }
 
+function parseGlobalEnvFlags(args: minimist.ParsedArgs): Env {
+  const wasmFlags = parseWasmFlags(args);
+  const webglFlags = parseWebglFlags(args);
+  const cpuFlags = parseCpuFlags(args);
+  return {webgl: webglFlags, wasm: wasmFlags, cpuFlags};
+}
+
 export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs {
   const args = minimist(cmdlineArgs);
 
@@ -318,13 +322,15 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     }
   }
 
+  const globalEnvFlags = parseGlobalEnvFlags(args);
+
   // Options:
   // --log-verbose=<...>
   // --log-info=<...>
   // --log-warning=<...>
   // --log-error=<...>
   const logConfig = parseLogConfig(args);
-
+  globalEnvFlags.logLevel = logConfig[0]?.config.minimalSeverity;
   // Option: -p, --profile
   const profile = (args.profile || args.p) ? true : false;
   if (profile) {
@@ -332,6 +338,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     logConfig.push({category: 'Profiler.node', config: {minimalSeverity: 'verbose'}});
     logConfig.push({category: 'Profiler.op', config: {minimalSeverity: 'verbose'}});
     logConfig.push({category: 'Profiler.backend', config: {minimalSeverity: 'verbose'}});
+    globalEnvFlags.logLevel = 'verbose';
   }
 
   // Option: -P[=<...>], --perf[=<...>]
@@ -352,11 +359,9 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   const fileCache = parseBooleanArg(args['file-cache'] || args.c, false);
 
   const cpuOptions = parseCpuOptions(args);
-  const cpuFlags = parseCpuFlags(args);
   const wasmOptions = parseWasmOptions(args);
-  const wasmFlags = parseWasmFlags(args);
+
   const webglOptions = parseWebglOptions(args);
-  const webglFlags = parseWebglFlags(args);
 
   // Option: --no-sandbox
   const noSandbox = !!args['no-sandbox'];
@@ -379,11 +384,9 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     times: perf ? times : undefined,
     fileCache,
     cpuOptions,
-    cpuFlags,
     webglOptions,
-    webglFlags,
     wasmOptions,
-    wasmFlags,
+    globalEnvFlags,
     noSandbox
   };
 }

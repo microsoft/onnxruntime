@@ -16,7 +16,7 @@ from collections import OrderedDict
 from collections import namedtuple
 from inspect import signature
 
-from onnxruntime.training.ortmodule import ORTModule, _utils
+from onnxruntime.training.ortmodule import ORTModule, _utils, _io
 import _test_helpers
 
 # Import autocasting libs
@@ -46,6 +46,8 @@ class NeuralNetMultiplePositionalArgumentsMultiOutputsWithoutDependency(torch.nn
         self.fc2 = torch.nn.Linear(input_size, hidden_size)
         self.softmax1 = torch.nn.Softmax(dim=1)
         self.softmax2 = torch.nn.Softmax(dim=1)
+        self.relu1 = torch.nn.ReLU()
+        self.relu2 = torch.nn.ReLU()
 
     def forward(self, input1, input2):
         model_input = input1 + input2
@@ -53,11 +55,8 @@ class NeuralNetMultiplePositionalArgumentsMultiOutputsWithoutDependency(torch.nn
         out2 = self.fc2(model_input)
         out1 = self.softmax1(out1)
         out2 = self.softmax2(out2)
-        # TODO: Using relu here will cause the forward prediction error
-        # ORT's Relu output is sharing the same buffer as input,
-        # and this buffer is returned as ORTModule's output to Pytorch
-        # out1 = self.relu1(out1)
-        # out2 = self.relu2(out2)
+        out1 = self.relu1(out1)
+        out2 = self.relu2(out2)
         return out1, out2
 
 class NeuralNetMultiplePositionalArgumentsMultiOutputsWithDependency(torch.nn.Module):
@@ -249,6 +248,13 @@ class UnusedMiddleParameterNet(torch.nn.Module):
         out = self.fc3(out)
         out = out + self.buffer
         return out
+
+class StatelessModel(torch.nn.Module):
+    def __init__(self):
+        super(StatelessModel, self).__init__()
+
+    def forward(self, x):
+        return x
 
 # TODO: This is a workaround for the problem that pytest is still cleaning up the previous test
 # while the next task already start. 
@@ -586,7 +592,7 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
         
         if use_fp16:
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-3)
-            _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=1e-2, atol=1e-2)
+            _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=1e-2, atol=1.1e-2)
         else:
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-5)
             _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=5e-3, atol=4e-3)
@@ -1036,6 +1042,46 @@ def test_input_requires_grad_backward_creates_input_grad_as_required1(x1_require
     assert not x2_requires_grad or ort_x2.grad is not None
     assert not x1_requires_grad or torch.allclose(ort_x1.grad, pt_x1.grad)
     assert not x2_requires_grad or torch.allclose(ort_x2.grad, pt_x2.grad)
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
+
+@pytest.mark.parametrize("device", ['cuda'])
+def test_model_with_bypass_input(device):
+    class NeuralNetWithBypassInput(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(NeuralNetWithBypassInput, self).__init__()
+
+            self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu1 = torch.nn.ReLU()
+            self.fc1_2 = torch.nn.Linear(hidden_size, num_classes)
+
+        def forward(self, input1, bypass_input):
+            out1 = self.fc1_2(self.relu1(self.fc1_1(input1)))
+            # use shape from bypass_input
+            out1 = out1.view(bypass_input.size()[0], -1)
+            return out1, bypass_input
+
+    def run_step(model, x1, x2):
+        y1, y2 = model(x1, x2)
+        loss = y1.sum() + y2.sum()
+        loss.backward()
+        return y1, y2
+
+    N, D_in, H, D_out = 32, 784, 500, 10
+    pt_model = NeuralNetWithBypassInput(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x1 = torch.randn(N, D_in, device=device, requires_grad=True)
+    pt_x2 = torch.randn(N, D_in, device=device, requires_grad=True)
+    ort_x1 = pt_x1.clone()
+    ort_x2 = pt_x2.clone()
+
+    # Both y1 and y2's gradients are not None.
+    pt_y1, pt_y2 = run_step(pt_model, pt_x1, pt_x2)
+    ort_y1, ort_y2 = run_step(ort_model, ort_x1, ort_x2)
+
+    _test_helpers.assert_values_are_close(pt_y1, ort_y1, atol=1e-06)
+    _test_helpers.assert_values_are_close(pt_y2, ort_y2, atol=1e-06)
     _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 def test_gpu_reserved_memory_with_torch_no_grad():
@@ -2483,3 +2529,93 @@ def test_unused_parameters(model, none_pt_params):
     out_pt = model(x)
     out_ort = ort_model(y)
     _test_helpers.assert_values_are_close(out_ort, out_pt)
+
+def test_output_order():
+    class OutputOrderNet(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(OutputOrderNet, self).__init__()
+
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.fc2 = torch.nn.Linear(input_size, hidden_size)
+            self.fc3 = torch.nn.Linear(input_size, hidden_size)
+            self.fc4 = torch.nn.Linear(input_size, hidden_size)
+            self.fc5 = torch.nn.Linear(input_size, hidden_size)
+            self.fc6 = torch.nn.Linear(input_size, hidden_size)
+            self.fc7 = torch.nn.Linear(input_size, hidden_size)
+            self.fc8 = torch.nn.Linear(input_size, hidden_size)
+            self.fc9 = torch.nn.Linear(input_size, hidden_size)
+            self.fc10 = torch.nn.Linear(input_size, hidden_size)
+            self.fc11 = torch.nn.Linear(input_size, hidden_size)
+            self.fc12 = torch.nn.Linear(input_size, hidden_size)
+
+        def forward(self, input1, input2, input3, input4, input5, input6, input7, input8, input9, input10, input11, input12):
+            return self.fc1(input1), self.fc2(input2), self.fc3(input3), \
+                self.fc4(input4), self.fc5(input5), self.fc6(input6), \
+                self.fc7(input7), self.fc8(input8), self.fc9(input9), \
+                self.fc10(input10), self.fc11(input11), self.fc12(input12)
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = OutputOrderNet(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(model))
+
+    x = [torch.randn(N, D_in, device=device) for _ in range(12)]
+    y = copy.deepcopy(x)
+
+    out_pt = model(*x)
+    out_ort = ort_model(*y)
+
+    assert len(out_pt) == len(out_ort)
+    for x, y in zip(out_pt, out_ort):
+        _test_helpers.assert_values_are_close(x, y)
+
+@pytest.mark.parametrize("device", ['cuda', 'cpu', None])
+def test_stateless_model_specified_device(device):
+
+    N, D_in, H, D_out = 32, 784, 500, 10
+    pt_model = StatelessModel().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.randn(N, D_in, device=device)
+    ort_x = pt_x.clone()
+
+    pt_y = pt_model(pt_x)
+    ort_y = ort_model(ort_x)
+
+    _test_helpers.assert_values_are_close(pt_y, ort_y)
+
+def test_stateless_model_unspecified_device():
+
+    N, D_in, H, D_out = 32, 784, 500, 10
+    pt_model = StatelessModel()
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.randn(N, D_in)
+    ort_x = pt_x.clone()
+
+    pt_y = pt_model(pt_x)
+    ort_y = ort_model(ort_x)
+
+    _test_helpers.assert_values_are_close(pt_y, ort_y)
+
+@pytest.mark.parametrize("model",
+        [(UnusedBeginParameterNet(784, 500, 400, 10)),
+         (UnusedMiddleParameterNet(784, 500, 400, 10)),
+         (UnusedEndParameterNet(784, 500, 400, 10))])
+def test_unused_parameters_does_not_unnecssarily_reinitilize(model):
+    device = 'cuda'
+
+    N, D_in, H1, H2, D_out = 64, 784, 500, 400, 10
+    model = model.to(device)
+    ort_model = ORTModule(copy.deepcopy(model))
+    training_manager = ort_model._execution_manager(ort_model._is_training())
+
+    x = torch.randn(N, D_in, device=device)
+    _ = ort_model(x)
+
+    input_info = _io.parse_inputs_for_onnx_export(training_manager._module_parameters,
+                                                  training_manager._onnx_model,
+                                                  x,
+                                                  {})
+
+    assert not training_manager._reinitialize_graph_builder(input_info)

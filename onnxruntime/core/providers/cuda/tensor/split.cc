@@ -4,7 +4,6 @@
 #include "core/providers/cuda/tensor/split.h"
 #include "core/providers/cuda/tensor/split_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -12,7 +11,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
                                   kOnnxDomain,
                                   2, 10,
                                   kCudaExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                  (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   Split);
 
 // explicitly supports negative axis
@@ -20,7 +19,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Split,
                                   kOnnxDomain,
                                   11, 12,
                                   kCudaExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+                                  (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   Split);
 
 // explicitly supports 'split' as optional input
@@ -28,8 +27,8 @@ ONNX_OPERATOR_KERNEL_EX(Split,
                         kOnnxDomain,
                         13,
                         kCudaExecutionProvider,
-                        KernelDefBuilder()
-                            .InputMemoryType<OrtMemTypeCPUInput>(1)
+                        (*KernelDefBuilder::Create())
+                            .InputMemoryType(OrtMemTypeCPUInput, 1)
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
                         Split);
 

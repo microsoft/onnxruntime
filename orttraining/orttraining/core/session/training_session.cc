@@ -28,11 +28,6 @@
 //Gist Encoding
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/cuda_allocator.h"
-#endif
-
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
@@ -1425,7 +1420,7 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
 // Send and Recv call SubmitSendAndWait and SubmitRecvAndWait, respectively.
 void PipelineTrainingSession::LaunchNcclService(const int pipeline_stage_id) {
   ORT_ENFORCE(pipeline_stage_id >= 0, "Pipeline stage ID cannot be negative.");
-  auto& nccl_service = cuda::NcclService::GetInstance();
+  auto& nccl_service = cuda::INcclService::GetInstance();
 
   // Create NCCL communication plan. The plan is a vector of communication task group.
   // Each communication task group contains tasks which should be done in parallel.
@@ -1902,7 +1897,7 @@ common::Status PipelineTrainingSession::RunWithPipeline(const RunOptions& run_op
   pipeline_worker_pool_.JoinAll();
   onnxruntime::contrib::OrtEventPool::GetInstance().ResetAllEvents();
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-  auto& nccl_service = cuda::NcclService::GetInstance();
+  auto& nccl_service = cuda::INcclService::GetInstance();
   nccl_service.Reset();
 #endif
 
@@ -1911,7 +1906,7 @@ common::Status PipelineTrainingSession::RunWithPipeline(const RunOptions& run_op
 
 PipelineTrainingSession::~PipelineTrainingSession() {
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
-  auto& nccl_service = cuda::NcclService::GetInstance();
+  auto& nccl_service = cuda::INcclService::GetInstance();
   nccl_service.Terminate();
 #endif
 }

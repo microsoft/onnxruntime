@@ -41,26 +41,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     MatMulInteger);
 
 Status MatMulInteger::Compute(OpKernelContext* ctx) const {
-  MatMulComputeHelper helper;
   const auto* a = ctx->Input<Tensor>(IN_A);
   const auto* b = packed_b_ ? nullptr : ctx->Input<Tensor>(IN_B);
-
-  const uint8_t* b_data;
-  bool b_is_signed;
-  if (nullptr != b) {
-    ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape()));
-    b_data = static_cast<const uint8_t*>(b->DataRaw());
-    b_is_signed = b->IsDataType<int8_t>();
-  } else {
-    ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape_));
-    b_data = static_cast<const uint8_t*>(packed_b_.get());
-    b_is_signed = b_is_signed_;
-  }
-
-  Tensor* y = ctx->Output(OUT_Y, helper.OutputShape());
-  // Bail out early if the output is going to be empty
-  if (y->Shape().Size() == 0)
-    return Status::OK();
 
   // validate zero points
   uint8_t a_offset = 0;
@@ -82,6 +64,24 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
     b_offset_ptr = static_cast<const uint8_t*>(b_zero_point->DataRaw());
   }
 
+  MatMulComputeHelper helper;
+  const uint8_t* b_data;
+  bool b_is_signed;
+  if (nullptr != b) {
+    ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape(), nullptr, b_zero_point ? &b_zero_point->Shape() : nullptr));
+    b_data = static_cast<const uint8_t*>(b->DataRaw());
+    b_is_signed = b->IsDataType<int8_t>();
+  } else {
+    ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape_, nullptr, b_zero_point ? &b_zero_point->Shape() : nullptr));
+    b_data = static_cast<const uint8_t*>(packed_b_.get());
+    b_is_signed = b_is_signed_;
+  }
+
+  Tensor* y = ctx->Output(OUT_Y, helper.OutputShape());
+  // Bail out early if the output is going to be empty
+  if (y->Shape().Size() == 0)
+    return Status::OK();
+
   const auto* a_data = a->template Data<uint8_t>();
   auto* y_data = y->template MutableData<int32_t>();
 
@@ -95,12 +95,11 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
   std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> gemm_data_vec(batch_size);
 
   for (size_t batch = 0; batch < batch_size; batch++) {
-    int64_t zp_offset = is_b_zp_per_column ? helper.RightOffsets()[batch] / helper.K() : 0;
     auto& gemm_params = gemm_data_vec[batch];
     gemm_params.lda = gemm_shape.K;
     gemm_params.ZeroPointA = a_offset;
     gemm_params.ldb = gemm_shape.N;
-    gemm_params.ZeroPointB = b_offset_ptr + zp_offset;
+    gemm_params.ZeroPointB = b_offset_ptr + helper.RightZeroPointOffsets()[batch];
     gemm_params.PerColumnZeroPoints = is_b_zp_per_column;
     gemm_params.ldc = gemm_shape.N;
     gemm_params.BIsPacked = bool(packed_b_);

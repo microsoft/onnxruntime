@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #pragma once
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
+#endif
 
 namespace onnxruntime {
 template <typename T>
@@ -149,6 +151,33 @@ class MatMulComputeHelper {
     return Status::OK();
   }
 
+  Status Compute(const TensorShape& left_shape, const TensorShape& right_shape,
+                 const TensorShape* right_scale_shape, const TensorShape* right_zp_shape,
+                 bool transa = false, bool transb = false) {
+    ORT_RETURN_IF_ERROR(Compute(left_shape, right_shape, transa, transb));
+    right_zp_offsets_.clear();
+    right_scale_offsets_.clear();
+    right_zp_offsets_.resize(right_offsets_.size());
+    right_scale_offsets_.resize(right_offsets_.size());
+
+    auto SetRightMatrixQuantParam = [this, &right_shape](const TensorShape* param_shape, std::vector<size_t>& quant_param_offsets) {
+      if (nullptr != param_shape && param_shape->NumDimensions() > 1) {
+        ORT_RETURN_IF_NOT(param_shape->NumDimensions() == right_shape.NumDimensions() && param_shape->Size() * K_ == right_shape.Size(),
+                          "Per-column quantization parameter of batched matrix should have same dimension as the matrix,"
+                          "and its size by K should be equal to the matrix's size.");
+        for (size_t batch_id = 0; batch_id < quant_param_offsets.size(); batch_id++) {
+          quant_param_offsets[batch_id] = right_offsets_[batch_id] / K_;
+        }
+      }
+      return Status::OK();
+    };
+
+    ORT_RETURN_IF_ERROR(SetRightMatrixQuantParam(right_zp_shape, right_zp_offsets_));
+    ORT_RETURN_IF_ERROR(SetRightMatrixQuantParam(right_scale_shape, right_scale_offsets_));
+
+    return Status::OK();
+  }
+
  private:
   void ComputeBroadcastOffsets() {
     num_broadcasted_dims_ = left_padded_dims_.size() - 2;
@@ -228,6 +257,9 @@ class MatMulComputeHelper {
   std::vector<size_t> right_offsets_;
   std::vector<size_t> output_offsets_;
 
+  std::vector<size_t> right_zp_offsets_;
+  std::vector<size_t> right_scale_offsets_;
+
  public:
   // output shape
   const TensorShape& OutputShape() const {
@@ -262,6 +294,16 @@ class MatMulComputeHelper {
   // Batched Gemm offsets in output matrices
   const std::vector<size_t>& OutputOffsets() const {
     return output_offsets_;
+  }
+
+  // Batched Scale Offset for right matrices
+  const std::vector<size_t>& RightScaleOffsets() const {
+    return right_scale_offsets_;
+  }
+
+  // Batched Zero Point Offset for right matrices
+  const std::vector<size_t>& RightZeroPointOffsets() const {
+    return right_zp_offsets_;
   }
 
   template <typename T>

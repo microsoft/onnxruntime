@@ -15,8 +15,13 @@ parameters:
   type: boolean
   default: true
 
-- name: enable_linux_gpu_training
-  displayName: 'Whether Linux GPU package is built.'
+- name: enable_linux_gpu_training_cu102
+  displayName: 'Whether Linux GPU Cuda 10.2 package is built.'
+  type: boolean
+  default: false
+
+- name: enable_linux_gpu_training_cu111
+  displayName: 'Whether Linux GPU Cuda 11.1 package is built.'
   type: boolean
   default: false
 
@@ -472,42 +477,199 @@ stages:
       - template: clean-agent-build-directory-step.yml
 
 
-  - ${{ if eq(parameters.enable_linux_gpu_training, true) }}:
-    - job: Linux_py_GPU_Wheels
+  - ${{ if eq(parameters.enable_linux_gpu_training_cu102, true) }}:
+    - job: Linux_py_Cuda102_Wheels
       timeoutInMinutes: 180
       workspace:
         clean: all
-      pool: Onnxruntime-Linux-GPU
+      pool: Onnxruntime-Linux-GPU-NV6
       strategy:
         matrix:
           Python36 Cuda10.2:
             PythonVersion: '3.6'
             CudaVersion: '10.2'
             DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
-          Python36 Cuda11.1:
-            PythonVersion: '3.6'
-            CudaVersion: '11.1'
-            DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
           Python37 Cuda10.2:
             PythonVersion: '3.7'
             CudaVersion: '10.2'
             DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
-          Python37 Cuda11.1:
-            PythonVersion: '3.7'
-            CudaVersion: '11.1'
-            DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
           Python38 Cuda10.2:
             PythonVersion: '3.8'
             CudaVersion: '10.2'
             DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
-          Python38 Cuda11.1:
-            PythonVersion: '3.8'
-            CudaVersion: '11.1'
-            DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
           Python39 Cuda10.2:
             PythonVersion: '3.9'
             CudaVersion: '10.2'
             DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
+      steps:
+
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - template: set-python-manylinux-variables-step.yml
+
+      - template: get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/$(DockerFile)
+          Context: tools/ci_build/github/linux/docker
+          DockerBuildArgs: >-
+            --build-arg PYTHON_VERSION=$(PythonVersion)
+            --build-arg CUDA_VERSION=$(CudaVersion)
+            --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
+            --build-arg BUILD_UID=$(id -u)
+          Repository: onnxruntimetraininggpubuild
+
+      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/mnist" -d "/mnist"
+        displayName: 'Mount MNIST'
+        condition: succeededOrFailed()
+
+      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/bert-data" -d "/bert_data"
+        displayName: 'Mount bert-data'
+        condition: succeededOrFailed()
+
+      - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/hf-models-cache" -d "/hf_models_cache"
+        displayName: 'Mount hf-models-cache'
+        condition: succeededOrFailed()
+
+      - task: CmdLine@2
+        displayName: 'build onnxruntime'
+        inputs:
+          script: |
+            mkdir -p $HOME/.onnx
+            docker run --rm --gpus all -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
+              --volume /data/onnx:/data/onnx:ro \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /data/models:/build/models:ro \
+              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+              -e NVIDIA_VISIBLE_DEVICES=all \
+              -e NIGHTLY_BUILD \
+              -e BUILD_BUILDNUMBER \
+              onnxruntimetraininggpubuild \
+                $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                  --build_dir /build \
+                  --config Release \
+                  --skip_submodule_sync \
+                  --parallel \
+                  --build_wheel \
+                  --enable_onnx_tests \
+                  ${{ parameters.build_py_parameters }} \
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so \
+                  --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion) ;
+          workingDirectory: $(Build.SourcesDirectory)
+
+      - task: CmdLine@2
+        displayName: 'test ortmodule'
+        inputs:
+          script: |
+            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime/ && \
+            files=($(Build.BinariesDirectory)/Release/dist/*.whl) && \
+            echo ${files[0]} && \
+            whlfilename=$(basename ${files[0]}) && \
+            echo $whlfilename && \
+            docker run --rm \
+              --gpus all \
+              -e NVIDIA_VISIBLE_DEVICES=all \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /mnist:/mnist \
+              --volume /bert_data:/bert_data \
+              --volume /hf_models_cache:/hf_models_cache \
+              onnxruntimetraininggpubuild \
+                bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/$whlfilename ; $(PythonManylinuxDir)/bin/python3 /build/Release/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_tests.py --mnist /mnist --bert_data /bert_data/hf_data/glue_data/CoLA/original/raw --transformers_cache /hf_models_cache/huggingface/transformers' --cwd /build/Release " ;
+          workingDirectory: $(Build.SourcesDirectory)
+
+      - task: CopyFiles@2
+        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)'
+          Contents: 'Release/dist/*.whl'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+      - task: CmdLine@2
+        displayName: 'Build Python Documentation'
+        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        inputs:
+          script: |
+            mkdir -p $HOME/.onnx
+            docker run --rm \
+              --volume /data/onnx:/data/onnx:ro \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /data/models:/build/models:ro \
+              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+              -e NIGHTLY_BUILD \
+              -e BUILD_BUILDNUMBER \
+              onnxruntimetraininggpubuild \
+                bash /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release
+          workingDirectory: $(Build.SourcesDirectory)
+
+      - task: CopyFiles@2
+        displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
+        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)/docs/training/html'
+          Contents: '**'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)/training_html_doc'
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
+        inputs:
+          ArtifactName: onnxruntime_gpu
+
+      # - script: |
+      #     sudo apt-get update
+      #     sudo apt-get install python3-pip python-dev
+      #   displayName: 'sudo apt-get install python3-pip python-dev'
+
+      # - script: |
+      #     python3 -m pip install azure-storage-blob==2.1.0
+      #   displayName: 'python3 -m pip install azure-storage-blob==2.1.0'
+      #   timeoutInMinutes: 20
+
+      - task: AzureCLI@2
+        inputs:
+          azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+          scriptType: 'bash'
+          scriptLocation: 'inlineScript'
+          inlineScript: |
+            python3 -m pip install azure-storage-blob==2.1.0
+            files=($(Build.ArtifactStagingDirectory)/Release/dist/*.whl) && \
+            echo ${files[0]} && \
+            python3 tools/ci_build/upload_python_package_to_azure_storage.py \
+                --python_wheel_path ${files[0]} \
+                --account_name onnxruntimepackages \
+                --account_key $(orttrainingpackagestorageaccountkey) \
+                --container_name '$web'
+          condition: succeededOrFailed()
+          displayName: 
+
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
+
+      - template: clean-agent-build-directory-step.yml
+
+  - ${{ if eq(parameters.enable_linux_gpu_training_cu111, true) }}:
+    - job: Linux_py_Cuda111_Wheels
+      timeoutInMinutes: 180
+      workspace:
+        clean: all
+      pool: Onnxruntime-Linux-GPU
+      strategy:
+        matrix:
+          Python36 Cuda11.1:
+            PythonVersion: '3.6'
+            CudaVersion: '11.1'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
+          Python37 Cuda11.1:
+            PythonVersion: '3.7'
+            CudaVersion: '11.1'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
+          Python38 Cuda11.1:
+            PythonVersion: '3.8'
+            CudaVersion: '11.1'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda11_1'
           Python39 Cuda11.1:
             PythonVersion: '3.9'
             CudaVersion: '11.1'
@@ -570,12 +732,8 @@ stages:
                   --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion) ;
           workingDirectory: $(Build.SourcesDirectory)
 
-      # with Cuda 11.1:
-      # test_bert_inputs_with_dynamic_shape: RuntimeError: CUDA error: CUBLAS_STATUS_EXECUTION_FAILED when calling `cublasSgemm( handle, opa, opb, m, n, k, &alpha, a, lda, b, ldb, &beta, c, ldc)`
-      # test_gpu_reserved_memory_with_torch_no_grad: RuntimeError: CUDA error: CUBLAS_STATUS_EXECUTION_FAILED when calling `cublasSgemmStridedBatched( handle, opa, opb, m, n, k, &alpha, a, lda, stridea, b, ldb, strideb, &beta, c, ldc, stridec, num_batches)`
       - task: CmdLine@2
         displayName: 'test ortmodule'
-        condition: ne(variables['CudaVersion'], '11.1')
         inputs:
           script: |
             rm -rf $(Build.BinariesDirectory)/Release/onnxruntime/ && \
