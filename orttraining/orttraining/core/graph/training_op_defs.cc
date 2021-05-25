@@ -2844,7 +2844,12 @@ Return true if all elements are true and false otherwise.
         ORT_ENFORCE(input_tensor_types_proto, "PythonOpGrad's must have \"input_tensor_types\" attribute.");
         // Check if the inferred input types match those described in the
         // "input_tensor_types" attributes.
-        auto grad_input_count = (ctx.getNumInputs() - 1) / 2;  // Ignore the inputs that comes as forward run outputs.
+        auto input_tensor_requires_grads = ctx.getAttribute("input_tensor_requires_grads");
+        // Expected input schema: [ctx, grad_input_1, ..., grad_input_N, unused_1, ..., unused_M]
+        // "unused" inputs are just control inputs and they are not used actual computation.
+        // Other variables are used to invoke autograd.Function.backward(ctx, grad_input1, ..., grad_input_N).
+        // The "input_count" here means 1 + N.
+        auto input_count = input_tensor_requires_grads->ints().size();
         ORT_ENFORCE(static_cast<size_t>(input_tensor_types_proto->ints_size()) == grad_input_count,
                     "PythonOp's input list should have one more element than \"input_tensor_types\" attribute.");
         // The first input is a pointer which points to
