@@ -47,14 +47,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Attention<float>);
 
-AttentionBase::AttentionBase(const OpKernelInfo& info) {
-  int64_t num_heads = 0;
-  ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
-  num_heads_ = static_cast<int>(num_heads);
-
-  is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
-}
-
 Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const TensorShape& weights_shape,
                                   const TensorShape& bias_shape,

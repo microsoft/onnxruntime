@@ -138,7 +138,7 @@ Node.js v12+ (recommended v14+)
    ./build.sh --config Release --build_wasm --skip_tests --disable_wasm_exception_catching --disable_rtti
    ```
 
-   To build with multi-thread support, append flag ` --enable_wasm_threads` to the command.
+   To build with multi-thread support, append flag ` --enable_wasm_threads` to the command. Make sure to build both single-thread and multi-thread before next step.
 
 3. Copy following files from build output folder to `<ORT_ROOT>/js/web/dist/`:
 

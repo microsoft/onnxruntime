@@ -1,4 +1,4 @@
-FROM rocm/pytorch:rocm4.1.1_centos7_py3.6_pytorch
+FROM rocm/pytorch:rocm4.2_centos7_py3.6_pytorch
 
 #Build manylinux2014 docker image begin
 ENV AUDITWHEEL_ARCH x86_64

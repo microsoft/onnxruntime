@@ -4,12 +4,14 @@
 #ifndef CORE_PROVIDERS_CPU_REDUCTION_OPS_H
 #define CORE_PROVIDERS_CPU_REDUCTION_OPS_H
 
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
-#include "core/common/optional.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/containers.h"
 #include "core/util/math.h"
+#endif
 #include "core/util/math_cpuonly.h"
+#include "core/common/optional.h"
 #include "core/platform/threadpool.h"
 #include "core/common/safeint.h"
 #include <cmath>
@@ -35,7 +37,7 @@ bool operator!=(FastReduceKind a, FastReduceKind b);
 bool IsFastReduceKindAvailable(FastReduceKind scenario, FastReduceKind available);
 
 /* Evaluate the cost of parallelized FastReduce implementations. */
-TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int64_t element_size);
+TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int64_t element_size, int n_ops);
 
 /**
   This only improves reduce function when reduced axes are contiguous:
@@ -190,7 +192,7 @@ class ReduceAggregatorSum : public ReduceAggregator<T, TVAL> {
     T* out = output.MutableData<T>();
     int64_t stridei = fast_shape[1];
     concurrency::ThreadPool::TryParallelFor(
-        tp, fast_shape[0], ParallelReduceFastCost(1, stridei, sizeof(T)),
+        tp, fast_shape[0], ParallelReduceFastCost(1, stridei, sizeof(T), 6),
         [data, stridei, out](ptrdiff_t first, ptrdiff_t last) {
           for (ptrdiff_t d = first; d < last; ++d) {
             out[d] = ConstEigenVectorArrayMap<T>(data + d * stridei, stridei).sum();
@@ -207,7 +209,7 @@ class ReduceAggregatorSum : public ReduceAggregator<T, TVAL> {
     int64_t n_rows = fast_shape[0];
     memcpy(out, data, N * sizeof(T));
     concurrency::ThreadPool::TryParallelFor(
-        tp, N, ParallelReduceFastCost(1, n_rows, sizeof(T)),
+        tp, N, ParallelReduceFastCost(1, n_rows, sizeof(T), 6),
         [data, out, N, n_rows](ptrdiff_t begin, ptrdiff_t end) {
           for (int64_t row = 1; row < n_rows; ++row) {
             EigenVectorArrayMap<T>(out + begin, end - begin) += ConstEigenVectorArrayMap<T>(
@@ -225,7 +227,7 @@ class ReduceAggregatorSum : public ReduceAggregator<T, TVAL> {
     T* out = output.MutableData<T>();
     std::vector<T> one(fast_shape[1], 1);
     concurrency::ThreadPool::TryParallelFor(
-        tp, fast_shape[0], ParallelReduceFastCost(fast_shape[1], fast_shape[2], sizeof(T)),
+        tp, fast_shape[0], ParallelReduceFastCost(fast_shape[1], fast_shape[2], sizeof(T), 6),
         [one, data, fast_shape, stridei, strideo, out, N](ptrdiff_t begin, ptrdiff_t last) {
           for (ptrdiff_t d = begin; d < last; ++d) {
             math::MatMul<T>(1, N, fast_shape[1], one.data(), data + stridei * d, out + strideo * d, nullptr);
@@ -316,7 +318,7 @@ class ReduceAggregatorMax : public ReduceAggregator<T, TVAL> {
     T* out = output.MutableData<T>();
     int64_t stridei = fast_shape[1];
     concurrency::ThreadPool::TryParallelFor(
-        tp, fast_shape[0], ParallelReduceFastCost(1, stridei, sizeof(T)),
+        tp, fast_shape[0], ParallelReduceFastCost(1, stridei, sizeof(T), 6),
         [data, stridei, out](std::ptrdiff_t first, std::ptrdiff_t last) {
           EigenVectorMap<T>(out + first, last - first) = ConstEigenMatrixMap<T>(
                                                              data + first * stridei, stridei, last - first)
@@ -334,7 +336,7 @@ class ReduceAggregatorMax : public ReduceAggregator<T, TVAL> {
     memcpy(out, data, N * sizeof(T));
 
     concurrency::ThreadPool::TryParallelFor(
-        tp, N, ParallelReduceFastCost(1, n_rows, sizeof(T)),
+        tp, N, ParallelReduceFastCost(1, n_rows, sizeof(T), 6),
         [data, out, N, n_rows](ptrdiff_t begin, ptrdiff_t end) {
           const T* p;
           for (int64_t row = 1; row < n_rows; ++row) {
@@ -353,7 +355,7 @@ class ReduceAggregatorMax : public ReduceAggregator<T, TVAL> {
     int64_t stridei = fast_shape[1] * fast_shape[2];
     int64_t strideo = fast_shape[2];
     concurrency::ThreadPool::TryParallelFor(
-        tp, fast_shape[0], ParallelReduceFastCost(fast_shape[1], fast_shape[2], sizeof(T)),
+        tp, fast_shape[0], ParallelReduceFastCost(fast_shape[1], fast_shape[2], sizeof(T), 6),
         [data, fast_shape, stridei, strideo, out](ptrdiff_t begin, ptrdiff_t end) {
           for (ptrdiff_t j = begin; j < end; ++j) {
             EigenVectorMap<T>(out + j * strideo, strideo) =
@@ -475,7 +477,7 @@ class ReduceAggregatorMin : public ReduceAggregator<T, TVAL> {
     T* out = output.MutableData<T>();
     int64_t stridei = fast_shape[1];
     concurrency::ThreadPool::TryParallelFor(
-        tp, fast_shape[0], ParallelReduceFastCost(1, stridei, sizeof(T)),
+        tp, fast_shape[0], ParallelReduceFastCost(1, stridei, sizeof(T), 6),
         [data, stridei, out](std::ptrdiff_t first, std::ptrdiff_t last) {
           EigenVectorMap<T>(out + first, last - first) = ConstEigenMatrixMap<T>(
                                                              data + first * stridei, stridei, last - first)
@@ -493,7 +495,7 @@ class ReduceAggregatorMin : public ReduceAggregator<T, TVAL> {
     memcpy(out, data, N * sizeof(T));
 
     concurrency::ThreadPool::TryParallelFor(
-        tp, N, ParallelReduceFastCost(1, n_rows, sizeof(T)),
+        tp, N, ParallelReduceFastCost(1, n_rows, sizeof(T), 6),
         [data, out, N, n_rows](ptrdiff_t begin, ptrdiff_t end) {
           const T* p;
           for (int64_t row = 1; row < n_rows; ++row) {
@@ -512,7 +514,7 @@ class ReduceAggregatorMin : public ReduceAggregator<T, TVAL> {
     int64_t stridei = fast_shape[1] * fast_shape[2];
     int64_t strideo = fast_shape[2];
     concurrency::ThreadPool::TryParallelFor(
-        tp, fast_shape[0], ParallelReduceFastCost(fast_shape[1], fast_shape[2], sizeof(T)),
+        tp, fast_shape[0], ParallelReduceFastCost(fast_shape[1], fast_shape[2], sizeof(T), 6),
         [data, fast_shape, stridei, strideo, out](ptrdiff_t begin, ptrdiff_t end) {
           for (ptrdiff_t j = begin; j < end; ++j) {
             EigenVectorMap<T>(out + j * strideo, strideo) =
@@ -733,9 +735,9 @@ class ReduceSum final : public ReduceKernel<true> {
 
   // For external calls requiring ReduceSum implementation - will return the reduced output.
   //`input_shape_override` overrides the shape of `input` for compute purposes.
-  static Tensor Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes,
-                     AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,
-                     const TensorShape* input_shape_override = nullptr);
+  static std::unique_ptr<Tensor> Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes,
+                                      AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,
+                                      const TensorShape* input_shape_override = nullptr);
 };
 
 template <typename T>

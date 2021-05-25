@@ -14,7 +14,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     1, 12,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Transpose);
 
@@ -23,7 +23,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     13,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Transpose);
 
@@ -90,9 +90,9 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
     return Status::OK();
 
   auto element_type = input.GetElementType();
-  if (element_type == utils::GetONNXTensorElementDataType<float>() ||
-      element_type == utils::GetONNXTensorElementDataType<double>() ||
-      element_type == utils::GetONNXTensorElementDataType<MLFloat16>()) {
+  if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
+      element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE ||
+      element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
     auto mn = TryTransposeWithCublas(permutations, input_shape_override ? *input_shape_override : input.Shape());
     int M = std::get<0>(mn);
     int N = std::get<1>(mn);
@@ -128,25 +128,25 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
           new_permutations[j] -= 1;
         }
       }
-      for (auto j = i+1; j < new_rank; j++) {
-        new_permutations[j-1] = new_permutations[j];
+      for (auto j = i + 1; j < new_rank; j++) {
+        new_permutations[j - 1] = new_permutations[j];
       }
 
       // update input dims
       new_input_dims[prev] *= new_input_dims[curr];
       new_input_dims[curr] = 1;
-      for (auto j = static_cast<int32_t>(curr+1); j < new_rank; j++) {
-        new_input_dims[j-1] = new_input_dims[j];
+      for (auto j = static_cast<int32_t>(curr + 1); j < new_rank; j++) {
+        new_input_dims[j - 1] = new_input_dims[j];
       }
-      new_input_dims[new_rank-1] = 1;
+      new_input_dims[new_rank - 1] = 1;
 
       // update output dims
-      new_output_dims[i-1] *= new_output_dims[i];
+      new_output_dims[i - 1] *= new_output_dims[i];
       new_output_dims[i] = 1;
-      for (auto j = i+1; j < new_rank; j++) {
-        new_output_dims[j-1] = new_output_dims[j];
+      for (auto j = i + 1; j < new_rank; j++) {
+        new_output_dims[j - 1] = new_output_dims[j];
       }
-      new_output_dims[new_rank-1] = 1;
+      new_output_dims[new_rank - 1] = 1;
 
       new_rank--;
     }

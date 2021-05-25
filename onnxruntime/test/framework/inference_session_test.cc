@@ -1,5 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#undef USE_CUDA  // TODO: Cuda is a shared library, so can't call any Cuda provider methods directly from here
+
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 
