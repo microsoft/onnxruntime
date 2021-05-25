@@ -325,7 +325,7 @@ constexpr auto requiredConstantCpuInputs(Args... args)
 // element-wise identity operators in the graph for striding support, but issue actual copies 
 // outside the graph.  Element-wise identity currently only supports floating point types.  
 #define REG_INFO_ID(version, operatorName, ...) \
-    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, CreateCopy, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, true, true, ##__VA_ARGS__, 
+    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, CreateCopy, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, true, false, ##__VA_ARGS__, 
 
 // MS-domain operators
 #define REG_INFO_MS(version, operatorName, ...) \

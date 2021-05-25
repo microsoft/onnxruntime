@@ -248,6 +248,7 @@ namespace Dml::GraphDescBuilder
             const onnxruntime::NodeArg* graphOutput = graph.GetNodeArg(
                 GraphKernelHelper::GetFusedNodeArgNameMatchingGraph(fusedNodeOutputDefs[outputIndex]->Name()));
 
+            THROW_HR_IF_NULL_MSG(FWP_E_NULL_POINTER, graphOutput, "Output tensor arg of a fused node is not present");
             const auto& outputNodeAndIndex = nameToNodeAndIndexMap.at(graphOutput->Name());
 
             DML_OUTPUT_GRAPH_EDGE_DESC edge = {};
