@@ -159,6 +159,9 @@ option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
 # build eager mode
 option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
 
+# build separate library of schemas of (custom) ops used by ORT (for ONNX to MLIR translation)
+option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
+
 # Single output director for all binaries
 set (RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
 
@@ -1741,4 +1744,8 @@ if(BUILD_PKGCONFIG_FILES)
     ${CMAKE_CURRENT_BINARY_DIR}/libonnxruntime.pc @ONLY)
   install( FILES  ${CMAKE_CURRENT_BINARY_DIR}/libonnxruntime.pc DESTINATION
     ${CMAKE_INSTALL_LIBDIR}/pkgconfig )
+endif()
+
+if (onnxruntime_BUILD_OPSCHEMA_LIB)
+  include(onnxruntime_opschema_lib.cmake)
 endif()
