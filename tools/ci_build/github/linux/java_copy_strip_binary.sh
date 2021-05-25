@@ -46,8 +46,8 @@ then
      # Add custom lib
     cp $BINARY_DIR/$BUILD_CONFIG/libcustom_op_library.so $BINARY_DIR/$ARTIFACT_NAME
     # Add cuda provider if it exists
-    cp $BINARY_DIR/$BUILD_CONFIG/$LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime_providers_shared.so
-    cp $BINARY_DIR/$BUILD_CONFIG/$LIB_NAME $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime_providers_cuda.so
+    cp $BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_shared.so $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime_providers_shared.so
+    cp $BINARY_DIR/$BUILD_CONFIG/libonnxruntime_providers_cuda.so $BINARY_DIR/$ARTIFACT_NAME/$NATIVE_FOLDER/libonnxruntime_providers_cuda.so
 fi
 
 find $BINARY_DIR/$ARTIFACT_NAME -ls
