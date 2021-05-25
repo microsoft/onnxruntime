@@ -10,6 +10,7 @@
 #include "tensorrt_execution_provider.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#include "core/providers/cuda/gpu_data_transfer.h"
 #include "cuda_runtime_api.h"
 #include "gsl/gsl"
 #include <experimental/filesystem>
@@ -573,16 +574,16 @@ AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type
 }
 
 void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager) {
-  allocator_ = AllocatorManager__GetAllocator(allocator_manager.get(), device_id_, OrtMemTypeDefault);
+  allocator_ = allocator_manager->GetAllocator(device_id_, OrtMemTypeDefault);
   if (nullptr == allocator_) {
     AllocatorCreationInfo default_memory_info(
         [](OrtDevice::DeviceId device_id) { return CreateCUDAAllocator(device_id, onnxruntime::CUDA); }, device_id_);
     allocator_ = CreateAllocator(default_memory_info);
-    AllocatorManager__InsertAllocator(allocator_manager.get(), allocator_);
+    allocator_manager->InsertAllocator(allocator_);
   }
   TryInsertAllocator(allocator_);
 
-  auto cuda_pinned_alloc = AllocatorManager__GetAllocator(allocator_manager.get(), DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput);
+  auto cuda_pinned_alloc = allocator_manager->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput);
   if (nullptr == cuda_pinned_alloc) {
     AllocatorCreationInfo pinned_allocator_info(
         [](OrtDevice::DeviceId device_id) {
@@ -590,7 +591,7 @@ void TensorrtExecutionProvider::RegisterAllocator(std::shared_ptr<AllocatorManag
         },
         DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
     cuda_pinned_alloc = CreateAllocator(pinned_allocator_info);
-    AllocatorManager__InsertAllocator(allocator_manager.get(), cuda_pinned_alloc);
+    allocator_manager->InsertAllocator(cuda_pinned_alloc);
   }
   TryInsertAllocator(cuda_pinned_alloc);
 }
@@ -858,12 +859,26 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
 
         // Check if input tensors have shapes
         if (iterations > 1) {
-          for (const auto* input_arg : graph_build.GetInputs()) {
-            if (input_arg->Shape() == nullptr) {
+          auto graph_inputs = graph_build.GetInputs();
+          for (auto input_arg : graph_inputs) {
+            bool has_dim_value_or_param = true;
+            auto input_shape = input_arg->Shape();
+            if (input_shape != nullptr) {
+              auto dim_size = input_shape->dim_size();
+              for (int i = 0; i < dim_size; ++i) {
+                auto &dim = input_shape->dim(i);
+                if (!dim.has_dim_value() && !dim.has_dim_param()) {
+                  has_dim_value_or_param = false;
+                  break;
+                }
+              }
+            }
+
+            if (input_shape == nullptr || !has_dim_value_or_param) {
               ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                                  "TensorRT input: " + input_arg->Name() + " has no shape specified. " +
                                                      "Please run shape inference on the onnx model first. Details can be found in " +
-                                                     "https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/TensorRT-ExecutionProvider.md#shape-inference-for-tensorrt-subgraphs"));
+                                                     "https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#shape-inference-for-tensorrt-subgraphs"));
             }
           }
         }
@@ -1529,9 +1544,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
               *trt_profile = trt_builder->createOptimizationProfile();
             }
             (*trt_profile)->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, &shapes_min[0], shape_size);
-            (*trt_profile)->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
             (*trt_profile)->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, &shapes_max[0], shape_size);
-
+            (*trt_profile)->setShapeValues(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, &shapes_opt[0], shape_size);
           } else {  // Execution tensor
             nvinfer1::Dims dims_min(dims), dims_opt(dims), dims_max(dims);
             for (int j = 0, end = nb_dims; j < end; ++j) {
@@ -1561,8 +1575,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
               *trt_profile = trt_builder->createOptimizationProfile();
             }
             (*trt_profile)->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMIN, dims_min);
-            (*trt_profile)->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
             (*trt_profile)->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kMAX, dims_max);
+            (*trt_profile)->setDimensions(input_name.c_str(), nvinfer1::OptProfileSelector::kOPT, dims_opt);
           }
           ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
         }

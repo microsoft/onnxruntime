@@ -3,9 +3,11 @@
 
 #pragma once
 
+#ifndef SHARED_PROVIDER
 #include "core/common/status.h"
 #include "core/graph/graph_viewer.h"
 #include "gsl/gsl"
+#endif
 
 #ifdef __has_attribute
 #define ORT_HAVE_ATTRIBUTE(x) __has_attribute(x)

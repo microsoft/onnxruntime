@@ -277,10 +277,10 @@ void ReduceAggregatorBase::FastReduceKRK(const Tensor&, const std::vector<int64_
   ValidateMustBeOverloaded();
 }
 
-TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int64_t element_size) {
-  return TensorOpCost{static_cast<double>(n_col * n_row * element_size),
+TensorOpCost ParallelReduceFastCost(int64_t n_row, int64_t n_col, int64_t element_size, int n_ops) {
+  return TensorOpCost{static_cast<double>(n_row * n_col * element_size),
                       static_cast<double>(n_row * element_size),
-                      static_cast<double>(n_col * n_row * element_size * 2)};
+                      static_cast<double>(n_row * n_col * element_size * n_ops)};
 }
 
 void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
@@ -385,6 +385,15 @@ void ValidateNoTransposeReduce(int64_t count) {
 }
 
 template <typename AGG>
+struct ParallelizedData {
+  int64_t denominator;
+  int64_t loop_size;
+  ResultsNoTransposePrepareForReduce* last_results;
+  const typename AGG::input_type* from_data;
+  typename AGG::value_type* to_data;
+};
+
+template <typename AGG>
 void NoTransposeReduce1Loop(Tensor* output, const TensorShape& new_input_shape, const Tensor& input,
                             const std::vector<int64_t>& reduced_axes, concurrency::ThreadPool* tp,
                             ResultsNoTransposePrepareForReduce& last_results) {
@@ -406,35 +415,47 @@ void NoTransposeReduce1Loop(Tensor* output, const TensorShape& new_input_shape, 
       return;
   }
   last_results.ValidateNotEmpty();
-  int64_t denominator = last_results.last_loop_red_size * last_results.projected_index.size();
 
-  auto fn = [&](std::ptrdiff_t first, std::ptrdiff_t end) {
-    int64_t loop;
+  ParallelizedData<AGG> data;
+  data.denominator = last_results.last_loop_red_size * last_results.projected_index.size();
+  data.loop_size = last_results.last_loop_red_size * last_results.last_loop_red_inc;
+  data.last_results = &last_results;
+  data.from_data = from_data;
+  data.to_data = to_data;
+
+  auto fn = [&data](std::ptrdiff_t first, std::ptrdiff_t end) {
     const typename AGG::input_type* loop_red_ptr;
-    const typename AGG::input_type* loop_red_ptr_end;
-    int64_t current_index = first * last_results.last_loop_size;
-    for (int64_t main_index = first; main_index < end; ++main_index) {
-      for (loop = 0; loop < last_results.last_loop_size; ++loop, ++current_index) {
-        int64_t origin = last_results.unprojected_index[main_index] + loop * last_results.last_loop_inc;
-        AGG accumulator(denominator, from_data[origin + last_results.projected_index[0]]);
-        for (auto it = last_results.projected_index.begin(); it != last_results.projected_index.end(); ++it) {
-          loop_red_ptr = from_data + (origin + *it);
-          loop_red_ptr_end = loop_red_ptr + last_results.last_loop_red_size * last_results.last_loop_red_inc;
-          for (; loop_red_ptr != loop_red_ptr_end; loop_red_ptr += last_results.last_loop_red_inc) {
-            accumulator.update(*loop_red_ptr);
-          }
+    const ResultsNoTransposePrepareForReduce& last_results = *data.last_results;
+    int64_t main_index = first / last_results.last_loop_size;
+    int64_t loop = first % last_results.last_loop_size;
+    int64_t origin = last_results.unprojected_index[main_index] + loop * last_results.last_loop_inc;
+    for (int64_t main_index_last_loop = first; main_index_last_loop < end; ++main_index_last_loop) {
+      AGG accumulator(data.denominator, data.from_data[origin + last_results.projected_index[0]]);
+      for (auto it = last_results.projected_index.begin(); it != last_results.projected_index.end(); ++it) {
+        loop_red_ptr = data.from_data + (origin + *it);
+        for (int64_t red = 0; red < data.loop_size; red += last_results.last_loop_red_inc) {
+          accumulator.update(loop_red_ptr[red]);
         }
-        to_data[current_index] = accumulator.get_value();
+      }
+      data.to_data[main_index_last_loop] = accumulator.get_value();
+
+      ++loop;
+      if (loop >= last_results.last_loop_size) {
+        loop = 0;
+        ++main_index;
+        if (main_index < static_cast<int64_t>(last_results.unprojected_index.size())) {
+          origin = last_results.unprojected_index[main_index];
+        }
+      } else {
+        origin += last_results.last_loop_inc;
       }
     }
   };
 
-  auto cost = TensorOpCost{(double)(last_results.projected_index.size() * sizeof(typename AGG::input_type) *
-                                    last_results.last_loop_size * last_results.last_loop_red_size),
-                           (double)last_results.last_loop_size * last_results.last_loop_red_size,
-                           (double)last_results.projected_index.size() * last_results.last_loop_size *
-                               last_results.last_loop_red_size};
-  concurrency::ThreadPool::TryParallelFor(tp, count / last_results.last_loop_size, cost, fn);
+  auto cost = ParallelReduceFastCost(1,
+                                     last_results.projected_index.size() * last_results.last_loop_red_size,
+                                     sizeof(typename AGG::input_type), 6);
+  concurrency::ThreadPool::TryParallelFor(tp, count, cost, fn);
 }
 
 template <typename AGG>
@@ -459,42 +480,54 @@ void NoTransposeReduce2Loops(Tensor* output, const TensorShape& new_input_shape,
       return;
   }
   last_results.ValidateNotEmpty();
-  int64_t denominator = last_results.last_loop_red_size * last_results.projected_index.size();
+
+  ParallelizedData<AGG> data;
+  data.denominator = last_results.last_loop_red_size * last_results.projected_index.size();
+  data.loop_size = last_results.last_loop_red_size * last_results.last_loop_red_inc;
+  data.last_results = &last_results;
+  data.from_data = from_data;
+  data.to_data = to_data;
 
   auto fn = [&](std::ptrdiff_t first, std::ptrdiff_t end) {
-    int64_t loop;
     const typename AGG::input_type* loop_red_ptr;
-    const typename AGG::input_type* loop_red_ptr_end;
-    int64_t current_index = first * last_results.last_loop_size;
-    for (int64_t main_index = first; main_index < end; ++main_index) {
-      for (loop = 0; loop < last_results.last_loop_size; ++loop, ++current_index) {
-        int64_t origin = last_results.unprojected_index[main_index] + loop * last_results.last_loop_inc;
-        AGG accumulator(denominator, from_data[origin + last_results.projected_index[0]]);
-        for (auto it = last_results.projected_index.begin(); it != last_results.projected_index.end(); ++it) {
-          loop_red_ptr = from_data + (origin + *it);
-          loop_red_ptr_end = loop_red_ptr + last_results.last_loop_red_size * last_results.last_loop_red_inc;
-          for (; loop_red_ptr != loop_red_ptr_end; loop_red_ptr += last_results.last_loop_red_inc) {
-            accumulator.update0(*loop_red_ptr);
-          }
+    const ResultsNoTransposePrepareForReduce& last_results = *data.last_results;
+    int64_t main_index = first / last_results.last_loop_size;
+    int64_t loop = first % last_results.last_loop_size;
+    int64_t origin = last_results.unprojected_index[main_index] + loop * last_results.last_loop_inc;
+    for (int64_t main_index_last_loop = first; main_index_last_loop < end; ++main_index_last_loop) {
+      AGG accumulator(data.denominator, data.from_data[origin + last_results.projected_index[0]]);
+      for (auto it = last_results.projected_index.begin(); it != last_results.projected_index.end(); ++it) {
+        loop_red_ptr = data.from_data + (origin + *it);
+        for (int64_t red = 0; red < data.loop_size; red += last_results.last_loop_red_inc) {
+          accumulator.update0(loop_red_ptr[red]);
         }
-        for (auto it = last_results.projected_index.begin(); it != last_results.projected_index.end(); ++it) {
-          loop_red_ptr = from_data + (origin + *it);
-          loop_red_ptr_end = loop_red_ptr + last_results.last_loop_red_size * last_results.last_loop_red_inc;
-          for (; loop_red_ptr != loop_red_ptr_end; loop_red_ptr += last_results.last_loop_red_inc) {
-            accumulator.update(*loop_red_ptr);
-          }
+      }
+
+      for (auto it = last_results.projected_index.begin(); it != last_results.projected_index.end(); ++it) {
+        loop_red_ptr = data.from_data + (origin + *it);
+        for (int64_t red = 0; red < data.loop_size; red += last_results.last_loop_red_inc) {
+          accumulator.update(loop_red_ptr[red]);
         }
-        to_data[current_index] = accumulator.get_value();
+      }
+      data.to_data[main_index_last_loop] = accumulator.get_value();
+
+      ++loop;
+      if (loop >= last_results.last_loop_size) {
+        loop = 0;
+        ++main_index;
+        if (main_index < static_cast<int64_t>(last_results.unprojected_index.size())) {
+          origin = last_results.unprojected_index[main_index];
+        }
+      } else {
+        origin += last_results.last_loop_inc;
       }
     }
   };
 
-  auto cost = TensorOpCost{(double)(last_results.projected_index.size() * sizeof(typename AGG::input_type) *
-                                    last_results.last_loop_size * last_results.last_loop_red_size),
-                           (double)last_results.last_loop_size * last_results.last_loop_red_size,
-                           (double)last_results.projected_index.size() * last_results.last_loop_size *
-                               last_results.last_loop_red_size * 2};
-  concurrency::ThreadPool::TryParallelFor(tp, count / last_results.last_loop_size, cost, fn);
+  auto cost = ParallelReduceFastCost(1,
+                                     last_results.projected_index.size() * last_results.last_loop_red_size,
+                                     sizeof(typename AGG::input_type), 8);
+  concurrency::ThreadPool::TryParallelFor(tp, count, cost, fn);
 }
 
 void DropDimensions(const std::vector<int64_t>& input_shape,
@@ -660,6 +693,7 @@ bool CommonFastReduceSwitch(OpKernelContext* ctx,
   fast_kind = OptimizeShapeForFastReduce(
       reduced_dims, input_axes.empty() ? axes_ : input_axes,
       fast_shape, output_shape, fast_axes, keepdims_, noop_with_empty_axes);
+
   if (which_fast_reduce != FastReduceKind::kNone) {
     if (IsFastReduceKindAvailable(fast_kind, which_fast_reduce)) {
       Tensor* output = ctx->Output(0, output_shape);
@@ -671,14 +705,25 @@ bool CommonFastReduceSwitch(OpKernelContext* ctx,
         }
         case FastReduceKind::kRK: {
           ValidateFastReduceRK(fast_shape, *output);
-          case_rk(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
-          return true;
+          if ((fast_shape[0] > concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()) * 16) &&
+              (std::max(fast_shape[0], fast_shape[1]) >
+               concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()) * 256)) {
+            // See benchmarks in PR #7719.
+            case_rk(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
+            return true;
+          } else {
+            break;
+          }
         }
-        case FastReduceKind::kKRK: {
+        case FastReduceKind::kKRK:
           ValidateFastReduceKRK(fast_shape, *output);
-          case_krk(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
-          return true;
-        }
+          if (fast_shape[0] >= std::max(2, concurrency::ThreadPool::DegreeOfParallelism(ctx->GetOperatorThreadPool()))) {
+            // See benchmarks in PR #7719.
+            case_krk(*input, fast_shape, *output, ctx->GetOperatorThreadPool());
+            return true;
+          } else {
+            break;
+          }
         case FastReduceKind::kR:
         case FastReduceKind::kK:
         case FastReduceKind::kNone:
@@ -700,7 +745,8 @@ bool CommonFastReduce(OpKernelContext* ctx,
                       std::vector<int64_t>& fast_shape,
                       std::vector<int64_t>& output_shape,
                       std::vector<int64_t>& fast_axes) {
-  return CommonFastReduceSwitch(ctx, axes_, keepdims_, noop_with_empty_axes, fast_kind, fast_shape, output_shape, fast_axes,
+  return CommonFastReduceSwitch(ctx, axes_, keepdims_, noop_with_empty_axes,
+                                fast_kind, fast_shape, output_shape, fast_axes,
                                 AGG::WhichFastReduce(), &AGG::FastReduceKR, &AGG::FastReduceRK, &AGG::FastReduceKRK);
 }
 
@@ -838,9 +884,9 @@ Status ReduceSum<T>::Compute(OpKernelContext* ctx) const {
 }
 
 template <typename T>
-Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes,
-                          AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,
-                          const TensorShape* input_shape_override) {
+std::unique_ptr<Tensor> ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduce_axes,
+                                           AllocatorPtr allocator, concurrency::ThreadPool* tp, bool keep_dims,
+                                           const TensorShape* input_shape_override) {
   std::vector<int64_t> axes;
   std::vector<int64_t> output_shape, fast_shape, fast_axes;
   TensorShape new_input_shape = input_shape_override == nullptr ? input.Shape() : *input_shape_override;
@@ -849,12 +895,12 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
   FastReduceKind fast_kind = OptimizeShapeForFastReduce(
       reduced_dims, reduce_axes, fast_shape, output_shape, fast_axes, keep_dims, false);
 
-  Tensor output(input.DataType(), keep_dims ? output_shape : std::vector<int64_t>(), allocator);
+  auto output = make_unique<Tensor>(input.DataType(), keep_dims ? output_shape : std::vector<int64_t>(), allocator);
 
   if (fast_kind == FastReduceKind::kEmpty) {
     if (new_input_shape.Size() == 1) {
       const T* from_data = input.template Data<T>();
-      T* to_data = output.template MutableData<T>();
+      T* to_data = output->template MutableData<T>();
       *to_data = *from_data;
     } else {
       ValidateKeepDims(new_input_shape, keep_dims);
@@ -865,20 +911,29 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
   if (IsFastReduceKindAvailable(fast_kind, ReduceAggregatorSum<T>::WhichFastReduce())) {
     switch (fast_kind) {
       case FastReduceKind::kKR: {
-        ValidateFastReduceKR(fast_shape, output);
-        ReduceAggregatorSum<T>::FastReduceKR(input, fast_shape, output, tp);
+        ValidateFastReduceKR(fast_shape, *output);
+        ReduceAggregatorSum<T>::FastReduceKR(input, fast_shape, *output, tp);
         return output;
       }
-      case FastReduceKind::kRK: {
-        ValidateFastReduceRK(fast_shape, output);
-        ReduceAggregatorSum<T>::FastReduceRK(input, fast_shape, output, tp);
-        return output;
-      }
-      case FastReduceKind::kKRK: {
-        ValidateFastReduceKRK(fast_shape, output);
-        ReduceAggregatorSum<T>::FastReduceKRK(input, fast_shape, output, tp);
-        return output;
-      }
+      case FastReduceKind::kRK:
+        ValidateFastReduceRK(fast_shape, *output);
+        if (std::max(fast_shape[0], fast_shape[1]) >
+            concurrency::ThreadPool::DegreeOfParallelism(tp) * 256) {
+          // See benchmarks in PR #7719.
+          ReduceAggregatorSum<T>::FastReduceRK(input, fast_shape, *output, tp);
+          return output;
+        } else {
+          break;
+        }
+      case FastReduceKind::kKRK:
+        ValidateFastReduceKRK(fast_shape, *output);
+        if (fast_shape[0] >= std::max(2, concurrency::ThreadPool::DegreeOfParallelism(tp))) {
+          // See benchmarks in PR #7719.
+          ReduceAggregatorSum<T>::FastReduceKRK(input, fast_shape, *output, tp);
+          return output;
+        } else {
+          break;
+        }
       case FastReduceKind::kR:
       case FastReduceKind::kK:
       case FastReduceKind::kNone:
@@ -889,7 +944,7 @@ Tensor ReduceSum<T>::Impl(const Tensor& input, const std::vector<int64_t>& reduc
   }
 
   ResultsNoTransposePrepareForReduce last_results;
-  NoTransposeReduce1Loop<ReduceAggregatorSum<T>>(&output, fast_shape, input, fast_axes, tp, last_results);
+  NoTransposeReduce1Loop<ReduceAggregatorSum<T>>(output.get(), fast_shape, input, fast_axes, tp, last_results);
   return output;
 }
 
