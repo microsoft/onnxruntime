@@ -63,7 +63,11 @@ else()
   set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${ONNXRUNTIME_ROOT}/python/pybind.def")
 endif()
 
-set(onnxruntime_pybind11_state_libs
+if (onnxruntime_ENABLE_TRAINING)
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_training)
+endif()
+
+target_link_libraries(onnxruntime_pybind11_state PRIVATE 
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_MIGRAPHX}
@@ -89,12 +93,10 @@ set(onnxruntime_pybind11_state_libs
 )
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  list(APPEND onnxruntime_pybind11_state_libs onnxruntime_language_interop onnxruntime_pyop)
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
 
-if (onnxruntime_ENABLE_TRAINING)
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_training)
-endif()
+
 
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
@@ -106,19 +108,18 @@ add_dependencies(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_depende
 if (MSVC)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG}")
   # if MSVC, pybind11 looks for release version of python lib (pybind11/detail/common.h undefs _DEBUG)
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_libs}
-          Python::Module ${onnxruntime_EXTERNAL_LIBRARIES})
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE Python::Module)
 elseif (APPLE)
-  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG} -undefined dynamic_lookup")
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_libs} ${onnxruntime_EXTERNAL_LIBRARIES})
+  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG} -undefined dynamic_lookup")  
   set_target_properties(onnxruntime_pybind11_state PROPERTIES
     INSTALL_RPATH "@loader_path"
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH_USE_LINK_PATH FALSE)
 else()
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_libs} ${onnxruntime_EXTERNAL_LIBRARIES})
   set_property(TARGET onnxruntime_pybind11_state APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker -rpath=\\$ORIGIN")
 endif()
+
+target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_EXTERNAL_LIBRARIES})
 
 set_target_properties(onnxruntime_pybind11_state PROPERTIES PREFIX "")
 set_target_properties(onnxruntime_pybind11_state PROPERTIES FOLDER "ONNXRuntime")
