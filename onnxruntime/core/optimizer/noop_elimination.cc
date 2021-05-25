@@ -41,11 +41,12 @@ bool NoopElimination::SatisfyCondition(const Graph& graph, const Node& node, con
   }
 
   const auto* initializer = graph_utils::GetConstantInitializer(graph, node.InputDefs()[input0_is_initializer ? 0 : 1]->Name());
-  auto initializer_rank = initializer->dims().size();
-  auto other_input_rank = node.InputDefs()[input0_is_initializer ? 1 : 0]->Shape()->dim_size();
+
   // if initializer_rank is bigger, the output is expected to be initializer_rank per broadcasting rule,
   // but it won't happen if the case is accepted, thus reject it
-  if (initializer_rank > other_input_rank) {
+  auto initializer_rank = initializer->dims().size();
+  const auto* other_input_shape = node.InputDefs()[input0_is_initializer ? 1 : 0]->Shape();
+  if (other_input_shape == nullptr || initializer_rank > other_input_shape->dim_size()) {
     return false;
   }
 
