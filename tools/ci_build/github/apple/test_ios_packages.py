@@ -69,7 +69,7 @@ def _test_ios_packages(args):
 
         # run the tests
         subprocess.run(['xcodebuild', 'test',
-                        '-workspace', 'ios_package_test.xcworkspace',
+                        '-workspace', './ios_package_test.xcworkspace',
                         '-scheme', 'ios_package_test',
                         '-destination', 'platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)'],
                        shell=False, check=True, cwd=target_proj_path)
