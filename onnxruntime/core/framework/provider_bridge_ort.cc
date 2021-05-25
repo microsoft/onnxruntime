@@ -17,9 +17,9 @@
 #include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
-#include "core/framework/provider_options.h"
 #include "core/util/math.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/provider_options.h"
 
 #include "core/framework/fallback_cpu_capability.h"
 #include "core/framework/random_generator.h"
@@ -67,14 +67,6 @@ Status LongformerAttentionBase__CheckInputs(const LongformerAttentionBase* p, co
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "orttraining/core/framework/distributed_run_context.h"
-#endif
-
-#ifdef USE_TENSORRT
-#include "core/providers/cuda/cuda_allocator.h"
-#include "core/providers/cuda/gpu_data_transfer.h"
-#include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
-#include "core/providers/cuda/cuda_common.h"
-#include "core/providers/tensorrt/tensorrt_execution_provider_info.h"
 #endif
 
 namespace ONNX_NAMESPACE {
@@ -1058,20 +1050,6 @@ ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO() {
   return nullptr;
 }
 
-void UpdateProviderInfo_Tensorrt(OrtTensorRTProviderOptions* provider_options, const ProviderOptions& options) {
-  if (auto provider = s_library_tensorrt.Get()) {
-    provider->UpdateInfo(reinterpret_cast<void*>(provider_options), options);
-  }
-}
-
-ProviderOptions GetProviderInfo_Tensorrt() {
-  if (auto provider = s_library_tensorrt.Get()) {
-    return provider->GetProviderOptions();
-  }
-
-  return {};
-}
-
 ProviderInfo_CUDA* GetProviderInfo_CUDA() {
   if (auto* provider = s_library_cuda.Get())
     return reinterpret_cast<ProviderInfo_CUDA*>(provider->GetInfo());
@@ -1104,14 +1082,30 @@ INcclService& INcclService::GetInstance() {
 }  // namespace cuda
 #endif
 
+void UpdateProviderInfo_Tensorrt(OrtTensorRTProviderOptions* provider_options, const ProviderOptions& options) {
+  if (auto provider = s_library_tensorrt.Get()) {
+    provider->UpdateInfo(reinterpret_cast<void*>(provider_options), options);
+  }
+}
+
+ProviderOptions GetProviderInfo_Tensorrt() {
+  if (auto provider = s_library_tensorrt.Get()) {
+    return provider->GetProviderOptions();
+  }
+
+  return {};
+}
+
 }  // namespace onnxruntime
 
+#ifdef USE_TENSORRT
 static char* StrDup(const std::string& str, _Inout_ OrtAllocator* allocator) {
   char* output_string = reinterpret_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
   memcpy(output_string, str.c_str(), str.size());
   output_string[str.size()] = '\0';
   return output_string;
 }
+#endif
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
   auto factory = onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena);
@@ -1247,6 +1241,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptions, _Inout_ OrtAllocator* a
   *ptr = StrDup(options_str, allocator);
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(allocator);
   ORT_UNUSED_PARAMETER(ptr);
   return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
 #endif
