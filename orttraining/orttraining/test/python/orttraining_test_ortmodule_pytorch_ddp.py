@@ -44,13 +44,12 @@ def demo_basic(rank, world_size, use_ort_module):
     setup(rank, world_size)
 
     # create model and move it to GPU with id rank
+    model = ToyModel().to(rank)
     if use_ort_module:
-        print(f"  Rank {rank} uses ORTModule.");
-        model = ToyModel().to(rank)
         model = ORTModule(model)
+        print(f"  Rank {rank} uses ORTModule.");
     else:
         print(f"  Rank {rank} uses Pytorch's nn.Module.");
-        model = ToyModel().to(rank)
 
     ddp_model = DDP(model, device_ids=[rank])
 
