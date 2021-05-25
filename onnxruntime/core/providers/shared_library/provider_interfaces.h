@@ -563,8 +563,10 @@ struct ProviderHost {
 
   // OpKernelContext
   virtual const Tensor* OpKernelContext__Input_Tensor(const OpKernelContext* p, int index) = 0;
+  virtual const TensorSeq* OpKernelContext__Input_TensorSeq(const OpKernelContext* p, int index) = 0;
   virtual const Tensor& OpKernelContext__RequiredInput_Tensor(const OpKernelContext* p, int index) = 0;
   virtual Tensor* OpKernelContext__Output_Tensor(OpKernelContext* p, int index) = 0;
+  virtual TensorSeq* OpKernelContext__Output_TensorSeq(OpKernelContext* p, int index) = 0;
   virtual Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape) = 0;
   virtual Tensor& OpKernelContext__RequiredOutput(OpKernelContext* p, int index, const TensorShape& shape) = 0;
   virtual MLDataType OpKernelContext__InputType(const OpKernelContext* p, int index) = 0; 
@@ -1478,8 +1480,18 @@ inline const Tensor* OpKernelContext::Input<Tensor>(int index) const {
 }
 
 template <>
+inline const TensorSeq* OpKernelContext::Input<TensorSeq>(int index) const {
+  return g_host->OpKernelContext__Input_TensorSeq(this, index);
+}
+
+template <>
 inline Tensor* OpKernelContext::Output<Tensor>(int index) {
   return g_host->OpKernelContext__Output_Tensor(this, index);
+}
+
+template <>
+inline TensorSeq* OpKernelContext::Output<TensorSeq>(int index) {
+  return g_host->OpKernelContext__Output_TensorSeq(this, index);
 }
 
 template <>
