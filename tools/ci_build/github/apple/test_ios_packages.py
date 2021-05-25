@@ -67,9 +67,11 @@ def _test_ios_packages(args):
         # install pods first
         subprocess.run(['pod', 'install'], shell=False, check=True, cwd=target_proj_path)
         subprocess.run(['xcrun', 'xctrace', 'list', 'devices'], shell=False, check=True, cwd=target_proj_path)
+        subprocess.run(['xcrun', 'instruments', '-w', 'iPhone SE (2nd generation)'],
+                       shell=False, check=False, cwd=target_proj_path)
 
         # run the tests
-        subprocess.run(['xcodebuild', 'build-for-testing',
+        subprocess.run(['xcrun', 'xcodebuild', 'build-for-testing',
                         '-configuration', 'Debug',
                         '-workspace', './ios_package_test.xcworkspace',
                         '-scheme', 'ios_package_test',
@@ -77,7 +79,7 @@ def _test_ios_packages(args):
                         '-sdk', 'iphonesimulator'],
                        shell=False, check=True, cwd=target_proj_path)
 
-        subprocess.run(['xcodebuild', 'test-without-building',
+        subprocess.run(['xcrun', 'xcodebuild', 'test-without-building',
                         '-configuration', 'Debug',
                         '-workspace', './ios_package_test.xcworkspace',
                         '-scheme', 'ios_package_test',
