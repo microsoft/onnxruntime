@@ -133,7 +133,7 @@ extern std::string openvino_device_type;
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
 // TODO remove deprecated global config
-std::string nuphar_settings;
+extern std::string nuphar_settings;
 #endif
 #ifdef USE_VITISAI
 #include "core/providers/vitisai/vitisai_provider_factory.h"
@@ -164,13 +164,20 @@ extern onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocato
 }  // namespace onnxruntime
 #endif
 
+#ifdef USE_OPENVINO
+struct ProviderInfo_OpenVINO;
+namespace onnxruntime {
+ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
+}
+#endif
+
 #ifdef USE_ROCM
 #include "core/providers/rocm/rocm_execution_provider.h"
 #include "core/providers/rocm/rocm_allocator.h"
 #include "core/providers/rocm/rocm_provider_factory_creator.h"
 namespace onnxruntime {
 namespace python {
-extern const onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};
+extern onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info;
 }
 }
 #endif
@@ -323,7 +330,7 @@ void ThrowIfPyErrOccured();
 
 void addOrtValueMethods(pybind11::module& m);
 
-void addIOBindingMethods(pybind11::module& m);
+void addIoBindingMethods(pybind11::module& m);
 
 const char* GetDeviceName(const OrtDevice& device);
 

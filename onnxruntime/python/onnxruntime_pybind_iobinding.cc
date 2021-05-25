@@ -21,7 +21,7 @@ namespace python {
 
 namespace py = pybind11;
 
-void addIOBindingMethods(pybind11::module& m) {
+void addIoBindingMethods(pybind11::module& m) {
   py::class_<SessionIOBinding> session_io_binding(m, "SessionIOBinding");
   session_io_binding
       .def(py::init([](PyInferenceSession* sess) {

@@ -10,9 +10,13 @@ namespace py = pybind11;
 const std::string onnxruntime::python::SessionObjectInitializer::default_logger_id = "Default";
 
 #ifdef USE_OPENVINO
-#include "core/providers/openvino/openvino_provider_factory.h"
 // TODO remove deprecated global config
 std::string openvino_device_type;
+#endif
+
+#ifdef USE_NUPHAR
+// TODO remove deprecated global config
+std::string nuphar_settings;
 #endif
 
 
@@ -33,7 +37,7 @@ onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{
 #ifdef USE_ROCM
 #include "core/providers/rocm/rocm_execution_provider.h"
 #include "core/providers/rocm/rocm_allocator.h"
-const onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};
+onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};
 #endif
 
 // TODO remove deprecated global config

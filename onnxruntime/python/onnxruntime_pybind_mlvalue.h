@@ -60,10 +60,6 @@ AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id);
 
 #endif
 
-#ifdef USE_OPENVINO
-ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
-#endif
-
 #ifdef USE_ROCM
 
 bool IsRocmDeviceIdValid(const onnxruntime::logging::Logger& logger, int id);
