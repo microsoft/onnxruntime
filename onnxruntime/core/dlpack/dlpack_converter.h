@@ -26,6 +26,6 @@ PyObject* OrtValueToDlpackCapsule(OrtValue ort_value);
 
 // Consume a Capsule object and claims the ownership of its underlying tensor to
 // create a OrtValue. This function calls DlpackToOrtValue(...) to do the conversion.
-OrtValue DlpackCapsuleToOrtValue(PyObject* capsule, bool is_bool_tensor);
+OrtValue DlpackCapsuleToOrtValue(PyObject* capsule, bool is_bool_tensor = false);
 }  // namespace dlpack
 }  // namespace onnxruntime

@@ -198,14 +198,7 @@ void InvokeRunner(
   for (; i < static_cast<size_t>(PyTuple_Size(result_ptr.get())); ++i) {
     PyObject* dl_tensor_pointer = PyTuple_GetItem(result_ptr.get(), i);
     ORT_ENFORCE(Py_REFCNT(dl_tensor_pointer) == 1, "Ref count of dl_tensor_pointer should be 1.");
-    DLManagedTensor* dlmanaged_tensor = reinterpret_cast<DLManagedTensor*>(
-        PyCapsule_GetPointer(dl_tensor_pointer, "dltensor"));
-    // This must be a DLPack tensor.
-    ORT_ENFORCE(dlmanaged_tensor, "Fail to create DLManagedTensor for Python function call result.");
-    // Create OrtValue from DLPack tensor.
-    auto ort_value = dlpack::DlpackToOrtValue(dlmanaged_tensor);
-    PyCapsule_SetName(dl_tensor_pointer, "used_dltensor");
-    returned_ortvalues.push_back(ort_value);
+    returned_ortvalues.push_back(dlpack::DlpackCapsuleToOrtValue(dl_tensor_pointer));
   }
 }
 

@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
-#include "core/platform/env.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
 #include "core/language_interop_ops/torch/refcount_tracker.h"
+#include "core/platform/env.h"
 
 namespace onnxruntime {
 namespace language_interop_ops {
@@ -17,11 +17,11 @@ static void RegisterEntry(
     TKey key,  // used in move-constructor of tuple below.
     PyObject* obj,
     std::unordered_map<TKey, PyObject*>& pool,
-    const bool override) {
+    const bool overwrite) {
   // Get iterator to the existing entry, if exists.
   auto it = pool.find(key);
-  if (!override) {
-    // Cannot override existing registered function.
+  if (!overwrite) {
+    // Cannot overwrite existing registered function.
     ORT_ENFORCE(it == pool.end(), "Duplicated registration found: ", key);
   }
 
@@ -79,7 +79,7 @@ static bool EnsureTorchAutogradFunction(PyObject* obj) {
 void OrtTorchFunctionPool::RegisterTorchAutogradFunction(
     const std::string& key,
     PyObject* obj,
-    const bool override) {
+    const bool overwrite) {
   auto correct = EnsureTorchAutogradFunction(obj);
   ORT_ENFORCE(correct, "Only torch.autograd.Function is allowed to be registered with key ", key);
 
@@ -90,8 +90,8 @@ void OrtTorchFunctionPool::RegisterTorchAutogradFunction(
   ORT_ENFORCE(forward, "apply attribute not found when registering ", key);
   ORT_ENFORCE(backward, "backward attribute not found when registering ", key);
 
-  RegisterEntry(key, forward, forward_core_pool, override);
-  RegisterEntry(key, backward, backward_core_pool, override);
+  RegisterEntry(key, forward, forward_core_pool, overwrite);
+  RegisterEntry(key, backward, backward_core_pool, overwrite);
 
   Py_DECREF(forward);
   Py_DECREF(backward);
@@ -118,14 +118,14 @@ void OrtTorchFunctionPool::UnregisterTorchAutogradFunction(const std::string& ke
 static void RegisterEntry(
     PyObject* obj,
     PyObject** storage,
-    const bool override) {
+    const bool overwrite) {
   // Basic checks.
   ORT_ENFORCE(storage, "Cannot store PyObject* on NULL pointer.");
   ORT_ENFORCE(obj, "Cannot register NULL PyObject*.");
 
   // Get iterator to the existing entry, if exists.
-  if (!override) {
-    // Cannot override existing registered function.
+  if (!overwrite) {
+    // Cannot overwrite existing registered function.
     ORT_ENFORCE(*storage == nullptr, "Duplicated registration found.");
   }
 
@@ -142,14 +142,14 @@ static void RegisterEntry(
   *storage = obj;
 }
 
-void OrtTorchFunctionPool::RegisterForwardRunner(PyObject* obj, bool override) {
+void OrtTorchFunctionPool::RegisterForwardRunner(PyObject* obj, bool overwrite) {
   std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
-  RegisterEntry(obj, &forward_runner, override);
+  RegisterEntry(obj, &forward_runner, overwrite);
 }
 
-void OrtTorchFunctionPool::RegisterBackwardRunner(PyObject* obj, bool override) {
+void OrtTorchFunctionPool::RegisterBackwardRunner(PyObject* obj, bool overwrite) {
   std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
-  RegisterEntry(obj, &backward_runner, override);
+  RegisterEntry(obj, &backward_runner, overwrite);
 }
 
 static void UnregisterEntry(
