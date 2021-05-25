@@ -1,8 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-include(onnxruntime_language_interop_torch.cmake)
-
 set (CXXOPTS ${PROJECT_SOURCE_DIR}/external/cxxopts/include)
 
 # training lib

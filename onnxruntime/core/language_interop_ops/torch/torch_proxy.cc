@@ -4,13 +4,13 @@
 #include "core/language_interop_ops/torch/torch_proxy.h"
 
 #include <Python.h>
+#include "core/dlpack/dlpack_converter.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
 #include "core/language_interop_ops/torch/object_pointer.h"
 #include "core/language_interop_ops/torch/refcount_tracker.h"
 #include "core/language_interop_ops/torch/gil.h"
 #include "core/platform/env.h"
-#include "core/util/dlpack_convertor.h"
 
 namespace onnxruntime {
 namespace language_interop_ops {
@@ -203,7 +203,7 @@ void InvokeRunner(
     // This must be a DLPack tensor.
     ORT_ENFORCE(dlmanaged_tensor, "Fail to create DLManagedTensor for Python function call result.");
     // Create OrtValue from DLPack tensor.
-    auto ort_value = onnxruntime::python::DlpackToOrtValue(dlmanaged_tensor);
+    auto ort_value = dlpack::DlpackToOrtValue(dlmanaged_tensor);
     PyCapsule_SetName(dl_tensor_pointer, "used_dltensor");
     returned_ortvalues.push_back(ort_value);
   }
@@ -243,12 +243,12 @@ std::unique_ptr<PythonObjectPtr> CreateForwardArguments(
   // Tensor inputs to call autograd.Function.apply or autograd.Function.backward.
   for (size_t i = 0; i < tensor_args.size(); ++i) {
     // Wrap with DLPack, then transfer to Python for its release.
-    DLManagedTensor* dlmanaged_tensor = onnxruntime::python::OrtValueToDlpack(
+    DLManagedTensor* dlmanaged_tensor = dlpack::OrtValueToDlpack(
         tensor_args[i]);
     PyObject* dltensor = PyCapsule_New(
         dlmanaged_tensor,
         "dltensor",
-        onnxruntime::python::DlpackCapsuleDestructor);
+        dlpack::DlpackCapsuleDestructor);
     Ort_PyTuple_SetItem_NoIncref(args->get(), num_control_args + tensor_indices[i], dltensor,
                                  "dltensor");
   }

@@ -3,19 +3,24 @@
 
 #pragma once
 
+#include <Python.h>
 #include "core/framework/ml_value.h"
 #include <dlpack/dlpack.h>
-
-// This convertor will take an OrtValue and wrap it as a DLPack tensor
 
 namespace onnxruntime {
 namespace dlpack {
 
-DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value);
+// This convertor will take an OrtValue and wrap it as a DLPack tensor
+// This may create a new ownership to the underlying tensor in OrtValue,
+// so we do pass-by-value here. We don't use pass-by-reference because
+// it implies no new ownership.
+DLManagedTensor* OrtValueToDlpack(OrtValue ort_value);
 
 // DLPack uses same config for both bool and unit8. Parameter is_bool_tensor is to
 // tell ORT the data type when creating OrtValue.
 OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor = false);
+
+void DlpackCapsuleDestructor(PyObject* data);
 
 }  // namespace dlpack
 }  // namespace onnxruntime

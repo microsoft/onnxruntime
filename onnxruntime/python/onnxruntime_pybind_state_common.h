@@ -143,8 +143,6 @@ void ThrowIfPyErrOccured();
 
 namespace py = pybind11;
 
-void DlpackCapsuleDestructor(PyObject* data);
-
 py::object ToDlpack(OrtValue& ort_value);
 
 OrtValue FromDlpack(py::object dlpack_tensor, const bool is_bool_tensor);

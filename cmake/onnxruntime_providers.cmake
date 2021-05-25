@@ -135,6 +135,8 @@ if (onnxruntime_ENABLE_TRAINING_OPS)
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/aten_ops/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/aten_ops/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.h"
   )
 
   list(REMOVE_ITEM onnxruntime_providers_src ${onnxruntime_cpu_full_training_only_srcs})
@@ -160,6 +162,14 @@ if (onnxruntime_ENABLE_TRAINING)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dlpack_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_providers_dlpack_srcs})
+
+  file(GLOB_RECURSE onnxruntime_language_interop_torch_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/*.h"
+    "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/*.cc"
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_language_interop_torch_srcs})
+  list(APPEND onnxruntime_providers_src ${onnxruntime_language_interop_torch_srcs})
 endif()
 
 onnxruntime_add_static_library(onnxruntime_providers ${onnxruntime_providers_src})
@@ -204,7 +214,7 @@ endif()
 
 if (onnxruntime_ENABLE_TRAINING)
   add_dependencies(onnxruntime_providers tensorboard)
-  onnxruntime_add_include_to_target(onnxruntime_providers tensorboard onnxruntime_language_interop_torch)
+  onnxruntime_add_include_to_target(onnxruntime_providers tensorboard)
   target_include_directories(onnxruntime_providers PRIVATE ${PYTHON_INCLUDE_DIRS})
 
   if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)
@@ -303,16 +313,16 @@ if (onnxruntime_USE_CUDA)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4834>")
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>")
   endif()
-  onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework onnxruntime_language_interop_torch onnx onnx_proto protobuf::libprotobuf flatbuffers)
-  target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_language_interop_torch)
+  onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
   if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
     onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_training)
     target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_training)
+    target_include_directories(onnxruntime_providers_cuda PRIVATE ${PYTHON_INCLUDE_DIRS})
   endif()
 
   add_dependencies(onnxruntime_providers_cuda onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES} ${onnxruntime_tvm_dependencies})
   target_link_libraries(onnxruntime_providers_cuda PRIVATE cudart cublas cudnn curand cufft onnxruntime_providers_shared)
-  target_include_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} ${PYTHON_INCLUDE_DIRS} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+  target_include_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cuda  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_cuda PROPERTIES LINKER_LANGUAGE CUDA)
