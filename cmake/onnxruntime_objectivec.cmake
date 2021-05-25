@@ -5,18 +5,8 @@ if(${CMAKE_VERSION} VERSION_LESS "3.18")
     message(FATAL_ERROR "CMake 3.18+ is required when building the Objective-C API.")
 endif()
 
-check_language(OBJC)
-if(CMAKE_OBJC_COMPILER)
-    enable_language(OBJC)
-else()
-    message(FATAL_ERROR "Objective-C is not supported.")
-endif()
-
-check_language(OBJCXX)
-if(CMAKE_OBJCXX_COMPILER)
-    enable_language(OBJCXX)
-else()
-    message(FATAL_ERROR "Objective-C++ is not supported.")
+if(NOT APPLE)
+    message(FATAL_ERROR "Objective-C API must be built on an Apple platform.")
 endif()
 
 add_compile_options(
@@ -28,8 +18,6 @@ if(onnxruntime_DEV_MODE)
 endif()
 
 set(OBJC_ROOT "${REPO_ROOT}/objectivec")
-
-set(OBJC_ARC_COMPILE_OPTIONS "-fobjc-arc" "-fobjc-arc-exceptions")
 
 # onnxruntime_objc target
 
@@ -77,8 +65,6 @@ target_link_libraries(onnxruntime_objc
         safeint_interface
         ${FOUNDATION_LIB})
 
-target_compile_options(onnxruntime_objc PRIVATE ${OBJC_ARC_COMPILE_OPTIONS})
-
 set_target_properties(onnxruntime_objc PROPERTIES
     FRAMEWORK TRUE
     VERSION "1.0.0"
@@ -125,8 +111,6 @@ if(onnxruntime_BUILD_UNIT_TESTS)
     target_include_directories(onnxruntime_objc_test
         PRIVATE
             "${OBJC_ROOT}")
-
-    target_compile_options(onnxruntime_objc_test PRIVATE ${OBJC_ARC_COMPILE_OPTIONS})
 
     set_target_properties(onnxruntime_objc_test PROPERTIES
         FOLDER "ONNXRuntimeTest")

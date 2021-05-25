@@ -53,6 +53,13 @@ else()
             "${ONNXRUNTIME_ROOT}/core/platform/android/logging/*.cc"
         )
     endif()
+
+    if (APPLE)
+        list(APPEND onnxruntime_common_src_patterns
+            "${ONNXRUNTIME_ROOT}/core/platform/apple/logging/*.h"
+            "${ONNXRUNTIME_ROOT}/core/platform/apple/logging/*.mm"
+            )
+    endif()
 endif()
 
 if(CMAKE_GENERATOR_PLATFORM)

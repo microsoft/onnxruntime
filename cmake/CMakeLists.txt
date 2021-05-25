@@ -236,6 +236,27 @@ if (onnxruntime_BUILD_CSHARP)
   endif()
 endif()
 
+# Objective C/C++
+if(APPLE)
+  check_language(OBJC)
+  if(CMAKE_OBJC_COMPILER)
+    enable_language(OBJC)
+  else()
+    message(FATAL_ERROR "Objective-C is not supported.")
+  endif()
+
+  check_language(OBJCXX)
+  if(CMAKE_OBJCXX_COMPILER)
+    enable_language(OBJCXX)
+  else()
+    message(FATAL_ERROR "Objective-C++ is not supported.")
+  endif()
+
+  # default compile flags
+  string(APPEND CMAKE_OBJC_FLAGS   " -fobjc-arc")
+  string(APPEND CMAKE_OBJCXX_FLAGS " -fobjc-arc -fobjc-arc-exceptions")
+endif()
+
 if(NOT WIN32)
   #TODO: On Linux we may try https://github.com/microsoft/TraceLogging
   if(onnxruntime_ENABLE_INSTRUMENT)
