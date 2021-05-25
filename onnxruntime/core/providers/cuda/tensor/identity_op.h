@@ -4,7 +4,7 @@
 #pragma once
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_kernel.h"
-#include "core/framework/TensorSeq.h"
+//#include "core/framework/TensorSeq.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -58,12 +58,13 @@ class IdentityOp final : public CudaKernel {
       }
       std::vector<Tensor> tensors;
       for (auto iter = X->begin(); iter != X->end(); ++iter) {
-        Tensor tensor(X_type, onnxruntime::TensorShape(iter->Shape()), alloc);
+        auto tensor = Tensor::Create(X_type, onnxruntime::TensorShape(iter->Shape()), alloc);
         size_t bytes = iter->SizeInBytes();
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(tensor.MutableDataRaw(), iter->DataRaw(), bytes, cudaMemcpyDeviceToDevice, Stream()));
-        tensors.push_back(std::move(tensor));
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(tensor->MutableDataRaw(), iter->DataRaw(), bytes, cudaMemcpyDeviceToDevice, Stream()));
+        tensors.push_back(std::move(*tensor.release()));
       }
       Y->SetElements(std::move(tensors));
+      std::cout << "identity_gpu on seq done!" << std::endl;
     } else {
       ORT_THROW("Unsupported input type");
     }
