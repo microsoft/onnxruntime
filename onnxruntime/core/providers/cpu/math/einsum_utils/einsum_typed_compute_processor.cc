@@ -148,7 +148,8 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
     bool has_left_dim = left_dim > 1;    // non-trivial dimension (dim_value != 1)
     bool has_right_dim = right_dim > 1;  // non-trivial dimension (dim_value != 1)
 
-    if (reduce_dims_iter < reduce_dims_size && reduce_dims[reduce_dims_iter] == i) {  // This dimension is to be reduced after this pair-wise operation
+    if (reduce_dims_iter < reduce_dims_size && reduce_dims[reduce_dims_iter] == i) {
+      // This dimension is to be reduced after this pair-wise operation
       ++reduce_dims_iter;
       if (has_left_dim && has_right_dim) {  // Both inputs have non-trivial dim values along this dimension
         // Both the left and right operands have non-trivial dimension value along this axis
