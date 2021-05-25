@@ -252,7 +252,7 @@ static Env& platform_env = Env::Default();
 
 CustomOpLibrary::CustomOpLibrary(const char* library_path, OrtSessionOptions& ort_so) {
   {
-    OrtPybindThrowIfError(platform_env.LoadDynamicLibrary(library_path, &library_handle_));
+    OrtPybindThrowIfError(platform_env.LoadDynamicLibrary(library_path, false, &library_handle_));
 
     OrtStatus*(ORT_API_CALL * RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
 
@@ -455,7 +455,7 @@ static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
     const std::string& ep_shared_lib_path,
     const ProviderOptions& provider_options = {}) {
   void* handle;
-  auto error = Env::Default().LoadDynamicLibrary(ep_shared_lib_path, &handle);
+  auto error = Env::Default().LoadDynamicLibrary(ep_shared_lib_path, false, &handle);
   if (!error.IsOK()) {
     throw std::runtime_error(error.ErrorMessage());
   }
