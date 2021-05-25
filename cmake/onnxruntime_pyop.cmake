@@ -6,6 +6,6 @@ add_dependencies(onnxruntime_pyop onnxruntime_graph)
 onnxruntime_add_include_to_target(onnxruntime_pyop onnxruntime_common onnxruntime_graph onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
 target_include_directories(onnxruntime_pyop PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
 onnxruntime_add_include_to_target(onnxruntime_pyop Python::Module Python::NumPy)
-target_link_libraries(onnxruntime_pyop PRIVATE ${PYTHON_LIBRARIES})
+target_link_libraries(onnxruntime_pyop PRIVATE Python::Python)
 
 
