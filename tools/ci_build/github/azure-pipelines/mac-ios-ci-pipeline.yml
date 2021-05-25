@@ -4,6 +4,8 @@ jobs:
     vmImage: 'macOS-10.15'
   timeoutInMinutes: 120
   steps:
+    - script: instruments -w "iPhone SE (2nd generation)" || true
+      displayName: pre-start simulator
     - script: |
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
           --skip_submodule_sync --build_dir build/iOS_cpu \
