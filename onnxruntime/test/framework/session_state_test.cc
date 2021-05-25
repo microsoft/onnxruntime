@@ -19,6 +19,7 @@
 #include "core/util/thread_utils.h"
 #include "gtest/gtest.h"
 #include "test/test_environment.h"
+#include "test/util/include/default_providers.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace std;

@@ -151,7 +151,7 @@ option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 option(onnxruntime_BUILD_WEBASSEMBLY "Enable this option to create WebAssembly byte codes" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_THREADS "Enable this option to create WebAssembly byte codes with multi-threads support" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
-option(onnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP "Enable this option to turn on sourcemap" OFF)
+option(onnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO "Enable this option to turn on DWARF format debug info" OFF)
 
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
@@ -194,7 +194,9 @@ if(onnxruntime_USE_VALGRIND AND NOT WIN32)
 endif()
 
 if (onnxruntime_ENABLE_NVTX_PROFILE)
-  add_definitions(-DENABLE_NVTX_PROFILE=1)
+  message(WARNING "NTVX profile temporarily disabled, will be fixed soon")
+# TODO: This doesn't work with the shared cuda provider. Disabling temporarily to do a clean fix later as it wasn't trivial
+#  add_definitions(-DENABLE_NVTX_PROFILE=1)
 endif()
 
 if (onnxruntime_ENABLE_BITCODE)
@@ -283,12 +285,13 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
     string(APPEND CMAKE_CXX_FLAGS " -flto")
   endif()
 
-  if (onnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP)
-    # Build with sourcemap support
-    set(CMAKE_CXX_FLAGS_DEBUG "-g4 --source-map-base ${onnxruntime_WEBASSEMBLY_SOURCEMAP_BASE}")
+  if (onnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO)
+    # "-g3" generates DWARF format debug info.
+    # NOTE: With debug info enabled, web assembly artifacts will be very huge (>1GB). So we offer an option to build without debug info.
+    set(CMAKE_CXX_FLAGS_DEBUG "-g3")
   else()
-    # override default "-g3" as it generates super huge (1GB+) WASM targets which fails to load
-    set(CMAKE_CXX_FLAGS_DEBUG "-g2")
+    # do not generate any debug info. This helps to accelerate building process and reduce binary size.
+    set(CMAKE_CXX_FLAGS_DEBUG "-g0")
   endif()
 
   # Build WebAssembly with multi-threads support.
@@ -1399,7 +1402,6 @@ if (onnxruntime_USE_CUDA)
     list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft)
   endif()
 
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
   if(NOT CMAKE_CUDA_ARCHITECTURES)
     if(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
       # Support for Jetson/Tegra ARM devices
