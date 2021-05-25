@@ -1,6 +1,6 @@
 #!/bin/bash
 
-while getopts d:o:m:w:e:v: parameter
+while getopts d:o:m:w:e: parameter
 do case "${parameter}"
 in
 d) PERF_DIR=${OPTARG};;
@@ -8,7 +8,6 @@ o) OPTION=${OPTARG};;
 m) MODEL_PATH=${OPTARG};;
 w) WORKSPACE=${OPTARG};;
 e) EP_LIST=${OPTARG};;
-v) ENVIRONMENT=${OPTARG};;
 esac
 done 
 
@@ -18,6 +17,12 @@ if [ ! -z "$EP_LIST" ]
 then 
     RUN_EPS="--ep_list $EP_LIST"
 fi
+
+if [ ! -v $PERF_DIR ]
+then 
+    echo 'changing to '$PERF_DIR
+    cd $PERF_DIR 
+fi 
 
 # metadata
 FAIL_MODEL_FILE=".fail_model_map"
@@ -47,11 +52,11 @@ download_files() {
 }
 
 setup() {
-    cd $PERF_DIR
     cleanup_files
     download_files
 }
 
+ls -al 
 setup
 python3 benchmark_wrapper.py -r validate -m $MODEL_PATH -o result/$OPTION -w $WORKSPACE $RUN_EPS
 python3 benchmark_wrapper.py -r benchmark -t 10 -m $MODEL_PATH -o result/$OPTION -w $WORKSPACE $RUN_EPS
