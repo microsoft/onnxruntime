@@ -68,8 +68,8 @@ def _test_ios_packages(args):
         subprocess.run(['pod', 'install'], shell=False, check=True, cwd=target_proj_path)
 
         # run the tests
-        subprocess.run(['xcodebuild', 'test',
-                        '-workspace', 'ios_package_test.xcworkspace',
+        subprocess.run(['xcrun', 'xcodebuild', 'test', '-quiet',
+                        '-workspace', './ios_package_test.xcworkspace',
                         '-scheme', 'ios_package_test',
                         '-destination', 'platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)'],
                        shell=False, check=True, cwd=target_proj_path)
