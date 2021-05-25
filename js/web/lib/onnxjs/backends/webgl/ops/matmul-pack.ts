@@ -32,6 +32,7 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
 
     const glsl = getGlsl(handler.session.backend.glContext.version);
     const coordsDataType = getCoordsDataType(outputShape.length);
+    const outRank = outputShape.length;
     const allGlChannels = ['x', 'y', 'z', 'w', 'u', 'v'];
 
     const {activationFunction, applyActivation} = getActicationSnippet(this.activation);
@@ -39,6 +40,10 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
       ${activationFunction}
       void main() {
         ${coordsDataType} rc = getOutputCoords();
+        int lastDim = rc.${allGlChannels[outRank - 1]};
+        rc.${allGlChannels[outRank - 1]} = rc.${allGlChannels[outRank - 2]};
+        rc.${allGlChannels[outRank - 2]} = lastDim;
+
         vec4 result = vec4(0);
         for (int i = 0; i < ${sharedDimIndex}; i++) {
           vec4 a = getA(${getA(allGlChannels, aRank)});
