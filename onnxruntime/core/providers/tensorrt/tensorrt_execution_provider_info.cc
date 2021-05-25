@@ -93,17 +93,10 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
 
 ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const OrtTensorRTProviderOptions& info) {
 
-  std::string kInt8CalibTable_ = "";
-  if (info.trt_int8_calibration_table_name != nullptr)
-    kInt8CalibTable_ = MakeStringWithClassicLocale(info.trt_int8_calibration_table_name);
-
-  std::string kCachePath_ = "";
-  if (info.trt_engine_cache_path != nullptr)
-    kCachePath_ = MakeStringWithClassicLocale(info.trt_engine_cache_path);
-
-  std::string kDecryptionLibPath_ = "";
-  if (info.trt_engine_decryption_lib_path != nullptr)
-    kDecryptionLibPath_ = MakeStringWithClassicLocale(info.trt_engine_decryption_lib_path);
+  auto empty_if_null = [](const char* s) { return s != nullptr ? std::string{s} : std::string{}; };
+  const std::string kInt8CalibTable_ = empty_if_null(info.trt_int8_calibration_table_name);
+  const std::string kCachePath_ = empty_if_null(info.trt_engine_cache_path);
+  const std::string kDecryptionLibPath_ = empty_if_null(info.trt_engine_decryption_lib_path);
 
   const ProviderOptions options{
       {tensorrt::provider_option_names::kDeviceId, MakeStringWithClassicLocale(info.device_id)},

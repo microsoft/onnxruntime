@@ -264,10 +264,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void TestTensorRTProviderOptions()
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
-            string calTablePath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet_calibration.flatbuffers"); // file must exists
-            string enginePath = Path.Combine(Directory.GetCurrentDirectory(), "engine.cache.dummy"); // fake path for testing provider options only
-            string engineDecrptLibPath = Path.Combine(Directory.GetCurrentDirectory(), "engine_decryp.lib.dummy"); // fake path for testing provider options only
-
+            string calTablePath = "squeezenet_calibration.flatbuffers";
+            string enginePath = "./";
+            string engineDecrptLibPath = "engine_decryp";
 
             using (var cleanUp = new DisposableListTest<IDisposable>())
             {
@@ -279,7 +278,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 providerOptionsDict["trt_fp16_enable"] = "1";
                 providerOptionsDict["trt_int8_enable"] = "1";
                 providerOptionsDict["trt_int8_calibration_table_name"] = calTablePath;
-                providerOptionsDict["trt_engine_cache_enable"] = "0";
+                providerOptionsDict["trt_engine_cache_enable"] = "1";
                 providerOptionsDict["trt_engine_cache_path"] = enginePath;
                 providerOptionsDict["trt_engine_decryption_enable"] = "0";
                 providerOptionsDict["trt_engine_decryption_lib_path"] = engineDecrptLibPath;
@@ -299,7 +298,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 value = resultProviderOptionsDict["trt_int8_calibration_table_name"];
                 Assert.Equal(calTablePath, value);
                 value = resultProviderOptionsDict["trt_engine_cache_enable"];
-                Assert.Equal("0", value);
+                Assert.Equal("1", value);
                 value = resultProviderOptionsDict["trt_engine_cache_path"];
                 Assert.Equal(enginePath, value);
                 value = resultProviderOptionsDict["trt_engine_decryption_enable"];

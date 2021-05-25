@@ -359,12 +359,6 @@ namespace Microsoft.ML.OnnxRuntime
 
             OrtCreatePrepackedWeightsContainer = (DOrtCreatePrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.CreatePrepackedWeightsContainer, typeof(DOrtCreatePrepackedWeightsContainer));
             OrtReleasePrepackedWeightsContainer = (DOrtReleasePrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.ReleasePrepackedWeightsContainer, typeof(DOrtReleasePrepackedWeightsContainer));
-
-            OrtCreateTensorRTProviderOptions = (DOrtCreateTensorRTProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateTensorRTProviderOptions, typeof(DOrtCreateTensorRTProviderOptions));
-            OrtUpdateTensorRTProviderOptions = (DOrtUpdateTensorRTProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.UpdateTensorRTProviderOptions, typeof(DOrtUpdateTensorRTProviderOptions));
-            OrtGetTensorRTProviderOptions = (DOrtGetTensorRTProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.GetTensorRTProviderOptions, typeof(DOrtGetTensorRTProviderOptions));
-            OrtReleaseTensorRTProviderOptions = (DOrtReleaseTensorRTProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseTensorRTProviderOptions, typeof(DOrtReleaseTensorRTProviderOptions));
-
         }
 
         [DllImport(nativeLib, CharSet = charSet)]
@@ -388,13 +382,14 @@ namespace Microsoft.ML.OnnxRuntime
         #endregion Runtime/Environment API
 
         #region Provider Options API
+
         /// <summary>
         /// Creates native OrtTensorRTProviderOptions instance
         /// </summary>
         /// <param name="trtProviderOptionsInstance">(output) native instance of OrtTensorRTProviderOptions</param>
-        public delegate IntPtr /* OrtStatus* */DOrtCreateTensorRTProviderOptions(
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /* OrtStatus* */OrtCreateTensorRTProviderOptions(
             out IntPtr /*(OrtTensorRTProviderOptions**)*/ trtProviderOptionsInstance);
-        public static DOrtCreateTensorRTProviderOptions OrtCreateTensorRTProviderOptions;
 
         /// <summary>
         /// Updates native OrtTensorRTProviderOptions instance using given key/value pairs
@@ -403,29 +398,30 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="providerOptionsKeys">configuration keys of OrtTensorRTProviderOptions</param>
         /// <param name="providerOptionsValues">configuration values of OrtTensorRTProviderOptions</param>
         /// <param name="numKeys">number of configuration keys</param>
-        public delegate IntPtr /* OrtStatus* */DOrtUpdateTensorRTProviderOptions(
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /* OrtStatus* */OrtUpdateTensorRTProviderOptions(
             IntPtr /*(OrtTensorRTProviderOptions*)*/ trtProviderOptionsInstance,
             IntPtr[] /*(const char* const *)*/ providerOptionsKeys,
             IntPtr[] /*(const char* const *)*/ providerOptionsValues,
             UIntPtr /*(size_t)*/ numKeys);
-        public static DOrtUpdateTensorRTProviderOptions OrtUpdateTensorRTProviderOptions;
 
         /// <summary>
         /// Updates native OrtTensorRTProviderOptions instance using given key/value pairs
         /// </summary>
-        /// <param name="allocator"></param>
-        /// <param name="ptr"></param>
-        public delegate IntPtr /* OrtStatus* */DOrtGetTensorRTProviderOptions(
-                                                IntPtr /*(OrtAllocator*)*/ allocator,
-                                                out IntPtr /*(char**)*/ptr);
-        public static DOrtGetTensorRTProviderOptions OrtGetTensorRTProviderOptions;
+        /// <param name="allocator">instance of OrtAllocator</param>
+        /// <param name="ptr">is a UTF-8 null terminated string allocated using 'allocator'</param>
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr /* OrtStatus* */OrtGetTensorRTProviderOptions(
+            IntPtr /*(OrtAllocator*)*/ allocator,
+            out IntPtr /*(char**)*/ptr);
 
         /// <summary>
         /// Releases native OrtTensorRTProviderOptions instance
         /// </summary>
         /// <param name="trtProviderOptionsInstance">native instance of OrtTensorRTProviderOptions to be released</param>
-        public delegate void DOrtReleaseTensorRTProviderOptions(IntPtr /*(OrtTensorRTProviderOptions*)*/ trtProviderOptionsInstance);
-        public static DOrtReleaseTensorRTProviderOptions OrtReleaseTensorRTProviderOptions;
+        [DllImport(nativeLib, CharSet = charSet)]
+        public static extern IntPtr OrtReleaseTensorRTProviderOptions(IntPtr /*(OrtTensorRTProviderOptions*)*/ trtProviderOptionsInstance);
+
         #endregion
 
         #region Status API

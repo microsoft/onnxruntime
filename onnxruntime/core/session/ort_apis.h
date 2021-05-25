@@ -276,11 +276,4 @@ ORT_API_STATUS_IMPL(CreateSessionFromArrayWithPrepackedWeightsContainer, _In_ co
                     _In_ const void* model_data, size_t model_data_length,
                     _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
                     _Outptr_ OrtSession** out);
-ORT_API_STATUS_IMPL(CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptions** out);
-ORT_API_STATUS_IMPL(UpdateTensorRTProviderOptions, _Inout_ OrtTensorRTProviderOptions* tensorrt_provider_options,
-                    _In_reads_(num_keys) const char* const* provider_options_keys,
-                    _In_reads_(num_keys) const char* const* provider_options_values,
-                    size_t num_keys);
-ORT_API_STATUS_IMPL(GetTensorRTProviderOptions, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
-ORT_API(void, ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptions*);
 }  // namespace OrtApis

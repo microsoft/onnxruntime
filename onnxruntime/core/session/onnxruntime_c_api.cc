@@ -2228,10 +2228,10 @@ static constexpr OrtApi ort_api_1_to_9 = {
     // End of Version 8 - DO NOT MODIFY ABOVE (see above text for more information)
 
     // Version 9 - In development, feel free to add/remove/rearrange here
-    &OrtApis::CreateTensorRTProviderOptions,
-    &OrtApis::UpdateTensorRTProviderOptions,
-    &OrtApis::GetTensorRTProviderOptions,
-    &OrtApis::ReleaseTensorRTProviderOptions,
+    //&OrtApis::CreateTensorRTProviderOptions,
+    //&OrtApis::UpdateTensorRTProviderOptions,
+    //&OrtApis::GetTensorRTProviderOptions,
+    //&OrtApis::ReleaseTensorRTProviderOptions,
 
 };
 

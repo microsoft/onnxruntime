@@ -1182,7 +1182,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA, _In_ Or
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptions** out) {
+ORT_API_STATUS_IMPL(OrtCreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptions** out) {
 #ifdef USE_TENSORRT
   *out = new OrtTensorRTProviderOptions();
   (*out)->trt_int8_calibration_table_name = nullptr;
@@ -1195,7 +1195,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRT
 #endif
 }
 
-ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
+ORT_API_STATUS_IMPL(OrtUpdateTensorRTProviderOptions,
                     _Inout_ OrtTensorRTProviderOptions* tensorrt_provider_options,
                     _In_reads_(num_keys) const char* const* provider_options_keys,
                     _In_reads_(num_keys) const char* const* provider_options_values,
@@ -1222,7 +1222,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
 #endif
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptions, _Inout_ OrtAllocator* allocator,
+ORT_API_STATUS_IMPL(OrtGetTensorRTProviderOptions, _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** ptr) {
 #ifdef USE_TENSORRT
   onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Tensorrt();
@@ -1247,17 +1247,19 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptions, _Inout_ OrtAllocator* a
 #endif
 }
 
-ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptions* ptr) {
-  if (ptr->trt_int8_calibration_table_name != nullptr) {
-    delete ptr->trt_int8_calibration_table_name;
-  }
+ORT_API(void, OrtReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptions* ptr) {
+  if (ptr != nullptr) {
+    if (ptr->trt_int8_calibration_table_name != nullptr) {
+      delete ptr->trt_int8_calibration_table_name;
+    }
 
-  if (ptr->trt_engine_cache_path != nullptr) {
-    delete ptr->trt_engine_cache_path;
-  }
+    if (ptr->trt_engine_cache_path != nullptr) {
+      delete ptr->trt_engine_cache_path;
+    }
 
-  if (ptr->trt_engine_decryption_lib_path != nullptr) {
-    delete ptr->trt_engine_decryption_lib_path;
+    if (ptr->trt_engine_decryption_lib_path != nullptr) {
+      delete ptr->trt_engine_decryption_lib_path;
+    }
   }
 
   delete ptr;
