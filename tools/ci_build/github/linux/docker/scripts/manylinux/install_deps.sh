@@ -58,9 +58,7 @@ mkdir -p /tmp/azcopy
 GetFile https://aka.ms/downloadazcopy-v10-linux /tmp/azcopy/azcopy.tar.gz
 tar --strip 1 -xf /tmp/azcopy/azcopy.tar.gz -C /tmp/azcopy
 cp /tmp/azcopy/azcopy /usr/bin
-echo "Installing cmake"
-GetFile https://github.com/Kitware/CMake/releases/download/v3.18.2/cmake-3.18.2-Linux-x86_64.tar.gz /tmp/src/cmake-3.18.2-Linux-x86_64.tar.gz
-tar -zxf /tmp/src/cmake-3.18.2-Linux-x86_64.tar.gz --strip=1 -C /usr
+
 echo "Installing Ninja"
 GetFile https://github.com/ninja-build/ninja/archive/v1.10.0.tar.gz /tmp/src/ninja-linux.tar.gz
 tar -zxf ninja-linux.tar.gz
@@ -68,19 +66,10 @@ cd ninja-1.10.0
 cmake -Bbuild-cmake -H.
 cmake --build build-cmake
 mv ./build-cmake/ninja /usr/bin
-if [[ "$os_major_version" == "6" ]]; then
-  echo "Installing Node.js from source"
-  GetFile https://nodejs.org/dist/v12.16.3/node-v12.16.3.tar.xz /tmp/src/node-v12.16.3.tar.xz
-  tar -xf /tmp/src/node-v12.16.3.tar.xz
-  cd node-v12.16.3
-  LDFLAGS=-lrt /opt/python/cp27-cp27m/bin/python configure --ninja
-  LDFLAGS=-lrt make -j$(getconf _NPROCESSORS_ONLN)
-  LDFLAGS=-lrt make install
-else
-  echo "Installing Node.js from source"
-  GetFile https://nodejs.org/dist/v12.16.3/node-v12.16.3-linux-x64.tar.gz /tmp/src/node-v12.16.3-linux-x64.tar.gz
-  tar --strip 1 -xf /tmp/src/node-v12.16.3-linux-x64.tar.gz -C /usr
-fi
+echo "Installing Node.js"
+GetFile https://nodejs.org/dist/v12.16.3/node-v12.16.3-linux-x64.tar.gz /tmp/src/node-v12.16.3-linux-x64.tar.gz
+tar --strip 1 -xf /tmp/src/node-v12.16.3-linux-x64.tar.gz -C /usr
+
 cd /tmp/src
 GetFile https://downloads.gradle-dn.com/distributions/gradle-6.3-bin.zip /tmp/src/gradle-6.3-bin.zip
 unzip /tmp/src/gradle-6.3-bin.zip

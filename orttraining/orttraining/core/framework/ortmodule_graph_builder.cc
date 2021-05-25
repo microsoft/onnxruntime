@@ -40,9 +40,9 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
   }
 
   graph_info_.initializer_names_to_train.assign(config.initializer_names_to_train.begin(),
-                                                         config.initializer_names_to_train.end());
+                                                config.initializer_names_to_train.end());
   graph_info_.initializer_names.assign(config.initializer_names.begin(),
-                                                config.initializer_names.end());
+                                       config.initializer_names.end());
 
   std::vector<const NodeArg*> input_args;
   for (const auto& input_name : graph_info_.user_input_names) {
@@ -50,7 +50,7 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
   }
 
   // Remove all the initializers from the graph and move them to graph inputs.
-  for (const auto& initializer_name : graph_info_.initializer_names) {
+  for (const auto& initializer_name : config_.initializer_names) {
     const NodeArg* node_arg = graph.GetNodeArg(initializer_name);
     ORT_ENFORCE(node_arg != nullptr, "node arg is nullptr for initializer name: ", initializer_name);
 
@@ -315,7 +315,7 @@ void OrtModuleGraphBuilder::ReorderOutputs() {
 
   // Add initializer gradients to graph outputs.
   graph_info_.initializer_grad_names_to_train.clear();
-  for (const auto& initializer_name : graph_info_.initializer_names_to_train) {
+  for (const auto& initializer_name : config_.initializer_names_to_train) {
     std::string initializer_gradient_name = GradientBuilderBase::GradientName(initializer_name);
     ORT_ENFORCE(gradient_output_arg_map.find(initializer_gradient_name) != gradient_output_arg_map.end(),
                 "Trainable initializer grad is not found on gradient graph.");

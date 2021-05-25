@@ -1,6 +1,6 @@
 module.exports = {
   root: true,
-  ignorePatterns: ['**/*.js', 'node_modules/', 'types/'],
+  ignorePatterns: ['**/*.js', 'node_modules/', 'types/', 'dist/'],
   env: { 'es6': true },
   parser: '@typescript-eslint/parser',
   parserOptions: { 'project': 'tsconfig.json', 'sourceType': 'module' },
@@ -153,6 +153,24 @@ module.exports = {
   }, {
     files: ['web/lib/wasm/binding/**/*.ts'], rules: {
       '@typescript-eslint/naming-convention': 'off'
+    }
+  }, {
+    files: ['react_native/example/src/**/*.ts', 'react_native/example/src/**/*.tsx'], rules: {
+      '@typescript-eslint/no-non-null-assertion': 'off',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'off',
+      'unicorn/filename-case': 'off',
+      'no-invalid-this': 'off',
+      'no-console': 'off'
+    }
+  }, {
+    files: ['react_native/lib/**/*.ts'], rules: {
+      '@typescript-eslint/naming-convention': 'off'
+    }
+  }, {
+    files: ['react_native/scripts/**/*.ts'], rules: {
+      'import/no-extraneous-dependencies': 'off',
+      'prefer-arrow/prefer-arrow-functions': 'off',
+      'no-console': 'off'
     }
   }],
   extends: [

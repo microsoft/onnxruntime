@@ -687,3 +687,13 @@
 |TransposeMatMul|(*in* A:**T**, *in* B:**T**, *out* Y:**T**)|1+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
 | |
 | |
+
+
+## Operators implemented by DnnlExecutionProvider
+
+| Op Name | Parameters | OpSet Version | Types Supported |
+|---------|------------|---------------|-----------------|
+|**Operator Domain:** *ai.onnx.ml*||||
+|Gemm|(*in* A:**T**, *in* B:**T**, *in* C:**T**, *out* Y:**T**)|7+|**T** = tensor(float)|
+| |
+| |

@@ -1658,13 +1658,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>input_scale</tt> : T3</dt>
 <dd>scale of quantized input tensor. It's a scalar, which means a per-tensor/layer quantization.</dd>
 <dt><tt>weight_scale</tt> : T3</dt>
-<dd>scale of weight scale. It's a scalar, which means a per-tensor/layer quantization.</dd>
+<dd>scale of weight scale. It's a scalar or a 1D tensor, which means a per-tensor/per-column quantization.Its size should be 3 * hidden_size if it is per-column quantization</dd>
 <dt><tt>mask_index</tt> (optional) : T4</dt>
 <dd>Attention mask index with shape (batch_size)</dd>
 <dt><tt>input_zero_point</tt> (optional) : T1</dt>
 <dd>zero point of quantized input tensor.It's a scalar, which means a per-tensor/layer quantization.</dd>
 <dt><tt>weight_zero_point</tt> (optional) : T2</dt>
-<dd>zero point of quantized weight tensor. It's a scalar, which means a per-tensor/layer quantization.</dd>
+<dd>zero point of quantized weight tensor. It's a scalar or a 1D tensor, which means a per-tensor/per-column quantization.Its size should be 3 * hidden_size if it is per-column quantization</dd>
 <dt><tt>past</tt> (optional) : T3</dt>
 <dd>past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).</dd>
 </dl>
@@ -1784,6 +1784,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>auto_pad must be either NOTSET, SAME_UPPER, SAME_LOWER or VALID. Where default value is NOTSET, which means explicit padding is used. SAME_UPPER or SAME_LOWER mean pad the input so that the output spatial size match the input.In case of odd number add the extra padding at the end for SAME_UPPER and at the beginning for SAME_LOWER. VALID mean no padding.</dd>
 <dt><tt>ceil_mode</tt> : int</dt>
 <dd>Whether to use ceil or floor (default) to compute the output shape.</dd>
+<dt><tt>channels_last</tt> : int</dt>
+<dd>Works on NHWC layout or not? Default not.</dd>
 <dt><tt>count_include_pad</tt> : int</dt>
 <dd>Whether include pad pixels when calculating values for the edges. Default is 0, doesn't count include pad.</dd>
 <dt><tt>kernel_shape</tt> : list of ints (required)</dt>
@@ -3063,6 +3065,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>coordinate_transformation_mode</tt> : string</dt>
+<dd></dd>
+<dt><tt>mode</tt> : string</dt>
+<dd></dd>
 <dt><tt>scales</tt> : list of ints</dt>
 <dd></dd>
 </dl>

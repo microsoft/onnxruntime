@@ -31,6 +31,9 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
     int max_dead_bytes_per_chunk = info.arena_cfg.max_dead_bytes_per_chunk == -1
                                        ? BFCArena::DEFAULT_MAX_DEAD_BYTES_PER_CHUNK
                                        : info.arena_cfg.max_dead_bytes_per_chunk;
+    int initial_growth_chunk_size_bytes = info.arena_cfg.initial_growth_chunk_size_bytes == -1
+                                              ? BFCArena::DEFAULT_INITIAL_GROWTH_CHUNK_SIZE_BYTES
+                                              : info.arena_cfg.initial_growth_chunk_size_bytes;
     ArenaExtendStrategy arena_extend_str;
     switch (info.arena_cfg.arena_extend_strategy) {
       case static_cast<int>(ArenaExtendStrategy::kSameAsRequested):
@@ -51,16 +54,16 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
 #else
     return std::shared_ptr<IArenaAllocator>(
         std::make_unique<BFCArena>(std::move(device_allocator),
-                                           max_mem,
-                                           arena_extend_str,
-                                           initial_chunk_size_bytes,
-                                           max_dead_bytes_per_chunk));
+                                   max_mem,
+                                   arena_extend_str,
+                                   initial_chunk_size_bytes,
+                                   max_dead_bytes_per_chunk,
+                                   initial_growth_chunk_size_bytes));
 #endif
   }
 
   return AllocatorPtr(std::move(device_allocator));
 }
-
 
 // Update allocator in the provider if already present; ignore if not.
 void AllocatorManager::ReplaceAllocator(AllocatorPtr allocator) {

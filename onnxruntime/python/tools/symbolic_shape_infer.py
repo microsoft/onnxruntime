@@ -151,6 +151,9 @@ class SymbolicShapeInference:
             'PythonOp': self._infer_PythonOp,
             'SkipLayerNormalization': self._infer_SkipLayerNormalization
         }
+        self.aten_op_dispatcher_ = {
+            'aten::embedding': self._infer_Gather,
+        }
         self.run_ = True
         self.suggested_merge_ = {}
         self.symbolic_dims_ = {}
@@ -736,7 +739,7 @@ class SymbolicShapeInference:
         indices_shape = self._get_shape(node, 1)
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(
-            helper.make_tensor_value_info(node.output[0], vi.type.tensor_type.elem_type,
+            helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
                                           data_shape[:axis] + indices_shape + data_shape[axis + 1:]))
         # for 1D input, do some sympy compute
         if node.input[0] in self.sympy_data_ and len(data_shape) == 1 and 0 == get_attribute(node, 'axis', 0):
@@ -1421,6 +1424,13 @@ class SymbolicShapeInference:
                 vi = self.known_vi_[node.output[0]]
                 if len(vi.type.tensor_type.shape.dim) == 0:
                     vi.type.tensor_type.elem_type = onnx.TensorProto.UNDEFINED
+            elif node.op_type == 'ATenOp' and node.domain == 'com.microsoft':
+                for attr in node.attribute:
+                    if attr.name == 'name':
+                        aten_op_name = attr.s.decode('utf-8') if isinstance(attr.s, bytes) else attr.s
+                        if aten_op_name in self.aten_op_dispatcher_:
+                            self.aten_op_dispatcher_[aten_op_name](node)
+                        break
 
             if self.verbose_ > 2:
                 print(node.op_type + ': ' + node.name)

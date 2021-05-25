@@ -1,5 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#undef USE_CUDA  // TODO: Cuda is a shared library, so can't call any Cuda provider methods directly from here
+
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
 
@@ -22,6 +24,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/bfc_arena.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
@@ -39,6 +42,7 @@
 #include "core/session/device_allocator.h"
 #include "core/session/allocator_impl.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 #include "dummy_provider.h"
 #include "test_utils.h"
 #include "test/capturing_sink.h"
@@ -164,8 +168,8 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   // Generate the input & output def lists
   std::vector<ONNX_NAMESPACE::FunctionProto> model_specific_functions;
   p_model = std::make_unique<Model>("test", true, ModelMetaData(), PathString(),
-                                            IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
-                                            model_specific_functions, DefaultLoggingManager().DefaultLogger());
+                                    IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+                                    model_specific_functions, DefaultLoggingManager().DefaultLogger());
   onnxruntime::Graph& graph = p_model->MainGraph();
 
   TypeProto tensor_float;
@@ -347,8 +351,8 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     auto& shape = rtensor.Shape();
     auto cpu_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
     std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
-                                                                          shape,
-                                                                          cpu_allocator);
+                                                                  shape,
+                                                                  cpu_allocator);
 #ifdef USE_CUDA
     cudaStream_t stream = static_cast<cudaStream_t>(static_cast<const onnxruntime::CUDAExecutionProvider*>(TestCudaExecutionProvider())->GetComputeStream());
 #elif USE_ROCM
@@ -644,19 +648,14 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
   ASSERT_TRUE(size > 1);
   ASSERT_TRUE(lines[0].find("[") != string::npos);
   ASSERT_TRUE(lines[1].find("model_loading_uri") != string::npos);
-  ASSERT_TRUE(lines[size-1].find("]") != string::npos);
+  ASSERT_TRUE(lines[size - 1].find("]") != string::npos);
   std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
 
-  bool has_kernel_info = false;
   for (size_t i = 1; i < size - 1; ++i) {
     for (auto& s : tags) {
       ASSERT_TRUE(lines[i].find(s) != string::npos);
-      has_kernel_info = has_kernel_info || (lines[i].find("Kernel") != string::npos);
     }
   }
-#ifdef USE_CUDA
-  ASSERT_TRUE(has_kernel_info);
-#endif
 }
 
 TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
@@ -677,23 +676,24 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
 
   std::ifstream profile(profile_file);
   std::string line;
-  std::vector<std::string> lines;
 
-  while (std::getline(profile, line)) {
-    lines.push_back(line);
-  }
-
-  auto size = lines.size();
-  ASSERT_TRUE(size > 1);
-  ASSERT_TRUE(lines[0].find("[") != string::npos);
-  ASSERT_TRUE(lines[1].find("mul_1_fence_before") != string::npos);
-  ASSERT_TRUE(lines[size - 1].find("]") != string::npos);
   std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
-
-  for (size_t i = 1; i < size - 1; ++i) {
-    for (auto& s : tags) {
-      ASSERT_TRUE(lines[i].find(s) != string::npos);
+  int count = 0;
+  while (std::getline(profile, line)) {
+    if (count == 0) {
+      ASSERT_TRUE(line.find("[") != string::npos);
+    } else if (count <= 5) {
+      for (auto& s : tags) {
+        ASSERT_TRUE(line.find(s) != string::npos);
+      }
+    } else {
+      ASSERT_TRUE(line.find("]") != string::npos);
     }
+
+    if (count == 1) {
+      ASSERT_TRUE(line.find("mul_1_fence_before") != string::npos);
+    }
+    count++;
   }
 }
 
@@ -865,9 +865,9 @@ static void TestBindHelper(const std::string& log_str,
     epi.device_id = 0;
     EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
 #elif USE_ROCM
-  ROCMExecutionProviderInfo epi;
-  epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(epi)).IsOK());
+    ROCMExecutionProviderInfo epi;
+    epi.device_id = 0;
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(epi)).IsOK());
 #endif
   }
 
@@ -1281,19 +1281,18 @@ TEST(ExecutionProviderTest, ShapeInferenceForFusedFunctionTest) {
 
   Graph& fused_graph = session.GetMutableGraph();
   ASSERT_TRUE(fused_graph.NumberOfNodes() == 1);
-  auto &fused_node = *fused_graph.Nodes().begin();
+  auto& fused_node = *fused_graph.Nodes().begin();
   ASSERT_TRUE(fused_node.NodeType() == Node::Type::Fused);
   ASSERT_TRUE(fused_node.Op()->has_type_and_shape_inference_function());
 
   // Clear shape inference data from output node to verify that assigned inference function is called
-  auto &fused_node_output = *fused_node.MutableOutputDefs()[0];
+  auto& fused_node_output = *fused_node.MutableOutputDefs()[0];
   fused_node_output.ClearShape();
   fused_graph.SetGraphResolveNeeded();
   fused_graph.Resolve();
 
   ASSERT_TRUE(fused_node_output.Shape() != nullptr);
-  ASSERT_TRUE(utils::GetTensorShapeFromTensorShapeProto(*fused_node_output.Shape())
-              == utils::GetTensorShapeFromTensorShapeProto(float_tensor.tensor_type().shape()));
+  ASSERT_TRUE(utils::GetTensorShapeFromTensorShapeProto(*fused_node_output.Shape()) == utils::GetTensorShapeFromTensorShapeProto(float_tensor.tensor_type().shape()));
 }
 
 TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
@@ -2007,6 +2006,93 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
   ASSERT_TRUE(so_queried.execution_mode == ExecutionMode::ORT_SEQUENTIAL);
 }
 
+TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
+  OrtArenaCfg arena_cfg;
+  arena_cfg.arena_extend_strategy = 1;  // kSameAsRequested
+
+  SessionOptions so;
+  InferenceSession session_object{so, GetEnvironment()};
+  CUDAExecutionProviderInfo epi;
+  epi.default_memory_arena_cfg = &arena_cfg;
+
+  epi.device_id = 0;
+  ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  // Fetch the CUDA allocator to analyze its stats
+  OrtMemoryInfo mem_info(CUDA, OrtArenaAllocator);
+  auto cuda_alloc = session_object.GetAllocator(mem_info);
+
+  AllocatorStats alloc_stats;
+  static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
+#ifdef ENABLE_TRAINING
+  // In training builds, initializers are allocated using the Reserve() call which
+  // will not cause an arena extension
+  ASSERT_EQ(alloc_stats.num_arena_extensions, 0);
+#else
+  // The arena would have made an extension to accommodate the sole initializer on CUDA
+  ASSERT_EQ(alloc_stats.num_arena_extensions, 1);
+#endif
+
+  // no shrinkages should have occurred during this time (sanity check)
+  ASSERT_EQ(alloc_stats.num_arena_shrinkages, 0);
+
+  auto allocated_memory_before_run = alloc_stats.total_allocated_bytes;
+
+  {
+    // First Run - no shrinkage
+    RunOptions run_options_1;
+    RunModel(session_object, run_options_1);
+
+    static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
+
+    // The arena would have made 2 more extensions as part of servicing memory requests within Run()
+    // 1) - To take the solitary feed to cuda memory
+    // 2) - Allocate output of the solitary node
+#ifdef ENABLE_TRAINING
+    // In training - that is a total of 2 extensions
+    ASSERT_EQ(alloc_stats.num_arena_extensions, 2);
+#else
+    // In inferencing - that is a total of 3 extensions
+    ASSERT_EQ(alloc_stats.num_arena_extensions, 3);
+#endif
+
+    // Assert that there have been no shrinkages after this Run()
+    ASSERT_EQ(alloc_stats.num_arena_shrinkages, 0);
+  }
+
+  {
+    // Second Run - with shrinkage
+    RunOptions run_options_2;
+    run_options_2.config_options.AddConfigEntry(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "gpu:0");
+    RunModel(session_object, run_options_2);
+
+    static_cast<BFCArena*>(cuda_alloc.get())->GetStats(&alloc_stats);
+
+    // The arena would have made no extensions in this Run() as the freed memory after the first Run()
+    // will be re-used
+
+#ifdef ENABLE_TRAINING
+    // In training - that is a total of 2 extensions
+    ASSERT_EQ(alloc_stats.num_arena_extensions, 2);
+#else
+    // In inferencing - that is a total of 3 extensions
+    ASSERT_EQ(alloc_stats.num_arena_extensions, 3);
+#endif
+
+    // The arena would have shrunk both extensions it made as part of Run() - because these allocations
+    // would have been left unused after this Run()
+    // (The allocation for the sole initializer will not be shrunk as it is still being "used" by the session)
+    ASSERT_EQ(alloc_stats.num_arena_shrinkages, 2);
+  }
+
+  // Assert that allocated memory before and after Run() are the same
+  // Because any memory allocated during Run would have been de-allocated as pat of the shrinkage
+  auto allocated_memory_after_run = alloc_stats.total_allocated_bytes;
+  ASSERT_EQ(allocated_memory_before_run, allocated_memory_after_run);
+}
+
 #endif
 
 // The model being tested here triggers a case where the allocation planner (AP) tries to reuse a tensor of type
@@ -2470,13 +2556,13 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
   // create sessions to share the allocator
 
   SessionOptions so1;
-  so1.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
+  so1.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
   InferenceSessionTestSharingAllocator sess1(so1, *env);
   ASSERT_STATUS_OK(sess1.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess1.Initialize());
 
   SessionOptions so2;
-  so2.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
+  so2.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
   InferenceSessionTestSharingAllocator sess2(so2, *env);
   ASSERT_STATUS_OK(sess2.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess2.Initialize());
@@ -2515,13 +2601,13 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreated
   // create sessions to share the allocator
 
   SessionOptions so1;
-  so1.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
+  so1.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
   InferenceSessionTestSharingAllocator sess1(so1, *env);
   ASSERT_STATUS_OK(sess1.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess1.Initialize());
 
   SessionOptions so2;
-  so2.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "0");
+  so2.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "0");
   InferenceSessionTestSharingAllocator sess2(so2, *env);
   ASSERT_STATUS_OK(sess2.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess2.Initialize());
@@ -2695,11 +2781,11 @@ TEST(InferenceSessionTests, GlobalThreadPoolWithDenormalAsZero) {
   ASSERT_TRUE(st.IsOK());
 
   SessionOptions so;
-  so.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
+  so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
   so.use_per_session_threads = false;
 
   std::string configValue;
-  so.TryGetConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, configValue);
+  so.config_options.TryGetConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, configValue);
   EXPECT_EQ(configValue, "1");
 
   // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
@@ -2750,7 +2836,7 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   // inference session without denormal as zero.
   so.execution_mode = ExecutionMode::ORT_PARALLEL;
   // inference session with denormal as zero
-  so.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
+  so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "1");
 
   // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
   // set them manually here for a test.
@@ -2774,7 +2860,7 @@ TEST(InferenceSessionTests, InterThreadPoolWithDenormalAsZero) {
   VerifyThreadPoolWithDenormalAsZero(session1.GetInterOpThreadPoolToUse(), true);
 
   // inference session without denormal as zero.
-  so.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "0");
+  so.config_options.AddConfigEntry(kOrtSessionOptionsConfigSetDenormalAsZero, "0");
 
   // Since only the first session option for flush-to-zero and denormal-as-zero are effective,
   // set them manually here for a test.

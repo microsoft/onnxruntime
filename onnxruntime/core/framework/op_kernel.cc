@@ -199,12 +199,6 @@ Status OpKernelContext::SetOutputMLValue(int index, const OrtValue& ort_value) {
                       " was specified, but " + "range is (0, " + std::to_string(OutputCount()) + ")");
   }
 
-  if (kernel_->KernelDef().HasExternalOutputs()) {
-    std::cout << "Node name: " << GetNodeName() << ", node type: " << GetOpType()
-              << " is trying to use SetOutputMLValue(), but its kernel_def doesn't have "
-              << ".ExternalOutputs() declared." << std::endl;
-  }
-
   auto output_arg_index = GetOutputArgIndex(index);
   return execution_frame_->SetOutputMLValue(output_arg_index, ort_value);
 }

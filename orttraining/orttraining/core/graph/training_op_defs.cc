@@ -9,6 +9,7 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "onnx/defs/function.h"
 #include <math.h>
+#include "orttraining/training_ops/cpu/aten_ops/aten_op_config.h"
 
 namespace onnxruntime {
 namespace training {
@@ -2107,6 +2108,70 @@ Return true if all elements are true and false otherwise.
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BatchNormInternal)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Variant of BatchNormalization with additional output for saved_mean/inv_std_dev.")
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("epsilon", "epsilon value", AttributeProto::FLOAT, 1e-5f)
+      .Attr("momentum", "momentum value", AttributeProto::FLOAT, 0.9f)
+      .Attr("training_mode", "true if training", AttributeProto::INT, static_cast<int64_t>(1))
+      .Input(0, "X", "Input tensor.", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(1, "scale", "Scale tensor of shape (C).", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(2, "B", "Bias tensor of shape (C).", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(3, "input_mean", "running mean tensor of shape (C).", "U", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(4, "input_var", "running variance tensor of shape (C).", "U", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Output(0, "Y", "The output tensor of the same shape as X", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Output(1, "running_mean", "The running mean after BN.", "U", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Output(2, "running_var", "Running var after BN", "U", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Output(3, "saved_mean", "Mean of the batch", "U", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Output(4, "saved_inv_std", "Inverse standard deviation for the batch", "U", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "U",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain mean and variance types to float tensors. It allows all float type for U.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+        propagateShapeFromInputToOutput(ctx, 0, 0);
+
+        Dim num_channels;
+
+        unifyInputDim(ctx, 0, 1, num_channels);
+        unifyInputDim(ctx, 1, 0, num_channels);
+        unifyInputDim(ctx, 2, 0, num_channels);
+        unifyInputDim(ctx, 3, 0, num_channels);
+        unifyInputDim(ctx, 4, 0, num_channels);
+
+        if (ctx.getAttribute("training_mode") &&
+            static_cast<int>(ctx.getAttribute("training_mode")->i()) != 0) {
+          if (ctx.getNumOutputs() != 5)
+            fail_shape_inference(
+                "This number of op outputs should be 5 when Training_mode = True, but it is not.");
+        } else {
+          if (ctx.getNumOutputs() != 1)
+            fail_shape_inference(
+                "This number of op outputs should be 1 when Training_mode = False, but it is not.");
+        }
+
+        if (ctx.getNumOutputs() > 1) {
+          ONNX_NAMESPACE::TensorShapeProto outputs_shape;
+          *outputs_shape.add_dim() = num_channels;  // channel
+
+          propagateElemTypeFromInputToOutput(ctx, 3, 1);
+          updateOutputShape(ctx, 1, outputs_shape);
+          propagateElemTypeFromInputToOutput(ctx, 4, 2);
+          updateOutputShape(ctx, 2, outputs_shape);
+          propagateElemTypeFromInputToOutput(ctx, 3, 3);
+          updateOutputShape(ctx, 3, outputs_shape);
+          propagateElemTypeFromInputToOutput(ctx, 4, 4);
+          updateOutputShape(ctx, 4, outputs_shape);
+        }
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceAllL2)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -2431,9 +2496,13 @@ Return true if all elements are true and false otherwise.
       .Input(0, "module_outputs", "Module outputs to be returned to pytorch.", "T", OpSchema::Variadic,
              /*is_homogeneous*/ false,
              /*min_arity*/ 1)
+      /*
+      For a situation where there are no trainable parameters in a model, the YieldOp minimum
+      number of arguments expected for module_output_grad should be 0.
+      */
       .Output(0, "module_outputs_grad", "Gradient of module outputs returned from pytorch.", "T", OpSchema::Variadic,
               /*is_homogeneous*/ false,
-              /*min_arity*/ 1)
+              /*min_arity*/ 0)
       .Attr("non_differentiable_outputs", "The indices of the module outputs that doesn't have a gradient.", AttributeProto::INTS, OPTIONAL_VALUE)
       .Attr("full_shape_outputs", "The indices of the module outputs that must have full shape.", AttributeProto::INTS)
       .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
@@ -2471,6 +2540,68 @@ Return true if all elements are true and false otherwise.
             }
           }
           j++;
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ATenOp)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("ATenOp")
+      .Input(0, "inputs", "ATenOp inputs.", "T", OpSchema::Variadic,
+             /*is_homogeneous*/ false,
+             /*min_arity*/ 1)
+      .Output(0, "outputs", "ATenOp outputs.", "T", OpSchema::Variadic,
+              /*is_homogeneous*/ false,
+              /*min_arity*/ 1)
+      .Attr("name", "Name of ATen operator.", AttributeProto::STRING)
+      .Attr("custom_attributes_json", "custom attributes in JSON format.", AttributeProto::STRING, false)
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        const auto name_proto = ctx.getAttribute("name");
+        ORT_ENFORCE(name_proto, "ATenOp's must have \"name\" attribute.");
+        const std::string& name = name_proto->s();
+        const auto* op_config_ptr = contrib::aten_ops::GetATenOperatorConfig(name);
+        ORT_ENFORCE(op_config_ptr, "ATen Op config for ", name, " is not found.");
+        const auto& op_config = *op_config_ptr;
+        ORT_ENFORCE(ctx.getNumOutputs() == op_config.forward_output_type_infer_configs.size());
+
+        // Set inferred output types.
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          int type_config = std::get<1>(op_config.forward_output_type_infer_configs[i]);
+          if (std::get<0>(op_config.forward_output_type_infer_configs[i]) == contrib::aten_ops::PROPAGATE_FROM_INPUT) {
+            propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(type_config), i);
+          } else {
+            updateOutputElemType(ctx, i, type_config);
+          }
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ATenOpGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("ATenOpGrad.")
+      .Input(0, "inputs", "Inputs of ATenOp's gradient op.", "T", OpSchema::Variadic,
+             /*is_homogeneous*/ false,
+             /*min_arity*/ 1)
+      .Output(0, "outputs", "Outputs of ATenOp's gradient op.", "T", OpSchema::Variadic,
+              /*is_homogeneous*/ false,
+              /*min_arity*/ 1)
+      .Attr("name", "Name of ATen operator, should be same as its corresponding forward op.", AttributeProto::STRING)
+      .Attr("output_types", "Output types of ATenOp's gradient op.", AttributeProto::INTS)
+      .Attr("custom_attributes_json", "custom attributes in JSON format.", AttributeProto::STRING, false)
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Load expected output types.
+        const auto output_types_proto = ctx.getAttribute("output_types");
+        // This is a required field.
+        ORT_ENFORCE(output_types_proto, "ATenOpGrad's must have \"output_types\" attribute.");
+        ORT_ENFORCE(static_cast<size_t>(output_types_proto->ints_size()) == ctx.getNumOutputs(),
+                    "ATenOpGrad's output list and \"output_types\" attribute should have same length.");
+        // Set inferred output types.
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          updateOutputElemType(ctx, i, static_cast<int>(output_types_proto->ints(static_cast<int>(i))));
         }
       });
 

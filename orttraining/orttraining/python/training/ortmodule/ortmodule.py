@@ -17,28 +17,10 @@ T = TypeVar('T', bound='Module')
 
 
 class ORTModule(torch.nn.Module):
-    """Specializes a user torch.nn.Module to leverage ONNX Runtime graph execution.
+    """Extends user's :class:`torch.nn.Module` model to leverage ONNX Runtime super fast training engine.
 
-    ORTModule specializes the user's torch.nn.Module and provides forward, backward
-    implementations be leveraging ONNX Runtime.
-
-    ORTModule interacts with:
-    - GraphExecutionManagerFactory: Which returns a GraphExecutionManager based on
-    whether or not the user's torch module is in training mode or eval mode.
-    - GraphExecutionManager: Responsible for building and executing the forward and backward graphs.
-        - InferenceManager(GraphExecutionManager): Responsible for building, optimizing
-        and executing the inference onnx graph.
-        - TrainingManager(GraphExecutionManager): Responsible for building, optimizing
-        and executing the training onnx graph.
-
-        The GraphExecutionManager first exports the user model into an onnx model.
-        Following that, GraphExecutionManager interacts with OrtModuleGraphBuilder to optimize the onnx graph.
-        Once the onnx graph has been optimized, an ExecutionAgent is instantiated that
-        facilitates in executing the forward and backward subgraphs of the onnx model.
-
-    - _ortmodule_io: Provides utilities to transform the user inputs and outputs of the model.
-        - It facilitates in flattening the output from the user's PyTorch model (since exporting
-        of nested structures is not supported at the moment)
+    ORTModule specializes the user's :class:`torch.nn.Module` model, providing :meth:`~torch.nn.Module.forward`,
+    :meth:`~torch.nn.Module.backward` along with all others :class:`torch.nn.Module`'s APIs.
     """
 
     def __init__(self, module, **kwargs):
@@ -67,7 +49,7 @@ class ORTModule(torch.nn.Module):
         super(ORTModule, self).__init__()
 
         # Support contrib OPs
-        register_custom_ops_pytorch_exporter.register_custom_op()
+        register_custom_ops_pytorch_exporter.register_custom_op(is_ortmodule=True)
 
         # User module is wrapped to use its initializers and save computed gradients
         self._original_module = module
@@ -80,6 +62,13 @@ class ORTModule(torch.nn.Module):
             onnx_export_type = kwargs['onnx_export_type']
         self._execution_manager = GraphExecutionManagerFactory(self._flattened_module,
                                                                onnx_export_type=onnx_export_type)
+
+    # IMPORTANT: DO NOT add code here
+    # This declaration is for automatic document generation purposes only
+    # The actual forward implementation is bound during ORTModule initialization
+    def forward(self, *inputs, **kwargs):
+        '''Dummy documentation for forward method'''
+        ...
 
     def _is_training(self):
         return self._flattened_module.training and torch.is_grad_enabled()

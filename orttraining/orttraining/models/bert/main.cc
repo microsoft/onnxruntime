@@ -12,8 +12,10 @@
 #include "core/framework/random_seed.h"
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
 #ifdef USE_CUDA
-#include "core/providers/cuda/cuda_allocator.h"
-#include "core/providers/cuda/cuda_provider_factory_creator.h"
+namespace onnxruntime {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
+}  // namespace onnxruntime
 #endif
 #ifdef USE_ROCM
 #include "core/providers/rocm/rocm_allocator.h"
@@ -53,9 +55,9 @@ static SessionOptions session_options = {
     true,                              //use_per_session_threads
     true,                              //thread_pool_allow_spinning
     false,                             //use_deterministic_compute
-    {},                                //session_configurations
+    {},                                //config_options
     {},                                // initializers_to_share_map
-}; 
+};
 
 struct BertParameters : public TrainingRunner::Parameters {
   int max_sequence_length = 512;
@@ -607,15 +609,23 @@ void setup_training_params(BertParameters& params) {
 
 #ifdef USE_CUDA
   {
-    CUDAExecutionProviderInfo info{};
-    info.device_id = gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+    OrtCUDAProviderOptions info{
+        gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank()),
+        OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+        std::numeric_limits<size_t>::max(),
+        0,
+        true,
+        0,
+        nullptr,
+        nullptr};
+
     if (params.gpu_mem_limit_in_gb > 0) {
       info.gpu_mem_limit = gsl::narrow<size_t>(params.gpu_mem_limit_in_gb * 1024 * 1024 * 1024);
     }
     info.cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
 
-    params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(info));
-    params.input_allocator = std::make_shared<CUDAPinnedAllocator>(info.device_id, CUDA_PINNED);
+    params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_Cuda(&info));
+    params.input_allocator = CreateCUDAPinnedAllocator(info.device_id, CUDA_PINNED);
   }
 #endif
 
@@ -798,17 +808,17 @@ static Status RunTraining(const BertParameters& params, const Environment& env) 
     ORT_RETURN_IF_ERROR(runner->UpdateParams(params_for_phase));
     auto rank_in_data_parallel_group = (MPIContext::GetInstance().GetWorldRank() / params_for_phase.horizontal_parallel_size) % params_for_phase.data_parallel_size;
     auto training_data_loader = std::make_unique<DataLoader>(params_for_phase.input_name_map,
-                                                                     params_for_phase.train_data_dir,
-                                                                     max_num_files_preload,
-                                                                     rank_in_data_parallel_group,
-                                                                     params_for_phase.data_parallel_size);
+                                                             params_for_phase.train_data_dir,
+                                                             max_num_files_preload,
+                                                             rank_in_data_parallel_group,
+                                                             params_for_phase.data_parallel_size);
 
     auto test_data_loader = std::unique_ptr<DataLoader>{};
     // Evaluation is only done in device #0
     if (MPIContext::GetInstance().GetWorldRank() == 0) {
       test_data_loader = std::make_unique<DataLoader>(params_for_phase.input_name_map,
-                                                              params_for_phase.test_data_dir,
-                                                              max_num_files_preload);
+                                                      params_for_phase.test_data_dir,
+                                                      max_num_files_preload);
     }
 
     if (!params.perf_output_dir.empty()) {
@@ -836,7 +846,8 @@ int main(int argc, char* argv[]) {
   OrtParameters ort_params{};
   RETURN_IF_FAIL(ParseArguments(argc, argv, params, ort_params));
   bool keep_looping = params.debug_break;
-  while(keep_looping);
+  while (keep_looping)
+    ;
 
   // setup logger, be noted: LOGS_DEFAULT must be after logging manager initialization.
   string default_logger_id{"Default"};

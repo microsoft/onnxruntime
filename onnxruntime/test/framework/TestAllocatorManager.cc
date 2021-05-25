@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#undef USE_CUDA  // TODO: Cuda is a shared library, so can't call any Cuda provider methods directly from here
+
 #include "test/framework/TestAllocatorManager.h"
 #include "core/framework/allocatormgr.h"
 #ifdef USE_CUDA
@@ -36,6 +38,10 @@ class DummyArena : public IArenaAllocator {
 
   void* Reserve(size_t size) override {
     return Alloc(size);
+  }
+
+  Status Shrink() override {
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
   }
 
   size_t Used() const override {
