@@ -118,6 +118,7 @@ struct OrtStatus {
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
 #endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
@@ -128,12 +129,21 @@ struct OrtStatus {
 #ifdef USE_OPENVINO
 #include "core/providers/openvino/openvino_provider_factory.h"
 // TODO remove deprecated global config
+namespace onnxruntime {
+ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
+namespace python {
 extern std::string openvino_device_type;
+}
+}
 #endif
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
 // TODO remove deprecated global config
+namespace onnxruntime {
+namespace python {
 extern std::string nuphar_settings;
+}
+}
 #endif
 #ifdef USE_VITISAI
 #include "core/providers/vitisai/vitisai_provider_factory.h"
@@ -150,8 +160,6 @@ extern std::string nuphar_settings;
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 #ifdef USE_CUDA
-#include "core/providers/cuda/cuda_execution_provider_info.h"
-struct ProviderInfo_CUDA;
 namespace onnxruntime {
 ProviderInfo_CUDA* GetProviderInfo_CUDA();
 namespace python {
@@ -162,13 +170,6 @@ extern bool do_copy_in_default_stream;
 extern onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info;
 }  // namespace python
 }  // namespace onnxruntime
-#endif
-
-#ifdef USE_OPENVINO
-struct ProviderInfo_OpenVINO;
-namespace onnxruntime {
-ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
-}
 #endif
 
 #ifdef USE_ROCM
