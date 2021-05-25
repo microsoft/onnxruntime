@@ -1255,16 +1255,16 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
 
 
 def run_ios_tests(args, source_dir, config, cwd):
-    run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
-                    "-configuration", config,
-                    "-scheme",  "onnxruntime_test_all_xc", "-destination",
-                    "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd).check_returncode()
-
     if args.build_apple_framework:
         package_test_py = os.path.join(source_dir, 'tools', 'ci_build', 'github', 'apple', 'test_ios_packages.py')
         framework_dir = os.path.join(cwd, config + '-' + args.ios_sysroot)
         run_subprocess([sys.executable, package_test_py, '--c_framework_dir', framework_dir],
                        cwd=cwd).check_returncode()
+
+    run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
+                    "-configuration", config,
+                    "-scheme",  "onnxruntime_test_all_xc", "-destination",
+                    "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd).check_returncode()
 
     run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
                     "-configuration", config,
