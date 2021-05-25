@@ -115,6 +115,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Parse from string and save to dictionary
         /// </summary>
+        /// <param name="s">C# string</param>
+        /// <param name="dict">Dictionary instance to store the parsing result of s</param>
         public static void StringToDict(string s, Dictionary<string, string> dict)
         {
             string[] paris = s.Split(';');

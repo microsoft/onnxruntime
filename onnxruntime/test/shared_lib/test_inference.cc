@@ -1496,20 +1496,16 @@ TEST(CApiTest, ConfigureCudaArenaAndDemonstrateMemoryArenaShrinkage) {
 }
 #endif
 
-//#ifdef USE_TENSORRT
-// This test uses CreateTensorRTProviderOptions/UpdateTensorRTProviderOptions APIs to configure and create
-// a TensorRT Execution Provider
+#ifdef USE_TENSORRT
+
+// This test uses CreateTensorRTProviderOptions/UpdateTensorRTProviderOptions APIs to configure and create a TensorRT Execution Provider
 TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
   const auto& api = Ort::GetApi();
   OrtTensorRTProviderOptions* trt_options;
   ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
   std::unique_ptr<OrtTensorRTProviderOptions, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
 
-#ifdef _WIN32
-  const char* engine_cache_path = ".\\trt_engine_folder";
-#else
   const char* engine_cache_path = "./trt_engine_folder";
-#endif
 
   std::vector<const char*> keys{"device_id", "trt_fp16_enable", "trt_int8_enable", "trt_engine_cache_enable", "trt_engine_cache_path"};
 
@@ -1539,14 +1535,14 @@ TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
 
   //without preallocated output tensor
   RunSession(default_allocator.get(),
-                   session,
-                   inputs,
-                   "Y",
-                   expected_dims_y,
-                   expected_values_y,
-                   nullptr);
+             session,
+             inputs,
+             "Y",
+             expected_dims_y,
+             expected_values_y,
+             nullptr);
 
   struct stat buffer;
   ASSERT_TRUE(stat(engine_cache_path, &buffer) == 0);
 }
-//#endif
+#endif
