@@ -3,7 +3,7 @@
 
 #include "common.h"
 
-onnxruntime::ProviderHost* g_host{};
+onnxruntime::ProviderHost* g_host{reinterpret_cast<onnxruntime::ProviderHost*>(123)};
 
 onnxruntime::ProviderHost* Provider_GetHost() {
   return g_host;
