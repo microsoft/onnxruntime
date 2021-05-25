@@ -254,6 +254,16 @@ TEST(Einsum, ExplicitEinsumAsMatmul_2) {
   test.Run();
 }
 
+TEST(Einsum, ExplicitEinsumAsMatmul_3) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "abc,cd,def->abd");
+  test.AddInput<float>("x", {2, 2, 2}, {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f});
+  test.AddInput<float>("y", {2, 2}, {0.f, 1.f, 2.f, 3.f});
+  test.AddInput<float>("z", {2, 2, 2}, {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f});
+  test.AddOutput<float>("o", {2, 2, 2}, {12.f, 66.f, 36.f, 242.f, 60.f, 418.f, 84.f, 594.f});
+  test.Run();
+}
+
 // Implicit
 TEST(Einsum, ImplicitEinsumAsMatmul) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);

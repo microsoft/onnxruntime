@@ -156,12 +156,20 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
         ORT_ENFORCE(left_dim == right_dim,
                     "Einsum op: Input dimensions must be equal along an axis to be reduced across all inputs");
         reduced_size *= left_dim;
-      } else if (has_left_dim) {  // if it is only in one of left and right, we can reduce right away
+      } else if (has_left_dim) {  // if the dim to be reduced is only in one of left and right, we can reduce right away
+        const Tensor& tensor_to_be_reduced = current_left ? *current_left : left;
+        const std::vector<int64_t>& tensor_to_be_reduced_dims =
+            current_left ? current_left->Shape().GetDims() : left_dims;
+
         current_left = EinsumOp::ReduceSum<T>(
-            left, left_dims, {i}, allocator_, tp_, einsum_ep_assets_, device_reduce_sum_func_);
+            tensor_to_be_reduced, tensor_to_be_reduced_dims, {i}, allocator_, tp_, einsum_ep_assets_, device_reduce_sum_func_);
       } else if (has_right_dim) {
+        const Tensor& tensor_to_be_reduced = current_right ? *current_right : right;
+        const std::vector<int64_t>& tensor_to_be_reduced_dims =
+            current_right ? current_right->Shape().GetDims() : right_dims;
+
         current_right = EinsumOp::ReduceSum<T>(
-            right, right_dims, {i}, allocator_, tp_, einsum_ep_assets_, device_reduce_sum_func_);
+            tensor_to_be_reduced, tensor_to_be_reduced_dims, {i}, allocator_, tp_, einsum_ep_assets_, device_reduce_sum_func_);
       }
     } else {  // This dimension is not reduced (i.e.) it appears in the output after processing these 2 operands
       // Both the left and right operands have non-trivial dimension value along this axis
