@@ -266,7 +266,8 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        TransformerLevel target_level,
                        int opset_version = 12,
                        double per_sample_tolerance = 0.0,
-                       double relative_per_sample_tolerance = 0.0);
+                       double relative_per_sample_tolerance = 0.0,
+                       std::unique_ptr<GraphTransformer> transformer = nullptr);
 
 }  // namespace test
 }  // namespace onnxruntime

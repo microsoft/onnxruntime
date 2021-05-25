@@ -1880,6 +1880,22 @@ TEST(GradientCheckerTest, GatherGrad) {
                                           {MakeAttribute("axis", int64_t(0))});
     EXPECT_IS_TINY(max_error);
   }
+
+  // negative indices
+  {
+    TensorInfo x_info_2({4, 2});
+    TensorInfo indices_info({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {-1, 0, -2}};
+
+    TensorShape y_shape{x_info_2.shape};
+
+    int64_t axis = 0;
+    y_shape[axis] = 3;
+
+    gradient_checker.ComputeGradientError(op_def, {x_info_2, indices_info}, {y_shape}, &max_error, x_datas,
+                                          {MakeAttribute("axis", axis)});
+    EXPECT_IS_TINY(max_error);
+  }
 }
 
 void TestDropoutOp(float ratio, TensorShape& x_shape, bool default_ratio = true) {

@@ -202,6 +202,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "7d0d9061d83b663ce05d9de5da3d5865a3845b79",
+          "repositoryUrl": "https://github.com/google/benchmark.git"
+        },
+        "comments": "git submodule at cmake/external/googlebenchmark"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "703bd9caab50b139428cea1aaff9974ebee5742e",
           "repositoryUrl": "https://github.com/google/googletest.git"
         },

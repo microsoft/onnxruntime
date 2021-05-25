@@ -82,6 +82,8 @@ class ActivationOpTest : public ::testing::Test {
                                                         100.0, -100.0, 1000.0, -1000.0,                                // input values that leads to exp() overflow
                                                         DBL_MIN, DBL_MIN / 10, -DBL_MIN / 10,                          // min, denorm, -denorm
                                                         DBL_MAX, -DBL_MAX, std::numeric_limits<double>::infinity()}};  // max, -max, inf
+  std::vector<std::vector<int8_t>> input_values_int8{{-1, -5, 0, 1, 5, 100, -100,                                       // normal input values for activation
+                                                        std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max()}}; // min, max
 
   void SetUp() override {
     float low = -1.0f, high = 1.0f;

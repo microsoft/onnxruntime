@@ -36,8 +36,17 @@ class QDQMatMulTransformer : public QDQOperatorTransformer {
     }
 
     // Currently Quant MatMul only support activation type uint8_t
-    int32_t dt = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-    return dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8;
+    int32_t dt_input1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    if (dt_input1 != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) {
+      return false;
+    }
+
+    if (q_nodes.size() == 0) {
+      return true;
+    }
+
+    int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    return dt_output == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8;
   }
 
  private:

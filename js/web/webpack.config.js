@@ -7,38 +7,33 @@ const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
 const TerserPlugin = require("terser-webpack-plugin");
 const minimist = require('minimist');
 
-function addCopyrightBannerPlugin(mode) {
-  const VERSION = require(path.join(__dirname, 'package.json')).version;
-  const COPYRIGHT_BANNER = `/*!
- * ONNX Runtime Web v${VERSION}
- * Copyright (c) Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License.
- */`;
+const VERSION = require(path.join(__dirname, 'package.json')).version;
+const COPYRIGHT_BANNER = `/*!
+* ONNX Runtime Web v${VERSION}
+* Copyright (c) Microsoft Corporation. All rights reserved.
+* Licensed under the MIT License.
+*/`;
 
-  if (mode === 'production') {
-    return new TerserPlugin({
-      extractComments: false,
-      terserOptions: {
-        format: {
-          preamble: COPYRIGHT_BANNER,
-          comments: false,
-        },
-        compress: {
-          passes: 2
-        },
-        mangle: {
-          reserved: ["_scriptDir"]
-        }
+function defaultTerserPluginOptions() {
+  return {
+    extractComments: false,
+    terserOptions: {
+      format: {
+        comments: false,
+      },
+      compress: {
+        passes: 2
+      },
+      mangle: {
+        reserved: ["_scriptDir"]
       }
-    });
-  } else {
-    return new webpack.BannerPlugin({ banner: COPYRIGHT_BANNER, raw: true });
-  }
+    }
+  };
 }
 
 // common config for release bundle
 function buildConfig({ filename, format, target, mode, devtool }) {
-  return {
+  const config = {
     target: [format === 'commonjs' ? 'node' : 'web', target],
     entry: path.resolve(__dirname, 'lib/index.ts'),
     output: {
@@ -48,11 +43,21 @@ function buildConfig({ filename, format, target, mode, devtool }) {
         type: format
       }
     },
-    resolve: { extensions: ['.ts', '.js'] },
-    plugins: [
-      new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] }),
-      addCopyrightBannerPlugin(mode),
-    ],
+    resolve: {
+      extensions: ['.ts', '.js'],
+      alias: {
+        "util": false,
+      },
+      fallback: {
+        "fs": false,
+        "path": false,
+        "util": false,
+        "os": false,
+        "worker_threads": false,
+        "perf_hooks": false,
+      }
+    },
+    plugins: [new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] })],
     module: {
       rules: [{
         test: /\.ts$/,
@@ -64,11 +69,27 @@ function buildConfig({ filename, format, target, mode, devtool }) {
             }
           }
         ]
+      }, {
+        test: /ort-wasm.*\.worker\.js$/,
+        type: 'asset/source'
       }]
     },
     mode,
     devtool
   };
+
+  if (mode === 'production') {
+    config.resolve.alias['./binding/ort-wasm-threaded.js'] = './binding/ort-wasm-threaded.min.js';
+    config.resolve.alias['./binding/ort-wasm-threaded.worker.js'] = './binding/ort-wasm-threaded.min.worker.js';
+
+    const options = defaultTerserPluginOptions();
+    options.terserOptions.format.preamble = COPYRIGHT_BANNER;
+    config.plugins.push(new TerserPlugin(options));
+  } else {
+    config.plugins.push(new webpack.BannerPlugin({ banner: COPYRIGHT_BANNER, raw: true }));
+  }
+
+  return config;
 }
 
 // "ort{.min}.js" config
@@ -81,8 +102,6 @@ function buildOrtConfig({
   const config = buildConfig({ filename: `ort${suffix}.js`, format: 'umd', target, mode, devtool });
   // set global name 'ort'
   config.output.library.name = 'ort';
-  // do not use those node builtin modules in browser
-  config.resolve.fallback = { path: false, fs: false, util: false };
   return config;
 }
 
@@ -108,10 +127,9 @@ function buildOrtWebConfig({
     config.externals.path = 'path';
     config.externals.fs = 'fs';
     config.externals.util = 'util';
-  }
-  // in browser, do not use those node builtin modules
-  if (format === 'umd') {
-    config.resolve.fallback = { path: false, fs: false, util: false };
+    config.externals.worker_threads = 'worker_threads';
+    config.externals.perf_hooks = 'perf_hooks';
+    config.externals.os = 'os';
   }
   return config;
 }
@@ -123,7 +141,7 @@ function buildTestRunnerConfig({
   mode = 'production',
   devtool = 'source-map'
 }) {
-  return {
+  const config = {
     target: ['web', target],
     entry: path.resolve(__dirname, 'test/test-main.ts'),
     output: {
@@ -139,16 +157,23 @@ function buildTestRunnerConfig({
       'fs': 'fs',
       'perf_hooks': 'perf_hooks',
       'worker_threads': 'worker_threads',
+      '../../node': '../../node'
     },
     resolve: {
+      alias: {
+        // make sure to refer to original source files instead of generated bundle in test-main.
+        '..$': '../lib/index'
+      },
       extensions: ['.ts', '.js'],
-      aliasFields: [],
-      fallback: { './binding/ort-wasm-threaded.js': false, './binding/ort-wasm.js': false }
+      fallback: {
+        './binding/ort-wasm.js': false,
+        './binding/ort-wasm-threaded.js': false,
+        './binding/ort-wasm-threaded.worker.js': false
+      }
     },
     plugins: [
       new webpack.WatchIgnorePlugin({ paths: [/\.js$/, /\.d\.ts$/] }),
       new NodePolyfillPlugin(),
-      addCopyrightBannerPlugin(mode),
     ],
     module: {
       rules: [{
@@ -161,16 +186,25 @@ function buildTestRunnerConfig({
             }
           }
         ]
+      }, {
+        test: /ort-wasm.*\.worker\.js$/,
+        type: 'asset/source'
       }]
     },
     mode: mode,
     devtool: devtool,
   };
+
+  if (mode === 'production') {
+    config.plugins.push(new TerserPlugin(defaultTerserPluginOptions()));
+  }
+
+  return config;
 }
 
 module.exports = () => {
   const args = minimist(process.argv);
-  const bundleMode = args['bundle-mode'] || 'prod';  // 'prod'|'dev'|'perf'|undefined;
+  const bundleMode = args['bundle-mode'] || 'prod';  // 'prod'|'dev'|'perf'|'node'|undefined;
   const builds = [];
 
   switch (bundleMode) {
@@ -193,7 +227,10 @@ module.exports = () => {
         buildOrtWebConfig({ suffix: '.es6.min', target: 'es6' }),
         // ort-web.es6.js
         buildOrtWebConfig({ suffix: '.es6', mode: 'development', devtool: 'inline-source-map', target: 'es6' }),
+      );
 
+    case 'node':
+      builds.push(
         // ort-web.node.js
         buildOrtWebConfig({ suffix: '.node', format: 'commonjs' }),
       );

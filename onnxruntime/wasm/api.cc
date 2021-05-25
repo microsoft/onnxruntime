@@ -60,47 +60,60 @@ int OrtInit(int num_threads, int logging_level) {
 #endif
 }
 
-OrtSessionOptions* OrtCreateSessionOptions() {
+OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
+                                           bool enable_cpu_mem_arena,
+                                           bool enable_mem_pattern,
+                                           size_t execution_mode,
+                                           bool /* enable_profiling */,
+                                           const char* /* profile_file_prefix */,
+                                           const char* log_id,
+                                           size_t log_severity_level,
+                                           size_t log_verbosity_level) {
   OrtSessionOptions* session_options = nullptr;
-  return (CHECK_STATUS(CreateSessionOptions, &session_options) == ORT_OK) ? session_options : nullptr;
+  RETURN_NULLPTR_IF_ERROR(CreateSessionOptions, &session_options);
+
+  // assume that a graph optimization level is checked and properly set at JavaScript
+  RETURN_NULLPTR_IF_ERROR(SetSessionGraphOptimizationLevel,
+                          session_options,
+                          static_cast<GraphOptimizationLevel>(graph_optimization_level));
+
+  if (enable_cpu_mem_arena) {
+    RETURN_NULLPTR_IF_ERROR(EnableCpuMemArena, session_options);
+  } else {
+    RETURN_NULLPTR_IF_ERROR(DisableCpuMemArena, session_options);
+  }
+
+  if (enable_mem_pattern) {
+    RETURN_NULLPTR_IF_ERROR(EnableCpuMemArena, session_options);
+  } else {
+    RETURN_NULLPTR_IF_ERROR(DisableCpuMemArena, session_options);
+  }
+
+  // assume that an execution mode is checked and properly set at JavaScript
+  RETURN_NULLPTR_IF_ERROR(SetSessionExecutionMode, session_options, static_cast<ExecutionMode>(execution_mode));
+
+  // TODO: support profling
+
+  if (log_id != nullptr) {
+    RETURN_NULLPTR_IF_ERROR(SetSessionLogId, session_options, log_id);
+  }
+
+  // assume that a log severity level is checked and properly set at JavaScript
+  RETURN_NULLPTR_IF_ERROR(SetSessionLogSeverityLevel, session_options, log_severity_level);
+
+  RETURN_NULLPTR_IF_ERROR(SetSessionLogVerbosityLevel, session_options, log_verbosity_level);
+
+  return session_options;
+}
+
+int OrtAddSessionConfigEntry(OrtSessionOptions* session_options,
+  const char* config_key,
+  const char* config_value) {
+  return CHECK_STATUS(AddSessionConfigEntry, session_options, config_key, config_value);
 }
 
 void OrtReleaseSessionOptions(OrtSessionOptions* session_options) {
   Ort::GetApi().ReleaseSessionOptions(session_options);
-}
-
-int OrtSetSessionGraphOptimizationLevel(OrtSessionOptions* session_options, size_t level) {
-  // Assume that a graph optimization level is check and properly set at JavaScript
-  return CHECK_STATUS(SetSessionGraphOptimizationLevel, session_options, static_cast<GraphOptimizationLevel>(level));
-}
-
-int OrtEnableCpuMemArena(OrtSessionOptions* session_options) {
-  return CHECK_STATUS(EnableCpuMemArena, session_options);
-}
-
-int OrtDisableCpuMemArena(OrtSessionOptions* session_options) {
-  return CHECK_STATUS(DisableCpuMemArena, session_options);
-}
-
-int OrtEnableMemPattern(OrtSessionOptions* session_options) {
-  return CHECK_STATUS(EnableMemPattern, session_options);
-}
-
-int OrtDisableMemPattern(OrtSessionOptions* session_options) {
-  return CHECK_STATUS(DisableMemPattern, session_options);
-}
-
-int OrtSetSessionExecutionMode(OrtSessionOptions* session_options, size_t mode) {
-  // Assume that an execution mode is check and properly set at JavaScript
-  return CHECK_STATUS(SetSessionExecutionMode, session_options, static_cast<ExecutionMode>(mode));
-}
-
-int OrtSetSessionLogId(OrtSessionOptions* session_options, const char* logid) {
-  return CHECK_STATUS(SetSessionLogId, session_options, logid);
-}
-
-int OrtSetSessionLogSeverityLevel(OrtSessionOptions* session_options, size_t level) {
-  return CHECK_STATUS(SetSessionLogSeverityLevel, session_options, level);
 }
 
 OrtSession* OrtCreateSession(void* data, size_t data_length, OrtSessionOptions* session_options) {
@@ -228,21 +241,39 @@ void OrtReleaseTensor(OrtValue* tensor) {
   Ort::GetApi().ReleaseValue(tensor);
 }
 
-OrtRunOptions* OrtCreateRunOptions() {
+OrtRunOptions* OrtCreateRunOptions(size_t log_severity_level,
+                                   size_t log_verbosity_level,
+                                   bool terminate,
+                                   const char* tag) {
   OrtRunOptions* run_options = nullptr;
-  return (CHECK_STATUS(CreateRunOptions, &run_options) == ORT_OK) ? run_options : nullptr;
+  RETURN_NULLPTR_IF_ERROR(CreateRunOptions, &run_options);
+
+  // Assume that a logging level is check and properly set at JavaScript
+  RETURN_NULLPTR_IF_ERROR(RunOptionsSetRunLogSeverityLevel, run_options, log_severity_level);
+
+  RETURN_NULLPTR_IF_ERROR(RunOptionsSetRunLogVerbosityLevel, run_options, log_verbosity_level);
+
+  if (terminate) {
+    RETURN_NULLPTR_IF_ERROR(RunOptionsSetTerminate, run_options);
+  } else {
+    RETURN_NULLPTR_IF_ERROR(RunOptionsUnsetTerminate, run_options);
+  }
+
+  if (tag != nullptr) {
+    RETURN_NULLPTR_IF_ERROR(RunOptionsSetRunTag, run_options, tag);
+  }
+
+  return run_options;
+}
+
+int OrtAddRunConfigEntry(OrtRunOptions* run_options,
+  const char* config_key,
+  const char* config_value) {
+  return CHECK_STATUS(AddRunConfigEntry, run_options, config_key, config_value);
 }
 
 void OrtReleaseRunOptions(OrtRunOptions* run_options) {
   Ort::GetApi().ReleaseRunOptions(run_options);
-}
-
-int OrtRunOptionsSetRunLogSeverityLevel(OrtRunOptions* run_options, size_t level) {
-  return CHECK_STATUS(RunOptionsSetRunLogSeverityLevel, run_options, level);
-}
-
-int OrtRunOptionsSetRunTag(OrtRunOptions* run_options, const char* tag) {
-  return CHECK_STATUS(RunOptionsSetRunTag, run_options, tag);
 }
 
 int OrtRun(OrtSession* session,
