@@ -143,22 +143,22 @@ try:
                             to_preload.append(line)
                             args.extend(['--remove-needed', line])
                 args.append(dest)
-                if len(to_preload) > 0:
+                if len(args) > 3:
                     subprocess.run(args, check=True, stdout=subprocess.PIPE)
 
                 dest = 'onnxruntime/capi/libonnxruntime_providers_cuda.so'
                 if path.isfile(dest):
                     result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
-                    cuda_dependencies = ['libcublas.so', 'libcublasLt.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so', 'libcufft.so', 'libnvToolsExt.so', 'libonnxruntime_providers_shared.so']
+                    cuda_dependencies = ['libcublas.so', 'libcublasLt.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so', 'libcufft.so', 'libnvToolsExt.so']
                     args = ['patchelf', '--debug']
                     for line in result.stdout.split('\n'):
                         for dependency in cuda_dependencies:
                             if dependency in line:
-                                if not 'libonnxruntime_providers_shared.so' in line and not dependency in to_preload:
-                                  to_preload.append(line)
+                                if not dependency in to_preload:
+                                    to_preload.append(line)
                                 args.extend(['--remove-needed', line])
                     args.append(dest)
-                    if len(to_preload) > 0:
+                    if len(args) > 3:
                         subprocess.run(args, check=True, stdout=subprocess.PIPE)
                     self._rewrite_ld_preload(to_preload)
             _bdist_wheel.run(self)
