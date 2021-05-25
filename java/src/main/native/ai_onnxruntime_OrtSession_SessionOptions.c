@@ -372,10 +372,14 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addCPU
  * Signature: (JJI)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addCUDA
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint deviceID) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle, jint deviceID) {
     (void)jobj;
   #ifdef USE_CUDA
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_CUDA((OrtSessionOptions*) handle, deviceID));
+    const OrtApi* api = (const OrtApi*)apiHandle;
+    OrtSessionOptions* options = (OrtSessionOptions*)optionsHandle;
+    OrtCUDAProviderOptions provider_options = {0};
+    provider_options.device_id=device_id;
+    checkOrtStatus(jniEnv, api, api->SessionOptionsAppendExecutionProvider_CUDA(optionsHandle, &provider_options));
   #else
     (void)apiHandle;(void)handle;(void)deviceID; // Parameters used when CUDA is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with CUDA support.");
