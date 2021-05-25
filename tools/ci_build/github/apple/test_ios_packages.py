@@ -69,11 +69,18 @@ def _test_ios_packages(args):
         subprocess.run(['xcrun', 'xctrace', 'list', 'devices'], shell=False, check=True, cwd=target_proj_path)
 
         # run the tests
-        subprocess.run(['xcodebuild', 'test',
+        subprocess.run(['xcodebuild', 'build-for-testing',
                         '-configuration', 'Debug',
                         '-workspace', './ios_package_test.xcworkspace',
                         '-scheme', 'ios_package_test',
-                        '-sdk', 'iphonesimulator',
+                        '-arch', 'x86_64',
+                        '-sdk', 'iphonesimulator'],
+                       shell=False, check=True, cwd=target_proj_path)
+
+        subprocess.run(['xcodebuild', 'test-without-building',
+                        '-configuration', 'Debug',
+                        '-workspace', './ios_package_test.xcworkspace',
+                        '-scheme', 'ios_package_test',
                         '-destination', 'platform=iOS Simulator,name=iPhone SE (2nd generation)'],
                        shell=False, check=True, cwd=target_proj_path)
 
