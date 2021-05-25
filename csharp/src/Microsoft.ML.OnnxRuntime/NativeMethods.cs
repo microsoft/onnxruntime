@@ -178,6 +178,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr CreateAndRegisterAllocator;
         public IntPtr SetLanguageProjection;
         public IntPtr SessionGetProfilingStartTimeNs;
+        public IntPtr SessionAddONNXOpDomain;
         public IntPtr SetGlobalIntraOpNumThreads;
         public IntPtr SetGlobalInterOpNumThreads;
         public IntPtr SetGlobalSpinControl;
@@ -250,6 +251,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtReleaseTypeInfo = (DOrtReleaseTypeInfo)Marshal.GetDelegateForFunctionPointer(api_.ReleaseTypeInfo, typeof(DOrtReleaseTypeInfo));
             OrtReleaseSession = (DOrtReleaseSession)Marshal.GetDelegateForFunctionPointer(api_.ReleaseSession, typeof(DOrtReleaseSession));
             OrtSessionGetProfilingStartTimeNs = (DOrtSessionGetProfilingStartTimeNs)Marshal.GetDelegateForFunctionPointer(api_.SessionGetProfilingStartTimeNs, typeof(DOrtSessionGetProfilingStartTimeNs));
+            OrtSessionAddONNXOpDomain = (DOrtSessionAddONNXOpDomain)Marshal.GetDelegateForFunctionPointer(api_.SessionAddONNXOpDomain, typeof(DOrtSessionAddONNXOpDomain));
 
             OrtCreateSessionOptions = (DOrtCreateSessionOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateSessionOptions, typeof(DOrtCreateSessionOptions));
             OrtReleaseSessionOptions = (DOrtReleaseSessionOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseSessionOptions, typeof(DOrtReleaseSessionOptions));
@@ -532,6 +534,9 @@ namespace Microsoft.ML.OnnxRuntime
                                                 IntPtr /*(const OrtSession*)*/ session,
                                                 out UIntPtr /*(ulong* out)*/ startTime);
         public static DOrtSessionGetProfilingStartTimeNs OrtSessionGetProfilingStartTimeNs;
+
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtSessionAddONNXOpDomain(int onnx_opset_version);
+        public static DOrtSessionAddONNXOpDomain OrtSessionAddONNXOpDomain;
 
         #endregion InferenceSession API
 

@@ -761,6 +761,8 @@ namespace Microsoft.ML.OnnxRuntime
 
             if (prepackedWeightsContainer == null)
             {
+                // Register ONNX opset schema
+                NativeMethods.OrtSessionAddONNXOpDomain(0);
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeMethods.GetPlatformSerializedString(modelPath),
                     options.Handle, out session));
             }
@@ -808,7 +810,6 @@ namespace Microsoft.ML.OnnxRuntime
             _nativeHandle = session;
             try
             {
-
                 // Initialize input/output metadata
                 _inputMetadata = new Dictionary<string, NodeMetadata>();
                 _outputMetadata = new Dictionary<string, NodeMetadata>();

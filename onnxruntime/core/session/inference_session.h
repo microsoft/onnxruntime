@@ -198,6 +198,8 @@ class InferenceSession {
   common::Status FilterEnabledOptimizers(const std::unordered_set<std::string>& optimizers_to_disable)
       ORT_MUST_USE_RESULT;
 
+  common::Status AddONNXOpDomain(int onnx_opset_version) ORT_MUST_USE_RESULT;
+
   static common::Status ORTRegisterONNXOpsetSchema(int onnx_opset_version) {
     if (ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetLoadedSchemaVersion() == -1) {
       if (onnx_opset_version == 0) {

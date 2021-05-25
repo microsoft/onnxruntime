@@ -328,6 +328,10 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
   ConstructorCommon(session_options, session_env);
 }
 
+common::Status InferenceSession::AddONNXOpDomain(int onnx_opset_version) {
+  return InferenceSession::ORTRegisterONNXOpsetSchema(onnx_opset_version);
+}
+
 #ifdef _WIN32
 InferenceSession::InferenceSession(const SessionOptions& session_options,
                                    const Environment& session_env,

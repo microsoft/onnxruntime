@@ -24,7 +24,6 @@
 #endif
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
-
 using namespace onnxruntime;
 
 namespace {

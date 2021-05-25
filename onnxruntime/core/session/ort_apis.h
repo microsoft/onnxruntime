@@ -277,4 +277,5 @@ ORT_API_STATUS_IMPL(CreateSessionFromArrayWithPrepackedWeightsContainer, _In_ co
                     _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
                     _Outptr_ OrtSession** out);
 ORT_API_STATUS_IMPL(SetSessionOnnxOpsetVersion, _In_ OrtSessionOptions* options, int session_onnx_opset_version);
+ORT_API_STATUS_IMPL(SessionAddONNXOpDomain, int session_onnx_opset_version);
 }  // namespace OrtApis
