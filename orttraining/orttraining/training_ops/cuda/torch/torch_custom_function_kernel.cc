@@ -1,10 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
 #include "core/language_interop_ops/torch/torch_proxy.h"
 #include "core/language_interop_ops/torch/refcount_tracker.h"
 #include "orttraining/training_ops/cuda/torch/torch_custom_function_kernel.h"
+#include "core/language_interop_ops/torch/object_pointer.h"
+#include "core/framework/ml_value.h"
 
 using namespace onnxruntime::language_interop_ops::torch;
 
@@ -16,8 +19,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .OutputMemoryType<OrtMemTypeCPUOutput>(0)
+    (*KernelDefBuilder::Create())
+        .OutputMemoryType(OrtMemTypeCPUOutput, 0)
         .TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes())
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>()),
     PythonOp);
@@ -27,8 +30,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(0)
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0)
         .TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes())
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>()),
     PythonOpGrad);

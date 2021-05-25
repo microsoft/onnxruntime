@@ -4,10 +4,14 @@
 #pragma once
 #include <Python.h>
 #include <mutex>
+
+#ifndef SHARED_PROVIDER
+#include "core/platform/env.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/op_kernel_context_internal.h"
+#endif
+
 #include "core/language_interop_ops/torch/object_pointer.h"
-#include "core/platform/env.h"
 
 namespace onnxruntime {
 namespace language_interop_ops {

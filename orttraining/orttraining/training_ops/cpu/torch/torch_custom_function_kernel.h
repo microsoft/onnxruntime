@@ -3,10 +3,12 @@
 
 #pragma once
 
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/language_interop_ops/torch/torch_proxy.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
+#endif
 #include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
 
 namespace onnxruntime {

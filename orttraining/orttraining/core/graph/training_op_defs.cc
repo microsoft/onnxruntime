@@ -2850,12 +2850,12 @@ Return true if all elements are true and false otherwise.
         // Other variables are used to invoke autograd.Function.backward(ctx, grad_input1, ..., grad_input_N).
         // The "input_count" here means 1 + N.
         auto input_count = input_tensor_requires_grads->ints().size();
-        ORT_ENFORCE(static_cast<size_t>(input_tensor_types_proto->ints_size()) == grad_input_count,
+        ORT_ENFORCE(input_tensor_types_proto->ints_size() == input_count,
                     "PythonOp's input list should have one more element than \"input_tensor_types\" attribute.");
         // The first input is a pointer which points to
         // a Python object created by torch.autograd.Function.apply.
         // For details, see how we interpret it in PythonOpGrad implementation.
-        for (size_t i = 1; i < grad_input_count + 1; ++i) {
+        for (auto i = 1; i < input_count + 1; ++i) {
           const auto inferred_input_type = ctx.getInputType(i);
           ORT_ENFORCE(inferred_input_type, "PythonOpGrad's ", i, "th input type is missing.");
           ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,

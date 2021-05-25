@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #include <Python.h>
+#ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
+#endif
 #include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
 
 using namespace onnxruntime::language_interop_ops::torch;

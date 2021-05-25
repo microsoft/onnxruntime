@@ -2,9 +2,11 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel.h"
+#ifndef SHARED_PROVIDER
 #include "core/language_interop_ops/torch/custom_function_register.h"
 #include "core/language_interop_ops/torch/refcount_tracker.h"
 #include "core/language_interop_ops/torch/torch_proxy.h"
+#endif
 
 using namespace onnxruntime::language_interop_ops::torch;
 
@@ -16,7 +18,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes())
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>()),
     PythonOp);
@@ -26,7 +28,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCpuExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes())
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>()),
     PythonOpGrad);
