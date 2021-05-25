@@ -1182,17 +1182,13 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA, _In_ Or
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtCreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptions** out) {
 #ifdef USE_TENSORRT
+ORT_API_STATUS_IMPL(OrtCreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptions** out) {
   *out = new OrtTensorRTProviderOptions();
   (*out)->trt_int8_calibration_table_name = nullptr;
   (*out)->trt_engine_cache_path = nullptr;
   (*out)->trt_engine_decryption_lib_path = nullptr;
   return nullptr;
-#else
-  ORT_UNUSED_PARAMETER(out);
-  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
-#endif
 }
 
 ORT_API_STATUS_IMPL(OrtUpdateTensorRTProviderOptions,
@@ -1200,7 +1196,6 @@ ORT_API_STATUS_IMPL(OrtUpdateTensorRTProviderOptions,
                     _In_reads_(num_keys) const char* const* provider_options_keys,
                     _In_reads_(num_keys) const char* const* provider_options_values,
                     size_t num_keys) {
-#ifdef USE_TENSORRT
   onnxruntime::ProviderOptions provider_options_map;
   for (size_t i = 0; i != num_keys; ++i) {
     if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
@@ -1213,18 +1208,10 @@ ORT_API_STATUS_IMPL(OrtUpdateTensorRTProviderOptions,
 
   onnxruntime::UpdateProviderInfo_Tensorrt(tensorrt_provider_options, reinterpret_cast<const onnxruntime::ProviderOptions&>(provider_options_map));
   return nullptr;
-#else
-  ORT_UNUSED_PARAMETER(tensorrt_provider_options);
-  ORT_UNUSED_PARAMETER(provider_options_keys);
-  ORT_UNUSED_PARAMETER(provider_options_values);
-  ORT_UNUSED_PARAMETER(num_keys);
-  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
-#endif
 }
 
 ORT_API_STATUS_IMPL(OrtGetTensorRTProviderOptions, _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** ptr) {
-#ifdef USE_TENSORRT
   onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Tensorrt();
   onnxruntime::ProviderOptions::iterator it = options.begin();
   std::string options_str = "";
@@ -1240,11 +1227,6 @@ ORT_API_STATUS_IMPL(OrtGetTensorRTProviderOptions, _Inout_ OrtAllocator* allocat
 
   *ptr = StrDup(options_str, allocator);
   return nullptr;
-#else
-  ORT_UNUSED_PARAMETER(allocator);
-  ORT_UNUSED_PARAMETER(ptr);
-  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
-#endif
 }
 
 ORT_API(void, OrtReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptions* ptr) {
@@ -1264,3 +1246,4 @@ ORT_API(void, OrtReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProv
 
   delete ptr;
 }
+#endif
