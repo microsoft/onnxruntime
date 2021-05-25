@@ -760,8 +760,7 @@ def parse_models_info_from_directory(path, models):
 def parse_models_info_from_file(root_dir, path, models):
 
     # default working directory
-    print(root_dir) 
-    root_working_directory = root_dir + '/perf/'
+    root_working_directory = root_dir + 'perf/'
 
     with open(path) as f:
         data = json.load(f)
@@ -950,6 +949,7 @@ def run_onnxruntime(args, models):
             if args.running_mode == 'benchmark':
                 logger.info("\n----------------------------- benchmark -------------------------------------")
 
+                # resolve providers to create session
                 if standalone_trt in ep: 
                     providers = ep_to_provider_list[trt]
                 else: 
@@ -989,7 +989,7 @@ def run_onnxruntime(args, models):
                             p.kill()
                         continue
 
-                # inference with ort
+                # inference with ort ep
                 else:
                         
                     logger.info("start to inference {} with {} ...".format(name, ep))
@@ -1520,8 +1520,6 @@ def parse_arguments():
     
     parser.add_argument("-c", "--comparison", required=False, default="cuda_trt", choices=["cuda_trt", "acl"], help="EPs to compare: CPU vs. CUDA vs. TRT or CPU vs. ACL")
 
-    parser.add_argument("-d", "--working_dir", required=False, default="./", help="Perf folder path with models")
-    
     parser.add_argument("-m", "--model_source", required=False, default="model_list.json", help="Model source: (1) model list file (2) model directory.")
 
     parser.add_argument("-r", "--running_mode", required=False, default="benchmark", choices=["validate", "benchmark"], help="Testing mode.")
@@ -1530,7 +1528,7 @@ def parse_arguments():
 
     parser.add_argument("-o", "--perf_result_path", required=False, default="result", help="Directory for perf result.")
     
-    parser.add_argument("-w", "--workspace", required=False, default="/", help="Workspace to find tensorrt")
+    parser.add_argument("-w", "--workspace", required=False, default="/", help="Workspace to find tensorrt and perf script (with models if parsing with model file)")
     
     parser.add_argument("--track_memory", required=False, default=True, help="Track CUDA and TRT Memory Usage")
 

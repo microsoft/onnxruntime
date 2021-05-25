@@ -47,7 +47,7 @@ def main():
 
     if args.use_archived:
         ort_wheel_file = args.use_archived
-        subprocess.run(["pip3", "install", "-I", ort_wheel_filei], check=True)
+        subprocess.run(["pip3", "install", "-I", ort_wheel_file], check=True)
     
     else:
         subprocess.run(["git", "checkout", args.branch], check=True)

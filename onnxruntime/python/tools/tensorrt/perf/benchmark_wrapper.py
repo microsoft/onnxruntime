@@ -43,7 +43,6 @@ def main():
 
     models = {}
     parse_models_helper(args, models)
-    print(models)
 
     model_to_fail_ep = {}
 
@@ -70,6 +69,7 @@ def main():
                         "-r", args.running_mode,
                         "-m", model_list_file,
                         "-o", args.perf_result_path,
+                        "--ep", ep,
                         "--write_test_result", "false"]
             
             if "Standalone" in ep: 
@@ -78,8 +78,6 @@ def main():
                 else:
                     command.extend(["--trtexec", trtexec])
 
-            command.extend(["--ep", ep])
-            
             if args.running_mode == "validate":
                 command.extend(["--benchmark_metrics_csv", benchmark_metrics_csv])
             
