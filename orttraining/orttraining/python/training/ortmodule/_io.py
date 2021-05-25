@@ -460,15 +460,15 @@ def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs):
     module.eval()
     output_names = None
     output_dynamic_axes = None
-    is_deepcopy = True
+    is_deepcopy = False
     with torch.no_grad():
         # Deepcopy inputs, since input values may change after model run.
         sample_inputs_copy, sample_kwargs_copy = deepcopy_model_input(*inputs, **kwargs)
         try:
             # Deepcopy model, in case model is stateful and changes after model run.
             model_copy = copy.deepcopy(module)
+            is_deepcopy = True
         except Exception:
-            is_deepcopy = False
             model_copy = module
             warnings.warn("This model cannot be deep copied (or pickled), "
                           "which is a required step for stateful models to be properly exported to ONNX."
