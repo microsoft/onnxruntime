@@ -2022,7 +2022,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
 	In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_9 = {
+static constexpr OrtApi ort_api_1_to_8 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -2228,11 +2228,6 @@ static constexpr OrtApi ort_api_1_to_9 = {
     // End of Version 8 - DO NOT MODIFY ABOVE (see above text for more information)
 
     // Version 9 - In development, feel free to add/remove/rearrange here
-    //&OrtApis::CreateTensorRTProviderOptions,
-    //&OrtApis::UpdateTensorRTProviderOptions,
-    //&OrtApis::GetTensorRTProviderOptions,
-    //&OrtApis::ReleaseTensorRTProviderOptions,
-
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
@@ -2241,7 +2236,7 @@ static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "S
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_9;
+    return &ort_api_1_to_8;
 
   fprintf(stderr, "The given version [%u] is not supported, only version 1 to %u is supported in this build.\n",
           version, ORT_API_VERSION);
