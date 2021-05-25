@@ -79,16 +79,6 @@ def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     if fp16: 
         command.extend(["--fp16"])
     out = get_output(command)
-    #p = subprocess.run(command, check=True, stdout=subprocess.PIPE)
-    #if p.return_code != 0: 
-    #    raise Exception
-    #out = p.stdout.decode("ascii").strip()
-    #if fp16:
-    #    out = get_output([trtexec, model_path, "--fp16", "--percentile=90", "--explicitBatch", shapes_arg])
-    #else:
-    #    p = subprocess.run([trtexec, model_path, "--percentile=90", "--explicitBatch", shapes_arg])
-    #    p = subprocess.run(command, check=True, stdout=subprocess.PIPE)
-    #    output = p.stdout.decode("ascii").strip()
     
     tmp = out.split("\n")
     target_list = []
@@ -462,7 +452,7 @@ def remove_profiling_files(path):
     for f in files:
         if "custom_test_data" in f:
             continue
-        subprocess.Popen(["sudo","rm","-rf", f], stdout=subprocess.PIPE)
+        subprocess.Popen(["rm","-rf", f], stdout=subprocess.PIPE)
 
 
 def update_fail_report(fail_results, model, ep, e_type, e):
@@ -770,7 +760,8 @@ def parse_models_info_from_directory(path, models):
 def parse_models_info_from_file(root_dir, path, models):
 
     # default working directory
-    root_working_directory = root_dir
+    print(root_dir) 
+    root_working_directory = root_dir + '/perf/'
 
     with open(path) as f:
         data = json.load(f)
@@ -1583,7 +1574,7 @@ def setup_logger(verbose):
 def parse_models_helper(args, models): 
     if ".json" in args.model_source:
         logger.info("Parsing model information from file ...")
-        parse_models_info_from_file(args.working_dir, args.model_source, models)
+        parse_models_info_from_file(args.workspace, args.model_source, models)
     else:
         logger.info("Parsing model information from directory ...")
         parse_models_info_from_directory(args.model_source, models)
@@ -1599,7 +1590,7 @@ def main():
     parse_models_helper(args, models)
 
     if not os.path.exists("symbolic_shape_infer.py"):
-        subprocess.run(["sudo", "wget", "https://raw.githubusercontent.com/microsoft/onnxruntime/master/onnxruntime/python/tools/symbolic_shape_infer.py"], check=True)
+        subprocess.run(["wget", "https://raw.githubusercontent.com/microsoft/onnxruntime/master/onnxruntime/python/tools/symbolic_shape_infer.py"], check=True)
     os.environ["SYMBOLIC_SHAPE_INFER"] = os.path.join(os.getcwd(), "symbolic_shape_infer.py")
 
     perf_start_time = datetime.now()
@@ -1642,7 +1633,6 @@ def main():
         logger.info("=========== Models/EPs latency ===========")
         logger.info("==========================================")
         add_improvement_information(model_to_latency)
-        #pp.pprint(model_to_latency)
         pretty_print(pp, model_to_latency)
         write_map_to_file(model_to_latency, LATENCY_FILE)
         if args.write_test_result:
@@ -1659,7 +1649,6 @@ def main():
         logger.info("\n=========================================")
         logger.info("========== Models/EPs metrics  ==========")
         logger.info("=========================================")
-        #pp.pprint(model_to_metrics)
         pretty_print(pp, model_to_metrics)
         write_map_to_file(model_to_metrics, METRICS_FILE)
 
