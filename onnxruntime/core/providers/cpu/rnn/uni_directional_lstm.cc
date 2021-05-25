@@ -333,7 +333,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                   beta, step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
                   hidden_size_x4,
                   quantized_input_or_a_.begin() + (seq_start * hidden_size_),
-                  quantize_agg_C_.begin() + (seq_start + hidden_size_x4),
+                  quantize_agg_C_.begin() + (seq_start * hidden_size_x4),
                   ttp);
 
       DumpMatrix("Xt*(W[iofc]^T) + Ht-t*R[iofc]" + row_str, &*step_out_IOFC, num_seq_to_compute_adjusted, hidden_size_x4);
