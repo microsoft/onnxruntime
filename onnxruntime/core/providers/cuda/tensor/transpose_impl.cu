@@ -177,7 +177,9 @@ __global__ void Transpose4DKernelParallelizeOneElementPerThread(
     int8_t* output_data_to_be_copied = output_data + (output_index * element_size);
 
     // copy over the bytes
-    memcpy(output_data_to_be_copied, input_data_to_be_copied, element_size);
+    for (size_t iter = 0; iter < element_size; ++iter) {
+      *output_data_to_be_copied++ = *input_data_to_be_copied++;
+    }
   }
 }
 
