@@ -209,7 +209,7 @@ void UniDirectionalLstm<T>::AllocateQuantizeBuffers(int max_sequence_length) {
 
     int input_or_a_size = std::max(total_rows * input_size_, batch_size_ * hidden_size_);
     quantized_input_or_a_ = Allocate(allocator_, input_or_a_size, quantized_input_or_a_ptr_, false);
-    quantize_agg_C_ = Allocate(allocator_, total_rows * hidden_size_x4, quantize_agg_C_ptr_, false);
+    quantize_agg_C_ = Allocate(allocator_, batch_size_ * hidden_size_x4, quantize_agg_C_ptr_, false);
   }
 }
 
@@ -279,7 +279,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
               input_weights,
               beta, output_iofc_.begin(), output_iofc_.end(), hidden_size_x4,
               quantized_input_or_a_.begin(),
-              quantize_agg_C_.begin(),
+              nullptr,
               thread_pool_);
 
   DumpMatrix("Xt*(W[iofc]^T)", output_iofc_.data(), total_rows, hidden_size_x4);
@@ -385,8 +385,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   if (batch_parallel_) {
     double gemm_cost = num_seq_to_compute * hidden_size_x4 * hidden_size_;
     double cost = max_sequence_length * (gemm_cost + num_seq_to_compute);
-    // disable second level parallel expansion
-    ExecuteLambdaInParallel(sequences_calculator, batch_size_, num_seq_to_compute, cost, nullptr);
+    ExecuteLambdaInParallel(sequences_calculator, batch_size_, num_seq_to_compute, cost, thread_pool_);
   } else {
     sequences_calculator(0, thread_pool_);
   }
