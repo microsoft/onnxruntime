@@ -197,6 +197,19 @@ bool IsContiguousTensor(const DLTensor& tensor) {
 
 }  // namespace
 
+static void DlpackCapsuleDestructor(PyObject* data) {
+  DLManagedTensor* dlmanged_tensor = reinterpret_cast<DLManagedTensor*>(
+      PyCapsule_GetPointer(data, "dltensor"));
+  if (dlmanged_tensor) {
+    // the dlmanged_tensor has not been consumed, call deleter ourselves.
+    dlmanged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanged_tensor));
+  } else {
+    // the dlmanged_tensor has been consumed,
+    // PyCapsule_GetPointer has set an error indicator.
+    PyErr_Clear();
+  }
+};
+
 // This function returns a pointer to DLManagedTensor constructed from an OrtValue
 // The OrtValue inside OrtDLManagedTensor will increase its own buffer's ref count by one
 // When the consumer of DLManagedTensor is done with the tensor, it should invoke the deleter.
@@ -218,6 +231,11 @@ DLManagedTensor* OrtValueToDlpack(OrtValue ort_value) {
   return &(ort_dlmanaged_tensor->tensor);
 }
 
+PyObject* OrtValueToDlpackCapsule(OrtValue ort_value) {
+  DLManagedTensor* dlmanaged_tensor = OrtValueToDlpack(ort_value);
+  return PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
+}
+
 OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
   // ORT only supports contiguous tensor for now.
   ORT_ENFORCE(IsContiguousTensor(dlpack->dl_tensor), "ORT only supports contiguous tensor for now.");
@@ -234,17 +252,13 @@ OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
   return ort_value;
 }
 
-void DlpackCapsuleDestructor(PyObject* data) {
-  DLManagedTensor* dlmanged_tensor = reinterpret_cast<DLManagedTensor*>(
-      PyCapsule_GetPointer(data, "dltensor"));
-  if (dlmanged_tensor) {
-    // the dlmanged_tensor has not been consumed, call deleter ourselves.
-    dlmanged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanged_tensor));
-  } else {
-    // the dlmanged_tensor has been consumed,
-    // PyCapsule_GetPointer has set an error indicator.
-    PyErr_Clear();
-  }
+OrtValue DlpackCapsuleToOrtValue(PyObject* capsule, bool is_bool_tensor) {
+  // Extract DLPack tensor pointer from the capsule carrier.
+  auto dlmanaged_tensor = reinterpret_cast<DLManagedTensor*>(PyCapsule_GetPointer(capsule, "dltensor"));
+  OrtValue ort_value = DlpackToOrtValue(dlmanaged_tensor, is_bool_tensor);
+  // Make sure this capsule will never be used again.
+  PyCapsule_SetName(capsule, "used_dltensor");
+  return ort_value;
 }
 
 }  // namespace dlpack

@@ -243,13 +243,8 @@ std::unique_ptr<PythonObjectPtr> CreateForwardArguments(
   // Tensor inputs to call autograd.Function.apply or autograd.Function.backward.
   for (size_t i = 0; i < tensor_args.size(); ++i) {
     // Wrap with DLPack, then transfer to Python for its release.
-    DLManagedTensor* dlmanaged_tensor = dlpack::OrtValueToDlpack(
-        tensor_args[i]);
-    PyObject* dltensor = PyCapsule_New(
-        dlmanaged_tensor,
-        "dltensor",
-        dlpack::DlpackCapsuleDestructor);
-    Ort_PyTuple_SetItem_NoIncref(args->get(), num_control_args + tensor_indices[i], dltensor,
+    PyObject* dl_tensor = onnxruntime::dlpack::OrtValueToDlpackCapsule(tensor_args[i]);
+    Ort_PyTuple_SetItem_NoIncref(args->get(), num_control_args + tensor_indices[i], dl_tensor,
                                  "dltensor");
   }
 
