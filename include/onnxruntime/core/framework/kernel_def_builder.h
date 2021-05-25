@@ -180,6 +180,8 @@ class KernelDef {
 
 class KernelDefBuilder {
  public:
+  static std::unique_ptr<KernelDefBuilder> Create() { return std::make_unique<KernelDefBuilder>(); }
+
   explicit KernelDefBuilder()
       : kernel_def_(new KernelDef()) {}
 
@@ -319,6 +321,13 @@ class KernelDefBuilder {
   KernelDefBuilder& InputMemoryType(const std::vector<int>& input_indexes) {
     for (auto input_index : input_indexes) {
       kernel_def_->input_memory_type_args_.insert(std::make_pair(input_index, T));
+    }
+    return *this;
+  }
+
+  KernelDefBuilder& InputMemoryType(OrtMemType type, const std::vector<int>& input_indexes) {
+    for (auto input_index : input_indexes) {
+      kernel_def_->input_memory_type_args_.insert(std::make_pair(input_index, type));
     }
     return *this;
   }

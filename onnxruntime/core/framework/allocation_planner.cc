@@ -257,6 +257,20 @@ class PlannerImpl {
 
   // Find if there exists some input tensor that we can use in-place for output_arg_num-th input in the node.
   bool FindReusableInput(const onnxruntime::Node& node, int output_arg_num, OrtValueIndex* reusable_input) {
+#ifdef ENABLE_TRAINING
+    // Inputs of Yields are essentially the outputs for FW partial subgraph
+    // Thses tensors will be pass back to pytorch, thus cannot share the buffer with other tensors
+
+    // Unhandled corner case: 
+    // If FW output tensor is consumed by BW graph, and pytorch performs an inplace operation on th returned tensor,
+    // we will run into a buffer corruption problem. 
+    // One potential fix is returning a copy of output tensor, if it has downstream dependency
+    auto p_next_node = node.OutputNodesBegin();
+    if (p_next_node != node.OutputNodesEnd() && p_next_node->OpType() == "YieldOp") {
+      return false;
+    }
+#endif  //ENABLE_TRAINING
+
     auto p_output_arg = node.OutputDefs()[output_arg_num];
     const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
 
