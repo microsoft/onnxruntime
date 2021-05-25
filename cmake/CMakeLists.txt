@@ -1706,6 +1706,10 @@ if (onnxruntime_BUILD_CSHARP)
 endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
+  if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+    string(APPEND CMAKE_CXX_FLAGS " -msimd128")
+  endif()
+
   if (onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING)
     string(APPEND CMAKE_CXX_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
   endif()
