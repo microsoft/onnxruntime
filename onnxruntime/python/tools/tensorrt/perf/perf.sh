@@ -18,7 +18,8 @@ then
     RUN_EPS="--ep_list $EP_LIST"
 fi
 
-if [ ! -v $PERF_DIR ]
+# change dir if docker
+if [ ! -z $PERF_DIR ]
 then 
     echo 'changing to '$PERF_DIR
     cd $PERF_DIR 
