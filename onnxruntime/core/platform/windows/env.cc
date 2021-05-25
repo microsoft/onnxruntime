@@ -494,7 +494,7 @@ class WindowsEnv : public Env {
     return path.substr(0, slash_index + 1);
   }
 
-  virtual Status LoadDynamicLibrary(const std::string& library_filename, void** handle) const override {
+  virtual Status LoadDynamicLibrary(const std::string& library_filename, bool /*global_symbols*/, void** handle) const override {
 #if WINAPI_FAMILY == WINAPI_FAMILY_PC_APP
     *handle = ::LoadPackagedLibrary(ToWideString(library_filename).c_str(), 0);
 #else
