@@ -478,6 +478,11 @@ def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs):
         output_names, output_dynamic_axes = _parse_outputs_and_extract_names_and_dynamic_axes(sample_outputs)
     if is_train_mode:
         module.train()
-
+    sample_outputs = _extract_schema(sample_outputs)
+    if model_copy is not None:
+        print("deleted model copy")
+        import gc
+        del model_copy
+        gc.collect()
     # Return output names, output dynamic axes and output schema
-    return output_names, output_dynamic_axes, _extract_schema(sample_outputs)
+    return output_names, output_dynamic_axes, sample_outputs
