@@ -79,7 +79,6 @@ UniDirectionalLstm<T>::UniDirectionalLstm(
     LoadBias(bias);
 }
 
-
 template <typename T>
 void UniDirectionalLstm<T>::AllocateBuffers() {
   // allocate and fill with zeroes
@@ -209,7 +208,7 @@ void UniDirectionalLstm<T>::AllocateQuantizeBuffers(int max_sequence_length) {
 
     int input_or_a_size = std::max(total_rows * input_size_, batch_size_ * hidden_size_);
     quantized_input_or_a_ = Allocate(allocator_, input_or_a_size, quantized_input_or_a_ptr_, false);
-    quantize_agg_C_ = Allocate(allocator_, batch_size_ * hidden_size_x4, quantize_agg_C_ptr_, false);
+    quantized_C_buffer_ = Allocate(allocator_, batch_size_ * hidden_size_x4, quantized_C_buffer_ptr_, false);
   }
 }
 
@@ -333,7 +332,7 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                   beta, step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
                   hidden_size_x4,
                   quantized_input_or_a_.begin() + (seq_start * hidden_size_),
-                  quantize_agg_C_.begin() + (seq_start * hidden_size_x4),
+                  quantized_C_buffer_.begin() + (seq_start * hidden_size_x4),
                   ttp);
 
       DumpMatrix("Xt*(W[iofc]^T) + Ht-t*R[iofc]" + row_str, &*step_out_IOFC, num_seq_to_compute_adjusted, hidden_size_x4);

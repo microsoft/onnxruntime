@@ -118,8 +118,8 @@ class UniDirectionalLstm {
   IAllocatorUniquePtr<uint8_t> quantized_input_or_a_ptr_;
   gsl::span<uint8_t> quantized_input_or_a_;
 
-  IAllocatorUniquePtr<int32_t> quantize_agg_C_ptr_;
-  gsl::span<int32_t> quantize_agg_C_;
+  IAllocatorUniquePtr<int32_t> quantized_C_buffer_ptr_;
+  gsl::span<int32_t> quantized_C_buffer_;
 };
 
 }  // namespace lstm
