@@ -2,7 +2,7 @@
 
 ## Supported operators and types
 
-The supported operators and types are based on what is required to support the float32 and quantized versions of popular models. The full list of input models used to detemine this list is available [here](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/android/mobile_package.required_operators.readme.txt)
+The supported operators and types are based on what is required to support float32 and quantized versions of popular models. The full list of input models used to determine this list is available [here](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/android/mobile_package.required_operators.readme.txt)
 
 ## Supported data input types
 
@@ -10,7 +10,7 @@ The supported operators and types are based on what is required to support the f
   - int8_t
   - uint8_t
 
-NOTE: Operators that are used to manipulate dimensions and indicies will support int32 and int64.
+NOTE: Operators used to manipulate dimensions and indices will support int32 and int64.
 
 ## Supported Operators
 
