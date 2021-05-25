@@ -715,7 +715,7 @@ TEST(Einsum, ExplicitEinsumAsTensorContraction_Half) {
   test.Run();
 }
 
-// Theme: Comprehensive list of MatMul(s) interleaved with Transpose(s)
+// Theme: Tests involving MatMul(s) interleaved with Transpose(s)
 // for two and three inputs (most common use-case of Einsum operator)
 
 struct EinsumTestCase {
