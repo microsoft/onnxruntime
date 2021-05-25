@@ -20,9 +20,6 @@
 #include "gsl/gsl"
 
 namespace onnxruntime {
-class Tensor;
-class OpKernelContext;
-
 namespace rnn {
 namespace detail {
 

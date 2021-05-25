@@ -16,12 +16,12 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", ALL_IEEE_FLOAT_TENSOR_TYPES)
         .TypeConstraint("T1", ALL_IEEE_FLOAT_TENSOR_TYPES)
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
-        .InputMemoryType<OrtMemTypeCPUInput>(3)
-        .InputMemoryType<OrtMemTypeCPUInput>(4),
+        .InputMemoryType(OrtMemTypeCPUInput, 3)
+        .InputMemoryType(OrtMemTypeCPUInput, 4),
     BiasDropout);
 
 template <typename T>
