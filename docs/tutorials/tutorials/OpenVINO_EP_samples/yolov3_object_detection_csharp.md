@@ -42,9 +42,10 @@ dotnet new console
 
 2. Install Nuget Packages of Onnxruntime and [ImageSharp](https://www.nuget.org/packages/SixLabors.ImageSharp)
 
-    1. Right click on project, navigate to Manage Nuget Packages.
-    2. Install Image Sharp Packages from nuget.org.
-    3. Install Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino from the build directory nuget-artifacts. 
+    1. Open the Visual C# Project file (.csproj) using VS19.
+    2. Right click on project, navigate to manage Nuget Packages.
+    3. Install SixLabors.ImageSharp Package from nuget.org.
+    4. Install Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino from your build directory nuget-artifacts.
     
 
 3. Compile the sample
