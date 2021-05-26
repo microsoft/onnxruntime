@@ -178,6 +178,8 @@ if (WINDOWS_STORE)
 endif()
 
 if (winml_is_inbox)
+  # Apply linking flags required by inbox static analysis tools
+  target_link_options(onnxruntime PRIVATE ${os_component_link_flags_list})
   # Link *_x64/*_arm64 DLLs for the ARM64X forwarder
   function(duplicate_shared_library target new_target)
     get_target_property(sources ${target} SOURCES)
