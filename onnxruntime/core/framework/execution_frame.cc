@@ -372,8 +372,6 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
               //
               //                Read through this code more to make heads-or-tails of the situation.
               //
-
-
               buffer = alloc->Alloc(peak_size);
               // handle allocator that doesn't throw
               if (buffer == nullptr) {
