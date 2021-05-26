@@ -669,10 +669,6 @@ if (onnxruntime_USE_COREML)
     message(FATAL_ERROR "CoreML EP can not be used in a basic minimal build. Please build with '--minimal_build extended'")
   endif()
 
-  if(NOT APPLE)
-    message(FATAL_ERROR "CoreML EP must be built on an Apple platform.")
-  endif()
-
   add_compile_definitions(USE_COREML=1)
 
   # Compile CoreML proto definition to ${CMAKE_CURRENT_BINARY_DIR}/coreml
@@ -719,6 +715,11 @@ if (onnxruntime_USE_COREML)
     "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/model.mm"
     "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.h"
     "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.mm"
+  )
+
+  set_source_files_properties(
+    ${onnxruntime_providers_coreml_objcc_srcs}
+    COMPILE_FLAGS "${CMAKE_OBJC_FLAGS} -Xclang -x -Xclang objective-c++ -fobjc-arc"
   )
 
   set(onnxruntime_providers_coreml_cc_srcs

@@ -54,7 +54,7 @@
     outputs:(const std::unordered_map<std::string, onnxruntime::coreml::OnnxTensorData>&)outputs
     API_AVAILABLE_OS_VERSIONS;
 
-@property(readonly, strong) MLModel* model API_AVAILABLE_OS_VERSIONS;
+@property MLModel* model API_AVAILABLE_OS_VERSIONS;
 
 @end
 
@@ -167,7 +167,6 @@
 
 - (void)dealloc {
   [self cleanup];
-  [super dealloc];
 }
 
 - (onnxruntime::common::Status)loadModel {
