@@ -4,7 +4,6 @@
 #pragma once
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/cuda_kernel.h"
-//#include "core/framework/TensorSeq.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -56,15 +55,16 @@ class IdentityOp final : public CudaKernel {
       if (!status.IsOK()) {
         ORT_THROW("Unable to get an allocator");
       }
-      std::vector<Tensor> tensors;
-      for (auto iter = X->begin(); iter != X->end(); ++iter) {
-        auto tensor = Tensor::Create(X_type, onnxruntime::TensorShape(iter->Shape()), alloc);
-        size_t bytes = iter->SizeInBytes();
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(tensor->MutableDataRaw(), iter->DataRaw(), bytes, cudaMemcpyDeviceToDevice, Stream()));
-        tensors.push_back(std::move(*tensor.release()));
+      for (size_t i = 0; i < X->Size(); ++i) {
+        const Tensor& source_tensor = X->Get(i);
+        auto target_tensor = Tensor::Create(X_type, source_tensor.Shape(), alloc);
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_tensor->MutableDataRaw(),
+                                             source_tensor.DataRaw(),
+                                             source_tensor.SizeInBytes(),
+                                             cudaMemcpyDeviceToDevice, Stream()));
+        Y->Add(std::move(*target_tensor));
+        target_tensor.release();
       }
-      Y->SetElements(std::move(tensors));
-      std::cout << "identity_gpu on seq done!" << std::endl;
     } else {
       ORT_THROW("Unsupported input type");
     }

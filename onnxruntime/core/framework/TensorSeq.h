@@ -62,6 +62,10 @@ class TensorSeq {
     return tensors_[i];
   }
 
+  void Add(Tensor&& tensor) {
+    tensors_.push_back(std::move(tensor));
+  }
+
  private:
   // A sequence must be associated with only one data type and all tensors in the seq must be of that type
   // One other alternative of storing the data type of a seq is to templatize the TensorSeq class.
