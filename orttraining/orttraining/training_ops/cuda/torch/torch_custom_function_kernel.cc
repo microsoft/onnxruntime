@@ -35,9 +35,7 @@ ONNX_OPERATOR_KERNEL_EX(
     PythonOpGrad);
 
 Status PythonOp::ComputeInternal(OpKernelContext* context) const {
-#ifndef NDEBUG
   RefCountTracker::GetInstance().DumpDetails("Forward Kernel Started");
-#endif
 
   // Todo(pengwa): perf impact and how much, leave it now to guarantee correctness.
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
@@ -51,16 +49,12 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
 
   SetOutputs(context, diff_ctx, returned_ortvalues);
 
-#ifndef NDEBUG
   RefCountTracker::GetInstance().DumpDetails("Forward Kernel Completed");
-#endif
   return Status::OK();
 }
 
 Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
-#ifndef NDEBUG
   RefCountTracker::GetInstance().DumpDetails("Backward Kernel Started");
-#endif
 
   // Todo(pengwa): perf impact and how much, leave it now to guarantee correctness.
   CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
@@ -73,9 +67,7 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
 
   SetOutputs(context, returned_ortvalues);
 
-#ifndef NDEBUG
   RefCountTracker::GetInstance().DumpDetails("Backward Kernel Completed");
-#endif
   return Status::OK();
 }
 

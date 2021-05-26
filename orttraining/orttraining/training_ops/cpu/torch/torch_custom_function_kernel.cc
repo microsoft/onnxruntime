@@ -31,9 +31,7 @@ ONNX_OPERATOR_KERNEL_EX(
     PythonOpGrad);
 
 Status PythonOp::Compute(OpKernelContext* context) const {
-#ifndef NDEBUG
   RefCountTracker::GetInstance().DumpDetails("Forward Kernel Started");
-#endif
 
   void* diff_ctx = nullptr;
   std::vector<OrtValue> returned_ortvalues;
@@ -41,25 +39,19 @@ Status PythonOp::Compute(OpKernelContext* context) const {
 
   SetOutputs(context, diff_ctx, returned_ortvalues);
 
-#ifndef NDEBUG
   RefCountTracker::GetInstance().DumpDetails("Forward Kernel Completed");
-#endif
   return Status::OK();
 }
 
 Status PythonOpGrad::Compute(OpKernelContext* context) const {
-#ifndef NDEBUG
   RefCountTracker::GetInstance().DumpDetails("Backward Kernel Started");
-#endif
 
   std::vector<OrtValue> returned_ortvalues;
   RunBackward(context, returned_ortvalues);
 
   SetOutputs(context, returned_ortvalues);
 
-#ifndef NDEBUG
   RefCountTracker::GetInstance().DumpDetails("Backward Kernel Completed");
-#endif
   return Status::OK();
 }
 

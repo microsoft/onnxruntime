@@ -13,8 +13,8 @@ namespace torch {
 // Perform a thread-safe registration for "pool" (type: map).
 template <typename TKey>
 static void RegisterEntry(
-    std::mutex& mutex, // The mutex uniquely associated with "pool".
-    TKey key,  // used in move-constructor of tuple below.
+    std::mutex& mutex,  // The mutex uniquely associated with "pool".
+    TKey key,           // used in move-constructor of tuple below.
     PyObject* obj,
     std::unordered_map<TKey, PyObject*>& pool,
     const bool overwrite) {
@@ -207,10 +207,10 @@ int64_t OrtTorchFunctionPool::RegisterContext(PyObject* auto_grad_context) {
   static int64_t index_ = 0x1000000;
   std::lock_guard<std::mutex> lock(mutex_);
   index_++;
-#ifndef NDEBUG
+
   RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::AutoGradContext,
                                                auto_grad_context, "autograd_context_register");
-#endif
+
   func_context_pool.insert({index_, auto_grad_context});
   // We don't need increase the context refcnt because PyTorch already did it during .apply().
   return index_;

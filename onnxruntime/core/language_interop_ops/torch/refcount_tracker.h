@@ -11,7 +11,6 @@
 namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
-#ifndef NDEBUG
 
 using AddressInfos = std::unordered_map<void*, std::vector<std::string>>;
 
@@ -55,7 +54,6 @@ class RefCountTracker {
   AddressInfos auto_grad_addresses_;
   std::unordered_map<RefCountTracker::ObjCategory, AddressInfos> addr_info_map_;
 };
-#endif
 }  // namespace torch
 }  // namespace language_interop_ops
 }  // namespace onnxruntime

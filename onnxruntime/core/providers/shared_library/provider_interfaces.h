@@ -50,9 +50,7 @@ class PythonOpGradBase;
 
 namespace language_interop_ops {
 namespace torch {
-#ifndef NDEBUG
 class RefCountTracker;
-#endif
 }  // namespace torch
 }  // namespace language_interop_ops
 
@@ -809,10 +807,8 @@ struct ProviderHost {
   virtual void contrib__PythonOpGradBase__RunBackward(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) = 0;
   virtual void contrib__PythonOpGradBase__SetOutputs(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_args) = 0;
 
-#ifndef NDEBUG
   virtual language_interop_ops::torch::RefCountTracker& GetRefCountTrackerInstance() = 0;
   virtual void RefCountTracker__DumpDetails(language_interop_ops::torch::RefCountTracker* p, std::string phase_name) = 0;
-#endif
 
 #if defined(ORT_USE_NCCL)
   virtual training::DistributedRunContext& GetDistributedRunContextInstance() = 0;
