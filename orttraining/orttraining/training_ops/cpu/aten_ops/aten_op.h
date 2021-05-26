@@ -24,6 +24,9 @@ class ATenOpBase : public OpKernel {
   std::vector<std::pair<size_t, int64_t>> int_arguments_;
   std::vector<std::pair<size_t, float>> float_arguments_;
   std::vector<std::pair<size_t, bool>> bool_arguments_;
+  std::vector<std::pair<size_t, std::vector<int64_t>>> int_array_arguments_;
+  std::vector<std::pair<size_t, std::vector<float>>> float_array_arguments_;
+  std::vector<std::pair<size_t, std::vector<bool>>> bool_array_arguments_;
 };
 
 class ATenOpForward final : public ATenOpBase {

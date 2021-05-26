@@ -14,8 +14,14 @@ namespace aten_ops {
 // We use regex to parse the strings, to make the parser simple, it requires some special formats
 // for these function strings, such as spaces in the strings.
 static const std::vector<std::pair<std::string, std::string>> ATEN_FUNCS = {
-    {"aten::embedding(Tensor<T> weight, Tensor<int64> indices, int padding_idx=-1, bool scale_grad_by_freq=False, bool sparse=False) -> Tensor<T> result",
-     "aten::embedding_backward(Tensor<T> grad_result, Tensor<int64> indices, Tensor<T> weight, int padding_idx=-1, bool scale_grad_by_freq=False, bool sparse=False) -> Tensor<T> grad_weight"}};
+    {"aten::embedding(Tensor<T> weight, Tensor<int64> indices, int padding_idx=-1, bool scale_grad_by_freq=False, bool "
+     "sparse=False) -> Tensor<T> result",
+     "aten::embedding_backward(Tensor<T> grad_result, Tensor<int64> indices, Tensor<T> weight, int padding_idx=-1, "
+     "bool scale_grad_by_freq=False, bool sparse=False) -> Tensor<T> grad_weight"},
+    {"aten::max_pool2d_with_indices(Tensor<T> self, int[] kernel_size, int[] stride, int[] padding=[0,0], int[] "
+     "dilation=[1,1], bool ceil_mode=False) -> (Tensor<T> output, Tensor<int64> indices)",
+     "aten::max_pool2d_with_indices_backward(Tensor<T> grad_output, Tensor<T> self, int[] kernel_size, int[] stride, "
+     "int[] padding=[0,0], int[] dilation=[1,1], bool ceil_mode=False, Tensor<int64> indices) -> Tensor<T> grad_self"}};
 
 const std::regex regex_expr_whole("([a-z0-9:_]+)\\(([A-Za-z0-9_ ,.=+-\\[\\]<>]+)\\) -> \\(?([A-Za-z0-9_ ,<>]+)\\)?");
 const std::regex regex_expr_argument(
@@ -125,7 +131,10 @@ int ToOnnxDataType(const std::string& type_str) {
 
 int ParseInt(const std::string& value) {
   try {
-    return std::stoi(value);
+    size_t end_pos;
+    int v = std::stoi(value, &end_pos);
+    ORT_ENFORCE(end_pos == value.length(), value, " is not a valid integer string.");
+    return v;
   } catch (const std::exception&) {
     ORT_ENFORCE(false, value, " is not a valid integer string.");
   }
@@ -133,7 +142,10 @@ int ParseInt(const std::string& value) {
 
 float ParseFloat(const std::string& value) {
   try {
-    return std::stof(value);
+    size_t end_pos;
+    float v = std::stof(value, &end_pos);
+    ORT_ENFORCE(end_pos == value.length(), value, " is not a valid float string.");
+    return v;
   } catch (const std::exception&) {
     ORT_ENFORCE(false, value, " is not a valid float string.");
   }

@@ -14,7 +14,10 @@ typedef std::vector<DLManagedTensor*> (*ExecuteATenOperatorFunc)(
     const char* op_name, const std::vector<std::pair<size_t, DLManagedTensor*>>& tensor_arguments,
     const std::vector<std::pair<size_t, int64_t>>& int_arguments,
     const std::vector<std::pair<size_t, float>>& float_arguments,
-    const std::vector<std::pair<size_t, bool>>& bool_arguments);
+    const std::vector<std::pair<size_t, bool>>& bool_arguments,
+    const std::vector<std::pair<size_t, std::vector<int64_t>>>& int_array_arguments,
+    const std::vector<std::pair<size_t, std::vector<float>>>& float_array_arguments,
+    const std::vector<std::pair<size_t, std::vector<bool>>>& bool_array_arguments);
 
 class ATenOperatorExecutor {
  public:
@@ -22,13 +25,17 @@ class ATenOperatorExecutor {
 
   static void Initialize(void* p_func_raw) { InstanceImpl(p_func_raw); }
 
-  std::vector<DLManagedTensor*> operator()(const std::string& op_name,
-                                           const std::vector<std::pair<size_t, DLManagedTensor*>>& tensor_arguments,
-                                           const std::vector<std::pair<size_t, int64_t>>& int_arguments,
-                                           const std::vector<std::pair<size_t, float>>& float_arguments,
-                                           const std::vector<std::pair<size_t, bool>>& bool_arguments) {
+  std::vector<DLManagedTensor*> operator()(
+      const std::string& op_name, const std::vector<std::pair<size_t, DLManagedTensor*>>& tensor_arguments,
+      const std::vector<std::pair<size_t, int64_t>>& int_arguments,
+      const std::vector<std::pair<size_t, float>>& float_arguments,
+      const std::vector<std::pair<size_t, bool>>& bool_arguments,
+      const std::vector<std::pair<size_t, std::vector<int64_t>>>& int_array_arguments,
+      const std::vector<std::pair<size_t, std::vector<float>>>& float_array_arguments,
+      const std::vector<std::pair<size_t, std::vector<bool>>>& bool_array_arguments) {
     ORT_ENFORCE(p_func_, "ATenOperatorExecutor is not initialized.");
-    return p_func_(op_name.c_str(), tensor_arguments, int_arguments, float_arguments, bool_arguments);
+    return p_func_(op_name.c_str(), tensor_arguments, int_arguments, float_arguments, bool_arguments,
+                   int_array_arguments, float_array_arguments, bool_array_arguments);
   }
 
  private:

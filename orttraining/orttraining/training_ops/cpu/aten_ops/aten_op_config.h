@@ -65,7 +65,7 @@ struct ATenOperatorConfig {
   std::unordered_map<std::string, std::vector<bool>> default_bool_array_values;
 
   template <typename T>
-  bool TryGetValue(const std::string& name, T& value) const {
+  bool TryGetDefaultValue(const std::string& name, T& value) const {
     bool has_default_value = false;
     if (std::is_same<T, int>::value) {
       auto it = default_int_values.find(name);
@@ -91,7 +91,7 @@ struct ATenOperatorConfig {
   }
 
   template <typename T>
-  bool TryGetArrayValue(const std::string& name, std::vector<T>& value) const {
+  bool TryGetDefaultArrayValue(const std::string& name, std::vector<T>& value) const {
     bool has_default_value = false;
     if (std::is_same<T, int>::value) {
       auto it = default_int_array_values.find(name);
