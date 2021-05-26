@@ -67,7 +67,7 @@ stages:
       - task: PublishBuildArtifacts@1
         displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
         inputs:
-          ArtifactName: onnxruntime_gpu
+          ArtifactName: onnxruntime_training_cpu
 
       - template: templates/component-governance-component-detection-steps.yml
         parameters:
