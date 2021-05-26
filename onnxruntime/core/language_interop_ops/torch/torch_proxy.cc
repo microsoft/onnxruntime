@@ -277,9 +277,9 @@ void Invoke(
     const bool is_inplace) {
   const auto len = tensor_args.size() + obj_args.size();
   CheckArguments(len, requires_grads, tensor_args, tensor_indices, obj_args, obj_indices);
-  // #ifndef NDEBUG
-  //   RefCountTracker::GetInstance().Reset();
-  // #endif
+#ifndef NDEBUG
+  RefCountTracker::GetInstance().Reset();
+#endif
   {
     auto args = CreateForwardArguments(
         callback,

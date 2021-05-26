@@ -3,7 +3,6 @@
 
 #pragma once
 #include "core/providers/cuda/cuda_kernel.h"
-#include "core/language_interop_ops/torch/torch_proxy.h"
 #include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
 
 namespace onnxruntime {

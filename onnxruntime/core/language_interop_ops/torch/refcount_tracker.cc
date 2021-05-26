@@ -11,14 +11,6 @@ namespace language_interop_ops {
 namespace torch {
 #ifndef NDEBUG
 
-RefCountTracker::RefCountTracker() {
-  addr_info_map_ = {
-      {RefCountTracker::ObjCategory::ForwardArgs, forward_arg_addresses_},
-      {RefCountTracker::ObjCategory::ReturnValues, return_value_addresses_},
-      {RefCountTracker::ObjCategory::AutoGradContext, auto_grad_addresses_},
-  };
-}
-
 void RefCountTracker::TrackPyObject(RefCountTracker::ObjCategory category, PyObject* py_obj, std::string log_tag) {
   AddressInfos& addrs = addr_info_map_[category];
   void* addr = static_cast<void*>(py_obj);

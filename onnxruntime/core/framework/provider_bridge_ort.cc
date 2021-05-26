@@ -62,6 +62,12 @@ Status LongformerAttentionBase__CheckInputs(const LongformerAttentionBase* p, co
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
 #include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
 #include "orttraining/training_ops/cpu/tensor/split.h"
+#include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
+
+#ifndef NDEBUG
+#include "core/language_interop_ops/torch/refcount_tracker.h"
+#endif
+
 #endif
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
@@ -882,6 +888,27 @@ struct ProviderHostImpl : ProviderHost {
   void contrib__GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, std::vector<int64_t>& new_shape, std::vector<size_t>& permutations) override { contrib::GetPermutationAndShape(ncd_to_ndc, tensor_shape, new_shape, permutations); }
   Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) override { return contrib::PrepareForTrainingCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
   Status contrib__YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) override { return p->YieldOp::Compute(context); }
+
+  void contrib__PythonOpBase__Init(contrib::PythonOpBase* p, const OpKernelInfo& info) override { p->PythonOpBase::Init(info); }
+  void contrib__PythonOpBase__SetOutputs(const contrib::PythonOpBase* p, OpKernelContext* context, void* diff_ctx, std::vector<OrtValue>& returned_args) override {
+    return p->PythonOpBase::SetOutputs(context, diff_ctx, returned_args);
+  }
+  void contrib__PythonOpBase__RunForward(const contrib::PythonOpBase* p, OpKernelContext* context, void** diff_ctx, std::vector<OrtValue>& returned_ortvalues) override {
+    return p->PythonOpBase::RunForward(context, diff_ctx, returned_ortvalues);
+  }
+
+  void contrib__PythonOpGradBase__Init(contrib::PythonOpGradBase* p, const OpKernelInfo& info) override { return p->PythonOpGradBase::Init(info); }
+  void contrib__PythonOpGradBase__RunBackward(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) {
+    return p->PythonOpGradBase::RunBackward(context, returned_ortvalues);
+  }
+  void contrib__PythonOpGradBase__SetOutputs(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_args) override { p->PythonOpGradBase::SetOutputs(context, returned_args); }
+
+#ifndef NDEBUG
+  language_interop_ops::torch::RefCountTracker& GetRefCountTrackerInstance() override { return language_interop_ops::torch::RefCountTracker::GetInstance(); }
+  void RefCountTracker__DumpDetails(language_interop_ops::torch::RefCountTracker* p, std::string phase_name) override {
+    return p->language_interop_ops::torch::RefCountTracker::DumpDetails(phase_name);
+  }
+#endif
 
 #if defined(ORT_USE_NCCL)
   training::DistributedRunContext& GetDistributedRunContextInstance() override { return training::DistributedRunContext::GetInstance(); }

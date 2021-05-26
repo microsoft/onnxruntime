@@ -44,7 +44,17 @@ class AttentionBase;
 class Group;
 class PassThrough;
 class YieldOp;
+class PythonOpBase;
+class PythonOpGradBase;
 }  // namespace contrib
+
+namespace language_interop_ops {
+namespace torch {
+#ifndef NDEBUG
+class RefCountTracker;
+#endif
+}  // namespace torch
+}  // namespace language_interop_ops
 
 namespace training {
 class DistributedRunContext;
@@ -790,6 +800,19 @@ struct ProviderHost {
   virtual void contrib__GetPermutationAndShape(bool ncd_to_ndc, const TensorShape& tensor_shape, std::vector<int64_t>& new_shape, std::vector<size_t>& permutations) = 0;
   virtual Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) = 0;
   virtual Status contrib__YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) = 0;
+
+  virtual void contrib__PythonOpBase__Init(contrib::PythonOpBase* p, const OpKernelInfo& info) = 0;
+  virtual void contrib__PythonOpBase__RunForward(const contrib::PythonOpBase* p, OpKernelContext* context, void** diff_ctx, std::vector<OrtValue>& returned_ortvalues) = 0;
+  virtual void contrib__PythonOpBase__SetOutputs(const contrib::PythonOpBase* p, OpKernelContext* context, void* diff_ctx, std::vector<OrtValue>& returned_args) = 0;
+
+  virtual void contrib__PythonOpGradBase__Init(contrib::PythonOpGradBase* p, const OpKernelInfo& info) = 0;
+  virtual void contrib__PythonOpGradBase__RunBackward(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) = 0;
+  virtual void contrib__PythonOpGradBase__SetOutputs(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_args) = 0;
+
+#ifndef NDEBUG
+  virtual language_interop_ops::torch::RefCountTracker& GetRefCountTrackerInstance() = 0;
+  virtual void RefCountTracker__DumpDetails(language_interop_ops::torch::RefCountTracker* p, std::string phase_name) = 0;
+#endif
 
 #if defined(ORT_USE_NCCL)
   virtual training::DistributedRunContext& GetDistributedRunContextInstance() = 0;

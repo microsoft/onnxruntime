@@ -7,6 +7,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #endif
+#include "core/language_interop_ops/torch/torch_proxy.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -16,19 +17,22 @@ std::vector<OrtValue> CreateOrtValueArgs(OpKernelContext* context,
                                          const size_t num_arg);
 
 class PythonOpBase {
+ public:
+  PythonOpBase(const OpKernelInfo& info) {
+    Init(info);
+  }
+
+  void Init(const OpKernelInfo& info);
+
+  void RunForward(OpKernelContext* context,
+                  void** diff_ctx,
+                  std::vector<OrtValue>& returned_ortvalues) const;
+
+  void SetOutputs(OpKernelContext* context,
+                  void* diff_ctx,
+                  std::vector<OrtValue>& returned_args) const;
+
  protected:
-  PythonOpBase(const OpKernelInfo& info);
-
-  void AddIntScalarArgs();
-  void AddInputTupleArgs();
-  void AddFloatTupleArgs();
-  void AddPointerScalarArgs();
-  void CreateConstArgs();
-  void CreateArgPositions();
-
-  void SetContextOutput(OpKernelContext* context, void* diff_ctx) const;
-  void SetOtherOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_args) const;
-
   std::vector<int64_t> const_arg_positions_;
   std::vector<void*> const_args_;
   std::vector<int64_t> arg_positions_;
@@ -69,15 +73,33 @@ class PythonOpBase {
   // Output types of MyReLU.apply(...).
   std::vector<int64_t> output_tensor_types_;
   std::vector<int64_t> output_tensor_requires_grads_;
+
+ private:
+  void AddIntScalarArgs();
+  void AddInputTupleArgs();
+  void AddFloatTupleArgs();
+  void AddPointerScalarArgs();
+  void CreateConstArgs();
+  void CreateArgPositions();
+
+  void SetContextOutput(OpKernelContext* context, void* diff_ctx) const;
+  void SetOtherOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_args) const;
 };
 
 class PythonOpGradBase {
- protected:
-  PythonOpGradBase(const OpKernelInfo& info);
+ public:
+  PythonOpGradBase(const OpKernelInfo& info) {
+    Init(info);
+  };
 
-  void SetPositions();
+  void Init(const OpKernelInfo& info);
+
+  void RunBackward(OpKernelContext* context,
+                   std::vector<OrtValue>& returned_ortvalues) const;
+
   void SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_args) const;
 
+ protected:
   // Name of containing class. For example, MyReLU.
   std::string name_;
   int64_t inplace_;
@@ -89,6 +111,9 @@ class PythonOpGradBase {
   std::vector<int64_t> output_tensor_requires_grads_;
   std::vector<int64_t> arg_positions_;
   std::vector<int64_t> const_arg_positions_;
+
+ private:
+  void SetPositions();
 };
 
 }  // namespace contrib
