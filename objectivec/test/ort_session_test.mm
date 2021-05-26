@@ -147,7 +147,7 @@ NS_ASSUME_NONNULL_BEGIN
   XCTAssertEqual(cActual, cExpected);
 }
 
-- (void)testGetInputAndOutputNamesOk {
+- (void)testGetNamesOk {
   NSError* err = nil;
   ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
                                               modelPath:[ORTSessionTest getAddModelPath]
