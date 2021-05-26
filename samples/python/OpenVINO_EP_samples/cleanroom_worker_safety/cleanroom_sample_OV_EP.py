@@ -22,9 +22,9 @@ clut = [(0,0,0),(255,0,0),(255,0,255),(0,0,255),(0,200,0)]
 # 5 labels that the tiny-yolov2 model can do the object_detection on
 label = ["unprotected","bunny suit","glasses","head","robot"]
 
-# Specify the path to the pre-trained onnx model
-model_file_path = "data/tiny_yolo_v2_cleanroom.onnx"
-# TODO: Add/Modify the path for the input onnx model based on where it is located on your device.
+# Specify the path to the pre-trained onnx model which is available along with this sample
+model_file_path = "data/onnx_model/tiny_yolo_v2_cleanroom.onnx"
+# TODO: Add/Modify the path for the input onnx model based on where it is located on your device
 
 # Load the model
 sess = rt.InferenceSession(model_file_path)
