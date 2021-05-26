@@ -13,7 +13,10 @@ The source code for this sample is available [here](https://github.com/microsoft
 
 2. Use opencv (use the same opencv package that comes builtin with Intel<sup>®</sup> Distribution of OpenVINO toolkit)
 
-3. Use any sample Image as input to the sample.
+3. Use any sample image as input to the sample.
+
+4. Download the latest Squeezenet model from the ONNX Model Zoo.
+   This example was adapted from [ONNX Model Zoo](https://github.com/onnx/models).Download the latest version of the [Squeezenet](https://github.com/onnx/models/tree/master/vision/classification/squeezenet) model from here.
 
 ## Install ONNX Runtime for OpenVINO Execution Provider
 
@@ -70,7 +73,3 @@ Example:
 ```
 ./run_squeezenet --use_cpu squeezenet1.1-7.onnx demo.jpeg synset.txt   (using Default CPU)
 ```
-
-## Link to Download the Squeezenet ONNX Model:
-
-This example was adapted from [ONNX Model Zoo](https://github.com/onnx/models).Download the latest version of the [Squeezenet](https://github.com/onnx/models/tree/master/vision/classification/squeezenet) model from here.

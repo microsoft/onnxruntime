@@ -14,6 +14,12 @@ The source code for this sample is available [here](https://github.com/microsoft
 ## Prerequisites
 1. [The Intel<sup>®</sup> Distribution of OpenVINO toolkit](https://docs.openvinotoolkit.org/latest/index.html)
 
+2. use only the pre-trained tinyYOLOv2 ONNX model which is available in the data directory of this sample as a tar file.
+
+    Command to untar the file:
+    ```bash
+    tar -xf tiny_yolo_v2_cleanroom_onnx_model.tgz
+    ```
 ## Install ONNX Runtime for OpenVINO Execution Provider
 
 ## Build steps

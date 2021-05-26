@@ -11,6 +11,9 @@ The source code for this sample is available [here](https://github.com/microsoft
 ## Prerequisites
 1. [The Intel<sup>®</sup> Distribution of OpenVINO toolkit](https://docs.openvinotoolkit.org/latest/index.html)
 
+2. Download the latest tinyYOLOv2 model from the ONNX Model Zoo.
+   This model was adapted from [ONNX Model Zoo](https://github.com/onnx/models).Download the latest version of the [tinyYOLOv2](https://github.com/onnx/models/tree/master/vision/object_detection_segmentation/tiny-yolov2) model from here.
+
 ## Install ONNX Runtime for OpenVINO Execution Provider
 
 ## Build steps
@@ -42,7 +45,3 @@ python3 tiny_yolov2_obj_detection_sample.py
 Just press the letter 'q'
 ```
 
-
-## Link to Download the tinyYOLOv2 Model:
-
-This example was adapted from [ONNX Model Zoo](https://github.com/onnx/models). Download the latest version of the [tinyYOLOv2](https://github.com/onnx/models/tree/master/vision/object_detection_segmentation/tiny-yolov2) model from here.
