@@ -19,9 +19,9 @@ stages:
         clean: true
         submodules: recursive
 
-      - template: set-python-manylinux-variables-step.yml
+      - template: templates/set-python-manylinux-variables-step.yml
 
-      - template: get-docker-image-steps.yml
+      - template: templates/get-docker-image-steps.yml
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/$(DockerFile)
           Context: tools/ci_build/github/linux/docker
@@ -68,8 +68,8 @@ stages:
         inputs:
           ArtifactName: onnxruntime_gpu
 
-      - template: component-governance-component-detection-steps.yml
+      - template: templates/component-governance-component-detection-steps.yml
         parameters:
           condition: 'succeeded'
 
-      - template: clean-agent-build-directory-step.yml
+      - template: templates/clean-agent-build-directory-step.yml
