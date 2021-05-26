@@ -1,4 +1,4 @@
-This is a python sample application for demoing industrial/clean room use case using ONNXRuntime OpenVINO Execution Provider.
+# This is a python sample application for demoing industrial/clean room use case using ONNXRuntime OpenVINO Execution Provider.
 
 1. The Object detection sample uses a pre-trained Tiny YOLOv2 Deep Learning ONNX Model from Intel. 
  
@@ -47,5 +47,5 @@ python3 cleanroom_sample_OV_EP.py
 ## To stop the sample from running
 
 ```bash
-Just press the letter 'q'
+Just press the letter 'q' or Ctrl+C if on Windows
 ```

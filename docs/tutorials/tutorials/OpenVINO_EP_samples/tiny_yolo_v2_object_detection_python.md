@@ -1,4 +1,4 @@
-This is a python sample application for demoing ONNXRuntime OpenVINO Execution Provider usage:
+# This is a python sample application for demoing ONNXRuntime OpenVINO Execution Provider usage:
 
 1. The Object detection sample again uses a tinyYOLOv2 Deep Learning ONNX Model from the ONNX Model Zoo.
  
@@ -42,6 +42,6 @@ python3 tiny_yolov2_obj_detection_sample.py
 ## To stop the sample from running
 
 ```bash
-Just press the letter 'q'
+Just press the letter 'q' or Ctrl+C if on Windows
 ```
 

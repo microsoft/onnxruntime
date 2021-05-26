@@ -1,4 +1,4 @@
-This is a C# sample for demoing ONNXRuntime OpenVINO Execution Provider usage:
+# This is a C# sample for demoing ONNXRuntime OpenVINO Execution Provider usage:
 
 1. The object detection sample uses YOLOv3 Deep Learning ONNX Model from the ONNX Model Zoo.
 
