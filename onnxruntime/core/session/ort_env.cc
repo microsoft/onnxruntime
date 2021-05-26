@@ -11,13 +11,7 @@
 #include "core/session/allocator_impl.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/provider_shutdown.h"
-#if defined(__ANDROID__)
-#include "core/platform/android/logging/android_log_sink.h"
-#elif defined(__APPLE__)
-#include "core/platform/apple/logging/apple_log_sink.h"
-#else
-#include "core/common/logging/sinks/clog_sink.h"
-#endif
+#include "core/platform/logging/make_platform_default_log_sink.h"
 
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
@@ -64,13 +58,7 @@ OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_inf
                                     LoggingManager::InstanceType::Default,
                                     &name));
     } else {
-#if defined(__ANDROID__)
-      std::unique_ptr<ISink> sink = std::make_unique<AndroidLogSink>();
-#elif defined(__APPLE__)
-      std::unique_ptr<ISink> sink = std::make_unique<AppleLogSink>();
-#else
-      std::unique_ptr<ISink> sink = std::make_unique<CLogSink>();
-#endif
+      auto sink = MakePlatformDefaultLogSink();
 
       lmgr.reset(new LoggingManager(std::move(sink),
                                     static_cast<Severity>(lm_info.default_warning_level),
