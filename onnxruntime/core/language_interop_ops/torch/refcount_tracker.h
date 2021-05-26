@@ -31,9 +31,9 @@ class RefCountTracker {
   static RefCountTracker& GetInstance() { return Provider_GetHost()->GetRefCountTrackerInstance(); }
 #endif
 
-  void TrackPyObject(RefCountTracker::ObjCategory category, PyObject* py_obj, std::string log_tag);
-  void DumpDetails(std::string phase_name);
-  void Reset();
+  void TrackPyObject(RefCountTracker::ObjCategory category, PyObject* py_obj, const std::string& log_tag) const;
+  void DumpDetails(const std::string& phase_name) const;
+  void Reset() const;
 
  private:
   RefCountTracker() {
@@ -53,6 +53,8 @@ class RefCountTracker {
   AddressInfos return_value_addresses_;
   AddressInfos auto_grad_addresses_;
   std::unordered_map<RefCountTracker::ObjCategory, AddressInfos> addr_info_map_;
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RefCountTracker);
 };
 }  // namespace torch
 }  // namespace language_interop_ops

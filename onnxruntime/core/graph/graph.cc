@@ -2151,7 +2151,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
     } else {
       // This should not happen: indicates incompleteness in ONNX inference.
       Status status(ONNXRUNTIME, FAIL,
-                    node.OpType() + " node (" + node_name + ") output arg (" + output_def->Name() + ") type inference failed");
+                    "Node (" + node_name + ") output arg (" + output_def->Name() + ") type inference failed");
       return status;
     }
 

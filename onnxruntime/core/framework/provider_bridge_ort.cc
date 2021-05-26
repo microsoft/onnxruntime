@@ -900,7 +900,7 @@ struct ProviderHostImpl : ProviderHost {
   void contrib__PythonOpGradBase__SetOutputs(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_args) override { p->PythonOpGradBase::SetOutputs(context, returned_args); }
 
   language_interop_ops::torch::RefCountTracker& GetRefCountTrackerInstance() override { return language_interop_ops::torch::RefCountTracker::GetInstance(); }
-  void RefCountTracker__DumpDetails(language_interop_ops::torch::RefCountTracker* p, std::string phase_name) override {
+  void RefCountTracker__DumpDetails(const language_interop_ops::torch::RefCountTracker* p, const std::string& phase_name) override {
     return p->language_interop_ops::torch::RefCountTracker::DumpDetails(phase_name);
   }
 

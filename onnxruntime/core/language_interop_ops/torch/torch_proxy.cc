@@ -21,36 +21,36 @@ void ObjectPointer<PyObject>::free() {
   Py_XDECREF(ptr);
 }
 
-PyObject* Ort_PyTuple_New(const size_t len, std::string log_tag) {
+PyObject* Ort_PyTuple_New(const size_t len, const std::string& log_tag) {
   PyObject* item = PyTuple_New(len);
   RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
   return item;
 }
 
-void Ort_PyTuple_SetItem_Incref(PyObject* py_tuple, size_t index, PyObject* item, std::string log_tag) {
+void Ort_PyTuple_SetItem_Incref(PyObject* py_tuple, size_t index, PyObject* item, const std::string& log_tag) {
   RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
   Py_INCREF(item);
   PyTuple_SetItem(py_tuple, index, item);
 }
 
-void Ort_PyTuple_SetItem_NoIncref(PyObject* py_tuple, size_t index, PyObject* item, std::string log_tag) {
+void Ort_PyTuple_SetItem_NoIncref(PyObject* py_tuple, size_t index, PyObject* item, const std::string& log_tag) {
   RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
   PyTuple_SetItem(py_tuple, index, item);
 }
 
-PyObject* Ort_PyList_New(const size_t len, std::string log_tag) {
+PyObject* Ort_PyList_New(const size_t len, const std::string& log_tag) {
   PyObject* item = PyList_New(len);
   RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
   return item;
 }
 
-void Ort_PyList_SetItem_Incref(PyObject* py_list, size_t index, PyObject* item, std::string log_tag) {
+void Ort_PyList_SetItem_Incref(PyObject* py_list, size_t index, PyObject* item, const std::string& log_tag) {
   RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
   Py_INCREF(item);
   PyList_SetItem(py_list, index, item);
 }
 
-void Ort_PyList_SetItem_NoIncref(PyObject* py_list, size_t index, PyObject* item, std::string log_tag) {
+void Ort_PyList_SetItem_NoIncref(PyObject* py_list, size_t index, PyObject* item, const std::string& log_tag) {
   RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
   PyList_SetItem(py_list, index, item);
 }

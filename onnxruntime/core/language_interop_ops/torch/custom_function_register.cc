@@ -246,7 +246,6 @@ void UnregisterAllEntries(
   }
 }
 
-OrtTorchFunctionPool::OrtTorchFunctionPool() : forward_runner(nullptr), backward_runner(nullptr){};
 OrtTorchFunctionPool::~OrtTorchFunctionPool() {
   UnregisterEntry(mutex_, &forward_runner);
   UnregisterEntry(mutex_, &backward_runner);

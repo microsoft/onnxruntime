@@ -808,7 +808,7 @@ struct ProviderHost {
   virtual void contrib__PythonOpGradBase__SetOutputs(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_args) = 0;
 
   virtual language_interop_ops::torch::RefCountTracker& GetRefCountTrackerInstance() = 0;
-  virtual void RefCountTracker__DumpDetails(language_interop_ops::torch::RefCountTracker* p, std::string phase_name) = 0;
+  virtual void RefCountTracker__DumpDetails(const language_interop_ops::torch::RefCountTracker* p, const std::string& phase_name) = 0;
 
 #if defined(ORT_USE_NCCL)
   virtual training::DistributedRunContext& GetDistributedRunContextInstance() = 0;

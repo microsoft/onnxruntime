@@ -36,11 +36,7 @@
 #include "orttraining/training_ops/cpu/controlflow/group.h"
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
 #include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
-
-#ifndef NDEBUG
 #include "core/language_interop_ops/torch/refcount_tracker.h"
-#endif
-
 #endif
 
 #ifndef _Ret_notnull_
@@ -497,11 +493,10 @@ void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue
 
 namespace language_interop_ops {
 namespace torch {
-#ifndef NDEBUG
-void RefCountTracker::DumpDetails(std::string phase_name) {
+void RefCountTracker::DumpDetails(const std::string& phase_name) const {
   return g_host->RefCountTracker__DumpDetails(this, phase_name);
 }
-#endif
+
 }  // namespace torch
 }  // namespace language_interop_ops
 #endif

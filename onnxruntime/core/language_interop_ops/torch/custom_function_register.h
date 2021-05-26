@@ -33,7 +33,7 @@ class OrtTorchFunctionPool final {
   void UnregisterContext(int64_t context_index);
   PyObject* GetContext(int64_t context_index);
 
-  /// ForwardRunner/BackwardRunner are "glue" codes written code that interacting
+  /// ForwardRunner/BackwardRunner are "glue" codes written in Python that interacting
   /// with C++ kernels during Python function invoking.
   void RegisterForwardRunner(PyObject* obj, const bool override = false);
   void UnregisterForwardRunner();
@@ -43,10 +43,10 @@ class OrtTorchFunctionPool final {
   PyObject* GetBackwardRunner();
 
  private:
-  OrtTorchFunctionPool();
+  OrtTorchFunctionPool() : forward_runner(nullptr), backward_runner(nullptr){};
   ~OrtTorchFunctionPool();
-  OrtTorchFunctionPool(const OrtTorchFunctionPool&) = delete;
-  OrtTorchFunctionPool& operator=(const OrtTorchFunctionPool&) = delete;
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtTorchFunctionPool);
 
   PyObject* forward_runner;
   PyObject* backward_runner;

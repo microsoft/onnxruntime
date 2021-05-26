@@ -11,13 +11,14 @@ namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
 
-void RefCountTracker::TrackPyObject(RefCountTracker::ObjCategory category, PyObject* py_obj, std::string log_tag) {
+void RefCountTracker::TrackPyObject(RefCountTracker::ObjCategory category, PyObject* py_obj, const std::string& log_tag) const {
 #ifdef NDEBUG
-  ORT_UNUSED_PARAMETER(category)
-  ORT_UNUSED_PARAMETER(py_obj)
-  ORT_UNUSED_PARAMETER(log_tag)
+  ORT_UNUSED_PARAMETER(category);
+  ORT_UNUSED_PARAMETER(py_obj);
+  ORT_UNUSED_PARAMETER(log_tag);
 #else
   AddressInfos& addrs = addr_info_map_[category];
+  assert(py_obj != NULL);
   void* addr = static_cast<void*>(py_obj);
   auto it = addrs.find(addr);
   if (it == addrs.end()) {
@@ -29,9 +30,9 @@ void RefCountTracker::TrackPyObject(RefCountTracker::ObjCategory category, PyObj
 #endif
 }
 
-void RefCountTracker::DumpDetails(std::string phase_name) {
+void RefCountTracker::DumpDetails(const std::string& phase_name) const {
 #ifdef NDEBUG
-  ORT_UNUSED_PARAMETER(phase_name)
+  ORT_UNUSED_PARAMETER(phase_name);
 #else
   std::ostringstream oss;
   oss << "======================" << phase_name << "=================" << std::endl;
@@ -50,7 +51,7 @@ void RefCountTracker::DumpDetails(std::string phase_name) {
 #endif
 }
 
-void RefCountTracker::Reset() {
+void RefCountTracker::Reset() const {
 #ifndef NDEBUG
   for (auto addr_info_it = addr_info_map_.begin(); addr_info_it != addr_info_map_.end(); ++addr_info_it) {
     addr_info_it->second.clear();

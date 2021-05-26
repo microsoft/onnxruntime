@@ -53,8 +53,9 @@ class TorchProxy {
  private:
   TorchProxy(){};
   ~TorchProxy(){};
-  TorchProxy(const TorchProxy&) = delete;
-  TorchProxy& operator=(const TorchProxy&) = delete;
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TorchProxy);
+
   // All member functions should be exclusively used because
   // Python has a global interpreter.
   std::mutex mutex_;
