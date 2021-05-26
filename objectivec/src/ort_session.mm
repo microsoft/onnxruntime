@@ -14,25 +14,9 @@
 #import "src/ort_value_internal.h"
 
 namespace {
-class AllocatorDeleter {
- public:
-  explicit AllocatorDeleter(OrtAllocator* allocator) : allocator_{allocator} {}
-
-  void operator()(void* p) {
-    if (allocator_) {
-      allocator_->Free(allocator_, p);
-    }
-  }
-
- private:
-  OrtAllocator* const allocator_;
-};
-
-template <typename T>
-using AllocatorUniquePtr = std::unique_ptr<T, AllocatorDeleter>;
-
 enum class NamedValueType {
   Input,
+  OverrideableInitializer,
   Output,
 };
 }  // namespace
@@ -160,6 +144,10 @@ NS_ASSUME_NONNULL_BEGIN
   return [self namesWithType:NamedValueType::Input error:error];
 }
 
+- (nullable NSArray<NSString*>*)overrideableInitializerNamesWithError:(NSError**)error {
+  return [self namesWithType:NamedValueType::OverrideableInitializer error:error];
+}
+
 - (nullable NSArray<NSString*>*)outputNamesWithError:(NSError**)error {
   return [self namesWithType:NamedValueType::Output error:error];
 }
@@ -169,19 +157,37 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable NSArray<NSString*>*)namesWithType:(NamedValueType)namedValueType
                                         error:(NSError**)error {
   try {
-    const size_t nameCount =
-        namedValueType == NamedValueType::Input
-            ? _session->GetInputCount()
-            : _session->GetOutputCount();
+    auto getCount = [&session = *_session, namedValueType]() {
+      if (namedValueType == NamedValueType::Input) {
+        return session.GetInputCount();
+      } else if (namedValueType == NamedValueType::OverrideableInitializer) {
+        return session.GetOverridableInitializerCount();
+      } else {
+        return session.GetOutputCount();
+      }
+    };
+
+    auto getName = [&session = *_session, namedValueType](size_t i, OrtAllocator* allocator) {
+      if (namedValueType == NamedValueType::Input) {
+        return session.GetInputName(i, allocator);
+      } else if (namedValueType == NamedValueType::OverrideableInitializer) {
+        return session.GetOverridableInitializerName(i, allocator);
+      } else {
+        return session.GetOutputName(i, allocator);
+      }
+    };
+
+    const size_t nameCount = getCount();
+
     Ort::AllocatorWithDefaultOptions allocator;
+    auto deleter = [ortAllocator = static_cast<OrtAllocator*>(allocator)](void* p) {
+      ortAllocator->Free(ortAllocator, p);
+    };
+
     NSMutableArray<NSString*>* result = [NSMutableArray arrayWithCapacity:nameCount];
 
     for (size_t i = 0; i < nameCount; ++i) {
-      AllocatorUniquePtr<char[]> name{
-          namedValueType == NamedValueType::Input
-              ? _session->GetInputName(i, allocator)
-              : _session->GetOutputName(i, allocator),
-          AllocatorDeleter{allocator}};
+      auto name = std::unique_ptr<char[], decltype(deleter)>{getName(i, allocator), deleter};
       [result addObject:[NSString stringWithUTF8String:name.get()]];
     }
 
