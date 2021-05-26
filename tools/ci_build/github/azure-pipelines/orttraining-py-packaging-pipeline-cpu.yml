@@ -1,0 +1,74 @@
+trigger: none
+
+stages:
+- stage: Python_Packaging
+
+  jobs:
+    - job: Linux_Training_CPU_Wheels
+      timeoutInMinutes: 60
+      workspace:
+        clean: all
+      pool: Linux-CPU
+
+      PythonVersion: '3.8'
+      DockerFile: 'Dockerfile.manylinux2014_cpu'
+
+    steps:
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - template: set-python-manylinux-variables-step.yml
+
+      - template: get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/$(DockerFile)
+          Context: tools/ci_build/github/linux/docker
+          DockerBuildArgs: >-
+            --build-arg PYTHON_VERSION=$(PythonVersion)
+            --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
+            --build-arg BUILD_UID=$(id -u)
+          Repository: onnxruntimetrainingcpubuild
+
+      - task: CmdLine@2
+        displayName: 'build onnxruntime'
+        inputs:
+          script: |
+            mkdir -p $HOME/.onnx
+            docker run --rm -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
+              --volume /data/onnx:/data/onnx:ro \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume /data/models:/build/models:ro \
+              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+              -e NIGHTLY_BUILD \
+              -e BUILD_BUILDNUMBER \
+              onnxruntimetrainingcpubuild \
+                $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                  --build_dir /build \
+                  --config Release \
+                  --skip_submodule_sync \
+                  --parallel \
+                  --build_wheel \
+                  --update \
+                  --build \
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so ;                  
+          workingDirectory: $(Build.SourcesDirectory)
+
+      - task: CopyFiles@2
+        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)'
+          Contents: 'Release/dist/*.whl'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifact: ONNXRuntime python wheel and documentation'
+        inputs:
+          ArtifactName: onnxruntime_gpu
+
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
+
+      - template: clean-agent-build-directory-step.yml
