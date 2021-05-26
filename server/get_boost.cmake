@@ -70,7 +70,7 @@ macro(DOWNLOAD_BOOST)
   include(ExternalProject)
   ExternalProject_Add(
       Boost
-      URL http://dl.bintray.com/boostorg/release/${BOOST_REQUESTED_VERSION}/source/boost_${BOOST_REQUESTED_VERSION_UNDERSCORE}.tar.bz2
+      URL https://boostorg.jfrog.io/artifactory/main/release/${BOOST_REQUESTED_VERSION}/source/boost_${BOOST_REQUESTED_VERSION_UNDERSCORE}.tar.bz2
       URL_HASH SHA256=${BOOST_SHA1}
       DOWNLOAD_DIR ${BOOST_ROOT_DIR}
       SOURCE_DIR ${BOOST_ROOT_DIR}

@@ -171,7 +171,7 @@
             "Other": {
                "Name": "Boost",
                "Version": "1.69.0",
-               "DownloadUrl": "http://dl.bintray.com/boostorg/release/1.69.0/source/boost_1_69_0.tar.bz2"
+               "DownloadUrl": "https://boostorg.jfrog.io/artifactory/main/release/1.69.0/source/boost_1_69_0.tar.bz2"
             }
          }
       },
@@ -462,12 +462,12 @@
       },
       {
          "component": {
-           "type": "git",
-           "git": {
-             "commitHash": "e1e11e0d555c08bec08a6c7773aa777dfcaae9da",
-             "repositoryUrl": "https://github.com/dmlc/dlpack.git"
-           },
-           "comments": "dlpack"
+            "type": "git",
+            "git": {
+               "commitHash": "e1e11e0d555c08bec08a6c7773aa777dfcaae9da",
+               "repositoryUrl": "https://github.com/dmlc/dlpack.git"
+            },
+            "comments": "dlpack"
          }
       }
    ],
