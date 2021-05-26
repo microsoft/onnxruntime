@@ -113,13 +113,8 @@ namespace Microsoft.ML.OnnxRuntime
             SessionOptions options = new SessionOptions();
             try
             {
-                // get device id for configuring CUDA EP
-                int deviceId;
-                string optionsStr;
-                var dict = new Dictionary<string, string>();
-                optionsStr = trtProviderOptions.GetOptions();
-                ProviderOptionsValueHelper.StringToDict(optionsStr, dict);
-                deviceId = Int32.Parse(dict["device_id"]);
+                // Make sure that CUDA EP uses the same device id as TensorRT EP.
+                int deviceId = trtProviderOptions.GetDeviceId() ;
 
                 NativeApiStatus.VerifySuccess(NativeMethods.SessionOptionsAppendExecutionProvider_TensorRT(options.Handle, trtProviderOptions.Handle));
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_CUDA(options.Handle, deviceId));

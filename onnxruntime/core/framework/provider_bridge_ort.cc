@@ -1084,7 +1084,7 @@ INcclService& INcclService::GetInstance() {
 
 void UpdateProviderInfo_Tensorrt(OrtTensorRTProviderOptions* provider_options, const ProviderOptions& options) {
   if (auto provider = s_library_tensorrt.Get()) {
-    provider->UpdateInfo(reinterpret_cast<void*>(provider_options), options);
+    provider->UpdateProviderOptions(reinterpret_cast<void*>(provider_options), options);
   }
 }
 

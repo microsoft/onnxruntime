@@ -21,7 +21,8 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        //private string _options;
+        private int _deviceId = 0;
+        private string _deviceIdStr = "device_id";
 
         #region Constructor
 
@@ -52,8 +53,6 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 return NativeOnnxValueHelper.StringFromNativeUtf8(providerOptions);
             }
-
-            //return _options;
         }
 
         /// <summary>
@@ -71,7 +70,21 @@ namespace Microsoft.ML.OnnxRuntime
                 var valuesArray = NativeOnnxValueHelper.ConvertNamesToUtf8(providerOptions.Values.ToArray(), n => n, cleanupList);
 
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtUpdateTensorRTProviderOptions(handle, keysArray, valuesArray, (UIntPtr)providerOptions.Count));
+
+                if (providerOptions.ContainsKey(_deviceIdStr))
+                {
+                    _deviceId = Int32.Parse(providerOptions[_deviceIdStr]);
+                }
             }
+        }
+
+        /// <summary>
+        /// Get device id of TensorRT EP.
+        /// </summary>
+        /// <returns> device id </returns>
+        public int GetDeviceId()
+        {
+            return _deviceId;
         }
 
         #endregion

@@ -71,7 +71,7 @@ struct Tensorrt_Provider : Provider {
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
-  void UpdateInfo(void* provider_options, const ProviderOptions& options) override {
+  void UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
     auto internal_options = onnxruntime::TensorrtExecutionProviderInfo::FromProviderOptions(options);
     auto& trt_options = *reinterpret_cast<OrtTensorRTProviderOptions*>(provider_options);
     trt_options.device_id = internal_options.device_id;
@@ -115,7 +115,7 @@ struct Tensorrt_Provider : Provider {
     trt_options_ = trt_options;
   }
 
-  const ProviderOptions GetProviderOptions() override {
+  ProviderOptions GetProviderOptions() override {
     return onnxruntime::TensorrtExecutionProviderInfo::ToProviderOptions(trt_options_);
   }
 
