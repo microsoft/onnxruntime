@@ -5,6 +5,7 @@
 
 from . import _io
 from ._graph_execution_manager_factory import GraphExecutionManagerFactory
+from ._utils import ModuleAccessor
 
 from onnxruntime.training import register_custom_ops_pytorch_exporter
 
@@ -51,10 +52,9 @@ class ORTModule(torch.nn.Module):
         register_custom_ops_pytorch_exporter.register_custom_op(is_ortmodule=True)
 
         # User module is wrapped to use its initializers and save computed gradients
-        self._original_module = module
-
-        # Get the module that flattens both input and output
-        self._flattened_module = _io._FlattenedModule(self._original_module)
+        # along with the module that flattens both input and output of the user module
+        # inside ModuleAccessor
+        self._module = ModuleAccessor(module, _io._FlattenedModule(module))
 
         self._execution_manager = GraphExecutionManagerFactory(self._flattened_module)
 
@@ -65,15 +65,32 @@ class ORTModule(torch.nn.Module):
         '''Dummy documentation for forward method'''
         ...
 
+    def _apply(self, fn):
+        """Override original method to delegate execution to the base module"""
+
+        # Delegation must happen to _flattened_module since methods depend on
+        # _apply to recursively apply the internal setting changes
+        self._flattened_module._apply(fn)
+        return self
+
     def _is_training(self):
-        return self._flattened_module.training and torch.is_grad_enabled()
+        return self.training and torch.is_grad_enabled()
+
+    def train(self: T, mode: bool = True) -> T:
+        """Override original method to delegate execution to the base module"""
+
+        # Since _modules is empty, the task needs to be delegated to _flattened_module.train
+        # which will recursively update the original_module
+        self.training = mode
+        self._flattened_module.train(mode)
+        return self
 
     def state_dict(self, destination=None, prefix='', keep_vars=False):
         """Override original method to delegate execution to the base module"""
 
         # Override the state_dict() method so that the state dict key names
         # do not contain the _flattened_module._original_module prefix
-        return self._original_module.state_dict(
+        return self.original_module.state_dict(
             destination=destination, prefix=prefix, keep_vars=keep_vars)
 
     def load_state_dict(self, state_dict: 'OrderedDict[str, Tensor]',
@@ -82,40 +99,40 @@ class ORTModule(torch.nn.Module):
 
         # Override the load_state_dict() method so that the loaded state dict
         # key names does not need to contain the _flattened_module._original_module prefix
-        return self._original_module.load_state_dict(
+        return self.original_module.load_state_dict(
             state_dict, strict=strict)
 
     def register_buffer(self, name: str, tensor: Optional[torch.Tensor], persistent: bool = True) -> None:
         """Override original method to delegate execution to the base module"""
-        self._original_module.register_buffer(name, tensor, persistent=persistent)
+        self.original_module.register_buffer(name, tensor, persistent=persistent)
 
     def register_parameter(self, name: str, param: Optional[torch.nn.Parameter]) -> None:
         """Override original method to delegate execution to the base module"""
-        self._original_module.register_parameter(name, param)
+        self.original_module.register_parameter(name, param)
 
     def get_parameter(self, target: str) -> torch.nn.Parameter:
         """Override original method to delegate execution to the base module"""
-        return self._original_module.get_parameter(target)
+        return self.original_module.get_parameter(target)
 
     def get_buffer(self, target: str) -> torch.Tensor:
         """Override original method to delegate execution to the base module"""
-        return self._original_module.get_buffer(target)
+        return self.original_module.get_buffer(target)
 
     def parameters(self, recurse: bool = True) -> Iterator[torch.nn.Parameter]:
         """Override original method to delegate execution to the base module"""
-        yield from self._original_module.parameters(recurse=recurse)
+        yield from self.original_module.parameters(recurse=recurse)
 
     def named_parameters(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.nn.Parameter]]:
         """Override original method to delegate execution to the base module"""
-        yield from self._original_module.named_parameters(prefix=prefix, recurse=recurse)
+        yield from self.original_module.named_parameters(prefix=prefix, recurse=recurse)
 
     def buffers(self, recurse: bool = True) -> Iterator[torch.Tensor]:
         """Override original method to delegate execution to the base module"""
-        yield from self._original_module.buffers(recurse=recurse)
+        yield from self.original_module.buffers(recurse=recurse)
 
     def named_buffers(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.Tensor]]:
         """Override original method to delegate execution to the base module"""
-        yield from self._original_module.named_buffers(prefix=prefix, recurse=recurse)
+        yield from self.original_module.named_buffers(prefix=prefix, recurse=recurse)
 
     def _replicate_for_data_parallel(self):
         """Raises a NotImplementedError exception since ORTModule is not compatible with torch.nn.DataParallel
@@ -135,3 +152,32 @@ class ORTModule(torch.nn.Module):
 
         raise NotImplementedError("ORTModule is not compatible with torch.nn.DataParallel. "
                                   "Please use torch.nn.parallel.DistributedDataParallel instead.")
+
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
+                                missing_keys, unexpected_keys, error_msgs):
+        """Override original method to delegate execution to the base module"""
+
+        self.original_module._load_from_state_dict(state_dict, prefix, local_metadata, strict,
+                                missing_keys, unexpected_keys, error_msgs)
+
+    def named_children(self):
+        """Override original method to delegate execution to the base module"""
+
+        yield from self.original_module.named_children()
+
+    @property
+    def original_module(self):
+        """Accessor for the original PyTorch module
+
+        Users can retrieve the original module by using this property
+        ort_model = ORTModule(model)
+        original_model = ort_model.original_module
+        """
+
+        return self._module.original_module()
+
+    @property
+    def _flattened_module(self):
+        """Accessor for the flattened module"""
+
+        return self._module.flattened_module()
