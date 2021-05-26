@@ -47,7 +47,7 @@ def call_python_forward_function(
                 if tensor_flag and grad_flag:
                     # "multiply one" helps change the torch tensor's is_leaf to be False.
                     # This is required when the torch tensor is updated in-place during forward pass.
-                    # we cannot use view here, because PyTorch handels grad_fn for view differently.
+                    # We cannot use view here, because PyTorch handels grad_fn for view differently.
                     non_leaf_arg = arg * arg.new_ones((1,))
                     new_wrapped_args.append(non_leaf_arg)
                 else:
