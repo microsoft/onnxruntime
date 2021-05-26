@@ -13,11 +13,37 @@
 #import "src/ort_env_internal.h"
 #import "src/ort_value_internal.h"
 
+namespace {
+class AllocatorDeleter {
+ public:
+  explicit AllocatorDeleter(OrtAllocator* allocator) : allocator_{allocator} {}
+
+  void operator()(void* p) {
+    if (allocator_) {
+      allocator_->Free(allocator_, p);
+    }
+  }
+
+ private:
+  OrtAllocator* const allocator_;
+};
+
+template <typename T>
+using AllocatorUniquePtr = std::unique_ptr<T, AllocatorDeleter>;
+
+enum class NamedValueType {
+  Input,
+  Output,
+};
+}  // namespace
+
 NS_ASSUME_NONNULL_BEGIN
 
 @implementation ORTSession {
   std::optional<Ort::Session> _session;
 }
+
+#pragma mark - Public
 
 - (nullable instancetype)initWithEnv:(ORTEnv*)env
                            modelPath:(NSString*)path
@@ -126,6 +152,40 @@ NS_ASSUME_NONNULL_BEGIN
     }
 
     return outputs;
+  }
+  ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
+}
+
+- (nullable NSArray<NSString*>*)inputNamesWithError:(NSError**)error {
+  return [self namesWithType:NamedValueType::Input error:error];
+}
+
+- (nullable NSArray<NSString*>*)outputNamesWithError:(NSError**)error {
+  return [self namesWithType:NamedValueType::Output error:error];
+}
+
+#pragma mark - Private
+
+- (nullable NSArray<NSString*>*)namesWithType:(NamedValueType)namedValueType
+                                        error:(NSError**)error {
+  try {
+    const size_t nameCount =
+        namedValueType == NamedValueType::Input
+            ? _session->GetInputCount()
+            : _session->GetOutputCount();
+    Ort::AllocatorWithDefaultOptions allocator;
+    NSMutableArray<NSString*>* result = [NSMutableArray arrayWithCapacity:nameCount];
+
+    for (size_t i = 0; i < nameCount; ++i) {
+      AllocatorUniquePtr<char[]> name{
+          namedValueType == NamedValueType::Input
+              ? _session->GetInputName(i, allocator)
+              : _session->GetOutputName(i, allocator),
+          AllocatorDeleter{allocator}};
+      [result addObject:[NSString stringWithUTF8String:name.get()]];
+    }
+
+    return result;
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
 }

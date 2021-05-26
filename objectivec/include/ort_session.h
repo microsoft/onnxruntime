@@ -64,6 +64,22 @@ NS_ASSUME_NONNULL_BEGIN
                                                    runOptions:(nullable ORTRunOptions*)runOptions
                                                         error:(NSError**)error;
 
+/**
+ * Gets the model's input names.
+ *
+ * @param[out] error Optional error information set if an error occurs.
+ * @return An array of input names, or nil if an error occurs.
+ */
+- (nullable NSArray<NSString*>*)inputNamesWithError:(NSError**)error;
+
+/**
+ * Gets the model's output names.
+ *
+ * @param[out] error Optional error information set if an error occurs.
+ * @return An array of output names, or nil if an error occurs.
+ */
+- (nullable NSArray<NSString*>*)outputNamesWithError:(NSError**)error;
+
 @end
 
 /**
