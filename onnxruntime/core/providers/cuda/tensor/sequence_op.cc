@@ -20,6 +20,17 @@ ONNX_OPERATOR_KERNEL_EX(
         .Alias(0, 0),
     SequenceAt);
 
+ONNX_OPERATOR_KERNEL_EX(
+    SequenceConstruct,
+    kOnnxDomain,
+    11,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
+        .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes())
+        .Alias(0, 0),
+    SequenceConstruct);
+
 } // namespace cuda
 } // namespace onnxruntime
 
