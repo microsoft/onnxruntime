@@ -4,13 +4,13 @@
 # --------------------------------------------------------------
 # Dockerfile to run ONNXRuntime with Vitis-AI integration
 
-FROM xilinx/vitis-ai:latest
+FROM xilinx/vitis-ai-cpu:1.3.598
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=master
 
 ARG PYXIR_REPO=https://github.com/Xilinx/pyxir
-ARG PYXIR_BRANCH=master
+ARG PYXIR_BRANCH=v0.2.0
 ARG PYXIR_FLAG="--use_vai_rt"
 
 RUN apt-get update && \
