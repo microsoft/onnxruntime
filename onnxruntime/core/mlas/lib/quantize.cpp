@@ -354,6 +354,23 @@ MlasQuantizeLinear<uint8_t>(
 
 void
 MLASCALL
+MlasRequantizeOutputBlocked(
+    const int32_t* Input,
+    size_t InputLeadingDimension,
+    uint8_t* Output,
+    size_t OutputLeadingDimension,
+    const int32_t* Bias,
+    const float* Scale,
+    bool PerColumnScale,
+    uint8_t ZeroPoint,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN
+    );
+
+void
+MLASCALL
 MlasRequantizeOutput(
     const int32_t* Input,
     uint8_t* Output,
@@ -401,20 +418,63 @@ Return Value:
 
 --*/
 {
+    for (size_t StartM = 0; StartM < M; StartM += 16) {
+        size_t CountM = std::min(size_t(16), M - StartM);
+        for (size_t StartN = 0; StartN < N; StartN += 16) {
+            size_t CountN = std::min(size_t(16), N - StartN);
+            MlasRequantizeOutputBlocked(Input, N, Output, N, Bias, Scale, PerColumnScale, ZeroPoint,
+                                        StartM, StartN, CountM, CountN);
+
+        }
+
+    }
+    
+}
+
+void
+MLASCALL
+MlasRequantizeOutputBlocked(
+    const int32_t* Input,
+    size_t InputLeadingDimension,
+    uint8_t* Output,
+    size_t OutputLeadingDimension,
+    const int32_t* Bias,
+    const float* Scale,
+    bool PerColumnScale,
+    uint8_t ZeroPoint,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN
+    )
+{
     const __m128 PerMatrixScaleVector = PerColumnScale ? _mm_setzero_ps() : _mm_load1_ps(Scale);
     const __m128 MinimumValueVector = _mm_set1_ps(float(0 - ZeroPoint));
     const __m128 MaximumValueVector = _mm_set1_ps(float(255 - ZeroPoint));
     const __m128i ZeroPointVector = _mm_set1_epi32(ZeroPoint);
 
+    if (nullptr != Bias) {
+        Bias += StartN;
+    }
+    if (PerColumnScale) {
+        Scale += StartN;
+    }
+
+    Input += StartM * InputLeadingDimension + StartN;
+    Output += StartM * OutputLeadingDimension + StartN;
+
     //
     // Step through each row of the output matrix.
     //
 
-    while (M-- > 0) {
+    while (CountM-- > 0) {
 
         const int32_t* bias = Bias;
         const float* scale = PerColumnScale ? Scale : nullptr;
-        size_t n = N;
+        size_t n = CountN;
+
+        auto* row_in = Input;
+        auto* row_out = Output;
 
         //
         // Process 16 columns of the matrices at a time.
@@ -426,11 +486,11 @@ Return Value:
             // Load the input data and optionally add the per-column bias.
             //
 
-            __m128i IntegerVector0 = _mm_loadu_si128((const __m128i *)&Input[0]);
-            __m128i IntegerVector1 = _mm_loadu_si128((const __m128i *)&Input[4]);
-            __m128i IntegerVector2 = _mm_loadu_si128((const __m128i *)&Input[8]);
-            __m128i IntegerVector3 = _mm_loadu_si128((const __m128i *)&Input[12]);
-            Input += 16;
+            __m128i IntegerVector0 = _mm_loadu_si128((const __m128i*)&row_in[0]);
+            __m128i IntegerVector1 = _mm_loadu_si128((const __m128i*)&row_in[4]);
+            __m128i IntegerVector2 = _mm_loadu_si128((const __m128i*)&row_in[8]);
+            __m128i IntegerVector3 = _mm_loadu_si128((const __m128i*)&row_in[12]);
+            row_in += 16;
 
             if (bias != nullptr) {
                 IntegerVector0 = _mm_add_epi32(IntegerVector0, _mm_loadu_si128((const __m128i *)&bias[0]));
@@ -491,8 +551,8 @@ Return Value:
 
             __m128i ByteVector = _mm_packus_epi16(WordVector0, WordVector1);
 
-            _mm_storeu_si128((__m128i*)Output, ByteVector);
-            Output += 16;
+            _mm_storeu_si128((__m128i*)row_out, ByteVector);
+            row_out += 16;
 
             n -= 16;
         }
@@ -511,8 +571,8 @@ Return Value:
 
             if (n >= 4) {
 
-                IntegerVector = _mm_loadu_si128((const __m128i*)&Input[0]);
-                Input += 4;
+                IntegerVector = _mm_loadu_si128((const __m128i*)&row_in[0]);
+                row_in += 4;
 
                 if (bias != nullptr) {
                     IntegerVector = _mm_add_epi32(IntegerVector, _mm_loadu_si128((const __m128i*)&bias[0]));
@@ -521,7 +581,7 @@ Return Value:
 
             } else {
 
-                int32_t IntegerValue = *Input++;
+                int32_t IntegerValue = *row_in++;
 
                 if (bias != nullptr) {
                     IntegerValue += *bias++;
@@ -567,19 +627,23 @@ Return Value:
 
             if (n >= 4) {
 
-                *reinterpret_cast<uint32_t*>(Output) = OutputValue;
-                Output += 4;
+                *reinterpret_cast<uint32_t*>(row_out) = OutputValue;
+                row_out += 4;
 
                 n -= 4;
 
             } else {
 
-                *Output = uint8_t(OutputValue);
-                Output += 1;
+                *row_out = uint8_t(OutputValue);
+                row_out += 1;
 
                 n -= 1;
             }
         }
+
+        // Next Row
+        Input += InputLeadingDimension;
+        Output += OutputLeadingDimension;
     }
 }
 
