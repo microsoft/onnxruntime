@@ -30,7 +30,7 @@ class OrtTorchFunctionPool final {
   /// it is a property of forward run outputs (tensors), its lifecycle
   /// is along with forward run outputs in PyTorch design.
   int64_t RegisterContext(PyObject* auto_grad_context);
-  void UnRegisterContext(int64_t context_index);
+  void UnregisterContext(int64_t context_index);
   PyObject* GetContext(int64_t context_index);
 
   /// ForwardRunner/BackwardRunner are "glue" codes written code that interacting
@@ -54,7 +54,7 @@ class OrtTorchFunctionPool final {
   std::unordered_map<std::string, PyObject*> backward_core_pool;
 
   std::unordered_map<int64_t, PyObject*> func_context_pool;
-  std::mutex func_context_pool_mutex_;
+  std::mutex mutex_;
 };
 }  // namespace torch
 }  // namespace language_interop_ops

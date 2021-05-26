@@ -2,26 +2,27 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
-#include "core/platform/env.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
 #include "core/language_interop_ops/torch/refcount_tracker.h"
+#include "core/platform/env.h"
 
 namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
 
-// Perform a thread-unsafe registration for "map".
-// Remember to acquire a lock before calling this function.
+// Perform a thread-safe registration for "pool" (type: map).
 template <typename TKey>
 static void RegisterEntry(
+    std::mutex& mutex, // The mutex uniquely associated with "pool".
     TKey key,  // used in move-constructor of tuple below.
     PyObject* obj,
     std::unordered_map<TKey, PyObject*>& pool,
-    const bool override) {
+    const bool overwrite) {
+  std::lock_guard<std::mutex> lock(mutex);
   // Get iterator to the existing entry, if exists.
   auto it = pool.find(key);
-  if (!override) {
-    // Cannot override existing registered function.
+  if (!overwrite) {
+    // Cannot overwrite existing registered function.
     ORT_ENFORCE(it == pool.end(), "Duplicated registration found: ", key);
   }
 
@@ -79,19 +80,18 @@ static bool EnsureTorchAutogradFunction(PyObject* obj) {
 void OrtTorchFunctionPool::RegisterTorchAutogradFunction(
     const std::string& key,
     PyObject* obj,
-    const bool override) {
+    const bool overwrite) {
   auto correct = EnsureTorchAutogradFunction(obj);
   ORT_ENFORCE(correct, "Only torch.autograd.Function is allowed to be registered with key ", key);
 
-  std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
   PyObject* forward = PyObject_GetAttrString(obj, "apply");
   PyObject* backward = PyObject_GetAttrString(obj, "backward");
 
   ORT_ENFORCE(forward, "apply attribute not found when registering ", key);
   ORT_ENFORCE(backward, "backward attribute not found when registering ", key);
 
-  RegisterEntry(key, forward, forward_core_pool, override);
-  RegisterEntry(key, backward, backward_core_pool, override);
+  RegisterEntry(mutex_, key, forward, forward_core_pool, overwrite);
+  RegisterEntry(mutex_, key, backward, backward_core_pool, overwrite);
 
   Py_DECREF(forward);
   Py_DECREF(backward);
@@ -99,8 +99,10 @@ void OrtTorchFunctionPool::RegisterTorchAutogradFunction(
 
 template <typename TKey>
 static void UnregisterEntry(
+    std::mutex& mutex,
     const TKey& key,
     std::unordered_map<TKey, PyObject*>& pool) {
+  std::lock_guard<std::mutex> lock(mutex);
   auto it = pool.find(key);
 
   ORT_ENFORCE(it != pool.end(), "Cannot unregister unexisting key: ", key);
@@ -110,22 +112,23 @@ static void UnregisterEntry(
 }
 
 void OrtTorchFunctionPool::UnregisterTorchAutogradFunction(const std::string& key) {
-  std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
-  UnregisterEntry(key, forward_core_pool);
-  UnregisterEntry(key, backward_core_pool);
+  UnregisterEntry(mutex_, key, forward_core_pool);
+  UnregisterEntry(mutex_, key, backward_core_pool);
 }
 
 static void RegisterEntry(
+    std::mutex& mutex,
     PyObject* obj,
     PyObject** storage,
-    const bool override) {
+    const bool overwrite) {
+  std::lock_guard<std::mutex> lock(mutex);
   // Basic checks.
   ORT_ENFORCE(storage, "Cannot store PyObject* on NULL pointer.");
   ORT_ENFORCE(obj, "Cannot register NULL PyObject*.");
 
   // Get iterator to the existing entry, if exists.
-  if (!override) {
-    // Cannot override existing registered function.
+  if (!overwrite) {
+    // Cannot overwrite existing registered function.
     ORT_ENFORCE(*storage == nullptr, "Duplicated registration found.");
   }
 
@@ -142,18 +145,18 @@ static void RegisterEntry(
   *storage = obj;
 }
 
-void OrtTorchFunctionPool::RegisterForwardRunner(PyObject* obj, bool override) {
-  std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
-  RegisterEntry(obj, &forward_runner, override);
+void OrtTorchFunctionPool::RegisterForwardRunner(PyObject* obj, bool overwrite) {
+  RegisterEntry(mutex_, obj, &forward_runner, overwrite);
 }
 
-void OrtTorchFunctionPool::RegisterBackwardRunner(PyObject* obj, bool override) {
-  std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
-  RegisterEntry(obj, &backward_runner, override);
+void OrtTorchFunctionPool::RegisterBackwardRunner(PyObject* obj, bool overwrite) {
+  RegisterEntry(mutex_, obj, &backward_runner, overwrite);
 }
 
 static void UnregisterEntry(
+    std::mutex& mutex,
     PyObject** storage) {
+  std::lock_guard<std::mutex> lock(mutex);
   // Basic checks.
   ORT_ENFORCE(storage, "Cannot unregister PyObject* on NULL storage.");
   ORT_ENFORCE(*storage, "Cannot unregister NULL PyObject*.");
@@ -165,30 +168,28 @@ static void UnregisterEntry(
 }
 
 void OrtTorchFunctionPool::UnregisterForwardRunner() {
-  std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
-  UnregisterEntry(&forward_runner);
+  UnregisterEntry(mutex_, &forward_runner);
 }
 
 void OrtTorchFunctionPool::UnregisterBackwardRunner() {
-  std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
-  UnregisterEntry(&backward_runner);
+  UnregisterEntry(mutex_, &backward_runner);
 }
 
 PyObject* OrtTorchFunctionPool::GetForwardRunner() {
-  std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
   ORT_ENFORCE(forward_runner, "Forward runner cannot be NULL. Do you forget register it by calling RegisterForwardRunner(...)?");
   return forward_runner;
 }
 
 PyObject* OrtTorchFunctionPool::GetBackwardRunner() {
-  std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
   ORT_ENFORCE(backward_runner, "backward runner cannot be NULL. Do you forget register it by calling RegisterBackwardRunner(...)?");
   return backward_runner;
 }
 
 PyObject* OrtTorchFunctionPool::GetForwardCore(const std::string& key) {
   ORT_ENFORCE(!key.empty(), "Cannot be empty string.");
-  std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
   auto iter = forward_core_pool.find(key);
   ORT_ENFORCE(iter != forward_core_pool.end(), "No forward registered for ", key);
   return iter->second;
@@ -196,7 +197,7 @@ PyObject* OrtTorchFunctionPool::GetForwardCore(const std::string& key) {
 
 PyObject* OrtTorchFunctionPool::GetBackwardCore(const std::string& key) {
   ORT_ENFORCE(!key.empty(), "Cannot be empty string.");
-  std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
   auto iter = backward_core_pool.find(key);
   ORT_ENFORCE(iter != backward_core_pool.end(), "No backward registered for ", key);
   return iter->second;
@@ -204,7 +205,7 @@ PyObject* OrtTorchFunctionPool::GetBackwardCore(const std::string& key) {
 
 int64_t OrtTorchFunctionPool::RegisterContext(PyObject* auto_grad_context) {
   static int64_t index_ = 0x1000000;
-  std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
   index_++;
 #ifndef NDEBUG
   RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::AutoGradContext,
@@ -215,8 +216,8 @@ int64_t OrtTorchFunctionPool::RegisterContext(PyObject* auto_grad_context) {
   return index_;
 }
 
-void OrtTorchFunctionPool::UnRegisterContext(int64_t context_index) {
-  std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
+void OrtTorchFunctionPool::UnregisterContext(int64_t context_index) {
+  std::lock_guard<std::mutex> lock(mutex_);
   auto it = func_context_pool.find(context_index);
 
   // We just need remove the context key value pair, the context itself
@@ -227,7 +228,7 @@ void OrtTorchFunctionPool::UnRegisterContext(int64_t context_index) {
 }
 
 PyObject* OrtTorchFunctionPool::GetContext(int64_t context_index) {
-  std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
   auto iter = func_context_pool.find(context_index);
   ORT_ENFORCE(iter != func_context_pool.end(), "No context registered for ", context_index);
   return iter->second;
@@ -235,7 +236,9 @@ PyObject* OrtTorchFunctionPool::GetContext(int64_t context_index) {
 
 template <typename TKey>
 void UnregisterAllEntries(
+    std::mutex& mutex,
     std::unordered_map<TKey, PyObject*>& pool) {
+  std::lock_guard<std::mutex> lock(mutex);
   auto it = pool.begin();
   while (it != pool.end()) {
     Py_DECREF(it->second);
@@ -245,15 +248,13 @@ void UnregisterAllEntries(
 
 OrtTorchFunctionPool::OrtTorchFunctionPool() : forward_runner(nullptr), backward_runner(nullptr){};
 OrtTorchFunctionPool::~OrtTorchFunctionPool() {
-  std::lock_guard<std::mutex> lock(func_context_pool_mutex_);
+  UnregisterEntry(mutex_, &forward_runner);
+  UnregisterEntry(mutex_, &backward_runner);
 
-  UnregisterEntry(&forward_runner);
-  UnregisterEntry(&backward_runner);
+  UnregisterAllEntries(mutex_, forward_core_pool);
+  UnregisterAllEntries(mutex_, backward_core_pool);
 
-  UnregisterAllEntries(forward_core_pool);
-  UnregisterAllEntries(backward_core_pool);
-
-  UnregisterAllEntries(func_context_pool);
+  UnregisterAllEntries(mutex_, func_context_pool);
 };
 
 }  // namespace torch

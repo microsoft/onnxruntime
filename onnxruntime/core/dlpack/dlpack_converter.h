@@ -9,7 +9,6 @@
 
 namespace onnxruntime {
 namespace dlpack {
-
 // This convertor will take an OrtValue and wrap it as a DLPack tensor
 // This may create a new ownership to the underlying tensor in OrtValue,
 // so we do pass-by-value here. We don't use pass-by-reference because
@@ -20,7 +19,13 @@ DLManagedTensor* OrtValueToDlpack(OrtValue ort_value);
 // tell ORT the data type when creating OrtValue.
 OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor = false);
 
-void DlpackCapsuleDestructor(PyObject* data);
+// Allocate a new Capsule object, which takes the ownership of OrtValue.
+// Caller is responsible for releasing.
+// This function calls OrtValueToDlpack(...).
+PyObject* OrtValueToDlpackCapsule(OrtValue ort_value);
 
+// Consume a Capsule object and claims the ownership of its underlying tensor to
+// create a OrtValue. This function calls DlpackToOrtValue(...) to do the conversion.
+OrtValue DlpackCapsuleToOrtValue(PyObject* capsule, bool is_bool_tensor = false);
 }  // namespace dlpack
 }  // namespace onnxruntime

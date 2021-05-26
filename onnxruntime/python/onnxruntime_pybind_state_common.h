@@ -139,15 +139,5 @@ void InitializeSession(InferenceSession* sess,
 // Checks if PyErrOccured, fetches status and throws.
 void ThrowIfPyErrOccured();
 
-#ifdef ENABLE_TRAINING
-
-namespace py = pybind11;
-
-py::object ToDlpack(OrtValue& ort_value);
-
-OrtValue FromDlpack(py::object dlpack_tensor, const bool is_bool_tensor);
-
-#endif
-
 }  // namespace python
 }  // namespace onnxruntime

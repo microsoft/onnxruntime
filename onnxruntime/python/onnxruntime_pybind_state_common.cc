@@ -23,23 +23,5 @@ void ThrowIfPyErrOccured() {
   }
 }
 
-#ifdef ENABLE_TRAINING
-
-py::object ToDlpack(OrtValue& ort_value) {
-  DLManagedTensor* dlmanaged_tensor = dlpack::OrtValueToDlpack(ort_value);
-  return py::reinterpret_steal<py::object>(
-      PyCapsule_New(dlmanaged_tensor, "dltensor", dlpack::DlpackCapsuleDestructor));
-}
-
-OrtValue FromDlpack(py::object dlpack_tensor, const bool is_bool_tensor) {
-  DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(dlpack_tensor.ptr(), "dltensor");
-  OrtValue ort_value = dlpack::DlpackToOrtValue(dlmanaged_tensor, is_bool_tensor);
-  // Make sure this capsule will never be used again.
-  PyCapsule_SetName(dlpack_tensor.ptr(), "used_dltensor");
-  return ort_value;
-}
-
-#endif
-
 }  // namespace python
 }  // namespace onnxruntime

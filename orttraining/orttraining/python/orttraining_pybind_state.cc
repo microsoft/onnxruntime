@@ -311,7 +311,7 @@ void addObjectMethodsForTraining(py::module& m) {
           v->push_back(ortvalue);
         })
         .def("push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor, const bool is_bool_tensor) {
-          v->push_back(FromDlpack(dlpack_tensor, is_bool_tensor));
+          v->push_back(onnxruntime::dlpack::DlpackCapsuleToOrtValue(dlpack_tensor.ptr(), is_bool_tensor));
         })
         .def("reserve", [](std::vector<OrtValue>* v, const size_t len) { v->reserve(len); })
         .def("shrink_to_fit", [](std::vector<OrtValue>* v) { v->shrink_to_fit(); })
@@ -323,7 +323,7 @@ void addObjectMethodsForTraining(py::module& m) {
           return v.at(idx);
         })
         .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) {
-          return ToDlpack(v->at(idx));
+          return py::reinterpret_steal<py::object>(onnxruntime::dlpack::OrtValueToDlpackCapsule(v->at(idx)));
         });
 
   py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
