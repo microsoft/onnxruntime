@@ -276,7 +276,14 @@ class ONNXModel:
 
         initializer_names = [init.name for init in self.initializer()]
         graph_input_names = [input.name for input in self.model.graph.input]
-        for input_name in (set(initializer_names) | set(graph_input_names)):
+        input_names = initializer_names + graph_input_names
+        input_names.sort()
+        prev_input_name = None
+        for input_name in input_names:
+            if prev_input_name == input_name:
+                continue
+
+            prev_input_name = input_name
             if input_name in deps_to_nodes:
                 for node_idx in deps_to_nodes[input_name]:
                     deps_count[node_idx] = deps_count[node_idx] - 1
