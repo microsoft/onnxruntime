@@ -10,8 +10,9 @@ stages:
         clean: all
       pool: Linux-CPU
 
-      PythonVersion: '3.8'
-      DockerFile: 'Dockerfile.manylinux2014_cpu'
+      variables:
+        PythonVersion: '3.8'
+        DockerFile: 'Dockerfile.manylinux2014_cpu'
 
       steps:
       - checkout: self
