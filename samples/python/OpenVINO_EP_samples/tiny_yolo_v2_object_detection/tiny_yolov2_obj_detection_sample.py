@@ -53,6 +53,7 @@ label = ["aeroplane","bicycle","bird","boat","bottle",
           "sheep","sofa","train","tvmonitor"]
 
 model_file_path = "tiny_yolo_v2_zoo_model.onnx"
+# TODO: You need to modify the path to the input onnx model based on where it is located on your device after downloading it from ONNX Model zoo.
 
 # Validate model file path
 checkModelExtension(model_file_path)
@@ -76,6 +77,7 @@ other 'device_type' options are: (Any hardware target can be assigned if you hav
 
 #Path to video file has to be provided
 video_file_path = "sample_demo_video.mp4"
+# TODO: You need to specify the path to your own sample video based on where it is located on your device.
 
 #validate video file input path
 checkVideoFileExtension(video_file_path)

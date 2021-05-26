@@ -22,7 +22,9 @@ clut = [(0,0,0),(255,0,0),(255,0,255),(0,0,255),(0,200,0)]
 # 5 labels that the tiny-yolov2 model can do the object_detection on
 label = ["unprotected","bunny suit","glasses","head","robot"]
 
-model_file_path = "tiny_yolo_v2_cleanroom.onnx"
+# Specify the path to the pre-trained onnx model
+model_file_path = "data/tiny_yolo_v2_cleanroom.onnx"
+# TODO: Add/Modify the path for the input onnx model based on where it is located on your device.
 
 # Load the model
 sess = rt.InferenceSession(model_file_path)
@@ -42,7 +44,8 @@ other 'device_type' options are: (Any hardware target can be assigned if you hav
 '''
 
 #Path to video file has to be provided
-video_file_path = "manufacture0.mp4"
+video_file_path = "data/manufacture0.mp4"
+# TODO: Add/Modify the path for the input video based on where it is located on your device. Only use the videos provided along with this sample in the data folder.
 
 cap = cv2.VideoCapture(video_file_path)
 
