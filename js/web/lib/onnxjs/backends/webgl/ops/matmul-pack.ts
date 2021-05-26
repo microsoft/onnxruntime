@@ -18,6 +18,7 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
   createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
     const hasBias = inputs.length > 2;
     const processBias = hasBias ? 'result += getBiasAtOutCoords();' : '';
+
     const aShape = inputs[0].dims;
     const bShape = inputs[1].dims;
     const outputShape = BroadcastUtil.calcShape(aShape, bShape, true);

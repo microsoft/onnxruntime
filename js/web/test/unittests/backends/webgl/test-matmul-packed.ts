@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 
 import {expect} from 'chai';
+import {env} from 'onnxruntime-common';
 
 import {Backend, InferenceHandler, resolveBackend, SessionHandler} from '../../../../lib/onnxjs/backend';
-import {WebGLBackend} from '../../../../lib/onnxjs/backends/backend-webgl';
 import {WebGLInferenceHandler} from '../../../../lib/onnxjs/backends/webgl/inference-handler';
 import {WebGLMatMulPacked} from '../../../../lib/onnxjs/backends/webgl/ops/matmul-pack';
 import {Profiler} from '../../../../lib/onnxjs/instrument';
@@ -140,15 +140,8 @@ describe('#UnitTest# - packed matmul - Tensor matmul', () => {
   before('Initialize Context', async () => {
     const profiler = Profiler.create();
     backend = await resolveBackend('webgl');
-    // Explicitly set to true to trigger packed version
-    (backend as WebGLBackend).pack = true;
     sessionhandler = backend.createSessionHandler({profiler});
     inferenceHandler = sessionhandler.createInferenceHandler();
-  });
-
-  // Set it back to false, apparently this state is sticky throughout all the tests running in same browser session..
-  after('Resetting Context', () => {
-    (backend as WebGLBackend).pack = false;
   });
 
   const testDataSet = getTestData();
@@ -161,6 +154,11 @@ describe('#UnitTest# - packed matmul - Tensor matmul', () => {
       // TODO support WebGl 1.0
       if (webglInferenceHandler.session.textureManager.glContext.version === 1) {
         console.log('Running packed matmul with webgl1 is not supported. Skipping.');
+        return;
+      }
+
+      if (env.webgl.pack === false) {
+        console.log('Skipping in unpacked texture mode.');
         return;
       }
 

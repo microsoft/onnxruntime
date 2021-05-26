@@ -199,7 +199,11 @@ jobs:
   - script: |
      npm test
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
-    displayName: 'Run ort-web tests'
+    displayName: 'Run ort-web tests - unpacked mode'
+  - script: |
+     npm test --  --webgl-texture-pack-mode
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Run ort-web tests - packed mode'
   - script: |
       npm pack
     workingDirectory: '$(Build.SourcesDirectory)\js\common'
