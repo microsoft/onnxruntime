@@ -6,4 +6,3 @@ onnxruntime_add_static_library(onnxruntime_language_interop ${onnxruntime_langua
 add_dependencies(onnxruntime_language_interop onnxruntime_pyop)
 onnxruntime_add_include_to_target(onnxruntime_language_interop onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_pyop onnx onnx_proto protobuf::libprotobuf flatbuffers)
 target_include_directories(onnxruntime_language_interop PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
-

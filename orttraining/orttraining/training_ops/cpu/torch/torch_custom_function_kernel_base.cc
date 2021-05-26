@@ -4,8 +4,9 @@
 #include <Python.h>
 #ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel_context_internal.h"
-#include "core/language_interop_ops/torch/custom_function_register.h"
 #endif
+#include "core/language_interop_ops/torch/custom_function_register.h"
+#include "core/language_interop_ops/torch/torch_proxy.h"
 #include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
 
 using namespace onnxruntime::language_interop_ops::torch;
@@ -24,7 +25,7 @@ std::vector<OrtValue> CreateOrtValueArgs(OpKernelContext* context,
   return std::move(args);
 }
 
-PythonOpBase::PythonOpBase(const OpKernelInfo& info) {
+void PythonOpBase::Init(const OpKernelInfo& info) {
   ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
   inplace_ = info.GetAttrOrDefault("inplace", static_cast<int64_t>(0));
   is_training_mode_ = static_cast<bool>(info.GetAttrOrDefault("training_mode", static_cast<int64_t>(0)));
@@ -73,6 +74,35 @@ PythonOpBase::PythonOpBase(const OpKernelInfo& info) {
 
   CreateConstArgs();
   CreateArgPositions();
+}
+
+void PythonOpBase::RunForward(OpKernelContext* context,
+                              void** diff_ctx,
+                              std::vector<OrtValue>& returned_ortvalues) const {
+  // Create non-constant arguments for calling Python function.
+  // Constant arguments are created in ctor.
+  std::vector<OrtValue> args = CreateOrtValueArgs(context, 0, context->InputCount());
+  // Invoke Python calls.
+  std::string err;
+  TorchProxy::GetInstance().Forward(
+      OrtTorchFunctionPool::GetInstance().GetForwardCore(name_),
+      input_tensor_requires_grads_,
+      args,
+      arg_positions_,
+      const_args_,
+      const_arg_positions_,
+      diff_ctx,
+      returned_ortvalues,
+      is_training_mode_,
+      inplace_ != 0);
+
+  ORT_ENFORCE(1 + returned_ortvalues.size() == static_cast<size_t>(context->OutputCount()),
+              "Output count mismatch for PythonOp run");
+}
+
+void PythonOpBase::SetOutputs(OpKernelContext* context, void* diff_ctx, std::vector<OrtValue>& returned_args) const {
+  SetContextOutput(context, diff_ctx);
+  SetOtherOutputs(context, returned_args);
 }
 
 void PythonOpBase::AddIntScalarArgs() {
@@ -183,7 +213,7 @@ void PythonOpBase::SetOtherOutputs(OpKernelContext* context, std::vector<OrtValu
   }
 }
 
-PythonOpGradBase::PythonOpGradBase(const OpKernelInfo& info) {
+void PythonOpGradBase::Init(const OpKernelInfo& info) {
   ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
   ORT_THROW_IF_ERROR(info.GetAttr("inplace", &inplace_));
   ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_tensor_types_));
@@ -191,6 +221,40 @@ PythonOpGradBase::PythonOpGradBase(const OpKernelInfo& info) {
   input_tensor_requires_grads_ = info.GetAttrsOrDefault("input_tensor_requires_grads", std::vector<int64_t>());
   output_tensor_requires_grads_ = info.GetAttrsOrDefault("output_tensor_requires_grads", std::vector<int64_t>());
   SetPositions();
+}
+
+void PythonOpGradBase::RunBackward(OpKernelContext* context,
+                                   std::vector<OrtValue>& returned_ortvalues) const {
+  auto args = CreateOrtValueArgs(context, 1, (context->InputCount() - 1) / 2);
+  // This is called "const" because that's how Pytorch calls all non-tensor inputs.
+  const Tensor* context_id_tensor = context->Input<Tensor>(0);
+  ORT_ENFORCE(context_id_tensor, "Context ID (first input) should not be null.");
+  const int64_t* context_index_ptr = context_id_tensor->template Data<int64_t>();
+  void* ctx_ptr = OrtTorchFunctionPool::GetInstance().GetContext(*context_index_ptr);
+  auto const_args = {ctx_ptr};
+
+  std::string err;
+  TorchProxy::GetInstance().Backward(
+      OrtTorchFunctionPool::GetInstance()
+          .GetBackwardCore(name_),
+      input_tensor_requires_grads_,
+      args,
+      arg_positions_,
+      const_args,
+      const_arg_positions_,
+      returned_ortvalues,
+      inplace_ != 0);
+}
+
+void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) const {
+  auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
+  auto outputs_count = static_cast<size_t>(ctx_internal->OutputCount());
+  // It's possible that Pytorch returns None as gradient and ORT Python side may skip them.
+  // In that case, returned_args may contain less arguments.
+  outputs_count = outputs_count > returned_ortvalues.size() ? returned_ortvalues.size() : outputs_count;
+  for (size_t i = 0; i < outputs_count; ++i) {
+    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(i, returned_ortvalues.at(i)));
+  }
 }
 
 void PythonOpGradBase::SetPositions() {
@@ -206,17 +270,6 @@ void PythonOpGradBase::SetPositions() {
   for (size_t i = 0; i < arg_positions_.size(); ++i) {
     // i-th tensor is the (i+1)-th input of autograd.Function.backward.
     arg_positions_.at(i) = static_cast<int64_t>(i) + 1;
-  }
-}
-
-void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) const {
-  auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
-  auto outputs_count = static_cast<size_t>(ctx_internal->OutputCount());
-  // It's possible that Pytorch returns None as gradient and ORT Python side may skip them.
-  // In that case, returned_args may contain less arguments.
-  outputs_count = outputs_count > returned_ortvalues.size() ? returned_ortvalues.size() : outputs_count;
-  for (size_t i = 0; i < outputs_count; ++i) {
-    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(i, returned_ortvalues.at(i)));
   }
 }
 

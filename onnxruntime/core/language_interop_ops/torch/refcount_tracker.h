@@ -3,35 +3,49 @@
 
 #pragma once
 #include <Python.h>
+
+#ifndef SHARED_PROVIDER
 #include "core/platform/env.h"
+#endif
 
 namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
-#ifndef NDEBUG
 
 using AddressInfos = std::unordered_map<void*, std::vector<std::string>>;
 
 class RefCountTracker {
  public:
   enum ObjCategory {
-    ForwardArgs,
-    ReturnValues,
+    PythonCallArgs,
+    PythonCallResults,
     AutoGradContext,
   };
 
+#ifndef SHARED_PROVIDER
   static RefCountTracker& GetInstance() {
     static RefCountTracker tracker;
     return tracker;
   }
-  void TrackPyObject(RefCountTracker::ObjCategory category, PyObject* py_obj, std::string log_tag);
-  void DumpDetails(std::string phase_name);
-  void Reset();
+#else
+  static RefCountTracker& GetInstance() { return Provider_GetHost()->GetRefCountTrackerInstance(); }
+#endif
+
+  void TrackPyObject(RefCountTracker::ObjCategory category, PyObject* py_obj, const std::string& log_tag) const;
+  void DumpDetails(const std::string& phase_name) const;
+  void Reset() const;
 
  private:
-  RefCountTracker();
+  RefCountTracker() {
+    addr_info_map_ = {
+        {RefCountTracker::ObjCategory::PythonCallArgs, forward_arg_addresses_},
+        {RefCountTracker::ObjCategory::PythonCallResults, return_value_addresses_},
+        {RefCountTracker::ObjCategory::AutoGradContext, auto_grad_addresses_},
+    };
+  }
+
   const char* ObjCategoryToString(int enumVal) {
-    static const char* enum_strings[] = {"ForwardArgs", "ReturnValues", "AutoGradContext"};
+    static const char* enum_strings[] = {"PythonCallArgs", "PythonCallResults", "AutoGradContext"};
     return enum_strings[enumVal];
   }
 
@@ -39,8 +53,9 @@ class RefCountTracker {
   AddressInfos return_value_addresses_;
   AddressInfos auto_grad_addresses_;
   std::unordered_map<RefCountTracker::ObjCategory, AddressInfos> addr_info_map_;
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RefCountTracker);
 };
-#endif
 }  // namespace torch
 }  // namespace language_interop_ops
 }  // namespace onnxruntime

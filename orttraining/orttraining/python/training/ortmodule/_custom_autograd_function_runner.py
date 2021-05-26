@@ -72,6 +72,8 @@ def call_python_forward_function(
         if is_training_mode:
             # Must extract one valid context from result tensors.
             assert ctx is not None
+        else:
+            assert ctx is None
 
         return tuple(unwrapped_values)
     except:

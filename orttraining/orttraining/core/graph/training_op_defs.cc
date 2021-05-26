@@ -2855,7 +2855,7 @@ Return true if all elements are true and false otherwise.
         // The first input is a pointer which points to
         // a Python object created by torch.autograd.Function.apply.
         // For details, see how we interpret it in PythonOpGrad implementation.
-        for (auto i = 1; i < input_count + 1; ++i) {
+        for (auto i = 1; i < input_count; ++i) {
           const auto inferred_input_type = ctx.getInputType(i);
           ORT_ENFORCE(inferred_input_type, "PythonOpGrad's ", i, "th input type is missing.");
           ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,

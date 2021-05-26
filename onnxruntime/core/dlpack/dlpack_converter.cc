@@ -201,10 +201,10 @@ static void DlpackCapsuleDestructor(PyObject* data) {
   DLManagedTensor* dlmanged_tensor = reinterpret_cast<DLManagedTensor*>(
       PyCapsule_GetPointer(data, "dltensor"));
   if (dlmanged_tensor) {
-    // the dlmanged_tensor has not been consumed, call deleter ourselves.
+    // The dlmanged_tensor has not been consumed, call deleter ourselves.
     dlmanged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanged_tensor));
   } else {
-    // the dlmanged_tensor has been consumed,
+    // The dlmanged_tensor has been consumed,
     // PyCapsule_GetPointer has set an error indicator.
     PyErr_Clear();
   }

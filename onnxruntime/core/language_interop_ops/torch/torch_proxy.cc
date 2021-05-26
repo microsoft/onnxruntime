@@ -16,68 +16,46 @@ namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
 
+// PyObject RAII wrapper
+using PythonObjectPtr = ObjectPointer<PyObject>;
+template class ObjectPointer<PyObject>;
+
 template <>
 void ObjectPointer<PyObject>::free() {
   Py_XDECREF(ptr);
 }
 
-#ifndef NDEBUG
-PyObject* Ort_PyTuple_New(const size_t len, std::string log_tag) {
+PyObject* Ort_PyTuple_New(const size_t len, const std::string& log_tag) {
   PyObject* item = PyTuple_New(len);
-  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
-#else
-PyObject* Ort_PyTuple_New(const size_t len, std::string /*log_tag*/) {
-  PyObject* item = PyTuple_New(len);
-#endif
+  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::PythonCallArgs, item, log_tag);
   return item;
 }
 
-#ifndef NDEBUG
-void Ort_PyTuple_SetItem_Incref(PyObject* py_tuple, size_t index, PyObject* item, std::string log_tag) {
-  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
-#else
-void Ort_PyTuple_SetItem_Incref(PyObject* py_tuple, size_t index, PyObject* item, std::string /*log_tag*/) {
-#endif
+void Ort_PyTuple_SetItem_Incref(PyObject* py_tuple, size_t index, PyObject* item, const std::string& log_tag) {
+  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::PythonCallArgs, item, log_tag);
   Py_INCREF(item);
   PyTuple_SetItem(py_tuple, index, item);
 }
 
-#ifndef NDEBUG
-void Ort_PyTuple_SetItem_NoIncref(PyObject* py_tuple, size_t index, PyObject* item, std::string log_tag) {
-  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
-#else
-void Ort_PyTuple_SetItem_NoIncref(PyObject* py_tuple, size_t index, PyObject* item, std::string /*log_tag*/) {
-#endif
+void Ort_PyTuple_SetItem_NoIncref(PyObject* py_tuple, size_t index, PyObject* item, const std::string& log_tag) {
+  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::PythonCallArgs, item, log_tag);
   PyTuple_SetItem(py_tuple, index, item);
 }
 
-#ifndef NDEBUG
-PyObject* Ort_PyList_New(const size_t len, std::string log_tag) {
+PyObject* Ort_PyList_New(const size_t len, const std::string& log_tag) {
   PyObject* item = PyList_New(len);
-  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
-#else
-PyObject* Ort_PyList_New(const size_t len, std::string /*log_tag*/) {
-  PyObject* item = PyList_New(len);
-#endif
+  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::PythonCallArgs, item, log_tag);
   return item;
 }
 
-#ifndef NDEBUG
-void Ort_PyList_SetItem_Incref(PyObject* py_list, size_t index, PyObject* item, std::string log_tag) {
-  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
-#else
-void Ort_PyList_SetItem_Incref(PyObject* py_list, size_t index, PyObject* item, std::string /*log_tag*/) {
-#endif
+void Ort_PyList_SetItem_Incref(PyObject* py_list, size_t index, PyObject* item, const std::string& log_tag) {
+  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::PythonCallArgs, item, log_tag);
   Py_INCREF(item);
   PyList_SetItem(py_list, index, item);
 }
 
-#ifndef NDEBUG
-void Ort_PyList_SetItem_NoIncref(PyObject* py_list, size_t index, PyObject* item, std::string log_tag) {
-  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
-#else
-void Ort_PyList_SetItem_NoIncref(PyObject* py_list, size_t index, PyObject* item, std::string /*log_tag*/) {
-#endif
+void Ort_PyList_SetItem_NoIncref(PyObject* py_list, size_t index, PyObject* item, const std::string& log_tag) {
+  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::PythonCallArgs, item, log_tag);
   PyList_SetItem(py_list, index, item);
 }
 
@@ -182,10 +160,15 @@ void InvokeRunner(
     PyObject* py_obj = PyTuple_GetItem(result_ptr.get(), 0);
     if (is_training_mode) {
       const auto& refcnt = Py_REFCNT(py_obj);
-      // we don't need do ref increase here because, python return tensor.grad_fn as part of
+      // we don't need do ref increase here because, python returns tensor.grad_fn as part of
       // tuple, who increased the refcnt already (and tensor persist until the backward kernels completed).
-      // Pytorch also increases refcnt before apply() return, so we should expect refcount = 2 here.
-      ORT_ENFORCE(refcnt == 2, "Ref count of context should be 2, but actually it's ", refcnt, ".");
+      // Pytorch also increases refcnt before apply() return, so we should expect refcount >= 2.
+      // We say "at least" 2 because user could increase the context refcnt as well in their autograd forward()
+      // and backward() functions.
+      ORT_ENFORCE(refcnt >= 2, "Ref count of context should be 2, but actually it's ", refcnt, ".");
+      if (refcnt > 2) {
+        LOGS_DEFAULT(WARNING) << "Autograd context refcnt > 2";
+      }
     } else {
       ORT_ENFORCE(py_obj == Py_None, "Under inference mode, autograd context shuld be Py_None.");
     }
@@ -202,7 +185,7 @@ void InvokeRunner(
   }
 }
 
-std::unique_ptr<PythonObjectPtr> CreateForwardArguments(
+std::unique_ptr<PythonObjectPtr> CreatePythonCallArguments(
     PyObject* callback,
     const size_t len,
     const std::vector<int64_t>& requires_grads,
@@ -265,11 +248,9 @@ void Invoke(
     const bool is_inplace) {
   const auto len = tensor_args.size() + obj_args.size();
   CheckArguments(len, requires_grads, tensor_args, tensor_indices, obj_args, obj_indices);
-  // #ifndef NDEBUG
-  //   RefCountTracker::GetInstance().Reset();
-  // #endif
+  RefCountTracker::GetInstance().Reset();
   {
-    auto args = CreateForwardArguments(
+    auto args = CreatePythonCallArguments(
         callback,
         len,
         requires_grads,
@@ -279,14 +260,12 @@ void Invoke(
         obj_indices,
         is_training_mode,
         is_inplace);
-#ifndef NDEBUG
+
     RefCountTracker::GetInstance().DumpDetails("Before Invoke Python Call");
-#endif
     InvokeRunner(runner, args->get(), is_training_mode, diff_ctx, returned_ortvalues);
   }
-#ifndef NDEBUG
+
   RefCountTracker::GetInstance().DumpDetails("After Python Call Completed");
-#endif
 }
 
 void TorchProxy::Forward(
