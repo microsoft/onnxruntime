@@ -19,7 +19,11 @@ done
 
 DEVICE_TYPE=${DEVICE_TYPE:=Normal}
 
-#Download a file from internet
+# Development tools and libraries
+apt install -y \
+    graphviz
+
+# Download a file from internet
 function GetFile {
   local uri=$1
   local path=$2

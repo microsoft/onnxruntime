@@ -6,7 +6,7 @@
 # $4 build config
 
 # Fail the document generation if anything goes wrong in the process
-set -e
+set -e -x
 
 # Install doc generation tools
 $1/python -m pip install -r $2/docs/python/requirements.txt
