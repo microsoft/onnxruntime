@@ -13,7 +13,7 @@ stages:
       PythonVersion: '3.8'
       DockerFile: 'Dockerfile.manylinux2014_cpu'
 
-    steps:
+      steps:
       - checkout: self
         clean: true
         submodules: recursive
