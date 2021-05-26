@@ -16,7 +16,7 @@
 namespace {
 enum class NamedValueType {
   Input,
-  OverrideableInitializer,
+  OverridableInitializer,
   Output,
 };
 }  // namespace
@@ -144,8 +144,8 @@ NS_ASSUME_NONNULL_BEGIN
   return [self namesWithType:NamedValueType::Input error:error];
 }
 
-- (nullable NSArray<NSString*>*)overrideableInitializerNamesWithError:(NSError**)error {
-  return [self namesWithType:NamedValueType::OverrideableInitializer error:error];
+- (nullable NSArray<NSString*>*)overridableInitializerNamesWithError:(NSError**)error {
+  return [self namesWithType:NamedValueType::OverridableInitializer error:error];
 }
 
 - (nullable NSArray<NSString*>*)outputNamesWithError:(NSError**)error {
@@ -160,7 +160,7 @@ NS_ASSUME_NONNULL_BEGIN
     auto getCount = [&session = *_session, namedValueType]() {
       if (namedValueType == NamedValueType::Input) {
         return session.GetInputCount();
-      } else if (namedValueType == NamedValueType::OverrideableInitializer) {
+      } else if (namedValueType == NamedValueType::OverridableInitializer) {
         return session.GetOverridableInitializerCount();
       } else {
         return session.GetOutputCount();
@@ -170,7 +170,7 @@ NS_ASSUME_NONNULL_BEGIN
     auto getName = [&session = *_session, namedValueType](size_t i, OrtAllocator* allocator) {
       if (namedValueType == NamedValueType::Input) {
         return session.GetInputName(i, allocator);
-      } else if (namedValueType == NamedValueType::OverrideableInitializer) {
+      } else if (namedValueType == NamedValueType::OverridableInitializer) {
         return session.GetOverridableInitializerName(i, allocator);
       } else {
         return session.GetOutputName(i, allocator);

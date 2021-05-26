@@ -161,10 +161,10 @@ NS_ASSUME_NONNULL_BEGIN
   XCTAssertNil(err);
   XCTAssertEqualObjects(inputNames, (@[ @"A", @"B" ]));
 
-  NSArray<NSString*>* overrideableInitializerNames = [session overrideableInitializerNamesWithError:&err];
-  XCTAssertNotNil(overrideableInitializerNames);
+  NSArray<NSString*>* overridableInitializerNames = [session overridableInitializerNamesWithError:&err];
+  XCTAssertNotNil(overridableInitializerNames);
   XCTAssertNil(err);
-  XCTAssertEqualObjects(overrideableInitializerNames, (@[]));
+  XCTAssertEqualObjects(overridableInitializerNames, (@[]));
 
   NSArray<NSString*>* outputNames = [session outputNamesWithError:&err];
   XCTAssertNotNil(outputNames);

@@ -73,12 +73,12 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable NSArray<NSString*>*)inputNamesWithError:(NSError**)error;
 
 /**
- * Gets the model's overrideable initializer names.
+ * Gets the model's overridable initializer names.
  *
  * @param[out] error Optional error information set if an error occurs.
- * @return An array of overrideable initializer names, or nil if an error occurs.
+ * @return An array of overridable initializer names, or nil if an error occurs.
  */
-- (nullable NSArray<NSString*>*)overrideableInitializerNamesWithError:(NSError**)error;
+- (nullable NSArray<NSString*>*)overridableInitializerNamesWithError:(NSError**)error;
 
 /**
  * Gets the model's output names.
