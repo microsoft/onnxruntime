@@ -52,6 +52,8 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
     return std::shared_ptr<IArenaAllocator>(
         std::make_unique<MiMallocArena>(std::move(device_allocator), max_mem));
 #else
+    // Hack to ensure that memory is "same as requested" instead of power of two
+    arena_extend_str = ArenaExtendStrategy::kSameAsRequested;
     return std::shared_ptr<IArenaAllocator>(
         std::make_unique<BFCArena>(std::move(device_allocator),
                                    max_mem,

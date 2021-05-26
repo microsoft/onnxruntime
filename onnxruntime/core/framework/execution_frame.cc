@@ -365,6 +365,15 @@ ExecutionFrame::ExecutionFrame(const std::vector<int>& feed_mlvalue_idxs, const 
               // static_activation_memory_in_bytes_ is max virtual memory size the planner computes.
               // Memory dynamically allocated when executing kernels is not recorded using this field.
               static_activation_memory_sizes_in_byte_[location.name] = peak_size;
+
+              //
+              // XXX(kreeger):  This doesn't make a ton of sense. Why is another large allocation made
+              //                instead of just adjusting the allocator to ensure that peak size is used?
+              //
+              //                Read through this code more to make heads-or-tails of the situation.
+              //
+
+
               buffer = alloc->Alloc(peak_size);
               // handle allocator that doesn't throw
               if (buffer == nullptr) {
@@ -627,6 +636,8 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
     if (allocated || !status.IsOK())
       return status;
   }
+
+  // TODO(kreeger): LEFT OFF RIGHT HERE. NEED TO LOOK AT ALLOCATEOUTPUT vs. ALLOCATE.
 
   if (ml_type->IsTensorType()) {
     ORT_ENFORCE(shape, "Allocation of tensor types requires a shape.");

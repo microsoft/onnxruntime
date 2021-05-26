@@ -39,13 +39,13 @@ struct RunConfig {
   std::basic_string<ORTCHAR_T> profile_file;
   TestMode test_mode{TestMode::kFixDurationMode};
   size_t repeated_times{1000};
-  size_t duration_in_seconds{600};
+  size_t duration_in_seconds{1};
   size_t concurrent_session_runs{1};
   bool f_dump_statistics{false};
   bool f_verbose{false};
   bool enable_memory_pattern{true};
-  bool enable_cpu_mem_arena{true};
-  bool generate_model_input_binding{false};
+  bool enable_cpu_mem_arena{true};  // TODO - investigate with this flag
+  bool generate_model_input_binding{false};  // TODO - investigate with this flag
   ExecutionMode execution_mode{ExecutionMode::ORT_SEQUENTIAL};
   int intra_op_num_threads{0};
   int inter_op_num_threads{0};

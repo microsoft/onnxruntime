@@ -302,6 +302,14 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
     return ptr;
   }
 
+  constexpr size_t MB_BYTES = 1000000;
+  if (rounded_bytes > MB_BYTES * 10) {
+    LOGS_DEFAULT(INFO) << "$$$ Large allocation: " << rounded_bytes / MB_BYTES << " MB";
+    if (rounded_bytes > 0) {
+      rounded_bytes = rounded_bytes;
+    }
+  }
+
   LOGS_DEFAULT(INFO) << "Extending BFCArena for " << device_allocator_->Info().name
                      << ". bin_num:" << bin_num << " (requested) num_bytes: " << num_bytes << " (actual) rounded_bytes:" << rounded_bytes;
 
