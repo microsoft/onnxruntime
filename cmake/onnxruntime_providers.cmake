@@ -717,11 +717,6 @@ if (onnxruntime_USE_COREML)
     "${ONNXRUNTIME_ROOT}/core/providers/coreml/model/host_utils.mm"
   )
 
-  set_source_files_properties(
-    ${onnxruntime_providers_coreml_objcc_srcs}
-    COMPILE_FLAGS "${CMAKE_OBJC_FLAGS} -Xclang -x -Xclang objective-c++ -fobjc-arc"
-  )
-
   set(onnxruntime_providers_coreml_cc_srcs
     ${onnxruntime_providers_coreml_cc_srcs_top}
     ${onnxruntime_providers_coreml_cc_srcs_nested}

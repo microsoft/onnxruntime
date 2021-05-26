@@ -9,6 +9,20 @@ if(NOT APPLE)
     message(FATAL_ERROR "Objective-C API must be built on an Apple platform.")
 endif()
 
+check_language(OBJC)
+if(CMAKE_OBJC_COMPILER)
+  enable_language(OBJC)
+else()
+  message(FATAL_ERROR "Objective-C is not supported.")
+endif()
+
+check_language(OBJCXX)
+if(CMAKE_OBJCXX_COMPILER)
+  enable_language(OBJCXX)
+else()
+  message(FATAL_ERROR "Objective-C++ is not supported.")
+endif()
+
 add_compile_options(
     "$<$<COMPILE_LANGUAGE:OBJC,OBJCXX>:-Wall>"
     "$<$<COMPILE_LANGUAGE:OBJC,OBJCXX>:-Wextra>")
@@ -45,7 +59,7 @@ source_group(TREE "${OBJC_ROOT}" FILES
     ${onnxruntime_objc_srcs}
     ${onnxruntime_objc_common_srcs})
 
-add_library(onnxruntime_objc SHARED
+onnxruntime_add_shared_library(onnxruntime_objc
     ${onnxruntime_objc_headers}
     ${onnxruntime_objc_srcs}
     ${onnxruntime_objc_common_srcs})
@@ -107,6 +121,8 @@ if(onnxruntime_BUILD_UNIT_TESTS)
         ${onnxruntime_objc_headers}
         ${onnxruntime_objc_test_srcs}
         ${onnxruntime_objc_common_srcs})
+
+    onnxruntime_configure_target(onnxruntime_objc_test)
 
     target_include_directories(onnxruntime_objc_test
         PRIVATE
