@@ -20,6 +20,7 @@
 #include "core/util/math.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
+
 #include "core/framework/fallback_cpu_capability.h"
 #include "core/framework/random_generator.h"
 #include "core/providers/cpu/tensor/gatherbase.h"
@@ -753,7 +754,7 @@ struct ProviderHostImpl : ProviderHost {
   int32_t Tensor__GetElementType(const Tensor* p) override { return p->GetElementType(); }
   MLDataType Tensor__DataType(const Tensor* p) override { return p->DataType(); }
 
-  // TensorSeq
+  // TensorSeq(wrapped)
   MLDataType TensorSeq__DataType(const TensorSeq* p) noexcept override { return p->DataType(); }
   void TensorSeq__SetType(TensorSeq* p, MLDataType data_type) override { p->SetType(data_type); }
   size_t TensorSeq__Size(const TensorSeq* p) noexcept { return p->Size(); }

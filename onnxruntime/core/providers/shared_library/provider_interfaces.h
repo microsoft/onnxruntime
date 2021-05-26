@@ -1604,6 +1604,7 @@ struct Tensor final {
   bool IsDataType() const;
 
   Tensor() = delete;
+  Tensor(const Tensor&) = delete;
   void operator=(const Tensor&) = delete;
 };
 
@@ -1686,8 +1687,9 @@ inline const BFloat16* Tensor::Data<BFloat16>() const { return g_host->Tensor__D
 template <>
 inline const MLFloat16* Tensor::Data<MLFloat16>() const { return g_host->Tensor__Data_MLFloat16(this); }
 
-//TensorSee
-struct TensorSeq final {
+//TensorSeq
+class TensorSeq final {
+public:
   MLDataType DataType() const noexcept { return g_host->TensorSeq__DataType(this); }
   void SetType(MLDataType elem_type) { g_host->TensorSeq__SetType(this, elem_type); }
   using const_iterator = std::vector<Tensor>::const_iterator;
