@@ -759,8 +759,6 @@ struct ProviderHostImpl : ProviderHost {
   size_t TensorSeq__Size(const TensorSeq* p) noexcept { return p->Size(); }
   const Tensor& TensorSeq__Get(const TensorSeq* p, size_t i) override { return p->Get(i); }
   void TensorSeq__Add(TensorSeq* p, Tensor&& tensor) override { p->Add(std::move(tensor)); }
-  std::vector<Tensor>::const_iterator TensorSeq__begin(const TensorSeq* p) noexcept override { return p->begin(); }
-  std::vector<Tensor>::const_iterator TensorSeq__end(const TensorSeq* p) noexcept override { return p->end(); }
   void TensorSeq__SetElements(TensorSeq* p, std::vector<Tensor>&& tensors) override { p->SetElements(std::move(tensors)); }
 
   // AllocatorManager (direct)

@@ -16,7 +16,7 @@ class IdentityOp final : public CudaKernel {
 
   Status ComputeInternal(OpKernelContext* context) const override {
     auto X_ml_type = context->InputType(0);
-    if (DataTypeImpl::GetType<Tensor>() == X_ml_type) {
+    if (X_ml_type->IsTensorType()) {
       const Tensor* X = context->Input<Tensor>(0);
       if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
       const TensorShape& shape = X->Shape();
@@ -44,10 +44,11 @@ class IdentityOp final : public CudaKernel {
           CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask_data, 0, mask->SizeInBytes(), Stream()));
         }
       }
-    } else if (DataTypeImpl::GetType<TensorSeq>() == X_ml_type) {
+    } else if (X_ml_type->IsTensorSequenceType()) {
       const auto* X = context->Input<TensorSeq>(0);
       ORT_ENFORCE(X != nullptr);
       TensorSeq* Y = context->Output<TensorSeq>(0);
+      ORT_ENFORCE(Y->Size() == 0, "output tensor sequence not empty");
       auto X_type = X->DataType();
       Y->SetType(X_type);
       AllocatorPtr alloc;
