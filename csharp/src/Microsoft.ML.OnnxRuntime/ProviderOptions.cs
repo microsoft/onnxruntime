@@ -137,6 +137,10 @@ namespace Microsoft.ML.OnnxRuntime
             foreach (var p in paris)
             {
                 string[] keyValue = p.Split('=');
+                if (keyValue.Length != 2)
+                {
+                    throw new ArgumentException("Make sure input string contains key-value paris, e.g. key1=value1;key2=value2...", "s");
+                }
                 dict.Add(keyValue[0], keyValue[1]);
             }
         }
