@@ -8,11 +8,11 @@ stages:
       timeoutInMinutes: 60
       workspace:
         clean: all
-      pool: Linux-CPU
+      pool: Onnxruntime-Linux-GPU-NV6
 
       variables:
         PythonVersion: '3.8'
-        DockerFile: 'Dockerfile.manylinux2014_cpu'
+        DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
 
       steps:
       - checkout: self
