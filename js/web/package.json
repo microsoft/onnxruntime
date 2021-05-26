@@ -73,12 +73,5 @@
   "jsdelivr": "dist/ort.min.js",
   "unpkg": "dist/ort.min.js",
   "module": "./lib/index.js",
-  "browser": {
-    "fs": false,
-    "path": false,
-    "util": false,
-    "worker_threads": false,
-    "perf_hooks": false,
-    "os": false
-  }
+  "browser": "dist/ort-web.min.js"
 }

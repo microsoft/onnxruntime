@@ -63,7 +63,7 @@ Status LongformerAttentionBase__CheckInputs(const LongformerAttentionBase* p, co
 #include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
 #include "orttraining/training_ops/cpu/tensor/split.h"
 #endif
-#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #endif
@@ -883,7 +883,7 @@ struct ProviderHostImpl : ProviderHost {
   Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) override { return contrib::PrepareForTrainingCompute(input_shape, num_outputs, axis, before_dims, after_dims_including_split_axis, after_dims_excluding_split, split_sizes); }
   Status contrib__YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) override { return p->YieldOp::Compute(context); }
 
-#if defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(ORT_USE_NCCL)
   training::DistributedRunContext& GetDistributedRunContextInstance() override { return training::DistributedRunContext::GetInstance(); }
 #endif
 #endif
@@ -896,7 +896,7 @@ struct ProviderSharedLibrary {
       return true;
 
     std::string full_path = Env::Default().GetRuntimePath() + std::string(LIBRARY_PREFIX "onnxruntime_providers_shared" LIBRARY_EXTENSION);
-    auto error = Env::Default().LoadDynamicLibrary(full_path, &handle_);
+    auto error = Env::Default().LoadDynamicLibrary(full_path, true /*shared_globals on unix*/, &handle_);
     if (!error.IsOK()) {
       LOGS_DEFAULT(ERROR) << error.ErrorMessage();
       return false;
@@ -947,7 +947,7 @@ struct ProviderLibrary {
       return nullptr;
 
     std::string full_path = Env::Default().GetRuntimePath() + std::string(filename_);
-    auto error = Env::Default().LoadDynamicLibrary(full_path, &handle_);
+    auto error = Env::Default().LoadDynamicLibrary(full_path, false, &handle_);
     if (!error.IsOK()) {
       LOGS_DEFAULT(ERROR) << error.ErrorMessage();
       return nullptr;

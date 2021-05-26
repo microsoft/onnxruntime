@@ -158,11 +158,6 @@ class GraphExecutionManager(ABC):
         self._optimized_onnx_model = onnx.load_model_from_string(self._graph_builder.get_model())
         self._graph_info = self._graph_builder.get_graph_info()
 
-        # TODO: Explore ways to make self._graph_info.initializer_names and self._graph_info.initializer_names_to_train
-        #       a set (unordered_set in the backend) that does not require a copy on each reference.
-        self._graph_initializer_names = set(self._graph_info.initializer_names)
-        self._graph_initializer_names_to_train = set(self._graph_info.initializer_names_to_train)
-
     def _get_session_config(self):
         """Creates and returns the session configuration to be used for the ExecutionAgent"""
         providers = None
@@ -201,6 +196,12 @@ class GraphExecutionManager(ABC):
         # 2. Verify input schema matches schema used on previous model export
         # 3. Export the user model under self._export_training_flag mode
         # Return True if the model needed to be exported, False if no export was required.
+
+        # Note: Model is only exported when:
+        #       1. Model has never been exported before.
+        #       2. Model input schema has changed (changes in inputs requiring gradient, shape, boolean inputs values change, etc)
+        #       Model is not re-exported when the model parameters change. This can happen when the model is a stateful model,
+        #       or the user explicitly changed model parameters after the onnx export.
 
         schema = _io._extract_schema({'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
         if self._onnx_model and schema == self._input_info.schema:
@@ -314,3 +315,8 @@ class GraphExecutionManager(ABC):
         # It is assumed here that the order and names of the inputs and outputs are not modified by the backend in any way
         # and are kept as they appear in the exported onnx model.
         self._graph_builder.initialize(self._onnx_model.SerializeToString(), grad_builder_config)
+
+        # TODO: Explore ways to make self._graph_info.initializer_names and self._graph_info.initializer_names_to_train
+        #       a set (unordered_set in the backend) that does not require a copy on each reference.
+        self._graph_initializer_names = set(initializer_names)
+        self._graph_initializer_names_to_train = set(initializer_names_to_train)

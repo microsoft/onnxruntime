@@ -8,7 +8,7 @@ import copy
 import inspect
 import torch
 import warnings
-
+import gc
 
 class _OutputIdentityOp(torch.autograd.Function):
     '''Internal class used to prepend Identity ops in model's outputs
@@ -175,9 +175,8 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
 
 
 def deepcopy_model_input(*inputs, **kwargs):
-    sample_inputs_copy = []
-    for model_input in inputs:
-        sample_inputs_copy.append(model_input.data if isinstance(model_input, torch.Tensor) else model_input)
+    sample_inputs_copy = [model_input.data if isinstance(model_input, torch.Tensor) else model_input
+                          for model_input in inputs]
     sample_inputs_copy = copy.deepcopy(tuple(sample_inputs_copy))
 
     sample_kwargs_copy = {}
@@ -406,7 +405,7 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
     # ONNX exporter may remove unused inputs
     onnx_graph_input_names = []
     if onnx_graph is not None:
-        onnx_graph_input_names = set([inp.name for inp in onnx_graph.graph.input])
+        onnx_graph_input_names = {inp.name for inp in onnx_graph.graph.input}
 
     input_names = []
     dynamic_axes = {}
@@ -461,12 +460,14 @@ def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs):
     module.eval()
     output_names = None
     output_dynamic_axes = None
+    is_deepcopy = False
     with torch.no_grad():
         # Deepcopy inputs, since input values may change after model run.
         sample_inputs_copy, sample_kwargs_copy = deepcopy_model_input(*inputs, **kwargs)
         try:
             # Deepcopy model, in case model is stateful and changes after model run.
             model_copy = copy.deepcopy(module)
+            is_deepcopy = True
         except Exception:
             model_copy = module
             warnings.warn("This model cannot be deep copied (or pickled), "
@@ -479,6 +480,9 @@ def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs):
         output_names, output_dynamic_axes = _parse_outputs_and_extract_names_and_dynamic_axes(sample_outputs)
     if is_train_mode:
         module.train()
-
+    output_schema = _extract_schema(sample_outputs)
+    if is_deepcopy:
+        del model_copy
+        gc.collect()
     # Return output names, output dynamic axes and output schema
-    return output_names, output_dynamic_axes, _extract_schema(sample_outputs)
+    return output_names, output_dynamic_axes, output_schema
