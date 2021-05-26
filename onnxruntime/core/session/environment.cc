@@ -8,7 +8,7 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets_ml.h"
-#if defined(ENABLE_TRAINING)
+#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
 #include "onnx/defs/operator_sets_training.h"
 #endif
 #endif
@@ -30,8 +30,10 @@
 #include "core/platform/tracing.h"
 #endif
 
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
 #include "orttraining/core/graph/training_op_defs.h"
+#endif
+#ifdef ENABLE_TRAINING
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/loss_function_registry.h"
 #include "orttraining/core/graph/optimizer_builder.h"
@@ -94,6 +96,7 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
     int arena_extend_strategy = -1;
     int initial_chunk_size_bytes = -1;
     int max_dead_bytes_per_chunk = -1;
+    int initial_growth_chunk_size_bytes = -1;
 
     // override with values from the user supplied arena_cfg object
     if (arena_cfg) {
@@ -109,17 +112,19 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
 
       initial_chunk_size_bytes = arena_cfg->initial_chunk_size_bytes;
       max_dead_bytes_per_chunk = arena_cfg->max_dead_bytes_per_chunk;
+      initial_growth_chunk_size_bytes = arena_cfg->initial_growth_chunk_size_bytes;
     }
 
-    OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk};
+    OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk,
+                            initial_growth_chunk_size_bytes};
     AllocatorCreationInfo alloc_creation_info{
-        [mem_info](int) { return onnxruntime::make_unique<TAllocator>(mem_info); },
+        [mem_info](int) { return std::make_unique<TAllocator>(mem_info); },
         0,
         create_arena,
         l_arena_cfg};
     allocator_ptr = CreateAllocator(alloc_creation_info);
   } else {
-    AllocatorCreationInfo alloc_creation_info{[](int) { return onnxruntime::make_unique<TAllocator>(); },
+    AllocatorCreationInfo alloc_creation_info{[](int) { return std::make_unique<TAllocator>(); },
                                               0, create_arena};
     allocator_ptr = CreateAllocator(alloc_creation_info);
   }
@@ -177,17 +182,20 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       RegisterOnnxMLOperatorSetSchema();
 #endif
 
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
       RegisterOnnxTrainingOperatorSetSchema();
 #endif
 
-#ifdef ENABLE_TRAINING
-      // preserve this order: this depends on operatorsetschema registration.
+#if defined(ENABLE_TRAINING) || defined(ENABLE_TRAINING_OPS)
+      // preserve this order until <training schemas>: this depends on operatorsetschema registration.
       training::RegisterTrainingOpSchemas();
+#endif
+#ifdef ENABLE_TRAINING
       training::GradientBuilderRegistry::GetInstance().RegisterGradientBuilders();
       training::LossFunctionRegistry::GetInstance().RegisterNonOperatorLossFunctions();
       training::OptimizerBuilderRegistry::GetInstance().RegisterBuilders();
       training::OptimizerGraphBuilderRegistry::GetInstance().RegisterGraphBuilders();
+      // <training schemas>
 #endif
     });
 

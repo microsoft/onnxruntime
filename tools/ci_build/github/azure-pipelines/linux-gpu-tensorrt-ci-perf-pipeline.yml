@@ -3,27 +3,27 @@ jobs:
   pool: Linux-GPU-TensorRT-Perf 
   variables:
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
-  timeoutInMinutes: 1200 
+    branch: 'master'
+  timeoutInMinutes: 3000 
   steps:
-    #- template: templates/set-test-data-variables-step.yml
-    #
-    - script: 'python3 ort_build_latest.py -c /usr/local/cuda-11.0/ -t /home/hcsuser/tensorrt/TensorRT-7.1.3.4/ -o /home/hcsuser/repos/onnxruntime'
-      displayName: 'Upgrade ORT wheel'
-      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-    
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/perf.sh "onnx-zoo-models"'
-      displayName: 'Command Line Script 1'
+  
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.tensorrt-perf -b $(branch) -i ort-$(branch)'
+      displayName: 'Build latest ORT Images'
+      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d ort-$(branch) -o "onnx-zoo-models" -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf'
+      displayName: 'Onnx Zoo Models Perf'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/perf.sh "many-models"'
-      displayName: 'Command Line Script 2'
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  ort-$(branch) -o "many-models" -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf'
+      displayName: 'Many Models Perf'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/perf.sh "partner-models"'
-      displayName: 'Command Line Script 3'
+    - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_docker.sh -d  ort-$(branch) -o "partner-models" -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf'
+      displayName: 'Partner Models Perf'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact' 
+    - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
       displayName: 'Prepare Artifacts'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
@@ -31,5 +31,15 @@ jobs:
       inputs:
         pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
         artifactName: 'result'
+    
 
-    - template: templates/clean-agent-build-directory-step.yml
+    - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" ' 
+      displayName: 'Post to Dashboard'
+      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+      env:
+        DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
+
+    - script: sudo rm -rf $(Agent.BuildDirectory)
+      displayName: Clean build files (POSIX)
+      condition: not(eq(variables['Agent.OS'], 'Windows_NT')) # and always()
+      continueOnError: true  # continuing on error for this step, since linux build folder is somehow getting permission issue

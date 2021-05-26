@@ -11,17 +11,19 @@
 namespace onnxruntime {
 
 namespace op_kernel_type_control {
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Gather, Input, 1, int32_t, int64_t);
-}
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Gather, Input, 1, int32_t, int64_t);
+}  // namespace op_kernel_type_control
 
 namespace {
-using SupportedIndexTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                             Gather, Input, 1);
+using IndexTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                  Gather, Input, 1);
 using EnabledIndexTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                          Gather, Input, 1);
 
-const auto supported_index_type_constraints = BuildKernelDefConstraintsFromTypeList<SupportedIndexTypes>();
+const auto index_type_constraints = BuildKernelDefConstraintsFromTypeList<IndexTypes>();
 const auto enabled_index_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>();
 }  // namespace
 
@@ -31,7 +33,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     10,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", supported_index_type_constraints, enabled_index_type_constraints),
+        .TypeConstraint("Tind", index_type_constraints, enabled_index_type_constraints),
     Gather);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -40,7 +42,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     12,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", supported_index_type_constraints, enabled_index_type_constraints),
+        .TypeConstraint("Tind", index_type_constraints, enabled_index_type_constraints),
     Gather);
 
 ONNX_CPU_OPERATOR_KERNEL(
@@ -48,7 +50,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", supported_index_type_constraints, enabled_index_type_constraints),
+        .TypeConstraint("Tind", index_type_constraints, enabled_index_type_constraints),
     Gather);
 
 Status GatherBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
@@ -146,12 +148,12 @@ Status Gather::Compute(OpKernelContext* context) const {
 
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
 
-  if (utils::HasTypeWithSameSize<EnabledIndexTypes, int32_t>() &&
+  if (utils::HasType<EnabledIndexTypes, int32_t>() &&
       p.indices_tensor->IsDataType<int32_t>()) {
     return GatherCopyData<int32_t>(p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
                                    block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis, tp);
   }
-  if (utils::HasTypeWithSameSize<EnabledIndexTypes, int64_t>() &&
+  if (utils::HasType<EnabledIndexTypes, int64_t>() &&
       p.indices_tensor->IsDataType<int64_t>()) {
     return GatherCopyData<int64_t>(p.indices_tensor, src_base, dst_base, is_string_type, element_bytes,
                                    block_size, M, N, data_batch_bytes, gathered_batch_bytes, input_data_shape, p.axis, tp);

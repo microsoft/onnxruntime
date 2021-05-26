@@ -1,9 +1,13 @@
 import numpy as np
-
-
 class PostprocessYOLO(object):
     """Class for post-processing the three output tensors from YOLO."""
-    def __init__(self, yolo_masks, yolo_anchors, nms_threshold, yolo_input_resolution, category_num=80):
+
+    def __init__(self,
+                 yolo_masks,
+                 yolo_anchors,
+                 nms_threshold,
+                 yolo_input_resolution,
+                 category_num=80):
         """Initialize with all values that will be kept when processing
         several frames.  Assuming 3 outputs of the network in the case
         of (large) YOLO, or 2 for the Tiny YOLO.
@@ -37,7 +41,8 @@ class PostprocessYOLO(object):
         for output in outputs:
             outputs_reshaped.append(self._reshape_output(output))
 
-        boxes_xywh, categories, confidences = self._process_yolo_output(outputs_reshaped, resolution_raw, conf_th)
+        boxes_xywh, categories, confidences = self._process_yolo_output(
+            outputs_reshaped, resolution_raw, conf_th)
 
         if len(boxes_xywh) > 0:
             # convert (x, y, width, height) to (x1, y1, x2, y2)
@@ -46,9 +51,9 @@ class PostprocessYOLO(object):
             yy = boxes_xywh[:, 1].reshape(-1, 1)
             ww = boxes_xywh[:, 2].reshape(-1, 1)
             hh = boxes_xywh[:, 3].reshape(-1, 1)
-            boxes = np.concatenate([xx, yy, xx + ww, yy + hh], axis=1) + 0.5
-            boxes[:, [0, 2]] = np.clip(boxes[:, [0, 2]], 0., float(img_w - 1))
-            boxes[:, [1, 3]] = np.clip(boxes[:, [1, 3]], 0., float(img_h - 1))
+            boxes = np.concatenate([xx, yy, xx+ww, yy+hh], axis=1) + 0.5
+            boxes[:, [0, 2]] = np.clip(boxes[:, [0, 2]], 0., float(img_w-1))
+            boxes[:, [1, 3]] = np.clip(boxes[:, [1, 3]], 0., float(img_h-1))
             boxes = boxes.astype(np.int)
         else:
             boxes = np.zeros((0, 4), dtype=np.int)  # empty
@@ -118,8 +123,9 @@ class PostprocessYOLO(object):
             nscores.append(confidence[keep])
 
         if not nms_categories and not nscores:
-            return (np.empty((0, 4), dtype=np.float32), np.empty((0, 1),
-                                                                 dtype=np.float32), np.empty((0, 1), dtype=np.float32))
+            return (np.empty((0, 4), dtype=np.float32),
+                    np.empty((0, 1), dtype=np.float32),
+                    np.empty((0, 1), dtype=np.float32))
 
         boxes = np.concatenate(nms_boxes)
         categories = np.concatenate(nms_categories)
@@ -136,6 +142,7 @@ class PostprocessYOLO(object):
         output_reshaped -- reshaped YOLO output as NumPy arrays with shape (height,width,3,85)
         mask -- 2-dimensional tuple with mask specification for this output
         """
+
         def sigmoid_v(array):
             return np.reciprocal(np.exp(-array) + 1.0)
 
@@ -238,24 +245,27 @@ class PostprocessYOLO(object):
         keep = np.array(keep)
         return keep
 
-
 class PostprocessYOLOWrapper(object):
     """This class encapsulates things needed to run yolo."""
     """Reference from here https://github.com/jkjung-avt/tensorrt_demos/blob/3fb15c908b155d5edc1bf098c6b8c31886cd8e8d/utils/yolo.py"""
+
     def _init_yolov3_postprocessor(self):
         h, w = self.input_shape
         filters = (self.category_num + 5) * 3
         if 'tiny' in self.model:
-            self.output_shapes = [(1, filters, h // 32, w // 32), (1, filters, h // 16, w // 16)]
+            self.output_shapes = [(1, filters, h // 32, w // 32),
+                                  (1, filters, h // 16, w // 16)]
         else:
-            self.output_shapes = [(1, filters, h // 32, w // 32), (1, filters, h // 16, w // 16),
-                                  (1, filters, h // 8, w // 8)]
+            self.output_shapes = [(1, filters, h // 32, w // 32),
+                                  (1, filters, h // 16, w // 16),
+                                  (1, filters, h //  8, w //  8)]
         if 'tiny' in self.model:
             postprocessor_args = {
                 # A list of 2 three-dimensional tuples for the Tiny YOLO masks
                 'yolo_masks': [(3, 4, 5), (0, 1, 2)],
                 # A list of 6 two-dimensional tuples for the Tiny YOLO anchors
-                'yolo_anchors': [(10, 14), (23, 27), (37, 58), (81, 82), (135, 169), (344, 319)],
+                'yolo_anchors': [(10, 14), (23, 27), (37, 58),
+                                 (81, 82), (135, 169), (344, 319)],
                 # Threshold for non-max suppression algorithm, float
                 # value between 0 and 1
                 'nms_threshold': 0.5,
@@ -267,16 +277,14 @@ class PostprocessYOLOWrapper(object):
                 # A list of 3 three-dimensional tuples for the YOLO masks
                 'yolo_masks': [(6, 7, 8), (3, 4, 5), (0, 1, 2)],
                 # A list of 9 two-dimensional tuples for the YOLO anchors
-                'yolo_anchors': [(10, 13), (16, 30), (33, 23), (30, 61), (62, 45), (59, 119), (116, 90), (156, 198),
-                                 (373, 326)],
+                'yolo_anchors': [(10, 13), (16, 30), (33, 23),
+                                 (30, 61), (62, 45), (59, 119),
+                                 (116, 90), (156, 198), (373, 326)],
                 # Threshold for non-max suppression algorithm, float
                 # value between 0 and 1
-                'nms_threshold':
-                0.5,
-                'yolo_input_resolution':
-                self.input_shape,
-                'category_num':
-                self.category_num
+                'nms_threshold': 0.5,
+                'yolo_input_resolution': self.input_shape,
+                'category_num': self.category_num
             }
         self.postprocessor = PostprocessYOLO(**postprocessor_args)
 

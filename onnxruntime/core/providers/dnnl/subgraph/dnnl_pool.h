@@ -62,14 +62,13 @@ class DnnlPool : public DnnlKernel {
 
       // reorder for better performance
       dnnl::memory::format_tag src_format = GetAVXFormat(src_dims_mkl);
-      src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+      src_md_ = std::make_unique<dnnl::memory::desc>(
           dnnl::memory::desc({src_dims_mkl}, DnnnType<T>(), src_format));
     } else {
       // get the output of previous node (Dnnl block propagation).
       // TODO Sourcenode will set src of this node.
       x_shape_ = parents_[0].get()->primitive_dst_shape_;
       source_desc_ = parents_[0].get()->primitive_dst_desc_;
-      dnnl::memory::dims src_dims_mkl(x_shape_.GetDims().begin(), x_shape_.GetDims().end());
 
       ort_source_format_ = parents_[0].get()->ort_source_format_;
       ort_source_desc_ = parents_[0].get()->ort_source_desc_;
@@ -77,16 +76,17 @@ class DnnlPool : public DnnlKernel {
 
       if (!gpu_available_) {
         if (source_desc_ == ort_source_desc_) {
+          dnnl::memory::dims src_dims_mkl(x_shape_.GetDims().begin(), x_shape_.GetDims().end());
           // reorder for better performance
           dnnl::memory::format_tag fmt = GetAVXFormat(src_dims_mkl);
-          src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+          src_md_ = std::make_unique<dnnl::memory::desc>(
               dnnl::memory::desc({src_dims_mkl}, DnnnType<T>(), fmt));
         } else {
-          src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+          src_md_ = std::make_unique<dnnl::memory::desc>(
               dnnl::memory::desc(parents_[0].get()->primitive_dst_mem_->get_desc()));
         }
       } else {  // gpu_available_
-        src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+        src_md_ = std::make_unique<dnnl::memory::desc>(
             dnnl::memory::desc(parents_[0].get()->primitive_dst_mem_->get_desc()));
       }
     }
@@ -116,7 +116,7 @@ class DnnlPool : public DnnlKernel {
     dnnl::memory::dims padding_left_mkl(pads_.begin(), pads_.begin() + (pads_.size() / 2));
     dnnl::memory::dims padding_right_mkl(pads_.begin() + (pads_.size() / 2), pads_.end());
 
-    primitive_dst_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+    primitive_dst_md_ = std::make_unique<dnnl::memory::desc>(
         dnnl::memory::desc({dst_dims_mkl}, DnnnType<T>(), dnnl::memory::format_tag::any));
 
     dnnl::algorithm algo = dnnl::algorithm::pooling_max;
@@ -133,59 +133,38 @@ class DnnlPool : public DnnlKernel {
     auto prop_kind = dnnl::prop_kind::forward_inference;
 #endif  // ENABLE_TRAINING
 
-    fwd_desc_ = onnxruntime::make_unique<dnnl::pooling_forward::desc>(
+    fwd_desc_ = std::make_unique<dnnl::pooling_forward::desc>(
         dnnl::pooling_forward::desc(prop_kind, algo,
                                     *src_md_, *primitive_dst_md_,
                                     strides_mkl, kernel_mkl,
                                     padding_left_mkl, padding_right_mkl));
 
-    if (!gpu_available_) {
-      fwd_primitive_desc_ = onnxruntime::make_unique<dnnl::pooling_forward::primitive_desc>(
-          dnnl::pooling_forward::primitive_desc(*fwd_desc_, cpu_engine));
-    } else {  // gpu_available_
-      fwd_primitive_desc_ = onnxruntime::make_unique<dnnl::pooling_forward::primitive_desc>(
-          dnnl::pooling_forward::primitive_desc(*fwd_desc_, gpu_engine));
-    }
 
-    //if (mklnode_ptr_->parent_nodes.empty()) {
-    //  // Sub-graph's first node. Read input from input buffer
-    //  src_mem_ = onnxruntime::make_unique<dnnl::memory>(
-    //      dnnl::memory(fwd_primitive_desc_.get()->src_desc(), cpu_engine, nullptr));
-    //} else {
-    //  // Sub-graph's inner node. set input to parent's output
-    //  src_mem_ = parents_[0].get()->primitive_dst_mem_;
-    //}
-    //if (gpu_available_) {
-    //  src_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(
-    //      dnnl::memory(fwd_primitive_desc_.get()->src_desc(), gpu_engine));
-    //}
+    fwd_primitive_desc_ = std::make_unique<dnnl::pooling_forward::primitive_desc>(
+        dnnl::pooling_forward::primitive_desc(*fwd_desc_, engine_to_use));
 
     primitive_src_desc_ = fwd_primitive_desc_.get()->src_desc();
     primitive_dst_desc_ = fwd_primitive_desc_.get()->dst_desc();
 
-    src_size_ = fwd_primitive_desc_.get()->src_desc().get_size();
-    dst_size_ = fwd_primitive_desc_.get()->dst_desc().get_size();
-
     if (!gpu_available_) {
       // reorder source memory for best performance (AVX512);
       if (primitive_src_desc_ != source_desc_) {
-        dnnl::memory::dims src_dims(x_shape_.GetDims().begin(), x_shape_.GetDims().end());
         auto pd = dnnl::memory::desc(source_desc_);
 
         if (mklnode_ptr_->parent_nodes.empty())
-          src_mem_from_ = onnxruntime::make_unique<dnnl::memory>(
+          src_mem_from_ = std::make_unique<dnnl::memory>(
               dnnl::memory(pd, cpu_engine, nullptr));
         else
           src_mem_from_ = parents_[0].get()->primitive_dst_mem_;
 
-        src_mem_ = onnxruntime::make_unique<dnnl::memory>(
+        src_mem_ = std::make_unique<dnnl::memory>(
             dnnl::memory(fwd_primitive_desc_->src_desc(), cpu_engine, nullptr));
         net.push_back(dnnl::reorder(*src_mem_from_, *src_mem_));
         net_args.push_back({{DNNL_ARG_FROM, *src_mem_from_},
                             {DNNL_ARG_TO, *src_mem_}});
       } else {
         if (mklnode_ptr_->parent_nodes.empty()) {
-          src_mem_ = onnxruntime::make_unique<dnnl::memory>(
+          src_mem_ = std::make_unique<dnnl::memory>(
               dnnl::memory(fwd_primitive_desc_->src_desc(), cpu_engine, nullptr));
         } else {
           src_mem_ = parents_[0].get()->primitive_dst_mem_;
@@ -193,25 +172,24 @@ class DnnlPool : public DnnlKernel {
       }
     } else {  // gpu_available_
       if (primitive_src_desc_ != source_desc_) {
-        dnnl::memory::dims src_dims(x_shape_.GetDims().begin(), x_shape_.GetDims().end());
         auto pd = dnnl::memory::desc(source_desc_);
 
         if (mklnode_ptr_->parent_nodes.empty()) {
-          src_mem_from_ = onnxruntime::make_unique<dnnl::memory>(
+          src_mem_from_ = std::make_unique<dnnl::memory>(
               dnnl::memory(pd, cpu_engine, nullptr));
         } else {
           src_mem_from_ = parents_[0].get()->primitive_dst_mem_;
         }
-        src_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(
+        src_mem_gpu_ = std::make_unique<dnnl::memory>(
             dnnl::memory(fwd_primitive_desc_->src_desc(), gpu_engine));
         net.push_back(dnnl::reorder(*src_mem_from_, *src_mem_gpu_));
         net_args.push_back({{DNNL_ARG_FROM, *src_mem_from_},
                             {DNNL_ARG_TO, *src_mem_gpu_}});
       } else {
         if (mklnode_ptr_->parent_nodes.empty()) {
-          src_mem_ = onnxruntime::make_unique<dnnl::memory>(
+          src_mem_ = std::make_unique<dnnl::memory>(
               dnnl::memory(fwd_primitive_desc_->src_desc(), cpu_engine, nullptr));
-          src_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(
+          src_mem_gpu_ = std::make_unique<dnnl::memory>(
               dnnl::memory(fwd_primitive_desc_->src_desc(), gpu_engine));
           net.push_back(dnnl::reorder(*src_mem_, *src_mem_gpu_));
           net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
@@ -228,42 +206,44 @@ class DnnlPool : public DnnlKernel {
         if (primitive_dst_desc_ != ort_source_desc_) {
           // reorder neded. Use primitive output as input to reorder and
           // allocate buffer for reorder output, final output of this subgraph
-          primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+          primitive_dst_mem_ = std::make_unique<dnnl::memory>(
               dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine));
         } else {
           // Last node but re-order not needed. Allocate buffer to output of this node
-          primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+          primitive_dst_mem_ = std::make_unique<dnnl::memory>(
               dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine, nullptr));
         }
       } else {
         // Intermediate node. Use Dnnl kernel internal memory for output and
         // use this as input to next node.
-        primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+        primitive_dst_mem_ = std::make_unique<dnnl::memory>(
             dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), cpu_engine));
       }
     } else {  // gpu_available_
-      primitive_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+      primitive_dst_mem_ = std::make_unique<dnnl::memory>(
           dnnl::memory(fwd_primitive_desc_.get()->dst_desc(), gpu_engine));
     }
 
 #ifdef ENABLE_TRAINING
-    workspace_mem_ = onnxruntime::make_unique<dnnl::memory>(
-        dnnl::memory(fwd_primitive_desc_.get()->workspace_desc(), cpu_engine));
+    workspace_mem_ = std::make_unique<dnnl::memory>(
+        dnnl::memory(fwd_primitive_desc_.get()->workspace_desc(), engine_to_use));
 #endif // ENABLE_TRAINING
 
-    pool_fwd_ = onnxruntime::make_unique<dnnl::pooling_forward>(
+    pool_fwd_ = std::make_unique<dnnl::pooling_forward>(
         dnnl::pooling_forward(*fwd_primitive_desc_));
 
+    net.push_back(*pool_fwd_);
     if (!gpu_available_) {
-      net.push_back(*pool_fwd_);
       net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
 #ifdef ENABLE_TRAINING
-                        {DNNL_ARG_WORKSPACE, *workspace_mem_},
-#endif // ENABLE_TRAINING
+                          {DNNL_ARG_WORKSPACE, *workspace_mem_},
+#endif  //ENABLE_TRAINING
                           {DNNL_ARG_DST, *primitive_dst_mem_}});
     } else {  // gpu_available_
-      net.push_back(*pool_fwd_);
       net_args.push_back({{DNNL_ARG_SRC, *src_mem_gpu_},
+#ifdef ENABLE_TRAINING
+                          {DNNL_ARG_WORKSPACE, *workspace_mem_},
+#endif  //ENABLE_TRAINING
                           {DNNL_ARG_DST, *primitive_dst_mem_}});
     }
     if (mklnode_ptr_->output_index >= 0) {
@@ -409,14 +389,12 @@ class DnnlPool : public DnnlKernel {
   }
 
  private:
-  size_t src_size_;
-  size_t dst_size_;
 
   std::shared_ptr<dnnl::memory> src_mem_;
+  std::shared_ptr<dnnl::memory> src_mem_gpu_;
   #ifdef ENABLE_TRAINING
   std::shared_ptr<dnnl::memory> workspace_mem_;
   #endif // ENABLE_TRAINING
-  std::shared_ptr<dnnl::memory> src_mem_gpu_;
 
   std::unique_ptr<dnnl::pooling_forward::desc> fwd_desc_;
   std::unique_ptr<dnnl::memory::desc> src_md_;
@@ -443,14 +421,21 @@ class DnnlPool : public DnnlKernel {
     bool is_1D = src_dims_mkl.size() == 3 ? true : false;
 #endif
     dnnl::memory::format_tag fmt = dnnl::memory::format_tag::any;
-    if (!gpu_available_ && CPUIDInfo::GetCPUIDInfo().HasAVX512f()) {
+    if (gpu_available_) {
+#ifdef ENABLE_TRAINING
+      if (is_1D)
+        fmt = dnnl::memory::format_tag::ncw;
+      else
+#endif
+        fmt = is_2D ? dnnl::memory::format_tag::nchw : dnnl::memory::format_tag::ncdhw;
+    } else if (CPUIDInfo::GetCPUIDInfo().HasAVX512f()) {
 #ifdef ENABLE_TRAINING
       if (is_1D)
         fmt = dnnl::memory::format_tag::nCw16c;
       else
 #endif
       fmt = is_2D ? dnnl::memory::format_tag::nChw16c : dnnl::memory::format_tag::nCdhw16c;
-    } else if (!gpu_available_ && CPUIDInfo::GetCPUIDInfo().HasAVX2() && (src_dims_mkl[1] % 8 == 0)) {
+    } else if (CPUIDInfo::GetCPUIDInfo().HasAVX2() && (src_dims_mkl[1] % 8 == 0)) {
 #ifdef ENABLE_TRAINING
       if (is_1D)
         fmt = dnnl::memory::format_tag::nCw8c;

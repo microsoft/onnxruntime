@@ -3,7 +3,9 @@
 
 #pragma once
 
+#ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
+#endif
 #include <cmath>
 
 namespace onnxruntime {
@@ -46,7 +48,7 @@ enum ResizeNearestMode {
 
 class UpsampleBase {
  protected:
-  UpsampleBase(OpKernelInfo info) : scales_cached_(false), roi_cached_(false), use_extrapolation_(false) {
+  UpsampleBase(const OpKernelInfo& info) : scales_cached_(false), roi_cached_(false), use_extrapolation_(false) {
     const auto& node = info.node();
     auto opset = node.SinceVersion();
     is_resize_ = (opset >= 10);

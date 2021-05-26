@@ -11,18 +11,18 @@
 
 #include "core/common/common.h"
 #include "core/common/type_list.h"
-#include "core/framework/data_types.h"
 #include "core/framework/data_types_internal.h"
+#include "core/framework/data_types.h"
+#include "core/framework/element_type_lists.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/op_kernel_type_control.h"
-#include "core/providers/op_kernel_type_control_utils.h"
 #include "core/util/math_cpuonly.h"
 
 #include "Eigen/src/Core/arch/Default/BFloat16.h"
 #include "Eigen/src/Core/arch/Default/Half.h"
 
-#if defined(_M_AMD64)
+#if defined(_M_AMD64) && !defined(_M_ARM64EC)
 #include "core/mlas/inc/mlas.h"
 #endif
 
@@ -30,20 +30,29 @@ namespace onnxruntime {
 
 namespace op_kernel_type_control {
 // we're using one set of types for all opsets of Cast
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
-    ORT_OP_KERNEL_TYPE_CTRL_ALL_TENSOR_DATA_TYPES);
+    element_type_lists::All);
 
-ORT_SPECIFY_OP_KERNEL_ARG_SUPPORTED_TYPES_ALL_OPSETS(
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
+    bool, int32_t, int64_t);
+
+
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
-    ORT_OP_KERNEL_TYPE_CTRL_ALL_TENSOR_DATA_TYPES);
+    element_type_lists::All);
+
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
+    kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
+    bool, int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
 namespace {
-using SupportedSrcTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                           Cast, Input, 0);
-using SupportedDstTypes = ORT_OP_KERNEL_ARG_SUPPORTED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                           Cast, Output, 0);
+using SrcTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                Cast, Input, 0);
+using DstTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
+                                                                Cast, Output, 0);
 using EnabledSrcTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                        Cast, Input, 0);
 using EnabledDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
@@ -87,7 +96,7 @@ CastToString(const SrcType& input, std::string& output) {
 
     if (required_buffer_size > buffer_span.size()) {
       // didn't get it all, allocate a bigger buffer and retry
-      dynamic_buffer = onnxruntime::make_unique<char[]>(required_buffer_size);
+      dynamic_buffer = std::make_unique<char[]>(required_buffer_size);
       buffer_span = gsl::make_span(dynamic_buffer.get(), required_buffer_size);
       snprintf_result = std::snprintf(buffer_span.data(), buffer_span.size(), format, value);
       ORT_ENFORCE(
@@ -204,7 +213,7 @@ struct TensorCaster<std::string, DstType> {
   }
 };
 
-#if defined(_M_AMD64)
+#if defined(_M_AMD64) && !defined(_M_ARM64EC)
 // specializations to use optimized and Windows x64-specific
 // MlasConvertHalfToFloatBuffer() routine for MLFloat16 -> float conversion
 
@@ -279,8 +288,9 @@ template <typename TSrc>
 struct SrcDispatcher {
   void operator()(
       int32_t to, const OpKernelContext& context, const TensorShape& shape, const Tensor& src, Tensor& dst) {
-    using DstTypes = boost::mp11::mp_remove_if_q<EnabledDstTypes, boost::mp11::mp_bind_front<std::is_same, TSrc>>;
-    utils::MLTypeCallDispatcherFromTypeList<DstTypes> dispatcher{to};
+    using EnabledDstTypesWithoutSrcType =
+        boost::mp11::mp_remove_if_q<EnabledDstTypes, boost::mp11::mp_bind_front<std::is_same, TSrc>>;
+    utils::MLTypeCallDispatcherFromTypeList<EnabledDstTypesWithoutSrcType> dispatcher{to};
     dispatcher.template InvokeWithLeadingTemplateArgs<Dispatcher, TypeList<TSrc>>(context, shape, src, dst);
   }
 };
@@ -308,8 +318,8 @@ Status Cast::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-const auto supported_src_type_constraints = BuildKernelDefConstraintsFromTypeList<SupportedSrcTypes>();
-const auto supported_dst_type_constraints = BuildKernelDefConstraintsFromTypeList<SupportedDstTypes>();
+const auto src_type_constraints = BuildKernelDefConstraintsFromTypeList<SrcTypes>();
+const auto dst_type_constraints = BuildKernelDefConstraintsFromTypeList<DstTypes>();
 const auto enabled_src_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>();
 const auto enabled_dst_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>();
 
@@ -320,8 +330,8 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     6,
     12,
     KernelDefBuilder()
-        .TypeConstraint("T1", supported_src_type_constraints, enabled_src_type_constraints)
-        .TypeConstraint("T2", supported_dst_type_constraints, enabled_dst_type_constraints)
+        .TypeConstraint("T1", src_type_constraints, enabled_src_type_constraints)
+        .TypeConstraint("T2", dst_type_constraints, enabled_dst_type_constraints)
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
     Cast);
 
@@ -329,8 +339,8 @@ ONNX_CPU_OPERATOR_KERNEL(
     Cast,
     13,
     KernelDefBuilder()
-        .TypeConstraint("T1", supported_src_type_constraints, enabled_src_type_constraints)
-        .TypeConstraint("T2", supported_dst_type_constraints, enabled_dst_type_constraints)
+        .TypeConstraint("T1", src_type_constraints, enabled_src_type_constraints)
+        .TypeConstraint("T2", dst_type_constraints, enabled_dst_type_constraints)
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
     Cast);
 

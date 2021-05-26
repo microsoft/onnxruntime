@@ -1,0 +1,58 @@
+FROM nvidia/cuda:11.1.1-cudnn8-devel-ubuntu18.04
+
+ARG PYTHON_VERSION=3.6
+ARG INSTALL_DEPS_EXTRA_ARGS
+ARG USE_CONDA=false
+
+ADD scripts /tmp/scripts
+RUN /tmp/scripts/install_ubuntu.sh -p $PYTHON_VERSION && \
+    /tmp/scripts/install_os_deps.sh -d gpu $INSTALL_DEPS_EXTRA_ARGS
+
+# If USE_CONDA is false, use root to install python dependencies.
+RUN if [ "$USE_CONDA" = false ] ; \
+    then /tmp/scripts/install_python_deps.sh -p $PYTHON_VERSION -d gpu $INSTALL_DEPS_EXTRA_ARGS ; \
+    fi
+
+WORKDIR /root
+
+# Allow configure to pick up GDK and CuDNN where it expects it.
+# (Note: $CUDNN_VERSION is defined by NVidia's base image)
+RUN _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2) && \
+    mkdir -p /usr/local/cudnn-$_CUDNN_VERSION/cuda/include && \
+    ln -s /usr/include/cudnn.h /usr/local/cudnn-$_CUDNN_VERSION/cuda/include/cudnn.h && \
+    mkdir -p /usr/local/cudnn-$_CUDNN_VERSION/cuda/lib64 && \
+    ln -s /etc/alternatives/libcudnn_so /usr/local/cudnn-$_CUDNN_VERSION/cuda/lib64/libcudnn.so && \
+    ln -s /usr/local/cudnn{-$_CUDNN_VERSION,}
+
+ENV LD_LIBRARY_PATH /usr/local/openblas/lib:$LD_LIBRARY_PATH
+
+ARG BUILD_USER=onnxruntimedev
+ARG BUILD_UID=1000
+RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID
+WORKDIR /home/$BUILD_USER
+USER $BUILD_USER
+
+ARG MINICONDA_PREFIX=/home/$BUILD_USER/miniconda3
+RUN if [ "$USE_CONDA" = true ] ; \
+    then MINICONDA=miniconda.sh && \
+    wget --no-verbose https://repo.anaconda.com/miniconda/Miniconda3-py37_4.9.2-Linux-x86_64.sh -O $MINICONDA && \
+    chmod a+x $MINICONDA && \
+    ./$MINICONDA -b -p $MINICONDA_PREFIX && \
+    rm ./$MINICONDA && \
+    $MINICONDA_PREFIX/bin/conda clean --yes --all && \
+    $MINICONDA_PREFIX/bin/conda install -y python=$PYTHON_VERSION ; \
+    fi
+
+ENV PATH /home/$BUILD_USER/miniconda3/bin:$PATH
+
+# If USE_CONDA is true, use onnxruntimedev user to install python dependencies
+RUN if [ "$USE_CONDA" = true ] ; \
+    then /tmp/scripts/install_python_deps.sh -p $PYTHON_VERSION -d gpu $INSTALL_DEPS_EXTRA_ARGS -c ; \
+    fi
+
+WORKDIR /root
+USER root
+RUN rm -rf /tmp/scripts
+
+WORKDIR /home/$BUILD_USER
+USER $BUILD_USER

@@ -28,7 +28,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", BuildKernelDefConstraints<float, double, MLFloat16>()),
     Inverse);
 
@@ -72,7 +72,7 @@ struct Inverse::ComputeImpl {
     using namespace inverse_internal;
     using CudaT = typename ToCudaType<T>::MappedType;
     const size_t input_count = static_cast<size_t>(input.Shape().Size());
-    auto info_cpu = onnxruntime::make_unique<int[]>(num_batches);
+    auto info_cpu = std::make_unique<int[]>(num_batches);
     const auto dim = static_cast<int>(rows);
     const auto n_batches = static_cast<int>(num_batches);
 

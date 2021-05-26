@@ -385,6 +385,11 @@ inline const char* RunOptions::GetRunTag() const {
   return out;
 }
 
+inline RunOptions& RunOptions::AddConfigEntry(const char* config_key, const char* config_value) {
+  ThrowOnError(GetApi().AddRunConfigEntry(p_, config_key, config_value));
+  return *this;
+}
+
 inline RunOptions& RunOptions::SetTerminate() {
   ThrowOnError(GetApi().RunOptionsSetTerminate(p_));
   return *this;
@@ -490,6 +495,11 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_CUDA(const OrtCUD
   return *this;
 }
 
+inline SessionOptions& SessionOptions::AppendExecutionProvider_ROCM(const OrtROCMProviderOptions& provider_options) {
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_ROCM(p_, &provider_options));
+  return *this;
+}
+
 inline SessionOptions& SessionOptions::AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options) {
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_TensorRT(p_, &provider_options));
   return *this;
@@ -502,6 +512,11 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_OpenVINO(const Or
 
 inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options) {
   ThrowOnError(GetApi().CreateSession(env, model_path, options, &p_));
+}
+
+inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options,
+                        OrtPrepackedWeightsContainer* prepacked_weights_container) {
+  ThrowOnError(GetApi().CreateSessionWithPrepackedWeightsContainer(env, model_path, options, prepacked_weights_container, &p_));
 }
 
 inline Session::Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options) {
@@ -877,11 +892,11 @@ template <>
 inline std::string CustomOpApi::KernelInfoGetAttribute<std::string>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
   size_t size = 0;
   std::string out;
+
+  // Feed nullptr for the data buffer to query the true size of the string attribute
   OrtStatus* status = api_.KernelInfoGetAttribute_string(info, name, nullptr, &size);
 
-  // The status should be ORT_INVALID_ARGUMENT because the size is insufficient to hold the string
-  if (api_.GetErrorCode(status) == ORT_INVALID_ARGUMENT) {
-    api_.ReleaseStatus(status);
+  if (status == nullptr) {
     out.resize(size);
     ThrowOnError(api_.KernelInfoGetAttribute_string(info, name, &out[0], &size));
     out.resize(size - 1);  // remove the terminating character '\0'
@@ -891,6 +906,39 @@ inline std::string CustomOpApi::KernelInfoGetAttribute<std::string>(_In_ const O
   return out;
 }
 
+template <>
+inline std::vector<float> CustomOpApi::KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name) {
+  size_t size = 0;
+  std::vector<float> out;
+
+  // Feed nullptr for the data buffer to query the true size of the attribute
+  OrtStatus* status = api_.KernelInfoGetAttributeArray_float(info, name, nullptr, &size);
+
+  if (status == nullptr) {
+    out.resize(size);
+    ThrowOnError(api_.KernelInfoGetAttributeArray_float(info, name, out.data(), &size));
+  } else {
+    ThrowOnError(status);
+  }
+  return out;
+}
+
+template <>
+inline std::vector<int64_t> CustomOpApi::KernelInfoGetAttribute(_In_ const OrtKernelInfo* info, _In_ const char* name) {
+  size_t size = 0;
+  std::vector<int64_t> out;
+
+  // Feed nullptr for the data buffer to query the true size of the attribute
+  OrtStatus* status = api_.KernelInfoGetAttributeArray_int64(info, name, nullptr, &size);
+
+  if (status == nullptr) {
+    out.resize(size);
+    ThrowOnError(api_.KernelInfoGetAttributeArray_int64(info, name, out.data(), &size));
+  } else {
+    ThrowOnError(status);
+  }
+  return out;
+}
 inline OrtTensorTypeAndShapeInfo* CustomOpApi::GetTensorTypeAndShape(_In_ const OrtValue* value) {
   OrtTensorTypeAndShapeInfo* out;
   ThrowOnError(api_.GetTensorTypeAndShape(value, &out));

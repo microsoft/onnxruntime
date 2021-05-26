@@ -7,19 +7,24 @@
 
 set -e
 set -x
-
+export PATH=/opt/python/cp37-cp37m/bin:$PATH
 USAGE_TEXT="Usage:
   -b|--build-directory <build directory>
     Specifies the build directory. Required.
   -c|--reduced-ops-config <reduced Ops config file>
     Specifies the reduced Ops configuration file path. Required.
   [--enable-type-reduction]
-    Builds with type reduction enabled."
+    Builds with type reduction enabled.
+  [--enable-custom-ops]
+    Builds with custom op support enabled.
+  [--skip-model-tests]
+    Does not run the E2E model tests."
 
 BUILD_DIR=
 REDUCED_OPS_CONFIG_FILE=
 ENABLE_TYPE_REDUCTION=
 MINIMAL_BUILD_ARGS=
+SKIP_MODEL_TESTS=
 
 while [[ $# -gt 0 ]]
 do
@@ -41,6 +46,10 @@ do
             ;;
         --enable-custom-ops)
             MINIMAL_BUILD_ARGS="custom_ops"
+            shift
+            ;;
+        --skip-model-tests)
+            SKIP_MODEL_TESTS=1
             shift
             ;;
         *)
@@ -69,8 +78,10 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --include_ops_by_config ${REDUCED_OPS_CONFIG_FILE} \
     ${ENABLE_TYPE_REDUCTION:+"--enable_reduced_operator_type_support"}
 
-# Run the e2e test cases
-${BUILD_DIR}/Debug/onnx_test_runner /onnxruntime_src/onnxruntime/test/testdata/ort_minimal_e2e_test_data
+if [[ -z "${SKIP_MODEL_TESTS}" ]]; then
+    # Run the e2e model test cases
+    ${BUILD_DIR}/Debug/onnx_test_runner /onnxruntime_src/onnxruntime/test/testdata/ort_minimal_e2e_test_data
+fi
 
 # Print binary size info
 python3 /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/check_build_binary_size.py \

@@ -38,7 +38,7 @@ def create_config_from_models(model_path_or_dir: str, output_file: str = None, e
     Create a configuration file with required operators and optionally required types.
     :param model_path_or_dir: Path to recursively search for ORT format models, or to a single ORT format model.
     :param output_file: File to write configuration to.
-                        Defaults to creating required_operators.config in the model_path_or_dir directory.
+                        Defaults to creating required_operators[_and_types].config in the model_path_or_dir directory.
     :param enable_type_reduction: Include required type information for individual operators in the configuration.
     '''
 
@@ -49,14 +49,15 @@ def create_config_from_models(model_path_or_dir: str, output_file: str = None, e
         if not filename:
             raise RuntimeError("Invalid output path for configuration: {}".format(output_file))
 
-        if not os.path.exists(directory):
+        if directory and not os.path.exists(directory):
             os.makedirs(directory)
     else:
         dir = model_path_or_dir
         if os.path.isfile(model_path_or_dir):
-            dir = os.path.basename(model_path_or_dir)
+            dir = os.path.dirname(model_path_or_dir)
 
-        output_file = os.path.join(dir, 'required_operators.config')
+        output_file = os.path.join(
+            dir, 'required_operators_and_types.config' if enable_type_reduction else 'required_operators.config')
 
     with open(output_file, 'w') as out:
         out.write("# Generated from model/s in {}\n".format(model_path_or_dir))

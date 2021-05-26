@@ -1,22 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "div_grad.h"
-#include "div_grad_impl.h"
+#include "orttraining/training_ops/cuda/math/div_grad.h"
+#include "orttraining/training_ops/cuda/math/div_grad_impl.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 
 using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-#define DIVGRAD_REGISTER_KERNEL_TYPED(T)                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      DivGrad,                                                                  \
-      kMSDomain,                                                                \
-      1,                                                                        \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define DIVGRAD_REGISTER_KERNEL_TYPED(T)                                                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      DivGrad,                                                                             \
+      kMSDomain,                                                                           \
+      1,                                                                                   \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       DivGrad<T>);
 
 DIVGRAD_REGISTER_KERNEL_TYPED(MLFloat16)

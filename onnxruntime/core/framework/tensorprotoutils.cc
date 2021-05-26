@@ -86,16 +86,6 @@ bool operator!=(const ONNX_NAMESPACE::TensorShapeProto_Dimension& l,
 
 namespace {
 
-std::vector<int64_t> GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
-  const auto& dims = tensor_proto.dims();
-  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
-  for (int i = 0; i < dims.size(); ++i) {
-    tensor_shape_vec[i] = dims[i];
-  }
-
-  return tensor_shape_vec;
-}
-
 // This function doesn't support string tensors
 static Status UnpackTensorWithRawDataImpl(const void* raw_data, size_t raw_data_len,
                                           size_t expected_num_elements, size_t element_size,
@@ -121,10 +111,7 @@ static Status UnpackTensorWithRawDataImpl(const void* raw_data, size_t raw_data_
 template <typename T>
 Status UnpackTensorWithRawData(const void* raw_data, size_t raw_data_len, size_t expected_num_elements,
                                /*out*/ T* p_data) {
-  // std::is_trivially_copyable is not implemented in older versions of GCC
-#if !defined(__GNUC__) || __GNUC__ >= 5
   static_assert(std::is_trivially_copyable<T>::value, "T must be trivially copyable");
-#endif
 
   return UnpackTensorWithRawDataImpl(raw_data, raw_data_len, expected_num_elements, sizeof(T),
                                      reinterpret_cast<unsigned char*>(p_data));
@@ -214,10 +201,7 @@ template <typename T>
 Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
                                     const ORTCHAR_T* tensor_proto_dir, size_t expected_num_elements,
                                     /*out*/ T* p_data) {
-  // std::is_trivially_copyable is not implemented in older versions of GCC
-#if !defined(__GNUC__) || __GNUC__ >= 5
   static_assert(std::is_trivially_copyable<T>::value, "T must be trivially copyable");
-#endif
 
   return UnpackTensorWithExternalDataImpl(tensor, tensor_proto_dir, expected_num_elements, sizeof(T),
                                           reinterpret_cast<unsigned char*>(p_data));
@@ -506,6 +490,16 @@ TensorShape GetTensorShapeFromTensorShapeProto(const ONNX_NAMESPACE::TensorShape
   return TensorShape(std::move(tensor_shape_vec));
 }
 
+std::vector<int64_t> GetTensorShapeFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  const auto& dims = tensor_proto.dims();
+  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(dims.size()));
+  for (int i = 0; i < dims.size(); ++i) {
+    tensor_shape_vec[i] = dims[i];
+  }
+
+  return tensor_shape_vec;
+}
+
 struct UnInitializeParam {
   void* preallocated;
   size_t preallocated_size;
@@ -540,12 +534,6 @@ ORT_API(void, OrtUninitializeBuffer, _In_opt_ void* input, size_t input_len, enu
   for (size_t i = 0, n = tensor_size; i < n; ++i) {
     ptr[i].~string();
   }
-}
-
-static void UnInitTensor(void* param) noexcept {
-  UnInitializeParam* p = reinterpret_cast<UnInitializeParam*>(param);
-  OrtUninitializeBuffer(p->preallocated, p->preallocated_size, p->ele_type);
-  delete p;
 }
 
 class AutoDelete {
@@ -585,20 +573,13 @@ static Status GetFileContent(
   }
 
   // if that fails, try to copy
-  auto buffer = onnxruntime::make_unique<char[]>(length);
+  auto buffer = std::make_unique<char[]>(length);
   ORT_RETURN_IF_ERROR(env.ReadFileIntoBuffer(
       file_path, offset, length, gsl::make_span(buffer.get(), length)));
 
   deleter = OrtCallback{DeleteCharArray, buffer.get()};
   raw_buffer = buffer.release();
   return Status::OK();
-}
-
-static void MoveOrtCallback(OrtCallback& from, OrtCallback& to) {
-  to.f = from.f;
-  to.param = from.param;
-  from.f = nullptr;
-  from.param = nullptr;
 }
 
 #define CASE_PROTO(X, Y)                                                      \
@@ -608,6 +589,109 @@ static void MoveOrtCallback(OrtCallback& from, OrtCallback& to) {
                         (Y*)preallocated, static_cast<size_t>(tensor_size))); \
     break;
 
+/**
+ * @brief Convert tensor_proto to tensor format and store it to pre-allocated tensor 
+ * @param env 
+ * @param model_path     
+ * @param tensor_proto  tensor data in protobuf format
+ * @param tensorp       pre-allocated tensor object, where we store the data
+ * @return 
+*/
+Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
+                           const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                           Tensor& tensor) {
+  // Validate tensor compatibility
+  std::vector<int64_t> tensor_shape_vec = GetTensorShapeFromTensorProto(tensor_proto);
+  if (tensor_shape_vec != tensor.Shape().GetDims()) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "TensorProtoToTensor() tensor shape mismatch!");
+  }
+  const DataTypeImpl* const source_type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
+  if (source_type->Size() > tensor.DataType()->Size()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "TensorProto type ", DataTypeImpl::ToString(source_type),
+                           " can not be writen into Tensor type ", DataTypeImpl::ToString(tensor.DataType()));
+  }
+
+  // find raw data in proto buf
+  void* raw_data = nullptr;
+  SafeInt<size_t> raw_data_len = 0;
+  AutoDelete deleter_for_file_data;
+
+  if (utils::HasExternalData(tensor_proto)) {
+    // Get the external data info
+    std::basic_string<ORTCHAR_T> external_data_file_path;
+    FileOffsetType file_offset;
+    std::basic_string<ORTCHAR_T> tensor_proto_dir;
+    if (model_path != nullptr) {
+      ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
+    }
+    ORT_RETURN_IF_ERROR(GetExternalDataInfo(
+        tensor_proto,
+        tensor_proto_dir.size() == 0 ? nullptr : tensor_proto_dir.c_str(),
+        external_data_file_path, file_offset, raw_data_len));
+
+    // load the file
+    ORT_RETURN_IF_ERROR(GetFileContent(
+        env, external_data_file_path.c_str(), file_offset, raw_data_len,
+        raw_data, deleter_for_file_data.d));
+  } else if (utils::HasRawData(tensor_proto)) {
+    raw_data = const_cast<char*>(tensor_proto.raw_data().data());
+    // TODO The line above has const-correctness issues. Below is a possible fix which copies the tensor_proto data
+    //      into a writeable buffer. However, it requires extra memory which may exceed the limit for certain tests.
+    //auto buffer = std::make_unique<char[]>(tensor_proto.raw_data().size());
+    //std::memcpy(buffer.get(), tensor_proto.raw_data().data(), tensor_proto.raw_data().size());
+    //deleter_for_file_data.d = OrtCallback{DeleteCharArray, buffer.get()};
+    //raw_data = buffer.release();
+    raw_data_len = tensor_proto.raw_data().size();
+  }
+
+  if (nullptr != raw_data && utils::IsPrimitiveDataType<std::string>(source_type)) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor can not have raw data");
+  }
+
+  // unpacking tensor_proto data to preallocated tensor
+  void* preallocated = tensor.MutableDataRaw();
+  int64_t tensor_size = 1;
+  {
+    for (auto i : tensor_proto.dims()) {
+      if (i < 0) {
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "tensor can't contain negative dims");
+      }
+      tensor_size *= i;
+    }
+  }
+  // tensor_size could be zero. see test_slice_start_out_of_bounds\test_data_set_0\output_0.pb
+  if (static_cast<uint64_t>(tensor_size) > SIZE_MAX) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "size overflow");
+  }
+  switch (tensor_proto.data_type()) {
+    CASE_PROTO(FLOAT, float);
+    CASE_PROTO(DOUBLE, double);
+    CASE_PROTO(BOOL, bool);
+    CASE_PROTO(INT8, int8_t);
+    CASE_PROTO(INT16, int16_t);
+    CASE_PROTO(INT32, int32_t);
+    CASE_PROTO(INT64, int64_t);
+    CASE_PROTO(UINT8, uint8_t);
+    CASE_PROTO(UINT16, uint16_t);
+    CASE_PROTO(UINT32, uint32_t);
+    CASE_PROTO(UINT64, uint64_t);
+    CASE_PROTO(FLOAT16, MLFloat16);
+    CASE_PROTO(BFLOAT16, BFloat16);
+    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING:
+      ORT_RETURN_IF_ERROR(UnpackTensor<std::string>(tensor_proto, raw_data, raw_data_len,
+                                                    static_cast<std::string*>(preallocated),
+                                                    static_cast<size_t>(tensor_size)));
+      break;
+    default: {
+      std::ostringstream ostr;
+      ostr << "Initialized tensor with unexpected type: " << tensor_proto.data_type();
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostr.str());
+    }
+  }
+
+  return Status::OK();
+}
+
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable : 6239)
@@ -615,120 +699,31 @@ static void MoveOrtCallback(OrtCallback& from, OrtCallback& to) {
 // TODO: Change the current interface to take Path object for model path
 // so that validating and manipulating path for reading external data becomes easy
 Status TensorProtoToMLValue(const Env& env, const ORTCHAR_T* model_path,
-                            const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m, OrtValue& value,
-                            OrtCallback& deleter) {
-  const OrtMemoryInfo& allocator = m.GetAllocInfo();
-  ONNXTensorElementDataType ele_type = utils::GetTensorElementType(tensor_proto);
-  deleter.f = nullptr;
-  deleter.param = nullptr;
-  void* raw_data = nullptr;
-  SafeInt<size_t> raw_data_len = 0;
-  const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
-  AutoDelete deleter_for_file_data;
-  void* tensor_data;
-  {
-    if (utils::HasExternalData(tensor_proto)) {
-      // Get the external data info
-      std::basic_string<ORTCHAR_T> external_data_file_path;
-      FileOffsetType file_offset;
-      std::basic_string<ORTCHAR_T> tensor_proto_dir;
-      if (model_path != nullptr) {
-        ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
-      }
-      ORT_RETURN_IF_ERROR(GetExternalDataInfo(
-          tensor_proto,
-          tensor_proto_dir.size() == 0 ? nullptr : tensor_proto_dir.c_str(),
-          external_data_file_path, file_offset, raw_data_len));
-
-      // load the file
-      ORT_RETURN_IF_ERROR(GetFileContent(
-          env, external_data_file_path.c_str(), file_offset, raw_data_len,
-          raw_data, deleter_for_file_data.d));
-    } else if (utils::HasRawData(tensor_proto)) {
-      if (ele_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING)
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor can not have raw data");
-      raw_data = const_cast<char*>(tensor_proto.raw_data().data());
-      // TODO The line above has const-correctness issues. Below is a possible fix which copies the tensor_proto data
-      //      into a writeable buffer. However, it requires extra memory which may exceed the limit for certain tests.
-      //auto buffer = onnxruntime::make_unique<char[]>(tensor_proto.raw_data().size());
-      //std::memcpy(buffer.get(), tensor_proto.raw_data().data(), tensor_proto.raw_data().size());
-      //deleter_for_file_data.d = OrtCallback{DeleteCharArray, buffer.get()};
-      //raw_data = buffer.release();
-      raw_data_len = tensor_proto.raw_data().size();
-    }
-    if (endian::native == endian::little && raw_data != nullptr && deleter_for_file_data.d.f != nullptr) {
-      tensor_data = raw_data;
-      MoveOrtCallback(deleter_for_file_data.d, deleter);
-    } else {
-      void* preallocated = m.GetBuffer();
-      size_t preallocated_size = m.GetLen();
-      int64_t tensor_size = 1;
-      {
-        for (auto i : tensor_proto.dims()) {
-          if (i < 0)
-            return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "tensor can't contain negative dims");
-          tensor_size *= i;
-        }
-      }
-      // tensor_size could be zero. see test_slice_start_out_of_bounds\test_data_set_0\output_0.pb
-      if (static_cast<uint64_t>(tensor_size) > SIZE_MAX) {
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "size overflow");
-      }
-      size_t size_to_allocate;
-      if (!IAllocator::CalcMemSizeForArrayWithAlignment<0>(static_cast<size_t>(tensor_size), type->Size(),
-                                                           &size_to_allocate)) {
-        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "size overflow");
-      }
-
-      if (preallocated && preallocated_size < size_to_allocate)
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "The buffer planner is not consistent with tensor buffer size, expected ",
-                               size_to_allocate, ", got ", preallocated_size);
-      switch (tensor_proto.data_type()) {
-        CASE_PROTO(FLOAT, float);
-        CASE_PROTO(DOUBLE, double);
-        CASE_PROTO(BOOL, bool);
-        CASE_PROTO(INT8, int8_t);
-        CASE_PROTO(INT16, int16_t);
-        CASE_PROTO(INT32, int32_t);
-        CASE_PROTO(INT64, int64_t);
-        CASE_PROTO(UINT8, uint8_t);
-        CASE_PROTO(UINT16, uint16_t);
-        CASE_PROTO(UINT32, uint32_t);
-        CASE_PROTO(UINT64, uint64_t);
-        CASE_PROTO(FLOAT16, MLFloat16);
-        CASE_PROTO(BFLOAT16, BFloat16);
-        case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING:
-          if (preallocated != nullptr) {
-            OrtStatus* status = OrtInitializeBufferForTensor(preallocated, preallocated_size, ele_type);
-            if (status != nullptr) {
-              OrtApis::ReleaseStatus(status);
-              return Status(common::ONNXRUNTIME, common::FAIL, "initialize preallocated buffer failed");
-            }
-
-            deleter.f = UnInitTensor;
-            deleter.param = new UnInitializeParam{preallocated, preallocated_size, ele_type};
-          }
-          ORT_RETURN_IF_ERROR(UnpackTensor<std::string>(tensor_proto, raw_data, raw_data_len,
-                                                        static_cast<std::string*>(preallocated),
-                                                        static_cast<size_t>(tensor_size)));
-          break;
-        default: {
-          std::ostringstream ostr;
-          ostr << "Initialized tensor with unexpected type: " << tensor_proto.data_type();
-          return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, ostr.str());
-        }
-      }
-      tensor_data = preallocated;
-    }
+                            const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                            const MemBuffer& m, OrtValue& value) {
+  if (m.GetBuffer() == nullptr) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  "TensorProtoToMLValue() must take a pre-allocated MemBuffer!");
   }
-  std::vector<int64_t> tensor_shape_vec = GetTensorShapeFromTensorProto(tensor_proto);
+
+  ONNXTensorElementDataType ele_type = utils::GetTensorElementType(tensor_proto);
+  if (ele_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "string tensor can not use pre-allocated buffer");
+  }
+
   // Note: We permit an empty tensor_shape_vec, and treat it as a scalar (a tensor of size 1).
-  TensorShape tensor_shape{tensor_shape_vec};
+  TensorShape tensor_shape{GetTensorShapeFromTensorProto(tensor_proto)};
+  const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
+  std::unique_ptr<Tensor> tensorp = std::make_unique<Tensor>(type, tensor_shape, m.GetBuffer(), m.GetAllocInfo());
+  if (tensorp->SizeInBytes() > m.GetLen()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The preallocated buffer is too small. Requires ",
+                           tensorp->SizeInBytes(), ", Got ", m.GetLen());
+  }
+
+  TensorProtoToTensor(env, model_path, tensor_proto, *tensorp);
 
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-  value.Init(new Tensor(type, tensor_shape, tensor_data, allocator), ml_tensor,
-             ml_tensor->GetDeleteFunc());
+  value.Init(tensorp.release(), ml_tensor, ml_tensor->GetDeleteFunc());
   return Status::OK();
 }
 #ifdef _MSC_VER
@@ -908,9 +903,10 @@ static Status CopySparseData(size_t n_sparse_elements,
   return status;
 }
 
+namespace conversion_internal {
 struct UnsupportedSparseDataType {
-  Status operator()(int32_t dt_type) const {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported sparse tensor data type of ", dt_type);
+  void operator()(int32_t dt_type, Status& status) const {
+    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported sparse tensor data type of ", dt_type);
   }
 };
 
@@ -921,6 +917,10 @@ struct GetElementSize {
     return Status::OK();
   }
 };
+
+using SupportedConversionTypeList = onnxruntime::TypeList<float, double, MLFloat16, BFloat16,
+                                                          int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>;
+}  // namespace conversion_internal
 
 common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseTensorProto& sparse,
                                                    const Path& model_path,
@@ -954,9 +954,9 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
     void* sparse_data = sparse_data_storage.get();
     size_t element_size = 0;
     // We want to this list to match the one used below in DenseTensorToSparseTensorProto()
-    MLTypeCallDispatcher<float, int8_t, uint8_t> type_disp(type);
+    MLTypeCallDispatcherFromTypeList<conversion_internal::SupportedConversionTypeList> type_disp(type);
     ORT_RETURN_IF_ERROR(
-        (type_disp.InvokeRetWithUnsupportedPolicy<Status, GetElementSize, UnsupportedSparseDataType>(element_size)));
+        (type_disp.InvokeRetWithUnsupportedPolicy<Status, conversion_internal::GetElementSize, conversion_internal::UnsupportedSparseDataType>(element_size)));
 
     // by putting the data into a std::string we can avoid a copy as set_raw_data can do a std::move
     // into the TensorProto. however to actually write to the buffer we have created in the std::string we need
@@ -964,41 +964,67 @@ common::Status SparseTensorProtoToDenseTensorProto(const ONNX_NAMESPACE::SparseT
     // but using const_cast makes it more obvious we're doing something ugly.
     // C++17 add non-const data() where we could remove const_cast
     std::string dense_data_storage(n_dense_elements * element_size, 0);
-    void* dense_data = const_cast<char*>(dense_data_storage.data());
+    if (n_sparse_elements > 0) {
+      void* dense_data = const_cast<char*>(dense_data_storage.data());
 
-    switch (element_size) {
-      case 1: {
-        auto dense_data_span = gsl::make_span<uint8_t>(static_cast<uint8_t*>(dense_data), n_dense_elements);
-        status = CopySparseData<uint8_t>(
-            n_sparse_elements,
-            indices, dims,
-            [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
-              dense_data_span[to_idx] = static_cast<const uint8_t*>(sparse_data)[from_idx];
-            });
+      switch (element_size) {
+        case 1: {
+          auto dense_data_span = gsl::make_span<uint8_t>(static_cast<uint8_t*>(dense_data), n_dense_elements);
+          status = CopySparseData<uint8_t>(
+              n_sparse_elements,
+              indices, dims,
+              [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
+                dense_data_span[to_idx] = static_cast<const uint8_t*>(sparse_data)[from_idx];
+              });
 
-        break;
-      }
-      case 4: {
-        auto dense_data_span = gsl::make_span<uint32_t>(static_cast<uint32_t*>(dense_data), n_dense_elements);
-        status = CopySparseData<uint32_t>(
-            n_sparse_elements,
-            indices, dims,
-            [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
-              dense_data_span[to_idx] = static_cast<const uint32_t*>(sparse_data)[from_idx];
-            });
+          break;
+        }
+        case 2: {
+          auto dense_data_span = gsl::make_span<uint16_t>(static_cast<uint16_t*>(dense_data), n_dense_elements);
+          status = CopySparseData<uint16_t>(
+              n_sparse_elements,
+              indices, dims,
+              [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
+                dense_data_span[to_idx] = static_cast<const uint16_t*>(sparse_data)[from_idx];
+              });
 
-        break;
-      }
-      default:
-        ORT_THROW(false, "BUG! Report to onnxruntime team.");
+          break;
+        }
+        case 4: {
+          auto dense_data_span = gsl::make_span<uint32_t>(static_cast<uint32_t*>(dense_data), n_dense_elements);
+          status = CopySparseData<uint32_t>(
+              n_sparse_elements,
+              indices, dims,
+              [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
+                dense_data_span[to_idx] = static_cast<const uint32_t*>(sparse_data)[from_idx];
+              });
+
+          break;
+        }
+        case 8: {
+          auto dense_data_span = gsl::make_span<uint64_t>(static_cast<uint64_t*>(dense_data), n_dense_elements);
+          status = CopySparseData<uint64_t>(
+              n_sparse_elements,
+              indices, dims,
+              [sparse_data, dense_data_span](size_t from_idx, size_t to_idx) {
+                dense_data_span[to_idx] = static_cast<const uint64_t*>(sparse_data)[from_idx];
+              });
+          break;
+        }
+
+        default:
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 " BUG! Report to onnxruntime team. element_size of: ",
+                                 element_size, " is not supported.", " type: ", type);
+     }
+
+      ORT_RETURN_IF_ERROR(status);
     }
-
-    ORT_RETURN_IF_ERROR(status);
     dense.set_raw_data(std::move(dense_data_storage));
 
   } else {
     // No request for std::string
-    status = UnsupportedSparseDataType()(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+    conversion_internal::UnsupportedSparseDataType()(ONNX_NAMESPACE::TensorProto_DataType_STRING, status);
   }
   return status;
 }
@@ -1039,13 +1065,15 @@ static void SparsifyGeneric(const void* dense_raw_data, size_t n_dense_elements,
   }
 }
 
+// Here we are not using tolerance for FP types since these dense tensors were
+// created from sparse initializers where zeros were absolute
 template <typename T>
-bool IsZero(const void* p) {
+inline bool IsZero(const void* p) {
   return (static_cast<T>(0) == *reinterpret_cast<const T*>(p));
 }
 
 template <typename T>
-void CopyElement(void* dst, const void* src, int64_t dst_index, int64_t src_index) {
+inline void CopyElement(void* dst, const void* src, int64_t dst_index, int64_t src_index) {
   reinterpret_cast<T*>(dst)[dst_index] = reinterpret_cast<const T*>(src)[src_index];
 }
 
@@ -1056,7 +1084,9 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
 
   const bool is_string_data = dense_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING;
   if (is_string_data) {
-    return UnsupportedSparseDataType()(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+    Status status{};
+    conversion_internal::UnsupportedSparseDataType()(ONNX_NAMESPACE::TensorProto_DataType_STRING, status);
+    return status;
   }
 
   const auto data_type = dense_proto.data_type();
@@ -1077,25 +1107,36 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
   std::unique_ptr<uint8_t[]> dense_raw_data;
   ORT_RETURN_IF_ERROR(UnpackInitializerData(dense_proto, model_path, dense_raw_data, tensor_bytes_size));
   size_t element_size = 0;
-  MLTypeCallDispatcher<float, int8_t, uint8_t> type_disp(data_type);
+  // We want this type list to match the one above in SparseTensorProtoToDenseTensorProto
+  MLTypeCallDispatcherFromTypeList<conversion_internal::SupportedConversionTypeList> type_disp(data_type);
   ORT_RETURN_IF_ERROR(
-      (type_disp.InvokeRetWithUnsupportedPolicy<Status, GetElementSize, UnsupportedSparseDataType>(element_size)));
+      (type_disp.InvokeRetWithUnsupportedPolicy<Status, conversion_internal::GetElementSize, conversion_internal::UnsupportedSparseDataType>(element_size)));
 
   switch (element_size) {
     case 1: {
-      // bytes
       SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
                       IsZero<uint8_t>, CopyElement<uint8_t>, values, indices);
       break;
     }
+    case 2: {
+      SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
+                      IsZero<uint16_t>, CopyElement<uint16_t>, values, indices);
+      break;
+    }
     case 4: {
-      // float
       SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
                       IsZero<uint32_t>, CopyElement<uint32_t>, values, indices);
       break;
     }
+    case 8: {
+      SparsifyGeneric(dense_raw_data.get(), n_dense_elements, element_size,
+                      IsZero<uint64_t>, CopyElement<uint64_t>, values, indices);
+      break;
+    }
     default:
-      ORT_THROW(false, "BUG! Report to onnxruntime team.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             " BUG! Report to onnxruntime team. element_size of: ",
+                             element_size, " is not supported.", " data_type: ", data_type);
   }
 
   // Fix up shapes

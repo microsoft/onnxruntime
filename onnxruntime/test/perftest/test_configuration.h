@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <map>
 #include <cstdint>
 #include <string>
 
@@ -54,6 +55,8 @@ struct RunConfig {
   bool do_cuda_copy_in_separate_stream{false};
   bool set_denormal_as_zero{false};
   std::basic_string<ORTCHAR_T> ep_runtime_config_string;
+  std::map<std::basic_string<ORTCHAR_T>, int64_t> free_dim_name_overrides;
+  std::map<std::basic_string<ORTCHAR_T>, int64_t> free_dim_denotation_overrides;
 };
 
 struct PerformanceTestConfig {

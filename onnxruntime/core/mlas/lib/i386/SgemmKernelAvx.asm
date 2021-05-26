@@ -27,7 +27,7 @@ INCLUDE SgemmKernelCommon.inc
 
         ASSUME  DS:FLAT,ES:FLAT,SS:NOTHING,FS:NOTHING,GS:NOTHING
 
-        EXTERN  _MlasMaskMoveAvx:NEAR
+        EXTERN  _MlasMaskMoveTableAvx:NEAR
 
 _TEXT   SEGMENT DWORD PUBLIC 'CODE'
 
@@ -319,11 +319,8 @@ SkipAccumulateMasked16x2Block:
         add     ebp,8                       ; correct for over-subtract above
 
 OutputMasked8x2Block:
-        mov     SgemmKernelFrame.CountN[esp],ebp
-        vbroadcastss xmm0,SgemmKernelFrame.CountN[esp]
-        vpcmpgtd xmm1,xmm0,XMMWORD PTR [_MlasMaskMoveAvx+16]
-        vpcmpgtd xmm0,xmm0,XMMWORD PTR [_MlasMaskMoveAvx]
-        vinsertf128 ymm0,ymm0,xmm1,1
+        neg     ebp
+        vmovdqu ymm0,YMMWORD PTR [_MlasMaskMoveTableAvx+ebp*4+8*4]
         cmp     BYTE PTR SgemmKernelFrame.ZeroMode[esp],0
         jnz     SkipAccumulateMasked8x2Block
         vmaskmovps ymm4,ymm0,YMMWORD PTR [esi]
@@ -398,11 +395,8 @@ SkipAccumulateMasked16x1Block:
         add     ebp,8                       ; correct for over-subtract above
 
 OutputMasked8x1Block:
-        mov     SgemmKernelFrame.CountN[esp],ebp
-        vbroadcastss xmm0,SgemmKernelFrame.CountN[esp]
-        vpcmpgtd xmm1,xmm0,XMMWORD PTR [_MlasMaskMoveAvx+16]
-        vpcmpgtd xmm0,xmm0,XMMWORD PTR [_MlasMaskMoveAvx]
-        vinsertf128 ymm0,ymm0,xmm1,1
+        neg     ebp
+        vmovdqu ymm0,YMMWORD PTR [_MlasMaskMoveTableAvx+ebp*4+8*4]
         cmp     BYTE PTR SgemmKernelFrame.ZeroMode[esp],0
         jnz     SkipAccumulateMasked8x1Block
         vmaskmovps ymm4,ymm0,YMMWORD PTR [esi]

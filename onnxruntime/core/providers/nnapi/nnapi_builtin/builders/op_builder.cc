@@ -272,15 +272,23 @@ enum DataLayout {
   L_1230 = 1,
 };
 
-// TODO, replace this with more efficient code in optimizers
+// This is primarily used for adding the weight (an initializer) of Conv/QlinearConv
+// And perform layout change from ONNX -> NNAPI
+// If is_per_tensor_u8s8 is true, the QlinearConv is per-tensor u8s8 (input X is unsigned int8
+// and weight W is signed int8 and it is per-tensor (NOT per-channel) quantized), in this case,
+// since NNAPI requires X and W to be same type for per-tensor quantization,
+// the initializer tensor W will be converted from int8 to uint8 by flip each byte by XOR 0x80
+// byte ^ 0x80 == byte + 128
 static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
                                         const std::string& name,
                                         const OperandType& source_operand_type,
-                                        DataLayout new_layout) ORT_MUST_USE_RESULT;
+                                        DataLayout new_layout,
+                                        bool is_per_tensor_u8s8) ORT_MUST_USE_RESULT;
 static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
                                         const std::string& name,
                                         const OperandType& source_operand_type,
-                                        DataLayout new_layout) {
+                                        DataLayout new_layout,
+                                        bool is_per_tensor_u8s8) {
   const auto& tensor = *model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_operand_type.dimensions;
   ORT_RETURN_IF_NOT(shape.size() == 4,
@@ -322,6 +330,8 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
   std::unique_ptr<uint8_t[]> buffer_holder(new uint8_t[operand_type.GetOperandBlobByteSize()]);
   uint8_t* buffer = buffer_holder.get();
   size_t element_size = operand_type.GetElementByteSize();
+
+  uint8_t bit_flip_val = is_per_tensor_u8s8 ? 0x80 : 0;
   for (uint32_t out = 0; out < out_t; out++) {
     for (uint32_t in = 0; in < in_t; in++) {
       for (uint32_t h = 0; h < h_t; h++) {
@@ -345,7 +355,7 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
           }
 
           for (size_t i = 0; i < element_size; i++) {
-            buffer[element_size * nnapi_idx + i] = src[element_size * onnx_idx + i];
+            buffer[element_size * nnapi_idx + i] = src[element_size * onnx_idx + i] ^ bit_flip_val;
           }
         }
       }
@@ -355,13 +365,21 @@ static Status AddInitializerInNewLayout(ModelBuilder& model_builder,
   return model_builder.AddOperandFromPersistMemoryBuffer(name, &buffer[0], operand_type);
 }
 
-// TODO, replace this with more efficient code in optimizers
+// This is primarily used for adding the input B (an initializer) of MatMul/QlinearMatMul/Gemm (not transposed)
+// and transpose it, since for NNAPI only supports A*B'
+//
+// If is_per_tensor_u8s8 is true, the QlinearMatMul is per-tensor u8s8 (input A is unsigned int8
+// and input B is signed int8), in this case, since NNAPI requires A and B to be same type,
+// the initializer tensor B will be converted from int8 to uint8 by flip each byte by XOR 0x80
+// byte ^ 0x80 == byte + 128
 static Status AddInitializerTransposed(ModelBuilder& model_builder,
                                        const OperandType& source_operand_type,
-                                       const std::string& name) ORT_MUST_USE_RESULT;
+                                       const std::string& name,
+                                       bool is_per_tensor_u8s8) ORT_MUST_USE_RESULT;
 static Status AddInitializerTransposed(ModelBuilder& model_builder,
                                        const OperandType& source_operand_type,
-                                       const std::string& name) {
+                                       const std::string& name,
+                                       bool is_per_tensor_u8s8) {
   const auto& tensor = *model_builder.GetInitializerTensors().at(name);
   const Shape& shape = source_operand_type.dimensions;
 
@@ -397,10 +415,11 @@ static Status AddInitializerTransposed(ModelBuilder& model_builder,
   std::unique_ptr<uint8_t[]> buffer_holder(new uint8_t[operand_type.GetOperandBlobByteSize()]);
   uint8_t* buffer = buffer_holder.get();
   size_t element_size = operand_type.GetElementByteSize();
+  uint8_t bit_flip_val = is_per_tensor_u8s8 ? 0x80 : 0;
   for (uint32_t x = 0; x < x_t; x++) {
     for (uint32_t y = 0; y < y_t; y++) {
       for (size_t i = 0; i < element_size; i++) {
-        buffer[element_size * (y * x_t + x) + i] = src[element_size * (x * y_t + y) + i];
+        buffer[element_size * (y * x_t + x) + i] = src[element_size * (x * y_t + y) + i] ^ bit_flip_val;
       }
     }
   }
@@ -518,16 +537,26 @@ static Status GetBinaryOpQuantizationScaleAndZeroPoint(
   return Status::OK();
 }
 
-static Status GetConvOpQuantizationScaleAndZeroPoint(
+// Get scale and zero point for
+// [QlinearConv] input, weight, output
+// [QlinearMatMul] A, B, Y
+//
+// In case of u8s8 (input/A is uint8 and weight/B is int8)
+// If the QlinearConv is using per-channel u8s8, return the scales vector
+// If the Qlinear[Conv/MatMul] is using per-tensor u8s8, the weight/B tensor
+// will be convert to uint8 later, will return the same scale and 128 as zero point
+// Also will set is_per_tensor_u8s8 to true to be used later
+static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
     const ModelBuilder& model_builder, const Node& node,
     float& a_scale, float& w_scale, float& y_scale,
     int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
-    optional<vector<float>>& w_scales) ORT_MUST_USE_RESULT;
-static Status GetConvOpQuantizationScaleAndZeroPoint(
+    optional<vector<float>>& w_scales, bool& is_per_tensor_u8s8) ORT_MUST_USE_RESULT;
+static Status GetConvMatMulOpQuantizationScaleAndZeroPoint(
     const ModelBuilder& model_builder, const Node& node,
     float& a_scale, float& w_scale, float& y_scale,
     int32_t& a_zero_point, int32_t& w_zero_point, int32_t& y_zero_point,
-    optional<vector<float>>& w_scales) {
+    optional<vector<float>>& w_scales, bool& is_per_tensor_u8s8) {
+  is_per_tensor_u8s8 = false;
   // Get scale and zero points
   // We will handle per-channel weight scale and zero point later
   ORT_RETURN_IF_ERROR(
@@ -543,14 +572,26 @@ static Status GetConvOpQuantizationScaleAndZeroPoint(
   if (weight_tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8)
     return Status::OK();
 
-  // Now we have u8s8 QlinearConv
+  // This is per-tensor u8s8
+  // NNAPI does not support per-tensor u8s8
+  // For this case we will need to convert the int8 weight tensor to uint8
+  // And have same scale and 128 as zero point
+  // The conversion of the weight tensor itself will be done in the OpBuilder
+  const auto& scale_tensor = *initializers.at(input_defs[4]->Name());
+  int64_t scale_dim = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
+  if (scale_dim == 1) {
+    w_zero_point = 128;
+    is_per_tensor_u8s8 = true;
+    return Status::OK();
+  }
+
+  // Now we have u8s8 per-channel QlinearConv
   // u8s8 QlinearConv always have 0 as zero point so we are not getting it here
   // and we do not use w_scale here, so we reset them back to 0
   w_scale = 0.0f;
   w_zero_point = 0;
 
   // We need to copy the 1d scales array for per-channel quantization
-  const auto& scale_tensor = *initializers.at(input_defs[4]->Name());
   const auto* scales = GetTensorFloatData(scale_tensor);
   size_t scales_size = scale_tensor.dims().empty() ? 1 : scale_tensor.dims()[0];
   vector<float> scales_vec(scales_size, 0.0f);
@@ -627,12 +668,7 @@ static void AddBinaryOpQuantizationScaleAndZeroPointToSkip(ModelBuilder& model_b
   model_builder.AddInitializerToSkip(input_defs[7]->Name());  // y_zero_point
 }
 
-Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
-                                          const Node& node,
-                                          const std::string& input_name,
-                                          float& scale,
-                                          int32_t& zero_point) ORT_MUST_USE_RESULT;
-Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
+Status GetQuantizedInputScaleAndZeroPoint(const InitializedTensorSet& initializers,
                                           const Node& node,
                                           const std::string& input_name,
                                           float& scale,
@@ -644,7 +680,8 @@ Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
 
   size_t scale_idx, zero_point_idx;
   if (qlinear_op_type == QLinearOpType::DequantizeLinear ||
-      qlinear_op_type == QLinearOpType::QLinearSigmoid) {
+      qlinear_op_type == QLinearOpType::QLinearSigmoid ||
+      qlinear_op_type == QLinearOpType::QLinearAveragePool) {
     scale_idx = 1;
     zero_point_idx = 2;
   } else if (IsQLinearBinaryOp(qlinear_op_type)) {
@@ -663,10 +700,10 @@ Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported op: ", op_type);
   }
 
-  scale = GetQuantizationScale(model_builder.GetInitializerTensors(), node, scale_idx);
+  scale = GetQuantizationScale(initializers, node, scale_idx);
   zero_point = 0;
-  if (node.InputDefs().size() > 2) {
-    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(model_builder.GetInitializerTensors(), node, zero_point_idx, zero_point));
+  if (node.InputDefs().size() > zero_point_idx) {
+    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, zero_point_idx, zero_point));
   }
 
   return Status::OK();
@@ -680,7 +717,7 @@ void CreateSharedOpBuilderImpl(const std::string& op_type,
   if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
     return;
 
-  op_registrations.builders.push_back(onnxruntime::make_unique<T>());
+  op_registrations.builders.push_back(std::make_unique<T>());
   for (const auto& op : op_types) {
     op_registrations.op_builder_map.emplace(op, op_registrations.builders.back().get());
   }
@@ -1139,11 +1176,28 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 
 class PoolOpBuilder : public BaseOpBuilder {
  public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
+
+void PoolOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  const auto& op = node.OpType();
+  if (op != "QLinearAveragePool")
+    return;
+
+  const auto input_defs = node.InputDefs();
+
+  // skip input/output scales and zeropoints
+  model_builder.AddInitializerToSkip(input_defs[1]->Name());  // X_scale
+  model_builder.AddInitializerToSkip(input_defs[2]->Name());  // X_zero_point
+  model_builder.AddInitializerToSkip(input_defs[3]->Name());  // Y_scale
+
+  if (input_defs.size() == 5)                                   // has Y_zero_point input
+    model_builder.AddInitializerToSkip(input_defs[4]->Name());  // Y_zero_point
+}
 
 /* static */ void PoolOpBuilder::CreateSharedOpBuilder(
     const std::string& op_type, OpBuilderRegistrations& op_registrations) {
@@ -1154,6 +1208,7 @@ class PoolOpBuilder : public BaseOpBuilder {
           "GlobalMaxPool",
           "AveragePool",
           "MaxPool",
+          "QLinearAveragePool",
       });
 }
 
@@ -1181,7 +1236,8 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& op_type = node.OpType();
 
   int32_t op_code;
-  bool is_average_pool = op_type == "AveragePool";
+  bool is_qlinear_average_pool = op_type == "QLinearAveragePool";
+  bool is_average_pool = op_type == "AveragePool" || is_qlinear_average_pool;
   if (is_average_pool || op_type == "GlobalAveragePool")
     op_code = ANEURALNETWORKS_AVERAGE_POOL_2D;
   else  // (op_type == "MaxPool" || op_type == "GlobalMaxPool")
@@ -1218,6 +1274,24 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
+
+  // Get output scale and zero point if this is QLinearAveragePool
+  float y_scale = 0.0f;
+  int32_t y_zero_point = 0;
+  if (is_qlinear_average_pool) {
+    const auto& initializers = model_builder.GetInitializerTensors();
+    float x_scale = GetQuantizationScale(initializers, node, 1 /* idx */);
+    int32_t x_zero_point = 0;
+    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 2 /* idx */, x_zero_point));
+
+    // Verify if the scale and zero point values from onnx input and nnapi input match
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
+
+    y_scale = GetQuantizationScale(initializers, node, 3 /* idx */);
+    if (node.InputDefs().size() > 4)
+      ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 4 /* idx */, y_zero_point));
+  }
+
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
 
@@ -1244,8 +1318,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
                                   onnx_pads, onnx_strides, kernel_shape,
                                   use_nchw,
                                   output));
-  OperandType output_operand_type = operand_types.at(input);
-  output_operand_type.SetDimensions(shaper[output]);
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output], y_scale, y_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
                                                  {output}, {output_operand_type}, {output_is_nhwc}));
   return Status::OK();
@@ -1345,12 +1418,12 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   // this is for per-channel quantization weights
   optional<vector<float>> w_scales;
-
+  bool is_per_tensor_u8s8 = false;
   if (is_qlinear_conv) {
-    ORT_RETURN_IF_ERROR(GetConvOpQuantizationScaleAndZeroPoint(model_builder, node,
-                                                               x_scale, w_scale, y_scale,
-                                                               x_zero_point, w_zero_point, y_zero_point,
-                                                               w_scales));
+    ORT_RETURN_IF_ERROR(GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node,
+                                                                     x_scale, w_scale, y_scale,
+                                                                     x_zero_point, w_zero_point, y_zero_point,
+                                                                     w_scales, is_per_tensor_u8s8));
   }
 
   Shape onnx_weight_shape;
@@ -1366,7 +1439,15 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       onnx_weight_type = Type::TENSOR_QUANT8_ASYMM;
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-      onnx_weight_type = Type::TENSOR_QUANT8_SYMM_PER_CHANNEL;
+      // We support both per-tensor and per-channel u8s8
+      // For per-tensor u8s8 we will convert the int8 weight to uint8
+      if (is_per_tensor_u8s8) {
+        // Per-Tensor u8s8
+        onnx_weight_type = Type::TENSOR_QUANT8_ASYMM;
+      } else {
+        // Per-Channel u8s8
+        onnx_weight_type = Type::TENSOR_QUANT8_SYMM_PER_CHANNEL;
+      }
       break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -1384,9 +1465,9 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   // Pre-process weights
   if (conv_2d || grouped_conv_2d) {
-    ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight, onnx_weight_operand_type, L_0231));
+    ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight, onnx_weight_operand_type, L_0231, is_per_tensor_u8s8));
   } else {  // depthwise_conv_2d
-    ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight, onnx_weight_operand_type, L_1230));
+    ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight, onnx_weight_operand_type, L_1230, is_per_tensor_u8s8));
   }
 
   if (is_qlinear_conv) {
@@ -1697,10 +1778,14 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
           b_zero_point = 0,
           y_zero_point = 0;
 
+  bool is_per_tensor_u8s8 = false;
   if (is_qlinear_matmul) {
-    ORT_RETURN_IF_ERROR(GetBinaryOpQuantizationScaleAndZeroPoint(model_builder, node,
-                                                                 a_scale, b_scale, y_scale,
-                                                                 a_zero_point, b_zero_point, y_zero_point));
+    optional<vector<float>> w_scales;
+    ORT_RETURN_IF_ERROR(
+        GetConvMatMulOpQuantizationScaleAndZeroPoint(model_builder, node,
+                                                     a_scale, b_scale, y_scale,
+                                                     a_zero_point, b_zero_point, y_zero_point,
+                                                     w_scales, is_per_tensor_u8s8));
   }
 
   uint32_t input_2_idx;
@@ -1717,7 +1802,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       onnx_mat_b_shape.push_back(SafeInt<uint32_t>(dim));
 
     const OperandType onnx_mat_b_operand_type(onnx_mat_b_type, onnx_mat_b_shape, b_scale, b_zero_point);
-    ORT_RETURN_IF_ERROR(AddInitializerTransposed(model_builder, onnx_mat_b_operand_type, input2));
+    ORT_RETURN_IF_ERROR(AddInitializerTransposed(model_builder, onnx_mat_b_operand_type, input2, is_per_tensor_u8s8));
   }
 
   input_2_idx = operand_indices.at(input2);
@@ -2225,7 +2310,7 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   float min, max;
-  GetClipMinMax(model_builder.GetInitializerTensors(), node, min, max);
+  GetClipMinMax(model_builder.GetInitializerTensors(), node, min, max, logging::LoggingManager::DefaultLogger());
 
   int32_t op_code;
   if (min == 0.0f && max == 6.0f)
@@ -2256,6 +2341,9 @@ class ResizeOpBuilder : public BaseOpBuilder {
 };
 
 void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  // We don't really use ROI here, so add them to skipped list
+  model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // ROI
+
   // We will still add scales to the skipped list even sizes are present
   // since there is no use of it, we will not process it later
   model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  // scales
@@ -2456,7 +2544,7 @@ Status MinMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 // This is for ops with dedicated OpBuilder
 #define NNAPI_EP_ADD_SINGLE_OP_BUILDER(OP_TYPE, BUILDER_NAME)                                 \
   {                                                                                           \
-    op_registrations.builders.push_back(onnxruntime::make_unique<BUILDER_NAME>());            \
+    op_registrations.builders.push_back(std::make_unique<BUILDER_NAME>());                    \
     op_registrations.op_builder_map.emplace(OP_TYPE, op_registrations.builders.back().get()); \
   }
 
@@ -2482,6 +2570,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_BUILDER("GlobalMaxPool", PoolOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("AveragePool", PoolOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("MaxPool", PoolOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearAveragePool", PoolOpBuilder);
   }
 
   {

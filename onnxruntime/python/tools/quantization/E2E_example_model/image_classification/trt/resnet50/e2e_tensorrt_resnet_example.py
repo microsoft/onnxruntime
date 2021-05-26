@@ -7,7 +7,7 @@ import logging
 from PIL import Image
 import onnx
 import onnxruntime
-from onnxruntime.quantization import CalibrationDataReader, create_calibrater, write_calibration_table
+from onnxruntime.quantization import CalibrationDataReader, create_calibrator, write_calibration_table
 
 
 class ImageNetDataReader(CalibrationDataReader):
@@ -258,9 +258,13 @@ class ImageClassificationEvaluator:
 
 def convert_model_batch_to_dynamic(model_path):
     model = onnx.load(model_path)
-    input = model.graph.input
-    input_name = input[0].name
-    shape = input[0].type.tensor_type.shape
+    initializers =  [node.name for node in model.graph.initializer]
+    inputs = []
+    for node in model.graph.input:
+        if node.name not in initializers:
+            inputs.append(node)
+    input_name = inputs[0].name
+    shape = inputs[0].type.tensor_type.shape
     dim = shape.dim
     if not dim[0].dim_param:
         dim[0].dim_param = 'N'
@@ -329,6 +333,8 @@ if __name__ == '__main__':
 
     # Generate INT8 calibration table
     if calibration_table_generation_enable:
+        calibrator = create_calibrator(new_model_path, [], augmented_model_path=augmented_model_path)
+        calibrator.set_execution_providers(["CUDAExecutionProvider"])        
         data_reader = ImageNetDataReader(ilsvrc2012_dataset_path,
                                          start_index=0,
                                          end_index=calibration_dataset_size,
@@ -336,9 +342,6 @@ if __name__ == '__main__':
                                          batch_size=batch_size,
                                          model_path=augmented_model_path,
                                          input_name=input_name)
-        # For TensorRT calibration, augment all FP32 tensors (empty op_types), disable ORT graph optimization and skip quantization parameter calculation
-        calibrator = create_calibrater(new_model_path)
-        calibrator.set_execution_providers(["CUDAExecutionProvider"])
         calibrator.collect_data(data_reader)
         write_calibration_table(calibrator.compute_range())
 

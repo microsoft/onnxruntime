@@ -1,6 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/shared_library/provider_api.h"
+
+namespace onnxruntime {
+namespace concurrency {
+class ThreadPool;
+}
+}  // namespace onnxruntime
+
 #include "einsum_auxiliary_ops.h"
 
 namespace onnxruntime {
@@ -70,10 +78,10 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
 
 // CUDA EP specific ReduceSum helper
 template <typename T>
-Tensor ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
-                 bool keep_dims, AllocatorPtr allocator,
-                 const TensorShape* input_shape_override,
-                 concurrency::ThreadPool* /*tp*/, void* einsum_cuda_assets) {
+std::unique_ptr<Tensor> ReduceSum(const Tensor& input, const std::vector<int64_t>& reduce_axes,
+                                  bool keep_dims, AllocatorPtr allocator,
+                                  const TensorShape* input_shape_override,
+                                  concurrency::ThreadPool* /*tp*/, void* einsum_cuda_assets) {
   return cuda::ReductionOps::ReduceCompute<T>(*static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_, CUDNN_REDUCE_TENSOR_ADD,
                                               allocator, input, reduce_axes,
                                               keep_dims, false, false, false,
@@ -106,7 +114,7 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   // The diagonal values are stored along `first_dim`
   output_dims.erase(output_dims.begin() + second_dim);
 
-  std::unique_ptr<Tensor> output = onnxruntime::make_unique<Tensor>(input.DataType(), output_dims, allocator);
+  auto output = Tensor::Create(input.DataType(), output_dims, allocator);
 
   TensorPitches input_strides(input.Shape().GetDims());
   cuda::TArray<int64_t> gpu_input_strides(input_strides);
@@ -146,7 +154,7 @@ template Status DeviceHelpers::CudaDeviceHelpers::MatMul<float>(
     size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
     void* einsum_cuda_assets);
 
-template Tensor DeviceHelpers::CudaDeviceHelpers::ReduceSum<float>(
+template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<float>(
     const Tensor& input, const std::vector<int64_t>& reduce_axes,
     bool keep_dims, AllocatorPtr allocator,
     const TensorShape* input_shape_override,
@@ -159,7 +167,20 @@ template Status DeviceHelpers::CudaDeviceHelpers::MatMul<double>(
     size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
     void* einsum_cuda_assets);
 
-template Tensor DeviceHelpers::CudaDeviceHelpers::ReduceSum<double>(
+template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<double>(
+    const Tensor& input, const std::vector<int64_t>& reduce_axes,
+    bool keep_dims, AllocatorPtr allocator,
+    const TensorShape* input_shape_override,
+    concurrency::ThreadPool* tp, void* einsum_cuda_assets);
+
+// MLFloat16
+template Status DeviceHelpers::CudaDeviceHelpers::MatMul<MLFloat16>(
+    const MLFloat16* input_1_data, const MLFloat16* input_2_data, MLFloat16* output_data,
+    size_t left_stride, size_t right_stride, size_t output_stride,
+    size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
+    void* einsum_cuda_assets);
+
+template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<MLFloat16>(
     const Tensor& input, const std::vector<int64_t>& reduce_axes,
     bool keep_dims, AllocatorPtr allocator,
     const TensorShape* input_shape_override,

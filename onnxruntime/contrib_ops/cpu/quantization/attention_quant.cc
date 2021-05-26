@@ -23,9 +23,13 @@ class QAttention : public OpKernel, public AttentionCPUBase {
 
   Status Compute(OpKernelContext* context) const override;
 
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
-#endif
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool& /*out*/ is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
+
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   int input_idx,
+                                   /*out*/ bool& used_shared_buffers) override;
 
  private:
   BufferUniquePtr packed_weights_;
@@ -51,11 +55,10 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
 template <typename T>
 QAttention<T>::QAttention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info) {}
 
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
 template <typename T>
-Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_packed) {
-  is_packed = false;
-
+Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr alloc,
+                              /*out*/ bool& is_packed,
+                              /*out*/ PrePackedWeights* prepacked_weights) {
   if (1 != input_idx) {
     return Status::OK();
   }
@@ -66,8 +69,9 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pac
     return Status::OK();
   }
 
-  const size_t hidden_size = static_cast<size_t>(weights_dims[0]);
+  const size_t input_hidden_size = static_cast<size_t>(weights_dims[0]);
   const size_t hidden_size_x3 = static_cast<size_t>(weights_dims[1]);
+  const size_t hidden_size = hidden_size_x3 / 3;
   const size_t head_size = hidden_size / num_heads_;
 
   // Bail out if the weights shape has an expected shape.
@@ -78,38 +82,63 @@ Status QAttention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pac
   const auto* weights_data = static_cast<const uint8_t*>(weights.DataRaw());
   weights_is_signed_ = weights.IsDataType<int8_t>();
 
-  packed_weights_size_ = MlasGemmPackBSize(head_size, hidden_size, weights_is_signed_);
+  packed_weights_size_ = MlasGemmPackBSize(head_size, input_hidden_size, weights_is_signed_);
   if (packed_weights_size_ == 0) {
     return Status::OK();
   }
 
   const size_t loop_len = 3 * num_heads_;
-  auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
-  auto* packed_weights_data = static_cast<uint8_t*>(alloc->Alloc(packed_weights_size_ * loop_len));
+  size_t packed_weights_data_size = packed_weights_size_ * loop_len;
+  auto* packed_weights_data = static_cast<uint8_t*>(alloc->Alloc(packed_weights_data_size));
+
+  // Initialize memory to 0 as there could be some padding associated with pre-packed
+  // buffer memory and we don not want it uninitialized and generate different hashes
+  // if and when we try to cache this pre-packed buffer for sharing between sessions.
+  memset(packed_weights_data, 0, packed_weights_data_size);
+
   packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
 
   for (size_t i = 0; i < loop_len; i++) {
-    MlasGemmPackB(head_size, hidden_size, weights_data, hidden_size_x3, weights_is_signed_, packed_weights_data);
+    MlasGemmPackB(head_size, input_hidden_size, weights_data, hidden_size_x3, weights_is_signed_, packed_weights_data);
     packed_weights_data += packed_weights_size_;
     weights_data += head_size;
+  }
+
+  bool share_prepacked_weights = (prepacked_weights != nullptr);
+  if (share_prepacked_weights) {
+    prepacked_weights->buffers_.push_back(std::move(packed_weights_));
+    prepacked_weights->buffer_sizes_.push_back(packed_weights_data_size);
   }
 
   is_packed = true;
   return Status::OK();
 }
-#endif
+
+template <typename T>
+Status QAttention<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                int input_idx,
+                                                /*out*/ bool& used_shared_buffers) {
+  if (1 != input_idx) {
+    return Status::OK();
+  }
+
+  used_shared_buffers = true;
+  packed_weights_ = std::move(prepacked_buffers[0]);
+
+  return Status::OK();
+}
 
 template <typename T>
 Status QAttention<T>::Compute(OpKernelContext* context) const {
   // Input and output shapes:
-  //   Input  0 - input             : (batch_size, sequence_length, hidden_size)
-  //   Input  1 - weights           : (hidden_size, 3 * hidden_size)
+  //   Input  0 - input             : (batch_size, sequence_length, input_hidden_size)
+  //   Input  1 - weights           : (input_hidden_size, 3 * hidden_size)
   //   Input  2 - bias              : (3 * hidden_size)
   //   Input  3 - input_scale       : scalar
-  //   Input  4 - weight_scale      : scalar
+  //   Input  4 - weight_scale      : scalar for per tensor quantization, (3 * hidden_size) for per column quantization
   //   Input  5 - mask_index        : nullptr, (batch_size), (2 * batch_size), (batch_size, 1), (1, 1) or (batch_size, past_sequence_length + sequence_length)
   //   Input  6 - input_zero_point  : scalar
-  //   Input  7 - weight_zero_point : scalar
+  //   Input  7 - weight_zero_point : scalar for per tensor quantization, (3 * hidden_size) for per column quantization
   //   Input  8 - past              : (2, batch_size, num_heads, past_sequence_length, head_size)
   //   Output 0                     : (batch_size, sequence_length, hidden_size)
   //   Output 1 - present           : (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)
@@ -124,8 +153,9 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* w_zp_tensor = context->Input<Tensor>(7);
   const Tensor* past_tensor = context->Input<Tensor>(8);
 
+  const TensorShape& weights_shape = (packed_weights_ ? weight_shape_ : weights->Shape());
   ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(),
-                                                 packed_weights_ ? weight_shape_ : weights->Shape(),
+                                                 weights_shape,
                                                  bias->Shape(),
                                                  mask_index,
                                                  past_tensor));
@@ -134,11 +164,13 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
                     "input scale must be a scalar or 1D tensor of size 1");
   T input_scale = *(input_scale_tensor->template Data<T>());
 
-  ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(weight_scale_tensor),
-                    "weight must be a scalar or 1D tensor of size 1");
-  T weight_scale = *(weight_scale_tensor->template Data<T>());
+  bool is_weight_scale_per_column = !IsScalarOr1ElementVector(weight_scale_tensor);
+  const T* weight_scale_data = weight_scale_tensor->template Data<T>();
 
-  T dequant_scale = input_scale * weight_scale;
+  std::vector<T> dequant_scales(weight_scale_data, weight_scale_data + weight_scale_tensor->Shape().Size());
+  std::for_each(dequant_scales.begin(), dequant_scales.end(), [&input_scale](float& dequant_scale) {
+    return dequant_scale *= input_scale;
+  });
 
   uint8_t input_zero_point = 0;
   if (i_zp_tensor != nullptr) {
@@ -147,20 +179,28 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
     input_zero_point = *i_zp_tensor->template Data<uint8_t>();
   }
 
-  uint8_t weight_zero_point = 0;
+  bool is_weight_zp_per_column = false;
+  uint8_t weight_zp_default = 0;
+  const uint8_t* weight_zp_data = nullptr;
   if (w_zp_tensor != nullptr) {
-    ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(w_zp_tensor),
-                      "weight zero point must be a scalar or 1D tensor of size 1.");
-    weight_zero_point = *static_cast<const uint8_t*>(w_zp_tensor->DataRaw());
+    is_weight_zp_per_column = !IsScalarOr1ElementVector(w_zp_tensor);
+    weight_zp_data = static_cast<const uint8_t*>(w_zp_tensor->DataRaw());
   }
 
   const auto& shape = input->Shape();
   const int batch_size = static_cast<int>(shape[0]);
   const int sequence_length = static_cast<int>(shape[1]);
-  const int hidden_size = static_cast<int>(shape[2]);
+  const int input_hidden_size = static_cast<int>(shape[2]);
+
+  const auto hidden_size_x3 = weights_shape.GetDims()[1];
+  const int hidden_size = static_cast<int>(hidden_size_x3) / 3;
   const int head_size = hidden_size / num_heads_;
 
-  Tensor* output = context->Output(0, shape);
+  std::vector<int64_t> output_shape(3);
+  output_shape[0] = shape[0];
+  output_shape[1] = shape[1];
+  output_shape[2] = static_cast<int64_t>(hidden_size);
+  Tensor* output = context->Output(0, output_shape);
 
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
@@ -168,7 +208,8 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   constexpr size_t element_size = sizeof(T);
 
   auto* tp = context->GetOperatorThreadPool();
-  // STEP.1: gemm_data(BS, 3NH) = Scale(input(BS, NH) x weights(NH, 3NH)) + bias(3NH)
+  // STEP.1: gemm_data(BS, 3NH) = Scale(input(BS, D) x weights(D, 3NH)) + bias(3NH)
+  // D is hidden dimension of input, where input_hidden_size (D) could be larger than hidden_size (NH) when model is pruned.
   auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * 3 * hidden_size * element_size);
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
 
@@ -185,68 +226,61 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
     const auto* weights_data = packed_weights_ ? nullptr : static_cast<const uint8_t*>(weights->DataRaw());
     const bool weights_is_signed = packed_weights_ ? weights_is_signed_ : weights->IsDataType<int8_t>();
 
-    const double cost =
-        static_cast<double>(sequence_length) * static_cast<double>(head_size) * static_cast<double>(hidden_size);
-    ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-      for (std::ptrdiff_t i = begin; i != end; ++i) {
-        const int batch_index = static_cast<int>((i / 3) / num_heads_);
-        const int head_index = static_cast<int>((i / 3) % num_heads_);
-        const int qkv_index = static_cast<int>(i % 3);
+    MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+    gemm_shape.M = sequence_length;
+    gemm_shape.N = head_size;
+    gemm_shape.K = input_hidden_size;
+    gemm_shape.BIsSigned = weights_is_signed;
 
-        int input_offset = batch_index * sequence_length * hidden_size;
-        int weights_offset = qkv_index * hidden_size + head_index * head_size;
-        float* qkv_dest = QKV[qkv_index];
-        int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
+    std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> gemm_data_vec(loop_len);
+    std::vector<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR> scale_bias_procs;
+    scale_bias_procs.reserve(loop_len);
 
-        //                   original           transposed            iteration
-        // A: input          (BxSxNxH)          (B.)S x NH            S x NH
-        // B: weights        (NxHx3xNxH)        NH  x (3.N.)H         NH x H
-        // C: QKV[qkv_index] (3xBxNxSxH)        (3.B.N.)S x H         S x H
+    for (int i = 0; i < loop_len; i++) {
+      const int batch_index = static_cast<int>((i / 3) / num_heads_);
+      const int head_index = static_cast<int>((i / 3) % num_heads_);
+      const int qkv_index = static_cast<int>(i % 3);
 
-        MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR scale_bias_processor(qkv_dest + qkv_offset,
-                                                                    head_size,
-                                                                    &dequant_scale,
-                                                                    bias_data + weights_offset);
-#ifdef MLAS_SUPPORTS_PACKED_GEMM_U8X8
-        if (packed_weights_) {
-          const auto* packed_weight =
-              static_cast<const uint8_t*>(packed_weights_.get()) + packed_weights_size_ * (weights_offset / head_size);
+      int input_offset = batch_index * sequence_length * input_hidden_size;
+      int weights_offset = qkv_index * hidden_size + head_index * head_size;
+      int weights_scale_offset = is_weight_scale_per_column ? weights_offset : 0;
+      int weights_zp_offset = is_weight_zp_per_column ? weights_offset : 0;
+      float* qkv_dest = QKV[qkv_index];
+      int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
 
-          MlasGemm(
-              sequence_length,                                    // M      = S
-              head_size,                                          // N      = H
-              hidden_size,                                        // K      = NH
-              input_data + input_offset,                          // A
-              hidden_size,                                        // lda    = NH
-              input_zero_point,                                   // input zero point
-              packed_weight,                                      // B
-              weight_zero_point,                                  // weight zero point
-              weights_is_signed,                                  // weight data type
-              reinterpret_cast<int32_t*>(qkv_dest + qkv_offset),  // C
-              head_size,                                          // ldc
-              nullptr,                                            // use single-thread
-              &scale_bias_processor);                             // output processor
+      //                   original           transposed            iteration
+      // A: input          (BxSxD)            (B.)S x D             S x D
+      // B: weights        (Dx3xNxH)          D  x (3.N.)H          D x H
+      // C: QKV[qkv_index] (3xBxNxSxH)        (3.B.N.)S x H         S x H
 
-          continue;
-        }
-#endif
-        MlasGemm(
-            sequence_length,                                      // M      = S
-            head_size,                                            // N      = H
-            hidden_size,                                          // K      = NH
-            input_data + input_offset,                            // A
-            hidden_size,                                          // lda    = NH
-            input_zero_point,                                     // input zero point
-            weights_data + weights_offset,                        // B
-            3 * hidden_size,                                      // ldb    = 3NH
-            weight_zero_point,                                    // weight zero point
-            weights_is_signed,                                    // weight data type
-            reinterpret_cast<int32_t*>(qkv_dest + qkv_offset),    // C
-            head_size,                                            // ldc
-            nullptr,                                              // use single-thread
-            &scale_bias_processor);                               // post processor
+      scale_bias_procs.emplace_back(qkv_dest + qkv_offset,
+                                    head_size,
+                                    dequant_scales.data() + weights_scale_offset,
+                                    bias_data + weights_offset,
+                                    MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
+                                    is_weight_scale_per_column ? MLAS_QUANTIZATION_GRANULARITY::PerColumn : MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
+
+      auto& gemm_params = gemm_data_vec[i];
+      gemm_params.A = input_data + input_offset;
+      gemm_params.lda = input_hidden_size;
+      gemm_params.ZeroPointA = input_zero_point;
+      if (packed_weights_) {
+        const auto* packed_weight =
+            static_cast<const uint8_t*>(packed_weights_.get()) + packed_weights_size_ * (weights_offset / head_size);
+        gemm_params.B = packed_weight;
+        gemm_params.BIsPacked = true;
+      } else {
+        gemm_params.B = weights_data + weights_offset;
+        gemm_params.ldb = 3 * hidden_size;
       }
-    });
+      gemm_params.ZeroPointB = nullptr != weight_zp_data ? weight_zp_data + weights_zp_offset : &weight_zp_default;
+      gemm_params.PerColumnZeroPoints = is_weight_zp_per_column;
+      gemm_params.C = reinterpret_cast<int32_t*>(qkv_dest + qkv_offset);
+      gemm_params.ldc = head_size;
+      gemm_params.OutputProcessor = &(scale_bias_procs[i]);
+    }
+
+    MlasGemmBatch(gemm_shape, gemm_data_vec.data(), loop_len, tp);
   }
 
   // Compute the attention score and apply the score to V

@@ -8,6 +8,9 @@
 #    test the ort format models generated in step 1.
 #    Exceptions are enabled in this step to help debugging in case of CI failure.
 #    This step builds and tests ORT with and without type reduction enabled.
+# 3.1. Build minimal ORT with type reduction from a globally allowed types list.
+#    This step uses a hard-coded list of types which may not include the types needed by the models
+#    in <repo root>/onnxruntime/test/testdata/, so the tests for those models are skipped.
 # 4. Build baseline minimal ORT for Android arm64-v8a including no kernels and disable exceptions
 #    This step is to report the baseline binary size for Android
 jobs:
@@ -15,7 +18,7 @@ jobs:
   timeoutInMinutes: 120
   workspace:
     clean: all
-  pool: Linux-CPU
+  pool: Linux-CPU-2019
 
   variables:
     test_data_directory: $(Build.SourcesDirectory)/.test_data
@@ -35,10 +38,10 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.centos
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-      Repository: onnxruntimecentoscpubuild
+      Repository: onnxruntimecpubuild
 
   - task: CmdLine@2
     displayName: Build full onnxruntime and generate ORT format test files
@@ -51,15 +54,15 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimecentoscpubuild \
+          onnxruntimecpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_full_ort_and_create_ort_files.sh
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
-    displayName: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED]
+    displayName: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED, training ops ENABLED]
     inputs:
       script: |
-        # We will try to build minimal ORT with exceptions disabled
+        # We will try to build minimal ORT with exceptions disabled and training ops enabled
         # Only the building process is verified here, no test will be performed
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
@@ -67,8 +70,8 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimecentoscpubuild \
-            python3 /onnxruntime_src/tools/ci_build/build.py \
+          onnxruntimecpubuild \
+            /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Debug\
               --skip_submodule_sync \
@@ -76,7 +79,8 @@ jobs:
               --parallel \
               --skip_tests \
               --minimal_build \
-              --disable_exceptions
+              --disable_exceptions \
+              --enable_training_ops
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -90,7 +94,7 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimecentoscpubuild \
+          onnxruntimecpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
               --build-directory /build/without_type_reduction \
               --reduced-ops-config /home/onnxruntimedev/.test_data/required_ops.ort_models.config \
@@ -112,7 +116,7 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimecentoscpubuild \
+          onnxruntimecpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
               --build-directory /build/with_type_reduction \
               --reduced-ops-config /home/onnxruntimedev/.test_data/required_ops_and_types.ort_models.config \
@@ -124,13 +128,42 @@ jobs:
     workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
+    displayName: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED (globally allowed types)] and run tests
+    inputs:
+      script: |
+        printf "%s\n%s\n" \
+          "!globally_allowed_types;bool,float,int8_t,uint8_t" \
+          "!no_ops_specified_means_all_ops_are_required" \
+          > $(test_data_directory)/globally_allowed_types.config && \
+        docker run --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          onnxruntimecpubuild \
+            /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
+              --build-directory /build/with_type_reduction_globally_allowed_types \
+              --reduced-ops-config /home/onnxruntimedev/.test_data/globally_allowed_types.config \
+              --enable-type-reduction \
+              --skip-model-tests
+      workingDirectory: $(Build.SourcesDirectory)
+
+  - script: git checkout -- .
+    displayName: Discard local changes to Git repository files
+    workingDirectory: $(Build.SourcesDirectory)
+
+  - task: CmdLine@2
     displayName: Build onnxruntime minimal baseline for Android arm64-v8a and report binary size
     inputs:
       script: |
+        NDK_HOME=$(realpath $ANDROID_NDK_HOME)
         docker run --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $ANDROID_HOME:/android_home \
+          --volume $NDK_HOME:/ndk_home \
           --volume $(test_data_directory):/home/onnxruntimedev/.test_data \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
@@ -138,8 +171,9 @@ jobs:
           -e BUILD_SOURCEVERSION=$(Build.SourceVersion) \
           -e BUILD_ID=$(Build.BuildId) \
           -e BUILD_REASON=$(Build.Reason) \
+          -e BUILD_BRANCH=$(Build.SourceBranch) \
           -e DASHBOARD_MYSQL_ORT_PASSWORD=$(dashboard-mysql-ort-password) \
-          onnxruntimecentoscpubuild \
+          onnxruntimecpubuild \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_android_baseline_and_report_bin_size.sh
       workingDirectory: $(Build.SourcesDirectory)
 

@@ -138,9 +138,18 @@ Equations (Default: f=Sigmoid, g=Tanh):
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     GRU,
     7,
+    13,
+    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                            DataTypeImpl::GetTensorType<double>()})
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()),
+    DeepCpuGruOp);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    GRU,
+    14,
     KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
                                             DataTypeImpl::GetTensorType<double>()})
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<int32_t>()),

@@ -202,10 +202,12 @@ Routine Description:
 
     This routine implements the depthwise convolution operation.
 
-    The input tensor is organized in channels last format (NHWC) after applying
-    the Im2col transform, so the length of each row of the input tensor is
-    Channels times KernelSize. The number of columns of the input tensor is
-    OutputCount.
+    The input is supplied as an indirection buffer. Every pointer in the
+    indirection buffer points at a Channels length vector (either from the
+    input tensor or a vector of padding values). These are grouped in batches
+    of length KernelSize that are processed by the kernel to produce a single
+    output of length Channels. These batches are then repeated OutputCount
+    times.
 
     The filter tensor is organized in HW1O format, so the length of each row of
     the filter tensor is Channels. The number of columns of the filter tensor
@@ -254,8 +256,7 @@ Return Value:
             Output,
             Channels,
             OutputCount,
-            KernelSize
-            );
+            KernelSize);
 
     } else {
 
@@ -271,7 +272,6 @@ Return Value:
             Output,
             Channels,
             OutputCount,
-            KernelSize
-            );
+            KernelSize);
     }
 }

@@ -24,6 +24,32 @@ Abstract:
 
 Macro Description:
 
+    This macro emits the assembler directives to annotate a new function.
+
+Arguments:
+
+    FunctionName - Supplies the name of the function.
+
+--*/
+
+        .macro FUNCTION_ENTRY FunctionName
+
+        .p2align 4
+#if defined(__APPLE__)
+        .globl  _\FunctionName\()
+_\FunctionName\():
+#else
+        .globl  \FunctionName\()
+        .type   \FunctionName\(),@function
+\FunctionName\():
+#endif
+
+        .endm
+
+/*++
+
+Macro Description:
+
     This macro generates an optimization for "add reg,128" which can instead
     be encoded as "sub reg,-128" to reduce code size by using a signed 8-bit
     value.

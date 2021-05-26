@@ -53,11 +53,11 @@ std::vector<std::pair<int, int>> GenerateLambExtraAliasMapping() {
       1,                                                                                               \
       T1##_##T2##_##T3##_##T4##_##T_GRAD_NORM##_##T_MIXED_PRECISION_FP,                                \
       kCudaExecutionProvider,                                                                          \
-      KernelDefBuilder()                                                                               \
+      (*KernelDefBuilder::Create())                                                                    \
           .Alias(GenerateLambExtraAliasMapping())                                                      \
-          .InputMemoryType<OrtMemTypeCPUInput>(0)   /* Keep do_update in CPU */                        \
-          .InputMemoryType<OrtMemTypeCPUInput>(4)   /* Keep iteration_count in CPU */                  \
-          .OutputMemoryType<OrtMemTypeCPUOutput>(0) /* Keep iteration_count in CPU */                  \
+          .InputMemoryType(OrtMemTypeCPUInput, 0)   /* Keep do_update in CPU */                        \
+          .InputMemoryType(OrtMemTypeCPUInput, 4)   /* Keep iteration_count in CPU */                  \
+          .OutputMemoryType(OrtMemTypeCPUOutput, 0) /* Keep iteration_count in CPU */                  \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                                     \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                                     \
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())                                     \
@@ -230,13 +230,13 @@ Status launch_lamb_compute_direction(
           p_m2s[i],
           p_loss_scale,
           p_g_norm,
-          CudaT4(alphas[i]),
-          CudaT4(betas[i]),
-          CudaT2(lambdas[i]),
-          CudaT4(epsilons[i]),
-          CudaT2(max_norms[i]),
-          CudaT4(alpha_correction),
-          CudaT4(beta_correction),
+          alphas[i],
+          betas[i],
+          lambdas[i],
+          epsilons[i],
+          max_norms[i],
+          alpha_correction,
+          beta_correction,
           p_ds[i],
           p_m1_news[i],
           p_m2_news[i],
@@ -276,7 +276,7 @@ Status launch_lamb_compute_direction(
         tensor_sizes_in_buckets[key],
         buckets[key],
         lamb_stage1,
-        p_loss_scale, p_g_norm, lambda, alpha, beta, epsilon, CudaT2(max_norm), alpha_correction, beta_correction);
+        p_loss_scale, p_g_norm, lambda, alpha, beta, epsilon, max_norm, alpha_correction, beta_correction);
   }
 
   return Status::OK();

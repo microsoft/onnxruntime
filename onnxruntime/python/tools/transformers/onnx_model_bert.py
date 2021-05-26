@@ -5,7 +5,7 @@
 
 from logging import getLogger
 from typing import List
-from onnx import TensorProto, helper
+from onnx import ModelProto, TensorProto, helper
 from onnx_model import OnnxModel
 from fusion_reshape import FusionReshape
 from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
@@ -47,9 +47,15 @@ class BertOptimizationOptions:
 
 
 class BertOnnxModel(OnnxModel):
-    def __init__(self, model, num_heads, hidden_size):
-        assert num_heads > 0
-        assert hidden_size % num_heads == 0
+    def __init__(self, model: ModelProto, num_heads: int = 0, hidden_size: int = 0):
+        """Initialize BERT ONNX Model.
+
+        Args:
+            model (ModelProto): the ONNX model
+            num_heads (int, optional): number of attentioin heads. Defaults to 0, and we will detect the parameter automatically.
+            hidden_size (int, optional): hidden dimension. Defaults to 0, and we will detect the parameter automatically.
+        """
+        assert (num_heads == 0 and hidden_size == 0) or (num_heads > 0 and hidden_size % num_heads == 0)
 
         super().__init__(model)
         self.num_heads = num_heads
@@ -211,7 +217,6 @@ class BertOnnxModel(OnnxModel):
 
     def clean_graph(self):
         output_name_to_node = self.output_name_to_node()
-        nodes_to_add = []
         nodes_to_remove = []
         for node in self.nodes():
             # Before:
@@ -249,10 +254,9 @@ class BertOnnxModel(OnnxModel):
                                                           name=node.name + "_remove_mask")
                         attention_node.domain = "com.microsoft"
                         attention_node.attribute.extend([helper.make_attribute("num_heads", self.num_heads)])
-                        nodes_to_add.append(attention_node)
+                        self.add_node(attention_node, self.get_graph_by_node(attention_node).name)
                         nodes_to_remove.append(node)
         self.remove_nodes(nodes_to_remove)
-        self.add_nodes(nodes_to_add)
 
     def postprocess(self):
         self.clean_graph()

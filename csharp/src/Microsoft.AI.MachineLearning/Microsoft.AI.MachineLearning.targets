@@ -6,10 +6,16 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <RuntimesDirectory Condition="'$(OutputType)' == 'AppContainerExe'">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\uap</RuntimesDirectory>
-    <RuntimesDirectory Condition="'$(RuntimesDirectory)' == ''">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\native</RuntimesDirectory>
+    <RuntimesDirectory Condition="'$(TargetPlatformIdentifier)' == 'UAP'">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\lib\uap10.0</RuntimesDirectory>
+    <RuntimesDirectory Condition="'$(TargetPlatformIdentifier)' != 'UAP'">$(MSBuildThisFileDirectory)..\..\runtimes\win-$(WindowsAI-Platform)\_native</RuntimesDirectory>
     <WindowsAIBinarySubfolder Condition="'$(UseWindowsMLStaticRuntime)' == 'true'">static\</WindowsAIBinarySubfolder>
-    <WindowsAIBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)Microsoft.AI.MachineLearning.dll</WindowsAIBinary>
+    <WindowsAIBinary>$(RuntimesDirectory)\$(WindowsAIBinarySubfolder)microsoft.ai.machinelearning.dll</WindowsAIBinary>
+    <WindowsAIWinMD>$(MSBuildThisFileDirectory)..\..\winmds\Microsoft.AI.MachineLearning.winmd</WindowsAIWinMD>
+    <WindowsAIExperimentalWinMD>$(MSBuildThisFileDirectory)..\..\winmds\Microsoft.AI.MachineLearning.Experimental.winmd</WindowsAIExperimentalWinMD>
+
+    <WindowsAIBinary>$([System.IO.Path]::GetFullPath($(WindowsAIBinary)))</WindowsAIBinary>
+    <WindowsAIWinMD>$([System.IO.Path]::GetFullPath($(WindowsAIWinMD)))</WindowsAIWinMD>
+    <WindowsAIExperimentalWinMD>$([System.IO.Path]::GetFullPath($(WindowsAIExperimentalWinMD)))</WindowsAIExperimentalWinMD>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(DisableOnnxRuntimeDllCopy)' != 'true'">
@@ -17,15 +23,15 @@
   </PropertyGroup>
   
   <ItemGroup>
-    <Reference Include="$(MSBuildThisFileDirectory)\..\..\lib\uap\Microsoft.AI.MachineLearning.winmd">
+    <Reference Include="$(WindowsAIWinMD)">
       <Implementation>$(WindowsAIBinary)</Implementation>
     </Reference>
-    <Reference Include="$(MSBuildThisFileDirectory)\..\..\lib\uap\Microsoft.AI.MachineLearning.Experimental.winmd">
+    <Reference Include="$(WindowsAIExperimentalWinMD)">
       <Implementation>$(WindowsAIBinary)</Implementation>
     </Reference>
   </ItemGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(NuGetProjectStyle)' != 'PackageReference'">
     <ReferenceCopyLocalPaths Include="$(WindowsAIBinary);$(OnnxRuntimeBinary)" />
   </ItemGroup>
 </Project>

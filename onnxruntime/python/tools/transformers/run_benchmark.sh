@@ -5,13 +5,12 @@
 # --------------------------------------------------------------------------
 # This measures the performance of OnnxRuntime, PyTorch and TorchScript on transformer models.
 # Please install PyTorch (see https://pytorch.org/) before running this benchmark. Like the following:
-# GPU:   conda install pytorch torchvision cudatoolkit=10.1 -c pytorch
+# GPU:   conda install pytorch torchvision cudatoolkit=11.0 -c pytorch
 # CPU:   conda install pytorch torchvision cpuonly -c pytorch
 
-# When run_cli=true, this script is self-contained and you need not copy other files to run benchmarks
-#                    it will use onnxruntime-tools package.
-# If run_cli=false, it depends on other python script (*.py) files in this directory.
-run_cli=true
+# When use_package=true, you need not copy other files to run benchmarks except this sh file.
+# Otherwise, it will use python script (*.py) files in this directory.
+use_package=true
 
 # only need once
 run_install=true
@@ -50,7 +49,7 @@ sequence_lengths="8 16 32 64 128 256 512 1024"
 input_counts=1
 
 # Pretrained transformers models can be a subset of: bert-base-cased roberta-base gpt2 distilgpt2 distilbert-base-uncased
-models_to_test="bert-base-cased roberta-base gpt2"
+models_to_test="bert-base-cased roberta-base distilbert-base-uncased"
 
 # If you have mutliple GPUs, you can choose one GPU for test. Here is an example to use the second GPU:
 # export CUDA_VISIBLE_DEVICES=1
@@ -81,7 +80,7 @@ fi
 
 
 if [ "$run_install" = true ] ; then
-  pip uninstall --yes ort_nightly
+  pip uninstall --yes ort-nightly ort-gpu-nightly
   pip uninstall --yes onnxruntime
   pip uninstall --yes onnxruntime-gpu
   if [ "$run_cpu_fp32" = true ] || [ "$run_cpu_int8" = true ]; then
@@ -89,14 +88,12 @@ if [ "$run_install" = true ] ; then
   else
     pip install onnxruntime-gpu
   fi
-  pip install --upgrade onnxconverter_common
-  pip install --upgrade onnxruntime-tools
-  pip install --upgrade transformers
+  pip install --upgrade onnx coloredlogs packaging psutil py3nvml onnxconverter_common numpy transformers
 fi
 
-if [ "$run_cli" = true ] ; then
-  echo "Use onnxruntime_tools.transformers.benchmark"
-  benchmark_script="-m onnxruntime_tools.transformers.benchmark"
+if [ "$use_package" = true ] ; then
+  echo "Use onnxruntime.transformers.benchmark"
+  benchmark_script="-m onnxruntime.transformers.benchmark"
 else
   benchmark_script="benchmark.py"
 fi

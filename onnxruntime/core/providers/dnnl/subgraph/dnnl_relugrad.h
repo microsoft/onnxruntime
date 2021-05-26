@@ -57,12 +57,11 @@ class DnnlReluGrad : public DnnlKernel {
                         std::vector<std::unordered_map<int, dnnl::memory>>& net_args) override {
     dnnl::engine cpu_engine;
     dnnl::engine engine_to_use;
-    const auto iter = dnnl_engine.find(dnnl::engine::kind::cpu);
+    std::unordered_map<dnnl::engine::kind, dnnl::engine>::const_iterator iter = dnnl_engine.find(dnnl::engine::kind::cpu);
     if (iter != dnnl_engine.end()) {
       cpu_engine = iter->second;
       engine_to_use = cpu_engine;
     }
-    #if 0 // TODO update relugrad for gpu
     gpu_available_ = false;
     dnnl::engine gpu_engine;
     iter = dnnl_engine.find(dnnl::engine::kind::gpu);
@@ -72,10 +71,11 @@ class DnnlReluGrad : public DnnlKernel {
       engine_to_use = gpu_engine;
       LOGS_DEFAULT(INFO) << "gpu engine found" << std::endl;
     }
-    #endif
-    if (!relu_fwd_){
-      ORT_THROW("Unable to find forward pass Relu opt. "
-                "Verify AddForwardDnnlKernel was called after DnnlReluGrad was created.");
+
+    if (!relu_fwd_) {
+      ORT_THROW(
+          "Unable to find forward pass Relu opt. "
+          "Verify AddForwardDnnlKernel was called after DnnlReluGrad was created.");
     }
 
     Ort::CustomOpApi ort{*api};
@@ -112,10 +112,10 @@ class DnnlReluGrad : public DnnlKernel {
       ort_source_desc_ = dnnl::memory::desc(
           {xgrad_dims}, DnnnType<T>(), ort_source_format_);
       source_desc_ = ort_source_desc_;
-      diff_dst_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+      diff_dst_md_ = std::make_unique<dnnl::memory::desc>(
           dnnl::memory::desc({xgrad_dims}, DnnnType<T>(), ort_source_format_));
-      diff_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
-          dnnl::memory({{xgrad_dims}, DnnnType<T>(), ort_source_format_}, engine_to_use, nullptr));
+      diff_dst_mem_ = std::make_unique<dnnl::memory>(
+          dnnl::memory({{xgrad_dims}, DnnnType<T>(), ort_source_format_}, cpu_engine, nullptr));
 
       // convert the onnx Tensor to dnnl::memory and dnnl::memory::desc
       const OrtValue* input_tensor = ort.KernelContext_GetInput(context, input_index + 1);
@@ -143,23 +143,39 @@ class DnnlReluGrad : public DnnlKernel {
 
       ort_source_desc_ = dnnl::memory::desc({src_dims}, DnnnType<T>(), ort_source_format_);
       source_desc_ = ort_source_desc_;
-      src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+      src_md_ = std::make_unique<dnnl::memory::desc>(
           dnnl::memory::desc({src_dims}, DnnnType<T>(), ort_source_format_));
-      src_mem_ = onnxruntime::make_unique<dnnl::memory>(
-          dnnl::memory({{src_dims}, DnnnType<T>(), ort_source_format_}, engine_to_use, nullptr));
+      src_mem_ = std::make_unique<dnnl::memory>(
+          dnnl::memory({{src_dims}, DnnnType<T>(), ort_source_format_}, cpu_engine, nullptr));
+      if (gpu_available_) {
+        src_mem_gpu_ = std::make_unique<dnnl::memory>(*src_md_, gpu_engine);
+        net.push_back(mkldnn::reorder(*src_mem_, *src_mem_gpu_));
+        net_args.push_back({{MKLDNN_ARG_SRC, *src_mem_},
+                            {MKLDNN_ARG_DST, *src_mem_gpu_}});
+        diff_dst_mem_gpu_ = std::make_unique<dnnl::memory>(*diff_dst_md_, gpu_engine);
+        net.push_back(mkldnn::reorder(*diff_dst_mem_, *diff_dst_mem_gpu_));
+        net_args.push_back({{MKLDNN_ARG_SRC, *diff_dst_mem_},
+                            {MKLDNN_ARG_DST, *diff_dst_mem_gpu_}});
+      }
     } else {
       ort_source_format_ = parents_[0].get()->ort_source_format_;
       ort_source_desc_ = parents_[0].get()->ort_source_desc_;
       source_desc_ = parents_[0].get()->primitive_dst_desc_;
 
-      diff_dst_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+      diff_dst_md_ = std::make_unique<dnnl::memory::desc>(
           dnnl::memory::desc(parents_[0].get()->primitive_dst_desc_));
-      diff_dst_mem_ = parents_[0].get()->primitive_dst_mem_;
-      xgrad_shape = parents_[0].get()->primitive_dst_shape_;
-
-      src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+      src_md_ = std::make_unique<dnnl::memory::desc>(
           dnnl::memory::desc(parents_[1].get()->primitive_dst_desc_));
-      src_mem_ = parents_[1].get()->primitive_dst_mem_;
+
+      if (!gpu_available_) {
+        diff_dst_mem_ = parents_[0].get()->primitive_dst_mem_;
+        src_mem_ = parents_[1].get()->primitive_dst_mem_;
+      } else {
+        diff_dst_mem_gpu_ = parents_[0].get()->primitive_dst_mem_;
+        src_mem_gpu_ = parents_[1].get()->primitive_dst_mem_;
+      }
+
+      xgrad_shape = parents_[0].get()->primitive_dst_shape_;
       x_shape = parents_[1].get()->primitive_dst_shape_;
     }
 
@@ -168,46 +184,56 @@ class DnnlReluGrad : public DnnlKernel {
     dnnl::memory::dims dst_dims_mkl(primitive_dst_shape_.GetDims().begin(), primitive_dst_shape_.GetDims().end());
     dnnl::algorithm algo = dnnl::algorithm::eltwise_relu;
 
-    relu_bwd_desc_ = onnxruntime::make_unique<dnnl::eltwise_backward::desc>(
-        dnnl::eltwise_backward::desc(algo, *diff_dst_md_,*src_md_, 0.0, 0.0));
-    relu_bwd_pd_ = onnxruntime::make_unique<dnnl::eltwise_backward::primitive_desc>(
+    relu_bwd_desc_ = std::make_unique<dnnl::eltwise_backward::desc>(
+        dnnl::eltwise_backward::desc(algo, *diff_dst_md_, *src_md_, 0.0, 0.0));
+    relu_bwd_pd_ = std::make_unique<dnnl::eltwise_backward::primitive_desc>(
         dnnl::eltwise_backward::primitive_desc(*relu_bwd_desc_, engine_to_use, *(relu_fwd_->GetPrimitiveDesc())));
 
     primitive_src_desc_ = relu_bwd_pd_.get()->src_desc();
     primitive_dst_desc_ = relu_bwd_pd_.get()->diff_src_desc();
 
-    if (mklnode_ptr_->output_index >= 0) {
-      // last node of sub-graph. need to allocate memory for output_tensor
-      if (primitive_dst_desc_ != ort_source_desc_) {
-        // reorder neded. Use primitive output as input to reorder and
-        // allocate buffer for reorder output, final output of this subgraph
-        primitive_dst_mem_ = std::make_shared<dnnl::memory>(dnnl::memory(relu_bwd_pd_.get()->diff_src_desc(), engine_to_use));
+    if (!gpu_available_) {
+      if (mklnode_ptr_->output_index >= 0) {
+        // last node of sub-graph. need to allocate memory for output_tensor
+        if (primitive_dst_desc_ != ort_source_desc_) {
+          // reorder neded. Use primitive output as input to reorder and
+          // allocate buffer for reorder output, final output of this subgraph
+          primitive_dst_mem_ = std::make_shared<dnnl::memory>(dnnl::memory(relu_bwd_pd_.get()->diff_src_desc(), cpu_engine));
+        } else {
+          // Last node but re-order not needed. Allocate buffer to output of this node
+          primitive_dst_mem_ = std::make_shared<dnnl::memory>(dnnl::memory(relu_bwd_pd_.get()->diff_src_desc(), cpu_engine, nullptr));
+        }
       } else {
-        // Last node but re-order not needed. Allocate buffer to output of this node
-        primitive_dst_mem_ = std::make_shared<dnnl::memory>(dnnl::memory(relu_bwd_pd_.get()->diff_src_desc(), engine_to_use, nullptr));
+        // Intermediate node. Use dnnl kernel internal memory for output and
+        // use this as input to next node.
+        primitive_dst_mem_ = std::make_shared<dnnl::memory>(dnnl::memory(relu_bwd_pd_.get()->diff_src_desc(), cpu_engine));
       }
     } else {
-      // Intermediate node. Use dnnl kernel internal memory for output and
-      // use this as input to next node.
-      primitive_dst_mem_ = std::make_shared<dnnl::memory>(dnnl::memory(relu_bwd_pd_.get()->diff_src_desc(), engine_to_use));
+      primitive_dst_mem_ = std::make_shared<dnnl::memory>(dnnl::memory(relu_bwd_pd_.get()->diff_src_desc(), gpu_engine));
     }
 
     net.push_back(dnnl::eltwise_backward(*relu_bwd_pd_));
 
-    net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
-                        {DNNL_ARG_DIFF_DST, *diff_dst_mem_},
-                        {DNNL_ARG_DIFF_SRC, *primitive_dst_mem_}});
+    if (!gpu_available_) {
+      net_args.push_back({{DNNL_ARG_SRC, *src_mem_},
+                          {DNNL_ARG_DIFF_DST, *diff_dst_mem_},
+                          {DNNL_ARG_DIFF_SRC, *primitive_dst_mem_}});
+    } else {
+      net_args.push_back({{DNNL_ARG_SRC, *src_mem_gpu_},
+                          {DNNL_ARG_DIFF_DST, *diff_dst_mem_gpu_},
+                          {DNNL_ARG_DIFF_SRC, *primitive_dst_mem_}});
+    }
 
     if (mklnode_ptr_->output_index >= 0) {
       // one of the end nodes. Allocate output buffer memory and
       // reorder is necessary
       dnnl::memory::data_type t = DnnnType<T>();
-      InitDstReorderOutput(engine_to_use, t, net, net_args);
+      InitDstReorderOutput(cpu_engine, t, net, net_args, gpu_available_);
     }
   }
 
   virtual Status Bind(const OrtCustomOpApi* api,
-                    OrtKernelContext* context) {
+                      OrtKernelContext* context) {
     Ort::CustomOpApi ort{*api};
 
     ORT_RETURN_IF_ERROR(primitive_created_status_);
@@ -229,25 +255,35 @@ class DnnlReluGrad : public DnnlKernel {
       OrtValue* output = ort.KernelContext_GetOutput(context, mklnode_ptr_->output_index, &y_dims[0], static_cast<int>(primitive_dst_shape_.GetDims().size()));
       T* dst_data = ort.GetTensorMutableData<T>(output);
 
-      if (primitive_dst_desc_ != ort_source_desc_) {
+      if (!gpu_available_) {
+        if (primitive_dst_desc_ != ort_source_desc_) {
+          reorder_dst_mem_to_->set_data_handle(dst_data);
+        } else {
+          primitive_dst_mem_->set_data_handle(dst_data);
+        }
+      } else {  // gpu_available_
         reorder_dst_mem_to_->set_data_handle(dst_data);
-      } else {
-        primitive_dst_mem_->set_data_handle(dst_data);
       }
     }
     return Status::OK();
-}
+  }
 
  private:
   std::shared_ptr<DnnlRelu<T>> relu_fwd_;
   std::shared_ptr<dnnl::memory> diff_dst_mem_;
+  std::shared_ptr<dnnl::memory> diff_dst_mem_gpu_;
+
   std::unique_ptr<dnnl::memory::desc> diff_dst_md_;
 
   std::shared_ptr<dnnl::memory> src_mem_;
+  std::shared_ptr<dnnl::memory> src_mem_gpu_;
+
   std::unique_ptr<dnnl::memory::desc> src_md_;
 
   std::unique_ptr<dnnl::eltwise_backward::desc> relu_bwd_desc_;
   std::unique_ptr<dnnl::eltwise_backward::primitive_desc> relu_bwd_pd_;
+
+  bool gpu_available_;
 };  // namespace ort_dnnl
 }  // namespace ort_dnnl
 }  // namespace onnxruntime

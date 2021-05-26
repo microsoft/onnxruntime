@@ -1,0 +1,24 @@
+{
+    "build_abis": [
+        "armeabi-v7a",
+        "arm64-v8a",
+        "x86",
+        "x86_64"
+    ],
+    "android_min_sdk_version": 21,
+    "android_target_sdk_version": 24,
+    "build_params": [
+        "--android",
+        "--parallel",
+        "--cmake_generator=Ninja",
+        "--build_java",
+        "--build_shared_lib",
+        "--minimal_build=extended",
+        "--disable_rtti",
+        "--disable_ml_ops",
+        "--disable_exceptions",
+        "--enable_reduced_operator_type_support",
+        "--use_nnapi",
+        "--skip_tests"
+    ]
+}

@@ -1494,6 +1494,25 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
                 ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(input_arg_name));
               }
             }
+          } else {
+            // Check all the inputs are found.
+            //
+            // Ignore a Fused node as it could have moved things like initializers to a different device
+            // (they're internally available to the fused node but removed from the Graph instance).
+            // Fusion happens after the model was loaded in full so we know the inputs were valid originally.
+            bool check = node.NodeType() != Node::Type::Fused;
+#if defined(ENABLE_TRAINING)
+            // Only check initial model load for training as graph modifications there also render inputs 'invalid'.
+            check = check && num_resolves_ == 0;
+#endif
+            if (check &&
+                resolve_context_.inputs_and_initializers.find(input_arg_name) ==
+                    resolve_context_.inputs_and_initializers.cend() &&
+                // if we're manually creating a Graph for use as a subgraph the outer scope names are manually set
+                outer_scope_node_arg_names_.find(input_arg_name) == outer_scope_node_arg_names_.cend()) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid model. Node input '", input_arg_name,
+                                     "' is not a graph input, initializer, or output of a previous node.");
+            }
           }
         }
       }
@@ -1874,7 +1893,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     auto* subgraph = node_.GetMutableGraphAttribute(attribute_name);
 
     if (subgraph) {
-      auto inferencer = onnxruntime::make_unique<GraphInferencerImpl>(node_, *subgraph, subgraph_inferencing_func_, options_);
+      auto inferencer = std::make_unique<GraphInferencerImpl>(node_, *subgraph, subgraph_inferencing_func_, options_);
       graph_inferencer = inferencer.get();
       graph_inferencers_.push_back(std::move(inferencer));
     } else {
@@ -2062,7 +2081,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
           // The type-parameter T is bound to different values for different inputs.
           Status status(ONNXRUNTIME, FAIL,
                         "Type Error: Type parameter (" + op_formal_parameter.GetTypeStr() +
-                            ") bound to different types (" + *(param_to_type_iter->second) +
+                            ") of Optype (" + op.Name() + ") bound to different types (" + *(param_to_type_iter->second) +
                             " and " + *(input_def->Type()) +
                             " in node (" + node_name + ").");
           return status;
@@ -2371,14 +2390,32 @@ void Graph::InitFunctionBodyForNode(Node& node) {
     if (node.op_->HasContextDependentFunction()) {
       NodeProto node_proto;
       node.ToProto(node_proto);
-      onnx::FunctionBodyBuildContextImpl function_body_ctx(node_proto);
-      node.op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto);
+      std::vector<TypeProto> input_types;
+      for (size_t i = 0, n = node.InputDefs().size(); i < n; i++) {
+        auto p_node_arg = node.InputDefs().at(i);
+        if ((nullptr != p_node_arg) && p_node_arg->Exists()) {
+          auto& type = *(p_node_arg->TypeAsProto());
+          input_types.emplace_back(type);
+        } else
+          input_types.emplace_back();
+      }
+      onnx::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
+      if (!node.op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto))
+        return;
     } else {
       onnx_function_proto = *(node.op_->GetFunction());
     }
 
-    auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
-                                                                        logger_);
+    // Check function's opset requirements are compatible with model's opset.
+    auto& graphImports = DomainToVersionMap();
+    for (const auto& fn_import : onnx_function_proto.opset_import()) {
+      auto it = graphImports.find(fn_import.domain());
+      if ((it != graphImports.end()) && (it->second != fn_import.version()))
+        return;  // Incompatible. Do not use this function expansion.
+    }
+
+    auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
+                                                                logger_);
 
     function_container_.emplace_back(std::move(func_ptr));
     node.SetFunctionBody(*function_container_.back());
@@ -3030,6 +3067,66 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
   return result;
 }
 
+ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
+                                                                       size_t initializer_size_threshold) const {
+  GraphProto result;
+  ToGraphProtoInternal(result);
+  const auto& model_path = ModelPath();
+
+  std::ofstream external_stream(external_file_name, std::ofstream::out | std::ofstream::binary);
+  ORT_ENFORCE(external_stream.is_open());
+  int64_t external_offset = 0;
+
+  // Add the initializers to the result graph.
+  const auto sparse_end = sparse_tensor_names_.end();
+  for (const auto& initializer : graph_proto_->initializer()) {
+    if (sparse_end != sparse_tensor_names_.find(initializer.name())) {
+      // Sparse tensors are added to the ONNX file.
+      auto& sparse_initializer = *result.add_sparse_initializer();
+      auto status = utils::DenseTensorToSparseTensorProto(initializer, model_path, sparse_initializer);
+      ORT_ENFORCE(status.IsOK(), "Failed to convert dense initializer to sparse");
+    } else {
+      // Dense tensors larger than the threshold are added to the external file.
+      TensorProto* output_proto = result.add_initializer();
+
+      size_t tensor_bytes_size = 0;
+      std::unique_ptr<uint8_t[]> raw_data;
+      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, Path(), raw_data, tensor_bytes_size));
+
+      if (tensor_bytes_size < initializer_size_threshold) {
+        *output_proto = initializer;
+        continue;
+      }
+
+      for (size_t index = 0; index != tensor_bytes_size; ++index) {
+        external_stream << raw_data[index];
+      }
+
+      output_proto->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+      ONNX_NAMESPACE::StringStringEntryProto* location = output_proto->add_external_data();
+      location->set_key("location");
+      location->set_value(external_file_name);
+      ONNX_NAMESPACE::StringStringEntryProto* offset = output_proto->add_external_data();
+      offset->set_key("offset");
+      offset->set_value(std::to_string(external_offset));
+      ONNX_NAMESPACE::StringStringEntryProto* length = output_proto->add_external_data();
+      length->set_key("length");
+      length->set_value(std::to_string(tensor_bytes_size));
+
+      output_proto->set_name(initializer.name());
+      output_proto->set_data_type(initializer.data_type());
+      for (int i = 0; i != initializer.dims_size(); ++i) {
+        output_proto->add_dims(initializer.dims(i));
+      }
+      output_proto->set_doc_string(initializer.doc_string());
+
+      external_offset += tensor_bytes_size;
+    }
+  }
+
+  return result;
+}
+
 void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const {
   graph_proto_->clear_node();
   graph_proto_->clear_input();
@@ -3071,12 +3168,20 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
 void Graph::CleanUnusedInitializers(const std::unordered_set<std::string>* initializer_names_to_preserve) {
   std::unordered_set<std::string> used_args;
 
+  // anything that provides a required graph input (GetInputs), an optional graph input (GetOverridableInitializers)
+  // or a graph output (GetOutputs) cannot be removed
   const auto& inputs = GetInputs();
+  const auto& overridable_initializers = GetOverridableInitializers();
   const auto& outputs = GetOutputs();
 
   std::for_each(inputs.cbegin(), inputs.cend(), [&used_args](const NodeArg* input) {
     ORT_IGNORE_RETURN_VALUE(used_args.insert(input->Name()));
   });
+
+  std::for_each(overridable_initializers.cbegin(), overridable_initializers.cend(),
+                [&used_args](const NodeArg* input) {
+                  ORT_IGNORE_RETURN_VALUE(used_args.insert(input->Name()));
+                });
 
   std::for_each(outputs.cbegin(), outputs.cend(), [&used_args](const NodeArg* output) {
     ORT_IGNORE_RETURN_VALUE(used_args.insert(output->Name()));
@@ -3117,23 +3222,28 @@ void Graph::CleanUnusedInitializers(const std::unordered_set<std::string>* initi
                 [this](const std::string& name) {
                   RemoveInitializedTensor(name);
 
-                  // handle edge case where the unused initializer has a matching graph input
-                  auto& proto_inputs = *graph_proto_->mutable_input();
-                  auto i = std::find_if(proto_inputs.begin(), proto_inputs.end(),
-                                        [&name](const ONNX_NAMESPACE::ValueInfoProto& input) {
-                                          return input.name() == name;
-                                        });
+                  // handle edge case where the unused initializer has a matching graph input.
+                  // this can only happen when initializers cannot be overridden via an optional graph input.
+                  // (otherwise this initializer wouldn't be allowed to be removed due to it backing an optional
+                  // graph input).
+                  if (CanOverrideInitializer() == false) {
+                    auto& proto_inputs = *graph_proto_->mutable_input();
+                    auto i = std::find_if(proto_inputs.begin(), proto_inputs.end(),
+                                          [&name](const ONNX_NAMESPACE::ValueInfoProto& input) {
+                                            return input.name() == name;
+                                          });
 
-                  if (i != proto_inputs.end()) {
-                    RemoveRepeatedFieldEntry(proto_inputs, i);
-                  }
+                    if (i != proto_inputs.end()) {
+                      RemoveRepeatedFieldEntry(proto_inputs, i);
+                    }
 
-                  auto& inputs_including_initializers = graph_inputs_including_initializers_;
-                  auto j = std::find_if(inputs_including_initializers.begin(), inputs_including_initializers.end(),
-                                        [&name](const NodeArg* input) { return input->Name() == name; });
+                    auto& inputs_including_initializers = graph_inputs_including_initializers_;
+                    auto j = std::find_if(inputs_including_initializers.begin(), inputs_including_initializers.end(),
+                                          [&name](const NodeArg* input) { return input->Name() == name; });
 
-                  if (j != inputs_including_initializers.end()) {
-                    inputs_including_initializers.erase(j);
+                    if (j != inputs_including_initializers.end()) {
+                      inputs_including_initializers.erase(j);
+                    }
                   }
                 });
 }
@@ -3383,7 +3493,7 @@ Node& Graph::BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::stri
   // if this is a full build create the lightweight Function implementation that provides the schema so that
   // kernel lookup works as per usual. in an extended minimal build we do the lookup via a hash so don't
   // need to create the schema.
-  auto func = onnxruntime::make_unique<ViewerFunctionImpl>(*this, sub_graph, logger_);
+  auto func = std::make_unique<ViewerFunctionImpl>(*this, sub_graph, logger_);
   function_container_.push_back(std::move(func));
   node.SetFunctionBody(*function_container_.back());
 #endif

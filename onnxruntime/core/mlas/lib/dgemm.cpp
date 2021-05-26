@@ -26,29 +26,6 @@ Abstract:
 
 #define MLAS_DGEMM_TRANSA_ROWS              12
 
-//
-// Define the parameters to execute segments of a DGEMM operation on worker
-// threads.
-//
-
-struct MLAS_DGEMM_WORK_BLOCK {
-    int32_t ThreadCountM;
-    int32_t ThreadCountN;
-    CBLAS_TRANSPOSE TransA;
-    CBLAS_TRANSPOSE TransB;
-    size_t M;
-    size_t N;
-    size_t K;
-    const double* A;
-    size_t lda;
-    const double* B;
-    size_t ldb;
-    double* C;
-    size_t ldc;
-    double alpha;
-    double beta;
-};
-
 #ifdef MLAS_TARGET_AMD64
 
 void
@@ -750,8 +727,15 @@ Return Value:
 
 void
 MlasDgemmThreaded(
-    void* Context,
-    int32_t ThreadId
+    const ptrdiff_t ThreadCountM,
+    const ptrdiff_t ThreadCountN,
+    const CBLAS_TRANSPOSE TransA,
+    const CBLAS_TRANSPOSE TransB,
+    const size_t M,
+    const size_t N,
+    const size_t K,
+    const MLAS_DGEMM_DATA_PARAMS* Data,
+    const ptrdiff_t ThreadId
     )
 /*++
 
@@ -772,19 +756,14 @@ Return Value:
 
 --*/
 {
-    const auto* WorkBlock = (MLAS_DGEMM_WORK_BLOCK*)Context;
 
-    const int32_t ThreadCountM = WorkBlock->ThreadCountM;
-    const int32_t ThreadCountN = WorkBlock->ThreadCountN;
-
-    const int32_t ThreadIdM = ThreadId / ThreadCountN;
-    const int32_t ThreadIdN = ThreadId % ThreadCountN;
+    const ptrdiff_t ThreadIdM = ThreadId / ThreadCountN;
+    const ptrdiff_t ThreadIdN = ThreadId % ThreadCountN;
 
     //
     // Partition the operation along the M dimension.
     //
 
-    size_t M = WorkBlock->M;
     size_t RangeStartM;
     size_t RangeCountM;
 
@@ -794,7 +773,6 @@ Return Value:
     // Partition the operation along the N dimension.
     //
 
-    size_t N = WorkBlock->N;
     size_t RangeStartN;
     size_t RangeCountN;
 
@@ -813,50 +791,32 @@ Return Value:
     // Dispatch the partitioned operation.
     //
 
-    CBLAS_TRANSPOSE TransA = WorkBlock->TransA;
-    CBLAS_TRANSPOSE TransB = WorkBlock->TransB;
+    const size_t lda = Data->lda;
+    const size_t ldb = Data->ldb;
+    const size_t ldc = Data->ldc;
 
-    const size_t lda = WorkBlock->lda;
-    const size_t ldb = WorkBlock->ldb;
-    const size_t ldc = WorkBlock->ldc;
+    const double* A = Data->A + RangeStartM * ((TransA == CblasNoTrans) ? lda : 1);
+    const double* B = Data->B + RangeStartN * ((TransB == CblasNoTrans) ? 1 : ldb);
+    double* C = Data->C + RangeStartM * ldc + RangeStartN;
 
-    const double* A = WorkBlock->A + RangeStartM * ((TransA == CblasNoTrans) ? lda : 1);
-    const double* B = WorkBlock->B + RangeStartN * ((TransB == CblasNoTrans) ? 1 : ldb);
-    double* C = WorkBlock->C + RangeStartM * ldc + RangeStartN;
-
-    MlasDgemmOperation(TransA, TransB, RangeCountM, RangeCountN, WorkBlock->K,
-        WorkBlock->alpha, A, lda, B, ldb, WorkBlock->beta, C, ldc);
+    MlasDgemmOperation(TransA, TransB, RangeCountM, RangeCountN, K,
+        Data->alpha, A, lda, B, ldb, Data->beta, C, ldc);
 }
 
+
 void
-MlasDgemmSchedule(
-    MLAS_DGEMM_WORK_BLOCK* WorkBlock,
+MLASCALL
+MlasGemmBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_DGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
     MLAS_THREADPOOL* ThreadPool
     )
-/*++
-
-Routine Description:
-
-    This routine schedules the double precision matrix/matrix multiply
-    operation (DGEMM) across one or more threads.
-
-Arguments:
-
-    WorkBlock - Supplies the structure containing the GEMM parameters.
-
-    ThreadPool - Supplies the thread pool object to use, else nullptr if the
-        base library threading support should be used.
-
-Return Value:
-
-    None.
-
---*/
 {
-    const size_t M = WorkBlock->M;
-    const size_t N = WorkBlock->N;
-    const size_t K = WorkBlock->K;
-
     //
     // Compute the number of target threads given the complexity of the DGEMM
     // operation. Small requests should run using the single threaded path.
@@ -864,15 +824,15 @@ Return Value:
 
     const double Complexity = double(M) * double(N) * double(K);
 
-    int32_t TargetThreadCount;
+    ptrdiff_t TargetThreadCount;
 
-    if (Complexity < double(MLAS_DGEMM_THREAD_COMPLEXITY * MLAS_MAXIMUM_THREAD_COUNT)) {
-        TargetThreadCount = int32_t(Complexity / double(MLAS_DGEMM_THREAD_COMPLEXITY)) + 1;
+    if (Complexity < double(MLAS_DGEMM_THREAD_COMPLEXITY * MlasPlatform.MaximumThreadCount)) {
+        TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_DGEMM_THREAD_COMPLEXITY)) + 1;
     } else {
-        TargetThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
+        TargetThreadCount = MlasPlatform.MaximumThreadCount;
     }
 
-    int32_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+    ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
 
     if (TargetThreadCount >= MaximumThreadCount) {
         TargetThreadCount = MaximumThreadCount;
@@ -885,121 +845,40 @@ Return Value:
     // works okay for operations involving skinny matrices.
     //
 
+    ptrdiff_t ThreadsPerGemm = (TargetThreadCount + BatchSize - 1) / BatchSize;
+    ptrdiff_t ThreadCountM;
+    ptrdiff_t ThreadCountN;
+
     if (N > M) {
 
         const size_t BlockedN = (N + MLAS_DGEMM_STRIDEN_THREAD_ALIGN - 1) /
             MLAS_DGEMM_STRIDEN_THREAD_ALIGN;
 
-        if (size_t(TargetThreadCount) > BlockedN) {
-            TargetThreadCount = int32_t(BlockedN);
+        if (size_t(ThreadsPerGemm) > BlockedN) {
+            ThreadsPerGemm = ptrdiff_t(BlockedN);
         }
 
-        WorkBlock->ThreadCountM = 1;
-        WorkBlock->ThreadCountN = TargetThreadCount;
+        ThreadCountM = 1;
+        ThreadCountN = ThreadsPerGemm;
 
     } else {
 
-        if (size_t(TargetThreadCount) > M) {
-            TargetThreadCount = int32_t(M);
+        if (size_t(ThreadsPerGemm) > M) {
+            ThreadsPerGemm = ptrdiff_t(M);
         }
 
-        WorkBlock->ThreadCountM = TargetThreadCount;
-        WorkBlock->ThreadCountN = 1;
+        ThreadCountM = ThreadsPerGemm;
+        ThreadCountN = 1;
     }
 
-    MlasExecuteThreaded(MlasDgemmThreaded, WorkBlock, TargetThreadCount, ThreadPool);
-}
+    const ptrdiff_t TotalThreads = ThreadsPerGemm * static_cast<ptrdiff_t>(BatchSize);
+    MlasTrySimpleParallel(ThreadPool, TotalThreads, [=](ptrdiff_t tid) {
+        const ptrdiff_t GemmIdx = tid / ThreadsPerGemm;
+        const ptrdiff_t ThreadIdx = tid % ThreadsPerGemm;
+        MlasDgemmThreaded(ThreadCountM, ThreadCountN, TransA, TransB,
+            M, N, K, &(Data[GemmIdx]), ThreadIdx);
+    });
 
-void
-MLASCALL
-MlasGemm(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t M,
-    size_t N,
-    size_t K,
-    double alpha,
-    const double* A,
-    size_t lda,
-    const double* B,
-    size_t ldb,
-    double beta,
-    double* C,
-    size_t ldc,
-    MLAS_THREADPOOL* ThreadPool
-    )
-/*++
-
-Routine Description:
-
-    This routine implements the double precision matrix/matrix multiply
-    operation (DGEMM).
-
-Arguments:
-
-    TransA - Supplies the transpose operation for matrix A.
-
-    TransB - Supplies the transpose operation for matrix B.
-
-    M - Supplies the number of rows of matrix A and matrix C.
-
-    N - Supplies the number of columns of matrix B and matrix C.
-
-    K - Supplies the number of columns of matrix A and the number of rows of
-        matrix B.
-
-    alpha - Supplies the scalar alpha multiplier (see DGEMM definition).
-
-    A - Supplies the address of matrix A.
-
-    lda - Supplies the first dimension of matrix A.
-
-    B - Supplies the address of matrix B.
-
-    ldb - Supplies the first dimension of matrix B.
-
-    beta - Supplies the scalar beta multiplier (see DGEMM definition).
-
-    C - Supplies the address of matrix C.
-
-    ldc - Supplies the first dimension of matrix C.
-
-    ThreadPool - Supplies the thread pool object to use, else nullptr if the
-        base library threading support should be used.
-
-Return Value:
-
-    None.
-
---*/
-{
-    MLAS_DGEMM_WORK_BLOCK WorkBlock;
-
-    //
-    // Capture the GEMM parameters to the work block.
-    //
-
-    memset(&WorkBlock, 0, sizeof(MLAS_DGEMM_WORK_BLOCK));
-
-    WorkBlock.TransA = TransA;
-    WorkBlock.TransB = TransB;
-    WorkBlock.M = M;
-    WorkBlock.N = N;
-    WorkBlock.K = K;
-    WorkBlock.A = A;
-    WorkBlock.lda = lda;
-    WorkBlock.B = B;
-    WorkBlock.ldb = ldb;
-    WorkBlock.C = C;
-    WorkBlock.ldc = ldc;
-    WorkBlock.alpha = alpha;
-    WorkBlock.beta = beta;
-
-    //
-    // Schedule the operation across a set of worker threads.
-    //
-
-    MlasDgemmSchedule(&WorkBlock, ThreadPool);
 }
 
 #endif

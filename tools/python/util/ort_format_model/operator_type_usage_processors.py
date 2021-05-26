@@ -2,10 +2,11 @@
 # Licensed under the MIT License.
 
 import json
+import typing
 import ort_flatbuffers_py.experimental.fbs as fbs
 
 from abc import ABC, abstractmethod
-from .types import value_name_to_typestr
+from .types import FbsTypeInfo, value_name_to_typestr
 
 
 def _create_op_key(domain: str, optype: str):
@@ -31,6 +32,26 @@ def _ort_constant_for_domain(domain: str):
     return domain_to_constant_map[domain]
 
 
+def _reg_type_to_cpp_type(reg_type: str):
+    if reg_type == "string":
+        return "std::string"
+    return reg_type
+
+
+def _split_reg_types(reg_types_str: str):
+    '''
+    Split on underscores but append "_t" to the previous element.
+    '''
+    tokens = reg_types_str.split("_")
+    reg_types = []
+    for token in tokens:
+        if token == "t" and len(reg_types) > 0:
+            reg_types[-1] += "_t"
+        else:
+            reg_types += [token]
+    return reg_types
+
+
 class TypeUsageProcessor(ABC):
     '''
     Abstract base class for processors which implement operator specific logic to determine the type or types required.
@@ -44,22 +65,25 @@ class TypeUsageProcessor(ABC):
     def process_node(self, node: fbs.Node, value_name_to_typeinfo: dict):
         pass
 
-    def is_typed_registration_needed(self, type_in_registration):
+    def is_typed_registration_needed(self, type_in_registration: str,
+                                     globally_allowed_types: typing.Optional[typing.Set[str]]):
         '''
         Given the string from a kernel registration, determine if the registration is required or not.
         :param type_in_registration: Type string from kernel registration
+        :param globally_allowed_types: Optional set of globally allowed types. If provided, these types take precedence
+                                       in determining the required types.
         :return: True is required. False if not.
         '''
         # Not all operators have typed registrations, so this is optionally implemented by derived classes
         raise RuntimeError('Did not expect processor for {} to have typed registrations.'.format(self.name))
 
-    @abstractmethod
     def get_cpp_entry(self):
         '''
         Get the C++ code that specifies this operator's required types.
         :return: List with any applicable C++ code for this operator's required types. One line per entry.
         '''
-        pass
+        # Not applicable for some ops, so return no lines by default.
+        return []
 
     @abstractmethod
     def to_config_entry(self):
@@ -84,14 +108,23 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
     Operator processor which tracks the types used for selected input/s and/or output/s.
     '''
 
-    def __init__(self, domain: str, optype: str, inputs: [int] = [0], outputs: [int] = []):
+    def __init__(self, domain: str, optype: str, inputs: [int] = [0], outputs: [int] = [],
+                 required_input_types: typing.Dict[int, typing.Set[str]] = {},
+                 required_output_types: typing.Dict[int, typing.Set[str]] = {}):
         '''
         Create DefaultTypeUsageProcessor. Types for one or more inputs and/or outputs can be tracked by the processor.
         The default is to track the types required for input 0, as this is the most common use case in ONNX.
+
+        Required input and output types may be specified. These are only applicable to is_typed_registration_needed().
+        If a registration type matches a required type, the typed registration is needed.
+        There is a separate mechanism for specifying required types from C++ for kernels with untyped registration.
+
         :param domain: Operator domain.
         :param optype: Operator name.
         :param inputs: Inputs to track. Zero based index. May be empty.
         :param outputs: Outputs to track. Zero based index. May be empty.
+        :param required_input_types: Required input types. May be empty.
+        :param required_output_types: Required output types. May be empty.
         '''
         super().__init__(domain, optype)
         self._input_types = {}
@@ -105,6 +138,25 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
 
         if not inputs and not outputs:
             raise ValueError('At least one input or output must be tracked')
+
+        self._required_input_types = required_input_types
+        self._required_output_types = required_output_types
+
+    def _is_type_enabled(self, reg_type, index, required_types, allowed_type_set):
+        cpp_type = _reg_type_to_cpp_type(reg_type)
+        return cpp_type in required_types.get(index, set()) or cpp_type in allowed_type_set
+
+    def is_input_type_enabled(self, reg_type, index, allowed_type_set=None):
+        '''Whether input type is enabled based on required and allowed types.'''
+        if allowed_type_set is None:
+            allowed_type_set = self._input_types[index]
+        return self._is_type_enabled(reg_type, index, self._required_input_types, allowed_type_set)
+
+    def is_output_type_enabled(self, reg_type, index, allowed_type_set=None):
+        '''Whether output type is enabled based on required and allowed types.'''
+        if allowed_type_set is None:
+            allowed_type_set = self._output_types[index]
+        return self._is_type_enabled(reg_type, index, self._required_output_types, allowed_type_set)
 
     def process_node(self, node: fbs.Node, value_name_to_typeinfo: dict):
         for i in self._input_types.keys():
@@ -128,13 +180,14 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
             type_str = value_name_to_typestr(node.Outputs(o), value_name_to_typeinfo)
             self._output_types[o].add(type_str)
 
-    def is_typed_registration_needed(self, type_in_registration: str):
+    def is_typed_registration_needed(self, type_in_registration: str,
+                                     globally_allowed_types: typing.Optional[typing.Set[str]]):
         if 0 not in self._input_types.keys():
             # currently all standard typed registrations are for input 0.
             # custom registrations can be handled by operator specific processors (e.g. OneHotProcessor below).
             raise RuntimeError('Expected typed registration to use type from input 0. Node:{}'.format(self.name))
 
-        return type_in_registration in self._input_types[0]
+        return self.is_input_type_enabled(type_in_registration, 0, globally_allowed_types)
 
     def get_cpp_entry(self):
         entries = []
@@ -195,8 +248,9 @@ class Output0TypedRegistrationProcessor(DefaultTypeUsageProcessor):
         # init with tracking of output 0 only.
         super().__init__(domain, optype, inputs=[], outputs=[0])
 
-    def is_typed_registration_needed(self, type_in_registration: str):
-        return type_in_registration in self._output_types[0]
+    def is_typed_registration_needed(self, type_in_registration: str,
+                                     globally_allowed_types: typing.Optional[typing.Set[str]]):
+        return self.is_output_type_enabled(type_in_registration, 0, globally_allowed_types)
 
 
 class OneHotProcessor(TypeUsageProcessor):
@@ -212,18 +266,18 @@ class OneHotProcessor(TypeUsageProcessor):
         type0 = value_name_to_typestr(node.Inputs(0), value_name_to_typeinfo)
         type1 = value_name_to_typestr(node.Inputs(1), value_name_to_typeinfo)
         type2 = value_name_to_typestr(node.Inputs(2), value_name_to_typeinfo)
-        key = '{}_{}_{}'.format(type0, type1, type2)
+        # types in kernel registration are ordered this way: input (T1), output (T3), depth (T2)
+        key = (type0, type2, type1)
         self._triples.add(key)
 
-    def is_typed_registration_needed(self, type_in_registration):
-        # the OneHot registration involves a concatenation of the 3 types involved, in the format we match
-        # when adding values in process_node
-        return type_in_registration in self._triples
-
-    def get_cpp_entry(self):
-        # exclusion is via commenting out the registration entry, so don't need to write any #defines
-        # to disable type support for the OneHot operator
-        return None
+    def is_typed_registration_needed(self, type_in_registration: str,
+                                     globally_allowed_types: typing.Optional[typing.Set[str]]):
+        # the OneHot registration involves a concatenation of the 3 types involved
+        reg_types = tuple([_reg_type_to_cpp_type(reg_type) for reg_type in _split_reg_types(type_in_registration)])
+        if globally_allowed_types is not None:
+            return all(reg_type in globally_allowed_types for reg_type in reg_types)
+        else:
+            return reg_types in self._triples
 
     def to_config_entry(self):
         if not self._triples:
@@ -237,7 +291,7 @@ class OneHotProcessor(TypeUsageProcessor):
         self._triples.clear()
         aggregate_info = json.loads(entry)
         if 'custom' in aggregate_info:
-            self._triples = set(aggregate_info['custom'])
+            self._triples = set([tuple(triple) for triple in aggregate_info['custom']])
 
 
 def _create_operator_type_usage_processors():
@@ -260,31 +314,43 @@ def _create_operator_type_usage_processors():
     #
     # Ops we are ignoring currently so as not to produce meaningless/unused output:
     # - Implementation is type agnostic:
-    #    ai.onnx: If, Loop, Reshape, Scan, Shape, Squeeze, Unsqueeze
+    #    ai.onnx: If, Loop, Reshape, Scan, Shape, Squeeze, Tile, Unsqueeze
     #    com.microsoft: DynamicQuantizeMatMul, MatMulIntegerToFloat
     # - Only one type supported in the ORT implementation:
-    #    com.microsoft: FusedConv, FusedGemm, FusedMatMul, TransposeMatMul
+    #    ai.onnx: NonMaxSuppression
+    #    com.microsoft: FusedConv, FusedGemm, FusedMatMul
     # - Implementation does not have any significant type specific code:
     #    ai.onnx: Concat, Flatten, Not, QLinearConv, Reshape, Shape, Squeeze, Unsqueeze
     #
-    default_processor_onnx_ops = ['Abs', 'Add', 'ArgMax', 'ArgMin', 'AveragePool',
+    default_processor_onnx_ops = ['Abs', 'ArgMax', 'ArgMin', 'AveragePool',
                                   'BatchNormalization', 'BitShift',
                                   'Ceil', 'Clip', 'Conv', 'CumSum',
-                                  'DequantizeLinear', 'Div',
-                                  'Equal', 'Exp', 'Expand',
+                                  'Exp', 'Expand',
                                   'Floor',
-                                  'Gemm', 'Greater',
-                                  'IsNaN'
-                                  'Less', 'Log', 'LogSoftmax', 'LpNormalization',
-                                  'MatMul', 'Max', 'Min', 'Mul',
-                                  'Neg', 'NonMaxSuppression', 'NonZero',
+                                  'Gemm',
+                                  'IsNaN',
+                                  'Log', 'LogSoftmax', 'LpNormalization',
+                                  'MatMul', 'Max', 'MaxPool', 'Mean', 'Min',
+                                  'NonZero',
                                   'Pad',
                                   'Range', 'Reciprocal', 'ReduceL1', 'ReduceL2', 'ReduceLogSum', 'ReduceLogSumExp',
                                   'ReduceMax', 'ReduceMean', 'ReduceMin', 'ReduceProd', 'ReduceSum', 'ReduceSumSquare',
-                                  'Relu', 'Resize', 'RoiAlign', 'Round',
-                                  'Sigmoid', 'Sin', 'Softmax', 'Split', 'Sqrt', 'Sub',
-                                  'Tanh', 'Tile', 'TopK', 'Transpose',
+                                  'Relu', 'Resize', 'ReverseSequence', 'RoiAlign', 'Round',
+                                  'Scatter', 'ScatterElements', 'ScatterND', 'Shrink', 'Sigmoid', 'Sign', 'Sin',
+                                  'Softmax', 'Split', 'SplitToSequence', 'Sqrt', 'Sum',
+                                  'Tanh', 'TopK', 'Transpose',
+                                  'Unique',
                                   'Where']
+
+    # ops that are used to manipulate shapes or indices so require int32_t and int64_t to be available
+    default_processor_onnx_ops_requiring_ints_for_input_0 = ['Add',
+                                                             'Div',
+                                                             'Equal',
+                                                             'Greater',
+                                                             'Less',
+                                                             'Mul',
+                                                             'Neg',  # used in tflite TransposeConv conversion
+                                                             'Sub']
 
     internal_ops = ['QLinearAdd', 'QLinearMul']
 
@@ -300,6 +366,8 @@ def _create_operator_type_usage_processors():
     default_processor_onnxml_ops = []
 
     [add(DefaultTypeUsageProcessor('ai.onnx', op)) for op in default_processor_onnx_ops]
+    [add(DefaultTypeUsageProcessor('ai.onnx', op, required_input_types={0: {"int32_t", "int64_t"}}))
+        for op in default_processor_onnx_ops_requiring_ints_for_input_0]
     [add(DefaultTypeUsageProcessor('ai.onnx.ml', op)) for op in default_processor_onnxml_ops]
     [add(DefaultTypeUsageProcessor('com.microsoft', op)) for op in internal_ops]
 
@@ -328,11 +396,41 @@ def _create_operator_type_usage_processors():
     add(Output0TypedRegistrationProcessor('ai.onnx', 'QuantizeLinear'))
     add(Output0TypedRegistrationProcessor('ai.onnx', 'DynamicQuantizeLinear'))
 
+    # make sure all the dequantize types are enabled. we use int32_t for parts of GEMM and Conv so just
+    # enabling int8 and uint8 is not enough.
+    # TODO: Only apply required types to the global type list and ignore if it's model based per-op type reduction
+    add(DefaultTypeUsageProcessor('ai.onnx', 'DequantizeLinear', inputs=[0],
+                                  required_input_types={0: {'int8_t', 'uint8_t', 'int32_t'}}))
+
     # OneHot concatenates type strings into a triple in the typed registration
     #   e.g. float_int64_t_int64_t
     add(OneHotProcessor())
 
     return operator_processors
+
+
+class OpTypeImplFilterInterface(ABC):
+    '''
+    Class that filters operator implementations based on type.
+    '''
+    @abstractmethod
+    def is_typed_registration_needed(self, domain: str, optype: str, type_registration_str: str):
+        '''
+        Given the string from a kernel registration, determine if the registration is required or not.
+        :param domain: Operator domain.
+        :param optype: Operator type.
+        :param type_registration_str: Type string from kernel registration
+        :return: True is required. False if not.
+        '''
+        pass
+
+    @abstractmethod
+    def get_cpp_entries(self):
+        '''
+        Get the C++ code that specifies the operator types to enable.
+        :return: List of strings. One line of C++ code per entry.
+        '''
+        pass
 
 
 class OperatorTypeUsageManager:
@@ -370,32 +468,6 @@ class OperatorTypeUsageManager:
         op_processor = self._get_op_processor(key)
         if op_processor:
             op_processor.process_node(node, value_name_to_typeinfo)
-
-    def is_typed_registration_needed(self, domain: str, optype: str, type_registration_str: str):
-        '''
-        Given the string from a kernel registration, determine if the registration is required or not.
-        :param domain: Operator domain.
-        :param optype: Operator type.
-        :param type_registration_str: Type string from kernel registration
-        :return: True is required. False if not.
-        '''
-        needed = True  # we keep the registration unless the per-operator processor says not to
-        key = _create_op_key(domain, optype)
-        if key in self._operator_processors:
-            needed = self._operator_processors[key].is_typed_registration_needed(type_registration_str)
-
-        return needed
-
-    def get_cpp_entries(self):
-        '''
-        Get the C++ code that define the lists of types to enable for the operators we have type info for.
-        :return: List of strings. One line of C++ code per entry.
-        '''
-        entries = []
-        for key in sorted(self._operator_processors.keys()):
-            entries.extend(self._operator_processors[key].get_cpp_entry())
-
-        return entries
 
     def get_config_entry(self, domain: str, optype: str):
         '''
@@ -438,3 +510,64 @@ class OperatorTypeUsageManager:
                 # same values back
                 self._operator_processors[key].from_config_entry(entry)
                 assert(entry == self._operator_processors[key].to_config_entry())
+
+    class _OpTypeImplFilter(OpTypeImplFilterInterface):
+        def __init__(self, manager):
+            self._manager = manager
+
+        def is_typed_registration_needed(self, domain: str, optype: str, type_registration_str: str):
+            needed = True  # we keep the registration unless the per-operator processor says not to
+            key = _create_op_key(domain, optype)
+            if key in self._manager._operator_processors:
+                needed = self._manager._operator_processors[key].is_typed_registration_needed(
+                    type_in_registration=type_registration_str, globally_allowed_types=None)
+
+            return needed
+
+        def get_cpp_entries(self):
+            entries = []
+            for key in sorted(self._manager._operator_processors.keys()):
+                entries.extend(self._manager._operator_processors[key].get_cpp_entry())
+
+            return entries
+
+    def make_op_type_impl_filter(self):
+        '''
+        Creates an OpTypeImplFilterInterface instance from this manager.
+        Filtering uses the manager's operator type usage processor state.
+        '''
+        return OperatorTypeUsageManager._OpTypeImplFilter(self)
+
+
+class GloballyAllowedTypesOpTypeImplFilter(OpTypeImplFilterInterface):
+    '''
+    Operator implementation filter which uses globally allowed types.
+    '''
+    _valid_allowed_types = set(FbsTypeInfo.tensordatatype_to_string.values())
+
+    def __init__(self, globally_allowed_types: typing.Set[str]):
+        self._operator_processors = _create_operator_type_usage_processors()
+
+        if not globally_allowed_types.issubset(self._valid_allowed_types):
+            raise ValueError("Globally allowed types must all be valid. Invalid types: {}"
+                             .format(sorted(globally_allowed_types - self._valid_allowed_types)))
+
+        self._globally_allowed_types = globally_allowed_types
+
+    def is_typed_registration_needed(self, domain: str, optype: str, type_registration_str: str):
+        key = _create_op_key(domain, optype)
+        if key in self._operator_processors:
+            needed = self._operator_processors[key].is_typed_registration_needed(
+                type_in_registration=type_registration_str,
+                globally_allowed_types=self._globally_allowed_types)
+        else:
+            needed = _reg_type_to_cpp_type(type_registration_str) in self._globally_allowed_types
+
+        return needed
+
+    def get_cpp_entries(self):
+        return ["ORT_SPECIFY_OP_KERNEL_GLOBAL_ALLOWED_TYPES({});".format(
+            ", ".join(sorted(self._globally_allowed_types)))]
+
+    def global_type_list(self):
+        return self._globally_allowed_types

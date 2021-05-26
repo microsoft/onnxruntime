@@ -3,11 +3,13 @@
 
 #include "core/graph/op.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
+#include "core/graph/contrib_ops/onnx_function_util.h"
 #include "core/providers/common.h"
 #include "orttraining/core/graph/training_op_defs.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "onnx/defs/function.h"
 #include <math.h>
+#include "orttraining/training_ops/cpu/aten_ops/aten_op_config.h"
 
 namespace onnxruntime {
 namespace training {
@@ -343,7 +345,7 @@ void RegisterTrainingOpSchemas() {
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "dY", "Gradient of output Y", "T")
-      .Input(1, "X", "Input tensor", "T")
+      .Input(1, "Y", "Input tensor", "T")
       .Output(0, "dX", "Gradient of input X", "T")
       .Attr(
           "axis",
@@ -356,7 +358,54 @@ void RegisterTrainingOpSchemas() {
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput);
+      .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            // SoftmaxGrad computes dX = Y * ( dY - dot(Y, dY))
+            // ONNX does not have a dot product, which can be simulated as a pointwise-multiplication ("Mul"),
+            // followed by a "ReduceSum". Unfortunately, the treatment of "axis" is different in "SoftmaxGrad"
+            // and "ReduceSum". If axis=k for SoftmaxGrad, we need to specify [k, ..., n-1] as the axes of
+            // reduction for "ReduceSum", after accounting for negative-axis specification.
+            // An alternative solution would be to Flatten inputs to 2D and then reshape output back to original shape.
+            // Hopefully, many of these ops can be optimized away in the common-case of statically-known shapes.
+
+            auto* axis_attr = ctx.getAttribute("axis");
+            int64_t axis = (axis_attr != nullptr) ? axis_attr->i() : 1;
+            auto zero1d = ToTensor(std::vector<int64_t>({0}));
+            zero1d.add_dims(1);
+
+            // nodes: {outputs, op, inputs, attributes}
+
+            // First, convert axis specification k to reduction axes [k, k+1, ..., n-1]
+            std::vector<FunctionBodyHelper::NodeDef> body{
+                FunctionBodyHelper::Const<int64_t>("one", 1),
+                FunctionBodyHelper::Const<int64_t>("k", axis),
+                {{"axis_zero"}, "Constant", {}, {{"value", zero1d}}},
+                {{"shape"}, "Shape", {"dY"}},
+                {{"n_as_vector"}, "Shape", {"shape"}},
+                {{"n"}, "Squeeze", {"n_as_vector", "axis_zero"}},
+            };
+
+            // For negative axis, add n to axis-value k; then use Range(...).
+            if (axis >= 0) {
+              body.push_back({{"reduction_axes"}, "Range", {"k", "n", "one"}});
+            } else {
+              body.push_back({{"n_plus_k"}, "Add", {"n", "k"}});
+              body.push_back({{"reduction_axes"}, "Range", {"n_plus_k", "n", "one"}});
+            }
+
+            // compute dX = Y * ( dY - dot(Y, dY)) = Y * ( dY - ReduceSum(Y * dY))
+            body.push_back({{"a"}, "Mul", {"Y", "dY"}});
+            body.push_back({{"b"}, "ReduceSum", {"a", "reduction_axes"}});
+            body.push_back({{"c"}, "Sub", {"dY", "b"}});
+            body.push_back({{"dX"}, "Mul", {"Y", "c"}});
+
+            OperatorSetIdProto onnx_opset_13;
+            onnx_opset_13.set_domain("");
+            onnx_opset_13.set_version(13);
+
+            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+          });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LogSoftmaxGrad)
       .SetDomain(kMSDomain)
@@ -420,12 +469,13 @@ void RegisterTrainingOpSchemas() {
           "Constrain index tensor to int64");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ConvGrad)
-      .SinceVersion(9)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
       .Input(0, "dY", "Gradient of output Y", "T")
       .Input(1, "X", "Input tensor", "T")
       .Input(2, "W", "Weight tensor", "T")
-      .Output(0, "dX", "Gradient of input X", "T", OpSchema::Optional)
-      .Output(1, "dW", "Gradient of W", "T")
+      .Output(0, "dX", "Gradient of X", "T", OpSchema::Optional)
+      .Output(1, "dW", "Gradient of W", "T", OpSchema::Optional)
       .Output(2, "dB", "Gradient of B", "T", OpSchema::Optional)
       .AllowUncheckedAttributes()
       .TypeConstraint(
@@ -1120,54 +1170,6 @@ Example 4:
       })
       .SetDoc(R"DOC(SoftmaxCrossEntropyLossGrad)DOC");
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(BiasDropout)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetDoc("BiasDropout")
-      .Attr("seed", "(Optional) Seed to the random generator, if not specified we will auto generate one.", AttributeProto::INT, OPTIONAL_VALUE)
-      .AllowUncheckedAttributes()
-      .Input(0, "data", "The input data as Tensor.", "T")
-      .Input(1, "bias", "The bias input, a vector with the same shape as last dim of data", "T")
-      .Input(2, "residual", "The residual input, must have the same shape as data", "T", OpSchema::Optional)
-      .Input(3, "ratio",
-             "The ratio of random dropout, with value in [0, 1). If this input was not set, "
-             "or if it was set to 0, the output would be a simple copy of the input. "
-             "If it's non-zero, output will be a random dropout of input, which is typically "
-             "the case during training.",
-             "T1",
-             OpSchema::Optional)
-      .Input(4, "training_mode",
-             "If set to true then it indicates dropout is being used for "
-             "training. It is an optional value hence unless specified explicitly, it is false. "
-             "If it is false, ratio is ignored and the operation mimics inference mode where nothing "
-             "will be dropped from the input data and if mask is requested as output it will contain "
-             "all ones.",
-             "T2",
-             OpSchema::Optional)
-      .Output(0, "output", "The output.", "T")
-      .Output(1, "mask", "The output mask of dropout.", "T2", OpSchema::Optional)
-      .TypeConstraint(
-          "T",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.")
-      .TypeConstraint(
-          "T1",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input 'ratio' types to float tensors.")
-      .TypeConstraint(
-          "T2",
-          {"tensor(bool)"},
-          "Constrain output 'mask' types to boolean tensors.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateShapeAndTypeFromFirstInput(ctx);
-        if (ctx.getNumOutputs() == 2) {
-          updateOutputElemType(ctx, 1, ONNX_NAMESPACE::TensorProto::BOOL);
-          if (hasNInputShapes(ctx, 1)) {
-            propagateShapeFromInputToOutput(ctx, 0, 1);
-          }
-        }
-      });
-
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceSumTraining)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -1332,7 +1334,8 @@ Example 4:
       .Output(1, "per_input_length",
               "Vector of length of each concatenated "
               "input along the 'axis' dimension",
-              "Tint")
+              "Tint",
+              OpSchema::Optional)
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),
@@ -1368,9 +1371,11 @@ Example 4:
           output_shape->add_dim();
         }
 
-        ONNX_NAMESPACE::TensorShapeProto per_input_len_shape;
-        per_input_len_shape.add_dim()->set_dim_value(numInputs);
-        updateOutputShape(ctx, 1, per_input_len_shape);
+        if (ctx.getNumOutputs() > 1) {
+          ONNX_NAMESPACE::TensorShapeProto per_input_len_shape;
+          per_input_len_shape.add_dim()->set_dim_value(numInputs);
+          updateOutputShape(ctx, 1, per_input_len_shape);
+        }
 
         for (size_t i = 0; i < numInputs; i++) {
           const auto& shape = ctx.getInputType(i)->tensor_type().shape();
@@ -1403,18 +1408,15 @@ Example 4:
       .AllowUncheckedAttributes()
       .Input(0, "dy", "The gradient tensor from output.", "T")
       .Input(1, "mask",
-             "The mask tensor of the dropout. ", "T2")
+             "The mask output of the dropout. ", "T2")
       .Input(2, "ratio",
-             "The ratio of random dropout, with value in [0, 1). If this input was not set, "
-             "or if it was set to 0, the output would be a simple copy of the input. "
-             "If it's non-zero, output will be a random dropout of input, which is typically "
-             "the case during training.",
+             "Same value as the ratio input supplied to the dropout op with value in [0, 1). "
+             "If this input is not specified, a default value of 0.5 is used.",
              "T1",
              OpSchema::Optional)
       .Input(3, "training_mode",
-             "If set to true then it indicates dropout is being used for training. It is an optional value hence unless "
-             "specified explicitly, it is false. If it is false, ratio is ignored and the operation mimics inference mode where "
-             "nothing will be dropped from the input data and if mask is requested as output it will contain all ones.",
+             "Same value as the training_mode input supplied to the dropout op. "
+             "If this input is not specified, a default value of false is used.",
              "T2",
              OpSchema::Optional)
       .Output(0, "dx", "Gradient of the input.", "T")
@@ -1432,7 +1434,52 @@ Example 4:
           "Constrain 'mask' and 'training_mode' types to boolean tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
-      });
+      })
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            /* DropoutGrad (dy, mask, optional ratio, optional training_mode) => dX 
+                 dX = Where (mask, dY / (1-ratio), 0)
+              where ratio = 0.5 if not specified.
+
+              TODO: Note that the above doesn't handle the case where training_mode=false and a non-zero
+              value is specified for ratio. In general, it is unclear why we need the training_mode as an
+              input here, since the Gradient will be used only for training.
+            */
+            OperatorSetIdProto onnx_opset_13;
+            onnx_opset_13.set_domain("");
+            onnx_opset_13.set_version(13);
+
+            auto* tp = ctx.getInputType(0);
+            if ((tp == nullptr) || (!tp->has_tensor_type()))
+              return false;
+            auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
+            if (elem_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16)
+              return false; // ONNX op Where doesn't support bfloat16 yet.
+
+            if (ctx.hasInput(2)) {
+              // ratio specified.
+              std::vector<FunctionBodyHelper::NodeDef> body{
+                  ONNX_NAMESPACE::Const("C0", 0.0f, elem_type),
+                  ONNX_NAMESPACE::Const("C1", 1.0f, elem_type),
+                  {{"ratio_elem_type"}, "Cast", {"ratio"}, {MakeAttribute("to", int64_t(elem_type))}},
+                  {{"scale"}, "Sub", {"C1", "ratio_elem_type"}},
+                  {{"scaled_dy"}, "Div", {"dy", "scale"}},
+                  {{"dx"}, "Where", {"mask", "scaled_dy", "C0"}}};
+
+              return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+            } else {
+              // ratio not specified. Use a value of 0.5
+              std::vector<FunctionBodyHelper::NodeDef> body{
+                  ONNX_NAMESPACE::Const("C0", 0.0f, elem_type),
+                  ONNX_NAMESPACE::Const("C1", 1.0f, elem_type),
+                  ONNX_NAMESPACE::Const("ratio_elem_type", 0.5f, elem_type),
+                  {{"scale"}, "Sub", {"C1", "ratio_elem_type"}},
+                  {{"scaled_dy"}, "Div", {"dy", "scale"}},
+                  {{"dx"}, "Where", {"mask", "scaled_dy", "C0"}}};
+
+              return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+            }
+          });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BroadcastGradientArgs)
       .SetDomain(kMSDomain)
@@ -1461,8 +1508,7 @@ Example 4:
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .Input(0, "X", "uncompressed input", "T")
-      .Output(0, "Y", "uncompressed output", "T")
-      .Output(1, "Y1", "compressed output", "T1")
+      .Output(0, "Y", "compressed output", "T1")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
@@ -1470,14 +1516,20 @@ Example 4:
       .TypeConstraint(
           "T1",
           {"tensor(bool)"},
-          "Binarize tensors.");
+          "Binarize tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GistBinarizeDecoder)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Input(0, "X1", "dummy input for late decoding", "T")
-      .Input(1, "X", "compresssed input", "T1")
+      .Input(0, "X", "compresssed input", "T1")
       .Output(0, "Y", "uncompressed output", "T")
+      .Attr("to",
+            "The data type to which the elements of the input tensor are cast. "
+            "Strictly must be one of the types from DataType enum in TensorProto",
+            AttributeProto::INT)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
@@ -1485,7 +1537,162 @@ Example 4:
       .TypeConstraint(
           "T1",
           {"tensor(bool)"},
-          "Binarize tensors.");
+          "Binarize tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromAttributeToOutput(ctx, "to", 0);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack1Encoder)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "uncompressed input", "T")
+      .Output(0, "Y", "1 bit compressed output", "T1")
+      .TypeConstraint(
+          "T",
+          {"tensor(bool)", "tensor(float)"},
+          "boolean or float uncompressed tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(uint8)"},
+          "8 bits represent 8 1-bit compressed tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::UINT8);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack1Decoder)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "1 bit compresssed input", "T1")
+      .Output(0, "Y", "uncompressed output", "T")
+      .Attr("to",
+            "The data type to which the elements of the input tensor are cast. "
+            "Strictly must be one of the types from DataType enum in TensorProto",
+            AttributeProto::INT)
+      .TypeConstraint(
+          "T1",
+          {"tensor(uint8)"},
+          "8 bits represent 8 1-bit compressed tensors.")
+      .TypeConstraint(
+          "T",
+          {"tensor(bool)", "tensor(float)"},
+          "boolean or float uncompressed tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromAttributeToOutput(ctx, "to", 0);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack8Encoder)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "uncompressed input", "T")
+      .Output(0, "Y", "compressed output", "T1")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)"},
+          "Constrain to all numeric tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(uint8)"},
+          "8 bits compressed tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::UINT8);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack8Decoder)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "compresssed input", "T1")
+      .Output(0, "Y", "uncompressed output", "T")
+      .Attr("to",
+            "The data type to which the elements of the input tensor are cast. "
+            "Strictly must be one of the types from DataType enum in TensorProto",
+            AttributeProto::INT)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)"},
+          "Constrain to all numeric tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(uint8)"},
+          "8 bits compressed tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromAttributeToOutput(ctx, "to", 0);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack16Encoder)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "uncompressed input", "T")
+      .Output(0, "Y", "compressed output", "T1")
+      .TypeConstraint(
+          "T",
+          {"tensor(float)"},
+          "Constrain to all numeric tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)"},
+          "16 bits compressed tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::FLOAT16);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GistPack16Decoder)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "compressed input", "T1")
+      .Output(0, "Y", "uncompressed output", "T")
+      .Attr("to",
+            "The data type to which the elements of the input tensor are cast. "
+            "Strictly must be one of the types from DataType enum in TensorProto",
+            AttributeProto::INT)
+      .TypeConstraint(
+          "T",
+          {"tensor(float)"},
+          "Constrain to all numeric tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)"},
+          "16 bits compressed tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromAttributeToOutput(ctx, "to", 0);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GistPackMsfp15Encoder)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "uncompressed input", "T")
+      .Output(0, "Y", "compressed output", "T1")
+      .TypeConstraint(
+          "T",
+          {"tensor(float)"},
+          "Constrain to all numeric tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(uint8)"},
+          "8 bits represent 7 bit of sign and mantissa of compressed tensor, and remaining 1 bit (across TILE_SIZE worth of 8 bit elements) is used to store the shared exponent.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::UINT8);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GistPackMsfp15Decoder)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "X", "compresssed input", "T1")
+      .Output(0, "Y", "uncompressed output", "T")
+      .Attr("to",
+            "The data type to which the elements of the input tensor are cast. "
+            "Strictly must be one of the types from DataType enum in TensorProto",
+            AttributeProto::INT)
+      .TypeConstraint(
+          "T",
+          {"tensor(float)"},
+          "Constrain to all numeric tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(uint8)"},
+          "8 bits represent 7 bit of sign and mantissa of compressed tensor, and remaining 1 bit (across TILE_SIZE worth of 8 bit elements) is used to store the shared exponent.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromAttributeToOutput(ctx, "to", 0);
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SinGrad)
       .SetDomain(kOnnxDomain)
@@ -1593,7 +1800,42 @@ Example 4:
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            /* Default GeluGrad computation: 
+              dX = dY * [0.5f * [erf(sqrt(1/2)*X) + 1.0] + alpha*X*exp(-0.5f * X * X)]
+            which expands to the following ONNX graph:
+            */
+            auto* tp = ctx.getInputType(0);
+            if ((tp == nullptr) || (!tp->has_tensor_type()))
+              return false;
+            auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
+            double kAlpha = M_2_SQRTPI * M_SQRT1_2 * 0.5;
+            std::vector<FunctionBodyHelper::NodeDef> body{
+                ONNX_NAMESPACE::Const("C_Half", 0.5f, elem_type),
+                ONNX_NAMESPACE::Const("C_One", 1.0f, elem_type),
+                ONNX_NAMESPACE::Const("C_SqrtHalf", float(M_SQRT1_2), elem_type),
+                ONNX_NAMESPACE::Const("C_MinusHalf", -0.5f, elem_type),
+                ONNX_NAMESPACE::Const("C_alpha", kAlpha, elem_type),
+                {{"ErfArg"}, "Mul", {"X", "C_SqrtHalf"}},
+                {{"ErfTerm"}, "Erf", {"ErfArg"}},
+                {{"PartialSum"}, "Add", {"ErfTerm", "C_One"}},
+                {{"HalfPartialSum"}, "Mul", {"C_Half", "PartialSum"}},
+                {{"AlphaX"}, "Mul", {"X", "C_alpha"}},
+                {{"MinusHalfX"}, "Mul", {"C_MinusHalf", "X"}},
+                {{"ExpArg"}, "Mul", {"MinusHalfX", "X"}},
+                {{"ExpTerm"}, "Exp", {"ExpArg"}},
+                {{"Term3"}, "Mul", {"AlphaX", "ExpTerm"}},
+                {{"FullSum"}, "Add", {"HalfPartialSum", "Term3"}},
+                {{"dX"}, "Mul", {"dY", "FullSum"}}};
+
+            OperatorSetIdProto onnx_opset_13;
+            onnx_opset_13.set_domain("");
+            onnx_opset_13.set_version(13);
+
+            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+          });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalizationGrad)
       .SetDomain(kMSDomain)
@@ -1753,33 +1995,6 @@ Example 4:
           "The output tensor. Its shape is the same as the input.",
           "T1");
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(IsAllFinite)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("IsAllFinite")
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .TypeConstraint(
-          "V",
-          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.")
-      .TypeConstraint(
-          "T",
-          {"tensor(bool)"},
-          "Constrain the output to a boolean tensor.")
-      .Input(0, "input", "Input tensors to check.", "V",
-             OpSchema::Variadic)
-      .Output(
-          0,
-          "output",
-          "The output scalar. Its value is true if all input "
-          "tensors are finite. Otherwise, the output value would "
-          "be false.",
-          "T")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        updateOutputShape(ctx, 0, {});
-        updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
-      });
-
   static const char* All_doc = R"DOC(
 Return true if all elements are true and false otherwise.
 )DOC";
@@ -1892,6 +2107,71 @@ Return true if all elements are true and false otherwise.
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BatchNormInternal)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Variant of BatchNormalization with additional output for saved_mean/inv_std_dev.")
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("epsilon", "epsilon value", AttributeProto::FLOAT, 1e-5f)
+      .Attr("momentum", "momentum value", AttributeProto::FLOAT, 0.9f)
+      .Attr("training_mode", "true if training", AttributeProto::INT, static_cast<int64_t>(1))
+      .Input(0, "X", "Input tensor.", "T",  OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(1, "scale", "Scale tensor of shape (C).", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(2, "B", "Bias tensor of shape (C).", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(3, "input_mean", "running mean tensor of shape (C).", "U", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(4, "input_var", "running variance tensor of shape (C).", "U", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Output(0, "Y", "The output tensor of the same shape as X", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Output(1,"running_mean", "The running mean after BN.", "U", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Output(2, "running_var", "Running var after BN", "U", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Output(3, "saved_mean", "Mean of the batch", "U", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Output(4, "saved_inv_std", "Inverse standard deviation for the batch", "U", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .TypeConstraint(
+            "T",
+            {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+            "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+            "U",
+            {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+            "Constrain mean and variance types to float tensors. It allows all float type for U.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateShapeAndTypeFromFirstInput(ctx);
+          propagateShapeFromInputToOutput(ctx, 0, 0);
+
+          Dim num_channels;
+
+          unifyInputDim(ctx, 0, 1, num_channels);
+          unifyInputDim(ctx, 1, 0, num_channels);
+          unifyInputDim(ctx, 2, 0, num_channels);
+          unifyInputDim(ctx, 3, 0, num_channels);
+          unifyInputDim(ctx, 4, 0, num_channels);
+
+          if (ctx.getAttribute("training_mode") &&
+               static_cast<int>(ctx.getAttribute("training_mode")->i()) != 0) {
+            if (ctx.getNumOutputs() != 5)
+              fail_shape_inference(
+                "This number of op outputs should be 5 when Training_mode = True, but it is not.");
+          } else {
+            if (ctx.getNumOutputs() != 1)
+              fail_shape_inference(
+                "This number of op outputs should be 1 when Training_mode = False, but it is not.");
+          }
+
+          if (ctx.getNumOutputs() > 1) {
+            ONNX_NAMESPACE::TensorShapeProto outputs_shape;
+            *outputs_shape.add_dim() = num_channels; // channel
+
+            propagateElemTypeFromInputToOutput(ctx, 3, 1);
+            updateOutputShape(ctx, 1, outputs_shape);
+            propagateElemTypeFromInputToOutput(ctx, 4, 2);
+            updateOutputShape(ctx, 2, outputs_shape);
+            propagateElemTypeFromInputToOutput(ctx, 3, 3);
+            updateOutputShape(ctx, 3, outputs_shape);
+            propagateElemTypeFromInputToOutput(ctx, 4, 4);
+            updateOutputShape(ctx, 4, outputs_shape);
+          }
+        });
+
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(ReduceAllL2)
       .SetDomain(kMSDomain)
@@ -2206,6 +2486,123 @@ Return true if all elements are true and false otherwise.
             continue;
           }
           propagateShapeFromInputToOutput(ctx, i + 1, i);
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(YieldOp)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("Yield Op.")
+      .Input(0, "module_outputs", "Module outputs to be returned to pytorch.", "T", OpSchema::Variadic,
+             /*is_homogeneous*/ false,
+             /*min_arity*/ 1)
+      /*
+      For a situation where there are no trainable parameters in a model, the YieldOp minimum
+      number of arguments expected for module_output_grad should be 0.
+      */
+      .Output(0, "module_outputs_grad", "Gradient of module outputs returned from pytorch.", "T", OpSchema::Variadic,
+              /*is_homogeneous*/ false,
+              /*min_arity*/ 0)
+      .Attr("non_differentiable_outputs", "The indices of the module outputs that doesn't have a gradient.", AttributeProto::INTS, OPTIONAL_VALUE)
+      .Attr("full_shape_outputs", "The indices of the module outputs that must have full shape.", AttributeProto::INTS)
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        auto non_differentiable_outputs = ctx.getAttribute("non_differentiable_outputs");
+        std::unordered_set<size_t> non_differentiable_outputs_indices{};
+        if (nullptr != non_differentiable_outputs) {
+          for (int i = 0, n = non_differentiable_outputs->ints_size(); i < n; ++i) {
+            non_differentiable_outputs_indices.insert(static_cast<size_t>(non_differentiable_outputs->ints(i)));
+          }
+        }
+        ORT_ENFORCE(ctx.getNumInputs() == ctx.getNumOutputs() + non_differentiable_outputs_indices.size());
+
+        auto full_shape_outputs = ctx.getAttribute("full_shape_outputs");
+        std::unordered_set<size_t> full_shape_outputs_indices{};
+        if (nullptr == full_shape_outputs) {  // attribute not present
+          fail_type_inference("Value of attribute 'full_shape_outputs' not specified");
+        } else {
+          for (int i = 0, n = full_shape_outputs->ints_size(); i < n; ++i) {
+            full_shape_outputs_indices.insert(static_cast<size_t>(full_shape_outputs->ints(i)));
+          }
+        }
+
+        for (size_t i = 0, j = 0; i < ctx.getNumInputs(); ++i) {
+          // skip module outputs that are non differentiable
+          if (non_differentiable_outputs_indices.count(i) > 0) {
+            continue;
+          }
+
+          propagateElemTypeFromInputToOutput(ctx, i, j);
+          if (full_shape_outputs_indices.count(i) > 0) {
+            auto typeProto = ctx.getInputType(i);
+            if (hasShape(*typeProto)) {
+              propagateShapeFromInputToOutput(ctx, i, j);
+            }
+          }
+          j++;
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ATenOp)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("ATenOp")
+      .Input(0, "inputs", "ATenOp inputs.", "T", OpSchema::Variadic,
+             /*is_homogeneous*/ false,
+             /*min_arity*/ 1)
+      .Output(0, "outputs", "ATenOp outputs.", "T", OpSchema::Variadic,
+              /*is_homogeneous*/ false,
+              /*min_arity*/ 1)
+      .Attr("name", "Name of ATen operator.", AttributeProto::STRING)
+      .Attr("custom_attributes_json", "custom attributes in JSON format.", AttributeProto::STRING, false)
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        const auto name_proto = ctx.getAttribute("name");
+        ORT_ENFORCE(name_proto, "ATenOp's must have \"name\" attribute.");
+        const std::string& name = name_proto->s();
+        const auto* op_config_ptr = contrib::aten_ops::GetATenOperatorConfig(name);
+        ORT_ENFORCE(op_config_ptr, "ATen Op config for ", name, " is not found.");
+        const auto& op_config = *op_config_ptr;
+        ORT_ENFORCE(ctx.getNumOutputs() == op_config.forward_output_type_infer_configs.size());
+
+        // Set inferred output types.
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          int type_config = std::get<1>(op_config.forward_output_type_infer_configs[i]);
+          if (std::get<0>(op_config.forward_output_type_infer_configs[i]) == contrib::aten_ops::PROPAGATE_FROM_INPUT) {
+            propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(type_config), i);
+          } else {
+            updateOutputElemType(ctx, i, type_config);
+          }
+        }
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(ATenOpGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc("ATenOpGrad.")
+      .Input(0, "inputs", "Inputs of ATenOp's gradient op.", "T", OpSchema::Variadic,
+             /*is_homogeneous*/ false,
+             /*min_arity*/ 1)
+      .Output(0, "outputs", "Outputs of ATenOp's gradient op.", "T", OpSchema::Variadic,
+              /*is_homogeneous*/ false,
+              /*min_arity*/ 1)
+      .Attr("name", "Name of ATen operator, should be same as its corresponding forward op.", AttributeProto::STRING)
+      .Attr("output_types", "Output types of ATenOp's gradient op.", AttributeProto::INTS)
+      .Attr("custom_attributes_json", "custom attributes in JSON format.", AttributeProto::STRING, false)
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Load expected output types.
+        const auto output_types_proto = ctx.getAttribute("output_types");
+        // This is a required field.
+        ORT_ENFORCE(output_types_proto, "ATenOpGrad's must have \"output_types\" attribute.");
+        ORT_ENFORCE(static_cast<size_t>(output_types_proto->ints_size()) == ctx.getNumOutputs(),
+                    "ATenOpGrad's output list and \"output_types\" attribute should have same length.");
+        // Set inferred output types.
+        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
+          updateOutputElemType(ctx, i, static_cast<int>(output_types_proto->ints(static_cast<int>(i))));
         }
       });
 }

@@ -35,7 +35,7 @@ class LoggingTestsFixture : public ::testing::Test {
     // and filters user data so that can also be tested
 #if !defined(SKIP_DEFAULT_LOGGER_TESTS)
     const bool filter_user_data = false;
-    default_logging_manager_ = onnxruntime::make_unique<LoggingManager>(
+    default_logging_manager_ = std::make_unique<LoggingManager>(
         std::unique_ptr<ISink>{new CLogSink {}}, Severity::kWARNING, filter_user_data,
         InstanceType::Default, &default_logger_id, /*default_max_vlog_level*/ -1);
 #endif
@@ -260,6 +260,41 @@ TEST_F(LoggingTestsFixture, TestTruncation) {
   LOGF(*logger, ERROR, "%s", std::string(4096, 'a').c_str());
 
   EXPECT_THAT(out.str(), HasSubstr("[...truncated...]"));
+}
+
+TEST_F(LoggingTestsFixture, TestStreamMacroFromConditionalWithoutCompoundStatement) {
+  constexpr const char* logger_id = "TestStreamMacroFromConditionalWithoutCompoundStatement";
+  constexpr Severity min_log_level = Severity::kVERBOSE;
+  constexpr bool filter_user_data = false;
+  constexpr const char* true_message = "true";
+  constexpr const char* false_message = "false";
+
+  auto sink = std::make_unique<MockSink>();
+  {
+    testing::InSequence s{};
+    EXPECT_CALL(*sink, SendImpl(testing::_,
+                                HasSubstr(logger_id),
+                                testing::Property(&Capture::Message, Eq(true_message))))
+        .WillOnce(PrintArgs());
+    EXPECT_CALL(*sink, SendImpl(testing::_,
+                                HasSubstr(logger_id),
+                                testing::Property(&Capture::Message, Eq(false_message))))
+        .WillOnce(PrintArgs());
+  }
+
+  LoggingManager manager{std::move(sink), min_log_level, filter_user_data, InstanceType::Temporal};
+
+  auto logger = manager.CreateLogger(logger_id, min_log_level, filter_user_data);
+
+  auto log_from_conditional_without_compound_statement = [&](bool condition) {
+    if (condition)
+      LOGS(*logger, VERBOSE) << true_message;
+    else
+      LOGS(*logger, VERBOSE) << false_message;
+  };
+
+  log_from_conditional_without_compound_statement(true);
+  log_from_conditional_without_compound_statement(false);
 }
 
 }  // namespace test

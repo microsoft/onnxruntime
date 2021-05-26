@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/shared_library/provider_api.h"
 #include "cudnn_rnn_base.h"
 #include "rnn_impl.h"
-#include "core/providers/cpu/rnn/rnn_helpers.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -95,6 +95,12 @@ Status CudnnRnnBase<T>::ReorganizeWeights(const Tensor* W, const Tensor* R, cons
 
   // Prepare the weight data
   reorganized_w_data = GetScratchBuffer<void>(w_size * sizeof(T));
+
+  // In many cases, this allocation is bigger than needed, leaving part of
+  // the buffer unintialized. non-zero garbage data leads to wrong result
+  // in call to cudnnRNNForwardInference()
+  // TODO! refine allocation size for each case.
+  cudaMemset(reorganized_w_data.get(), 0, w_size * sizeof(T));
 
   const T* W_data = W->template Data<T>();
   const T* R_data = R->template Data<T>();

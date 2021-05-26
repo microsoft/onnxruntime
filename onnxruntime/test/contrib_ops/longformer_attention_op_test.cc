@@ -5,6 +5,8 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/scoped_env_vars.h"
+#include "contrib_ops/cpu/bert/longformer_attention_base.h"
 
 namespace onnxruntime {
 namespace test {
@@ -148,16 +150,33 @@ static void GetTinyLongformerData(
 static void RunTinyLongformerBatch1(
     std::vector<float>& mask_data,
     std::vector<int>& global_data,
+    std::vector<float>& input_data,
     std::vector<float>& output_data,
-    bool use_float16,
-    bool window_cover_whole_sequence = false) {
+    bool use_float16) {
   int batch_size = 1;
   int one_sided_attention_window_size = 2;
   int hidden_size = 8;
   int number_of_heads = 2;
 
+  std::vector<float> weight_data;
+  std::vector<float> bias_data;
+  std::vector<float> global_weight_data;
+  std::vector<float> global_bias_data;
+  GetTinyLongformerData(weight_data, bias_data, global_weight_data, global_bias_data);
+
+  int sequence_length = static_cast<int>(mask_data.size()) / batch_size;
+
+  RunAttentionTest(input_data, weight_data, bias_data, mask_data, global_weight_data, global_bias_data, global_data, output_data,
+                   batch_size, sequence_length, hidden_size, number_of_heads, one_sided_attention_window_size, use_float16);
+}
+
+static void RunTinyLongformerBatch1(
+    std::vector<float>& mask_data,
+    std::vector<int>& global_data,
+    std::vector<float>& output_data,
+    bool use_float16,
+    bool window_cover_whole_sequence = false) {
   // Total windows size 4 will cover the whole sequence length 4
-  int sequence_length = window_cover_whole_sequence ? 4 : 8;
   std::vector<float> input_data;
   if (window_cover_whole_sequence) {
     input_data = {
@@ -176,15 +195,7 @@ static void RunTinyLongformerBatch1(
         -1.0536f, -0.0425f, -1.1194f, -0.6423f, 2.1825f, 0.2547f, 0.6015f, -0.1809f,
         0.5219f, 0.1777f, 0.7090f, -2.1933f, 0.5258f, -0.0639f, -0.8511f, 1.1738f};
   }
-
-  std::vector<float> weight_data;
-  std::vector<float> bias_data;
-  std::vector<float> global_weight_data;
-  std::vector<float> global_bias_data;
-  GetTinyLongformerData(weight_data, bias_data, global_weight_data, global_bias_data);
-
-  RunAttentionTest(input_data, weight_data, bias_data, mask_data, global_weight_data, global_bias_data, global_data, output_data,
-                   batch_size, sequence_length, hidden_size, number_of_heads, one_sided_attention_window_size, use_float16);
+  return RunTinyLongformerBatch1(mask_data, global_data, input_data, output_data, use_float16);
 }
 
 TEST(LongformerAttentionTest, LongformerAttention_NoGlobal) {
@@ -236,6 +247,50 @@ TEST(LongformerAttentionTest, LongformerAttention_GlobalStart) {
       0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f};
 
   RunTinyLongformerBatch1(mask_data, global_data, output_data, false);
+}
+
+/*
+* This following case is generated from the first self-attention of a tiny longformer model like the following:
+    import torch
+    from transformers import AutoModel
+    model = AutoModel.from_pretrained("patrickvonplaten/longformer-random-tiny")
+    input_ids = torch.LongTensor([[97, 24, 71, 5, 8]]))
+    attention_mask = torch.ones(input_ids.shape, dtype=torch.long, device=input_ids.device)
+    global_attention_mask = torch.zeros(input_ids.shape, dtype=torch.long, device=input_ids.device)
+    global_attention_mask[:, [0, 1,]] = 1
+    outputs = model(input_ids, attention_mask=attention_mask, global_attention_mask=global_attention_mask)
+*/
+TEST(LongformerAttentionTest, LongformerAttention_UseCompactMemory) {
+  std::vector<float> mask_data = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -10000.0f, -10000.0f, -10000.0f};
+
+  std::vector<int> global_data = {1, 1, 0, 0, 0, 0, 0, 0};
+
+  std::vector<float> input_data = {
+      -1.6886f, -0.0712f, 0.7017f, -1.5513f, 0.1059f, 0.8119f, 1.1139f, 0.5776f,
+      -1.0874f, 0.2870f, -0.3767f, -1.8203f, 0.0116f, 1.4285f, 0.6643f, 0.8931f,
+      -1.0425f, 1.0148f, -0.6387f, -1.6496f, -0.3027f, 0.3839f, 1.0230f, 1.2119f,
+      0.3576f, -1.5848f, 0.1713f, -0.9284f, 1.7172f, -0.8574f, 0.8390f, 0.2855f,
+      -1.7443f, 0.4251f, 1.6560f, -0.5054f, -0.8734f, 0.4769f, 0.8434f, -0.2781f,
+      0.5219f, 0.1777f, 0.7090f, -2.1933f, 0.5258f, -0.0639f, -0.8511f, 1.1738f,
+      0.5219f, 0.1777f, 0.7090f, -2.1933f, 0.5258f, -0.0639f, -0.8511f, 1.1738f,
+      0.5219f, 0.1777f, 0.7090f, -2.1933f, 0.5258f, -0.0639f, -0.8511f, 1.1738f};
+
+  std::vector<float> output_data = {
+      -0.0330f, 0.0517f, -0.0292f, 0.0194f, -0.0154f, 0.0012f, -0.0041f, -0.0518f,
+      -0.0331f, 0.0517f, -0.0291f, 0.0194f, -0.0154f, 0.0011f, -0.0041f, -0.0517f,
+      0.0421f, 0.0627f, 0.0445f, 0.0328f, 0.0196f, -0.0712f, -0.0233f, -0.0875f,
+      0.0419f, 0.0626f, 0.0447f, 0.0328f, 0.0196f, -0.0712f, -0.0233f, -0.0875f,
+      0.0421f, 0.0627f, 0.0445f, 0.0328f, 0.0196f, -0.0712f, -0.0233f, -0.0875f,
+      0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f,
+      0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f,
+      0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f};
+
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{
+          {onnxruntime::contrib::longformer::kUseCompactMemory, "1"},
+      }};
+
+  RunTinyLongformerBatch1(mask_data, global_data, input_data, output_data, false);
 }
 
 TEST(LongformerAttentionTest, LongformerAttention_Float16) {

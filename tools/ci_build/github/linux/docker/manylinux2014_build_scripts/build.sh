@@ -3,7 +3,8 @@
 
 # Stop at any error, show all commands
 set -ex
-
+yum install -y yum-plugin-versionlock
+yum versionlock cuda* libcudnn*
 # Set build environment variables
 MY_DIR=$(dirname "${BASH_SOURCE[0]}")
 . $MY_DIR/build_env.sh
@@ -66,8 +67,8 @@ TOOLCHAIN_DEPS="devtoolset-$1-binutils devtoolset-$1-gcc devtoolset-$1-gcc-c++ d
 if [ "${AUDITWHEEL_ARCH}" == "x86_64" ]; then
     # Software collection (for devtoolset-$1)
     yum -y install centos-release-scl-rh
-    # EPEL support (for yasm)
-    yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+    # EPEL support (for yasm) (localinstall to avoid error code if already installed - as for Rocm container)
+    yum -y localinstall https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
     YASM=yasm
 elif [ "${AUDITWHEEL_ARCH}" == "aarch64" ] || [ "${AUDITWHEEL_ARCH}" == "ppc64le" ] || [ "${AUDITWHEEL_ARCH}" == "s390x" ]; then
     # Software collection (for devtoolset-$1)
@@ -87,6 +88,7 @@ yum -y install \
     ${TOOLCHAIN_DEPS} \
     diffutils \
     gettext \
+    graphviz \
     file \
     kernel-devel \
     libffi-devel \

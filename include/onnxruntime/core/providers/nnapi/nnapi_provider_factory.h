@@ -44,7 +44,8 @@ enum NNAPIFlags {
 extern "C" {
 #endif
 
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Nnapi, _In_ OrtSessionOptions* options, uint32_t nnapi_flags);
+ORT_EXPORT ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Nnapi,
+                          _In_ OrtSessionOptions* options, uint32_t nnapi_flags);
 
 #ifdef __cplusplus
 }

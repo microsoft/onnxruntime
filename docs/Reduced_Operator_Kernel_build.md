@@ -2,13 +2,13 @@
 
 In order to reduce the compiled binary size of ONNX Runtime (ORT), the operator kernels included in the build can be reduced to just the kernels required by your model/s.
 
-A configuration file must be created with details of the kernels that are required. 
+A configuration file must be created with details of the kernels that are required.
 
-Following that, ORT must be manually built, providing the configuration file in the `--include_ops_by_config` parameter. The build process will update the ORT kernel registration source files to exclude the unused kernels. 
+Following that, ORT must be manually built, providing the configuration file in the `--include_ops_by_config` parameter. The build process will update the ORT kernel registration source files to exclude the unused kernels.
 
-See the [build instructions](https://github.com/microsoft/onnxruntime/blob/master/BUILD.md#build-instructions) for more details on building ORT.
+See the [build instructions](https://www.onnxruntime.ai/docs/how-to/build.html#build-instructions) for more details on building ORT.
 
-When building ORT with a reduced set of kernel registrations, `--skip_tests` **MUST** be specified as the kernel reduction will render many of the unit tests invalid. 
+When building ORT with a reduced set of kernel registrations, `--skip_tests` **MUST** be specified as the kernel reduction will render many of the unit tests invalid.
 
 NOTE: The operator exclusion logic when building with an operator reduction configuration file will only disable kernel registrations each time it runs. It will NOT re-enable previously disabled kernels. If you wish to change the list of kernels included, it is best to revert the repository to a clean state (e.g. via `git reset --hard`) before building ORT again.
 
@@ -75,7 +75,7 @@ If, for example, the types of inputs 0 and 1 were important, the entry may look 
   `{"inputs": {"0": ["float", "int32_t"], "1": ["int32_t"]}}`
 
 Finally some operators do non-standard things and store their type information under a 'custom' key.
-ai.onnx.OneHot is an example of this, where 3 type names from the inputs are combined into a string.
-  `{"custom": ["float_int64_t_int64_t", "int64_t_string_int64_t"]}`
+ai.onnx.OneHot is an example of this, where the three input types are combined into a triple.
+  `{"custom": [["float", "int64_t", "int64_t"], ["int64_t", "std::string", "int64_t"]]}`
 
-For these reasons, it is best to generate the configuration file first, and manually edit any entries if needed. 
+For these reasons, it is best to generate the configuration file first, and manually edit any entries if needed.

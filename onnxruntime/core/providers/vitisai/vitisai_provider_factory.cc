@@ -39,7 +39,7 @@ std::unique_ptr<IExecutionProvider> VitisAIProviderFactory::CreateProvider() {
   info.device_id = device_id_;
   info.export_runtime_module = export_runtime_module_;
   info.load_runtime_module = load_runtime_module_;
-  return onnxruntime::make_unique<VitisAIExecutionProvider>(info);
+  return std::make_unique<VitisAIExecutionProvider>(info);
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(

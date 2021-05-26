@@ -1,9 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/kernel_registry.h"
+
+#include <algorithm>
 #include <memory>
 #include <unordered_map>
-#include "core/framework/kernel_registry.h"
+
 #include "core/framework/session_state.h"
 
 using namespace ::onnxruntime::common;
@@ -66,7 +69,7 @@ class TypeBindingResolver {
       : node_(node),
         type_binding_map_() {
     if (use_lookup_map) {
-      type_binding_map_ = onnxruntime::make_unique<TypeBindingMap>();
+      type_binding_map_ = std::make_unique<TypeBindingMap>();
       TraverseFormalParametersWithTypeProto(
           node_,
           [](const ONNX_NAMESPACE::OpSchema::FormalParameter&) -> bool { return true; },
@@ -149,7 +152,7 @@ bool KernelRegistry::VerifyKernelDef(const onnxruntime::Node& node,
   }
 
   // check if type matches
-  auto& kernel_type_constraints = kernel_def.TypeConstraints();
+  auto& kernel_type_constraints = kernel_def.EnabledTypeConstraints();
 
   // Note: The number of formal input/output parameters is N and the number of
   // type constraints is M. We select between an O(N*M) and an O(N+M) approach.
@@ -321,6 +324,19 @@ Status KernelRegistry::Register(KernelCreateInfo&& create_info) {
   // Ownership of the KernelDef is transferred to the map.
   kernel_creator_fn_map_.emplace(key, std::move(create_info));
   return Status::OK();
+}
+
+KernelDefHashes KernelRegistry::ExportKernelDefHashes() const {
+  KernelDefHashes result{};
+  result.reserve(kernel_creator_fn_map_.size());
+  std::transform(
+      kernel_creator_fn_map_.begin(), kernel_creator_fn_map_.end(),
+      std::back_inserter(result),
+      [](const KernelCreateMap::value_type& kvp) {
+        return std::make_pair(kvp.first, kvp.second.kernel_def->GetHash());
+      });
+  std::sort(result.begin(), result.end());
+  return result;
 }
 
 }  // namespace onnxruntime

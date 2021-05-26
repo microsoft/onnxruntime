@@ -24,7 +24,7 @@
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #endif
-#include "single_include/nlohmann/json.hpp"
+#include "nlohmann/json.hpp"
 #include "test/perftest/utils.h"
 
 using json = nlohmann::json;
@@ -39,6 +39,7 @@ static SessionOptions SESSION_OPTION = {
     false,                             //enable_profiling
     ORT_TSTR(""),                      //optimized_model_filepath
     true,                              //enable_mem_pattern
+    true,                              //enable_mem_reuse
     true,                              //enable_cpu_mem_arena
     ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
     "",                                //session_logid
@@ -52,7 +53,7 @@ static SessionOptions SESSION_OPTION = {
     true,                              //use_per_session_threads
     true,                              //thread_pool_allow_spinning
     false,                             //use_deterministic_compute
-    {},                                //session_configurations
+    {},                                //config_options
     {},                                // initializers_to_share_map
 };
 
@@ -162,6 +163,8 @@ Status TrainingRunner::Initialize() {
 
   if (params_.use_gist) {
     TrainingSession::TrainingConfiguration::GistConfiguration gist{};
+    gist.op_type = params_.gist_config.op_type;
+    gist.compr_type = params_.gist_config.compr_type;
 
     config.gist_config = gist;
   }
@@ -182,7 +185,7 @@ Status TrainingRunner::Initialize() {
 
   // always configure the graph transformer
   {
-    TrainingSession::TrainingConfiguration::GraphTransformerConfiguration gt_config{};
+    TrainingGraphTransformerConfiguration gt_config{};
     gt_config.enable_gelu_approximation = params_.enable_gelu_approximation;
     gt_config.attn_dropout_recompute = params_.attn_dropout_recompute;
     gt_config.gelu_recompute = params_.gelu_recompute;
@@ -201,10 +204,10 @@ Status TrainingRunner::Initialize() {
         config_result.mixed_precision_config_result.value().loss_scale_input_name;
     if (params_.loss_scale == 0.0f) {
       // use dynamic loss_scale
-      loss_scaler_ = onnxruntime::make_unique<LossScaler>(loss_scale_input_name, true, static_cast<float>(1 << 16));
+      loss_scaler_ = std::make_unique<LossScaler>(loss_scale_input_name, true, static_cast<float>(1 << 16));
     } else {
       // use static loss_scale
-      loss_scaler_ = onnxruntime::make_unique<LossScaler>(loss_scale_input_name, false, params_.loss_scale);
+      loss_scaler_ = std::make_unique<LossScaler>(loss_scale_input_name, false, params_.loss_scale);
     }
   }
 
@@ -273,7 +276,7 @@ Status TrainingRunner::Initialize() {
   // Checkpointing initialization
   // session_.Initialize() must be called prior to LoadCheckpoint()
   if (!params_.checkpoints_dir.empty()) {
-    checkpoint_registry_ = onnxruntime::make_unique<CheckpointRegistry>(
+    checkpoint_registry_ = std::make_unique<CheckpointRegistry>(
         params_.checkpoints_dir, params_.max_num_checkpoints);
 
     // Load checkpoint, if any
@@ -761,7 +764,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
   // Create communication plan.
-  auto& nccl_service = cuda::NcclService::GetInstance();
+  auto& nccl_service = cuda::INcclService::GetInstance();
 
   nccl_service.PlanStart();
   for (auto& slot : pipeline_schedule_.GetSchedule(pipeline_context_.pipeline_stage_id)) {
@@ -1225,7 +1228,6 @@ Status WithOrtValuesFromTensorProtos(
 
   NameMLValMap name_to_ort_value{};
   std::vector<std::vector<char>> tensor_buffers{};
-  std::vector<ScopedOrtCallbackInvoker> tensor_deleters{};
 
   for (const auto& tensor_proto : tensor_protos) {
     const auto* tensor_type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type());
@@ -1239,16 +1241,13 @@ Status WithOrtValuesFromTensorProtos(
     const MemBuffer mem_buffer{tensor_buffer.data(), tensor_buffer.size(), cpu_alloc_info};
 
     OrtValue ort_value;
-    OrtCallback callback;
 
     ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(
         Env::Default(), model_location.c_str(), tensor_proto, mem_buffer,
-        ort_value, callback));
-    ScopedOrtCallbackInvoker callback_invoker{callback};
+        ort_value));
 
     name_to_ort_value.emplace(tensor_proto.name(), ort_value);
     tensor_buffers.emplace_back(std::move(tensor_buffer));
-    tensor_deleters.emplace_back(std::move(callback_invoker));
   }
 
   ORT_RETURN_IF_ERROR(use_name_to_ort_value_fn(name_to_ort_value));

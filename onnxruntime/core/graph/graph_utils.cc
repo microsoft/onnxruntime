@@ -10,36 +10,6 @@ namespace onnxruntime {
 
 namespace graph_utils {
 
-struct GraphEdge {
-  NodeIndex src_node;
-  NodeIndex dst_node;
-  int src_arg_index;
-  int dst_arg_index;
-  std::string arg_name;
-
-  GraphEdge(NodeIndex src_node, NodeIndex dst_node,
-            int src_arg_index, int dst_arg_index, const std::string& arg_name) : src_node(src_node),
-                                                                                 dst_node(dst_node),
-                                                                                 src_arg_index(src_arg_index),
-                                                                                 dst_arg_index(dst_arg_index),
-                                                                                 arg_name(arg_name) {}
-
-  // Constructs a GraphEdge given a node, an edge_end, and a boolean for the edge direction.
-  static GraphEdge CreateGraphEdge(const Node& node, const Node::EdgeEnd& edge_end, bool is_input_edge) {
-    return is_input_edge
-               ? GraphEdge(edge_end.GetNode().Index(),
-                           node.Index(),
-                           edge_end.GetSrcArgIndex(),
-                           edge_end.GetDstArgIndex(),
-                           GetNodeInputName(node, edge_end.GetDstArgIndex()))
-               : GraphEdge(node.Index(),
-                           edge_end.GetNode().Index(),
-                           edge_end.GetSrcArgIndex(),
-                           edge_end.GetDstArgIndex(),
-                           GetNodeOutputName(node, edge_end.GetSrcArgIndex()));
-  }
-};
-
 //---------------------
 //--- local helpers ---
 //---------------------
@@ -138,48 +108,6 @@ static void UpdateImplicitInputNameInSubgraph(Node& node,
   }
 }
 
-/** Returns a vector of the input GraphEdges of a node. */
-static std::vector<GraphEdge> GetNodeInputEdges(const Node& node) {
-  std::vector<GraphEdge> input_edges;
-  for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
-    input_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, true));
-  }
-
-  return input_edges;
-}
-
-/** Returns a vector of the output GraphEdges of a node. */
-static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node) {
-  std::vector<GraphEdge> output_edges;
-  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
-    output_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, false));
-  }
-
-  return output_edges;
-}
-
-/** Returns a vector of output GraphEdges of a node for the provided output index. */
-static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node, size_t index) {
-  std::vector<GraphEdge> output_edges;
-  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
-    if (static_cast<size_t>(it->GetSrcArgIndex()) == index) {
-      output_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, false));
-    }
-  }
-
-  return output_edges;
-}
-
-/** Removes a set of GraphEdges from the graph. */
-static void RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edges) {
-  for (const auto& edge_to_remove : edges) {
-    graph.RemoveEdge(edge_to_remove.src_node,
-                     edge_to_remove.dst_node,
-                     edge_to_remove.src_arg_index,
-                     edge_to_remove.dst_arg_index);
-  }
-}
-
 /** Given a graph, a list of edges, and a NodeArg name, checks if each of the edges provides an implicit input
     to a subgraph. If so, it checks if there is no clash of the given NodeArg name in each of the subgraphs.
     This is important when removing a node with this NodeArg as input. */
@@ -203,7 +131,7 @@ static bool CanUpdateImplicitInputNameInSubgraphs(const Graph& graph,
 /** Removes a node with a single incoming node and connects the incoming node with the output node/s.*/
 static bool RemoveNodeWithSingleNodeInSingleUsedOutput(Graph& graph, Node& node) {
   // Store info for input and output edges.
-  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
+  std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node);
 
   if (!output_edges.empty()) {
     // get non-const incoming Node
@@ -231,14 +159,14 @@ After the move is complete src_node will have no input edges.
 */
 static void MoveAllNodeInputEdges(Graph& graph, Node& src_node, Node& target_node) {
   auto target_idx = target_node.Index();
-  auto input_edges = GetNodeInputEdges(src_node);
+  auto input_edges = GraphEdge::GetNodeInputEdges(src_node);
 
   for (auto cur = input_edges.cbegin(), end = input_edges.cend(); cur != end; ++cur) {
     auto target_arg_index = GetNodeInputIndexFromInputName(target_node, cur->arg_name);
     graph.AddEdge(cur->src_node, target_idx, cur->src_arg_index, target_arg_index);
   }
 
-  RemoveGraphEdges(graph, input_edges);
+  GraphEdge::RemoveGraphEdges(graph, input_edges);
 }
 
 /** Move the output defs and edges from src_node to target_node.
@@ -249,26 +177,35 @@ static void MoveAllNodeOutputs(Graph& graph, Node& src_node, Node& target_node) 
   target_node.MutableOutputDefs() = src_node.MutableOutputDefs();
 
   auto target_idx = target_node.Index();
-  auto output_edges = GetNodeOutputEdges(src_node);
+  auto output_edges = GraphEdge::GetNodeOutputEdges(src_node);
 
   for (auto cur = output_edges.cbegin(), end = output_edges.cend(); cur != end; ++cur) {
     graph.AddEdge(target_idx, cur->dst_node, cur->src_arg_index, cur->dst_arg_index);
   }
 
-  RemoveGraphEdges(graph, output_edges);
+  GraphEdge::RemoveGraphEdges(graph, output_edges);
 }
 
 //----------------------------
 //--- end of local helpers ---
 //----------------------------
 
-int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name) {
-  auto itr = std::find_if(node.InputDefs().begin(), node.InputDefs().end(),
-                          [&input_name](const NodeArg* input) { return input->Name() == input_name; });
-  ORT_ENFORCE(itr != node.InputDefs().end(),
-              "Attempting to get index for an input which does not exist.");
-  auto index = std::distance(node.InputDefs().begin(), itr);
+int GetIndexFromName(const Node& node, const std::string& name, bool is_input) {
+  const auto& node_args = is_input ? node.InputDefs() : node.OutputDefs();
+  auto itr = std::find_if(node_args.begin(), node_args.end(),
+                          [&name](const NodeArg* node_arg) { return node_arg->Name() == name; });
+  ORT_ENFORCE(itr != node_args.end(),
+              "Attempting to get index by a name which does not exist:", name, "for node: ", node.Name());
+  auto index = std::distance(node_args.begin(), itr);
   return static_cast<int>(index);
+}
+
+int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name) {
+  return GetIndexFromName(node, input_name, true);
+}
+
+int GetNodeOutputIndexFromOutputName(const Node& node, const std::string& output_name) {
+  return GetIndexFromName(node, output_name, false);
 }
 
 const std::string& GetNodeInputName(const Node& node, int index) {
@@ -406,7 +343,7 @@ bool CanRemoveNode(const Graph& graph, const Node& node, const logging::Logger& 
 
   if (new_name) {
     // Check that changing the current output name to the new name won't break any subgraphs that consume it
-    std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
+    std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node);
     can_remove = CanUpdateImplicitInputNameInSubgraphs(graph, output_edges, *new_name, logger);
   }
 
@@ -457,7 +394,7 @@ bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const s
   if (output_name_is_changing) {
     // Check that changing the current output name to the new name won't break any subgraphs
     // that consume the current name
-    std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
+    std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node);
     can_remove = CanUpdateImplicitInputNameInSubgraphs(graph, output_edges, initializer_name, logger);
   }
 
@@ -466,7 +403,7 @@ bool CanReplaceNodeWithInitializer(const Graph& graph, const Node& node, const s
 
 bool ReplaceNodeWithInitializer(Graph& graph, Node& node, NodeArg& replacement) {
   // We have to remove the output edges before we create replacement ones, so save the current output edge information
-  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
+  std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node);
 
   // Remove the output edges of the node and then the node (this will remove any input edges).
   RemoveNodeOutputEdges(graph, node);
@@ -556,6 +493,26 @@ const Node* FirstChildByType(const Node& node, const std::string& child_type) {
   return nullptr;
 }
 
+std::vector<const Node*> FindChildrenByType(const Node& node, const std::string& child_type) {
+  // find children and sort them by source argument index:
+  //     Create a 2D vector to hold the result.
+  //     1st dimension index is output index,
+  //     and the 2nd dimension stores the edges from the output.
+  std::vector<std::vector<const Node*>> children(node.OutputDefs().size(), std::vector<const Node*>());
+  for (auto it = node.OutputEdgesBegin(); it != node.OutputEdgesEnd(); it++) {
+    if (it->GetNode().OpType().compare(child_type) == 0) {
+      children[it->GetSrcArgIndex()].push_back(&(it->GetNode()));
+    }
+  }
+
+  // aggregate children
+  std::vector<const Node*> agg_res;
+  for (size_t output_idx = 0; output_idx < children.size(); output_idx++) {
+    agg_res.insert(agg_res.end(), children[output_idx].begin(), children[output_idx].end());
+  }
+  return agg_res;
+}
+
 const Node* FirstParentByType(const Node& node, const std::string& parent_type) {
   for (auto it = node.InputNodesBegin(); it != node.InputNodesEnd(); ++it) {
     if ((*it).OpType().compare(parent_type) == 0) {
@@ -563,6 +520,22 @@ const Node* FirstParentByType(const Node& node, const std::string& parent_type) 
     }
   }
   return nullptr;
+}
+
+std::vector<const Node*> FindParentsByType(const Node& node, const std::string& parent_type) {
+  // find parents and sort them by destination argument index
+  // as there is at most one input edge for each input argument,
+  // there is no need of extra work like FindChildrenByType
+  std::vector<const Node*> parents(node.InputDefs().size(), nullptr);
+  for (auto it = node.InputEdgesBegin(); it != node.InputEdgesEnd(); it++) {
+    if (it->GetNode().OpType().compare(parent_type) == 0) {
+      parents[it->GetDstArgIndex()] = &(it->GetNode());
+    }
+  }
+
+  // remove unmatched nodes
+  parents.erase(std::remove(parents.begin(), parents.end(), nullptr), parents.end());
+  return parents;
 }
 
 NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
@@ -586,28 +559,28 @@ NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_ini
 }
 
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node) {
-  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node);
-  RemoveGraphEdges(graph, output_edges);
+  std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node);
+  GraphEdge::RemoveGraphEdges(graph, output_edges);
 
   return output_edges.size();
 }
 
 size_t RemoveNodeOutputEdges(Graph& graph, Node& node, int output_idx) {
-  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node, output_idx);
-  RemoveGraphEdges(graph, output_edges);
+  std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node, output_idx);
+  GraphEdge::RemoveGraphEdges(graph, output_edges);
 
   return output_edges.size();
 }
 
 void ReplaceDownstreamNodeInput(Graph& graph, Node& node, int output_idx, Node& replacement, int replacement_output_idx) {
   // get the output edges from node for output_idx
-  std::vector<GraphEdge> output_edges = GetNodeOutputEdges(node, output_idx);
+  std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node, output_idx);
 
   if (!output_edges.empty()) {
     const auto& replacement_name = replacement.MutableOutputDefs()[replacement_output_idx]->Name();
 
     // Remove the output edges of the node first
-    RemoveGraphEdges(graph, output_edges);
+    GraphEdge::RemoveGraphEdges(graph, output_edges);
 
     // Create connections between the replacement node and the outgoing nodes
     for (const auto& output_edge : output_edges) {
@@ -661,8 +634,13 @@ void FinalizeNodeFusion(Graph& graph, Node& first_node, Node& second_node) {
 }
 
 void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, Node& replacement_node) {
-  MoveAllNodeInputEdges(graph, nodes.front(), replacement_node);
-  MoveAllNodeOutputs(graph, nodes.back(), replacement_node);
+  FinalizeNodeFusion(graph, nodes, replacement_node, replacement_node);
+}
+
+void FinalizeNodeFusion(Graph& graph, const std::vector<std::reference_wrapper<Node>>& nodes, Node& replacement_node_start,
+                        Node& replacement_node_end) {
+  MoveAllNodeInputEdges(graph, nodes.front(), replacement_node_start);
+  MoveAllNodeOutputs(graph, nodes.back(), replacement_node_end);
 
   for (Node& node : nodes) {
     RemoveNodeOutputEdges(graph, node);
@@ -821,6 +799,73 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
 
 NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg) {
   return graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(base_arg.Name()), base_arg.TypeAsProto());
+}
+
+GraphEdge::GraphEdge(NodeIndex src_node,
+                     NodeIndex dst_node,
+                     int src_arg_index,
+                     int dst_arg_index,
+                     const std::string& arg_name) : src_node(src_node),
+                                                    dst_node(dst_node),
+                                                    src_arg_index(src_arg_index),
+                                                    dst_arg_index(dst_arg_index),
+                                                    arg_name(arg_name) {}
+
+// Constructs a GraphEdge given a node, an edge_end, and a boolean for the edge direction.
+GraphEdge GraphEdge::CreateGraphEdge(const Node& node, const Node::EdgeEnd& edge_end, bool is_input_edge) {
+  return is_input_edge
+             ? GraphEdge(edge_end.GetNode().Index(),
+                         node.Index(),
+                         edge_end.GetSrcArgIndex(),
+                         edge_end.GetDstArgIndex(),
+                         GetNodeInputName(node, edge_end.GetDstArgIndex()))
+             : GraphEdge(node.Index(),
+                         edge_end.GetNode().Index(),
+                         edge_end.GetSrcArgIndex(),
+                         edge_end.GetDstArgIndex(),
+                         GetNodeOutputName(node, edge_end.GetSrcArgIndex()));
+}
+
+/** Returns a vector of the input GraphEdges of a node. */
+std::vector<GraphEdge> GraphEdge::GetNodeInputEdges(const Node& node) {
+  std::vector<GraphEdge> input_edges;
+  for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
+    input_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, true));
+  }
+
+  return input_edges;
+}
+
+/** Returns a vector of the output GraphEdges of a node. */
+std::vector<GraphEdge> GraphEdge::GetNodeOutputEdges(const Node& node) {
+  std::vector<GraphEdge> output_edges;
+  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+    output_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, false));
+  }
+
+  return output_edges;
+}
+
+/** Returns a vector of output GraphEdges of a node for the provided output index. */
+std::vector<GraphEdge> GraphEdge::GetNodeOutputEdges(const Node& node, size_t index) {
+  std::vector<GraphEdge> output_edges;
+  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+    if (static_cast<size_t>(it->GetSrcArgIndex()) == index) {
+      output_edges.push_back(GraphEdge::CreateGraphEdge(node, *it, false));
+    }
+  }
+
+  return output_edges;
+}
+
+/** Removes a set of GraphEdges from the graph. */
+void GraphEdge::RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edges) {
+  for (const auto& edge_to_remove : edges) {
+    graph.RemoveEdge(edge_to_remove.src_node,
+                     edge_to_remove.dst_node,
+                     edge_to_remove.src_arg_index,
+                     edge_to_remove.dst_arg_index);
+  }
 }
 
 }  // namespace graph_utils

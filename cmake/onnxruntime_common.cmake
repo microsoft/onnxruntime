@@ -63,6 +63,8 @@ else()
 endif()
 if(onnxruntime_target_platform STREQUAL "ARM64")
     set(onnxruntime_target_platform "ARM64")
+elseif(onnxruntime_target_platform STREQUAL "ARM64EC")
+    set(onnxruntime_target_platform "ARM64EC")
 elseif(onnxruntime_target_platform STREQUAL "ARM" OR CMAKE_GENERATOR MATCHES "ARM")
     set(onnxruntime_target_platform "ARM")
 elseif(onnxruntime_target_platform STREQUAL "x64" OR onnxruntime_target_platform STREQUAL "x86_64" OR onnxruntime_target_platform STREQUAL "AMD64" OR CMAKE_GENERATOR MATCHES "Win64")
@@ -71,13 +73,27 @@ elseif(onnxruntime_target_platform STREQUAL "Win32" OR onnxruntime_target_platfo
     set(onnxruntime_target_platform "x86")
 endif()
 
+if(onnxruntime_target_platform STREQUAL "ARM64EC")
+    if (MSVC)
+        link_directories("$ENV{VCINSTALLDIR}/Tools/MSVC/$ENV{VCToolsVersion}/lib/ARM64EC")
+        link_directories("$ENV{VCINSTALLDIR}/Tools/MSVC/$ENV{VCToolsVersion}/ATLMFC/lib/ARM64EC")
+        link_libraries(softintrin.lib)
+        add_compile_options("/bigobj")
+    endif()
+endif()
+
 file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
     ${onnxruntime_common_src_patterns}
     )
 
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 
-add_library(onnxruntime_common ${onnxruntime_common_src})
+onnxruntime_add_static_library(onnxruntime_common ${onnxruntime_common_src})
+
+if (onnxruntime_USE_CUDA)
+  # Some files, like the provider_bridge_ort include files that depend on cuda headers
+  target_include_directories(onnxruntime_common PUBLIC ${onnxruntime_CUDA_HOME}/include)
+endif()
 
 if (onnxruntime_USE_TELEMETRY)
   set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
@@ -102,10 +118,9 @@ target_include_directories(onnxruntime_common
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS}
     # propagate include directories of dependencies that are part of public interface
     PUBLIC
-        $<TARGET_PROPERTY:safeint_interface,INTERFACE_INCLUDE_DIRECTORIES>
         ${OPTIONAL_LITE_INCLUDE_DIR})
 
-target_link_libraries(onnxruntime_common Boost::mp11)
+target_link_libraries(onnxruntime_common safeint_interface Boost::mp11)
 
 if(NOT WIN32)
   target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
