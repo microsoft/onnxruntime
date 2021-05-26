@@ -9,7 +9,10 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "onnx/defs/function.h"
 #include <math.h>
+
+#ifdef ENABLE_TRAINING
 #include "orttraining/training_ops/cpu/aten_ops/aten_op_config.h"
+#endif
 
 namespace onnxruntime {
 namespace training {
@@ -2544,6 +2547,7 @@ Return true if all elements are true and false otherwise.
         }
       });
 
+#ifdef ENABLE_TRAINING
   ONNX_CONTRIB_OPERATOR_SCHEMA(ATenOp)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -2605,6 +2609,8 @@ Return true if all elements are true and false otherwise.
           updateOutputElemType(ctx, i, static_cast<int>(output_types_proto->ints(static_cast<int>(i))));
         }
       });
+#endif
+
 }
 }  // namespace training
 }  // namespace onnxruntime
