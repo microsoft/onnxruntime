@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// Use void* instead of PyObject* to avoid adding unnecessary
+// python.h dependency for the consumers (for example: the
+// provider bridge file).
+
 #pragma once
 
 #ifndef SHARED_PROVIDER

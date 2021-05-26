@@ -16,6 +16,10 @@ namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
 
+// PyObject RAII wrapper
+using PythonObjectPtr = ObjectPointer<PyObject>;
+template class ObjectPointer<PyObject>;
+
 template <>
 void ObjectPointer<PyObject>::free() {
   Py_XDECREF(ptr);
@@ -23,35 +27,35 @@ void ObjectPointer<PyObject>::free() {
 
 PyObject* Ort_PyTuple_New(const size_t len, const std::string& log_tag) {
   PyObject* item = PyTuple_New(len);
-  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
+  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::PythonCallArgs, item, log_tag);
   return item;
 }
 
 void Ort_PyTuple_SetItem_Incref(PyObject* py_tuple, size_t index, PyObject* item, const std::string& log_tag) {
-  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
+  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::PythonCallArgs, item, log_tag);
   Py_INCREF(item);
   PyTuple_SetItem(py_tuple, index, item);
 }
 
 void Ort_PyTuple_SetItem_NoIncref(PyObject* py_tuple, size_t index, PyObject* item, const std::string& log_tag) {
-  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
+  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::PythonCallArgs, item, log_tag);
   PyTuple_SetItem(py_tuple, index, item);
 }
 
 PyObject* Ort_PyList_New(const size_t len, const std::string& log_tag) {
   PyObject* item = PyList_New(len);
-  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
+  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::PythonCallArgs, item, log_tag);
   return item;
 }
 
 void Ort_PyList_SetItem_Incref(PyObject* py_list, size_t index, PyObject* item, const std::string& log_tag) {
-  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
+  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::PythonCallArgs, item, log_tag);
   Py_INCREF(item);
   PyList_SetItem(py_list, index, item);
 }
 
 void Ort_PyList_SetItem_NoIncref(PyObject* py_list, size_t index, PyObject* item, const std::string& log_tag) {
-  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::ForwardArgs, item, log_tag);
+  RefCountTracker::GetInstance().TrackPyObject(RefCountTracker::ObjCategory::PythonCallArgs, item, log_tag);
   PyList_SetItem(py_list, index, item);
 }
 
@@ -181,7 +185,7 @@ void InvokeRunner(
   }
 }
 
-std::unique_ptr<PythonObjectPtr> CreateForwardArguments(
+std::unique_ptr<PythonObjectPtr> CreatePythonCallArguments(
     PyObject* callback,
     const size_t len,
     const std::vector<int64_t>& requires_grads,
@@ -246,7 +250,7 @@ void Invoke(
   CheckArguments(len, requires_grads, tensor_args, tensor_indices, obj_args, obj_indices);
   RefCountTracker::GetInstance().Reset();
   {
-    auto args = CreateForwardArguments(
+    auto args = CreatePythonCallArguments(
         callback,
         len,
         requires_grads,

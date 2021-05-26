@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <Python.h>
 #include <mutex>
 
 #ifndef SHARED_PROVIDER
@@ -17,10 +16,8 @@ namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
 
-// PyObject RAII wrapper
-using PythonObjectPtr = ObjectPointer<PyObject>;
-template class ObjectPointer<PyObject>;
-
+/// Use void* instead of PyObject* to avoid add unnecessary
+/// python.h dependency for the consumers.
 class TorchProxy {
  public:
   static TorchProxy& GetInstance() {

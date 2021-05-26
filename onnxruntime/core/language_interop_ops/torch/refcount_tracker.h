@@ -17,8 +17,8 @@ using AddressInfos = std::unordered_map<void*, std::vector<std::string>>;
 class RefCountTracker {
  public:
   enum ObjCategory {
-    ForwardArgs,
-    ReturnValues,
+    PythonCallArgs,
+    PythonCallResults,
     AutoGradContext,
   };
 
@@ -38,14 +38,14 @@ class RefCountTracker {
  private:
   RefCountTracker() {
     addr_info_map_ = {
-        {RefCountTracker::ObjCategory::ForwardArgs, forward_arg_addresses_},
-        {RefCountTracker::ObjCategory::ReturnValues, return_value_addresses_},
+        {RefCountTracker::ObjCategory::PythonCallArgs, forward_arg_addresses_},
+        {RefCountTracker::ObjCategory::PythonCallResults, return_value_addresses_},
         {RefCountTracker::ObjCategory::AutoGradContext, auto_grad_addresses_},
     };
   }
 
   const char* ObjCategoryToString(int enumVal) {
-    static const char* enum_strings[] = {"ForwardArgs", "ReturnValues", "AutoGradContext"};
+    static const char* enum_strings[] = {"PythonCallArgs", "PythonCallResults", "AutoGradContext"};
     return enum_strings[enumVal];
   }
 
