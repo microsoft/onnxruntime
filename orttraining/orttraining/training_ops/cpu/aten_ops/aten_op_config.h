@@ -97,19 +97,25 @@ struct ATenOperatorConfig {
       auto it = default_int_array_values.find(name);
       if (it != default_int_array_values.end()) {
         has_default_value = true;
-        std::copy(it->second.begin(), it->second.end(), back_inserter(value));
+        for (auto elem : it->second) {
+          value.emplace_back(static_cast<T>(elem));
+        }
       }
     } else if (std::is_same<T, float>::value) {
       auto it = default_float_array_values.find(name);
       if (it != default_float_array_values.end()) {
         has_default_value = true;
-        std::copy(it->second.begin(), it->second.end(), back_inserter(value));
+        for (auto elem : it->second) {
+          value.emplace_back(static_cast<T>(elem));
+        }
       }
     } else if (std::is_same<T, bool>::value) {
       auto it = default_bool_array_values.find(name);
       if (it != default_bool_array_values.end()) {
         has_default_value = true;
-        std::copy(it->second.begin(), it->second.end(), back_inserter(value));
+        for (auto elem : it->second) {
+          value.emplace_back(static_cast<T>(elem));
+        }
       }
     }
 
