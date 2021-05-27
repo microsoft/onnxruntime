@@ -79,6 +79,7 @@ Status Transpose3DImpl(cudaStream_t stream, size_t element_size,
   return Status::OK();
 }
 
+template <int element_size>
 __global__ void Transpose4DKernelParallelizeMultipleElementsPerThreadInInnermostDim(
     const TArray<int64_t> input_strides, const void* input_data,
     const TArray<int64_t> output_strides, void* output_data,
@@ -137,22 +138,40 @@ Status Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(
     const TArray<int64_t>& input_shape, const TArray<int64_t>& input_strides,
     const void* input_data, const TArray<int64_t>& output_strides,
     void* output_data, int N) {
-  if (element_size != sizeof(int8_t) &&
-      element_size != sizeof(int16_t) &&
-      element_size != sizeof(int32_t) &&
-      element_size != sizeof(int64_t)) {
-    // User will not hit this as this kernel is for fixed element size tensors only
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for transpose on CUDA. Element size was ",
-                           element_size);
-  }
-
   unsigned int num_elements_per_thread = 4 * sizeof(int) / static_cast<unsigned int>(element_size);  // int4 is used in the kernel to access data.
   dim3 block_size(static_cast<unsigned int>(input_shape[3] / num_elements_per_thread), static_cast<unsigned int>(input_shape[2]));
   dim3 grid_size(static_cast<unsigned int>(input_shape[1]), static_cast<unsigned int>(input_shape[0]));
 
-  Transpose4DKernelParallelizeMultipleElementsPerThreadInInnermostDim<<<grid_size, block_size, 0, stream>>>(
-      input_strides, input_data,
-      output_strides, output_data, element_size, N / num_elements_per_thread);
+  switch (element_size) {
+    case sizeof(int8_t):
+      Transpose4DKernelParallelizeMultipleElementsPerThreadInInnermostDim<sizeof(int8_t)>
+          <<<grid_size, block_size, 0, stream>>>(
+              input_strides, input_data,
+              output_strides, output_data, element_size, N / num_elements_per_thread);
+      break;
+    case sizeof(int16_t):
+      Transpose4DKernelParallelizeMultipleElementsPerThreadInInnermostDim<sizeof(int16_t)>
+          <<<grid_size, block_size, 0, stream>>>(
+              input_strides, input_data,
+              output_strides, output_data, element_size, N / num_elements_per_thread);
+      break;
+    case sizeof(int32_t):
+      Transpose4DKernelParallelizeMultipleElementsPerThreadInInnermostDim<sizeof(int32_t)>
+          <<<grid_size, block_size, 0, stream>>>(
+              input_strides, input_data,
+              output_strides, output_data, element_size, N / num_elements_per_thread);
+      break;
+    case sizeof(int64_t):
+      Transpose4DKernelParallelizeMultipleElementsPerThreadInInnermostDim<sizeof(int64_t)>
+          <<<grid_size, block_size, 0, stream>>>(
+              input_strides, input_data,
+              output_strides, output_data, element_size, N / num_elements_per_thread);
+      break;
+    default:
+      // User will not hit this as this kernel is for fixed element size tensors only
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for transpose on CUDA. Element size was ",
+                             element_size);
+  }
 
   return Status::OK();
 }
