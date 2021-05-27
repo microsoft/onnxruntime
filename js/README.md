@@ -51,10 +51,6 @@ This will install Clang-format and ESLint for code-formatting and linting featur
 
 Use VSCode to open folder `<ORT_ROOT>/js`.
 
-```
-code <ORT_ROOT>/js
-```
-
 Make sure to open the correct folder to allow VSCode to load workspace configuration. Otherwise typescript and code formatter may not work as expected.
 
 To populate typescript type declarations, in each project folder, run `npm ci`.
@@ -220,7 +216,7 @@ There are multiple levels of tests for ONNXRuntime Web:
 
 #### E2E test
 
-E2E test is for testing end-to-end package consuming. In this test, NPM packages for `onnxruntime-common` and `onnxruntime-web` are generated and a clean folder is used for perform package installing. Then a simple mocha test is performed to make sure package can be consumed correctly.
+E2E test is for testing end-to-end package consuming. In this test, NPM packages for `onnxruntime-common` and `onnxruntime-web` are generated and a clean folder is used for installing packages. Then a simple mocha test is performed to make sure package can be consumed correctly.
 
 To launch E2E test:
 
@@ -230,16 +226,16 @@ npm run test:e2e
 
 ### Debugging
 
-#### Debugging on Desktop/Chrome
+#### Debugging TypeScript on Desktop/Chrome
 
 To debug the code from test-runner on Chrome:
 
-- Launch `npm test -- <your_args> --debug`.
+- Launch `npm test -- <your_args> --debug`. It opens an instance of Chrome browser.
 - In the open Chrome browser, click the `DEBUG` button on the top-right of the page.
 - In VSCode, click [side bar]->Run and Debug->select [Attach to Chrome]->click [Start Debugging] to attach.
 - put breakpoints in source code, and Refresh the page to reload.
 
-#### Debugging on iOS/Safari
+#### Debugging TypeScript on iOS/Safari
 
 To debug on an Apple iOS device, please refer to the following steps:
 
@@ -249,7 +245,7 @@ To debug on an Apple iOS device, please refer to the following steps:
 - in VSCode, select debug configuration `Remote Browser via Webkit Adaptor`.
 - follow the steps above to debug.
 
-#### Debugging on Android/Chrome
+#### Debugging TypeScript on Android/Chrome
 
 To debug on an Android device, please refer to the following steps:
 
@@ -257,6 +253,12 @@ To debug on an Android device, please refer to the following steps:
 - Follow instructions in [Remote Debugging on Android](https://developer.chrome.com/devtools/docs/remote-debugging-legacy) to launch `adb`. Make sure to use port 9000 so that the existing debug configuration works.
 - in VSCode, select debug configuration `Remote Browser via Webkit Adaptor`.
 - follow the steps above to debug.
+
+#### Debugging C/C++ for ONNX Runtime WebAssembly
+
+To debug C/C++ code for ONNX Runtime WebAssembly, you need to build ONNX Runtime with debug info (see [Build](#Build-2)).
+
+Currently debugging C/C++ code in WebAssembly is not supported in VSCode yet. Please follow [this instruction](https://developer.chrome.com/blog/wasm-debugging-2020/) to debug in browser devtool using extension [C/C++ DevTools Support (DWARF)](https://chrome.google.com/webstore/detail/cc%20%20-devtools-support-dwa/pdcpmagijalfljmkmjngeonclgbbannb).
 
 ### Generating Document
 
