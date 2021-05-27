@@ -545,6 +545,7 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NVIDIA_VISIBLE_DEVICES=all \
               -e NIGHTLY_BUILD \
+              -e DEFAULT_TRAINING_PACKAGE_DEVICE \
               -e BUILD_BUILDNUMBER \
               onnxruntimetraininggpubuild \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
