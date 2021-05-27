@@ -72,6 +72,38 @@ def _parse_build_settings(args):
     return build_settings
 
 
+# Add ORT C and C++ API headers to the AAR package (in fact a zip file)
+# Such that developers using ORT native API can extract libraries and header from AAR package without building ORT
+# TODO, see if we can use Gradle to add headers to AAR package directly, which is necessary if we want to
+# publish the packagee directly using Gradle in the pipeline
+def _add_headers_to_aar(aar_file_path):
+    import shutil
+    import tempfile
+    with tempfile.TemporaryDirectory() as temp_dir:
+        aar_content = os.path.join(temp_dir, 'aar_content')
+        shutil.unpack_archive(aar_file_path, aar_content, 'zip')
+        dst_headers_path = os.path.join(aar_content, 'headers')
+        os.makedirs(dst_headers_path)
+        src_headers_base_path = os.path.join(REPO_DIR, 'include', 'onnxruntime', 'core')
+
+        # copy necessary header files
+        shutil.copy(os.path.join(src_headers_base_path, 'session', 'onnxruntime_c_api.h'), dst_headers_path)
+        shutil.copy(os.path.join(src_headers_base_path, 'session', 'onnxruntime_cxx_api.h'), dst_headers_path)
+        shutil.copy(os.path.join(src_headers_base_path, 'session', 'onnxruntime_cxx_inline.h'), dst_headers_path)
+        shutil.copy(os.path.join(src_headers_base_path, 'providers', 'cpu', 'cpu_provider_factory.h'),
+                    dst_headers_path)
+        shutil.copy(os.path.join(src_headers_base_path, 'providers', 'coreml', 'coreml_provider_factory.h'),
+                    dst_headers_path)
+
+        # create the zip archive
+        zip_base_filename = os.path.join(temp_dir, 'aar_with_headers')
+        zip_filename = zip_base_filename + '.zip'
+        shutil.make_archive(zip_base_filename, 'zip', root_dir=aar_content)
+
+        # overwrite the existing AAR package
+        shutil.move(zip_filename, aar_file_path)
+
+
 def _build_aar(args):
     build_settings = _parse_build_settings(args)
     build_dir = os.path.abspath(args.build_dir)
@@ -139,6 +171,11 @@ def _build_aar(args):
     # clean, build, and publish to a local directory
     subprocess.run(_gradle_command + ['clean'], env=_env, shell=_shell, check=True, cwd=JAVA_ROOT)
     subprocess.run(_gradle_command + ['build'], env=_env, shell=_shell, check=True, cwd=JAVA_ROOT)
+
+    # add C and C++ API headers to the intermediate aar package
+    aar_file_path = os.path.join(_aar_dir, 'outputs', 'aar', 'onnxruntime-release.aar')
+    _add_headers_to_aar(aar_file_path)
+
     subprocess.run(_gradle_command + ['publish'], env=_env, shell=_shell, check=True, cwd=JAVA_ROOT)
 
 
