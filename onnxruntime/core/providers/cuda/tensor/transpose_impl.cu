@@ -83,7 +83,6 @@ template <int element_size>
 __global__ void Transpose4DKernelParallelizeMultipleElementsPerThreadInInnermostDim(
     const TArray<int64_t> input_strides, const void* input_data,
     const TArray<int64_t> output_strides, void* output_data,
-    size_t element_size,
     CUDA_LONG N) {
   // output coordinates will be: blockIdx.y, blockIdx.x, threadIdx.y, threadIdx.x
   CUDA_LONG input_index = (blockIdx.y * input_strides[0] +
