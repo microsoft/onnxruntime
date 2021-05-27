@@ -2686,6 +2686,75 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
         updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
       });
 
+  static const char* OptionalNone_ver1_doc = R"DOC(
+      Construct an empty optional, with given element type.
+      )DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(OptionalNone)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(OptionalNone_ver1_doc)
+      .Attr("type", "The type of the element in the output", AttributeProto::TYPE_PROTO, static_cast<int64_t>(1))
+      .Output(
+          0,
+          "output",
+          "An optional that contains no elements.",
+          "O")
+      .TypeConstraint(
+          "O",
+          {"optional(tensor(float))",
+           "optional(sequence(tensor(float)))"},
+          "Constrain output type to any optional tensor or optional sequence types.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        const auto* attr_proto = ctx.getAttribute("type");
+        if (attr_proto == nullptr)
+          fail_type_inference(
+                "Attribute type should be provided.");
+        if (!attr_proto->has_i())
+          fail_type_inference(
+              "Attribute type should be of integer type and specify a type.");
+        auto attr_tp = attr_proto->tp();
+        ctx.getOutputType(0)
+            ->mutable_optional_type()
+            ->mutable_elem_type()
+            ->CopyFrom(attr_tp);
+      });
+
+  static const char* OptionalConstruct_ver1_doc = R"DOC(
+      Construct a optional type containing the 'input' element.
+      )DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(OptionalConstruct)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(OptionalConstruct_ver1_doc)
+      .Input(0, "input", "The input element.", "T")
+      .Output(0, "output", "The optional output enclosing the input element.", "O")
+      .TypeConstraint(
+          "T",
+          {"tensor(float)",
+           "sequence(tensor(float))"},
+          "Constrain input type to all tensor and sequence types.")
+      .TypeConstraint(
+          "O",
+          {"optional(tensor(float))",
+           "optional(sequence(tensor(float)))"},
+          "Constrain output type to optional tensor or optional sequence types.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+          const size_t numInputs = ctx.getNumInputs();
+          if (numInputs != 1) {
+            fail_type_inference("OptionalConstruct is expected to have 1 input element.");
+          }
+          auto input_type = ctx.getInputType(0);
+          if(input_type == nullptr){
+            fail_type_inference("Input type is null. Type info is expected.");
+          }
+          ctx.getOutputType(0)
+              ->mutable_optional_type()
+              ->mutable_elem_type()
+              ->CopyFrom(*input_type);
+        });
+
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();
