@@ -1,25 +1,26 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+# Import external libraries.
 import copy
-import onnx
 import os
-import torch
-import numpy as np
+import pytest
 import threading
-
 import torch
 from torch.nn.parameter import Parameter
-from torch.utils.dlpack import from_dlpack, to_dlpack
 
-from onnxruntime.training.ortmodule import ORTModule
-from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
-from onnxruntime.capi import _pybind_state as C
-
-import pytest
+# Import ORT modules.
 import _test_helpers
+from onnxruntime.training.ortmodule import ORTModule
+from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory 
 
 torch.manual_seed(1)
+
+
+def set_onnx_fallthrough_export_type(module):
+    onnx_export_type = torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH
+    module._execution_manager = GraphExecutionManagerFactory(
+        module._flattened_module, onnx_export_type=onnx_export_type)
 
 
 def run_with_pytorch_on_device(device, model, input_list, label_input, is_eval_mode=False):
@@ -50,7 +51,8 @@ def run_with_ort_on_device(device, model, input_list, label_input, is_eval_mode=
     print('Use ORTModule for CUDA run on {} ....'.format(device))
     model = copy.deepcopy(model)
     model.to(device)
-    model = ORTModule(model, onnx_export_type=torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH)
+    model = ORTModule(model)
+    set_onnx_fallthrough_export_type(model)
     if is_eval_mode:
         print("evalation mode.............")
         model.eval()
@@ -378,6 +380,7 @@ class InplaceUpdateInputAsOutputNotRequireGradModel(torch.nn.Module):
         out = y1 + y2
         return out
 
+
 @pytest.mark.skip(reason="This test is not correct. All tensors modified by in-place operattions should be mark_dirty(...).")
 def test_InplaceUpdateInputAsOutputNotRequireGrad():
     output_size = 1024
@@ -433,6 +436,7 @@ class InplaceUpdateInputNotAsOutputNotRequireGradModel(torch.nn.Module):
         y2 = x.add(self.bias)
         out = y1 + y2
         return out
+
 
 @pytest.mark.skip(reason="This test is not correct. All tensors modified by in-place operattions should be mark_dirty(...).")
 def test_InplaceUpdateInputNotAsOutputNotRequireGrad():
@@ -817,10 +821,10 @@ class OuterFunction(torch.autograd.Function):
     def forward(ctx, x, dim, device, use_ort):
         ctx.save_for_backward(x)
         ctx.device = device
+        ctx.inner = InnerModel(dim, device).to(device)
         if use_ort:
-            ctx.inner = ORTModule(InnerModel(dim, device).to(device))
-        else:
-            ctx.inner = InnerModel(dim, device).to(device)
+            ctx.inner = ORTModule(ctx.inner)
+            set_onnx_fallthrough_export_type(ctx.inner)
         z = ctx.inner(x)
         return z
 

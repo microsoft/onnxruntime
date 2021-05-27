@@ -31,7 +31,7 @@ class RunStateInfo(object):
         self.output_info = output_info
 
 class GraphExecutionManager(ABC):
-    def __init__(self, module, **kwargs):
+    def __init__(self, module, onnx_export_type):
         """Manages building and execution of onnx graphs
 
         This class is an abstract class and should not directly be instantiated.
@@ -94,7 +94,7 @@ class GraphExecutionManager(ABC):
 
         # Use torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH to allow custom autograd.Functions'.
         # Use torch.onnx.OperatorExportTypes.ONNX if pure ONNX is needed.
-        self._onnx_export_type = kwargs['onnx_export_type']
+        self._onnx_export_type = onnx_export_type
 
         self._input_info = None
         self._module_output_schema = None

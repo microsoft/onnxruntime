@@ -11,7 +11,7 @@ namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
 
-void RefCountTracker::TrackPyObject(RefCountTracker::ObjCategory category, PyObject* py_obj, const std::string& log_tag) const {
+void RefCountTracker::TrackPyObject(RefCountTracker::ObjCategory category, PyObject* py_obj, const std::string& log_tag) {
 #ifdef NDEBUG
   ORT_UNUSED_PARAMETER(category);
   ORT_UNUSED_PARAMETER(py_obj);
@@ -51,7 +51,7 @@ void RefCountTracker::DumpDetails(const std::string& phase_name) const {
 #endif
 }
 
-void RefCountTracker::Reset() const {
+void RefCountTracker::Reset() {
 #ifndef NDEBUG
   for (auto addr_info_it = addr_info_map_.begin(); addr_info_it != addr_info_map_.end(); ++addr_info_it) {
     addr_info_it->second.clear();

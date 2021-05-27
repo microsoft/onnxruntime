@@ -23,7 +23,7 @@ class ORTModule(torch.nn.Module):
     :meth:`~torch.nn.Module.backward` along with all others :class:`torch.nn.Module`'s APIs.
     """
 
-    def __init__(self, module, **kwargs):
+    def __init__(self, module):
         assert isinstance(
             module, torch.nn.Module), "'module' must be a torch.nn.Module"
 
@@ -57,9 +57,8 @@ class ORTModule(torch.nn.Module):
         # Get the module that flattens both input and output
         self._flattened_module = _io._FlattenedModule(self._original_module)
 
+        # Replace kwargs with onnx_export_type
         onnx_export_type = torch.onnx.OperatorExportTypes.ONNX
-        if 'onnx_export_type' in kwargs:
-            onnx_export_type = kwargs['onnx_export_type']
         self._execution_manager = GraphExecutionManagerFactory(self._flattened_module,
                                                                onnx_export_type=onnx_export_type)
 
