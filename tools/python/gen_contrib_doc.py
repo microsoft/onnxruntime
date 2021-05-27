@@ -10,6 +10,7 @@ from __future__ import unicode_literals
 from collections import defaultdict
 import io
 import os
+import pathlib
 import sys
 import argparse
 
@@ -18,7 +19,7 @@ import numpy as np  # type: ignore
 import onnxruntime.capi.onnxruntime_pybind11_state as rtpy
 from onnxruntime.capi.onnxruntime_pybind11_state import schemadef  # noqa: F401
 from onnxruntime.capi.onnxruntime_pybind11_state.schemadef import OpSchema  # noqa: F401
-from typing import Any, Text, Sequence, Dict, List, Type, Set, Tuple
+from typing import Any, Text, Sequence, Dict, List, Set, Tuple
 from onnx import AttributeProto, FunctionProto
 
 ONNX_ML = not bool(os.getenv('ONNX_ML') == '0')
@@ -37,9 +38,13 @@ def display_number(v):  # type: (int) -> Text
     return Text(v)
 
 
-def should_render_domain(domain):  # type: (Text) -> bool
+def should_render_domain(domain, domain_filter):  # type: (Text) -> bool
     if domain == ONNX_DOMAIN or domain == '' or domain == ONNX_ML_DOMAIN or domain == 'ai.onnx.ml':
         return False
+
+    if domain_filter and domain not in domain_filter:
+        return False
+
     return True
 
 
@@ -148,7 +153,7 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
     attribs = schema.attributes
     if attribs:
         s += '\n#### Attributes\n\n'
-        s += '<table><dl>\n'
+        s += '<dl>\n'
         for _, attr in sorted(attribs.items()):
             # option holds either required or default value
             opt = ''
@@ -170,12 +175,12 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
                     default_value = format_value(default_value)
                 opt = 'default is {}'.format(default_value)
 
-            s += '<dt>{} [{}]{}</dt>\n'.format(
+            s += '<dt><tt>{}</tt> : {}{}</dt>\n'.format(
                 attr.name,
                 display_attr_type(attr.type),
                 ' ({})'.format(opt) if opt else '')
             s += '<dd>{}</dd>\n'.format(attr.description)
-        s += '</dl></table>\n'
+        s += '</dl>\n'
 
     # inputs
     s += '\n#### Inputs'
@@ -196,10 +201,10 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
                     option_str = " (variadic)"
                 else:
                     option_str = " (variadic, heterogeneous)"
-            s += '<dt>{}{} [{}]</dt>\n'.format(inp.name, option_str, inp.typeStr)
+            s += '<dt><tt>{}</tt>{} : {}</dt>\n'.format(inp.name, option_str, inp.typeStr)
             s += '<dd>{}</dd>\n'.format(inp.description)
 
-    s += '</dl></table>\n'
+    s += '</dl>\n'
 
     # outputs
     s += '\n#### Outputs'
@@ -209,7 +214,7 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
     s += '\n\n'
     outputs = schema.outputs
     if outputs:
-        s += '<table><dl>\n'
+        s += '<dl>\n'
         for output in outputs:
             option_str = ""
             if OpSchema.FormalParameterOption.Optional == output.option:
@@ -219,17 +224,17 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
                     option_str = " (variadic)"
                 else:
                     option_str = " (variadic, heterogeneous)"
-            s += '<dt>{}{} [{}]</dt>\n'.format(output.name, option_str, output.typeStr)
+            s += '<dt><tt>{}</tt>{} : {}</dt>\n'.format(output.name, option_str, output.typeStr)
             s += '<dd>{}</dd>\n'.format(output.description)
 
-    s += '</dl></table>\n'
+    s += '</dl>\n'
 
     # type constraints
     s += '\n#### Type Constraints'
     s += '\n\n'
     typecons = schema.type_constraints
     if typecons:
-        s += '<table><dl>\n'
+        s += '<dl>\n'
         for type_constraint in typecons:
             allowed_types = type_constraint.allowed_type_strs
             allowed_type_str = ''
@@ -237,10 +242,10 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
                 allowed_type_str = allowed_types[0]
             for allowedType in allowed_types[1:]:
                 allowed_type_str += ', ' + allowedType
-            s += '<dt>{} : {}</dt>\n'.format(
+            s += '<dt><tt>{}</tt> : {}</dt>\n'.format(
                 type_constraint.type_param_str, allowed_type_str)
             s += '<dd>{}</dd>\n'.format(type_constraint.description)
-        s += '</dl></table>\n'
+        s += '</dl>\n'
 
     return s
 
@@ -308,9 +313,9 @@ def support_level_str(level):  # type: (OpSchema.SupportType) -> Text
 #         "<sub>experimental</sub> " if status == OperatorStatus.Value('EXPERIMENTAL') else ""  # type: ignore
 
 
-def main(args):  # type: (Type[Args]) -> None
+def main(output_path: str, domain_filter: [str]):
 
-    with io.open(args.output, 'w', newline='', encoding="utf-8") as fout:
+    with io.open(output_path, 'w', newline='', encoding="utf-8") as fout:
         fout.write('## Contrib Operator Schemas\n')
         fout.write(
             "*This file is automatically generated from the registered contrib operator schemas by "
@@ -330,7 +335,7 @@ def main(args):  # type: (Type[Args]) -> None
         operator_schemas = list()  # type: List[Tuple[Text, List[Tuple[int, List[Tuple[Text, OpSchema, List[OpSchema]]]]]]]  # noqa: E501
         exsting_ops = set()  # type: Set[Text]
         for domain, _supportmap in sorted(index.items()):
-            if not should_render_domain(domain):
+            if not should_render_domain(domain, domain_filter):
                 continue
 
             processed_supportmap = list()
@@ -383,13 +388,13 @@ def main(args):  # type: (Type[Args]) -> None
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='ONNX Runtime Operator Documentation Generator')
-    parser.add_argument('--output_path', help='output markdown file path',
-                        default=os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ContribOperators.md')
-                        )
+    parser = argparse.ArgumentParser(description='ONNX Runtime Contrib Operator Documentation Generator')
+    parser.add_argument('--domains', nargs='+',
+                        help="Filter to specified domains. "
+                             "e.g. `--domains com.microsoft com.microsoft.nchwc`")
+    parser.add_argument('--output_path', help='output markdown file path', type=pathlib.Path, required=True,
+                        default=os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ContribOperators.md'))
     args = parser.parse_args()
+    output_path = args.output_path.resolve()
 
-    class Args(object):
-        output = args.output_path
-
-    main(Args)
+    main(output_path, args.domains)
