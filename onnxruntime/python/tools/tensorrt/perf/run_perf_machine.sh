@@ -11,7 +11,7 @@ esac
 done 
 
 # Variables
-WORKSPACE=/home/hcsuser/
+WORKSPACE=/
 
 # Select models to be tested or run selected-models 
 if [ $OPTION == "onnx-zoo-models" ]

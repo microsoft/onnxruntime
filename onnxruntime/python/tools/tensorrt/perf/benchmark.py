@@ -1530,7 +1530,7 @@ def parse_arguments():
     
     parser.add_argument("-w", "--workspace", required=False, default="/", help="Workspace to find tensorrt and perf script (with models if parsing with model file)")
     
-    parser.add_argument("--track_memory", required=False, default=True, help="Track CUDA and TRT Memory Usage")
+    parser.add_argument("--track_memory", required=False, default=False, help="Track CUDA and TRT Memory Usage")
 
     parser.add_argument("--ep", required=False, default=None, help="Specify ORT Execution Provider.")
     

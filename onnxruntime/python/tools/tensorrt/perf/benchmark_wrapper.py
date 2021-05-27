@@ -22,7 +22,8 @@ def get_ep_list(comparison):
     return ep_list
 
 def resolve_trtexec_path(workspace): 
-    trtexec_options = get_output(["find", workspace, "-name", "trtexec"])
+    return "/usr/src/tensorrt/bin/trtexec"
+    trtexec_options = get_output(["sudo", "find", workspace, "-name", "trtexec"])
     trtexec_path = re.search(r'.*/bin/trtexec', trtexec_options).group(0)
     logger.info("using trtexec {}".format(trtexec_path))
     return trtexec_path
@@ -163,7 +164,7 @@ def main():
     logger.info("\n===========================================")
     logger.info("=========== System information  ===========")
     logger.info("===========================================")
-    info = get_system_info(args.workspace)
+    #info = get_system_info(args.workspace)
     pretty_print(pp, info)
     logger.info("\n")
 
