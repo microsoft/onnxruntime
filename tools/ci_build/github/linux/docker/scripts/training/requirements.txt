@@ -7,5 +7,5 @@ transformers==v2.10.0
 torch==1.8.1+cu102
 torchvision==0.9.1+cu102
 torchtext==0.9.1
-tensorboard==v2.0.0
+tensorboard==2.2.0
 h5py
