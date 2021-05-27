@@ -5,7 +5,7 @@
 /* eslint-disable @typescript-eslint/no-use-before-define */
 
 import {execSync, spawnSync} from 'child_process';
-import * as fs from 'fs';
+import * as fs from 'fs-extra';
 import * as globby from 'globby';
 import {default as minimatch} from 'minimatch';
 import npmlog from 'npmlog';
@@ -144,9 +144,7 @@ run({
     cpuOptions: args.cpuOptions,
     webglOptions: args.webglOptions,
     wasmOptions: args.wasmOptions,
-    cpuFlags: args.cpuFlags,
-    webglFlags: args.webglFlags,
-    wasmFlags: args.wasmFlags,
+    globalEnvFlags: args.globalEnvFlags
   }
 });
 npmlog.info('TestRunnerCli', 'Tests completed successfully');
@@ -399,31 +397,45 @@ function run(config: Test.Config) {
       `(1/5) Writing file cache to file: testdata-file-cache-*.json ... ${
           fileCacheUrls.length > 0 ? `DONE, ${fileCacheUrls.length} file(s) generated` : 'SKIPPED'}`);
 
-  // STEP 2. write the config to testdata-config.js
-  npmlog.info('TestRunnerCli.Run', '(2/5) Writing config to file: testdata-config.js ...');
+  // STEP 2. write the config to testdata-config.json
+  npmlog.info('TestRunnerCli.Run', '(2/5) Writing config to file: testdata-config.json ...');
   saveConfig(config);
-  npmlog.info('TestRunnerCli.Run', '(2/5) Writing config to file: testdata-config.js ... DONE');
+  npmlog.info('TestRunnerCli.Run', '(2/5) Writing config to file: testdata-config.json ... DONE');
 
   // STEP 3. get npm bin folder
   npmlog.info('TestRunnerCli.Run', '(3/5) Retrieving npm bin folder...');
   const npmBin = execSync('npm bin', {encoding: 'utf8'}).trimRight();
   npmlog.info('TestRunnerCli.Run', `(3/5) Retrieving npm bin folder... DONE, folder: ${npmBin}`);
 
+  // STEP 4. generate bundle
+  npmlog.info('TestRunnerCli.Run', '(4/5) Running build to generate bundle...');
+  const buildCommand = `node ${path.join(__dirname, 'build')}`;
+  const buildArgs = [`--bundle-mode=${args.env === 'node' ? 'node' : args.bundleMode}`];
+  if (args.backends.indexOf('wasm') === -1) {
+    buildArgs.push('--no-wasm');
+  }
+  npmlog.info('TestRunnerCli.Run', `CMD: ${buildCommand} ${buildArgs.join(' ')}`);
+  const build = spawnSync(buildCommand, buildArgs, {shell: true, stdio: 'inherit'});
+  if (build.status !== 0) {
+    console.error(build.error);
+    process.exit(build.status === null ? undefined : build.status);
+  }
+  npmlog.info('TestRunnerCli.Run', '(4/5) Running build to generate bundle... DONE');
+
   if (args.env === 'node') {
-    // STEP 4. use tsc to build ONNX Runtime Web
-    npmlog.info('TestRunnerCli.Run', '(4/5) Running tsc...');
+    // STEP 5. run tsc and run mocha
+    npmlog.info('TestRunnerCli.Run', '(5/5) Running tsc...');
     const tscCommand = path.join(npmBin, 'tsc');
     const tsc = spawnSync(tscCommand, {shell: true, stdio: 'inherit'});
     if (tsc.status !== 0) {
       console.error(tsc.error);
       process.exit(tsc.status === null ? undefined : tsc.status);
     }
-    npmlog.info('TestRunnerCli.Run', '(4/5) Running tsc... DONE');
+    npmlog.info('TestRunnerCli.Run', '(5/5) Running tsc... DONE');
 
-    // STEP 5. run mocha
     npmlog.info('TestRunnerCli.Run', '(5/5) Running mocha...');
     const mochaCommand = path.join(npmBin, 'mocha');
-    const mochaArgs = [path.join(TEST_ROOT, 'test-main'), '--timeout 60000'];
+    const mochaArgs = [path.join(TEST_ROOT, 'test-main'), `--timeout ${args.debug ? 9999999 : 60000}`];
     npmlog.info('TestRunnerCli.Run', `CMD: ${mochaCommand} ${mochaArgs.join(' ')}`);
     const mocha = spawnSync(mochaCommand, mochaArgs, {shell: true, stdio: 'inherit'});
     if (mocha.status !== 0) {
@@ -433,21 +445,6 @@ function run(config: Test.Config) {
     npmlog.info('TestRunnerCli.Run', '(5/5) Running mocha... DONE');
 
   } else {
-    // STEP 4. generate bundle
-    npmlog.info('TestRunnerCli.Run', '(4/5) Running build to generate bundle...');
-    const buildCommand = `node ${path.join(__dirname, 'build')}`;
-    const buildArgs = [`--bundle-mode=${args.bundleMode}`];
-    if (args.backends.indexOf('wasm') === -1) {
-      buildArgs.push('--no-wasm');
-    }
-    npmlog.info('TestRunnerCli.Run', `CMD: ${buildCommand} ${buildArgs.join(' ')}`);
-    const build = spawnSync(buildCommand, buildArgs, {shell: true, stdio: 'inherit'});
-    if (build.status !== 0) {
-      console.error(build.error);
-      process.exit(build.status === null ? undefined : build.status);
-    }
-    npmlog.info('TestRunnerCli.Run', '(4/5) Running build to generate bundle... DONE');
-
     // STEP 5. use Karma to run test
     npmlog.info('TestRunnerCli.Run', '(5/5) Running karma to start test runner...');
     const karmaCommand = path.join(npmBin, 'karma');
@@ -549,39 +546,7 @@ function saveOneFileCache(index: number, fileCache: Test.FileCache) {
 }
 
 function saveConfig(config: Test.Config) {
-  let setOptions = '';
-  if (config.options.debug !== undefined) {
-    setOptions += `ort.env.debug = ${config.options.debug};`;
-  }
-  if (config.options.webglFlags && config.options.webglFlags.contextId !== undefined) {
-    setOptions += `ort.env.webgl.contextId = ${JSON.stringify(config.options.webglFlags.contextId)};`;
-  }
-  if (config.options.webglFlags && config.options.webglFlags.matmulMaxBatchSize !== undefined) {
-    setOptions += `ort.env.webgl.matmulMaxBatchSize = ${config.options.webglFlags.matmulMaxBatchSize};`;
-  }
-  if (config.options.webglFlags && config.options.webglFlags.textureCacheMode !== undefined) {
-    setOptions += `ort.env.webgl.textureCacheMode = ${JSON.stringify(config.options.webglFlags.textureCacheMode)};`;
-  }
-  if (config.options.webglFlags && config.options.webglFlags.pack !== undefined) {
-    setOptions += `ort.env.webgl.pack = ${JSON.stringify(config.options.webglFlags.pack)};`;
-  }
-  if (config.options.wasmFlags && config.options.wasmFlags.numThreads !== undefined) {
-    setOptions += `ort.env.wasm.numThreads = ${JSON.stringify(config.options.wasmFlags.numThreads)};`;
-  }
-  if (config.options.wasmFlags && config.options.wasmFlags.loggingLevel !== undefined) {
-    setOptions += `ort.env.wasm.loggingLevel = ${JSON.stringify(config.options.wasmFlags.loggingLevel)};`;
-  }
-  if (config.options.wasmFlags && config.options.wasmFlags.initTimeout !== undefined) {
-    setOptions += `ort.env.wasm.initTimeout = ${JSON.stringify(config.options.wasmFlags.initTimeout)};`;
-  }
-  // TODO: support onnxruntime nodejs binding
-  // if (config.model.some(testGroup => testGroup.tests.some(test => test.backend === 'cpu'))) {
-  //   setOptions += 'require(\'onnxruntime-node\');';
-  // }
-
-  fs.writeFileSync(path.join(TEST_ROOT, './testdata-config.js'), `${setOptions}
-
-ort.env.ORT_WEB_TEST_DATA=${JSON.stringify(config)};`);
+  fs.writeJSONSync(path.join(TEST_ROOT, './testdata-config.json'), config);
 }
 
 function getBrowserNameFromEnv(env: TestRunnerCliArgs['env'], debug?: boolean) {

@@ -564,7 +564,7 @@ common::Status InferenceSession::Load(std::function<common::Status(std::shared_p
   Status status = Status::OK();
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.Now();
+    tp = session_profiler_.StartTime();
   }
   ORT_TRY {
     std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
@@ -1114,11 +1114,27 @@ static bool ModelHasFP16Inputs(const Graph& graph) {
   return false;
 }
 
+common::Status InferenceSession::AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container) {
+  if (prepacked_weights_container == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "The provided PrePackedWeightsContainer instance to be added to the session is null");
+  }
+
+  if (prepacked_weights_container_ != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "The session already has a PrePackedWeightsContainer instance");
+  }
+
+  prepacked_weights_container_ = prepacked_weights_container;
+
+  return Status::OK();
+}
+
 common::Status InferenceSession::Initialize() {
   Status status = Status::OK();
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.Now();
+    tp = session_profiler_.StartTime();
   }
 
   ORT_TRY {
@@ -1143,6 +1159,18 @@ common::Status InferenceSession::Initialize() {
 
       have_cpu_ep = execution_providers_.Get(onnxruntime::kCpuExecutionProvider) != nullptr;
     }
+
+    // Verify that there are no external initializers in the graph if external data is disabled.
+    onnxruntime::Graph& graph = model_->MainGraph();
+#ifdef DISABLE_EXTERNAL_INITIALIZERS
+    const InitializedTensorSet& initializers = graph.GetAllInitializedTensors();
+    for (const auto& it: initializers) {
+      if (utils::HasExternalData(*it.second)) {
+        return common::Status(common::ONNXRUNTIME, common::FAIL,
+                  "Initializer tensors with external data is not allowed.");
+      }
+    }
+#endif
 
     // Register default CPUExecutionProvider if user didn't provide it through the Register() calls.
     // RegisterExecutionProvider locks the session_mutex_ so we can't be holding it when we call that
@@ -1191,9 +1219,8 @@ common::Status InferenceSession::Initialize() {
         *session_logger_,
         session_profiler_,
         session_options_.use_deterministic_compute,
-        session_options_.enable_mem_reuse);
-
-    onnxruntime::Graph& graph = model_->MainGraph();
+        session_options_.enable_mem_reuse,
+        prepacked_weights_container_);
 
     // Collect the kernel registries from execution provider instances;
     // There are 2 kinds of kernel registries with priority from high to low as below,
@@ -1585,7 +1612,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
   TimePoint tp;
   if (session_profiler_.IsEnabled()) {
-    tp = session_profiler_.Now();
+    tp = session_profiler_.StartTime();
   }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
@@ -2093,8 +2120,16 @@ SessionIOBinding::SessionIOBinding(InferenceSession* session) : sess_(session) {
   ORT_ENFORCE(session->NewIOBinding(&binding_).IsOK());
 }
 
+const InferenceSession* SessionIOBinding::GetInferenceSession() const {
+  return sess_;
+}
+
 InferenceSession* SessionIOBinding::GetInferenceSession() {
   return sess_;
+}
+
+const IOBinding* SessionIOBinding::Get() const {
+  return binding_.get();
 }
 
 IOBinding* SessionIOBinding::Get() {

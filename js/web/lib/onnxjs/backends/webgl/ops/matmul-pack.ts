@@ -4,8 +4,11 @@
 import {MatMul} from '../../../ops/matmul';
 import {Tensor} from '../../../tensor';
 import {BroadcastUtil} from '../../../util';
+import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, WebGLOperator} from '../types';
+import {getCoordsDataType} from '../utils';
+
 import {getActicationSnippet} from './fuse-utils';
 
 export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
@@ -14,7 +17,7 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
   }
   createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
     const hasBias = inputs.length > 2;
-    const processBias = hasBias ? 'value += vec4(getBias(a[0]*2).xx, getBias(a[0]*2).yy);' : '';
+    const processBias = hasBias ? 'result += getBiasAtOutCoords();' : '';
     const aShape = inputs[0].dims;
     const bShape = inputs[1].dims;
     const outputShape = BroadcastUtil.calcShape(aShape, bShape, true);
@@ -22,38 +25,44 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
     if (!outputShape) {
       throw new Error('Can\'t use matmul on the given tensors');
     }
-    const rank = outputShape.length;
+    const sharedDim = aShape[aShape.length - 1];
+    const sharedDimIndex = Math.ceil(sharedDim / 2);
     const aRank = aShape.length;
     const bRank = bShape.length;
-    const sharedDim = aShape[aShape.length - 1];
+
+    const glsl = getGlsl(handler.session.backend.glContext.version);
+    const coordsDataType = getCoordsDataType(outputShape.length);
+    const outRank = outputShape.length;
+    const allGlChannels = ['x', 'y', 'z', 'w', 'u', 'v'];
 
     const {activationFunction, applyActivation} = getActicationSnippet(this.activation);
-    // TODO:fix broadcasting
     const shaderSource = `
       ${activationFunction}
-      vec4 process(int indices[${rank}]) {
-          int a[${aRank}];
-          int b[${bRank}];
-          bcastMatmulIndices_A(indices, a);
-          bcastMatmulIndices_B(indices, b);
+      void main() {
+        ${coordsDataType} rc = getOutputCoords();
+        int lastDim = rc.${allGlChannels[outRank - 1]};
+        rc.${allGlChannels[outRank - 1]} = rc.${allGlChannels[outRank - 2]};
+        rc.${allGlChannels[outRank - 2]} = lastDim;
 
-          vec4 value;
-          for (int k=0; k<((${sharedDim}+1)/2); ++k) {
-              a[${aRank - 1}] = k;
-              b[${bRank - 2}] = k;
-              value += ${getA(aRank)}.rrbb * ${getB(bRank)}.rgrg;
-              value += ${getA(aRank)}.ggaa * ${getB(bRank)}.baba;
-          }
-          ${processBias}
-          ${applyActivation}
-          return value;
+        vec4 result = vec4(0);
+        for (int i = 0; i < ${sharedDimIndex}; i++) {
+          vec4 a = getA(${getA(allGlChannels, aRank)});
+          vec4 b = getB(${getB(allGlChannels, bRank)});
+          result += (a.rrbb * b.rgrg);
+          result += (a.ggaa * b.baba);
+        }
+        ${processBias}
+        ${applyActivation}
+        ${glsl.output} = result;
       }`;
     return {
+      name: 'WebGLMatMulPacked',
       inputLayouts: inputs.map((t, i) => handler.getOrCreateTextureLayout(t, 4, true, inputs[i].dims, true)),
       outputLayout:
           handler.createTextureLayoutFromShape(outputShape, 4, outputShape, {isPacked: true, reverseWH: true}),
       samplers: hasBias ? ['A', 'B', 'Bias'] : ['A', 'B'],
       shaderSource,
+      hasMain: true,
       expectPackedInputs: true,
       expectPackedOutputs: true,
     };
@@ -69,22 +78,22 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
   }
 }
 
-function getA(outputRank: number): string {
-  let res = 'getA(';
-  for (let i = 0; i < outputRank - 2; i++) {
-    res += `a[${i}], `;
+function getA(allGlChannels: string[], rank: number): string {
+  let res = '';
+  for (let i = 0; i < rank - 2; i++) {
+    res += `rc.${allGlChannels[i]}, `;
   }
-  res += `a[${outputRank - 2}]*2, ` +
-      'k*2)';
+  res += `rc.${allGlChannels[rank - 2]}, ` +
+      'i<<1';
   return res;
 }
 
-function getB(outputRank: number): string {
-  let res = 'getB(';
-  for (let i = 0; i < outputRank - 2; i++) {
-    res += `b[${i}], `;
+function getB(allGlChannels: string[], rank: number): string {
+  let res = '';
+  for (let i = 0; i < rank - 2; i++) {
+    res += `rc.${allGlChannels[i]}, `;
   }
-  res += 'k*2, ' +
-      `b[${outputRank - 1}]*2)`;
+  res += 'i<<1, ' +
+      `rc.${allGlChannels[rank - 1]}`;
   return res;
 }

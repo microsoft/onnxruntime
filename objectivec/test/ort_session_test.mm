@@ -139,6 +139,31 @@ NS_ASSUME_NONNULL_BEGIN
   XCTAssertEqual(cActual, cExpected);
 }
 
+- (void)testGetNamesOk {
+  NSError* err = nil;
+  ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
+                                              modelPath:[ORTSessionTest getAddModelPath]
+                                         sessionOptions:[ORTSessionTest makeSessionOptions]
+                                                  error:&err];
+  XCTAssertNotNil(session);
+  XCTAssertNil(err);
+
+  NSArray<NSString*>* inputNames = [session inputNamesWithError:&err];
+  XCTAssertNotNil(inputNames);
+  XCTAssertNil(err);
+  XCTAssertEqualObjects(inputNames, (@[ @"A", @"B" ]));
+
+  NSArray<NSString*>* overridableInitializerNames = [session overridableInitializerNamesWithError:&err];
+  XCTAssertNotNil(overridableInitializerNames);
+  XCTAssertNil(err);
+  XCTAssertEqualObjects(overridableInitializerNames, (@[]));
+
+  NSArray<NSString*>* outputNames = [session outputNamesWithError:&err];
+  XCTAssertNotNil(outputNames);
+  XCTAssertNil(err);
+  XCTAssertEqualObjects(outputNames, (@[ @"C" ]));
+}
+
 - (void)testInitFailsWithInvalidPath {
   NSString* invalidModelPath = @"invalid/path/to/model.ort";
   NSError* err = nil;

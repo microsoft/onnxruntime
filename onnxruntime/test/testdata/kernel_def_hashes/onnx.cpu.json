@@ -881,6 +881,10 @@
     ],
     [
         "GRU ai.onnx CPUExecutionProvider",
+        5656895183302764352
+    ],
+    [
+        "GRU ai.onnx CPUExecutionProvider",
         2706165712066264784
     ],
     [
@@ -1082,6 +1086,10 @@
     [
         "LRN ai.onnx CPUExecutionProvider",
         15047083116516536152
+    ],
+    [
+        "LSTM ai.onnx CPUExecutionProvider",
+        4392316607181063320
     ],
     [
         "LSTM ai.onnx CPUExecutionProvider",
@@ -1992,6 +2000,14 @@
         17992752176767437224
     ],
     [
+        "Relu ai.onnx CPUExecutionProvider",
+        800813007613791272
+    ],
+    [
+        "Relu ai.onnx CPUExecutionProvider",
+        8895401642537447048
+    ],
+    [
         "Reshape ai.onnx CPUExecutionProvider",
         15585679549439997664
     ],
@@ -2046,6 +2062,10 @@
     [
         "ReverseSequence ai.onnx CPUExecutionProvider",
         777686786711298232
+    ],
+    [
+        "RNN ai.onnx CPUExecutionProvider",
+        1524012948315159160
     ],
     [
         "RNN ai.onnx CPUExecutionProvider",

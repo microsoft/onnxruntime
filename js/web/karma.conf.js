@@ -45,10 +45,8 @@ module.exports = function (config) {
     frameworks: ['mocha'],
     files: [
       { pattern: commonFile },
-      { pattern: 'test/testdata-config.js' },
       { pattern: mainFile },
       { pattern: 'test/testdata-file-cache-*.json', included: false },
-      //{ pattern: 'test/onnx-worker.js', included: false },
       { pattern: 'test/data/**/*', included: false, nocache: true },
       { pattern: 'dist/ort-wasm.wasm', included: false },
       { pattern: 'dist/ort-wasm-threaded.wasm', included: false },

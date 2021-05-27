@@ -197,7 +197,7 @@ class FusionAttention(Fusion):
         # Sometimes weights and bias are stored in fp16
         if q_weight.data_type == 10:
             weight.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(weight).astype(np.float16), weight.name))
-        self.model.add_initializer(weight)
+        self.model.add_initializer(weight, self.this_graph_name)
 
         bias = helper.make_tensor(name=attention_node_name + '_qkv_bias',
                                   data_type=TensorProto.FLOAT,
@@ -205,7 +205,7 @@ class FusionAttention(Fusion):
                                   vals=qkv_bias.flatten().tolist())
         if q_bias.data_type == 10:
             bias.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(bias).astype(np.float16), bias.name))
-        self.model.add_initializer(bias)
+        self.model.add_initializer(bias, self.this_graph_name)
 
         attention_inputs = [input, attention_node_name + '_qkv_weight', attention_node_name + '_qkv_bias']
         if mask_index is not None:
@@ -279,6 +279,11 @@ class FusionAttention(Fusion):
                 root_input = mul_before_layernorm.output[0]
             else:
                 return
+        elif normalize_node.op_type == 'LayerNormalization':
+            children = input_name_to_nodes[root_input]
+            for child in children:
+                if child.op_type == "LayerNormalization":
+                    root_input = child.output[0]
 
         children = input_name_to_nodes[root_input]
         children_types = [child.op_type for child in children]
@@ -362,6 +367,7 @@ class FusionAttention(Fusion):
                 return
 
             self.nodes_to_add.append(new_node)
+            self.node_name_to_graph_name[new_node.name] = self.this_graph_name
 
             if einsum_node is not None:
                 unique_index = einsum_node.input[0]
@@ -372,10 +378,10 @@ class FusionAttention(Fusion):
                                                   vals=np.int64([0, 0, num_heads,
                                                                  int(hidden_size / num_heads)]).tobytes(),
                                                   raw=True)
-                self.model.add_initializer(shape_tensor)
+                self.model.add_initializer(shape_tensor, self.this_graph_name)
                 self.model.add_node(
                     helper.make_node("Reshape", [attention_last_node.output[0], shape_tensor.name], [new_edge],
-                                     "reshape_modified_" + unique_index))
+                                     "reshape_modified_" + unique_index), self.this_graph_name)
                 einsum_node.input[0] = new_edge
 
             self.nodes_to_remove.extend([attention_last_node, transpose_qkv, matmul_qkv])

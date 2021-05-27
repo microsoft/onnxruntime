@@ -1,16 +1,54 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import '../lib/index'; // this need to be the first line
+// Load onnxruntime-web and testdata-config.
+// NOTE: this need to be called before import any other library.
+const ort = require('..');
+const ORT_WEB_TEST_CONFIG = require('./testdata-config.json') as Test.Config;
 
-import * as ort from 'onnxruntime-common';
 import * as platform from 'platform';
 
 import {Logger} from '../lib/onnxjs/instrument';
 
 import {Test} from './test-types';
 
-const ORT_WEB_TEST_CONFIG = (ort.env as any).ORT_WEB_TEST_DATA as Test.Config;
+if (ORT_WEB_TEST_CONFIG.model.some(testGroup => testGroup.tests.some(test => test.backend === 'cpu'))) {
+  // require onnxruntime-node
+  require('../../node');
+}
+
+// set flags
+const options = ORT_WEB_TEST_CONFIG.options;
+if (options.debug !== undefined) {
+  ort.env.debug = options.debug;
+}
+if (options.globalEnvFlags && options.globalEnvFlags.logLevel !== undefined) {
+  ort.env.logLevel = options.globalEnvFlags.logLevel;
+}
+if (ort.env.webgl && options.globalEnvFlags && options.globalEnvFlags.webgl &&
+    options.globalEnvFlags.webgl.contextId !== undefined) {
+  ort.env.webgl.contextId = options.globalEnvFlags.webgl.contextId;
+}
+if (ort.env.webgl && options.globalEnvFlags && options.globalEnvFlags.webgl &&
+    options.globalEnvFlags.webgl.matmulMaxBatchSize !== undefined) {
+  ort.env.webgl.matmulMaxBatchSize = options.globalEnvFlags.webgl.matmulMaxBatchSize;
+}
+if (ort.env.webgl && options.globalEnvFlags && options.globalEnvFlags.webgl &&
+    options.globalEnvFlags.webgl.textureCacheMode !== undefined) {
+  ort.env.webgl.textureCacheMode = options.globalEnvFlags.webgl.textureCacheMode;
+}
+if (ort.env.webgl && options.globalEnvFlags && options.globalEnvFlags.webgl &&
+    options.globalEnvFlags.webgl.pack !== undefined) {
+  ort.env.webgl.pack = options.globalEnvFlags.webgl.pack;
+}
+if (ort.env.wasm && options.globalEnvFlags && options.globalEnvFlags.wasm &&
+    options.globalEnvFlags.wasm.numThreads !== undefined) {
+  ort.env.wasm.numThreads = options.globalEnvFlags.wasm.numThreads;
+}
+if (ort.env.wasm && options.globalEnvFlags && options.globalEnvFlags.wasm &&
+    options.globalEnvFlags.wasm.initTimeout !== undefined) {
+  ort.env.wasm.initTimeout = options.globalEnvFlags.wasm.initTimeout;
+}
 
 // Set logging configuration
 for (const logConfig of ORT_WEB_TEST_CONFIG.log) {

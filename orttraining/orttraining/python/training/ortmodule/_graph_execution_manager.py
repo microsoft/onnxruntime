@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from . import _utils, _io, _logger
+from . import _utils, _io, _logger, _cpp_extensions as _cpp_ext
 from onnxruntime.training.ortmodule import ONNX_OPSET_VERSION
 
 from onnxruntime.capi import _pybind_state as C
@@ -52,6 +52,8 @@ class GraphExecutionManager(ABC):
         self._optimized_onnx_model = None
         self._graph_builder = None
         self._graph_info = None
+        self._graph_initializer_names = None
+        self._graph_initializer_names_to_train = None
 
         # TrainingAgent or InferenceAgent
         self._execution_agent = None
@@ -113,8 +115,8 @@ class GraphExecutionManager(ABC):
         self._use_external_gpu_allocator = True
         if self._use_external_gpu_allocator:
             # CPP extension to get torch GPU allocator's alloc and free function addresses
-            self._torch_gpu_allocator = _utils._load_torch_gpu_allocator_cpp_extension(self._loglevel < _logger.LogLevel.WARNING,
-                                                                                       self.is_rocm_pytorch)
+            self._torch_gpu_allocator = _cpp_ext._load_torch_gpu_allocator_cpp_extension(self._loglevel < _logger.LogLevel.WARNING,
+                                                                                         self.is_rocm_pytorch)
             self._torch_alloc = self._torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
             self._torch_free = self._torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
 
@@ -195,14 +197,20 @@ class GraphExecutionManager(ABC):
         # 3. Export the user model under self._export_training_flag mode
         # Return True if the model needed to be exported, False if no export was required.
 
+        # Note: Model is only exported when:
+        #       1. Model has never been exported before.
+        #       2. Model input schema has changed (changes in inputs requiring gradient, shape, boolean inputs values change, etc)
+        #       Model is not re-exported when the model parameters change. This can happen when the model is a stateful model,
+        #       or the user explicitly changed model parameters after the onnx export.
+
         schema = _io._extract_schema({'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
         if self._onnx_model and schema == self._input_info.schema:
             # All required models have already been exported previously
             return False
 
-        self._set_device_from_module()
+        self._set_device_from_module(inputs, kwargs)
         self._onnx_model = self._get_exported_model(*inputs, **kwargs)
-        _utils._load_aten_op_executor_cpp_extension_if_needed(self._onnx_model, self._loglevel < _logger.LogLevel.WARNING, self.is_rocm_pytorch)
+        _cpp_ext._load_aten_op_executor_cpp_extension_if_needed(self._onnx_model, self._loglevel < _logger.LogLevel.WARNING, self.is_rocm_pytorch)
         if self._save_onnx:
             onnx.save(self._onnx_model, self._save_onnx_prefix + '_torch_exporter.onnx')
 
@@ -262,14 +270,15 @@ class GraphExecutionManager(ABC):
 
         return onnx.load_model_from_string(f.getvalue())
 
-    def _set_device_from_module(self):
+    def _set_device_from_module(self, inputs, kwargs):
         """Get the device from the module and save it to self._device"""
 
-        device_from_module = _utils.get_device_from_module(self._original_module)
-        if not self._device or self._device != device_from_module:
-            self._device = device_from_module
+        device = _utils.get_device_from_module(self._original_module) or \
+            _utils.get_device_from_inputs(inputs, kwargs)
+        if not self._device or self._device != device:
+            self._device = device
             if not self._device:
-                raise RuntimeError('A device must be specified in the model!')
+                raise RuntimeError('A device must be specified in the model or inputs!')
 
     def _get_graph_transformer_config(self):
         graph_transformer_config = C.TrainingGraphTransformerConfiguration()
@@ -302,4 +311,12 @@ class GraphExecutionManager(ABC):
         grad_builder_config.graph_transformer_config = self._get_graph_transformer_config()
         grad_builder_config.loglevel = _logger.ortmodule_loglevel_to_onnxruntime_c_loglevel(self._loglevel)
         self._graph_builder = C.OrtModuleGraphBuilder()
+
+        # It is assumed here that the order and names of the inputs and outputs are not modified by the backend in any way
+        # and are kept as they appear in the exported onnx model.
         self._graph_builder.initialize(self._onnx_model.SerializeToString(), grad_builder_config)
+
+        # TODO: Explore ways to make self._graph_info.initializer_names and self._graph_info.initializer_names_to_train
+        #       a set (unordered_set in the backend) that does not require a copy on each reference.
+        self._graph_initializer_names = set(initializer_names)
+        self._graph_initializer_names_to_train = set(initializer_names_to_train)

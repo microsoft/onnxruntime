@@ -257,6 +257,20 @@ class PlannerImpl {
 
   // Find if there exists some input tensor that we can use in-place for output_arg_num-th input in the node.
   bool FindReusableInput(const onnxruntime::Node& node, int output_arg_num, OrtValueIndex* reusable_input) {
+#ifdef ENABLE_TRAINING
+    // Inputs of Yields are essentially the outputs for FW partial subgraph
+    // Thses tensors will be pass back to pytorch, thus cannot share the buffer with other tensors
+
+    // Unhandled corner case: 
+    // If FW output tensor is consumed by BW graph, and pytorch performs an inplace operation on th returned tensor,
+    // we will run into a buffer corruption problem. 
+    // One potential fix is returning a copy of output tensor, if it has downstream dependency
+    auto p_next_node = node.OutputNodesBegin();
+    if (p_next_node != node.OutputNodesEnd() && p_next_node->OpType() == "YieldOp") {
+      return false;
+    }
+#endif  //ENABLE_TRAINING
+
     auto p_output_arg = node.OutputDefs()[output_arg_num];
     const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
 
@@ -389,7 +403,7 @@ class PlannerImpl {
 
   // Find if freelist contains a buffer of the same size as output_arg
   bool FindReusableTensor(const onnxruntime::NodeArg& output_arg, OrtValueIndex* reusable_tensor) {
-    if(!context_.GetEnableMemoryReuse()) {
+    if (!context_.GetEnableMemoryReuse()) {
       return false;
     }
     auto p_required_buffer_shape = context_.GetShape(output_arg);
@@ -731,7 +745,8 @@ class PlannerImpl {
           // we do not try sharing-optimization for non-tensors
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
           AllocPlan(current).program_counter.AddStart(program_counter);
-        } else if (FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
+        } else if (!context_.IsParallelExecutionEnabled() &&
+                   FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
           // Reuse one of this node's input buffers as the output buffer (for in-place update)
           Reuse(reused, current, AllocKind::kReuse);
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)

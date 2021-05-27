@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef USE_CUDA
+#if 0  // TODO: Can't call these directly from external code as Cuda is now a shared library
+//#ifdef USE_CUDA
 
 #include <memory>
 

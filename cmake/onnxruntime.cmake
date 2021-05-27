@@ -75,6 +75,9 @@ elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
   )
 else()
   onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
+  if (onnxruntime_USE_CUDA)
+    set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker -rpath=\\$ORIGIN")
+  endif()
 endif()
 
 add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
@@ -135,7 +138,6 @@ target_link_libraries(onnxruntime PRIVATE
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_COREML}
-    ${PROVIDERS_CUDA}
     ${PROVIDERS_DML}
     ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NNAPI}

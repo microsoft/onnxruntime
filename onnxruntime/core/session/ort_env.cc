@@ -11,11 +11,7 @@
 #include "core/session/allocator_impl.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/provider_shutdown.h"
-#ifdef __ANDROID__
-#include "core/platform/android/logging/android_log_sink.h"
-#else
-#include "core/common/logging/sinks/clog_sink.h"
-#endif
+#include "core/platform/logging/make_platform_default_log_sink.h"
 
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
@@ -28,7 +24,7 @@ LoggingWrapper::LoggingWrapper(OrtLoggingFunction logging_function, void* logger
     : logging_function_(logging_function), logger_param_(logger_param) {
 }
 
-void LoggingWrapper::SendImpl(const onnxruntime::logging::Timestamp& /*timestamp*/ /*timestamp*/, const std::string& logger_id,
+void LoggingWrapper::SendImpl(const onnxruntime::logging::Timestamp& /*timestamp*/, const std::string& logger_id,
                               const onnxruntime::logging::Capture& message) {
   std::string s = message.Location().ToString();
   logging_function_(logger_param_, static_cast<OrtLoggingLevel>(message.Severity()), message.Category(),
@@ -55,20 +51,16 @@ OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_inf
     std::string name = lm_info.logid;
     if (lm_info.logging_function) {
       std::unique_ptr<ISink> logger = std::make_unique<LoggingWrapper>(lm_info.logging_function,
-                                                                               lm_info.logger_param);
+                                                                       lm_info.logger_param);
       lmgr.reset(new LoggingManager(std::move(logger),
                                     static_cast<Severity>(lm_info.default_warning_level),
                                     false,
                                     LoggingManager::InstanceType::Default,
                                     &name));
     } else {
-#ifdef __ANDROID__
-      ISink* sink = new AndroidLogSink();
-#else
-      ISink* sink = new CLogSink();
-#endif
+      auto sink = MakePlatformDefaultLogSink();
 
-      lmgr.reset(new LoggingManager(std::unique_ptr<ISink>{sink},
+      lmgr.reset(new LoggingManager(std::move(sink),
                                     static_cast<Severity>(lm_info.default_warning_level),
                                     false,
                                     LoggingManager::InstanceType::Default,
