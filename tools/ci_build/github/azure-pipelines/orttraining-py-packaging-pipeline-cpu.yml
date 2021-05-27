@@ -11,7 +11,7 @@ stages:
       pool: Onnxruntime-Linux-GPU-NV6
 
       variables:
-        PythonVersion: PYTHON_VERSION
+        PythonVersion: $(PYTHON_VERSION)
         DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
 
       steps:
