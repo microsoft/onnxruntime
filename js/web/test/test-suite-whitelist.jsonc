@@ -27,7 +27,7 @@
       "test_averagepool_1d_default",
       "test_averagepool_2d_default",
       //"v12/test_averagepool_2d_pads", // TODO: fix avgpool and maxpool on VM
-      "v12/test_averagepool_2d_precomputed_pads",
+      //"v12/test_averagepool_2d_precomputed_pads",
       "v12/test_averagepool_2d_precomputed_same_upper",
       "v12/test_averagepool_2d_precomputed_strides",
       "v12/test_averagepool_2d_same_upper",
