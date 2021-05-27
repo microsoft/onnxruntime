@@ -31,26 +31,26 @@ class RefCountTracker {
   static RefCountTracker& GetInstance() { return Provider_GetHost()->GetRefCountTrackerInstance(); }
 #endif
 
-  void TrackPyObject(RefCountTracker::ObjCategory category, PyObject* py_obj, const std::string& log_tag) const;
+  void TrackPyObject(RefCountTracker::ObjCategory category, PyObject* py_obj, const std::string& log_tag);
   void DumpDetails(const std::string& phase_name) const;
-  void Reset() const;
+  void Reset();
 
  private:
   RefCountTracker() {
     addr_info_map_ = {
-        {RefCountTracker::ObjCategory::PythonCallArgs, forward_arg_addresses_},
-        {RefCountTracker::ObjCategory::PythonCallResults, return_value_addresses_},
+        {RefCountTracker::ObjCategory::PythonCallArgs, pythoncall_arg_addresses_},
+        {RefCountTracker::ObjCategory::PythonCallResults, pythoncall_results_addresses_},
         {RefCountTracker::ObjCategory::AutoGradContext, auto_grad_addresses_},
     };
   }
 
-  const char* ObjCategoryToString(int enumVal) {
+  const char* ObjCategoryToString(int enumVal) const {
     static const char* enum_strings[] = {"PythonCallArgs", "PythonCallResults", "AutoGradContext"};
     return enum_strings[enumVal];
   }
 
-  AddressInfos forward_arg_addresses_;
-  AddressInfos return_value_addresses_;
+  AddressInfos pythoncall_arg_addresses_;
+  AddressInfos pythoncall_results_addresses_;
   AddressInfos auto_grad_addresses_;
   std::unordered_map<RefCountTracker::ObjCategory, AddressInfos> addr_info_map_;
 

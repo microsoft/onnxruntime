@@ -10,8 +10,6 @@
 #include "core/framework/op_kernel_context_internal.h"
 #endif
 
-#include "core/language_interop_ops/torch/object_pointer.h"
-
 namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {

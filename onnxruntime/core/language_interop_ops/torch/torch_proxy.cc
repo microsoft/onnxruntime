@@ -7,7 +7,6 @@
 #include "core/dlpack/dlpack_converter.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
-#include "core/language_interop_ops/torch/object_pointer.h"
 #include "core/language_interop_ops/torch/refcount_tracker.h"
 #include "core/language_interop_ops/torch/gil.h"
 #include "core/platform/env.h"
@@ -16,14 +15,15 @@ namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
 
-// PyObject RAII wrapper
-using PythonObjectPtr = ObjectPointer<PyObject>;
-template class ObjectPointer<PyObject>;
-
-template <>
-void ObjectPointer<PyObject>::free() {
-  Py_XDECREF(ptr);
-}
+// For handling temporary PyObject pointer newly created with Py_XXX APIs, here is our practice:
+// Convention:
+//     Wrap those PyObject* in format of "PythonObjectPtr(Py_XXX(), PythonObjectDeleter)".
+// Explaination:
+//     That means, for the PyObject* created by Py_XXX(), its refcnt will be decreased by one
+//     in the PythonObjectDeleter which is triggered once lifetime of PythonObjectPtr instance
+//     ends.
+void PythonObjectDeleter(PyObject* ptr) { Py_XDECREF(ptr); }
+using PythonObjectPtr = std::unique_ptr<PyObject, std::function<void(PyObject*)>>;
 
 PyObject* Ort_PyTuple_New(const size_t len, const std::string& log_tag) {
   PyObject* item = PyTuple_New(len);
@@ -144,7 +144,7 @@ void InvokeRunner(
     bool is_training_mode,
     void** diff_ctx,
     std::vector<OrtValue>& returned_ortvalues) {
-  PythonObjectPtr result_ptr(PyObject_CallObject(callback_runner, args));
+  PythonObjectPtr result_ptr(PyObject_CallObject(callback_runner, args), PythonObjectDeleter);
 
   if (PyErr_Occurred()) {
     PyErr_Print();
@@ -185,7 +185,7 @@ void InvokeRunner(
   }
 }
 
-std::unique_ptr<PythonObjectPtr> CreatePythonCallArguments(
+PythonObjectPtr CreatePythonCallArguments(
     PyObject* callback,
     const size_t len,
     const std::vector<int64_t>& requires_grads,
@@ -203,31 +203,30 @@ std::unique_ptr<PythonObjectPtr> CreatePythonCallArguments(
   constexpr int64_t num_control_args = 5;
 
   // All arguments created for Python call will be destroyed along with PythonObjectPtr.
-  auto args = std::make_unique<PythonObjectPtr>(Ort_PyTuple_New(num_control_args + len,
-                                                                "forward_arguments_tuple"));
+  PythonObjectPtr args(Ort_PyTuple_New(num_control_args + len, "forward_arguments_tuple"), PythonObjectDeleter);
   PyObject* tensor_flags = CreateTensorFlags(len, tensor_indices);
   PyObject* requires_grad_flags = CreateRequiresGradFlags(requires_grads);
 
-  Ort_PyTuple_SetItem_Incref(args->get(), 0, callback, "callback_function");
-  Ort_PyTuple_SetItem_NoIncref(args->get(), 1, requires_grad_flags, "requires_grad_flags");
-  Ort_PyTuple_SetItem_NoIncref(args->get(), 2, tensor_flags, "tensor_flags");
+  Ort_PyTuple_SetItem_Incref(args.get(), 0, callback, "callback_function");
+  Ort_PyTuple_SetItem_NoIncref(args.get(), 1, requires_grad_flags, "requires_grad_flags");
+  Ort_PyTuple_SetItem_NoIncref(args.get(), 2, tensor_flags, "tensor_flags");
   PyObject* is_training_mode_arg = is_training_mode ? Py_True : Py_False;
-  Ort_PyTuple_SetItem_Incref(args->get(), 3, is_training_mode_arg, "is_training_mode");
+  Ort_PyTuple_SetItem_Incref(args.get(), 3, is_training_mode_arg, "is_training_mode");
   PyObject* is_inplace_arg = is_inplace ? Py_True : Py_False;
-  Ort_PyTuple_SetItem_Incref(args->get(), 4, is_inplace_arg, "is_inplace_mode");
+  Ort_PyTuple_SetItem_Incref(args.get(), 4, is_inplace_arg, "is_inplace_mode");
 
   // Tensor inputs to call autograd.Function.apply or autograd.Function.backward.
   for (size_t i = 0; i < tensor_args.size(); ++i) {
     // Wrap with DLPack, then transfer to Python for its release.
     PyObject* dl_tensor = onnxruntime::dlpack::OrtValueToDlpackCapsule(tensor_args[i]);
-    Ort_PyTuple_SetItem_NoIncref(args->get(), num_control_args + tensor_indices[i], dl_tensor,
+    Ort_PyTuple_SetItem_NoIncref(args.get(), num_control_args + tensor_indices[i], dl_tensor,
                                  "dltensor");
   }
 
   // Non-tensor inputs to call autograd.Function.apply or autograd.Function.backward.
   for (size_t i = 0; i < obj_args.size(); ++i) {
     PyObject* pyobj = reinterpret_cast<PyObject*>(obj_args[i]);
-    Ort_PyTuple_SetItem_Incref(args->get(), num_control_args + obj_indices[i], pyobj,
+    Ort_PyTuple_SetItem_Incref(args.get(), num_control_args + obj_indices[i], pyobj,
                                "const_args");
   }
 
@@ -250,7 +249,7 @@ void Invoke(
   CheckArguments(len, requires_grads, tensor_args, tensor_indices, obj_args, obj_indices);
   RefCountTracker::GetInstance().Reset();
   {
-    auto args = CreatePythonCallArguments(
+    PythonObjectPtr args = CreatePythonCallArguments(
         callback,
         len,
         requires_grads,
@@ -262,7 +261,7 @@ void Invoke(
         is_inplace);
 
     RefCountTracker::GetInstance().DumpDetails("Before Invoke Python Call");
-    InvokeRunner(runner, args->get(), is_training_mode, diff_ctx, returned_ortvalues);
+    InvokeRunner(runner, args.get(), is_training_mode, diff_ctx, returned_ortvalues);
   }
 
   RefCountTracker::GetInstance().DumpDetails("After Python Call Completed");
