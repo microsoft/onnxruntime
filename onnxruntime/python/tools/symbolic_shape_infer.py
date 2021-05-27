@@ -161,7 +161,6 @@ class SymbolicShapeInference:
         self.guess_output_rank_ = guess_output_rank
         self.verbose_ = verbose
         self.int_max_ = int_max
-        self.dim_name_count = 0
 
     def _add_suggested_merge(self, symbols, apply=False):
         assert all([(type(s) == str and s in self.symbolic_dims_) or is_literal(s) for s in symbols])
@@ -1617,7 +1616,6 @@ if __name__ == '__main__':
     print('Doing symbolic shape inference...')
     out_mp = SymbolicShapeInference.infer_shapes(onnx.load(args.input), args.int_max, args.auto_merge,
                                                  args.guess_output_rank, args.verbose)
-
     if args.output and out_mp:
         onnx.save(out_mp, args.output)
         print('Done!')
