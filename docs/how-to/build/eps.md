@@ -205,7 +205,7 @@ To build for Intel GPU, replace dnnl_opencl_root with the path of the Intel SDK 
 
 ## OpenVINO
 
-See more information on the OpenVINO Execution Provider [here](http://www.onnxruntime.ai/docs/reference/execution-providers/OpenVINO-ExecutionProvider.html).
+See more information on the OpenVINO Execution Provider [here](../../reference/execution-providers/OpenVINO-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -261,7 +261,7 @@ See more information on the OpenVINO Execution Provider [here](http://www.onnxru
 ```
 
 * `--use_openvino` builds the OpenVINO Execution Provider in ONNX Runtime.
-* `<hardware_option>`: Specifies the default hardware target for building OpenVINO Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO-ExecutionProvider](http://www.onnxruntime.ai/docs/reference/execution-providers/OpenVINO-ExecutionProvider.html#summary-of-options) for more details on dynamic device selection). Below are the options for different Intel target devices.
+* `<hardware_option>`: Specifies the default hardware target for building OpenVINO Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO-ExecutionProvider](../../reference/execution-providers/OpenVINO-ExecutionProvider.md#summary-of-options) for more details on dynamic device selection). Below are the options for different Intel target devices.
 
 | Hardware Option | Target Device |
 | --------------- | ------------------------|
@@ -285,7 +285,7 @@ A minimum of two device's should be specified for a valid HETERO or Multi-Device
 Example's: HETERO:MYRIAD,CPU or HETERO:HDDL,GPU,CPU or MULTI:MYRIAD,GPU,CPU
 ```
 
-For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO-ExecutionProvider](http://www.onnxruntime.ai/docs/reference/execution-providers/OpenVINO-ExecutionProvider.html)
+For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO-ExecutionProvider](../../reference/execution-providers/OpenVINO-ExecutionProvider.md)
 
 ---
 
