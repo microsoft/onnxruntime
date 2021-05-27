@@ -533,11 +533,14 @@ def is_reduced_ops_build(args):
 
 def resolve_executable_path(command_or_path):
     """Returns the absolute path of an executable."""
-    executable_path = shutil.which(command_or_path)
-    if executable_path is None:
-        raise BuildError("Failed to resolve executable path for "
-                         "'{}'.".format(command_or_path))
-    return os.path.abspath(executable_path)
+    if command_or_path and command_or_path.strip():
+        executable_path = shutil.which(command_or_path)
+        if executable_path is None:
+            raise BuildError("Failed to resolve executable path for "
+                             "'{}'.".format(command_or_path))
+        return os.path.abspath(executable_path)
+    else:
+        return None
 
 
 def get_linux_distro():
@@ -1414,27 +1417,38 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         if len(dll_path_list) > 0:
             dll_path = os.pathsep.join(dll_path_list)
 
-        if ctest_path is None:
-            # Get the "Google Test Adapter" for vstest.
-            if not os.path.exists(os.path.join(cwd,
-                                               'googletestadapter.0.17.1')):
+        if not ctest_path:
+            if is_windows():
+                # Get the "Google Test Adapter" for vstest.
+                if not os.path.exists(os.path.join(cwd,
+                                                   'googletestadapter.0.17.1')):
+                    run_subprocess(
+                        ['nuget.exe', 'restore',
+                         os.path.join(source_dir, 'packages.config'),
+                         '-ConfigFile', os.path.join(source_dir, 'NuGet.config'),
+                         '-PackagesDirectory', cwd])
+                cwd2 = os.path.join(cwd, config)
+                executables = ['onnxruntime_test_all.exe']
+                if args.build_shared_lib:
+                    executables.append('onnxruntime_shared_lib_test.exe')
+                    executables.append('onnxruntime_global_thread_pools_test.exe')
+                    executables.append('onnxruntime_api_tests_without_env.exe')
                 run_subprocess(
-                    ['nuget.exe', 'restore',
-                     os.path.join(source_dir, 'packages.config'),
-                     '-ConfigFile', os.path.join(source_dir, 'NuGet.config'),
-                     '-PackagesDirectory', cwd])
-            cwd2 = os.path.join(cwd, config)
-            executables = ['onnxruntime_test_all.exe']
-            if args.build_shared_lib:
-                executables.append('onnxruntime_shared_lib_test.exe')
-                executables.append('onnxruntime_global_thread_pools_test.exe')
-            run_subprocess(
-                ['vstest.console.exe', '--parallel',
-                 '--TestAdapterPath:..\\googletestadapter.0.17.1\\build\\_common',  # noqa
-                 '/Logger:trx', '/Enablecodecoverage', '/Platform:x64',
-                 "/Settings:%s" % os.path.join(
-                     source_dir, 'cmake\\codeconv.runsettings')] + executables,
-                cwd=cwd2, dll_path=dll_path)
+                    ['vstest.console.exe', '--parallel',
+                     '--TestAdapterPath:..\\googletestadapter.0.17.1\\build\\_common',  # noqa
+                     '/Logger:trx', '/Enablecodecoverage', '/Platform:x64',
+                     "/Settings:%s" % os.path.join(
+                         source_dir, 'cmake\\codeconv.runsettings')] + executables,
+                    cwd=cwd2, dll_path=dll_path)
+            else:
+                executables = ['onnxruntime_test_all']
+                if args.build_shared_lib:
+                    executables.append('onnxruntime_shared_lib_test')
+                    executables.append('onnxruntime_global_thread_pools_test')
+                    executables.append('onnxruntime_api_tests_without_env')
+                for exe in executables:
+                    run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
+
         else:
             ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", "7200"]
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
@@ -1900,6 +1914,7 @@ def main():
     configs = set(args.config)
 
     # setup paths and directories
+    # cmake_path and ctest_path can be None
     cmake_path = resolve_executable_path(args.cmake_path)
     ctest_path = None if args.use_vstest else resolve_executable_path(
         args.ctest_path)
