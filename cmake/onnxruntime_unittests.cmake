@@ -1088,7 +1088,7 @@ else()
 endif()
 set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG})
 
-if (onnxruntime_BUILD_JAVA)
+if (onnxruntime_BUILD_JAVA AND NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
     message(STATUS "Running Java tests")
     # native-test is added to resources so custom_op_lib can be loaded
     # and we want to symlink it there
