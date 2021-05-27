@@ -9,7 +9,7 @@ import {ProgramInfo, RunData, WebGLOperator} from '../types';
 import {WebGLMatMulPacked} from './matmul-pack';
 
 export class WebGLMatMul extends MatMul implements WebGLOperator {
-  private usePackedTex?: boolean;
+  private usePackedTexture?: boolean;
 
   packedImpl: WebGLMatMulPacked;
   unpackedImpl: WebGLUnpackedMatMul;
@@ -20,12 +20,12 @@ export class WebGLMatMul extends MatMul implements WebGLOperator {
   }
 
   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
-    if (this.usePackedTex === undefined) {
+    if (this.usePackedTexture === undefined) {
       const isBroadcast = !ShapeUtil.areEqual(inputs[0].dims, inputs[1].dims);
-      this.usePackedTex = !isBroadcast && inferenceHandler.session.pack;
+      this.usePackedTexture = !isBroadcast && inferenceHandler.session.pack;
     }
 
-    if (this.usePackedTex === true) {
+    if (this.usePackedTexture === true) {
       return inferenceHandler.run(this.packedImpl, inputs);
     } else {
       return inferenceHandler.run(this.unpackedImpl, inputs);
@@ -33,12 +33,12 @@ export class WebGLMatMul extends MatMul implements WebGLOperator {
   }
 
   createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
-    if (this.usePackedTex === undefined) {
+    if (this.usePackedTexture === undefined) {
       const isBroadcast = !ShapeUtil.areEqual(inputs[0].dims, inputs[1].dims);
-      this.usePackedTex = !isBroadcast && handler.session.pack;
+      this.usePackedTexture = !isBroadcast && handler.session.pack;
     }
 
-    if (this.usePackedTex === true && inputs[0].dims.length > 1) {
+    if (this.usePackedTexture === true && inputs[0].dims.length > 1) {
       return this.packedImpl.createProgramInfo(handler, inputs);
     } else {
       return this.unpackedImpl.createProgramInfo(handler, inputs);
@@ -46,7 +46,7 @@ export class WebGLMatMul extends MatMul implements WebGLOperator {
   }
 
   createRunData(handler: WebGLInferenceHandler, programInfo: ProgramInfo, inputs: Tensor[]): RunData {
-    if (this.usePackedTex === true && inputs[0].dims.length > 1) {
+    if (this.usePackedTexture === true && inputs[0].dims.length > 1) {
       return this.packedImpl.createRunData(handler, programInfo, inputs);
     } else {
       return this.unpackedImpl.createRunData(handler, programInfo, inputs);

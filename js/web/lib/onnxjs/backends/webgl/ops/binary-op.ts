@@ -10,7 +10,7 @@ import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, WebGLOperator} from '../types';
 
 export class WebGLBinaryOp extends BinaryOp implements WebGLOperator {
-  private usePackedTex?: boolean;
+  private usePackedTexture?: boolean;
 
   constructor(
       typeConstraint: readonly Tensor.DataType[], protected glslFunc: GlslValueFunction, opType?: string,
@@ -24,14 +24,14 @@ export class WebGLBinaryOp extends BinaryOp implements WebGLOperator {
     const isBroadcast = !ShapeUtil.areEqual(inputs[0].dims, inputs[1].dims);
 
     // TODO fix bcast in packed mode.
-    if (this.usePackedTex === undefined) {
-      this.usePackedTex = !isBroadcast && handler.session.pack;
+    if (this.usePackedTexture === undefined) {
+      this.usePackedTexture = !isBroadcast && handler.session.pack;
     }
 
-    const inputLayouts = this.usePackedTex ?
+    const inputLayouts = this.usePackedTexture ?
         inputs.map(t => handler.getOrCreateTextureLayout(t, 4, true, t.dims, true)) :
         inputs.map(t => handler.getOrCreateTextureLayout(t));
-    const ouputLayout = this.usePackedTex ?
+    const ouputLayout = this.usePackedTexture ?
         handler.createTextureLayoutFromShape(inputs[0].dims, 4, inputs[0].dims, {isPacked: true, reverseWH: true}) :
         handler.createTextureLayoutFromShape(inputs[0].dims);
 
@@ -56,7 +56,7 @@ export class WebGLBinaryOp extends BinaryOp implements WebGLOperator {
         ${bBcast}
         return ${this.glslFunc.name}(_A(aindices), _B(bindices));
     }`;
-      const outputLayout = this.usePackedTex ?
+      const outputLayout = this.usePackedTexture ?
           handler.createTextureLayoutFromShape(outputShape, 4, outputShape, {isPacked: true, reverseWH: true}) :
           handler.createTextureLayoutFromShape(outputShape);
 
@@ -65,8 +65,8 @@ export class WebGLBinaryOp extends BinaryOp implements WebGLOperator {
         outputLayout,
         samplers: ['A', 'B'],
         shaderSource,
-        expectPackedInputs: this.usePackedTex,
-        expectPackedOutputs: this.usePackedTex
+        expectPackedInputs: this.usePackedTexture,
+        expectPackedOutputs: this.usePackedTexture
       };
     }
     const glsl = getGlsl(handler.session.backend.glContext.version);
@@ -80,7 +80,7 @@ export class WebGLBinaryOp extends BinaryOp implements WebGLOperator {
     }
     `;
 
-    if (this.usePackedTex) {
+    if (this.usePackedTexture) {
       return {
         hasMain: true,
         inputLayouts,
@@ -101,7 +101,7 @@ export class WebGLBinaryOp extends BinaryOp implements WebGLOperator {
     }
   }
   createRunData(handler: WebGLInferenceHandler, programInfo: ProgramInfo, inputs: Tensor[]): RunData {
-    const inputTDs = this.usePackedTex ?
+    const inputTDs = this.usePackedTexture ?
         inputs.map((t) => handler.getOrCreateTextureData(t, handler.getOrCreateTextureLayout(t, 1, false, [], true))) :
         inputs.map((t, i) => handler.getOrCreateTextureData(t, programInfo.inputLayouts[i]));
     return {

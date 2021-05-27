@@ -127,7 +127,7 @@ describe('#UnitTest# - reshape - packed', () => {
         return;
       }
 
-      if (env.webgl.pack === false) {
+      if (!env.webgl.pack) {
         console.log('Skipping in unpacked texture mode.');
         return;
       }

@@ -201,7 +201,7 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - unpacked mode'
   - script: |
-     npm test --  --webgl-texture-pack-mode
+     npm test --  --webgl-texture-pack-mode -b=webgl
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - packed mode'
   - script: |
