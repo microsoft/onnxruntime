@@ -2091,7 +2091,6 @@ def main():
         if args.build_wheel:
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
             default_training_package_device = bool(os.getenv('DEFAULT_TRAINING_PACKAGE_DEVICE') == '1')
-            
             build_python_wheel(
                 source_dir,
                 build_dir,
