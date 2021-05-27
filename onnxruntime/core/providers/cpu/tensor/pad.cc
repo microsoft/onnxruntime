@@ -54,8 +54,22 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     int8_t,
     uint8_t);
 
+ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 13, Input, 0,
+    float,
+    double,
+    int32_t,
+    int64_t,
+    uint32_t,
+    uint64_t,
+    int8_t,
+    uint8_t,
+    bool);
+
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
     kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0, int32_t, int64_t);
+ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 13, Input, 0, int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
 using Pad2Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
@@ -66,11 +80,16 @@ using Pad11Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0);
 using EnabledPad11Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, Pad, 11, Input, 0);
+using Pad13Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 13, Input, 0);
+using EnabledPad13Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
+    kCpuExecutionProvider, kOnnxDomain, Pad, 13, Input, 0);
 
 using AllEnabledPadTypes =
     utils::TypeSetUnion<
         EnabledPad2Types,
-        EnabledPad11Types>;
+        EnabledPad11Types,
+        EnabledPad13Types>;
 
 // only float type is supported for opset-10
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -100,8 +119,8 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder().TypeConstraint(
         "T",
-        BuildKernelDefConstraintsFromTypeList<Pad11Types>(),
-        BuildKernelDefConstraintsFromTypeList<EnabledPad11Types>()),
+        BuildKernelDefConstraintsFromTypeList<Pad13Types>(),
+        BuildKernelDefConstraintsFromTypeList<EnabledPad13Types>()),
     Pad);
 
 // This is the general padding method to n-dimensionally do edge or reflection padding (based on the inputDelta values)
