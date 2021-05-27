@@ -1561,7 +1561,8 @@ def run_nodejs_tests(nodejs_binding_dir):
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, cuda_version, use_rocm, rocm_version, use_dnnl,
         use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn, use_dml,
-        wheel_name_suffix, enable_training, nightly_build=False, featurizers_build=False, use_ninja=False):
+        wheel_name_suffix, enable_training, nightly_build=False, default_training_package_device=False,
+        featurizers_build=False, use_ninja=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows() and not use_ninja:
@@ -1583,6 +1584,8 @@ def build_python_wheel(
         # Any combination of the following arguments can be applied
         if nightly_build:
             args.append('--nightly_build')
+        if default_training_package_device:
+            args.append('--default_training_package_device')
         if featurizers_build:
             args.append("--use_featurizers")
         if wheel_name_suffix:
@@ -2116,6 +2119,7 @@ def main():
     if args.build:
         if args.build_wheel:
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
+            default_training_package_device = bool(os.getenv('DEFAULT_TRAINING_PACKAGE_DEVICE') == '1')
             build_python_wheel(
                 source_dir,
                 build_dir,
@@ -2135,6 +2139,7 @@ def main():
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,
+                default_training_package_device=default_training_package_device,
                 featurizers_build=args.use_featurizers,
                 use_ninja=(args.cmake_generator == 'Ninja')
             )

@@ -270,6 +270,8 @@ requirements_file = "requirements.txt"
 
 local_version = None
 enable_training = parse_arg_remove_boolean(sys.argv, '--enable_training')
+default_training_package_device = parse_arg_remove_boolean(sys.argv, '--default_training_package_device')
+
 if enable_training:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
@@ -284,13 +286,16 @@ if enable_training:
     # this is needed immediately by pytorch/ort so that the user is able to
     # install an onnxruntime training package with matching torch cuda version.
     package_name = 'onnxruntime-training'
-    if cuda_version:
-        # removing '.' to make local Cuda version number in the same form as Pytorch.
-        local_version = '+cu' + cuda_version.replace('.', '')
-    if rocm_version:
-        # removing '.' to make Cuda version number in the same form as Pytorch.
-        rocm_version = rocm_version.replace('.', '')
-        local_version = '+rocm' + rocm_version
+
+    # we want put default training packages to pypi. pypi does not accept package with a local version.
+    if not default_training_package_device:
+        if cuda_version:
+            # removing '.' to make local Cuda version number in the same form as Pytorch.
+            local_version = '+cu' + cuda_version.replace('.', '')
+        if rocm_version:
+            # removing '.' to make Cuda version number in the same form as Pytorch.
+            rocm_version = rocm_version.replace('.', '')
+            local_version = '+rocm' + rocm_version
 
 
 package_data = {}
