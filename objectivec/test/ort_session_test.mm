@@ -145,22 +145,18 @@ NS_ASSUME_NONNULL_BEGIN
                                               modelPath:[ORTSessionTest getAddModelPath]
                                          sessionOptions:[ORTSessionTest makeSessionOptions]
                                                   error:&err];
-  XCTAssertNotNil(session);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(session, err);
 
   NSArray<NSString*>* inputNames = [session inputNamesWithError:&err];
-  XCTAssertNotNil(inputNames);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(inputNames, err);
   XCTAssertEqualObjects(inputNames, (@[ @"A", @"B" ]));
 
   NSArray<NSString*>* overridableInitializerNames = [session overridableInitializerNamesWithError:&err];
-  XCTAssertNotNil(overridableInitializerNames);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(overridableInitializerNames, err);
   XCTAssertEqualObjects(overridableInitializerNames, (@[]));
 
   NSArray<NSString*>* outputNames = [session outputNamesWithError:&err];
-  XCTAssertNotNil(outputNames);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(outputNames, err);
   XCTAssertEqualObjects(outputNames, (@[ @"C" ]));
 }
 
