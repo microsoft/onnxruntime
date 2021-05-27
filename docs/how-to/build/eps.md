@@ -205,7 +205,7 @@ To build for Intel GPU, replace dnnl_opencl_root with the path of the Intel SDK 
 
 ## OpenVINO
 
-See more information on the OpenVINO Execution Provider [here](../reference/execution-providers/OpenVINO-ExecutionProvider.md).
+See more information on the OpenVINO Execution Provider [here](../../reference/execution-providers/OpenVINO-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -261,7 +261,7 @@ See more information on the OpenVINO Execution Provider [here](../reference/exec
 ```
 
 * `--use_openvino` builds the OpenVINO Execution Provider in ONNX Runtime.
-* `<hardware_option>`: Specifies the default hardware target for building OpenVINO Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO-ExecutionProvider.md](../reference/execution-providers/OpenVINO-ExecutionProvider.md) for more details on dynamic device selection). Below are the options for different Intel target devices.
+* `<hardware_option>`: Specifies the default hardware target for building OpenVINO Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO-ExecutionProvider](../../reference/execution-providers/OpenVINO-ExecutionProvider.md#summary-of-options) for more details on dynamic device selection). Below are the options for different Intel target devices.
 
 | Hardware Option | Target Device |
 | --------------- | ------------------------|
@@ -271,20 +271,21 @@ See more information on the OpenVINO Execution Provider [here](../reference/exec
 | <code>MYRIAD_FP16</code> | Intel<sup>®</sup> Movidius<sup>TM</sup> USB sticks | 
 | <code>VAD-M_FP16</code> | Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs |
 | <code>VAD-F_FP32</code> | Intel<sup>®</sup> Vision Accelerator Design with an Intel<sup>®</sup> Arria<sup>®</sup> 10 FPGA |
-| <code>HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above |
-| <code>MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above |
+| <code>HETERO:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...</code> | All Intel<sup>®</sup> silicons mentioned above |
+| <code>MULTI:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...</code> | All Intel<sup>®</sup> silicons mentioned above |
 
 Specifying Hardware Target for HETERO or Multi-Device Build:
 
-HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...
-The <DEVICE_TYPE> can be any of these devices from this list ['CPU','GPU','MYRIAD','FPGA','HDDL']
+HETERO:DEVICE_TYPE_1,DEVICE_TYPE_2,DEVICE_TYPE_3...
+The DEVICE_TYPE can be any of these devices from this list ['CPU','GPU','MYRIAD','FPGA','HDDL']
 
-A minimum of two DEVICE_TYPE'S should be specified for a valid HETERO or Multi-Device Build.
+A minimum of two device's should be specified for a valid HETERO or Multi-Device Build.
 
-Example:
-HETERO:MYRIAD,CPU  HETERO:HDDL,GPU,CPU  MULTI:MYRIAD,GPU,CPU
+```
+Example's: HETERO:MYRIAD,CPU or HETERO:HDDL,GPU,CPU or MULTI:MYRIAD,GPU,CPU
+```
 
-For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO-ExecutionProvider.md](../reference/execution-providers/OpenVINO-ExecutionProvider.md) in <code>$onnxruntime_root/docs/execution_providers</code>
+For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, Topology support, and Intel hardware enabled, please refer to the document [OpenVINO-ExecutionProvider](../../reference/execution-providers/OpenVINO-ExecutionProvider.md)
 
 ---
 

@@ -1,10 +1,15 @@
-# This is a C# sample for demoing ONNXRuntime OpenVINO Execution Provider usage:
+---
+nav_exclude: true
+---
+
+# Object detection with YOLOv3 in C# using OpenVINO Execution Provider:
+{: .no_toc }
 
 1. The object detection sample uses YOLOv3 Deep Learning ONNX Model from the ONNX Model Zoo.
 
 2. The sample involves presenting an image to the ONNX Runtime (RT), which uses the OpenVINO Execution Provider for ONNX RT to run inference on Intel<sup>®</sup> NCS2 stick (MYRIADX device). The sample uses ImageSharp for image processing and ONNX Runtime OpenVINO EP for inference.
 
-The source code for this sample is available [here](https://github.com/microsoft/onnxruntime/tree/master/csharp/sample/OpenVINO_EP_samples/yolov3_object_detection).
+The source code for this sample is available [here](https://github.com/microsoft/onnxruntime/tree/master/samples/c_sharp/OpenVINO_EP/yolov3_object_detection).
 
 # How to build
 
