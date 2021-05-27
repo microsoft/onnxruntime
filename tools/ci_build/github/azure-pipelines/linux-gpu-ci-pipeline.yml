@@ -1,6 +1,6 @@
 jobs:
 - job: Linux_Build
-  timeoutInMinutes: 180
+  timeoutInMinutes: 120
   workspace:
     clean: all
   pool: Linux-CPU-2019
@@ -73,7 +73,7 @@ jobs:
     condition: always()
 
 - job: Linux_Test
-  timeoutInMinutes: 180
+  timeoutInMinutes: 60
   workspace:
     clean: all
   pool: centos7gpu
@@ -81,7 +81,7 @@ jobs:
   - Linux_Build
   steps:
   - task: DownloadPipelineArtifact@2
-    displayName: 'Download Pipeline Artifact - Win x64'
+    displayName: 'Download Pipeline Artifact'
     inputs:
       buildType: 'current'
       artifactName: 'drop-linux'
@@ -93,20 +93,20 @@ jobs:
          set -e -x
          #We assume the machine doesn't gcc and python development header files
          sudo rm -f /build /onnxruntime_src
-         sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src         
-         python3 -m pip uninstall -y ort-gpu-nightly ort_nightly onnxruntime onnxruntime-gpu -qq         
+         sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
+         python3 -m pip uninstall -y ort-gpu-nightly ort_nightly onnxruntime onnxruntime-gpu -qq
          cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
+         #Test ORT with the latest ONNX release.
          sed -i 's/git+http:\/\/github\.com\/onnx\/onnx.*/onnx==1.9.0/' $(Build.BinariesDirectory)/requirements.txt
          python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
          python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
          ln -s /data/models $(Build.BinariesDirectory)
          cd $(Build.BinariesDirectory)/Release
+         #Restore file permissions
          xargs -a $(Build.BinariesDirectory)/Release/perms.txt chmod a+x
          cd $(Build.SourcesDirectory)/java
          /usr/local/gradle/bin/gradle "cmakeCheck" "-DcmakeBuildDir=$(Build.BinariesDirectory)/Release" "-DUSE_CUDA=1"
-         cd /tmp
-         $(Build.BinariesDirectory)/Release/onnx_test_runner "/onnxruntime_src/cmake/external/onnx/onnx/backend/test/data/pytorch-converted" "/onnxruntime_src/cmake/external/onnx/onnx/backend/test/data/pytorch-operator"
-         
+         cd /tmp         
          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
               --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja \
               --config Release --test \
