@@ -45,7 +45,7 @@ class IdentityOp final : public CudaKernel {
         }
       }
     } else if (X_ml_type->IsTensorSequenceType()) {
-      const auto* X = context->Input<TensorSeq>(0);
+      const TensorSeq* X = context->Input<TensorSeq>(0);
       ORT_ENFORCE(X != nullptr);
       TensorSeq* Y = context->Output<TensorSeq>(0);
       ORT_ENFORCE(Y->Size() == 0, "output tensor sequence not empty");
@@ -64,7 +64,6 @@ class IdentityOp final : public CudaKernel {
                                              source_tensor.SizeInBytes(),
                                              cudaMemcpyDeviceToDevice, Stream()));
         Y->Add(std::move(*target_tensor));
-        target_tensor.release();
       }
     } else {
       ORT_THROW("Unsupported input type");
