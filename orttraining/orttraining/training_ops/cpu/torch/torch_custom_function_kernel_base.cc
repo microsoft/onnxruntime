@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#ifdef ENABLE_TRAINING
 
 #include <Python.h>
 #ifndef SHARED_PROVIDER
@@ -275,3 +276,5 @@ void PythonOpGradBase::SetPositions() {
 
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif

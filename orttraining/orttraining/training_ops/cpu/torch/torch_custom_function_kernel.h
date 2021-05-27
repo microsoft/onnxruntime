@@ -7,6 +7,8 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #endif
+
+#ifdef ENABLE_TRAINING
 #include "core/language_interop_ops/torch/custom_function_register.h"
 #include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
 
@@ -29,3 +31,5 @@ class PythonOpGrad final : public OpKernel, public PythonOpGradBase {
 
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif

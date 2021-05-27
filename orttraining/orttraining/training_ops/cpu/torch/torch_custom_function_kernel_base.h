@@ -4,6 +4,7 @@
 // Use void* instead of PyObject* to avoid adding unnecessary
 // python.h dependency for the consumers (for example: the
 // provider bridge file).
+#ifdef ENABLE_TRAINING
 
 #pragma once
 
@@ -11,6 +12,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #endif
+
 #include "core/language_interop_ops/torch/torch_proxy.h"
 
 namespace onnxruntime {
@@ -122,3 +124,5 @@ class PythonOpGradBase {
 
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif

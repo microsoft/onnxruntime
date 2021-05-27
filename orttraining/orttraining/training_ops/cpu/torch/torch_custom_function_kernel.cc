@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#ifdef ENABLE_TRAINING
 
 #include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
@@ -31,8 +32,6 @@ ONNX_OPERATOR_KERNEL_EX(
     PythonOpGrad);
 
 Status PythonOp::Compute(OpKernelContext* context) const {
-  RefCountTracker::GetInstance().DumpDetails("Forward Kernel Started");
-
   void* diff_ctx = nullptr;
   std::vector<OrtValue> returned_ortvalues;
   RunForward(context, &diff_ctx, returned_ortvalues);
@@ -44,8 +43,6 @@ Status PythonOp::Compute(OpKernelContext* context) const {
 }
 
 Status PythonOpGrad::Compute(OpKernelContext* context) const {
-  RefCountTracker::GetInstance().DumpDetails("Backward Kernel Started");
-
   std::vector<OrtValue> returned_ortvalues;
   RunBackward(context, returned_ortvalues);
 
@@ -57,3 +54,5 @@ Status PythonOpGrad::Compute(OpKernelContext* context) const {
 
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif

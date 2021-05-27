@@ -8,7 +8,7 @@ from onnxruntime.training.ortmodule import ONNX_OPSET_VERSION
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
-
+from onnxruntime.capi._pybind_state import register_torch_autograd_function
 from abc import ABC, abstractmethod
 import copy
 import io
@@ -277,7 +277,7 @@ class GraphExecutionManager(ABC):
                     exported_model.opset_import[1].domain = 'com.microsoft'
                 index = 0
                 for node in exported_model.graph.node:
-                    if node.domain == 'com.microsoft':
+                    if node.domain == 'com.microsoft' and node.op_type in ["PythonOp"]:
                         output_names = list(node.output)
                         del node.output[:]
                         node.output.append(output_names[0] + '_ctx')
@@ -290,7 +290,7 @@ class GraphExecutionManager(ABC):
                 for kclass in torch.autograd.Function.__subclasses__():
                     # Sometimes, we find the same functions multiple times, so we allow repeated
                     # registrations.
-                    onnxruntime.register_torch_autograd_function(kclass.__qualname__, kclass, True)
+                    register_torch_autograd_function(kclass.__qualname__, kclass, True)
             else:
                 with torch.no_grad(), _logger.suppress_os_stream_output(log_level=self._loglevel):
                     torch.onnx.export(self._flattened_module,

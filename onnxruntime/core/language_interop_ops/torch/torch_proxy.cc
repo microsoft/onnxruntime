@@ -181,7 +181,9 @@ void InvokeRunner(
   for (; i < static_cast<size_t>(PyTuple_Size(result_ptr.get())); ++i) {
     PyObject* dl_tensor_pointer = PyTuple_GetItem(result_ptr.get(), i);
     ORT_ENFORCE(Py_REFCNT(dl_tensor_pointer) == 1, "Ref count of dl_tensor_pointer should be 1.");
-    returned_ortvalues.push_back(dlpack::DlpackCapsuleToOrtValue(dl_tensor_pointer));
+    // Todo: be noted we did not pass whether tensor is bool or not.
+    // Currently we assume we don't pass boolean data.
+    returned_ortvalues.push_back(dlpack::FromDlpack(dl_tensor_pointer, false));
   }
 }
 
@@ -218,7 +220,7 @@ PythonObjectPtr CreatePythonCallArguments(
   // Tensor inputs to call autograd.Function.apply or autograd.Function.backward.
   for (size_t i = 0; i < tensor_args.size(); ++i) {
     // Wrap with DLPack, then transfer to Python for its release.
-    PyObject* dl_tensor = onnxruntime::dlpack::OrtValueToDlpackCapsule(tensor_args[i]);
+    PyObject* dl_tensor = dlpack::ToDlpack(tensor_args[i]);
     Ort_PyTuple_SetItem_NoIncref(args.get(), num_control_args + tensor_indices[i], dl_tensor,
                                  "dltensor");
   }
