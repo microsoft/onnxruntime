@@ -119,7 +119,7 @@ stages:
 
       - task: CmdLine@2
         displayName: 'Build Python Documentation'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           script: |
             mkdir -p $HOME/.onnx
@@ -137,7 +137,7 @@ stages:
 
       - task: CopyFiles@2
         displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)/docs/inference/html'
           Contents: '**'
@@ -431,7 +431,7 @@ stages:
 
       - task: CmdLine@2
         displayName: 'Build Python Documentation'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           script: |
             mkdir -p $HOME/.onnx
@@ -447,7 +447,7 @@ stages:
 
       - task: CopyFiles@2
         displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)/docs/training/html'
           Contents: '**'
@@ -545,6 +545,7 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NVIDIA_VISIBLE_DEVICES=all \
               -e NIGHTLY_BUILD \
+              -e DEFAULT_TRAINING_PACKAGE_DEVICE \
               -e BUILD_BUILDNUMBER \
               onnxruntimetraininggpubuild \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
@@ -588,7 +589,7 @@ stages:
 
       - task: CmdLine@2
         displayName: 'Build Python Documentation'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           script: |
             mkdir -p $HOME/.onnx
@@ -606,7 +607,7 @@ stages:
 
       - task: CopyFiles@2
         displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)/docs/training/html'
           Contents: '**'
@@ -761,7 +762,7 @@ stages:
 
       - task: CmdLine@2
         displayName: 'Build Python Documentation'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           script: |
             mkdir -p $HOME/.onnx
@@ -779,7 +780,7 @@ stages:
 
       - task: CopyFiles@2
         displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)/docs/training/html'
           Contents: '**'
@@ -1159,7 +1160,7 @@ stages:
       workspace:
         clean: all
       pool:
-        vmImage: 'macOS-10.14'
+        vmImage: 'macOS-10.15'
       strategy:
         matrix:
           Python36:
@@ -1192,7 +1193,7 @@ stages:
           export ONNX_ML=1
           export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
           sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-          sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
+          sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
           python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_onnx_tests --build_wheel ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'
 

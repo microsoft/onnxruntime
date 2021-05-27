@@ -507,7 +507,8 @@ struct OrtApi {
                   _Outptr_ OrtTypeInfo** type_info);
 
   /**
-   * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
+   * \param value is set to a null terminated UTF-8 encoded string allocated using 'allocator'.
+   *              The caller is responsible for freeing it.
    */
   ORT_API2_STATUS(SessionGetInputName, _In_ const OrtSession* sess, size_t index, _Inout_ OrtAllocator* allocator,
                   _Outptr_ char** value);
