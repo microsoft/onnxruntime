@@ -1,14 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/core/graph/training_op_defs.h"
+
+#include <math.h>
+#include <sstream>
 #include "core/graph/op.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/onnx_function_util.h"
 #include "core/providers/common.h"
-#include "orttraining/core/graph/training_op_defs.h"
-#include "orttraining/core/framework/distributed_run_context.h"
 #include "onnx/defs/function.h"
-#include <math.h>
+#include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/training_ops/cpu/aten_ops/aten_op_config.h"
 
 namespace onnxruntime {
@@ -2645,6 +2647,10 @@ Return true if all elements are true and false otherwise.
           "Input types of autograd.Function.apply.",
           AttributeProto::INTS)
       .Attr(
+          "input_tensor_ranks",
+          "Input tensors' ranks of autograd.Function.apply.",
+          AttributeProto::INTS)
+      .Attr(
           "input_tensor_requires_grads",
           "Flags to indicate which inputs has gradient",
           AttributeProto::INTS)
@@ -2721,6 +2727,10 @@ Return true if all elements are true and false otherwise.
           "output_tensor_types",
           "Output types of autograd.Function.apply.",
           AttributeProto::INTS)
+      .Attr(
+          "output_tensor_ranks",
+          "Output tensors' ranks of autograd.Function.apply.",
+          AttributeProto::INTS)
       // Other attributes.
       .Attr(
           "inplace",
@@ -2763,15 +2773,30 @@ Return true if all elements are true and false otherwise.
         // For details, see how we interpret it (the 1st input of PythonOpGrad)
         // in PythonOpGrad's implementation.
         updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::INT64);
+        updateOutputShape(ctx, 0, {});
         // Load expected output types.
         const auto output_tensor_types_proto = ctx.getAttribute("output_tensor_types");
         ORT_ENFORCE(static_cast<size_t>(output_tensor_types_proto->ints_size()) == ctx.getNumOutputs() - 1,
                     "PythonOp's output list has one more element than \"output_tensor_types\" attribute.");
         // This is a required field.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOp's must have \"output_tensor_types\" attribute.");
+
+        static size_t rank_count = 0;
         // Set inferred output types.
         for (size_t i = 1; i < ctx.getNumOutputs(); ++i) {
           updateOutputElemType(ctx, i, output_tensor_types_proto->ints().at(i - 1));
+
+          // Create symbolic shape.
+          const auto output_tensor_ranks = ctx.getAttribute("output_tensor_ranks");
+          ONNX_NAMESPACE::TensorShapeProto rank_only_shape;
+          for (int64_t j = 0; j < output_tensor_ranks->ints().at(i - 1); ++j) {
+            std::stringstream ss;
+            ss << "PythonOp_unknown_rank_" << rank_count++; 
+            rank_only_shape.add_dim()->set_dim_param(ss.str());
+          }
+
+          // Assign symbolic shape.
+          updateOutputShape(ctx, i, rank_only_shape);
         }
       });
 
@@ -2817,12 +2842,22 @@ Return true if all elements are true and false otherwise.
           AttributeProto::INTS,
           false)
       .Attr(
+          "input_tensor_ranks",
+          "Input ranks of autograd.Function.backward.",
+          AttributeProto::INTS,
+          false)
+      .Attr(
           "input_tensor_requires_grads",
           "Flags to indicate which inputs has gradient",
           AttributeProto::INTS)
       .Attr(
           "output_tensor_types",
           "Output types of autograd.Function.backward.",
+          AttributeProto::INTS,
+          false)
+      .Attr(
+          "output_tensor_ranks",
+          "Output ranks of autograd.Function.backward.",
           AttributeProto::INTS,
           false)
       .Attr(
@@ -2871,8 +2906,19 @@ Return true if all elements are true and false otherwise.
         // This is a required field.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOp's must have \"output_tensor_types\" attribute.");
         // Set inferred output types.
+        static size_t rank_count = 0;
         for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
           updateOutputElemType(ctx, i, output_tensor_types_proto->ints().at(i));
+          const auto output_tensor_ranks = ctx.getAttribute("output_tensor_ranks");
+          ONNX_NAMESPACE::TensorShapeProto rank_only_shape;
+          for (int64_t j = 0; j < output_tensor_ranks->ints().at(i); ++j) {
+            std::stringstream ss;
+            ss << "PythonOpGrad_unknown_rank_" << rank_count++; 
+            rank_only_shape.add_dim()->set_dim_param(ss.str());
+          }
+
+          // Assign symbolic shape.
+          updateOutputShape(ctx, i, rank_only_shape);
         }
       });
 }

@@ -5,7 +5,6 @@
 import argparse
 import numpy as np
 import onnx
-import sys
 from onnx import helper, numpy_helper, shape_inference
 import sympy
 
@@ -162,6 +161,7 @@ class SymbolicShapeInference:
         self.guess_output_rank_ = guess_output_rank
         self.verbose_ = verbose
         self.int_max_ = int_max
+        self.dim_name_count = 0
 
     def _add_suggested_merge(self, symbols, apply=False):
         assert all([(type(s) == str and s in self.symbolic_dims_) or is_literal(s) for s in symbols])
@@ -1353,13 +1353,26 @@ class SymbolicShapeInference:
         self._propagate_shape_and_type(node)
 
     def _infer_PythonOp(self, node):
-        output_tensor_cnt = len(node.output) - 1
-        for i in range(output_tensor_cnt):
-            self._propagate_shape_and_type(node, 0, i + 1)
+        output_tensor_types = get_attribute(node, 'output_tensor_types')
+        assert output_tensor_types
+        output_tensor_ranks = get_attribute(node, 'output_tensor_ranks')
+        assert output_tensor_ranks
 
-        # set the context output seperately
+        # set the context output seperately.
+        # The first output is autograd's context.
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, [1]))
+
+        # Outputs after autograd's context are tensors.
+        # We assume their ranks are fixed for different model inputs.
+        for i in range(len(node.output) - 1):
+            # Process the i-th tensor outputs.
+            vi = self.known_vi_[node.output[i + 1]]
+            sympy_shape = self._new_symbolic_shape(output_tensor_ranks[i], node)
+            shape = get_shape_from_sympy_shape(sympy_shape)
+            value_info = helper.make_tensor_value_info(node.output[i + 1], output_tensor_types[i], shape)
+            vi.CopyFrom(value_info)
+
 
     def _propagate_shape_and_type(self, node, input_index=0, output_index=0):
         shape = self._get_shape(node, input_index)
@@ -1604,6 +1617,7 @@ if __name__ == '__main__':
     print('Doing symbolic shape inference...')
     out_mp = SymbolicShapeInference.infer_shapes(onnx.load(args.input), args.int_max, args.auto_merge,
                                                  args.guess_output_rank, args.verbose)
+
     if args.output and out_mp:
         onnx.save(out_mp, args.output)
         print('Done!')
