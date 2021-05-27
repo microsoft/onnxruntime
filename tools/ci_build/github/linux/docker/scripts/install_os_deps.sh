@@ -19,10 +19,6 @@ done
 
 DEVICE_TYPE=${DEVICE_TYPE:=Normal}
 
-# Development tools and libraries
-apt install -y \
-    graphviz
-
 # Download a file from internet
 function GetFile {
   local uri=$1
