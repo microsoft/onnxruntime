@@ -11,7 +11,6 @@ stages:
       pool: Onnxruntime-Linux-GPU-NV6
 
       variables:
-        PythonVersion: '3.8'
         DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
 
       steps:
@@ -26,7 +25,7 @@ stages:
           Dockerfile: tools/ci_build/github/linux/docker/$(DockerFile)
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
-            --build-arg PYTHON_VERSION=$(PythonVersion)
+            --build-arg PYTHON_VERSION=PYTHON_VERSION
             --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
             --build-arg BUILD_UID=$(id -u)
           Repository: onnxruntimetrainingcpubuild
