@@ -22,7 +22,7 @@ For build instructions, please see the [BUILD page](../../how-to/build/eps.md#op
 ## Usage
 **C#**
 
-To use csharp api for openvino execution provider create a custom nuget package. Follow the instructions [here](http://www.onnxruntime.ai/docs/how-to/build/inferencing.html#build-nuget-packages) to install prerequisites for nuget creation. Once prerequisites are installed follow the instructions to [build openvino](http://www.onnxruntime.ai/docs/how-to/build/eps.html#openvino) and add an extra flag `--build_nuget` to create nuget packages. Two nuget packages will be created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
+To use csharp api for openvino execution provider create a custom nuget package. Follow the instructions [here](../../how-to/build/inferencing.md#build-nuget-packages) to install prerequisites for nuget creation. Once prerequisites are installed follow the instructions to [build openvino](../../how-to/build/eps.md#openvino) and add an extra flag `--build_nuget` to create nuget packages. Two nuget packages will be created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
 
 ### Multi-threading for OpenVINO EP
 

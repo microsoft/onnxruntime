@@ -9,7 +9,7 @@ nav_exclude: true
  
 2. The sample involves presenting a frame-by-frame video to ONNX Runtime (RT), which uses the OpenVINO Execution Provider to run inference on various Intel hardware devices as mentioned before and perform object detection to detect up to 20 different objects like birds, buses, cars, people and much more.
 
-The source code for this sample is available [here](https://github.com/microsoft/onnxruntime/tree/master/samples/python/OpenVINO_EP_samples/tiny_yolo_v2_object_detection).
+The source code for this sample is available [here](https://github.com/microsoft/onnxruntime/tree/master/samples/python/OpenVINO_EP/tiny_yolo_v2_object_detection).
 
 # How to build
 

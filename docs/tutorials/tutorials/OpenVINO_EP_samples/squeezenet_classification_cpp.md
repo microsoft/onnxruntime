@@ -9,7 +9,7 @@ nav_exclude: true
 
 2. The sample involves presenting an image to the ONNX Runtime (RT), which uses the OpenVINO Execution Provider for ONNX RT to run inference on various Intel hardware devices like Intel CPU, GPU, VPU and more. The sample uses OpenCV for image processing and ONNX Runtime OpenVINO EP for inference. After the sample image is inferred, the terminal will output the predicted label classes in order of their confidence.
 
-The source code for this sample is available [here](https://github.com/microsoft/onnxruntime/tree/master/samples/c_cxx/OpenVINO_EP_samples/squeezenet_classification).
+The source code for this sample is available [here](https://github.com/microsoft/onnxruntime/tree/master/samples/c_cxx/OpenVINO_EP/squeezenet_classification).
 
 # How to build
 
