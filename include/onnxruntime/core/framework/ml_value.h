@@ -10,9 +10,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/data_types.h"
 #include "core/framework/tensor.h"
-namespace onnxruntime {
-class TensorSeq;
-}  // namespace onnxruntime
+#include "core/framework/TensorSeq.h"
 #endif
 
 namespace onnxruntime {
