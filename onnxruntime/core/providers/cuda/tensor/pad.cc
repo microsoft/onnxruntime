@@ -18,10 +18,21 @@ namespace cuda {
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       Pad<T>);                                                    \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      Pad,                                                        \
+      kOnnxDomain,                                                \
+      11, 12,                                                     \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      Pad<T>);                                                    \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       Pad,                                                        \
       kOnnxDomain,                                                \
-      11,                                                         \
+      13,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \

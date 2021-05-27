@@ -101,6 +101,6 @@ jobs:
         --commit_hash=$(Build.SourceVersion)
         --report_url="https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"
         --report_file="$(Build.BinariesDirectory)/coverage_rpt.txt"
-        --build_config="{\"os\":\"android\", \"arch\":\"x86_64\", \"config\":\"nnapi\"}"
+        --branch $(Build.SourceBranchName) --arch $(Agent.OSArchitecture) --os "android" --build_config nnapi
     env:
       DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)

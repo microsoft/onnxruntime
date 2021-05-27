@@ -200,6 +200,20 @@ void UniDirectionalLstm<T>::LoadBias(const gsl::span<const T>& WbRb_values) {
 
 template <typename T>
 template <typename WeightT>
+void UniDirectionalLstm<T>::AllocateQuantizeBuffers(int max_sequence_length) {
+  // Can not specialize on WeightT without specify T explicitly, so use sizeof
+  if (sizeof(WeightT) == 1) {
+    const int hidden_size_x4 = 4 * hidden_size_;
+    const int total_rows = max_sequence_length * batch_size_;
+
+    int input_or_a_size = std::max(total_rows * input_size_, batch_size_ * hidden_size_);
+    quantized_input_or_a_ = Allocate(allocator_, input_or_a_size, quantized_input_or_a_ptr_, false);
+    quantized_C_buffer_ = Allocate(allocator_, batch_size_ * hidden_size_x4, quantized_C_buffer_ptr_, false);
+  }
+}
+
+template <typename T>
+template <typename WeightT>
 void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                                     const gsl::span<const int>& sequence_lengths_arg, const int num_directions,
                                     const GemmWeights<WeightT>& input_weights, const GemmWeights<WeightT>& recurrent_weights,
@@ -247,8 +261,8 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
 
   // Calculate the max and min length
   const auto min_max_pair = std::minmax_element(sequence_lengths.cbegin(), sequence_lengths.cend());
-  int32_t max_sequence_length = *min_max_pair.second;
-  int32_t min_sequence_length = std::min(seq_length_, *min_max_pair.first);
+  int max_sequence_length = *min_max_pair.second;
+  int min_sequence_length = std::min(seq_length_, *min_max_pair.first);
 
   ///**************************LSTM Calculations****************************/
   float alpha = 1.0f;
@@ -257,10 +271,15 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
   const int hidden_size_x4 = 4 * hidden_size_;
   const int total_rows = max_sequence_length * batch_size_;
 
+  AllocateQuantizeBuffers<WeightT>(max_sequence_length);
+
   // apply the weights to all the inputs and save to output_IOFC
   ComputeGemm(total_rows, hidden_size_x4, input_size_, alpha, inputs.cbegin(), inputs.cend(),
               input_weights,
-              beta, output_iofc_.begin(), output_iofc_.end(), hidden_size_x4, allocator_, thread_pool_);
+              beta, output_iofc_.begin(), output_iofc_.end(), hidden_size_x4,
+              quantized_input_or_a_.begin(),
+              nullptr,
+              thread_pool_);
 
   DumpMatrix("Xt*(W[iofc]^T)", output_iofc_.data(), total_rows, hidden_size_x4);
 
@@ -311,7 +330,10 @@ void UniDirectionalLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                   previous_state, previous_state_end,       // Ht-1
                   recurrent_weights,                        // R[iofc]
                   beta, step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
-                  hidden_size_x4, allocator_, ttp);
+                  hidden_size_x4,
+                  quantized_input_or_a_.begin() + (seq_start * hidden_size_),
+                  quantized_C_buffer_.begin() + (seq_start * hidden_size_x4),
+                  ttp);
 
       DumpMatrix("Xt*(W[iofc]^T) + Ht-t*R[iofc]" + row_str, &*step_out_IOFC, num_seq_to_compute_adjusted, hidden_size_x4);
 

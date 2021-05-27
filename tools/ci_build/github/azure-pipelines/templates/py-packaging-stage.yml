@@ -119,7 +119,7 @@ stages:
 
       - task: CmdLine@2
         displayName: 'Build Python Documentation'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           script: |
             mkdir -p $HOME/.onnx
@@ -137,7 +137,7 @@ stages:
 
       - task: CopyFiles@2
         displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)/docs/inference/html'
           Contents: '**'
@@ -285,7 +285,7 @@ stages:
                 /onnxruntime_src/tools/ci_build/build.py \
                   --config Release \
                   --use_rocm \
-                    --rocm_version=4.1 \
+                    --rocm_version=4.2 \
                     --rocm_home=/opt/rocm \
                     --nccl_home=/opt/rocm \
                   --update \
@@ -431,7 +431,7 @@ stages:
 
       - task: CmdLine@2
         displayName: 'Build Python Documentation'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           script: |
             mkdir -p $HOME/.onnx
@@ -447,7 +447,7 @@ stages:
 
       - task: CopyFiles@2
         displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)/docs/training/html'
           Contents: '**'
@@ -545,6 +545,7 @@ stages:
               --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
               -e NVIDIA_VISIBLE_DEVICES=all \
               -e NIGHTLY_BUILD \
+              -e DEFAULT_TRAINING_PACKAGE_DEVICE \
               -e BUILD_BUILDNUMBER \
               onnxruntimetraininggpubuild \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
@@ -588,7 +589,7 @@ stages:
 
       - task: CmdLine@2
         displayName: 'Build Python Documentation'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           script: |
             mkdir -p $HOME/.onnx
@@ -606,7 +607,7 @@ stages:
 
       - task: CopyFiles@2
         displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)/docs/training/html'
           Contents: '**'
@@ -761,7 +762,7 @@ stages:
 
       - task: CmdLine@2
         displayName: 'Build Python Documentation'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           script: |
             mkdir -p $HOME/.onnx
@@ -779,7 +780,7 @@ stages:
 
       - task: CopyFiles@2
         displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)/docs/training/html'
           Contents: '**'
