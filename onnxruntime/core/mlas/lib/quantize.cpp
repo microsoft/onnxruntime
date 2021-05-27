@@ -394,8 +394,8 @@ MlasRequantizeOutput(
         const float* scale = PerColumnScale ? Scale : nullptr;
         size_t n = CountN;
 
-        auto* row_in = Input;
-        auto* row_out = Output;
+        auto* RowInput = Input;
+        auto* RowOutput = Output;
 
         //
         // Process 16 columns of the matrices at a time.
@@ -407,11 +407,11 @@ MlasRequantizeOutput(
             // Load the input data and optionally add the per-column bias.
             //
 
-            __m128i IntegerVector0 = _mm_loadu_si128((const __m128i*)&row_in[0]);
-            __m128i IntegerVector1 = _mm_loadu_si128((const __m128i*)&row_in[4]);
-            __m128i IntegerVector2 = _mm_loadu_si128((const __m128i*)&row_in[8]);
-            __m128i IntegerVector3 = _mm_loadu_si128((const __m128i*)&row_in[12]);
-            row_in += 16;
+            __m128i IntegerVector0 = _mm_loadu_si128((const __m128i*)&RowInput[0]);
+            __m128i IntegerVector1 = _mm_loadu_si128((const __m128i*)&RowInput[4]);
+            __m128i IntegerVector2 = _mm_loadu_si128((const __m128i*)&RowInput[8]);
+            __m128i IntegerVector3 = _mm_loadu_si128((const __m128i*)&RowInput[12]);
+            RowInput += 16;
 
             if (bias != nullptr) {
                 IntegerVector0 = _mm_add_epi32(IntegerVector0, _mm_loadu_si128((const __m128i *)&bias[0]));
@@ -472,8 +472,8 @@ MlasRequantizeOutput(
 
             __m128i ByteVector = _mm_packus_epi16(WordVector0, WordVector1);
 
-            _mm_storeu_si128((__m128i*)row_out, ByteVector);
-            row_out += 16;
+            _mm_storeu_si128((__m128i*)RowOutput, ByteVector);
+            RowOutput += 16;
 
             n -= 16;
         }
@@ -492,8 +492,8 @@ MlasRequantizeOutput(
 
             if (n >= 4) {
 
-                IntegerVector = _mm_loadu_si128((const __m128i*)&row_in[0]);
-                row_in += 4;
+                IntegerVector = _mm_loadu_si128((const __m128i*)&RowInput[0]);
+                RowInput += 4;
 
                 if (bias != nullptr) {
                     IntegerVector = _mm_add_epi32(IntegerVector, _mm_loadu_si128((const __m128i*)&bias[0]));
@@ -502,7 +502,7 @@ MlasRequantizeOutput(
 
             } else {
 
-                int32_t IntegerValue = *row_in++;
+                int32_t IntegerValue = *RowInput++;
 
                 if (bias != nullptr) {
                     IntegerValue += *bias++;
@@ -548,15 +548,15 @@ MlasRequantizeOutput(
 
             if (n >= 4) {
 
-                *reinterpret_cast<uint32_t*>(row_out) = OutputValue;
-                row_out += 4;
+                *reinterpret_cast<uint32_t*>(RowOutput) = OutputValue;
+                RowOutput += 4;
 
                 n -= 4;
 
             } else {
 
-                *row_out = uint8_t(OutputValue);
-                row_out += 1;
+                *RowOutput = uint8_t(OutputValue);
+                RowOutput += 1;
 
                 n -= 1;
             }
@@ -610,8 +610,8 @@ MlasRequantizeOutput(
         const float* scale = PerColumnScale ? Scale : nullptr;
         size_t n = CountN;
 
-        auto* row_in = Input;
-        auto* row_out = Output;
+        auto* RowInput = Input;
+        auto* RowOutput = Output;
 
         //
         // Process 16 columns of the matrices at a time.
@@ -625,11 +625,11 @@ MlasRequantizeOutput(
 
             int32x4x4_t IntegerVector;
 
-            IntegerVector.val[0] = vld1q_s32(&row_in[0]);
-            IntegerVector.val[1] = vld1q_s32(&row_in[4]);
-            IntegerVector.val[2] = vld1q_s32(&row_in[8]);
-            IntegerVector.val[3] = vld1q_s32(&row_in[12]);
-            row_in += 16;
+            IntegerVector.val[0] = vld1q_s32(&RowInput[0]);
+            IntegerVector.val[1] = vld1q_s32(&RowInput[4]);
+            IntegerVector.val[2] = vld1q_s32(&RowInput[8]);
+            IntegerVector.val[3] = vld1q_s32(&RowInput[12]);
+            RowInput += 16;
 
             if (bias != nullptr) {
                 IntegerVector.val[0] = vaddq_s32(IntegerVector.val[0], vld1q_s32(&bias[0]));
@@ -697,8 +697,8 @@ MlasRequantizeOutput(
             WordVector.val[0] = vqaddq_s16(WordVector.val[0], ZeroPointVector);
             WordVector.val[1] = vqaddq_s16(WordVector.val[1], ZeroPointVector);
 
-            vst1q_u8(row_out, vqmovun_high_s16(vqmovun_s16(WordVector.val[0]), WordVector.val[1]));
-            row_out += 16;
+            vst1q_u8(RowOutput, vqmovun_high_s16(vqmovun_s16(WordVector.val[0]), WordVector.val[1]));
+            RowOutput += 16;
 
             n -= 16;
         }
@@ -717,8 +717,8 @@ MlasRequantizeOutput(
 
             if (n >= 4) {
 
-                IntegerVector = vld1q_s32(&row_in[0]);
-                row_in += 4;
+                IntegerVector = vld1q_s32(&RowInput[0]);
+                RowInput += 4;
 
                 if (bias != nullptr) {
                     IntegerVector = vaddq_s32(IntegerVector, vld1q_s32(&bias[0]));
@@ -727,8 +727,8 @@ MlasRequantizeOutput(
 
             } else {
 
-                IntegerVector = vld1q_dup_s32(row_in);
-                row_in += 1;
+                IntegerVector = vld1q_dup_s32(RowInput);
+                RowInput += 1;
 
                 if (bias != nullptr) {
                     IntegerVector = vaddq_s32(IntegerVector, vld1q_dup_s32(bias));
@@ -779,16 +779,16 @@ MlasRequantizeOutput(
 
             if (n >= 4) {
 
-                vst1q_lane_u32(reinterpret_cast<uint32_t*>(row_out),
+                vst1q_lane_u32(reinterpret_cast<uint32_t*>(RowOutput),
                                vreinterpretq_u32_u8(ByteVector), 0);
-                row_out += 4;
+                RowOutput += 4;
 
                 n -= 4;
 
             } else {
 
-                vst1q_lane_u8(row_out, ByteVector, 0);
-                row_out += 1;
+                vst1q_lane_u8(RowOutput, ByteVector, 0);
+                RowOutput += 1;
 
                 n -= 1;
             }
@@ -843,12 +843,12 @@ MlasRequantizeOutput(
         const float* scale = Scale;
         size_t n = CountN;
 
-        auto* row_in = Input;
-        auto* row_out = Output;
+        auto* RowInput = Input;
+        auto* RowOutput = Output;
 
         while (n > 0) {
 
-            int32_t IntegerValue = *row_in++;
+            int32_t IntegerValue = *RowInput++;
 
             if (bias != nullptr) {
                 IntegerValue += *bias++;
@@ -872,7 +872,7 @@ MlasRequantizeOutput(
             IntegerValue = int32_t(MlasBitsOfFp32(FloatValue + MLAS_ROUNDING_BIAS_MAGIC)) -
                 MLAS_ROUNDING_BIAS_MAGIC_BITS;
 
-            *row_out++ = uint8_t(IntegerValue + ZeroPoint);
+            *RowOutput++ = uint8_t(IntegerValue + ZeroPoint);
 
             n -= 1;
         }

@@ -977,10 +977,10 @@ MlasQuantizeLinear(
  * @param PerColumnScale            true if scale is per-column
  * @param ZeroPoint                 quantization zero point value
  * @param StartM
- * @param StartN 
- * @param CountM 
- * @param CountN 
- * @return 
+ * @param StartN
+ * @param CountM
+ * @param CountN
+ * @return
 */
 void
 MLASCALL
@@ -1004,13 +1004,13 @@ class MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR
    public:
     MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR(
         uint8_t* Output,
-        size_t LeadingDimensionOutput,
+        size_t OutputLeadingDimension,
         const int32_t* Bias,
         const float* Scale,
         bool PerColumnScale,
         uint8_t ZeroPoint)
         : Output_(Output),
-          LeadingDimensionOutput_(LeadingDimensionOutput),
+          OutputLeadingDimension_(OutputLeadingDimension),
           Bias_(Bias),
           Scale_(Scale),
           PerColumnScale_(PerColumnScale),
@@ -1025,14 +1025,14 @@ class MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR
                  size_t CountN,
                  size_t ldc) const override
     {
-        MlasRequantizeOutput(C, ldc, Output_, LeadingDimensionOutput_, Bias_, Scale_,
+        MlasRequantizeOutput(C, ldc, Output_, OutputLeadingDimension_, Bias_, Scale_,
                              PerColumnScale_, ZeroPoint_, StartM, StartN, CountM, CountN);
     }
 
 
    private:
     uint8_t* Output_;
-    size_t LeadingDimensionOutput_;
+    size_t OutputLeadingDimension_;
     const int32_t* Bias_;
     const float* Scale_;
     bool PerColumnScale_;
