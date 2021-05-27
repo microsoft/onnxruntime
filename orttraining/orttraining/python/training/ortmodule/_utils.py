@@ -102,15 +102,5 @@ class ModuleMetadata():
     """Encapsulates modules and allows easy access as required"""
 
     def __init__(self, original_module, flattened_module):
-        self._original_module = original_module
-        self._flattened_module = flattened_module
-
-    def original_module(self):
-        """Returns the original PyTorch module"""
-
-        return self._original_module
-
-    def flattened_module(self):
-        """Returns the flattened input and output PyTorch module"""
-
-        return self._flattened_module
+        self.original_module = original_module
+        self.flattened_module = flattened_module

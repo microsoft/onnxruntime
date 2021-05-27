@@ -56,7 +56,7 @@ class ORTModule(torch.nn.Module):
         # inside ModuleMetadata
         self._module = ModuleMetadata(module, _io._FlattenedModule(module))
 
-        self._execution_manager = GraphExecutionManagerFactory(self._module.flattened_module())
+        self._execution_manager = GraphExecutionManagerFactory(self._module.flattened_module)
 
     # IMPORTANT: DO NOT add code here
     # This declaration is for automatic document generation purposes only
@@ -70,7 +70,7 @@ class ORTModule(torch.nn.Module):
 
         # Delegation must happen to _flattened_module since methods depend on
         # _apply to recursively apply the internal setting changes
-        self._module.flattened_module()._apply(fn)
+        self._module.flattened_module._apply(fn)
         return self
 
     def apply(self: T, fn: Callable[['Module'], None]) -> T:
@@ -78,7 +78,7 @@ class ORTModule(torch.nn.Module):
 
         # Delegation must happen to _flattened_module since methods depend on
         # apply to recursively apply the internal setting changes
-        self._module.flattened_module().apply(fn)
+        self._module.flattened_module.apply(fn)
         return self
 
     def _is_training(self):
@@ -87,10 +87,10 @@ class ORTModule(torch.nn.Module):
     def train(self: T, mode: bool = True) -> T:
         """Override original method to delegate execution to the flattened PyTorch user module"""
 
-        # Since _modules is empty, the task needs to be delegated to _module.flattened_module().train
+        # Since _modules is empty, the task needs to be delegated to _module.flattened_module.train
         # which will recursively update the original_module
         self.training = mode
-        self._module.flattened_module().train(mode)
+        self._module.flattened_module.train(mode)
         return self
 
     def state_dict(self, destination=None, prefix='', keep_vars=False):
@@ -98,7 +98,7 @@ class ORTModule(torch.nn.Module):
 
         # Override the state_dict() method so that the state dict key names
         # do not contain the flattened_module._original_module prefix
-        return self._module.original_module().state_dict(
+        return self._module.original_module.state_dict(
             destination=destination, prefix=prefix, keep_vars=keep_vars)
 
     def load_state_dict(self, state_dict: 'OrderedDict[str, Tensor]',
@@ -106,41 +106,41 @@ class ORTModule(torch.nn.Module):
         """Override original method to delegate execution to the original PyTorch user module"""
 
         # Override the load_state_dict() method so that the loaded state dict
-        # key names does not need to contain the _module.flattened_module()._original_module prefix
-        return self._module.original_module().load_state_dict(
+        # key names does not need to contain the _module.flattened_module._original_module prefix
+        return self._module.original_module.load_state_dict(
             state_dict, strict=strict)
 
     def register_buffer(self, name: str, tensor: Optional[torch.Tensor], persistent: bool = True) -> None:
         """Override original method to delegate execution to the original PyTorch user module"""
-        self._module.original_module().register_buffer(name, tensor, persistent=persistent)
+        self._module.original_module.register_buffer(name, tensor, persistent=persistent)
 
     def register_parameter(self, name: str, param: Optional[torch.nn.Parameter]) -> None:
         """Override original method to delegate execution to the original PyTorch user module"""
-        self._module.original_module().register_parameter(name, param)
+        self._module.original_module.register_parameter(name, param)
 
     def get_parameter(self, target: str) -> torch.nn.Parameter:
         """Override original method to delegate execution to the original PyTorch user module"""
-        return self._module.original_module().get_parameter(target)
+        return self._module.original_module.get_parameter(target)
 
     def get_buffer(self, target: str) -> torch.Tensor:
         """Override original method to delegate execution to the original PyTorch user module"""
-        return self._module.original_module().get_buffer(target)
+        return self._module.original_module.get_buffer(target)
 
     def parameters(self, recurse: bool = True) -> Iterator[torch.nn.Parameter]:
         """Override original method to delegate execution to the original PyTorch user module"""
-        yield from self._module.original_module().parameters(recurse=recurse)
+        yield from self._module.original_module.parameters(recurse=recurse)
 
     def named_parameters(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.nn.Parameter]]:
         """Override original method to delegate execution to the original PyTorch user module"""
-        yield from self._module.original_module().named_parameters(prefix=prefix, recurse=recurse)
+        yield from self._module.original_module.named_parameters(prefix=prefix, recurse=recurse)
 
     def buffers(self, recurse: bool = True) -> Iterator[torch.Tensor]:
         """Override original method to delegate execution to the original PyTorch user module"""
-        yield from self._module.original_module().buffers(recurse=recurse)
+        yield from self._module.original_module.buffers(recurse=recurse)
 
     def named_buffers(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.Tensor]]:
         """Override original method to delegate execution to the original PyTorch user module"""
-        yield from self._module.original_module().named_buffers(prefix=prefix, recurse=recurse)
+        yield from self._module.original_module.named_buffers(prefix=prefix, recurse=recurse)
 
     def _replicate_for_data_parallel(self):
         """Raises a NotImplementedError exception since ORTModule is not compatible with torch.nn.DataParallel
@@ -165,25 +165,25 @@ class ORTModule(torch.nn.Module):
                                 missing_keys, unexpected_keys, error_msgs):
         """Override original method to delegate execution to the original PyTorch user module"""
 
-        self._module.original_module()._load_from_state_dict(state_dict, prefix, local_metadata, strict,
+        self._module.original_module._load_from_state_dict(state_dict, prefix, local_metadata, strict,
                                 missing_keys, unexpected_keys, error_msgs)
 
     def named_children(self) -> Iterator[Tuple[str, 'Module']]:
         """Override original method to delegate execution to the original PyTorch user module"""
 
-        yield from self._module.original_module().named_children()
+        yield from self._module.original_module.named_children()
 
     def modules(self) -> Iterator['Module']:
         """Override original method to delegate execution to the original PyTorch user module"""
 
-        yield from self._module.original_module().modules()
+        yield from self._module.original_module.modules()
 
     def named_modules(self, memo: Optional[Set['Module']] = None, prefix: str = ''):
         """Override original method to delegate execution to the original PyTorch user module"""
 
-        yield from self._module.original_module().named_modules(memo, prefix)
+        yield from self._module.original_module.named_modules(memo, prefix)
 
     def add_module(self, name: str, module: Optional['Module']) -> None:
-        """Override original method to delegate execution to the original PyTorch user module"""
+        """Raises a NotImplementedError exception since ORTModule does not support adding modules to it"""
 
-        self._module.original_module().add_module(name, module)
+        raise NotImplementedError("ORTModule does not support adding modules to it.")
