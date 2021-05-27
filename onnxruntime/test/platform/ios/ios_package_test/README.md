@@ -41,7 +41,7 @@ Use the [build for iOS simulator](http://www.onnxruntime.ai/docs/how-to/build/an
 ```
     xcrun xcodebuild \
         -workspace ./ios_package_test.xcworkspace \
-        -destination '<Your choice of test target device' \
+        -destination '<Your choice of test target device>' \
         -scheme ios_package_test \
         test
 ```
