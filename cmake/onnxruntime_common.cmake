@@ -11,7 +11,6 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/common/logging/*.cc"
     "${ONNXRUNTIME_ROOT}/core/common/logging/sinks/*.h"
     "${ONNXRUNTIME_ROOT}/core/common/logging/sinks/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/inc/*.h"
     "${ONNXRUNTIME_ROOT}/core/platform/env.h"
     "${ONNXRUNTIME_ROOT}/core/platform/env.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.h"
@@ -21,6 +20,8 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/scoped_resource.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.cc"
 )
 
 if(WIN32)
@@ -52,6 +53,13 @@ else()
             "${ONNXRUNTIME_ROOT}/core/platform/android/logging/*.h"
             "${ONNXRUNTIME_ROOT}/core/platform/android/logging/*.cc"
         )
+    endif()
+
+    if (APPLE)
+        list(APPEND onnxruntime_common_src_patterns
+            "${ONNXRUNTIME_ROOT}/core/platform/apple/logging/*.h"
+            "${ONNXRUNTIME_ROOT}/core/platform/apple/logging/*.mm"
+            )
     endif()
 endif()
 
@@ -163,4 +171,8 @@ endif()
 # e.g. Raspberry Pi requires this
 if (onnxruntime_LINK_LIBATOMIC)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES atomic)
+endif()
+
+if(APPLE)
+  target_link_libraries(onnxruntime_common "-framework Foundation")
 endif()
