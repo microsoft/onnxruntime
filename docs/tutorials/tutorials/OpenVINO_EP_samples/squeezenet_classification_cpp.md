@@ -1,4 +1,9 @@
-# This is a CPP sample demoing ONNXRuntime OpenVINO Execution Provider usage:
+---
+nav_exclude: true
+---
+
+# Image classification with Squeezenet in CPP using OpenVINO Execution Provider:
+{: .no_toc }
 
 1. The image classification uses a Squeezenet Deep Learning ONNX Model from the ONNX Model Zoo.
 

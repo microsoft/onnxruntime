@@ -1,4 +1,9 @@
-# This is a C# sample for demoing ONNXRuntime OpenVINO Execution Provider usage:
+---
+nav_exclude: true
+---
+
+# Object detection with YOLOv3 in C# using OpenVINO Execution Provider:
+{: .no_toc }
 
 1. The object detection sample uses YOLOv3 Deep Learning ONNX Model from the ONNX Model Zoo.
 

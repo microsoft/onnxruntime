@@ -1,4 +1,9 @@
-# This is a python sample application for demoing ONNXRuntime OpenVINO Execution Provider usage:
+---
+nav_exclude: true
+---
+
+# Object detection with tinyYOLOv2 in Python using OpenVINO Execution Provider:
+{: .no_toc }
 
 1. The Object detection sample again uses a tinyYOLOv2 Deep Learning ONNX Model from the ONNX Model Zoo.
  
