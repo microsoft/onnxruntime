@@ -277,7 +277,7 @@ class GraphExecutionManager(ABC):
                     exported_model.opset_import[1].domain = 'com.microsoft'
                 index = 0
                 for node in exported_model.graph.node:
-                    if node.domain == 'com.microsoft':
+                    if node.domain == 'com.microsoft' and node.op_type in ["PythonOp"]:
                         output_names = list(node.output)
                         del node.output[:]
                         node.output.append(output_names[0] + '_ctx')
