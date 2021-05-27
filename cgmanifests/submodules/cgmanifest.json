@@ -302,7 +302,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "99296a4462ffc0a8a4a9635e51382277bec68979",
+          "commitHash": "a3a4e38b2dfa7a62b6dcae33c0d1678b3bb5ef2a",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt"
@@ -382,7 +382,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "5ec7f0c4a113e2f18ac2c6cc7df51ad6afc24081",
+          "commitHash": "703bd9caab50b139428cea1aaff9974ebee5742e",
           "repositoryUrl": "https://github.com/google/googletest.git"
         },
         "comments": "git submodule at cmake/external/protobuf/third_party/googletest"
