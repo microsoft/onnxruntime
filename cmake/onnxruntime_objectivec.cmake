@@ -15,10 +15,6 @@ if(NOT onnxruntime_BUILD_SHARED_LIB)
     message(FATAL_ERROR "The Objective-C API requires onnxruntime_BUILD_SHARED_LIB to be enabled.")
 endif()
 
-if(NOT APPLE)
-    message(FATAL_ERROR "Objective-C API must be built on an Apple platform.")
-endif()
-
 check_language(OBJC)
 if(CMAKE_OBJC_COMPILER)
     enable_language(OBJC)
