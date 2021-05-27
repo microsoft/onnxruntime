@@ -160,21 +160,6 @@ void RunAllOpsetAllDomainPadTests<>(
 #endif
 }
 
-template <typename T, int opset>
-static void RunOnnxOpsetTypedTest(
-    const std::vector<int64_t>& input_dims,
-    const std::initializer_list<T>& input,
-    const std::vector<int64_t>& pads,
-    T value,
-    const std::vector<int64_t>& output_dims,
-    const std::initializer_list<T>& output,
-    std::string mode = "constant",
-    OpTester::ExpectResult expect = OpTester::ExpectResult::kExpectSuccess,
-    const std::string& error_msg = "") {
-  RunOnnxOpsetTypedTest(input_dims, input, pads, value, output_dims,
-                        output, mode, expect, error_msg);
-}
-
 // Some of the tests can't run on TensorrtExecutionProvider because only constant mode and value 0 of "Pad" node is supported.
 // Those tests will fallback to other EP.
 
