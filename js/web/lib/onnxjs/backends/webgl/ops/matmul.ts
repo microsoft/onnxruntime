@@ -25,7 +25,7 @@ export class WebGLMatMul extends MatMul implements WebGLOperator {
       this.usePackedTexture = !isBroadcast && inferenceHandler.session.pack;
     }
 
-    if (this.usePackedTexture === true) {
+    if (this.usePackedTexture) {
       return inferenceHandler.run(this.packedImpl, inputs);
     } else {
       return inferenceHandler.run(this.unpackedImpl, inputs);
@@ -38,7 +38,7 @@ export class WebGLMatMul extends MatMul implements WebGLOperator {
       this.usePackedTexture = !isBroadcast && handler.session.pack;
     }
 
-    if (this.usePackedTexture === true && inputs[0].dims.length > 1) {
+    if (this.usePackedTexture && inputs[0].dims.length > 1) {
       return this.packedImpl.createProgramInfo(handler, inputs);
     } else {
       return this.unpackedImpl.createProgramInfo(handler, inputs);
@@ -46,7 +46,7 @@ export class WebGLMatMul extends MatMul implements WebGLOperator {
   }
 
   createRunData(handler: WebGLInferenceHandler, programInfo: ProgramInfo, inputs: Tensor[]): RunData {
-    if (this.usePackedTexture === true && inputs[0].dims.length > 1) {
+    if (this.usePackedTexture && inputs[0].dims.length > 1) {
       return this.packedImpl.createRunData(handler, programInfo, inputs);
     } else {
       return this.unpackedImpl.createRunData(handler, programInfo, inputs);
