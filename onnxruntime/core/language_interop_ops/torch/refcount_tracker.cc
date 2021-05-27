@@ -11,7 +11,7 @@ namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
 
-void RefCountTracker::TrackPyObject(RefCountTracker::ObjCategory category, PyObject* py_obj, const std::string& log_tag) const {
+void RefCountTracker::TrackPyObject(RefCountTracker::ObjCategory category, PyObject* py_obj, const std::string& log_tag) {
 #ifdef NDEBUG
   ORT_UNUSED_PARAMETER(category);
   ORT_UNUSED_PARAMETER(py_obj);
@@ -26,7 +26,7 @@ void RefCountTracker::TrackPyObject(RefCountTracker::ObjCategory category, PyObj
   } else {
     addrs[addr].push_back(log_tag);
   }
-  LOGS_DEFAULT(VERBOSE) << "Track" << ObjCategoryToString(category) << "\tAddress: [" << addr << "]\tRefCnt: " << Py_REFCNT(addr) << "\tLogTag: " << log_tag;
+  LOGS_DEFAULT(WARNING) << "Track" << ObjCategoryToString(category) << "\tAddress: [" << addr << "]\tRefCnt: " << Py_REFCNT(addr) << "\tLogTag: " << log_tag;
 #endif
 }
 
@@ -47,11 +47,11 @@ void RefCountTracker::DumpDetails(const std::string& phase_name) const {
     }
   }
   oss << "==========================================================" << std::endl;
-  LOGS_DEFAULT(VERBOSE) << oss.str();
+  LOGS_DEFAULT(WARNING) << oss.str();
 #endif
 }
 
-void RefCountTracker::Reset() const {
+void RefCountTracker::Reset() {
 #ifndef NDEBUG
   for (auto addr_info_it = addr_info_map_.begin(); addr_info_it != addr_info_map_.end(); ++addr_info_it) {
     addr_info_it->second.clear();

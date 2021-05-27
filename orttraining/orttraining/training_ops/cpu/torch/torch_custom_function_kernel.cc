@@ -31,8 +31,6 @@ ONNX_OPERATOR_KERNEL_EX(
     PythonOpGrad);
 
 Status PythonOp::Compute(OpKernelContext* context) const {
-  RefCountTracker::GetInstance().DumpDetails("Forward Kernel Started");
-
   void* diff_ctx = nullptr;
   std::vector<OrtValue> returned_ortvalues;
   RunForward(context, &diff_ctx, returned_ortvalues);
@@ -44,8 +42,6 @@ Status PythonOp::Compute(OpKernelContext* context) const {
 }
 
 Status PythonOpGrad::Compute(OpKernelContext* context) const {
-  RefCountTracker::GetInstance().DumpDetails("Backward Kernel Started");
-
   std::vector<OrtValue> returned_ortvalues;
   RunBackward(context, returned_ortvalues);
 
