@@ -15,6 +15,7 @@ def _export(g, n, *args, **kwargs):
         cconv = n.cconv()
         input_tensor_types = []
         input_tensor_requires_grads = []
+        input_tensor_ranks = []
 
         input_int_scalars = []
         input_int_scalar_positions = []
@@ -45,6 +46,7 @@ def _export(g, n, *args, **kwargs):
                 scalar_type = int(symbolic_helper.cast_pytorch_to_onnx[arg.type(
                 ).scalarType()])
                 input_tensor_types.append(scalar_type)
+                input_tensor_ranks.append(arg.type().dim())
             elif call_type == 'c':
                 # Got a non-tensor variable.
                 # Non-tensor can't have gradient.
@@ -83,12 +85,14 @@ def _export(g, n, *args, **kwargs):
                     f'Unknown calling convention found: {i}. Only \'d\' and \'c\' are supported')
 
         output_tensor_types = []
+        output_tensor_ranks = []
         output_tensor_requires_grads = []
         for arg in n.outputs():
             # Type of tensor's elements.
             scalar_type = int(symbolic_helper.cast_pytorch_to_onnx[arg.type(
             ).scalarType()])
             output_tensor_types.append(scalar_type)
+            output_tensor_ranks.append(arg.type().dim())
             # If output has gradient.
             requires_grad = 1 if arg.requires_grad() else 0
             output_tensor_requires_grads.append(requires_grad)
@@ -100,8 +104,10 @@ def _export(g, n, *args, **kwargs):
             'call_convention_s': cconv,
             'outputs': n.outputsSize(),
             'input_tensor_types_i': input_tensor_types,
+            'input_tensor_ranks_i': input_tensor_ranks,
             'input_tensor_requires_grads_i': input_tensor_requires_grads,
             'output_tensor_types_i': output_tensor_types,
+            'output_tensor_ranks_i': output_tensor_ranks,
             'output_tensor_requires_grads_i': output_tensor_requires_grads,
             'training_mode_i': 1 if training_mode else 0
         }
