@@ -146,25 +146,25 @@ Status Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(
       Transpose4DKernelParallelizeMultipleElementsPerThreadInInnermostDim<sizeof(int8_t)>
           <<<grid_size, block_size, 0, stream>>>(
               input_strides, input_data,
-              output_strides, output_data, element_size, N / num_elements_per_thread);
+              output_strides, output_data, N / num_elements_per_thread);
       break;
     case sizeof(int16_t):
       Transpose4DKernelParallelizeMultipleElementsPerThreadInInnermostDim<sizeof(int16_t)>
           <<<grid_size, block_size, 0, stream>>>(
               input_strides, input_data,
-              output_strides, output_data, element_size, N / num_elements_per_thread);
+              output_strides, output_data, N / num_elements_per_thread);
       break;
     case sizeof(int32_t):
       Transpose4DKernelParallelizeMultipleElementsPerThreadInInnermostDim<sizeof(int32_t)>
           <<<grid_size, block_size, 0, stream>>>(
               input_strides, input_data,
-              output_strides, output_data, element_size, N / num_elements_per_thread);
+              output_strides, output_data, N / num_elements_per_thread);
       break;
     case sizeof(int64_t):
       Transpose4DKernelParallelizeMultipleElementsPerThreadInInnermostDim<sizeof(int64_t)>
           <<<grid_size, block_size, 0, stream>>>(
               input_strides, input_data,
-              output_strides, output_data, element_size, N / num_elements_per_thread);
+              output_strides, output_data, N / num_elements_per_thread);
       break;
     default:
       // User will not hit this as this kernel is for fixed element size tensors only
