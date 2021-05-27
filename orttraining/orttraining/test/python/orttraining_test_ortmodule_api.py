@@ -1666,26 +1666,26 @@ def test_model_initializer_requires_grad_changes_from_one_forward_to_next():
     model.fc1.requires_grad_(True)
     model = ORTModule(model)
     x = torch.randn(N, D_in, device=device)
-    assert model.original_module.fc1.weight.grad is None
-    assert model.original_module.fc1.bias.grad is None
+    assert model._module.original_module().fc1.weight.grad is None
+    assert model._module.original_module().fc1.bias.grad is None
 
     # Make sure no exception is raised
     output = model(x)
     loss = torch.sum(output)
     loss.backward()
     training_session1 = model._execution_manager(model._is_training())._execution_agent
-    weight_grad_2 = model.original_module.fc1.weight.grad
-    bias_grad_2 = model.original_module.fc1.bias.grad
+    weight_grad_2 = model._module.original_module().fc1.weight.grad
+    bias_grad_2 = model._module.original_module().fc1.bias.grad
     assert weight_grad_2 is not None
     assert bias_grad_2 is not None
 
-    model.original_module.fc1.requires_grad_(False)
+    model._module.original_module().fc1.requires_grad_(False)
     output = model(x)
     loss = torch.sum(output)
     loss.backward()
     training_session2 = model._execution_manager(model._is_training())._execution_agent
-    weight_grad_3 = model.original_module.fc1.weight.grad
-    bias_grad_3 = model.original_module.fc1.bias.grad
+    weight_grad_3 = model._module.original_module().fc1.weight.grad
+    bias_grad_3 = model._module.original_module().fc1.bias.grad
 
     assert training_session1 != training_session2
     assert torch.equal(weight_grad_2, weight_grad_3)
@@ -2637,5 +2637,13 @@ def test_load_state_dict_for_wrapped_ortmodule():
     x = torch.randn(N, D_in, device=device)
     _ = wrapper_module(x)
 
-    state_dict = wrapper_module.state_dict()
-    wrapper_module.load_state_dict(state_dict)
+    state_dict1 = wrapper_module.state_dict()
+    list(next(iter(state_dict1.items())))[1] += 10
+    wrapper_module.load_state_dict(state_dict1)
+    state_dict2 = wrapper_module.state_dict()
+
+    assert state_dict1
+    assert len(state_dict1.keys()) == len(state_dict2.keys())
+    for param_name, param_value in state_dict1.items():
+        assert param_name in state_dict2
+        assert torch.equal(param_value, state_dict2[param_name])
