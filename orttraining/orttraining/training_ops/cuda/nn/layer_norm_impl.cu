@@ -348,7 +348,7 @@ __global__ void cuComputeGradInput(
 
                   for(int k = 0; k < 2; k++) {
                       sum_loss1 += U(c_loss[k]) * U( gamma_idx[k] );
-                           sum_loss2 += U(c_loss[k]) * U(gamma_idx[k]) * ( U(c_h[k]) - c_mean) * c_invvar;
+                      sum_loss2 += U(c_loss[k]) * U(gamma_idx[k]) * ( U(c_h[k]) - c_mean) * c_invvar;
                   }
                 } else {
                   const T2 c_output = *(const T2*)( k_output + idx );
@@ -356,7 +356,7 @@ __global__ void cuComputeGradInput(
   
                   for(int k = 0; k < 2; k++) {
                       sum_loss1 += U(c_loss[k]) * U( gamma_idx[k] );
-                         sum_loss2 += U(c_loss[k]) * ( U(c_output[k]) - U( beta_idx[k] ));
+                      sum_loss2 += U(c_loss[k]) * ( U(c_output[k]) - U( beta_idx[k] ));
                     }
                 }
         } 
