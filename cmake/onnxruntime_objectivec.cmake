@@ -21,16 +21,16 @@ endif()
 
 check_language(OBJC)
 if(CMAKE_OBJC_COMPILER)
-  enable_language(OBJC)
+    enable_language(OBJC)
 else()
-  message(FATAL_ERROR "Objective-C is not supported.")
+    message(FATAL_ERROR "Objective-C is not supported.")
 endif()
 
 check_language(OBJCXX)
 if(CMAKE_OBJCXX_COMPILER)
-  enable_language(OBJCXX)
+    enable_language(OBJCXX)
 else()
-  message(FATAL_ERROR "Objective-C++ is not supported.")
+    message(FATAL_ERROR "Objective-C++ is not supported.")
 endif()
 
 add_compile_options(
