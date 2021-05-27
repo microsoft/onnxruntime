@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#ifdef ENABLE_TRAINING
 
 #include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
@@ -53,3 +54,5 @@ Status PythonOpGrad::Compute(OpKernelContext* context) const {
 
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif

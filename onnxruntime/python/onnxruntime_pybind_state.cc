@@ -30,6 +30,7 @@
 #ifdef ENABLE_TRAINING
 #include "core/dlpack/dlpack_converter.h"
 #include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
+#include "core/language_interop_ops/torch/custom_function_register.h"
 #endif
 
 // execution provider factory creator headers
@@ -37,7 +38,6 @@
 #ifdef USE_ROCM
 #include "core/providers/rocm/rocm_provider_factory_creator.h"
 #endif
-#include "core/language_interop_ops/torch/custom_function_register.h"
 
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/providers/shared_library/provider_host_api.h"
@@ -1538,10 +1538,6 @@ void addObjectMethods(py::module& m, Environment& env) {
         // Should cover x86 and x64 platforms
         return reinterpret_cast<int64_t>(tensor->MutableDataRaw());
       })
-      .def("ortvalue_ptr", [](OrtValue* ml_value) -> int64_t {
-        // Should cover x86 and x64 platforms
-        return reinterpret_cast<int64_t>(ml_value);
-      })
       .def("device_name", [](OrtValue* ml_value) -> std::string {
         // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
@@ -1595,10 +1591,10 @@ void addObjectMethods(py::module& m, Environment& env) {
       })
 #ifdef ENABLE_TRAINING
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
-        return py::reinterpret_steal<py::object>(onnxruntime::dlpack::OrtValueToDlpackCapsule(*ort_value));
+        return py::reinterpret_steal<py::object>(dlpack::ToDlpack(*ort_value));
       })
       .def_static("from_dlpack", [](py::object data, bool is_bool_tensor = false) {
-        return onnxruntime::dlpack::DlpackCapsuleToOrtValue(data.ptr(), is_bool_tensor);
+        return dlpack::FromDlpack(data.ptr(), is_bool_tensor);
       })
 #endif
       ;

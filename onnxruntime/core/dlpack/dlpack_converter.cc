@@ -231,9 +231,18 @@ DLManagedTensor* OrtValueToDlpack(OrtValue ort_value) {
   return &(ort_dlmanaged_tensor->tensor);
 }
 
-PyObject* OrtValueToDlpackCapsule(OrtValue ort_value) {
-  DLManagedTensor* dlmanaged_tensor = OrtValueToDlpack(ort_value);
+PyObject* ToDlpack(OrtValue ort_value) {
+  DLManagedTensor* dlmanaged_tensor = dlpack::OrtValueToDlpack(ort_value);
   return PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
+}
+
+OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor) {
+  // Extract DLPack tensor pointer from the capsule carrier.
+  DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(dlpack_tensor, "dltensor");
+  OrtValue ort_value = dlpack::DlpackToOrtValue(dlmanaged_tensor, is_bool_tensor);
+  // Make sure this capsule will never be used again.
+  PyCapsule_SetName(dlpack_tensor, "used_dltensor");
+  return ort_value;
 }
 
 OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
@@ -249,15 +258,6 @@ OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
 
   OrtValue ort_value;
   ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), deleter);
-  return ort_value;
-}
-
-OrtValue DlpackCapsuleToOrtValue(PyObject* capsule, bool is_bool_tensor) {
-  // Extract DLPack tensor pointer from the capsule carrier.
-  auto dlmanaged_tensor = reinterpret_cast<DLManagedTensor*>(PyCapsule_GetPointer(capsule, "dltensor"));
-  OrtValue ort_value = DlpackToOrtValue(dlmanaged_tensor, is_bool_tensor);
-  // Make sure this capsule will never be used again.
-  PyCapsule_SetName(capsule, "used_dltensor");
   return ort_value;
 }
 

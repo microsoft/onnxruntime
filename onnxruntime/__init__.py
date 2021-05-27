@@ -23,10 +23,7 @@ try:
     from onnxruntime.capi._pybind_state import get_all_providers, get_available_providers, get_device, set_seed, \
         RunOptions, SessionOptions, set_default_logger_severity, enable_telemetry_events, disable_telemetry_events, \
         NodeArg, ModelMetadata, GraphOptimizationLevel, ExecutionMode, ExecutionOrder, OrtDevice, SessionIOBinding, \
-        OrtAllocatorType, OrtMemType, OrtArenaCfg, OrtMemoryInfo, create_and_register_allocator, \
-        register_forward_runner, unregister_forward_runner, \
-        register_backward_runner, unregister_backward_runner, \
-        register_torch_autograd_function, unregister_torch_autograd_function
+        OrtAllocatorType, OrtMemType, OrtArenaCfg, OrtMemoryInfo, create_and_register_allocator
     import_capi_exception = None
 except Exception as e:
     import_capi_exception = e

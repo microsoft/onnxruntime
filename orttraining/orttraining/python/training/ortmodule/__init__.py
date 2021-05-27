@@ -31,10 +31,10 @@ try:
             f'ONNXRuntime ORTModule frontend requires PyTorch version greater or equal to {MINIMUM_TORCH_VERSION_STR}, '
             f'but version {torch.__version__} was found instead.')
 
-    import onnxruntime
+    from onnxruntime.capi._pybind_state import register_forward_runner, register_backward_runner
     from ._custom_autograd_function_runner import call_python_forward_function, call_python_backward_function
-    onnxruntime.register_forward_runner(call_python_forward_function, False)
-    onnxruntime.register_backward_runner(call_python_backward_function, False)
+    register_forward_runner(call_python_forward_function, False)
+    register_backward_runner(call_python_backward_function, False)
 
     from torch.onnx import register_custom_op_symbolic
     from ._custom_autograd_function_exporter import _export
