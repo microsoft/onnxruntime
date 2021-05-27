@@ -4,7 +4,6 @@
 #include "scatter_elements.h"
 #include "scatter_elements_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -15,7 +14,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     9,
     10,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("Tind", std::vector<MLDataType>{
                                     DataTypeImpl::GetTensorType<int32_t>(),
@@ -28,7 +27,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     11,
     12,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("Tind", std::vector<MLDataType>{
                                     DataTypeImpl::GetTensorType<int32_t>(),
@@ -40,7 +39,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     13,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("Tind", std::vector<MLDataType>{
                                     DataTypeImpl::GetTensorType<int32_t>(),
@@ -143,7 +142,9 @@ Status ScatterElements::ComputeInternal(OpKernelContext* context) const {
   }
 
   for (size_t i = 0; i < input_dims.size(); ++i) {
-    if (input_dims[i] < indices_dims[i]) {
+    // For all axes except the axis of interest, make sure that the corresponding 'indices' shape
+    // value is within bounds of the corresponding 'data' shape.
+    if (static_cast<int64_t>(i) != axis_ && input_dims[i] < indices_dims[i]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices dim=", indices_dims[i], " at pos=", i,
                              " is greater than input dim=", input_dims[i]);
     }

@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/common.h"
+#include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cudnn_common.h"
-#include "core/framework/tensorprotoutils.h"
 #include "fast_gelu.h"
 #include "fast_gelu_impl.h"
 #include "contrib_ops/cpu/bert/bias_gelu_helper.h"
@@ -19,7 +18,7 @@ namespace cuda {
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       FastGelu<T>);
 

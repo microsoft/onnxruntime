@@ -124,6 +124,7 @@ option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with suppor
 option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support to a minimal build." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
 option(onnxruntime_DISABLE_ORT_FORMAT_LOAD "Disable loading an ORT format model when onnxruntime_MINIMAL_BUILD=OFF (i.e. in a full build)." OFF)
+option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
 
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
 #The option has no effect on Windows.
@@ -150,7 +151,7 @@ option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 option(onnxruntime_BUILD_WEBASSEMBLY "Enable this option to create WebAssembly byte codes" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_THREADS "Enable this option to create WebAssembly byte codes with multi-threads support" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
-option(onnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP "Enable this option to turn on sourcemap" OFF)
+option(onnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO "Enable this option to turn on DWARF format debug info" OFF)
 
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
@@ -193,7 +194,9 @@ if(onnxruntime_USE_VALGRIND AND NOT WIN32)
 endif()
 
 if (onnxruntime_ENABLE_NVTX_PROFILE)
-  add_definitions(-DENABLE_NVTX_PROFILE=1)
+  message(WARNING "NTVX profile temporarily disabled, will be fixed soon")
+# TODO: This doesn't work with the shared cuda provider. Disabling temporarily to do a clean fix later as it wasn't trivial
+#  add_definitions(-DENABLE_NVTX_PROFILE=1)
 endif()
 
 if (onnxruntime_ENABLE_BITCODE)
@@ -202,6 +205,8 @@ if (onnxruntime_ENABLE_BITCODE)
   endif()
   set(CMAKE_XCODE_ATTRIBUTE_ENABLE_BITCODE YES)
   set(CMAKE_XCODE_ATTRIBUTE_BITCODE_GENERATION_MODE "bitcode")
+else()
+  set(CMAKE_XCODE_ATTRIBUTE_ENABLE_BITCODE NO)
 endif()
 
 if (onnxruntime_ENABLE_MEMORY_PROFILE)
@@ -270,20 +275,23 @@ if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
 endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
-  # Enable LTO for release build
-  if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    # we don't set onnxruntime_ENABLE_LTO because it appends flag "-flto=thin"
-    # currently, wasm-ld does not work correctly with "-flto=thin"
-    # instead, we manually set CMAKE_CXX_FLAGS "-flto"
+  # Enable LTO for release single-thread build
+  if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    # NOTES:
+    # (1) LTO does not work for WebAssembly multi-thread. (segment fault in worker)
+    # (2) "-flto=thin" does not work correctly for wasm-ld.
+    #     we don't set onnxruntime_ENABLE_LTO because it appends flag "-flto=thin"
+    #     instead, we manually set CMAKE_CXX_FLAGS "-flto"
     string(APPEND CMAKE_CXX_FLAGS " -flto")
   endif()
 
-  if (onnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP)
-    # Build with sourcemap support
-    set(CMAKE_CXX_FLAGS_DEBUG "-g4 --source-map-base ${onnxruntime_WEBASSEMBLY_SOURCEMAP_BASE}")
+  if (onnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO)
+    # "-g3" generates DWARF format debug info.
+    # NOTE: With debug info enabled, web assembly artifacts will be very huge (>1GB). So we offer an option to build without debug info.
+    set(CMAKE_CXX_FLAGS_DEBUG "-g3")
   else()
-    # override default "-g3" as it generates super huge (1GB+) WASM targets which fails to load
-    set(CMAKE_CXX_FLAGS_DEBUG "-g2")
+    # do not generate any debug info. This helps to accelerate building process and reduce binary size.
+    set(CMAKE_CXX_FLAGS_DEBUG "-g0")
   endif()
 
   # Build WebAssembly with multi-threads support.
@@ -357,6 +365,10 @@ endif()
 
 if (onnxruntime_REDUCED_OPS_BUILD)
   add_compile_definitions(REDUCED_OPS_BUILD)
+endif()
+
+if(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS)
+  add_definitions(-DDISABLE_EXTERNAL_INITIALIZERS=1)
 endif()
 
 if(onnxruntime_DISABLE_RTTI)
@@ -655,7 +667,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
     set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "Disable benchmark testing as we don't need it.")
     # We will not need to install benchmark since we link it statically.
     set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "Disable benchmark install to avoid overwriting vendor install.")
-    add_subdirectory(${PROJECT_SOURCE_DIR}/external/onnx/third_party/benchmark EXCLUDE_FROM_ALL)
+    add_subdirectory(${PROJECT_SOURCE_DIR}/external/googlebenchmark EXCLUDE_FROM_ALL)
     add_library(benchmark::benchmark ALIAS benchmark)
   endif()
 endif()
@@ -686,9 +698,9 @@ if(Protobuf_FOUND OR Protobuf_FOUND)
     #We have a check here but most of the cmake users don't know the Protobuf_USE_STATIC_LIBS
     # variable exists and may leave it in a wrong state.
     if(NOT Protobuf_USE_STATIC_LIBS)
-      #Indeed here should be a warning, not a fatal error. ONNX Runtime itself can work in such a
-      #setting but it may cause compatibility issue when ONNX Runtime is integrated with the other ONNX ecosystem softwares.
-      message(FATAL_ERROR "Please enable Protobuf_USE_STATIC_LIBS")
+      # ONNX Runtime itself can work in such a setting but it may cause compatibility issues
+      # when ONNX Runtime is integrated with the other ONNX ecosystem softwares.
+      message(WARNING "Use Protobuf_USE_STATIC_LIBS to ensure compatibility with other ONNX ecosystem components.")
     endif()
   else()
     set(PROTOBUF_LIB protobuf::libprotobuf-lite)
@@ -1297,9 +1309,6 @@ if(onnxruntime_USE_OPENVINO)
   if (${VER} MATCHES "2020.3" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.3")
     set(OPENVINO_VERSION "2020.3")
     add_definitions(-DOPENVINO_2020_3=1)
-  elseif (${VER} MATCHES "2020.4" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2020.4")
-    set(OPENVINO_VERSION "2020.4")
-    add_definitions(-DOPENVINO_2020_4=1)
   elseif (${VER} MATCHES "2021.1" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.1")
     set(OPENVINO_VERSION "2021.1")
     add_definitions(-DOPENVINO_2021_1=1)
@@ -1393,7 +1402,6 @@ if (onnxruntime_USE_CUDA)
     list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft)
   endif()
 
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
   if(NOT CMAKE_CUDA_ARCHITECTURES)
     if(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
       # Support for Jetson/Tegra ARM devices
@@ -1494,48 +1502,27 @@ if (onnxruntime_ENABLE_TRAINING)
   add_compile_definitions(ENABLE_TRAINING_OPS)
 
   if (UNIX)
-    # Find MPI
-    find_path(MPI_INCLUDE_DIR
-      NAMES mpi.h
-      HINTS
-      ${onnxruntime_MPI_HOME}/include
-      /bert_ort/openmpi/include)
+    if (EXISTS "${onnxruntime_MPI_HOME}")
+      set(MPI_HOME "${onnxruntime_MPI_HOME}")
+    elseif (EXISTS "/bert_ort/openmpi")
+      set(MPI_HOME "/bert_ort/openmpi")
+    endif()
 
-    set(MPI_LIBNAME "mpi")
+    find_package(MPI)
 
-    find_library(MPI_LIBRARY
-      NAMES ${MPI_LIBNAME}
-      HINTS
-      ${onnxruntime_MPI_HOME}/lib
-      /bert_ort/openmpi/lib)
-
-    include(FindPackageHandleStandardArgs)
-    find_package_handle_standard_args(MPI DEFAULT_MSG MPI_INCLUDE_DIR MPI_LIBRARY)
-
-    if (MPI_FOUND)
-      if(NOT DEFINED onnxruntime_MPI_HOME)
-        execute_process(COMMAND mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
-      else()
-        execute_process(COMMAND ${onnxruntime_MPI_HOME}/bin/mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
-      endif(NOT DEFINED onnxruntime_MPI_HOME)
-      string( REGEX MATCH "[0-9]+.[0-9]+.[0-9]" MPI_VERSION ${MPIRUN_OUTPUT})
-      message( STATUS "MPI Version: ${MPI_VERSION}")
-
-      set(MPI_INCLUDE_DIRS ${MPI_INCLUDE_DIR})
-      set(MPI_LIBRARIES ${MPI_LIBRARY})
-      message( STATUS "MPI (include: ${MPI_INCLUDE_DIRS}, library: ${MPI_LIBRARIES})" )
-      mark_as_advanced(MPI_INCLUDE_DIRS MPI_LIBRARIES)
-
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
-
+    if (MPI_CXX_FOUND)
+      message( STATUS "MPI Version: ${MPI_CXX_VERSION}")
+      message( STATUS "MPI (include: ${MPI_CXX_INCLUDE_DIRS}, library: ${MPI_CXX_LIBRARIES})" )
+      mark_as_advanced(MPI_CXX_INCLUDE_DIRS MPI_CXX_LIBRARIES)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
     else ()
       set(onnxruntime_USE_NCCL OFF)
       set(onnxruntime_USE_MPI OFF)
-      message( WARNING "MPI is not found. Please use --mpi_home to specify the path of MPI. Otherwise, NCCL will be disabled." )
+      message( WARNING "MPI is not found. Please define onnxruntime_MPI_HOME to specify the path of MPI. Otherwise, NCCL will be disabled." )
     endif()
 
     # Find NCCL and MPI
-    if (onnxruntime_USE_NCCL AND MPI_FOUND)
+    if (onnxruntime_USE_NCCL AND MPI_CXX_FOUND)
       if (onnxruntime_USE_CUDA)
         set(NCCL_LIBNAME "nccl")
       elseif (onnxruntime_USE_ROCM)
@@ -1599,7 +1586,7 @@ if (onnxruntime_ENABLE_TRAINING)
     endif()
   endif()
 
-  if (onnxruntime_USE_MPI AND MPI_FOUND)
+  if (onnxruntime_USE_MPI AND MPI_CXX_FOUND)
     add_definitions(-DUSE_MPI=1)
   endif()
 

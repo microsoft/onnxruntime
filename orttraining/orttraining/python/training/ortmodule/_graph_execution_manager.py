@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from . import _utils, _io, _logger
+from . import _utils, _io, _logger, _cpp_extensions as _cpp_ext
 from onnxruntime.training.ortmodule import ONNX_OPSET_VERSION
 
 from onnxruntime.capi import _pybind_state as C
@@ -52,6 +52,8 @@ class GraphExecutionManager(ABC):
         self._optimized_onnx_model = None
         self._graph_builder = None
         self._graph_info = None
+        self._graph_initializer_names = None
+        self._graph_initializer_names_to_train = None
 
         # TrainingAgent or InferenceAgent
         self._execution_agent = None
@@ -61,16 +63,23 @@ class GraphExecutionManager(ABC):
         self._save_onnx_prefix = ''
 
         # Graph transformer config
+        # Specify cast propagation strategy. Currently three strategies are available, NONE, INSERT-AND-REDUCE and FLOOD-FILL
+        # The default is NONE, which implies the transformer does no cast-propagation transformation.
+        self._propagate_cast_ops_strategy = C.PropagateCastOpsStrategy.NONE
         # Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
-        # Use predetermined list of opcodes considered safe to move before/after cast operation
-        # if propagate_cast_ops_level is positive and use propagate_cast_ops_allow otherwise.
+        # - If the _propagate_cast_ops_level is set to zero, then the transformation considers only the opcodes specified by _propagate_cast_ops_allow
+        #   as "FP16 safe", in order to insert/(re)move cast operations before/after to perform such operations in reduced (16-bit) precision.
+        # - If propagate_cast_ops_level is positive, 1 or 2, then in addition to opcode codes specified by propagate_cast_ops_allow use onnxruntime
+        #   predetermined list of opcodes considered safe to move before/after cast operation.
+        # - Onnxruntime Level 1 predetermind "FP16 safe" opcodes include only opcode that do not perform any computation such as Transpose, Split, Reshape, etc.
+        #   whereas Level 2 perdetermined "FP16 safe" opcodes include opcodes that perform computation using contrib ops, GeLU, Dropout, LayerNormalization, etc.
         self._propagate_cast_ops_level = -1
         # List of opcodes to be considered safe to move before/after cast operation if propagate_cast_ops_level is zero.
         self._propagate_cast_ops_allow = []
         # Whether allow fusion of layer norm subgraph if doing so will cause modified precision.
         self._allow_layer_norm_mod_precision = False
 
-        # Value can be either torch.onnx.TrainingMode.TRAININGor torch.onnx.TrainingMode.EVAL
+        # Value can be either torch.onnx.TrainingMode.TRAINING or torch.onnx.TrainingMode.EVAL
         # To be instantiated in the concrete implementation of GraphExecutionManager
         self._export_mode = None
 
@@ -81,7 +90,7 @@ class GraphExecutionManager(ABC):
         self._use_static_shape = False
 
         # flag to enable symbolic shape inference for dynamic shape inputs to improve performance
-        self._run_symbolic_shape_infer = False
+        self._run_symbolic_shape_infer = True
 
         self._input_info = None
         self._module_output_schema = None
@@ -106,8 +115,8 @@ class GraphExecutionManager(ABC):
         self._use_external_gpu_allocator = True
         if self._use_external_gpu_allocator:
             # CPP extension to get torch GPU allocator's alloc and free function addresses
-            self._torch_gpu_allocator = _utils._load_torch_gpu_allocator_cpp_extension(self._loglevel < _logger.LogLevel.WARNING,
-                                                                                       self.is_rocm_pytorch)
+            self._torch_gpu_allocator = _cpp_ext._load_torch_gpu_allocator_cpp_extension(self._loglevel < _logger.LogLevel.WARNING,
+                                                                                         self.is_rocm_pytorch)
             self._torch_alloc = self._torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
             self._torch_free = self._torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
 
@@ -188,13 +197,20 @@ class GraphExecutionManager(ABC):
         # 3. Export the user model under self._export_training_flag mode
         # Return True if the model needed to be exported, False if no export was required.
 
+        # Note: Model is only exported when:
+        #       1. Model has never been exported before.
+        #       2. Model input schema has changed (changes in inputs requiring gradient, shape, boolean inputs values change, etc)
+        #       Model is not re-exported when the model parameters change. This can happen when the model is a stateful model,
+        #       or the user explicitly changed model parameters after the onnx export.
+
         schema = _io._extract_schema({'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
         if self._onnx_model and schema == self._input_info.schema:
             # All required models have already been exported previously
             return False
 
-        self._set_device_from_module()
+        self._set_device_from_module(inputs, kwargs)
         self._onnx_model = self._get_exported_model(*inputs, **kwargs)
+        _cpp_ext._load_aten_op_executor_cpp_extension_if_needed(self._onnx_model, self._loglevel < _logger.LogLevel.WARNING, self.is_rocm_pytorch)
         if self._save_onnx:
             onnx.save(self._onnx_model, self._save_onnx_prefix + '_torch_exporter.onnx')
 
@@ -229,7 +245,7 @@ class GraphExecutionManager(ABC):
         # Therefore, deepcopy only the data component of the input tensors for export.
         sample_inputs_copy, sample_kwargs_copy = _io.deepcopy_model_input(*inputs, **kwargs)
         # NOTE: Flattening the input will change the 'input schema', resulting in a re-export
-        sample_inputs_as_tuple = tuple(self._input_info.flatten(sample_inputs_copy, sample_kwargs_copy))
+        sample_inputs_as_tuple = tuple(self._input_info.flatten(sample_inputs_copy, sample_kwargs_copy, self._device))
         # Ops behaving differently under train/eval mode need to exported with the
         # correct training flag to reflect the expected behavior.
         # For example, the Dropout node in a model is dropped under eval mode.
@@ -254,22 +270,37 @@ class GraphExecutionManager(ABC):
 
         return onnx.load_model_from_string(f.getvalue())
 
-    def _set_device_from_module(self):
+    def _set_device_from_module(self, inputs, kwargs):
         """Get the device from the module and save it to self._device"""
 
-        device_from_module = _utils.get_device_from_module(self._original_module)
-        if not self._device or self._device != device_from_module:
-            self._device = device_from_module
+        device = _utils.get_device_from_module(self._original_module) or \
+            _utils.get_device_from_inputs(inputs, kwargs)
+        if not self._device or self._device != device:
+            self._device = device
             if not self._device:
-                raise RuntimeError('A device must be specified in the model!')
+                raise RuntimeError('A device must be specified in the model or inputs!')
+
+    def _get_graph_transformer_config(self):
+        graph_transformer_config = C.TrainingGraphTransformerConfiguration()
+        graph_transformer_config.propagate_cast_ops_config = C.PropagateCastOpsConfiguration()
+        graph_transformer_config.propagate_cast_ops_config.level = self._propagate_cast_ops_level
+        graph_transformer_config.propagate_cast_ops_config.allow = self._propagate_cast_ops_allow
+        graph_transformer_config.propagate_cast_ops_config.strategy = self._propagate_cast_ops_strategy
+        graph_transformer_config.allow_layer_norm_mod_precision = self._allow_layer_norm_mod_precision
+        return graph_transformer_config
 
     def _initialize_graph_builder(self, training):
         """Creates a new OrtModuleGraphBuilder, initializes it and saves it to self._graph_builder"""
 
+        # All initializer names along with user inputs are a part of the onnx graph inputs
+        # since the onnx model was exported with the flag keep_initializers_as_inputs=True
+        onnx_initializer_names = {p.name for p in self._onnx_model.graph.input}
+
         # TODO: PyTorch exporter bug: changes the initializer order in ONNX model
-        initializer_names = [name for name, _ in self._flattened_module.named_parameters()]
-        initializer_names_to_train = [name for name,
-                                      param in self._flattened_module.named_parameters() if param.requires_grad]
+        initializer_names = [name for name, _ in self._flattened_module.named_parameters()
+                             if name in onnx_initializer_names]
+        initializer_names_to_train = [name for name, param in self._flattened_module.named_parameters()
+                                      if param.requires_grad and name in onnx_initializer_names]
 
         # Build and optimize the full graph
         grad_builder_config = C.OrtModuleGraphBuilderConfiguration()
@@ -277,14 +308,15 @@ class GraphExecutionManager(ABC):
         grad_builder_config.initializer_names_to_train = initializer_names_to_train
         grad_builder_config.input_names_require_grad = self._input_info.require_grad_names
         grad_builder_config.build_gradient_graph = training
-        grad_builder_config.graph_transformer_config = C.GraphTransformerConfiguration()
-        grad_builder_config.graph_transformer_config.propagate_cast_ops_level = self._propagate_cast_ops_level
-        grad_builder_config.graph_transformer_config.propagate_cast_ops_allow = self._propagate_cast_ops_allow
-        grad_builder_config.graph_transformer_config.allow_layer_norm_mod_precision = self._allow_layer_norm_mod_precision
-        grad_builder_config.loglevel = {_logger.LogLevel.VERBOSE : C.Severity.VERBOSE,
-                                        _logger.LogLevel.INFO : C.Severity.INFO,
-                                        _logger.LogLevel.WARNING : C.Severity.WARNING,
-                                        _logger.LogLevel.ERROR : C.Severity.ERROR,
-                                        _logger.LogLevel.FATAL : C.Severity.FATAL}.get(self._loglevel, C.Severity.WARNING)
+        grad_builder_config.graph_transformer_config = self._get_graph_transformer_config()
+        grad_builder_config.loglevel = _logger.ortmodule_loglevel_to_onnxruntime_c_loglevel(self._loglevel)
         self._graph_builder = C.OrtModuleGraphBuilder()
+
+        # It is assumed here that the order and names of the inputs and outputs are not modified by the backend in any way
+        # and are kept as they appear in the exported onnx model.
         self._graph_builder.initialize(self._onnx_model.SerializeToString(), grad_builder_config)
+
+        # TODO: Explore ways to make self._graph_info.initializer_names and self._graph_info.initializer_names_to_train
+        #       a set (unordered_set in the backend) that does not require a copy on each reference.
+        self._graph_initializer_names = set(initializer_names)
+        self._graph_initializer_names_to_train = set(initializer_names_to_train)

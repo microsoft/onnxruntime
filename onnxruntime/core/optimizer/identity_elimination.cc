@@ -55,7 +55,7 @@ Status EliminateIdentity::Apply(Graph& graph, Node& node, RewriteRuleEffect& rul
     graph.RemoveNode(node.Index());
     // update input node's output def to the graph output
     input_node.MutableOutputDefs()[output_idx] = output;
-    rule_effect = RewriteRuleEffect::kRemovedCurrentNode; 
+    rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   }
   return Status::OK();
 }
@@ -65,17 +65,25 @@ bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node, c
     return true;
   }
 
+  bool node_output_is_graph_output = !graph.GetNodeOutputsInGraphOutputs(node).empty();
+
   // relax the condition if Identity is connecting to graph output
-  if (node.GetOutputEdgesCount() != 0 || node.OutputDefs().size() != 1 ||
-    graph.GetNodeOutputsInGraphOutputs(node).empty())
+  if (node.GetOutputEdgesCount() != 0 ||
+      node.OutputDefs().size() != 1 ||
+      !node_output_is_graph_output) {
     return false;
+  }
 
   const Node* p_input_node = graph_utils::GetInputNode(node, 0);
-  if (p_input_node == nullptr)
+  if (p_input_node == nullptr) {
     return false;
-    
+  }
+  if (p_input_node->OpType() == "YieldOp" && node_output_is_graph_output) {
+    return false;
+  }
+
   // skip if the src arg is also a graph output
-  int src_arg_index = graph_utils::GetNodeOutputIndexFromOutputName(*p_input_node, node.InputDefs()[0]->Name());  
+  int src_arg_index = graph_utils::GetNodeOutputIndexFromOutputName(*p_input_node, node.InputDefs()[0]->Name());
   if (graph.IsOutput(p_input_node->OutputDefs()[src_arg_index]))
     return false;
 
@@ -87,7 +95,7 @@ bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node, c
     }
   }
   // condition not met if there are more than 1 consumer for the same src arg
-  if (count > 1) 
+  if (count > 1)
     return false;
 
   return true;

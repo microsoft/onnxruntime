@@ -9,9 +9,12 @@
 #include "core/session/environment.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/bfc_arena.h"
+#include "core/providers/providers.h"
 #ifdef USE_CUDA
-#include "core/providers/cuda/cuda_allocator.h"
-#include "core/providers/cuda/cuda_provider_factory_creator.h"
+namespace onnxruntime {
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
+}  // namespace onnxruntime
 #endif
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
@@ -73,6 +76,9 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
       ("use_fp16_moments", "Whether to use fp16 version of moments.", cxxopts::value<bool>()->default_value("false"))
       ("use_fp16_initializer", "FP16 weights will be created. Otherwise, cast nodes will be inserted for converting weights from FP32 to FP16",
         cxxopts::value<bool>()->default_value("true"))
+      ("use_gist", "Whether to use GIST encoding/decoding.")
+      ("gist_op", "Opearator type(s) to which GIST is applied.", cxxopts::value<int>()->default_value("0"))
+      ("gist_compr", "Compression type used for GIST", cxxopts::value<std::string>()->default_value("GistPack8"))
       ("max_seq_length",
         "The maximum total input sequence length after WordPiece tokenization. "
         "Sequences longer than this will be truncated, and sequences shorter "
@@ -124,6 +130,8 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
 
     params.num_train_steps = flags["num_train_steps"].as<int>();
     params.batch_size = flags["train_batch_size"].as<int>();
+    params.gist_config.op_type = flags["gist_op"].as<int>();
+    params.gist_config.compr_type = flags["gist_compr"].as<std::string>();
     if (flags.count("eval_batch_size")) {
       params.eval_batch_size = flags["eval_batch_size"].as<int>();
     } else {
@@ -208,6 +216,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
 
     params.deepspeed_zero = ZeROConfig(flags["deepspeed_zero_stage"].as<int>());
     params.enable_grad_norm_clip = flags["enable_grad_norm_clip"].as<bool>();
+    params.use_gist = flags.count("use_gist") > 0;
     float alpha = flags["alpha"].as<float>();
     float beta = flags["beta"].as<float>();
     float lambda = flags["lambda"].as<float>();
@@ -237,7 +246,7 @@ Status ParseArguments(int argc, char* argv[], GPT2Parameters& params, OrtParamet
 
     int64_t seed = flags["seed"].as<int64_t>();
     if (params.horizontal_parallel_size > 1 && seed <= 0) {
-      seed = 8211; // Megatron needs a random seed.
+      seed = 8211;  // Megatron needs a random seed.
     }
     if (seed > 0) {
       utils::SetRandomSeed(seed);
@@ -277,7 +286,7 @@ float GetLossValue(const Tensor& loss_tensor) {
 // mapping to define what to be stored in mapped_dimensions
 // see GetTensorDimensionsFromInputs() in training_util.h and training_runner.cc for more details
 const std::map<std::string, std::pair<std::string, size_t>> input_to_dimension_mapping = {
-  {"input_ids", {"SeqLen", 0}},   // int64[batch,seqlen]    "seqlen" -> "SeqLen", 0
+    {"input_ids", {"SeqLen", 0}},  // int64[batch,seqlen]    "seqlen" -> "SeqLen", 0
 };
 
 // generic properties for storing perf metrics
@@ -288,6 +297,7 @@ void setup_training_params(GPT2Parameters& params) {
   params.model_with_loss_func_path = ToPathString(params.model_name) + ORT_TSTR("_with_cost.onnx");
   params.model_with_training_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw.onnx");
   params.model_actual_running_graph_path = ToPathString(params.model_name) + ORT_TSTR("_bw_running.onnx");
+  params.model_with_gist_nodes_path = ToPathString(params.model_name) + ORT_TSTR("_with_gist.onnx");
 
   params.loss_func_info = LossFunctionInfo(OpDef("SparseSoftmaxCrossEntropy", kOnnxDomain),
                                            "mlm_loss",
@@ -342,11 +352,18 @@ void setup_training_params(GPT2Parameters& params) {
 
 #ifdef USE_CUDA
   {
-    CUDAExecutionProviderInfo info{};
-    info.device_id = gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank());
+    OrtCUDAProviderOptions info{
+        gsl::narrow<OrtDevice::DeviceId>(MPIContext::GetInstance().GetLocalRank()),
+        OrtCudnnConvAlgoSearch::EXHAUSTIVE,
+        std::numeric_limits<size_t>::max(),
+        0,
+        true,
+        0,
+        nullptr,
+        nullptr};
 
-    params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_CUDA(info));
-    params.input_allocator = std::make_shared<CUDAPinnedAllocator>(info.device_id, CUDA_PINNED);
+    params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_Cuda(&info));
+    params.input_allocator = CreateCUDAPinnedAllocator(info.device_id, CUDA_PINNED);
   }
 #endif
 
@@ -423,17 +440,17 @@ static Status RunTraining(const GPT2Parameters& params, const Environment& env) 
 
   auto rank_in_data_parallel_group = MPIContext::GetInstance().GetWorldRank() / params.horizontal_parallel_size;
   auto training_data_loader = std::make_unique<DataLoader>(params.input_name_map,
-                                                                   params.train_data_dir,
-                                                                   max_num_files_preload,
-                                                                   rank_in_data_parallel_group,
-                                                                   params.data_parallel_size);
+                                                           params.train_data_dir,
+                                                           max_num_files_preload,
+                                                           rank_in_data_parallel_group,
+                                                           params.data_parallel_size);
 
   std::unique_ptr<DataLoader> test_data_loader;
   // Evaluation is only done in device #0
   if (MPIContext::GetInstance().GetWorldRank() == 0) {
     test_data_loader = std::make_unique<DataLoader>(params.input_name_map,
-                                                            params.test_data_dir,
-                                                            max_num_files_preload);
+                                                    params.test_data_dir,
+                                                    max_num_files_preload);
   }
 
   if (!params.perf_output_dir.empty()) {
@@ -447,8 +464,8 @@ static Status RunTraining(const GPT2Parameters& params, const Environment& env) 
   // only test and save trained model on device #0
   if (MPIContext::GetInstance().GetWorldRank() == 0) {
     test_data_loader = std::make_unique<DataLoader>(params.input_name_map,
-                                                            params.test_data_dir,
-                                                            max_num_files_preload);
+                                                    params.test_data_dir,
+                                                    max_num_files_preload);
 
     ORT_RETURN_IF_ERROR(runner->EndTraining(test_data_loader.get()));
   }

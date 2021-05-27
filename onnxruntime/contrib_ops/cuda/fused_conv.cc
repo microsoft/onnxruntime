@@ -119,7 +119,7 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     1,
     float,
     kCudaExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     FusedConv<float>);
 
 }  // namespace cuda

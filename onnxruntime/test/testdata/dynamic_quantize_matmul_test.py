@@ -23,11 +23,11 @@ def GenerateModel(model_name, sign, b_zp = True, bias = False):
     inputs = [
         helper.make_tensor_value_info('A', TensorProto.FLOAT, ['M', 'K']),
         helper.make_tensor_value_info('B', TensorProto.INT8 if sign else TensorProto.UINT8, ['K', 'N']),
-        helper.make_tensor_value_info('b_scale', TensorProto.FLOAT, [1]),
+        helper.make_tensor_value_info('b_scale', TensorProto.FLOAT, ['C']),
         ]
 
     if b_zp:
-        inputs.extend([helper.make_tensor_value_info('b_zero_point', TensorProto.INT8 if sign else TensorProto.UINT8, [1])])        
+        inputs.extend([helper.make_tensor_value_info('b_zero_point', TensorProto.INT8 if sign else TensorProto.UINT8, ['C'])])        
 
     if bias:
         nodes.extend([helper.make_node("Add", ["mul_bottom_output", "bias"], ["Y"], "add")])

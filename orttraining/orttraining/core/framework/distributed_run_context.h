@@ -33,8 +33,7 @@ struct WorkerGroup {
 
   std::string ToString() const {
     std::stringstream msg;
-    msg << "group_type: " << group_type << ", group_id: " << group_id <<
-           ", rank in group:" << rank_in_group << ", world-rank:" << ranks.at(rank_in_group);
+    msg << "group_type: " << group_type << ", group_id: " << group_id << ", rank in group:" << rank_in_group << ", world-rank:" << ranks.at(rank_in_group);
     msg << ", ranks: [";
     for (size_t i = 0; i < ranks.size(); ++i) {
       msg << ranks.at(i);
@@ -81,10 +80,13 @@ class DistributedRunContext {
                                                       config.pipeline_stage_size);
   }
 
+#ifndef SHARED_PROVIDER
   static DistributedRunContext& GetInstance() {
     return DistributedRunContext::GetOrCreateInstance();
   }
-
+#else
+  static DistributedRunContext& GetInstance() { return Provider_GetHost()->GetDistributedRunContextInstance(); }
+#endif
   /* SHORTCUT FUNCTIONS START */
 
   static DistributedRunConfig& RunConfig() {
@@ -121,7 +123,7 @@ class DistributedRunContext {
     return DistributedRunContext::GetInstance().GetWorkerGroup(group_type).group_id;
   }
 
-  static std::vector<int32_t> GetRanks(WorkerGroupType group_type){
+  static std::vector<int32_t> GetRanks(WorkerGroupType group_type) {
     return DistributedRunContext::GetInstance().GetWorkerGroup(group_type).ranks;
   }
 
