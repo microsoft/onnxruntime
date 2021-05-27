@@ -11,6 +11,6 @@ Pod::Spec.new do |spec|
   spec.authors      = { "ONNX Runtime" => "onnxruntime@microsoft.com" }
   spec.platform     = :ios
   spec.platform     = :ios, '13.0'
-  spec.source       = { :http => 'file:' + '${ORT_BASE_FRAMEWORK_FILE}' }
+  spec.source       = { :http => 'file:' + '${ORT_BASE_FRAMEWORK_ARCHIVE}' }
   spec.vendored_frameworks = 'onnxruntime.framework'
 end
