@@ -16,6 +16,8 @@ import {WebGLReshapePacked} from './reshape-packed';
 export class WebGLConvPacked extends Conv {
   protected artifacts: Artifact[];
   protected programInfo: ProgramInfo[];
+  protected outputShape: number[];
+
   private kernelReshape = new WebGLReshapePacked();
   private im2col: WebGLIm2ColPacked;
   private matmul = new WebGLMatMulPacked();
@@ -38,9 +40,11 @@ export class WebGLConvPacked extends Conv {
         `autpPad:${this.autoPad}, dilations:${this.dilations}, group:${this.group}, kernelShape:${
             this.kernelShape}, pads:${this.pads}, strides:${this.strides}`);
 
-    const outputShape = WebGLConv.calcOutputShape(xshape, kshape, this.dilations, this.pads, this.strides);
+    if (!this.outputShape) {
+      this.outputShape = WebGLConv.calcOutputShape(xshape, kshape, this.dilations, this.pads, this.strides);
+    }
     if (this.im2col === undefined) {
-      this.im2col = new WebGLIm2ColPacked(outputShape, kshape, this.dilations, this.pads, this.strides);
+      this.im2col = new WebGLIm2ColPacked(this.outputShape, kshape, this.dilations, this.pads, this.strides);
     }
     if (this.activation) {
       const attributes = new Attribute(undefined);
@@ -90,8 +94,8 @@ export class WebGLConvPacked extends Conv {
 
     // reshape output
     const outputShapeTensor = new Tensor(
-        [outputShape.length], 'int32', undefined, undefined,
-        new Int32Array([outputShape[0], outputShape[1], outputShape[2], outputShape[3]]));
+        [this.outputShape.length], 'int32', undefined, undefined,
+        new Int32Array([this.outputShape[0], this.outputShape[1], this.outputShape[2], this.outputShape[3]]));
 
     assert(this.artifacts.length > 2, () => 'expect at least 3 artifacts created');
     if (this.artifacts.length === 3) {

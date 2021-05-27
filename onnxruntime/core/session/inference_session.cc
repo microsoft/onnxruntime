@@ -2126,8 +2126,16 @@ SessionIOBinding::SessionIOBinding(InferenceSession* session) : sess_(session) {
   ORT_ENFORCE(session->NewIOBinding(&binding_).IsOK());
 }
 
+const InferenceSession* SessionIOBinding::GetInferenceSession() const {
+  return sess_;
+}
+
 InferenceSession* SessionIOBinding::GetInferenceSession() {
   return sess_;
+}
+
+const IOBinding* SessionIOBinding::Get() const {
+  return binding_.get();
 }
 
 IOBinding* SessionIOBinding::Get() {
