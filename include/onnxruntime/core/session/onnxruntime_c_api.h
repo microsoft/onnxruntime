@@ -1383,7 +1383,9 @@ struct OrtApi {
                   _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
                   _Outptr_ OrtSession** out);
   ORT_API2_STATUS(SetSessionOnnxOpsetVersion, _Inout_ OrtSessionOptions* options, int session_onnx_opset_version);
-  // Register ONNX opset domain
+  /**
+    Register ONNX opset domain
+     */
   ORT_API2_STATUS(SessionAddONNXOpDomain, int session_onnx_opset_version);
 };
 

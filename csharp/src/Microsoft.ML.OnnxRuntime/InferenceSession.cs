@@ -758,11 +758,10 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var envHandle = OrtEnv.Handle;
             var session = IntPtr.Zero;
-
+            // Register ONNX opset schema
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionAddONNXOpDomain(0));
             if (prepackedWeightsContainer == null)
             {
-                // Register ONNX opset schema
-                NativeMethods.OrtSessionAddONNXOpDomain(0);
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeMethods.GetPlatformSerializedString(modelPath),
                     options.Handle, out session));
             }
@@ -782,7 +781,8 @@ namespace Microsoft.ML.OnnxRuntime
         {
             var envHandle = OrtEnv.Handle;
             var session = IntPtr.Zero;
-
+            // Register ONNX opset schema
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionAddONNXOpDomain(0));
             if (prepackedWeightsContainer == null)
             {
 
