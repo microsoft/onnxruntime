@@ -189,7 +189,7 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js'
     displayName: 'Clang-format'
   - script: |
-     node -e "a=require('child_process').execSync('git ls-files -m').toString();if(a)throw new Error('Following source files are not formatted: (did you run "npm run format"?)\n'+a)"
+     node -e "a=require('child_process').execSync('git ls-files -m').toString();if(a)throw new Error('Following source files are not formatted: (did you run \"npm run format\"?)\n'+a)"
     workingDirectory: '$(Build.SourcesDirectory)\js'
     displayName: 'Check unformatted files'
   - script: |
@@ -197,7 +197,7 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Generating documents'
   - script: |
-     node -e "a=require('child_process').execSync('git ls-files -m').toString();if(a)throw new Error('Following documents are not up-to-date: (did you run "npm run build:doc"?)\n'+a)"
+     node -e "a=require('child_process').execSync('git ls-files -m').toString();if(a)throw new Error('Following documents are not up-to-date: (did you run \"npm run build:doc\"?)\n'+a)"
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Check out of dated documents'
   - script: |
