@@ -306,11 +306,13 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 
 
 ### Image Recognition Networks
+
 | **MODEL NAME** | **CPU** | **GPU** | **VPU** | **FPGA** |
 | --- | --- | --- | --- | --- |
 | mnist | Yes | Yes | Yes | Yes* |
 
 ### Object Detection Networks
+
 | **MODEL NAME** | **CPU** | **GPU** | **VPU** | **FPGA** |
 | --- | --- | --- | --- | --- |
 | tiny_yolov2 | Yes | Yes | Yes | Yes* |
@@ -328,3 +330,17 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 
 *FPGA only runs in HETERO mode wherein the layers that are not supported on FPGA fall back to OpenVINO CPU.
 
+## OpenVINO-EP samples Tutorials
+
+In order to showcase what you can do with the OpenVINO Execution Provider for ONNX Runtime, we have created a few samples that shows how you can get that performance boost you’re looking for with just one additional line of code. 
+
+### Python API
+[cleanroom_worker_safety_python sample](https://github.com/microsoft/onnxruntime/blob/gh-pages/docs/tutorials/tutorials/OpenVINO_EP_samples/cleanroom_worker_safety_python.md)
+
+[tiny_yolo_v2_object_detection_python sample](https://github.com/microsoft/onnxruntime/blob/gh-pages/docs/tutorials/tutorials/OpenVINO_EP_samples/tiny_yolo_v2_object_detection_python.md)
+
+### C++ API
+[squeezenet_classification_cpp sample](https://github.com/microsoft/onnxruntime/blob/gh-pages/docs/tutorials/tutorials/OpenVINO_EP_samples/squeezenet_classification_cpp.md)
+
+### Csharp API
+[yolov3_object_detection_csharp sample](https://github.com/microsoft/onnxruntime/blob/gh-pages/docs/tutorials/tutorials/OpenVINO_EP_samples/yolov3_object_detection_csharp.md)
