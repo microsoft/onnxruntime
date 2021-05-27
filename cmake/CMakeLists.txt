@@ -452,9 +452,9 @@ endif()
 # Mark symbols to be invisible, for macOS/iOS target only
 # Due to many dependencies have different symbol visibility settings, set global compile flags here.
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS")
-  string(APPEND CMAKE_CXX_FLAGS " -fvisibility=hidden -fvisibility-inlines-hidden")
-  string(APPEND CMAKE_OBJC_FLAGS " -fvisibility=hidden -fvisibility-inlines-hidden")
-  string(APPEND CMAKE_OBJCXX_FLAGS " -fvisibility=hidden -fvisibility-inlines-hidden")
+  foreach(flags CMAKE_CXX_FLAGS CMAKE_OBJC_FLAGS CMAKE_OBJCXX_FLAGS)
+    string(APPEND ${flags} " -fvisibility=hidden -fvisibility-inlines-hidden")
+  endforeach()
 endif()
 
 #must after OpenMP settings
