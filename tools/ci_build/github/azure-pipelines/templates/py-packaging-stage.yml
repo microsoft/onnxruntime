@@ -118,7 +118,7 @@ stages:
 
       - task: CmdLine@2
         displayName: 'Build Python Documentation'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           script: |
             mkdir -p $HOME/.onnx
@@ -136,7 +136,7 @@ stages:
 
       - task: CopyFiles@2
         displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)/docs/inference/html'
           Contents: '**'
@@ -433,7 +433,7 @@ stages:
 
       - task: CmdLine@2
         displayName: 'Build Python Documentation'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           script: |
             mkdir -p $HOME/.onnx
@@ -449,7 +449,7 @@ stages:
 
       - task: CopyFiles@2
         displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)/docs/training/html'
           Contents: '**'
@@ -598,7 +598,7 @@ stages:
 
       - task: CmdLine@2
         displayName: 'Build Python Documentation'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           script: |
             mkdir -p $HOME/.onnx
@@ -616,7 +616,7 @@ stages:
 
       - task: CopyFiles@2
         displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)/docs/training/html'
           Contents: '**'
@@ -775,7 +775,7 @@ stages:
 
       - task: CmdLine@2
         displayName: 'Build Python Documentation'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           script: |
             mkdir -p $HOME/.onnx
@@ -793,7 +793,7 @@ stages:
 
       - task: CopyFiles@2
         displayName: 'Copy Python Documentation to: $(Build.ArtifactStagingDirectory)'
-        condition: ne(variables['PythonVersion'], '3.9')  # tensorflow not available on python 3.9
+        condition: and(succeeded(), ne(variables['PythonVersion'], '3.9'))  # tensorflow not available on python 3.9
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)/docs/training/html'
           Contents: '**'
