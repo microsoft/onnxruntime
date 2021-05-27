@@ -172,3 +172,7 @@ endif()
 if (onnxruntime_LINK_LIBATOMIC)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES atomic)
 endif()
+
+if(APPLE)
+  target_link_libraries(onnxruntime_common "-framework Foundation")
+endif()

@@ -89,6 +89,8 @@ set_target_properties(onnxruntime_objc PROPERTIES
     CXX_STANDARD 17 # TODO remove when everything else moves to 17
     )
 
+set_property(TARGET onnxruntime_objc APPEND PROPERTY COMPILE_OPTIONS "-fvisibility=default")
+
 target_link_options(onnxruntime_objc PRIVATE "-Wl,-headerpad_max_install_names")
 
 add_custom_command(TARGET onnxruntime_objc POST_BUILD

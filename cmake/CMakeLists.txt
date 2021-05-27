@@ -453,6 +453,8 @@ endif()
 # Due to many dependencies have different symbol visibility settings, set global compile flags here.
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS")
   string(APPEND CMAKE_CXX_FLAGS " -fvisibility=hidden -fvisibility-inlines-hidden")
+  string(APPEND CMAKE_OBJC_FLAGS " -fvisibility=hidden -fvisibility-inlines-hidden")
+  string(APPEND CMAKE_OBJCXX_FLAGS " -fvisibility=hidden -fvisibility-inlines-hidden")
 endif()
 
 #must after OpenMP settings
