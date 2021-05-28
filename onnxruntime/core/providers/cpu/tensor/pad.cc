@@ -121,10 +121,7 @@ ONNX_CPU_OPERATOR_KERNEL(
         .TypeConstraint(
             "T",
             BuildKernelDefConstraintsFromTypeList<Pad13Types>(),
-            BuildKernelDefConstraintsFromTypeList<EnabledPad13Types>())
-        .FixedTypeConstraintForHash(
-            "T",
-            BuildKernelDefConstraintsFromTypeList<Pad11Types>()),
+            BuildKernelDefConstraintsFromTypeList<EnabledPad13Types>()),
     Pad);
 
 // This is the general padding method to n-dimensionally do edge or reflection padding (based on the inputDelta values)
