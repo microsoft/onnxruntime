@@ -339,10 +339,10 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 In order to showcase what you can do with the OpenVINO Execution Provider for ONNX Runtime, we have created a few samples that shows how you can get that performance boost you’re looking for with just one additional line of code. 
 
 ### Python API
-[Object detection with tinyYOLOv2 in Python](https://github.com/microsoft/onnxruntime/blob/gh-pages/docs/tutorials/tutorials/OpenVINO_EP_samples/tiny_yolo_v2_object_detection_python.md)
+[Object detection with tinyYOLOv2 in Python](../../tutorials/tutorials/OpenVINO_EP_samples/tiny_yolo_v2_object_detection_python.md)
 
 ### C/C++ API
-[Image classification with Squeezenet in CPP](https://github.com/microsoft/onnxruntime/blob/gh-pages/docs/tutorials/tutorials/OpenVINO_EP_samples/squeezenet_classification_cpp.md)
+[Image classification with Squeezenet in CPP](../../tutorials/tutorials/OpenVINO_EP_samples/squeezenet_classification_cpp.md)
 
 ### Csharp API
-[Object detection with YOLOv3 in C#](https://github.com/microsoft/onnxruntime/blob/gh-pages/docs/tutorials/tutorials/OpenVINO_EP_samples/yolov3_object_detection_csharp.md)
+[Object detection with YOLOv3 in C#](../../tutorials/tutorials/OpenVINO_EP_samples/yolov3_object_detection_csharp.md)
