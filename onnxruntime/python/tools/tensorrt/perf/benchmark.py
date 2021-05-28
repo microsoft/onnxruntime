@@ -287,6 +287,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
     logger.info("Parsing test data in {} ...".format(path))
     output = get_output(["find", path, "-name", "test_data*", "-type", "d"])
     test_data_set_dir = output.split("\n")
+    test_data_set_dir.sort()
     logger.info(test_data_set_dir)
 
     inputs = []
@@ -305,6 +306,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
         # load inputs
         output = get_output(["find", ".", "-name", "input*"])
         input_data = output.split("\n")
+        input_data.sort()
         logger.info(input_data)
 
         input_data_pb = []
@@ -325,6 +327,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
         # load outputs
         output = get_output(["find", ".", "-name", "output*"])
         output_data = output.split("\n")
+        output_data.sort()
 
         if len(output_data) > 0 and output_data[0] != '':
             logger.info(output_data)
