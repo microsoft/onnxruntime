@@ -25,7 +25,7 @@ def install_new_ort_wheel(ort_master_path):
     p1 = subprocess.run(["find", ort_wheel_path, "-name", "*.whl"], stdout=subprocess.PIPE, check=True)
     stdout = p1.stdout.decode("utf-8").strip()
     ort_wheel = stdout.split("\n")[0]
-    subprocess.run(["pip3", "install", "-I", ort_wheel], check=True)
+    subprocess.run(["pip3", "install", "--force-reinstall", ort_wheel], check=True)
     return ort_wheel
 
 def main():
@@ -47,11 +47,12 @@ def main():
 
     if args.use_archived:
         ort_wheel_file = args.use_archived
-        subprocess.run(["pip3", "install", "-I", ort_wheel_file], check=True)
+        subprocess.run(["pip3", "install", "--force-reinstall", ort_wheel_file], check=True)
     
     else:
-        subprocess.run(["git", "pull", "origin", "master"], check=True)
+        subprocess.run(["git", "fetch"], check=True)
         subprocess.run(["git", "checkout", args.branch], check=True)
+        subprocess.run(["git", "pull", "origin", args.branch], check=True)
         subprocess.run(["./build.sh", "--config", "Release", "--use_tensorrt", "--tensorrt_home", args.tensorrt_home, "--cuda_home", args.cuda_home, "--cudnn", "/usr/lib/x86_64-linux-gnu", "--build_wheel", "--skip_tests", "--parallel"], check=True)
 
         ort_wheel_file = install_new_ort_wheel(ort_master_path)
