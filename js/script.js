@@ -829,16 +829,16 @@ var validCombos = {
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
 
     "mac,C-API,X86,DefaultCPU":
-        "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
+        "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/inferencing' target='_blank'>build from source</a>.",
         
     "mac,C++,X86,DefaultCPU":
-        "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
+        "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/inferencing' target='_blank'>build from source</a>.",
     
     "mac,C#,X86,DefaultCPU":
-        "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
+        "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/inferencing' target='_blank'>build from source</a>.",
         
     "mac,Python(3.6-3.9),X86,DefaultCPU":
-        "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html' target='_blank'>build from source</a>.",
+        "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/inferencing' target='_blank'>build from source</a>.",
 
     "windows,C-API,X86,DirectML":
     "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
@@ -924,178 +924,202 @@ var validCombos = {
         "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle",
 
     "windows,Java,X64,TensorRT":
-        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        "Follow <a href='http://www.onnxruntime.ai/docs/how-to/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
     "windows,Java,X64,DNNL":
-        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
-    "windows,Java,X64,MKL-ML":
-        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        "Follow <a href='http://www.onnxruntime.ai/docs/how-to/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
     "windows,Java,X64,nGraph":
-        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        "Follow <a href='http://www.onnxruntime.ai/docs/how-to/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
     "windows,Java,X64,NUPHAR":
-        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        "Follow <a href='http://www.onnxruntime.ai/docs/how-to/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
     "windows,Java,X64,OpenVINO":
-        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        "Follow <a href='http://www.onnxruntime.ai/docs/how-to/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
     "linux,Java,X64,TensorRT":
-        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        "Follow <a href='http://www.onnxruntime.ai/docs/how-to/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
     "linux,Java,X64,DNNL":
-        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-
-    "linux,Java,X64,MKL-ML":
-        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        "Follow <a href='http://www.onnxruntime.ai/docs/how-to/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
     "linux,Java,X64,nGraph":
-        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        "Follow <a href='http://www.onnxruntime.ai/docs/how-to/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
     "linux,Java,X64,NUPHAR":
-        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        "Follow <a href='http://www.onnxruntime.ai/docs/how-to/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
 
     "linux,Java,X64,OpenVINO":
-        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        "Follow <a href='http://www.onnxruntime.ai/docs/how-to/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
     
     "android,C-API,ARM64,NNAPI":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android-nnapi-execution-provider' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
     "android,C++,ARM64,NNAPI":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android-nnapi-execution-provider' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
     "android,Java,ARM64,NNAPI":
-        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android-nnapi-execution-provider' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        "Coming soon to Maven Central!",
+    
+    "android,C-API,X86,NNAPI":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+    
+    "android,C++,X86,NNAPI":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+    
+    "android,Java,X64,NNAPI":
+        "Coming soon to Maven Central!",
+    
+    "android,C-API,X64,NNAPI":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+    
+    "android,C++,X64,NNAPI":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+    
+    "android,Java,X86,NNAPI":
+        "Coming soon to Maven Central!",
+    
+    "android,C-API,ARM32,NNAPI":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+    
+    "android,C++,ARM32,NNAPI":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
+    
+    "android,Java,ARM32,NNAPI":
+        "Coming soon to Maven Central!",
     
     "android,C-API,ARM64,DefaultCPU":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,C++,ARM64,DefaultCPU":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,Java,ARM64,DefaultCPU":
-        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        "Coming soon to Maven Central!",
 
     "android,C-API,ARM32,DefaultCPU":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,C++,ARM32,DefaultCPU":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,Java,ARM32,DefaultCPU":
-        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        "Coming soon to Maven Central!",
 
     "android,C-API,X86,DefaultCPU":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,C++,X86,DefaultCPU":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,Java,X86,DefaultCPU":
-        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        "Coming soon to Maven Central!",
     
     "android,C-API,X64,DefaultCPU":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,C++,X64,DefaultCPU":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,Java,X64,DefaultCPU":
-        "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
+        "Coming soon to Maven Central!",
 
     "ios,C-API,ARM64,DefaultCPU":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ios' target='_blank'>here</a>",
+        "Available soon through CocoaPods!",
     
     "ios,C++,ARM64,DefaultCPU":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#ios' target='_blank'>here</a>",
+        "Available soon through CocoaPods!",
     
     "ios,C-API,ARM64,CoreML":
-        "<i>Coming soon!</i>",
+        "Available soon through CocoaPods!",
     
     "ios,C++,ARM64,CoreML":
-        "<i>Coming soon!</i>",
+        "Available soon through CocoaPods!",
+    
+    "ios,objectivec,ARM64,DefaultCPU":
+        "Available soon through CocoaPods!",
     
     "windows,Python(3.6-3.9),X86,VitisAI":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#vitis-ai' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
     
     "windows,C-API,X86,VitisAI":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#vitis-ai' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
     
     "windows,C++,X86,VitisAI":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#vitis-ai' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
     
     "linux,Python(3.6-3.9),X86,VitisAI":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#vitis-ai' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
     
     "linux,C-API,X86,VitisAI":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#vitis-ai' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
     
     "linux,C++,X86,VitisAI":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#vitis-ai' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
     
     "windows,Python(3.6-3.9),X86,MIGraphX":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#amd-migraphx' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
     
     "windows,C-API,X86,MIGraphX":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#amd-migraphx' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
     
     "windows,C++,X86,MIGraphX":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#amd-migraphx' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
     
     "linux,Python(3.6-3.9),X86,MIGraphX":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#amd-migraphx' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
     
     "linux,C-API,X86,MIGraphX":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#amd-migraphx' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
     
     "linux,C++,X86,MIGraphX":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#amd-migraphx' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
     
     "linux,Python(3.6-3.9),ARM64,ACL":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#arm-compute-library' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
     
     "linux,C-API,ARM64,ACL":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#arm-compute-library' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
     
     "linux,C++,ARM64,ACL":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#arm-compute-library' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
     
     "linux,Python(3.6-3.9),ARM32,ACL":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#arm-compute-library' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
     
     "linux,C-API,ARM32,ACL":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#arm-compute-library' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
     
     "linux,C++,ARM32,ACL":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#arm-compute-library' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
     
     "linux,Python(3.6-3.9),ARM64,ArmNN":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#armnn' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
     
     "linux,C-API,ARM64,ArmNN":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#armnn' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
     
     "linux,C++,ARM64,ArmNN":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#armnn' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
     
     "linux,Python(3.6-3.9),ARM32,ArmNN":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#armnn' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
     
     "linux,C-API,ARM32,ArmNN":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#armnn' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
     
     "linux,C++,ARM32,ArmNN":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#armnn' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
     
     "linux,Python(3.6-3.9),ARM64,RockchipNPU":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#rknpu' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-rknpu' target='_blank'>here</a>",
     
     "linux,C-API,ARM64,RockchipNPU":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#rknpu' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-rknpu' target='_blank'>here</a>",
     
     "linux,C++,ARM64,RockchipNPU":
-        "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#rknpu' target='_blank'>here</a>",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-rknpu' target='_blank'>here</a>",
 
     
     "mac,C-API,ARM64,CoreML":
