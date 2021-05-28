@@ -1360,7 +1360,7 @@ class SymbolicShapeInference:
         # set the context output seperately.
         # The first output is autograd's context.
         vi = self.known_vi_[node.output[0]]
-        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, [1]))
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, []))
 
         # Outputs after autograd's context are tensors.
         # We assume their ranks are fixed for different model inputs.
