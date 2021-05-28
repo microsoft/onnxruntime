@@ -52,18 +52,11 @@ try:
         raise RuntimeError(
             f'ONNX Runtime ORTModule frontend requires PyTorch version greater or equal to {MINIMUM_TORCH_VERSION_STR}, '
             f'but version {torch.__version__} was found instead.')
-
-    from onnxruntime.capi._pybind_state import register_forward_runner, register_backward_runner
-    from ._custom_autograd_function_runner import call_python_forward_function, call_python_backward_function
-    register_forward_runner(call_python_forward_function, False)
-    register_backward_runner(call_python_backward_function, False)
-
-    from torch.onnx import register_custom_op_symbolic
-    from ._custom_autograd_function_exporter import _export
-    register_custom_op_symbolic('::prim_PythonOp', _export, 1)
-
 except:
     raise(f'PyTorch {MINIMUM_TORCH_VERSION_STR} must be installed in order to run ONNX Runtime ORTModule frontend!')
+
+from ._custom_autograd_function import enable_custom_autograd_support
+enable_custom_autograd_support()
 
 # ORTModule must be loaded only after all validation passes
 from .ortmodule import ORTModule
