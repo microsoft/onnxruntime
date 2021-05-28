@@ -105,10 +105,7 @@ def _to_contiguous(tensors):
     for idx, _tensor in enumerate(tensors):
         if _tensor is None:
             raise ValueError("find some of tensor is None")
-        elif not _tensor.is_contiguous():
-            _contiguous_tensor = _tensor.contiguous()
-        else:
-            _contiguous_tensor = _tensor
+        _contiguous_tensor = _tensor.contiguous()
         contiguous_tensors.append(_contiguous_tensor)
 
     return contiguous_tensors

@@ -15,7 +15,6 @@ from typing import Iterator, Optional, Tuple, TypeVar
 # Needed to override PyTorch methods
 T = TypeVar('T', bound='Module')
 
-
 class ORTModule(torch.nn.Module):
     """Extends user's :class:`torch.nn.Module` model to leverage ONNX Runtime super fast training engine.
 
@@ -91,8 +90,7 @@ class ORTModule(torch.nn.Module):
 
     def register_buffer(self, name: str, tensor: Optional[torch.Tensor], persistent: bool = True) -> None:
         """Override original method to delegate execution to the base module"""
-        self._original_module.register_buffer(
-            name, tensor, persistent=persistent)
+        self._original_module.register_buffer(name, tensor, persistent=persistent)
 
     def register_parameter(self, name: str, param: Optional[torch.nn.Parameter]) -> None:
         """Override original method to delegate execution to the base module"""

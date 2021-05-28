@@ -170,7 +170,7 @@ void InvokeRunner(
         LOGS_DEFAULT(WARNING) << "Autograd context refcnt > 2";
       }
     } else {
-      ORT_ENFORCE(py_obj == Py_None, "Under inference mode, autograd context shuld be Py_None.");
+      ORT_ENFORCE(py_obj == Py_None, "Under inference mode, autograd context should be Py_None.");
     }
     *diff_ctx = py_obj;
     ++i;

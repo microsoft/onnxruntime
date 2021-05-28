@@ -132,8 +132,6 @@ def _export(g, n, *args, **kwargs):
 
         returned_args = g.op("com.microsoft::PythonOp", *tensor_args, **attrs)
 
-        sys.stdout.flush()
-        sys.stderr.flush()
         return returned_args
     except:
         sys.stdout.flush()
