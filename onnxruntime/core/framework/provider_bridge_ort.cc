@@ -896,7 +896,7 @@ struct ProviderSharedLibrary {
       return true;
 
     std::string full_path = Env::Default().GetRuntimePath() + std::string(LIBRARY_PREFIX "onnxruntime_providers_shared" LIBRARY_EXTENSION);
-    auto error = Env::Default().LoadDynamicLibrary(full_path, &handle_);
+    auto error = Env::Default().LoadDynamicLibrary(full_path, true /*shared_globals on unix*/, &handle_);
     if (!error.IsOK()) {
       LOGS_DEFAULT(ERROR) << error.ErrorMessage();
       return false;
@@ -947,7 +947,7 @@ struct ProviderLibrary {
       return nullptr;
 
     std::string full_path = Env::Default().GetRuntimePath() + std::string(filename_);
-    auto error = Env::Default().LoadDynamicLibrary(full_path, &handle_);
+    auto error = Env::Default().LoadDynamicLibrary(full_path, false, &handle_);
     if (!error.IsOK()) {
       LOGS_DEFAULT(ERROR) << error.ErrorMessage();
       return nullptr;
