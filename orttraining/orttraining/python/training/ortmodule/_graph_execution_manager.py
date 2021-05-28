@@ -4,11 +4,11 @@
 # --------------------------------------------------------------------------
 
 from . import _utils, _io, _logger, _cpp_extensions as _cpp_ext
+from ._custom_autograd_function_exporter import _post_process_after_export
 from onnxruntime.training.ortmodule import ONNX_OPSET_VERSION
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
-from onnxruntime.capi._pybind_state import register_torch_autograd_function
 from abc import ABC, abstractmethod
 import copy
 import io
@@ -254,60 +254,37 @@ class GraphExecutionManager(ABC):
         # correct training flag to reflect the expected behavior.
         # For example, the Dropout node in a model is dropped under eval mode.
         assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
+
+        # Todo: get the flag once wechi provided in later changes.
+        enable_custom_auto_grad = self._onnx_export_type == torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH
         exported_model = None
         try:
-            if self._onnx_export_type == torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH:
-                cloned_flattened_module = copy.deepcopy(self._flattened_module)
-                with _logger.suppress_os_stream_output(log_level=self._loglevel):
-                    torch.onnx.export(cloned_flattened_module,
-                                    sample_inputs_as_tuple,
-                                    f,
-                                    input_names=self._input_info.names,
-                                    output_names=output_names,
-                                    opset_version=ONNX_OPSET_VERSION,
-                                    do_constant_folding=False,
-                                    training=self._export_mode,
-                                    dynamic_axes=self._input_info.dynamic_axes,
-                                    operator_export_type=self._onnx_export_type,
-                                    custom_opsets={"prim": 1},
-                                    verbose=self._loglevel < _logger.LogLevel.WARNING)
-
-                exported_model = onnx.load_model_from_string(f.getvalue())
-                if len(exported_model.opset_import) > 1:
-                    exported_model.opset_import[1].domain = 'com.microsoft'
-                index = 0
-                for node in exported_model.graph.node:
-                    if node.domain == 'com.microsoft' and node.op_type in ["PythonOp"]:
-                        output_names = list(node.output)
-                        del node.output[:]
-                        node.output.append(output_names[0] + '_ctx')
-                        node.output.extend(output_names)
-                    if not node.name:
-                        # give a name for debugging
-                        node.name = node.op_type + "_id_" + str(index)
-                        index += 1
-
-                for kclass in torch.autograd.Function.__subclasses__():
-                    # Sometimes, we find the same functions multiple times, so we allow repeated
-                    # registrations.
-                    register_torch_autograd_function(kclass.__qualname__, kclass, True)
+            if enable_custom_auto_grad:
+                flattened_module_for_export = copy.deepcopy(self._flattened_module)
             else:
-                with torch.no_grad(), _logger.suppress_os_stream_output(log_level=self._loglevel):
-                    torch.onnx.export(self._flattened_module,
-                                    sample_inputs_as_tuple,
-                                    f,
-                                    input_names=self._input_info.names,
-                                    output_names=output_names,
-                                    opset_version=ONNX_OPSET_VERSION,
-                                    do_constant_folding=False,
-                                    training=self._export_mode,
-                                    dynamic_axes=self._input_info.dynamic_axes,
-                                    verbose=self._loglevel < _logger.LogLevel.WARNING,
-                                    export_params=False,
-                                    keep_initializers_as_inputs=True)
-                    exported_model = onnx.load_model_from_string(f.getvalue())
+                flattened_module_for_export = self._flattened_module
+
+            with torch.set_grad_enabled(enable_custom_auto_grad), \
+                _logger.suppress_os_stream_output(log_level=self._loglevel):
+                torch.onnx.export(flattened_module_for_export,
+                                sample_inputs_as_tuple,
+                                f,
+                                input_names=self._input_info.names,
+                                output_names=output_names,
+                                opset_version=ONNX_OPSET_VERSION,
+                                do_constant_folding=False,
+                                training=self._export_mode,
+                                dynamic_axes=self._input_info.dynamic_axes,
+                                verbose=self._loglevel < _logger.LogLevel.WARNING,
+                                export_params=False,
+                                keep_initializers_as_inputs=True,
+                                operator_export_type=self._onnx_export_type)
+                exported_model = onnx.load_model_from_string(f.getvalue())
         except RuntimeError as e:
             raise RuntimeError('There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
+
+        if enable_custom_auto_grad:
+            exported_model = _post_process_after_export(exported_model)
 
         return exported_model
 
