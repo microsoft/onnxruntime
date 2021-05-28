@@ -232,7 +232,7 @@ PythonObjectPtr CreatePythonCallArguments(
                                "const_args");
   }
 
-  return std::move(args);
+  return args;
 }
 
 void Invoke(

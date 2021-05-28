@@ -139,10 +139,7 @@ def _export(g, n, *args, **kwargs):
         sys.stderr.flush()
         raise
 
-
 def _post_process_after_export(exported_model):
-    # if len(exported_model.opset_import) > 1:
-    #     exported_model.opset_import[1].domain = 'com.microsoft'
     index = 0
     for node in exported_model.graph.node:
         if node.domain == 'com.microsoft' and node.op_type in ["PythonOp"]:
