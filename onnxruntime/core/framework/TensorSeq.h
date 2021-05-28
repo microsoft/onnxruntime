@@ -63,6 +63,8 @@ class TensorSeq {
   }
 
   void Add(Tensor&& tensor) {
+    ORT_ENFORCE(IsSameDataType(tensor),
+                "TensorSeq: tensor to be added has a different data type.");
     tensors_.push_back(std::move(tensor));
   }
 
