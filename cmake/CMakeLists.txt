@@ -1041,7 +1041,7 @@ function(onnxruntime_set_source_file_properties target_name)
 
   # enable ARC for Objective-C/C++
   set(objective_c_cc_srcs ${srcs})
-  list(FILTER objective_c_cc_srcs INCLUDE REGEX "\.mm?$")
+  list(FILTER objective_c_cc_srcs INCLUDE REGEX "\\.mm?$")
   set_property(SOURCE ${objective_c_cc_srcs} APPEND PROPERTY COMPILE_OPTIONS "-fobjc-arc")
 endfunction()
 
