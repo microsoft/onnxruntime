@@ -178,7 +178,7 @@ Status ModelBuilder::AddOperations() {
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* node(graph_viewer_.GetNode(node_indices[i]));
     if (const auto* op_builder = GetOpBuilder(*node)) {
-      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, *node, logger_));
+      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(*this, *node, graph_viewer_, logger_));
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Node [", node->Name(), "], type [", node->OpType(), "] is not supported");

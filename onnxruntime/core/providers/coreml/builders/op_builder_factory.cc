@@ -69,6 +69,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateSqueezeOpBuilder("Squeeze", op_registrations);
   }
 
+  {  // ArgMax
+    CreateArgMaxOpBuilder("ArgMax", op_registrations);
+  }
+
   return op_registrations;
 }
 

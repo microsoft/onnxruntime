@@ -17,23 +17,23 @@ class BaseOpBuilder : public IOpBuilder {
   // Add operator related
  public:
   virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */, const Node& /* node */) const override {}
-  Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
+  Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node, const GraphViewer& graph_viewer,
                            const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
 
  protected:
-  virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+  virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const GraphViewer& graph_viewer,
                                        const logging::Logger& logger) const ORT_MUST_USE_RESULT = 0;
 
   static std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> CreateNNLayer(const Node& node);
 
   // Operator support related
  public:
-  bool IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupported(const InitializedTensorSet& initializers, const Node& node, const GraphViewer& graph_viewer,
                      const logging::Logger& logger) const override;
 
  protected:
   virtual bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& /* node */,
-                                 const logging::Logger& /* logger */) const {
+                                 const GraphViewer& /* graph_viewer */, const logging::Logger& /* logger */) const {
     return true;
   }
 

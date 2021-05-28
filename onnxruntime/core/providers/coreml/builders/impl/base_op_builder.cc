@@ -36,14 +36,14 @@ bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node
 
 // Add operator related
 
-Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
+Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node, const GraphViewer& graph_viewer,
                                         const logging::Logger& logger) const {
   ORT_RETURN_IF_NOT(
-      IsOpSupported(model_builder.GetInitializerTensors(), node, logger),
+      IsOpSupported(model_builder.GetInitializerTensors(), node, graph_viewer, logger),
       "Unsupported operator ",
       node.OpType());
 
-  ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node, logger));
+  ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node, graph_viewer, logger));
   LOGS(logger, VERBOSE) << "Operator name: [" << node.Name()
                         << "] type: [" << node.OpType() << "] was added";
   return Status::OK();
@@ -59,7 +59,7 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
 // Operator support related
 
 bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
-                                  const logging::Logger& logger) const {
+                                  const GraphViewer& graph_viewer, const logging::Logger& logger) const {
   if (!HasSupportedInputs(node, logger))
     return false;
 
@@ -70,7 +70,7 @@ bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, cons
   if (!HasSupportedOpSet(node, logger))
     return false;
 
-  return IsOpSupportedImpl(initializers, node, logger);
+  return IsOpSupportedImpl(initializers, node, graph_viewer, logger);
 }
 
 bool BaseOpBuilder::HasSupportedInputs(const Node& node, const logging::Logger& logger) const {

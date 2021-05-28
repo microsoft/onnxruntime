@@ -16,13 +16,13 @@ class ClipOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const GraphViewer& graph_viewer,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         const logging::Logger& logger) const override;
+                         const GraphViewer& graph_viewer, const logging::Logger& logger) const override;
 };
 
 // Add operator related
@@ -40,6 +40,7 @@ void ClipOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Nod
 
 Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                             const Node& node,
+                                            const GraphViewer& /* graph_viewer */,
                                             const logging::Logger& logger) const {
   const auto& node_name = node.Name();
   const auto& input_name = node.InputDefs()[0]->Name();
@@ -119,7 +120,7 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 // Operator support related
 
 bool ClipOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                                      const logging::Logger& logger) const {
+                                      const GraphViewer& /* graph_viewer */, const logging::Logger& logger) const {
   float min, max;
   return GetClipMinMax(initializers, node, min, max, logger);
 }

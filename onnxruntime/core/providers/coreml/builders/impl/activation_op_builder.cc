@@ -12,7 +12,7 @@ namespace coreml {
 class ActivationOpBuilder : public BaseOpBuilder {
   // Add operator related
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const GraphViewer& graph_viewer,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related
@@ -24,6 +24,7 @@ class ActivationOpBuilder : public BaseOpBuilder {
 
 Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                   const Node& node,
+                                                  const GraphViewer& /* graph_viewer */,
                                                   const logging::Logger& /* logger */) const {
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(node);
 

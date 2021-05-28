@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/graph/graph_viewer.h"
 namespace onnxruntime {
 namespace coreml {
 
@@ -19,13 +20,13 @@ class IOpBuilder {
   virtual void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const = 0;
 
   // Add the operator to CoreML model
-  virtual Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
+  virtual Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node, const GraphViewer& graph_viewer,
                                    const logging::Logger& logger) const ORT_MUST_USE_RESULT = 0;
 
   // Operator support related
  public:
   // Check if an operator is supported
-  virtual bool IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
+  virtual bool IsOpSupported(const InitializedTensorSet& initializers, const Node& node, const GraphViewer& graph_viewer,
                              const logging::Logger& logger) const = 0;
 };
 

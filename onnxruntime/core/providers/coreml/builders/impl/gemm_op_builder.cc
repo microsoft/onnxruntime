@@ -20,13 +20,13 @@ class GemmOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const GraphViewer& graph_viewer,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& /* node */,
-                         const logging::Logger& /* logger */) const override;
+                         const GraphViewer& /* graph_viewer */, const logging::Logger& /* logger */) const override;
 };
 
 // Add operator related
@@ -60,7 +60,7 @@ static std::vector<float> GetTensorFloatDataTransposed(const ONNX_NAMESPACE::Ten
 }
 
 Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                            const logging::Logger& /* logger */) const {
+                                            const GraphViewer& /* graph_viewer */, const logging::Logger& /* logger */) const {
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(node);
 
   const auto& op_type = node.OpType();
@@ -112,7 +112,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 // Operator support related
 
 bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                                      const logging::Logger& logger) const {
+                                      const GraphViewer& /* graph_viewer */, const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
   const auto& input_defs(node.InputDefs());
   size_t a_idx = 0, b_idx = 1, c_idx = 2;  // A*B+C

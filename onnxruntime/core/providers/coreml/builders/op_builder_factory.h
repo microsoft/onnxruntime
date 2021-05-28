@@ -31,5 +31,6 @@ void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistration
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateSqueezeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateArgMaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 }  // namespace coreml
 }  // namespace onnxruntime
