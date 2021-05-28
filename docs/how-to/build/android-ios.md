@@ -108,7 +108,7 @@ e.g. using the paths from our example
 
 #### Build Android Archive (AAR)
 
-Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/outputs/aar, by using the above building commands with `--build_java`
+Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/android/outputs/aar, by using the above building commands with `--build_java`
 
 To build on Windows with `--build_java` enabled you must also:
 
@@ -160,12 +160,11 @@ Android NNAPI Execution Provider can be built using building commands in [Androi
 
 * Code Signing
 
-  If the development team ID which has a valid code signing certificate is specified, Xcode will code sign the onnxruntime library in the building process, otherwise, the onnxruntime will be built without code signing. It may be required or desired to code sign the library for iOS devices. For more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
+  If the code signing development team ID or code signing identity is specified, and has a valid code signing certificate, Xcode will code sign the onnxruntime library in the building process. Otherwise, the onnxruntime will be built without code signing. It may be required or desired to code sign the library for iOS devices. For more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
 
-### CoreML Execution Provider
+* Bitcode
 
-If you want to use CoreML Execution Provider on iOS or macOS, see [CoreML Execution Provider](../../reference/execution-providers/CoreML-ExecutionProvider).
-
+  Bitcode is an Apple technology that enables you to recompile your app to reduce its size. It is by default enabled for building onnxruntime. Bitcode can be disabled by using the building commands in [iOS Build instructions](#build-instructions-1) with `--apple_disable_bitcode`. For more information about bitcode, please see [Doing Basic Optimization to Reduce Your App’s Size](https://developer.apple.com/documentation/xcode/doing-basic-optimization-to-reduce-your-app-s-size).
 
 ### Build Instructions
 
@@ -185,10 +184,26 @@ Run one of the following build scripts from the ONNX Runtime repository root:
            --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version>
 ```
 
-#### Cross build for iOS device and code sign the library
+#### Cross build for iOS device and code sign the library using development team ID
 
 ```bash
 ./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
            --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version> \
            --xcode_code_signing_team_id <Your Apple developmemt team ID>
 ```
+
+#### Cross build for iOS device and code sign the library using code sign identity
+
+```bash
+./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
+           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version> \
+           --xcode_code_signing_identity <Your preferred code sign identity>
+```
+
+### CoreML Execution Provider
+
+If you want to use CoreML Execution Provider on iOS or macOS, see [CoreML Execution Provider](../../reference/execution-providers/CoreML-ExecutionProvider).
+
+#### Build Instructions
+
+CoreML Execution Provider can be built using building commands in [iOS Build instructions](#build-instructions-1) with `--use_coreml`
