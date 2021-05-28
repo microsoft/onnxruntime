@@ -360,10 +360,11 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
                                                                   cpu_allocator);
 #ifdef USE_CUDA
     cudaStream_t stream = static_cast<cudaStream_t>(DefaultCudaExecutionProvider()->GetComputeStream());
+    st = GetProviderInfo_CUDA()->CreateGPUDataTransfer(stream)->CopyTensor(rtensor, *cpu_tensor.get(), 0);
 #elif USE_ROCM
     hipStream_t stream = static_cast<hipStream_t>(static_cast<const onnxruntime::ROCMExecutionProvider*>(TestRocmExecutionProvider())->GetComputeStream());
 #endif
-    st = GetProviderInfo_CUDA()->CreateGPUDataTransfer(stream)->CopyTensor(rtensor, *cpu_tensor.get(), 0);
+    st = GPUDataTransfer(stream).CopyTensor(rtensor, *cpu_tensor.get(), 0);
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;
     ml_value.Init(cpu_tensor.release(),
