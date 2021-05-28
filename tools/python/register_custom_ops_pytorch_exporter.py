@@ -4,6 +4,7 @@
 # Register pytorch symbolic for export using ONNX Runtime contrib ops
 
 from torch.onnx import register_custom_op_symbolic
+import torch.onnx.symbolic_helper as sym_help
 from torch.onnx.symbolic_helper import parse_args
 
 
@@ -49,6 +50,17 @@ def register_custom_op(is_ortmodule=False):
                         custom_attributes_json_s=custom_attributes_json)
 
         register_custom_op_symbolic('::embedding', embedding, _onnx_opset_version)
+
+        @parse_args('v', 'v', 'v', 'i', 'v')
+        def cross_entropy_loss(g, self, target, weight, reduction, ignore_index):
+            # reduction: 0->none, 1->mean, 2->sum
+            reduction = sym_help._maybe_get_const(reduction, 'i')
+            reduction_vals = ['none', 'mean', 'sum']
+            reduction = reduction_vals[reduction]
+            return g.op("com.microsoft::SoftmaxCrossEntropyLossInternal", self, target, weight, ignore_index,
+                        reduction_s=reduction, outputs=2)[0]
+
+        register_custom_op_symbolic('::cross_entropy_loss', cross_entropy_loss, _onnx_opset_version)
 
 
 def unregister_custom_op():

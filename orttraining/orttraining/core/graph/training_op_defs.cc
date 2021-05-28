@@ -2605,6 +2605,83 @@ Return true if all elements are true and false otherwise.
           updateOutputElemType(ctx, i, static_cast<int>(output_types_proto->ints(static_cast<int>(i))));
         }
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyLossInternal)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("reduction", reduction_doc, AttributeProto::STRING, std::string("mean"))
+      .Input(0, "scores",
+             "The predicted outputs with shape [batch_size, class_size], or "
+             "[batch_size, class_size, D1, D2 , ..., Dk], where K is the number of dimensions.",
+             "T")
+      .Input(1, "labels",
+             "The ground truth output tensor, with shape [batch_size], or "
+             "[batch_size, D1, D2, ..., Dk], where K is the number of dimensions. "
+             "Labels element value shall be in range of [0, C). "
+             "If ignore_index is specified, it may have a value outside [0, C) and the label values should either be "
+             "in the range [0, C) or have the value ignore_index.",
+             "Tind")
+      .Input(2, "weights",
+             "A manual rescaling weight given to each class. If given, it has to "
+             "be a 1D Tensor assigning weight to each of the classes. Otherwise, "
+             "it is treated as if having all ones.",
+             "T", OpSchema::Optional)
+      .Input(3, "ignore_index",
+             "Scalar tensor to specify a target value that is ignored and does not contribute to the input gradient.",
+             "I", OpSchema::Optional)
+      .Output(0, "output",
+              "Weighted loss float Tensor. If reduction is 'none', this has the "
+              "shape of [batch_size], or [batch_size, D1, D2, ..., Dk] in case of "
+              "K-dimensional loss. Otherwise, it is a scalar.",
+              "T")
+      .Output(1, "log_prob", "Log probability tensor. If the output of softmax is prob, its value is log(prob).", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain input and output types to float tensors.")
+      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain target to integer types")
+      .TypeConstraint("I", {"tensor(int64)"}, "Constrain ignore_index tensor to int64")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        std::string reduction = getAttribute(ctx, "reduction", "mean");
+        if (reduction.compare("none") == 0) {
+          if (hasInputShape(ctx, 1)) {
+            propagateShapeFromInputToOutput(ctx, 1, 0);
+          }
+        } else {
+          updateOutputShape(ctx, 0, TensorShapeProto());
+        }
+
+        if (ctx.getNumOutputs() == 2) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          propagateShapeFromInputToOutput(ctx, 0, 1);
+        }
+      })
+      .SetDoc(R"DOC(SoftmaxCrossEntropyLossInternal)DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyLossInternalGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("reduction", reduction_doc, AttributeProto::STRING, std::string("mean"))
+      .Input(0, "dY", "gradient of Y", "T")
+      .Input(1, "log_prob", "logsoftmax(logits), (N+1)-D input of shape (batch_size).", "T")
+      .Input(2, "label",
+             "label is N-D input whose shape should match that of logits. "
+             "It is a tensor of nonnegative integers, "
+             "where each element is the nonnegative integer label for the element of the batch.",
+             "Tind")
+      .Input(3, "weight", "weight for each sample. The shape is 1-D tensor.", "T", OpSchema::Optional)
+      .Input(4, "ignore_index",
+             "Scalar tensor to specify a target value that is ignored and does not contribute to the input gradient.",
+             "I", OpSchema::Optional)
+      .Output(0, "d_logits", "gradient of logits", "T")
+      .TypeConstraint("T", {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+                      "Constrain to float, float16 and double tensors.")
+      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types")
+      .TypeConstraint("I", {"tensor(int64)"}, "Constrain ignore_index tensor to int64")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        propagateShapeFromInputToOutput(ctx, 1, 0);
+      })
+      .SetDoc(R"DOC(SoftmaxCrossEntropyLossInternalGrad)DOC");
 }
 }  // namespace training
 }  // namespace onnxruntime
