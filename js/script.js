@@ -2,11 +2,13 @@ var supportedOperatingSystems = new Map([
     ['linux', 'linux'],
     ['mac', 'macos'],
     ['win', 'windows'],
+    ['web', 'web'],
 ]);
 var supportedOperatingSystemsNew = [
     {key: 'linux', value: 'linux'},
     {key: 'mac', value: 'macos'},
-    {key: 'win', value: 'windows'}
+    {key: 'win', value: 'windows'},
+    {key: 'web', value: 'web'}
 ]
 
 var opts = {
@@ -505,6 +507,7 @@ function display(selection, id, category) {
 }
 
 function buildMatcher() {
+
     return (
         opts.os +
         "," +
@@ -514,6 +517,7 @@ function buildMatcher() {
         "," +
         opts.hardwareAcceleration 
     );
+    
 }
 
 function ot_buildMatcher() {
@@ -887,15 +891,35 @@ var validCombos = {
     "linux,Java,X64,CUDA":
         "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle",
         
-    "linux,Javascript,X64,DefaultCPU":
-        "npm install onnxruntime",
-    
+
     "mac,Java,X64,DefaultCPU":
         "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
 
-    "mac,Javascript,X64,DefaultCPU":
-        "npm install onnxruntime",
+    //javascript
+    "linux,JS,X64,DefaultCPU":
+        "npm install onnxruntime-node",
+    
+    "mac,JS,X64,DefaultCPU":
+        "npm install onnxruntime-node",
 
+    "windows,JS,X64,DefaultCPU":
+        "npm install onnxruntime-node",
+    
+    "web,JS,,":
+        "npm install onnxruntime-web",
+    
+    "android,JS,ARM64,DefaultCPU":
+        "npm install onnxruntime-react-native",
+    
+    "android,JS,X64,DefaultCPU":
+        "npm install onnxruntime-react-native",
+    
+    "android,JS,X86,DefaultCPU":
+        "npm install onnxruntime-react-native",
+    
+    "ios,JS,ARM64,DefaultCPU":
+        "npm install onnxruntime-react-native",
+    
     "windows,WinRT,X86,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
 
@@ -955,9 +979,6 @@ var validCombos = {
 
     "linux,Java,X64,OpenVINO":
         "Follow <a href='https://www.onnxruntime.ai/docs/how-to/build.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
-    
-    "windows,Javascript,X64,DefaultCPU":
-        "npm install onnxruntime",
     
     "android,C-API,ARM64,NNAPI":
         "Follow build instructions from <a href='https://www.onnxruntime.ai/docs/how-to/build.html#android-nnapi-execution-provider' target='_blank'>here</a>",
@@ -1118,12 +1139,17 @@ function commandMessage(key) {
    $("#command").removeClass("valid");
    $("#command").removeClass("invalid");
 
-
-    if(opts['os']=='' || opts['architecture'] == '' || opts['language']=='' || opts['hardwareAcceleration'] == ''){
-        $("#command span").html(
-            "Please select a combination of resources"
-        ) 
-       
+    if(opts['os']=='web' && opts['language']=='JS' &&validCombos.hasOwnProperty(key)){
+        $("#command span").html(validCombos[key]);
+        // console.log(element);
+        $("#command").addClass("valid");
+        return true;
+    }
+    else if(opts['os']=='' || opts['architecture'] == '' || opts['language']=='' || opts['hardwareAcceleration'] == ''){
+         
+         $("#command span").html(
+           "Please select a combination of resources"
+        )             
     }
     else if (!validCombos.hasOwnProperty(key)) {
         $("#command span").html(
