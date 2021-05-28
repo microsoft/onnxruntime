@@ -22,7 +22,7 @@ var ot_opts = {
     ot_os: 'ot_linux',
     ot_architecture: 'ot_X64',
     ot_language: 'ot_PyTorch',
-    ot_hardwareAcceleration: 'ot_CUDA',
+    ot_hardwareAcceleration: 'ot_CUDA1010',
 };
 
 var os = $(".os > .r-option");
@@ -534,26 +534,29 @@ function ot_buildMatcher() {
 
 var ot_validCombos = {
    //linux
-    "ot_linux,ot_PyTorch,ot_X64,ot_CUDA":
-    "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
+    "ot_linux,ot_PyTorch,ot_X64,ot_CUDA10":
+    "pip install onnxruntime-training",
+
+    "ot_linux,ot_PyTorch,ot_X64,ot_CUDA11":
+    "pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_cu111.html",
 
     "ot_linux,ot_PyTorch,ot_X64,ot_DefaultCPU":
     "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
 
     "ot_linux,ot_PyTorch,ot_X64,ot_AMD":
-    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+    "pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_rocm42.html",
    
     "ot_linux,ot_PyTorch,ot_X64,ot_DNNL":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
    
-    "ot_linux,ot_C++,ot_X64,ot_CUDA":
+    "ot_linux,ot_C++,ot_X64,ot_CUDA10":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
 
     "ot_linux,ot_C++,ot_X64,ot_DefaultCPU":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
     
     //windows
-    "ot_windows,ot_PyTorch,ot_X64,ot_CUDA":
+    "ot_windows,ot_PyTorch,ot_X64,ot_CUDA10":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
 
     "ot_windows,ot_PyTorch,ot_X64,ot_DefaultCPU":
@@ -562,7 +565,7 @@ var ot_validCombos = {
     "ot_windows,ot_C++,ot_X64,ot_DefaultCPU":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
 
-    "ot_windows,ot_C++,ot_X64,ot_CUDA":
+    "ot_windows,ot_C++,ot_X64,ot_CUDA10":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
 
     //mac
@@ -598,10 +601,10 @@ function ot_commandMessage(key) {
 
     // //console.log('key- '+key);
     //  var ot_object = {
-    //     "ot_linux,ot_PyTorch,ot_X64,ot_CUDA":
+    //     "ot_linux,ot_PyTorch,ot_X64,ot_CUDA10":
     //         "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
 
-    //     "ot_linux,ot_TensorFlow,ot_X64,ot_CUDA":
+    //     "ot_linux,ot_TensorFlow,ot_X64,ot_CUDA10":
     //         "Coming Soon",
     //  };
     //  if (!ot_object.hasOwnProperty(key)) {
