@@ -1771,8 +1771,8 @@ def generate_documentation(source_dir, build_dir, configs, validate):
     shutil.copy(os.path.join(source_dir, 'tools', 'python', 'gen_contrib_doc.py'), cwd)
     shutil.copy(os.path.join(source_dir, 'tools', 'python', 'gen_opkernel_doc.py'), cwd)
     # limit to just com.microsoft (excludes purely internal stuff like com.microsoft.nchwc).
-    run_subprocess([sys.executable, 'gen_contrib_doc.py', '--output_path', contrib_op_doc_path],
-                   '--domains', 'com.microsoft', cwd=cwd)
+    run_subprocess([sys.executable, 'gen_contrib_doc.py', '--output_path', contrib_op_doc_path,
+                   '--domains', 'com.microsoft'], cwd=cwd)
     # we currently limit the documentation created by a build to the CPU and CUDA EPs.
     # Run get_opkernel_doc.py directly if you need/want documentation from other EPs that are enabled in the build.
     run_subprocess([sys.executable, 'gen_opkernel_doc.py', '--output_path', opkernel_doc_path,
