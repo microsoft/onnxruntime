@@ -2,7 +2,7 @@
 parameters:
 
 - name: BuildORT
-  displayName: Build Latest ORT (specify branch variable if false + choosing docker)
+  displayName: Build ORT
   type: boolean
   default: true
 
