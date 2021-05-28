@@ -108,7 +108,9 @@ def main():
     # TODO: flaky test. Temporary disabling for further investigation
     # run_ortmodule_torch_lightning(cwd, log, args.mnist)
 
-    run_ortmodule_custom_autograd_tests(cwd, log)
+    # TODO: enable this once the PyTorch used for testing meets the requirements running
+    # auto grad testing.
+    #run_ortmodule_custom_autograd_tests(cwd, log)
     return 0
 
 

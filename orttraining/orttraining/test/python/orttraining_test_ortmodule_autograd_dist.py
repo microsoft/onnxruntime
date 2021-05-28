@@ -30,7 +30,6 @@ from onnxruntime.training.ortmodule._graph_execution_manager_factory import Grap
 
 def set_onnx_fallthrough_export_type(module):
     onnx_export_type = torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH
-    onnx_export_type = torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH
     module._execution_manager = GraphExecutionManagerFactory(
         module._module_metadata.flattened_module, onnx_export_type=onnx_export_type)
 
