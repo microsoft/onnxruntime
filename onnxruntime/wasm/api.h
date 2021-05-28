@@ -12,10 +12,14 @@
 
 #include <stddef.h>
 
-namespace Ort {
-struct Session;
-}
-using ort_session_handle_t = Ort::Session*;
+struct OrtSession;
+using ort_session_handle_t = OrtSession*;
+
+struct OrtSessionOptions;
+using ort_session_options_handle_t = OrtSessionOptions*;
+
+struct OrtRunOptions;
+using ort_run_options_handle_t = OrtRunOptions*;
 
 struct OrtValue;
 using ort_tensor_handle_t = OrtValue*;
@@ -24,10 +28,51 @@ extern "C" {
 
 /**
  * perform global initialization. should be called only once.
- * @param numThreads number of total threads to use.
+ * @param num_threads number of total threads to use.
  * @param logging_level default logging level.
  */
-void EMSCRIPTEN_KEEPALIVE OrtInit(int numThreads, int logging_level);
+int EMSCRIPTEN_KEEPALIVE OrtInit(int num_threads, int logging_level);
+
+/**
+ * create an instance of ORT session options.
+ * assume that all enum type parameters, such as graph_optimization_level, execution_mode, and log_severity_level,
+ * are checked and set properly at JavaScript.
+ * @param graph_optimization_level disabled, basic, extended, or enable all
+ * @param enable_cpu_mem_arena enable or disable cpu memory arena
+ * @param enable_mem_pattern enable or disable memory pattern
+ * @param execution_mode sequential or parallel execution mode
+ * @param enable_profiling enable or disable profiling. it's a no-op and for a future use.
+ * @param profile_file_prefix file prefix for profiling data. it's a no-op and for a future use.
+ * @param log_id logger id for session output
+ * @param log_severity_level verbose, info, warning, error or fatal
+ * @param log_verbosity_level vlog level
+ * @returns a pointer to a session option handle and must be freed by calling OrtReleaseSessionOptions().
+ */
+ort_session_options_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSessionOptions(size_t graph_optimization_level,
+                                                                          bool enable_cpu_mem_arena,
+                                                                          bool enable_mem_pattern,
+                                                                          size_t execution_mode,
+                                                                          bool enable_profiling,
+                                                                          const char* profile_file_prefix,
+                                                                          const char* log_id,
+                                                                          size_t log_severity_level,
+                                                                          size_t log_verbosity_level);
+
+/**
+ * store configurations for a session.
+ * @param session_options a handle to session options created by OrtCreateSessionOptions
+ * @param config_key configuration keys and value formats are defined in
+ *                   include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h
+ * @param config_value value for config_key
+ */
+int EMSCRIPTEN_KEEPALIVE OrtAddSessionConfigEntry(ort_session_options_handle_t session_options,
+                                                  const char* config_key,
+                                                  const char* config_value);
+
+/**
+ * release the specified ORT session options.
+ */
+void EMSCRIPTEN_KEEPALIVE OrtReleaseSessionOptions(ort_session_options_handle_t session_options);
 
 /**
  * create an instance of ORT session.
@@ -35,7 +80,9 @@ void EMSCRIPTEN_KEEPALIVE OrtInit(int numThreads, int logging_level);
  * @param data_length the size of the buffer in bytes.
  * @returns a handle of the ORT session.
  */
-ort_session_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSession(void* data, size_t data_length);
+ort_session_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSession(void* data,
+                                                           size_t data_length,
+                                                           ort_session_options_handle_t session_options);
 
 /**
  * release the specified ORT session.
@@ -88,12 +135,41 @@ ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateTensor(int data_type, void* da
  * @param dims_length [out] specify the memory to write dims length
  * @remarks a temporary buffer 'dims' is allocated during the call. Caller must release the buffer after use by calling OrtFree().
  */
-void EMSCRIPTEN_KEEPALIVE OrtGetTensorData(ort_tensor_handle_t tensor, int* data_type, void** data, size_t** dims, size_t* dims_length);
+int EMSCRIPTEN_KEEPALIVE OrtGetTensorData(ort_tensor_handle_t tensor, int* data_type, void** data, size_t** dims, size_t* dims_length);
 
 /**
  * release the specified tensor.
  */
 void EMSCRIPTEN_KEEPALIVE OrtReleaseTensor(ort_tensor_handle_t tensor);
+
+/**
+ * create an instance of ORT run options.
+ * @param log_severity_level verbose, info, warning, error or fatal
+ * @param log_verbosity_level vlog level
+ * @param terminate if true, all incomplete OrtRun calls will exit as soon as possible
+ * @param tag tag for this run
+ * @returns a pointer to a run option handle and must be freed by calling OrtReleaseRunOptions().
+ */
+ort_run_options_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateRunOptions(size_t log_severity_level,
+                                                                  size_t log_verbosity_level,
+                                                                  bool terminate,
+                                                                  const char* tag);
+
+/**
+ * set a single run configuration entry
+ * @param run_options a handle to run options created by OrtCreateRunOptions
+ * @param config_key configuration keys and value formats are defined in
+ *                   include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h
+ * @param config_value value for config_key
+ */
+int EMSCRIPTEN_KEEPALIVE OrtAddRunConfigEntry(ort_run_options_handle_t run_options,
+                                              const char* config_key,
+                                              const char* config_value);
+
+/**
+ * release the specified ORT run options.
+ */
+void EMSCRIPTEN_KEEPALIVE OrtReleaseRunOptions(ort_run_options_handle_t run_options);
 
 /**
  * inference the model.
@@ -106,5 +182,6 @@ int EMSCRIPTEN_KEEPALIVE OrtRun(ort_session_handle_t session,
                                 size_t input_count,
                                 const char** output_names,
                                 size_t output_count,
-                                ort_tensor_handle_t* outputs);
+                                ort_tensor_handle_t* outputs,
+                                ort_run_options_handle_t run_options);
 };

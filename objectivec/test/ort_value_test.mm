@@ -29,7 +29,7 @@ NS_ASSUME_NONNULL_BEGIN
   const ORTTensorElementDataType elementType = ORTTensorElementDataTypeInt32;
 
   NSError* err = nil;
-  ORTValue* ortValue = [[ORTValue alloc] initTensorWithData:data
+  ORTValue* ortValue = [[ORTValue alloc] initWithTensorData:data
                                                 elementType:elementType
                                                       shape:shape
                                                       error:&err];
@@ -69,7 +69,7 @@ NS_ASSUME_NONNULL_BEGIN
   NSArray<NSNumber*>* shape = @[ @2, @3 ];  // too large
 
   NSError* err = nil;
-  ORTValue* ortValue = [[ORTValue alloc] initTensorWithData:data
+  ORTValue* ortValue = [[ORTValue alloc] initWithTensorData:data
                                                 elementType:ORTTensorElementDataTypeInt32
                                                       shape:shape
                                                       error:&err];

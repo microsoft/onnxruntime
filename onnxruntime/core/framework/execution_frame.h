@@ -109,10 +109,6 @@ class IExecutionFrame {
 
   virtual Status CopyTensor(const Tensor& src, Tensor& dest) const = 0;
 
-  virtual bool IsAllocatedExternally(int /*ort_value_idx*/) {
-    return false;
-  }
-
   const NodeIndexInfo& node_index_info_;
 
   // All the intermediate values for the entire graph.
@@ -200,8 +196,6 @@ class ExecutionFrame final : public IExecutionFrame {
   void TraceFree(int ort_value_idx);
 
   const AllocPlanPerValue& GetAllocationPlan(int ort_value_idx);
-
-  bool IsAllocatedExternally(int ort_value_idx) override;
 
   const SessionState& session_state_;
 

@@ -5,18 +5,22 @@ if(${CMAKE_VERSION} VERSION_LESS "3.18")
     message(FATAL_ERROR "CMake 3.18+ is required when building the Objective-C API.")
 endif()
 
+if(NOT APPLE)
+    message(FATAL_ERROR "Objective-C API must be built on an Apple platform.")
+endif()
+
 check_language(OBJC)
 if(CMAKE_OBJC_COMPILER)
-    enable_language(OBJC)
+  enable_language(OBJC)
 else()
-    message(FATAL_ERROR "Objective-C is not supported.")
+  message(FATAL_ERROR "Objective-C is not supported.")
 endif()
 
 check_language(OBJCXX)
 if(CMAKE_OBJCXX_COMPILER)
-    enable_language(OBJCXX)
+  enable_language(OBJCXX)
 else()
-    message(FATAL_ERROR "Objective-C++ is not supported.")
+  message(FATAL_ERROR "Objective-C++ is not supported.")
 endif()
 
 add_compile_options(
@@ -29,8 +33,6 @@ endif()
 
 set(OBJC_ROOT "${REPO_ROOT}/objectivec")
 
-set(OBJC_ARC_COMPILE_OPTIONS "-fobjc-arc" "-fobjc-arc-exceptions")
-
 # onnxruntime_objc target
 
 # these headers are the public interface
@@ -40,7 +42,8 @@ set(onnxruntime_objc_headers
     "${OBJC_ROOT}/include/ort_enums.h"
     "${OBJC_ROOT}/include/ort_env.h"
     "${OBJC_ROOT}/include/ort_session.h"
-    "${OBJC_ROOT}/include/ort_value.h")
+    "${OBJC_ROOT}/include/ort_value.h"
+    )
 
 file(GLOB onnxruntime_objc_srcs
     "${OBJC_ROOT}/src/*.h"
@@ -56,7 +59,7 @@ source_group(TREE "${OBJC_ROOT}" FILES
     ${onnxruntime_objc_srcs}
     ${onnxruntime_objc_common_srcs})
 
-add_library(onnxruntime_objc SHARED
+onnxruntime_add_shared_library(onnxruntime_objc
     ${onnxruntime_objc_headers}
     ${onnxruntime_objc_srcs}
     ${onnxruntime_objc_common_srcs})
@@ -76,8 +79,6 @@ target_link_libraries(onnxruntime_objc
         safeint_interface
         ${FOUNDATION_LIB})
 
-target_compile_options(onnxruntime_objc PRIVATE ${OBJC_ARC_COMPILE_OPTIONS})
-
 set_target_properties(onnxruntime_objc PROPERTIES
     FRAMEWORK TRUE
     VERSION "1.0.0"
@@ -87,6 +88,8 @@ set_target_properties(onnxruntime_objc PROPERTIES
     FOLDER "ONNXRuntime"
     CXX_STANDARD 17 # TODO remove when everything else moves to 17
     )
+
+set_property(TARGET onnxruntime_objc APPEND PROPERTY COMPILE_OPTIONS "-fvisibility=default")
 
 target_link_options(onnxruntime_objc PRIVATE "-Wl,-headerpad_max_install_names")
 
@@ -121,11 +124,11 @@ if(onnxruntime_BUILD_UNIT_TESTS)
         ${onnxruntime_objc_test_srcs}
         ${onnxruntime_objc_common_srcs})
 
+    onnxruntime_configure_target(onnxruntime_objc_test)
+
     target_include_directories(onnxruntime_objc_test
         PRIVATE
             "${OBJC_ROOT}")
-
-    target_compile_options(onnxruntime_objc_test PRIVATE ${OBJC_ARC_COMPILE_OPTIONS})
 
     set_target_properties(onnxruntime_objc_test PROPERTIES
         FOLDER "ONNXRuntimeTest")

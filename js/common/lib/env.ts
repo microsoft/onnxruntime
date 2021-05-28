@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {EnvImpl} from './env-impl';
 export declare namespace Env {
   export interface WebAssemblyFlags {
     /**
@@ -40,6 +41,10 @@ export declare namespace Env {
 
 export interface Env {
   /**
+   * set the severity level for logging. If omitted, default is 'warning'
+   */
+  logLevel?: 'verbose'|'info'|'warning'|'error'|'fatal';
+  /**
    * Indicate whether run in debug mode.
    */
   debug?: boolean;
@@ -60,7 +65,4 @@ export interface Env {
 /**
  * Represent a set of flags as a global singleton.
  */
-export const env: Env = {
-  wasm: {},
-  webgl: {}
-};
+export const env: Env = new EnvImpl();

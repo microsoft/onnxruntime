@@ -124,6 +124,7 @@ option(onnxruntime_EXTENDED_MINIMAL_BUILD "onnxruntime_MINIMAL_BUILD with suppor
 option(onnxruntime_MINIMAL_BUILD_CUSTOM_OPS "Add custom operator kernels support to a minimal build." OFF)
 option(onnxruntime_REDUCED_OPS_BUILD "Reduced set of kernels are registered in build via modification of the kernel registration source files." OFF)
 option(onnxruntime_DISABLE_ORT_FORMAT_LOAD "Disable loading an ORT format model when onnxruntime_MINIMAL_BUILD=OFF (i.e. in a full build)." OFF)
+option(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS "Don't allow models to load external data" OFF)
 
 #A special option just for debugging and sanitize check. Please do not enable in option in retail builds.
 #The option has no effect on Windows.
@@ -150,7 +151,7 @@ option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 option(onnxruntime_BUILD_WEBASSEMBLY "Enable this option to create WebAssembly byte codes" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_THREADS "Enable this option to create WebAssembly byte codes with multi-threads support" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
-option(onnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP "Enable this option to turn on sourcemap" OFF)
+option(onnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO "Enable this option to turn on DWARF format debug info" OFF)
 
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
@@ -193,7 +194,9 @@ if(onnxruntime_USE_VALGRIND AND NOT WIN32)
 endif()
 
 if (onnxruntime_ENABLE_NVTX_PROFILE)
-  add_definitions(-DENABLE_NVTX_PROFILE=1)
+  message(WARNING "NTVX profile temporarily disabled, will be fixed soon")
+# TODO: This doesn't work with the shared cuda provider. Disabling temporarily to do a clean fix later as it wasn't trivial
+#  add_definitions(-DENABLE_NVTX_PROFILE=1)
 endif()
 
 if (onnxruntime_ENABLE_BITCODE)
@@ -282,12 +285,13 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
     string(APPEND CMAKE_CXX_FLAGS " -flto")
   endif()
 
-  if (onnxruntime_ENABLE_WEBASSEMBLY_SOURCEMAP)
-    # Build with sourcemap support
-    set(CMAKE_CXX_FLAGS_DEBUG "-g4 --source-map-base ${onnxruntime_WEBASSEMBLY_SOURCEMAP_BASE}")
+  if (onnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO)
+    # "-g3" generates DWARF format debug info.
+    # NOTE: With debug info enabled, web assembly artifacts will be very huge (>1GB). So we offer an option to build without debug info.
+    set(CMAKE_CXX_FLAGS_DEBUG "-g3")
   else()
-    # override default "-g3" as it generates super huge (1GB+) WASM targets which fails to load
-    set(CMAKE_CXX_FLAGS_DEBUG "-g2")
+    # do not generate any debug info. This helps to accelerate building process and reduce binary size.
+    set(CMAKE_CXX_FLAGS_DEBUG "-g0")
   endif()
 
   # Build WebAssembly with multi-threads support.
@@ -361,6 +365,10 @@ endif()
 
 if (onnxruntime_REDUCED_OPS_BUILD)
   add_compile_definitions(REDUCED_OPS_BUILD)
+endif()
+
+if(onnxruntime_DISABLE_EXTERNAL_INITIALIZERS)
+  add_definitions(-DDISABLE_EXTERNAL_INITIALIZERS=1)
 endif()
 
 if(onnxruntime_DISABLE_RTTI)
@@ -444,7 +452,9 @@ endif()
 # Mark symbols to be invisible, for macOS/iOS target only
 # Due to many dependencies have different symbol visibility settings, set global compile flags here.
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS")
-  string(APPEND CMAKE_CXX_FLAGS " -fvisibility=hidden -fvisibility-inlines-hidden")
+  foreach(flags CMAKE_CXX_FLAGS CMAKE_OBJC_FLAGS CMAKE_OBJCXX_FLAGS)
+    string(APPEND ${flags} " -fvisibility=hidden -fvisibility-inlines-hidden")
+  endforeach()
 endif()
 
 #must after OpenMP settings
@@ -659,7 +669,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
     set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "Disable benchmark testing as we don't need it.")
     # We will not need to install benchmark since we link it statically.
     set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "Disable benchmark install to avoid overwriting vendor install.")
-    add_subdirectory(${PROJECT_SOURCE_DIR}/external/onnx/third_party/benchmark EXCLUDE_FROM_ALL)
+    add_subdirectory(${PROJECT_SOURCE_DIR}/external/googlebenchmark EXCLUDE_FROM_ALL)
     add_library(benchmark::benchmark ALIAS benchmark)
   endif()
 endif()
@@ -690,9 +700,9 @@ if(Protobuf_FOUND OR Protobuf_FOUND)
     #We have a check here but most of the cmake users don't know the Protobuf_USE_STATIC_LIBS
     # variable exists and may leave it in a wrong state.
     if(NOT Protobuf_USE_STATIC_LIBS)
-      #Indeed here should be a warning, not a fatal error. ONNX Runtime itself can work in such a
-      #setting but it may cause compatibility issue when ONNX Runtime is integrated with the other ONNX ecosystem softwares.
-      message(FATAL_ERROR "Please enable Protobuf_USE_STATIC_LIBS")
+      # ONNX Runtime itself can work in such a setting but it may cause compatibility issues
+      # when ONNX Runtime is integrated with the other ONNX ecosystem softwares.
+      message(WARNING "Use Protobuf_USE_STATIC_LIBS to ensure compatibility with other ONNX ecosystem components.")
     endif()
   else()
     set(PROTOBUF_LIB protobuf::libprotobuf-lite)
@@ -1017,7 +1027,7 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wno-deprecated-copy>" "$<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-copy>")
     endif()
     if(onnxruntime_USE_CUDA)
-      if((NVCC_HAS_STRICT_ALIASING AND "${target_name}" MATCHES "cuda")  OR (HAS_STRIC_ALIASING AND NOT "${target_name}" MATCHES "cuda"))
+      if((NVCC_HAS_STRICT_ALIASING AND "${target_name}" MATCHES "cuda") OR (HAS_STRICT_ALIASING AND NOT "${target_name}" MATCHES "cuda"))
         target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Wno-strict-aliasing>")
       endif()
     endif()
@@ -1026,10 +1036,19 @@ function(onnxruntime_set_compile_flags target_name)
     endforeach()
 endfunction()
 
-function(onnxruntime_add_shared_library target_name)
-  add_library(${target_name} SHARED ${ARGN})
+function(onnxruntime_set_source_file_properties target_name)
+  get_target_property(srcs ${target_name} SOURCES)
+
+  # enable ARC for Objective-C/C++
+  set(objective_c_cc_srcs ${srcs})
+  list(FILTER objective_c_cc_srcs INCLUDE REGEX "\.mm?$")
+  set_property(SOURCE ${objective_c_cc_srcs} APPEND PROPERTY COMPILE_OPTIONS "-fobjc-arc")
+endfunction()
+
+function(onnxruntime_configure_target target_name)
   target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
   onnxruntime_set_compile_flags(${target_name})
+  onnxruntime_set_source_file_properties(${target_name})
   target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
   if(onnxruntime_ENABLE_LTO)
     set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
@@ -1038,16 +1057,14 @@ function(onnxruntime_add_shared_library target_name)
   endif()
 endfunction()
 
+function(onnxruntime_add_shared_library target_name)
+  add_library(${target_name} SHARED ${ARGN})
+  onnxruntime_configure_target(${target_name})
+endfunction()
+
 function(onnxruntime_add_static_library target_name)
   add_library(${target_name} ${ARGN})
-  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
-  onnxruntime_set_compile_flags(${target_name})
-  target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
-  if(onnxruntime_ENABLE_LTO)
-    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
-    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
-    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
-  endif()
+  onnxruntime_configure_target(${target_name})
 endfunction()
 
 #For plugins that are not linked into other targets but may be loaded dynamically at runtime using dlopen-like functionality.
@@ -1059,30 +1076,15 @@ function(onnxruntime_add_shared_library_module target_name)
     add_library(${target_name} MODULE ${ARGN})
   endif()
 
-  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
-  onnxruntime_set_compile_flags(${target_name})
-  target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
-  if(onnxruntime_ENABLE_LTO)
-    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
-    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
-    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
-  endif()
+  onnxruntime_configure_target(${target_name})
 endfunction()
 
-#almost the same as the above function, except the first line of the body
 function(onnxruntime_add_executable target_name)
   if(${CMAKE_SYSTEM_NAME} MATCHES "iOSCross")
     message(FATAL_ERROR "iOS doesn't support commmand line tool")
   endif()
   add_executable(${target_name} ${ARGN})
-  target_link_directories(${target_name} PRIVATE ${onnxruntime_LINK_DIRS})
-  onnxruntime_set_compile_flags(${target_name})
-  target_include_directories(${target_name} PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
-  if(onnxruntime_ENABLE_LTO)
-    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
-    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
-    set_target_properties(${target_name} PROPERTIES INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE)
-  endif()
+  onnxruntime_configure_target(${target_name})
 endfunction()
 
 function(onnxruntime_add_include_to_target dst_target)
@@ -1394,7 +1396,6 @@ if (onnxruntime_USE_CUDA)
     list(APPEND ONNXRUNTIME_CUDA_LIBRARIES cublas cudnn curand cufft)
   endif()
 
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${ONNXRUNTIME_CUDA_LIBRARIES})
   if(NOT CMAKE_CUDA_ARCHITECTURES)
     if(CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
       # Support for Jetson/Tegra ARM devices
@@ -1495,48 +1496,27 @@ if (onnxruntime_ENABLE_TRAINING)
   add_compile_definitions(ENABLE_TRAINING_OPS)
 
   if (UNIX)
-    # Find MPI
-    find_path(MPI_INCLUDE_DIR
-      NAMES mpi.h
-      HINTS
-      ${onnxruntime_MPI_HOME}/include
-      /bert_ort/openmpi/include)
+    if (EXISTS "${onnxruntime_MPI_HOME}")
+      set(MPI_HOME "${onnxruntime_MPI_HOME}")
+    elseif (EXISTS "/bert_ort/openmpi")
+      set(MPI_HOME "/bert_ort/openmpi")
+    endif()
 
-    set(MPI_LIBNAME "mpi")
+    find_package(MPI)
 
-    find_library(MPI_LIBRARY
-      NAMES ${MPI_LIBNAME}
-      HINTS
-      ${onnxruntime_MPI_HOME}/lib
-      /bert_ort/openmpi/lib)
-
-    include(FindPackageHandleStandardArgs)
-    find_package_handle_standard_args(MPI DEFAULT_MSG MPI_INCLUDE_DIR MPI_LIBRARY)
-
-    if (MPI_FOUND)
-      if(NOT DEFINED onnxruntime_MPI_HOME)
-        execute_process(COMMAND mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
-      else()
-        execute_process(COMMAND ${onnxruntime_MPI_HOME}/bin/mpirun --version OUTPUT_VARIABLE MPIRUN_OUTPUT)
-      endif(NOT DEFINED onnxruntime_MPI_HOME)
-      string( REGEX MATCH "[0-9]+.[0-9]+.[0-9]" MPI_VERSION ${MPIRUN_OUTPUT})
-      message( STATUS "MPI Version: ${MPI_VERSION}")
-
-      set(MPI_INCLUDE_DIRS ${MPI_INCLUDE_DIR})
-      set(MPI_LIBRARIES ${MPI_LIBRARY})
-      message( STATUS "MPI (include: ${MPI_INCLUDE_DIRS}, library: ${MPI_LIBRARIES})" )
-      mark_as_advanced(MPI_INCLUDE_DIRS MPI_LIBRARIES)
-
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
-
+    if (MPI_CXX_FOUND)
+      message( STATUS "MPI Version: ${MPI_CXX_VERSION}")
+      message( STATUS "MPI (include: ${MPI_CXX_INCLUDE_DIRS}, library: ${MPI_CXX_LIBRARIES})" )
+      mark_as_advanced(MPI_CXX_INCLUDE_DIRS MPI_CXX_LIBRARIES)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
     else ()
       set(onnxruntime_USE_NCCL OFF)
       set(onnxruntime_USE_MPI OFF)
-      message( WARNING "MPI is not found. Please use --mpi_home to specify the path of MPI. Otherwise, NCCL will be disabled." )
+      message( WARNING "MPI is not found. Please define onnxruntime_MPI_HOME to specify the path of MPI. Otherwise, NCCL will be disabled." )
     endif()
 
     # Find NCCL and MPI
-    if (onnxruntime_USE_NCCL AND MPI_FOUND)
+    if (onnxruntime_USE_NCCL AND MPI_CXX_FOUND)
       if (onnxruntime_USE_CUDA)
         set(NCCL_LIBNAME "nccl")
       elseif (onnxruntime_USE_ROCM)
@@ -1600,7 +1580,7 @@ if (onnxruntime_ENABLE_TRAINING)
     endif()
   endif()
 
-  if (onnxruntime_USE_MPI AND MPI_FOUND)
+  if (onnxruntime_USE_MPI AND MPI_CXX_FOUND)
     add_definitions(-DUSE_MPI=1)
   endif()
 

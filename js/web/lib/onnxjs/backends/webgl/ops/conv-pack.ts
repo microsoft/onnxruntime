@@ -16,6 +16,12 @@ import {WebGLReshapePacked} from './reshape-packed';
 export class WebGLConvPacked extends Conv {
   protected artifacts: Artifact[];
   protected programInfo: ProgramInfo[];
+  protected outputShape: number[];
+
+  private kernelReshape = new WebGLReshapePacked();
+  private im2col: WebGLIm2ColPacked;
+  private matmul = new WebGLMatMulPacked();
+  private outputReshape = new WebGLReshapePacked();
 
   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
     const programManager = inferenceHandler.session.programManager;
@@ -34,36 +40,39 @@ export class WebGLConvPacked extends Conv {
         `autpPad:${this.autoPad}, dilations:${this.dilations}, group:${this.group}, kernelShape:${
             this.kernelShape}, pads:${this.pads}, strides:${this.strides}`);
 
-    const outputShape = WebGLConv.calcOutputShape(xshape, kshape, this.dilations, this.pads, this.strides);
-    const im2col = new WebGLIm2ColPacked(outputShape, kshape, this.dilations, this.pads, this.strides);
-    const matmul = new WebGLMatMulPacked();
+    if (!this.outputShape) {
+      this.outputShape = WebGLConv.calcOutputShape(xshape, kshape, this.dilations, this.pads, this.strides);
+    }
+    if (this.im2col === undefined) {
+      this.im2col = new WebGLIm2ColPacked(this.outputShape, kshape, this.dilations, this.pads, this.strides);
+    }
     if (this.activation) {
       const attributes = new Attribute(undefined);
       attributes.set('__internal_activation', 'string', (this.activation));
-      matmul.initialize(attributes);
+      this.matmul.initialize(attributes);
     }
-    const reshape = new WebGLReshapePacked();
     // shape for kernel reshape
     const shape =
         new Tensor([2], 'int32', undefined, undefined, new Int32Array([kshape[0], kshape[1] * kshape[2] * kshape[3]]));
     if (!this.artifacts) {
       this.artifacts = [];
       this.programInfo = [];
-      this.programInfo[0] = im2col.createProgramInfo(inferenceHandler, [inputs[0], inputs[1]]);
+      this.programInfo[0] = this.im2col.createProgramInfo(inferenceHandler, [inputs[0], inputs[1]]);
       this.artifacts[0] = programManager.build(this.programInfo[0]);
 
-      this.programInfo[1] = reshape.createProgramInfo(inferenceHandler, [inputs[1], shape]);
+      this.programInfo[1] = this.kernelReshape.createProgramInfo(inferenceHandler, [inputs[1], shape]);
       this.artifacts[1] = programManager.build(this.programInfo[1]);
     }
 
     // run im2col
-    const runDataIm2col = im2col.createRunData(inferenceHandler, this.programInfo[0], [inputs[0], inputs[1]]);
+    const runDataIm2col = this.im2col.createRunData(inferenceHandler, this.programInfo[0], [inputs[0], inputs[1]]);
     inferenceHandler.checkAndUpdateTextureForm(this.artifacts[0], runDataIm2col);
     programManager.run(this.artifacts[0], runDataIm2col);
     const im2colOutput = runDataIm2col.outputTextureData.tensor;
 
     // reshape kernel
-    const runDataKernelReshape = reshape.createRunData(inferenceHandler, this.programInfo[1], [inputs[1], shape]);
+    const runDataKernelReshape =
+        this.kernelReshape.createRunData(inferenceHandler, this.programInfo[1], [inputs[1], shape]);
     inferenceHandler.checkAndUpdateTextureForm(this.artifacts[1], runDataKernelReshape);
     programManager.run(this.artifacts[1], runDataKernelReshape);
     const kernelReshaped = runDataKernelReshape.outputTextureData.tensor;
@@ -72,11 +81,11 @@ export class WebGLConvPacked extends Conv {
     const hasBias = (inputs.length === 3);
     assert(this.artifacts.length > 1, () => 'expect at least 2 artifacts created');
     if (this.artifacts.length === 2) {
-      this.programInfo[2] = matmul.createProgramInfo(
+      this.programInfo[2] = this.matmul.createProgramInfo(
           inferenceHandler, hasBias ? [kernelReshaped, im2colOutput, inputs[2]] : [kernelReshaped, im2colOutput]);
       this.artifacts[2] = programManager.build(this.programInfo[2]);
     }
-    const runDataMatmul = matmul.createRunData(
+    const runDataMatmul = this.matmul.createRunData(
         inferenceHandler, this.programInfo[2],
         hasBias ? [kernelReshaped, im2colOutput, inputs[2]] : [kernelReshaped, im2colOutput]);
     inferenceHandler.checkAndUpdateTextureForm(this.artifacts[2], runDataMatmul);
@@ -85,16 +94,16 @@ export class WebGLConvPacked extends Conv {
 
     // reshape output
     const outputShapeTensor = new Tensor(
-        [outputShape.length], 'int32', undefined, undefined,
-        new Int32Array([outputShape[0], outputShape[1], outputShape[2], outputShape[3]]));
+        [this.outputShape.length], 'int32', undefined, undefined,
+        new Int32Array([this.outputShape[0], this.outputShape[1], this.outputShape[2], this.outputShape[3]]));
 
     assert(this.artifacts.length > 2, () => 'expect at least 3 artifacts created');
     if (this.artifacts.length === 3) {
-      this.programInfo[3] = reshape.createProgramInfo(inferenceHandler, [matmulOutput, outputShapeTensor]);
+      this.programInfo[3] = this.outputReshape.createProgramInfo(inferenceHandler, [matmulOutput, outputShapeTensor]);
       this.artifacts[3] = programManager.build(this.programInfo[3]);
     }
     const runDataOutputReshape =
-        reshape.createRunData(inferenceHandler, this.programInfo[3], [matmulOutput, outputShapeTensor]);
+        this.outputReshape.createRunData(inferenceHandler, this.programInfo[3], [matmulOutput, outputShapeTensor]);
     inferenceHandler.checkAndUpdateTextureForm(this.artifacts[3], runDataOutputReshape);
     programManager.run(this.artifacts[3], runDataOutputReshape);
     return [runDataOutputReshape.outputTextureData.tensor];

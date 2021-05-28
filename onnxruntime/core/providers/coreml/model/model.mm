@@ -219,7 +219,6 @@
                            [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
   }
 
-  //   NSSet<NSString*>* output_feature_names = [output_feature featureNames];
   for (auto& output : outputs) {
     NSString* output_name = [NSString stringWithCString:output.first.c_str()
                                                encoding:[NSString defaultCStringEncoding]];

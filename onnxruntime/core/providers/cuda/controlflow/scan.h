@@ -5,7 +5,6 @@
 #include <functional>
 #include "gsl/gsl"
 
-#include "core/common/common.h"
 #include "core/providers/cpu/controlflow/scan.h"
 
 namespace onnxruntime {

@@ -2,9 +2,8 @@
 // Licensed under the MIT License.
 
 import {expect} from 'chai';
-
+import {env} from 'onnxruntime-common';
 import {Backend, InferenceHandler, resolveBackend, SessionHandler} from '../../../../lib/onnxjs/backend';
-import {WebGLBackend} from '../../../../lib/onnxjs/backends/backend-webgl';
 import {WebGLInferenceHandler} from '../../../../lib/onnxjs/backends/webgl/inference-handler';
 import {WebGLReshapePacked} from '../../../../lib/onnxjs/backends/webgl/ops/reshape-packed';
 import {Profiler} from '../../../../lib/onnxjs/instrument';
@@ -90,6 +89,16 @@ function getTestData(): TestData[] {
       inputShape: [2, 2, 2, 4],
       outputShape: [2, 1, 4, 4],
     },
+    {
+      elementCount: 18432,
+      inputShape: [512, 36, 1, 1],
+      outputShape: [512, 36],
+    },
+    {
+      elementCount: 18432,
+      inputShape: [512, 36],
+      outputShape: [512, 36, 1, 1],
+    },
   ];
 }
 
@@ -101,15 +110,8 @@ describe('#UnitTest# - reshape - packed', () => {
   before('Initialize Context', async () => {
     const profiler = Profiler.create();
     backend = await resolveBackend('webgl');
-    // Explicitly set to true to trigger packed version
-    (backend as WebGLBackend).pack = true;
     sessionhandler = backend.createSessionHandler({profiler});
     inferenceHandler = sessionhandler.createInferenceHandler();
-  });
-
-  // Set it back to false, apparently this state is sticky throughout all the tests running in same browser session..
-  after('Resetting Context', () => {
-    (backend as WebGLBackend).pack = false;
   });
 
   const testDataSet = getTestData();
@@ -122,6 +124,11 @@ describe('#UnitTest# - reshape - packed', () => {
       // TODO support WebGl 1.0
       if (webglInferenceHandler.session.textureManager.glContext.version === 1) {
         console.log('Running packed concat with webgl1 is not supported. Skipping.');
+        return;
+      }
+
+      if (!env.webgl.pack) {
+        console.log('Skipping in unpacked texture mode.');
         return;
       }
 

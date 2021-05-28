@@ -13,9 +13,9 @@ export interface OrtWasmModule extends EmscriptenModule {
   //#endregion
 
   //#region ORT APIs
-  _OrtInit(numThreads: number, loggingLevel: number): void;
+  _OrtInit(numThreads: number, loggingLevel: number): number;
 
-  _OrtCreateSession(dataOffset: number, dataLength: number): number;
+  _OrtCreateSession(dataOffset: number, dataLength: number, sessionOptionsHandle: number): number;
   _OrtReleaseSession(sessionHandle: number): void;
   _OrtGetInputCount(sessionHandle: number): number;
   _OrtGetOutputCount(sessionHandle: number): number;
@@ -27,11 +27,22 @@ export interface OrtWasmModule extends EmscriptenModule {
   _OrtCreateTensor(dataType: number, dataOffset: number, dataLength: number, dimsOffset: number, dimsLength: number):
       number;
   _OrtGetTensorData(tensorHandle: number, dataType: number, dataOffset: number, dimsOffset: number, dimsLength: number):
-      void;
+      number;
   _OrtReleaseTensor(tensorHandle: number): void;
   _OrtRun(
       sessionHandle: number, inputNamesOffset: number, inputsOffset: number, inputCount: number,
-      outputNamesOffset: number, outputCount: number, outputsOffset: number): number;
+      outputNamesOffset: number, outputCount: number, outputsOffset: number, runOptionsHandle: number): number;
+
+  _OrtCreateSessionOptions(
+      graphOptimizationLevel: number, enableCpuMemArena: boolean, enableMemPattern: boolean, executionMode: number,
+      enableProfiling: boolean, profileFilePrefix: number, logId: number, logSeverityLevel: number,
+      logVerbosityLevel: number): number;
+  _OrtAddSessionConfigEntry(sessionOptionsHandle: number, configKey: number, configValue: number): number;
+  _OrtReleaseSessionOptions(sessionOptionsHandle: number): void;
+
+  _OrtCreateRunOptions(logSeverityLevel: number, logVerbosityLevel: number, terminate: boolean, tag: number): number;
+  _OrtAddRunConfigEntry(runOptionsHandle: number, configKey: number, configValue: number): number;
+  _OrtReleaseRunOptions(runOptionsHandle: number): void;
   //#endregion
 
   //#region config

@@ -14,6 +14,25 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
   set(OUTPUT_STYLE xcode)
 endif()
 
+# This macro is to get the path of header files for mobile packaging, for iOS and Android
+macro(get_mobile_api_headers _HEADERS)
+  # include both c and cxx api
+  set(${_HEADERS}
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_c_api.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_api.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
+  )
+
+  # need to add header files for enabled EPs
+  foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
+    file(GLOB _provider_headers CONFIGURE_DEPENDS
+      "${REPO_ROOT}/include/onnxruntime/core/providers/${f}/*.h"
+    )
+    list(APPEND ${_HEADERS} "${_provider_headers}")
+    unset(_provider_headers)
+  endforeach()
+endmacro()
+
 #If you want to verify if there is any extra line in symbols.txt, run
 # nm -C -g --defined libonnxruntime.so |grep -v '\sA\s' | cut -f 3 -d ' ' | sort
 # after build
@@ -39,21 +58,7 @@ if(WIN32)
     "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc"
   )
 elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
-  # include both c and cxx api
-  set(APPLE_FRAMEWORK_HEADERS
-    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_c_api.h"
-    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_api.h"
-    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
-  )
-
-  # need to add header files for enabled EPs
-  foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
-    file(GLOB _provider_headers CONFIGURE_DEPENDS
-      "${REPO_ROOT}/include/onnxruntime/core/providers/${f}/*.h"
-    )
-    list(APPEND APPLE_FRAMEWORK_HEADERS "${_provider_headers}")
-    unset(_provider_headers)
-  endforeach()
+  get_mobile_api_headers(APPLE_FRAMEWORK_HEADERS)
 
   # apple framework requires the header file be part of the library
   onnxruntime_add_shared_library(onnxruntime
@@ -75,6 +80,9 @@ elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
   )
 else()
   onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
+  if (onnxruntime_USE_CUDA)
+    set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker -rpath=\\$ORIGIN")
+  endif()
 endif()
 
 add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
@@ -129,13 +137,24 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Android" OR (onnxruntime_MINIMAL_BUILD AND UNIX))
   endif()
 endif()
 
+# we need to copy C/C++ API headers to be packed into Android AAR package
+if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_BUILD_JAVA)
+  get_mobile_api_headers(ANDROID_AAR_HEADERS)
+  set(ANDROID_HEADERS_DIR ${CMAKE_CURRENT_BINARY_DIR}/android/headers)
+  file(MAKE_DIRECTORY ${ANDROID_HEADERS_DIR})
+  # copy the header files one by one
+  foreach(h_ ${ANDROID_AAR_HEADERS})
+    get_filename_component(HEADER_NAME_ ${h_} NAME)
+    configure_file(${h_} ${ANDROID_HEADERS_DIR}/${HEADER_NAME_} COPYONLY)
+  endforeach()
+endif()
+
 target_link_libraries(onnxruntime PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_COREML}
-    ${PROVIDERS_CUDA}
     ${PROVIDERS_DML}
     ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NNAPI}
