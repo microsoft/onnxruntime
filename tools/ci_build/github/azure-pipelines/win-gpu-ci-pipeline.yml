@@ -95,7 +95,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) $(UseOmp) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_rtti --use_winml  --build_shared_lib --enable_onnx_tests --enable_wcos $(additionalBuildFlags)'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) $(UseOmp) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_rtti --use_winml  --build_shared_lib --enable_onnx_tests --enable_wcos --gen_doc $(additionalBuildFlags)'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
