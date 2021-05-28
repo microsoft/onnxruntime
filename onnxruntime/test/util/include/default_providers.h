@@ -1,9 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #pragma once
+#include "providers.h"
 #include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
+
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options);
+
 namespace test {
 
 // unique_ptr providers with default values for session registration

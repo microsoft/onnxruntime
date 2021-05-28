@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#undef USE_CUDA  // TODO: Cuda is a shared library, so can't call any Cuda provider methods directly from here
 
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
@@ -32,6 +31,7 @@
 #include "core/platform/env.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
+#include "core/providers/cuda/cuda_provider_factory_creator.h"
 #ifdef USE_CUDA
 #include "core/providers/cuda/gpu_data_transfer.h"
 #elif USE_ROCM
@@ -66,6 +66,11 @@ struct KernelRegistryAndStatus {
 };
 }  // namespace
 namespace onnxruntime {
+
+#ifdef USE_CUDA
+ProviderInfo_CUDA* GetProviderInfo_CUDA();
+#endif
+
 class FuseAdd : public OpKernel {
  public:
   explicit FuseAdd(const OpKernelInfo& info) : OpKernel(info) {
@@ -309,7 +314,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
                              &output_ml_value);
     } else if (allocation_provider == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      AllocateMLValue<float>(TestCudaExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), expected_output_dims,
+      AllocateMLValue<float>(DefaultCudaExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), expected_output_dims,
                              &output_ml_value);
 #endif
     } else if (allocation_provider == kRocmExecutionProvider) {
@@ -354,11 +359,11 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
                                                                   shape,
                                                                   cpu_allocator);
 #ifdef USE_CUDA
-    cudaStream_t stream = static_cast<cudaStream_t>(static_cast<const onnxruntime::CUDAExecutionProvider*>(TestCudaExecutionProvider())->GetComputeStream());
+    cudaStream_t stream = static_cast<cudaStream_t>(DefaultCudaExecutionProvider()->GetComputeStream());
 #elif USE_ROCM
     hipStream_t stream = static_cast<hipStream_t>(static_cast<const onnxruntime::ROCMExecutionProvider*>(TestRocmExecutionProvider())->GetComputeStream());
 #endif
-    st = GPUDataTransfer(stream).CopyTensor(rtensor, *cpu_tensor.get(), 0);
+    st = GetProviderInfo_CUDA()->CreateGPUDataTransfer(stream)->CopyTensor(rtensor, *cpu_tensor.get(), 0);
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;
     ml_value.Init(cpu_tensor.release(),
@@ -369,7 +374,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   } else {
     if (allocation_provider == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      TestCudaExecutionProvider()->Sync();
+      DefaultCudaExecutionProvider()->Sync();
 #endif
     } else if (allocation_provider == kRocmExecutionProvider) {
 #ifdef USE_ROCM
@@ -622,9 +627,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
 
   InferenceSession session_object(so, GetEnvironment());
 #ifdef USE_CUDA
-  CUDAExecutionProviderInfo epi;
-  epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()).IsOK());
 #endif
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.Initialize());
@@ -861,9 +864,7 @@ static void TestBindHelper(const std::string& log_str,
 
   if (bind_provider_type == kCudaExecutionProvider || bind_provider_type == kRocmExecutionProvider) {
 #ifdef USE_CUDA
-    CUDAExecutionProviderInfo epi;
-    epi.device_id = 0;
-    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()).IsOK());
 #elif USE_ROCM
     ROCMExecutionProviderInfo epi;
     epi.device_id = 0;
@@ -1481,9 +1482,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   InferenceSession session_object{so, GetEnvironment()};
 
 #ifdef USE_CUDA
-  CUDAExecutionProviderInfo epi;
-  epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()).IsOK());
 #elif USE_ROCM
   ROCMExecutionProviderInfo epi;
   epi.device_id = 0;
@@ -1621,9 +1620,7 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
   InferenceSession session_object{so, GetEnvironment()};
 
 #ifdef USE_CUDA
-  CUDAExecutionProviderInfo epi;
-  epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()).IsOK());
 #elif USE_ROCM
   ROCMExecutionProviderInfo epi;
   epi.device_id = 0;
@@ -1989,9 +1986,7 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
   so.session_logid = "InferenceSessionTests.TestParallelExecutionWithCudaProvider";
   InferenceSession session_object{so, GetEnvironment()};
 
-  CUDAExecutionProviderInfo epi;
-  epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()).IsOK());
 
   ASSERT_STATUS_OK(session_object.Load(model_uri));
 
@@ -2012,12 +2007,13 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
 
   SessionOptions so;
   InferenceSession session_object{so, GetEnvironment()};
-  CUDAExecutionProviderInfo epi;
-  epi.default_memory_arena_cfg = &arena_cfg;
+  OrtCUDAProviderOptions provider_options{};
+  provider_options.default_memory_arena_cfg = &arena_cfg;
+  provider_options.device_id = 0;
+  auto factory = CreateExecutionProviderFactory_Cuda(&provider_options);
 
-  epi.device_id = 0;
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(epi)).IsOK());
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(factory->CreateProvider()).IsOK());
   ASSERT_STATUS_OK(session_object.Initialize());
 
   // Fetch the CUDA allocator to analyze its stats

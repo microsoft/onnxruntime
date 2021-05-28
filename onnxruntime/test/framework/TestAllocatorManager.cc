@@ -1,15 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#undef USE_CUDA  // TODO: Cuda is a shared library, so can't call any Cuda provider methods directly from here
-
 #include "test/framework/TestAllocatorManager.h"
 #include "core/framework/allocatormgr.h"
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_allocator.h"
-#endif  //  USE_CUDA
+#include "core/providers/cuda/cuda_provider_factory.h"
 
 namespace onnxruntime {
+#ifdef USE_CUDA
+ProviderInfo_CUDA* GetProviderInfo_CUDA();
+#endif
 namespace test {
 
 // Dummy Arena which just call underline device allocator directly.
@@ -100,10 +99,10 @@ Status AllocatorManager::InitializeAllocators() {
   auto cpu_alocator = std::make_unique<CPUAllocator>();
   ORT_RETURN_IF_ERROR(RegisterAllocator(map_, std::move(cpu_alocator), std::numeric_limits<size_t>::max(), true));
 #ifdef USE_CUDA
-  auto cuda_alocator = std::make_unique<CUDAAllocator>(static_cast<OrtDevice::DeviceId>(0), CUDA);
+  auto cuda_alocator = GetProviderInfo_CUDA()->CreateCUDAAllocator(static_cast<OrtDevice::DeviceId>(0), CUDA);
   ORT_RETURN_IF_ERROR(RegisterAllocator(map_, std::move(cuda_alocator), std::numeric_limits<size_t>::max(), true));
 
-  auto cuda_pinned_alocator = std::make_unique<CUDAPinnedAllocator>(static_cast<OrtDevice::DeviceId>(0), CUDA_PINNED);
+  auto cuda_pinned_alocator = GetProviderInfo_CUDA()->CreateCUDAPinnedAllocator(static_cast<OrtDevice::DeviceId>(0), CUDA_PINNED);
   ORT_RETURN_IF_ERROR(RegisterAllocator(map_, std::move(cuda_pinned_alocator), std::numeric_limits<size_t>::max(), true));
 #endif  // USE_CUDA
 
