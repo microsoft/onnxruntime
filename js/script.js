@@ -535,16 +535,16 @@ function ot_buildMatcher() {
 var ot_validCombos = {
    //linux
     "ot_linux,ot_PyTorch,ot_X64,ot_CUDA10":
-    "pip install onnxruntime-training",
+    "<b>Stable:</b> pip install onnxruntime-training <br/><br/><b>Nightly:</b> pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_cu102.html",
 
     "ot_linux,ot_PyTorch,ot_X64,ot_CUDA11":
-    "pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_cu111.html",
+    "<b>Stable: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_cu111.html <br/><br/><b>Nightly: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_cu111.html",
 
     "ot_linux,ot_PyTorch,ot_X64,ot_DefaultCPU":
     "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
 
     "ot_linux,ot_PyTorch,ot_X64,ot_AMD":
-    "pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_rocm42.html",
+    "<b>Stable: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_rocm42.html<br/><br/><b>Nightly: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_rocm42.html",
    
     "ot_linux,ot_PyTorch,ot_X64,ot_DNNL":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
@@ -627,10 +627,10 @@ var validCombos = {
     "windows,C#,X64,CUDA":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>",
 
-    "windows,Python(3.6-3.9),X64,CUDA":
+    "windows,Python,X64,CUDA":
         "pip install onnxruntime-gpu",
 
-    "linux,Python(3.6-3.9),ARM64,CUDA":
+    "linux,Python,ARM64,CUDA":
         "For Jetpack 4.4+, follow installation instructions from <a href='https://elinux.org/Jetson_Zoo#ONNX_Runtime' target='_blank'>here</a>",
     
     "linux,C-API,X64,CUDA":
@@ -642,7 +642,7 @@ var validCombos = {
     "linux,C#,X64,CUDA":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>",
 
-    "linux,Python(3.6-3.9),X64,CUDA":
+    "linux,Python,X64,CUDA":
         "pip install onnxruntime-gpu",
 
     "linux,C-API,ARM32,DefaultCPU":
@@ -651,7 +651,7 @@ var validCombos = {
     "linux,C++,ARM32,DefaultCPU":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
 
-    "linux,Python(3.6-3.9),ARM32,DefaultCPU":
+    "linux,Python,ARM32,DefaultCPU":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
 
     "windows,C-API,X64,DefaultCPU":
@@ -708,16 +708,16 @@ var validCombos = {
     "mac,C#,X64,DefaultCPU":
         "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
 
-    "windows,Python(3.6-3.9),X64,DefaultCPU":
+    "windows,Python,X64,DefaultCPU":
         "pip install onnxruntime",
 
-    "mac,Python(3.6-3.9),X64,DefaultCPU":
+    "mac,Python,X64,DefaultCPU":
         "pip install onnxruntime",
 
-    "linux,Python(3.6-3.9),X64,DefaultCPU":
+    "linux,Python,X64,DefaultCPU":
         "pip install onnxruntime",
 
-    "linux,Python(3.6-3.9),ARM64,DefaultCPU":
+    "linux,Python,ARM64,DefaultCPU":
         "pip install onnxruntime",
 
     "windows,C-API,X64,DNNL":
@@ -729,7 +729,7 @@ var validCombos = {
     "windows,C#,X64,DNNL":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
-    "windows,Python(3.6-3.9),X64,DNNL":
+    "windows,Python,X64,DNNL":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
     "linux,C-API,X64,DNNL": 
@@ -741,7 +741,7 @@ var validCombos = {
     "linux,C#,X64,DNNL":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
-    "linux,Python(3.6-3.9),X64,DNNL": 
+    "linux,Python,X64,DNNL": 
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
 
     "windows,C-API,X64,NUPHAR":
@@ -753,7 +753,7 @@ var validCombos = {
     "windows,C#,X64,NUPHAR":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
 
-    "windows,Python(3.6-3.9),X64,NUPHAR":
+    "windows,Python,X64,NUPHAR":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
 
     "linux,C-API,X64,NUPHAR":
@@ -765,7 +765,7 @@ var validCombos = {
     "linux,C#,X64,NUPHAR":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
 
-    "linux,Python(3.6-3.9),X64,NUPHAR":
+    "linux,Python,X64,NUPHAR":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
 
     "linux,C-API,X64,OpenVINO":
@@ -777,7 +777,7 @@ var validCombos = {
     "linux,C#,X64,OpenVINO":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
 
-    "linux,Python(3.6-3.9),X64,OpenVINO":
+    "linux,Python,X64,OpenVINO":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
 
     "windows,C-API,X64,OpenVINO":
@@ -789,7 +789,7 @@ var validCombos = {
     "windows,C#,X64,OpenVINO":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
 
-    "windows,Python(3.6-3.9),X64,OpenVINO":
+    "windows,Python,X64,OpenVINO":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
 
     "windows,C-API,X64,TensorRT":
@@ -801,7 +801,7 @@ var validCombos = {
     "windows,C#,X64,TensorRT":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
 
-    "windows,Python(3.6-3.9),X64,TensorRT":
+    "windows,Python,X64,TensorRT":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
 
     "linux,C-API,X64,TensorRT":
@@ -813,7 +813,7 @@ var validCombos = {
     "linux,C#,X64,TensorRT":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
 
-    "linux,Python(3.6-3.9),X64,TensorRT":
+    "linux,Python,X64,TensorRT":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
 
     "linux,C-API,ARM64,TensorRT":
@@ -825,7 +825,7 @@ var validCombos = {
     "linux,C#,ARM64,TensorRT":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
 
-    "linux,Python(3.6-3.9),ARM64,TensorRT":
+    "linux,Python,ARM64,TensorRT":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-tensorrt' target='_blank'>here</a>",
 
     "mac,C-API,X86,DefaultCPU":
@@ -837,7 +837,7 @@ var validCombos = {
     "mac,C#,X86,DefaultCPU":
         "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/inferencing' target='_blank'>build from source</a>.",
         
-    "mac,Python(3.6-3.9),X86,DefaultCPU":
+    "mac,Python,X86,DefaultCPU":
         "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/inferencing' target='_blank'>build from source</a>.",
 
     "windows,C-API,X86,DirectML":
@@ -849,7 +849,7 @@ var validCombos = {
     "windows,C#,X86,DirectML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
 
-    "windows,Python(3.6-3.9),X86,DirectML":
+    "windows,Python,X86,DirectML":
     "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
     
     "windows,C-API,X64,DirectML":
@@ -861,7 +861,7 @@ var validCombos = {
     "windows,C#,X64,DirectML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
     
-    "windows,Python(3.6-3.9),X64,DirectML":
+    "windows,Python,X64,DirectML":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
         
     "linux,Java,X64,DefaultCPU":
@@ -1032,15 +1032,15 @@ var validCombos = {
         "Available soon through CocoaPods!",
     
     "ios,C-API,ARM64,CoreML":
-        "Available soon through CocoaPods!",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-ios' target='_blank'>here</a>",
     
     "ios,C++,ARM64,CoreML":
-        "Available soon through CocoaPods!",
+        "Follow build instructions from <a href='https://aka.ms/build-ort-ios' target='_blank'>here</a>",
     
     "ios,objectivec,ARM64,DefaultCPU":
         "Available soon through CocoaPods!",
     
-    "windows,Python(3.6-3.9),X86,VitisAI":
+    "windows,Python,X86,VitisAI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
     
     "windows,C-API,X86,VitisAI":
@@ -1049,7 +1049,7 @@ var validCombos = {
     "windows,C++,X86,VitisAI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
     
-    "linux,Python(3.6-3.9),X86,VitisAI":
+    "linux,Python,X86,VitisAI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
     
     "linux,C-API,X86,VitisAI":
@@ -1058,7 +1058,7 @@ var validCombos = {
     "linux,C++,X86,VitisAI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
     
-    "windows,Python(3.6-3.9),X86,MIGraphX":
+    "windows,Python,X86,MIGraphX":
         "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
     
     "windows,C-API,X86,MIGraphX":
@@ -1067,7 +1067,7 @@ var validCombos = {
     "windows,C++,X86,MIGraphX":
         "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
     
-    "linux,Python(3.6-3.9),X86,MIGraphX":
+    "linux,Python,X86,MIGraphX":
         "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
     
     "linux,C-API,X86,MIGraphX":
@@ -1076,7 +1076,7 @@ var validCombos = {
     "linux,C++,X86,MIGraphX":
         "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
     
-    "linux,Python(3.6-3.9),ARM64,ACL":
+    "linux,Python,ARM64,ACL":
         "Follow build instructions from <a href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
     
     "linux,C-API,ARM64,ACL":
@@ -1085,7 +1085,7 @@ var validCombos = {
     "linux,C++,ARM64,ACL":
         "Follow build instructions from <a href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
     
-    "linux,Python(3.6-3.9),ARM32,ACL":
+    "linux,Python,ARM32,ACL":
         "Follow build instructions from <a href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
     
     "linux,C-API,ARM32,ACL":
@@ -1094,7 +1094,7 @@ var validCombos = {
     "linux,C++,ARM32,ACL":
         "Follow build instructions from <a href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
     
-    "linux,Python(3.6-3.9),ARM64,ArmNN":
+    "linux,Python,ARM64,ArmNN":
         "Follow build instructions from <a href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
     
     "linux,C-API,ARM64,ArmNN":
@@ -1103,7 +1103,7 @@ var validCombos = {
     "linux,C++,ARM64,ArmNN":
         "Follow build instructions from <a href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
     
-    "linux,Python(3.6-3.9),ARM32,ArmNN":
+    "linux,Python,ARM32,ArmNN":
         "Follow build instructions from <a href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
     
     "linux,C-API,ARM32,ArmNN":
@@ -1112,7 +1112,7 @@ var validCombos = {
     "linux,C++,ARM32,ArmNN":
         "Follow build instructions from <a href='https://aka.ms/build-ort-armnn' target='_blank'>here</a>",
     
-    "linux,Python(3.6-3.9),ARM64,RockchipNPU":
+    "linux,Python,ARM64,RockchipNPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-rknpu' target='_blank'>here</a>",
     
     "linux,C-API,ARM64,RockchipNPU":
