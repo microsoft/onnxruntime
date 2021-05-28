@@ -2785,7 +2785,7 @@ Return true if all elements are true and false otherwise.
         static size_t rank_count = 0;
         // Set inferred output types.
         for (auto i = 1; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
-          updateOutputElemType(ctx, i, output_tensor_types_proto->ints().at(i - 1));
+          updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i - 1)));
 
           // Create symbolic shape.
           const auto output_tensor_ranks = ctx.getAttribute("output_tensor_ranks");
@@ -2909,7 +2909,7 @@ Return true if all elements are true and false otherwise.
         // Set inferred output types.
         static size_t rank_count = 0;
         for (auto i = 0; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
-          updateOutputElemType(ctx, i, output_tensor_types_proto->ints().at(i));
+          updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i)));
           const auto output_tensor_ranks = ctx.getAttribute("output_tensor_ranks");
           ONNX_NAMESPACE::TensorShapeProto rank_only_shape;
           for (int64_t j = 0; j < output_tensor_ranks->ints().at(i); ++j) {
