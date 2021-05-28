@@ -109,3 +109,10 @@ def _to_contiguous(tensors):
         contiguous_tensors.append(_contiguous_tensor)
 
     return contiguous_tensors
+
+class _PytorchModuleMetadata():
+    """Encapsulates modules and allows easy access as required"""
+
+    def __init__(self, original_module, flattened_module):
+        self.original_module = original_module
+        self.flattened_module = flattened_module
