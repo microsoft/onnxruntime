@@ -3,6 +3,7 @@
 
 # Import external libraries.
 import copy
+import onnxruntime
 import os
 import pytest
 import threading
@@ -15,6 +16,7 @@ from onnxruntime.training.ortmodule import ORTModule
 from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory 
 
 torch.manual_seed(1)
+onnxruntime.set_seed(1)
 
 
 def set_onnx_fallthrough_export_type(module):
