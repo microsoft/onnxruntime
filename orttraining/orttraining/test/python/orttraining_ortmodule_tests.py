@@ -78,14 +78,12 @@ def run_ortmodule_hf_bert_for_sequence_classification_from_pretrained(cwd, log, 
     run_subprocess(command, cwd=cwd, log=log, env=env).check_returncode()
 
 
-def run_ortmodule_custom_autograd_tests(cwd, log, transformers_cache):
+def run_ortmodule_custom_autograd_tests(cwd, log):
     log.debug('Running: ORTModule-Custom AutoGrad Functions tests')
-
-    env = get_env_with_transformers_cache(transformers_cache)
 
     command = [sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_ortmodule_autograd.py']
 
-    run_subprocess(command, cwd=cwd, log=log, env=env).check_returncode()
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
 
@@ -110,6 +108,7 @@ def main():
     # TODO: flaky test. Temporary disabling for further investigation
     # run_ortmodule_torch_lightning(cwd, log, args.mnist)
 
+    run_ortmodule_custom_autograd_tests(cwd, log)
     return 0
 
 

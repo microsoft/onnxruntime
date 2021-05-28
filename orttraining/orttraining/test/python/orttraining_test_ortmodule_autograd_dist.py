@@ -26,6 +26,13 @@ torch.manual_seed(1)
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.training.ortmodule import ORTModule
+from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory 
+
+def set_onnx_fallthrough_export_type(module):
+    onnx_export_type = torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH
+    onnx_export_type = torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH
+    module._execution_manager = GraphExecutionManagerFactory(
+        module._module_metadata.flattened_module, onnx_export_type=onnx_export_type)
 
 import pytest
 import _test_helpers
@@ -59,7 +66,8 @@ def run_with_ort_on_gpu(model, input_list, output_shape, rank, optimizer):
     print('Use ORTModule for CUDA run....')
     device = torch.device('cuda:' + str(rank))
     model.to(device)
-    model = ORTModule(model, torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH)
+    model = ORTModule(model)
+    set_onnx_fallthrough_export_type(model)
     model = DDP(model, device_ids=[rank])
     inputs_on_cuda = [input_.to(device) for input_ in input_list]
     output = model(*inputs_on_cuda)

@@ -10,7 +10,10 @@
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
 
+#ifdef ENABLE_TRAINING
 #include "core/dlpack/dlpack_converter.h"
+#endif
+
 #include "core/framework/ml_value.h"
 #include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
