@@ -7,7 +7,6 @@ from pathlib import Path
 class ONNXModel:
     def __init__(self, model):
         self.model = model
-        self.node_name_counter = {}
 
     def nodes(self):
         return self.model.graph.node
