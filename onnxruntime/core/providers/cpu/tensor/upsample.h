@@ -18,8 +18,8 @@ constexpr const char* UpsampleModeCubic = "cubic";
 // is a 4x4 matrix
 const size_t CubicModeGridLength = 4;
 
-using GetNearestPixelFunc = std::function<int64_t(float, bool)>;
-using GetOriginalCoordinateFunc = std::function<float(float, float, float, float, float, float)>;
+using GetNearestPixelFunc = int64_t(*)(float, bool);
+using GetOriginalCoordinateFunc = float (*)(float, float, float, float, float, float);
 
 enum UpsampleMode {
   NN = 0,      // nearest neighbour
@@ -194,7 +194,7 @@ class UpsampleBase {
       ResizeCoordinateTransformationMode coordinate_transform_mode) {
     switch (coordinate_transform_mode) {
       case ASYMMETRIC:
-        return [](float x_resized, float x_scale, float, float, float, float) {
+        return [](float x_resized, float x_scale, float, float, float, float) -> float {
           return x_resized / x_scale;
         };
       case PYTORCH_HALF_PIXEL:
