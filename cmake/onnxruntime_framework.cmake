@@ -1,6 +1,20 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+if (onnxruntime_ENABLE_TRAINING)
+  if(NOT PYTHON_INCLUDE_DIR)
+    set(PYTHON_NOT_FOUND false)
+    exec_program("${PYTHON_EXECUTABLE}"
+      ARGS "-c \"import distutils.sysconfig; print(distutils.sysconfig.get_python_inc())\""
+      OUTPUT_VARIABLE PYTHON_INCLUDE_DIR
+      RETURN_VALUE PYTHON_NOT_FOUND)
+    if(${PYTHON_NOT_FOUND})
+      message(FATAL_ERROR
+              "Cannot get Python include directory. Is distutils installed?")
+    endif(${PYTHON_NOT_FOUND})
+  endif(NOT PYTHON_INCLUDE_DIR)
+endif()
+
 file(GLOB_RECURSE onnxruntime_framework_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_INCLUDE_DIR}/core/framework/*.h"
     "${ONNXRUNTIME_ROOT}/core/framework/*.h"
