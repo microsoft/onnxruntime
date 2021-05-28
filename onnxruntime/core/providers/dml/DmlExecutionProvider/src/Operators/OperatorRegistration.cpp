@@ -67,7 +67,6 @@ struct OperatorRegistrationInformation
     MLOperatorKernelCreateFn creationFunction;
     MLOperatorShapeInferenceFunction shapeInferenceFunction;
     bool canAliasFirstInput;
-    bool requiresFloatFormatsForGraph = false;
 
     gsl::span<char const* const> tensorTypeNames;
     gsl::span<const SupportedTensorDataTypes> supportedTensorDataTypes;
@@ -325,26 +324,26 @@ constexpr auto requiredConstantCpuInputs(Args... args)
 
 // Define a single row of registration information.
 #define REG_INFO(version, operatorName, ...) \
-    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, false, ##__VA_ARGS__, 
+    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, ##__VA_ARGS__, 
 
 // Versioned operator
 #define REG_INFO_VER(version, operatorName, ...) \
-    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, Create##operatorName##version, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName##version>, false, false, ##__VA_ARGS__, 
+    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, Create##operatorName##version, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName##version>, false, ##__VA_ARGS__, 
 
 // Identity operators use Copy, alias their first input, and require floating point formats
 // for usage in the graph, besides constant inputs.  This is because they currently use 
 // element-wise identity operators in the graph for striding support, but issue actual copies 
 // outside the graph.  Element-wise identity currently only supports floating point types.  
 #define REG_INFO_ID(version, operatorName, ...) \
-    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, CreateCopy, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, true, true, ##__VA_ARGS__, 
+    #operatorName, OnnxOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kOnnxDomain, CreateCopy, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, true, ##__VA_ARGS__, 
 
 // MS-domain operators
 #define REG_INFO_MS(version, operatorName, ...) \
-    #operatorName, MsftOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kMSDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, false, ##__VA_ARGS__, 
+    #operatorName, MsftOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kMSDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, ##__VA_ARGS__, 
 
 // MS-domain operators
 #define REG_INFO_MSDML(version, operatorName, ...) \
-    #operatorName, MsftOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kMSDmlDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, false, ##__VA_ARGS__, 
+    #operatorName, MsftOperatorSet##version::sc_sinceVer_##operatorName, onnxruntime::kMSDmlDomain, Create##operatorName, ShapeInferenceFunction<ShapeInferenceHelper_##operatorName>, false, ##__VA_ARGS__, 
 
 constexpr static OperatorRegistrationInformation operatorRegistrationInformationTable[] =
 {
@@ -703,7 +702,6 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
             information.canAliasFirstInput, // alias
             kernelSupportsGraph, // supportsGraph
             information.requiredInputCountForDmlGraphSupport ? &(*information.requiredInputCountForDmlGraphSupport) : nullptr,
-            information.requiresFloatFormatsForGraph,
             supportedWith64BitTensorsVia32BitStrides,
             supportedWith64BitTensorsVia32BitStridesFromAnyEp,
             prefer64BitTensorsDirectly,
