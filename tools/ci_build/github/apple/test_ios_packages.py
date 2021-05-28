@@ -39,7 +39,7 @@ def _test_ios_packages(args):
         local_pods_dir = os.path.join(temp_dir, 'local_pods')
         os.makedirs(local_pods_dir, exist_ok=True)
         # shutil.make_archive require target file as full path without extension
-        zip_base_filename = os.path.join(local_pods_dir, 'OnnxRuntimeBase')
+        zip_base_filename = os.path.join(local_pods_dir, 'onnxruntime-mobile')
         zip_file_path = zip_base_filename + '.zip'
         shutil.make_archive(zip_base_filename, 'zip', root_dir=c_framework_dir, base_dir='onnxruntime.framework')
 
@@ -49,13 +49,13 @@ def _test_ios_packages(args):
         shutil.copytree(test_proj_path, target_proj_path)
 
         # update the podspec to point to the local framework zip file
-        local_podspec_path = os.path.join(target_proj_path, 'OnnxRuntimeBase.podspec')
-        local_podspec_template = os.path.join(target_proj_path, 'OnnxRuntimeBase.podspec.template')
+        local_podspec_path = os.path.join(target_proj_path, 'onnxruntime-mobile.podspec')
+        local_podspec_template = os.path.join(target_proj_path, 'onnxruntime-mobile.podspec.template')
         with open(local_podspec_template, 'r') as file:
             file_data = file.read()
 
         # replace the target strings
-        file_data = file_data.replace('${ORT_BASE_FRAMEWORK_ARCHIVE}', zip_file_path)
+        file_data = file_data.replace('${ORT_BASE_FRAMEWORK_ARCHIVE}', 'file:' + zip_file_path)
         with open(os.path.join(REPO_DIR, 'VERSION_NUMBER')) as version_file:
             file_data = file_data.replace('${ORT_VERSION}', version_file.readline().strip())
 

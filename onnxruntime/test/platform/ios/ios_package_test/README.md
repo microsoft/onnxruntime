@@ -33,8 +33,8 @@ Use the [build for iOS simulator](http://www.onnxruntime.ai/docs/how-to/build/an
 ### Steps
 
 1. Go to this folder
-2. Copy the [OnnxRuntimeBase.podspec.template](./OnnxRuntimeBase.podspec.template) to `OnnxRuntimeBase.podspec`
-3. Update the `OnnxRuntimeBase.podspec`, replace `${ORT_BASE_FRAMEWORK_ARCHIVE}` with the path of a zip archive contains the pre-built ORT Mobile iOS framework
+2. Copy the [onnxruntime-mobile.podspec.template](./onnxruntime-mobile.podspec.template) to `onnxruntime-mobile.podspec`
+3. Update the `onnxruntime-mobile.podspec`, replace `${ORT_BASE_FRAMEWORK_ARCHIVE}` with the path of a zip archive contains the pre-built ORT Mobile iOS framework
 4. Run `pod install` to install the pre-built ORT Mobile iOS framework
 5. Run the following command to perform the test
 

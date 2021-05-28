@@ -5,7 +5,7 @@ target 'ios_package_test' do
   use_frameworks!
 
   # Pods for ios_package_test
-  pod 'OnnxRuntimeBase', :podspec  => './OnnxRuntimeBase.podspec'
+  pod 'onnxruntime-mobile', :podspec  => './onnxruntime-mobile.podspec'
 
   target 'ios_package_testTests' do
     inherit! :search_paths
