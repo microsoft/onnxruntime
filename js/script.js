@@ -22,7 +22,7 @@ var ot_opts = {
     ot_os: 'ot_linux',
     ot_architecture: 'ot_X64',
     ot_language: 'ot_PyTorch',
-    ot_hardwareAcceleration: 'ot_CUDA1010',
+    ot_hardwareAcceleration: 'ot_CUDA10',
 };
 
 var os = $(".os > .r-option");
@@ -547,33 +547,33 @@ var ot_validCombos = {
     "pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_rocm42.html",
    
     "ot_linux,ot_PyTorch,ot_X64,ot_DNNL":
-    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
    
     "ot_linux,ot_C++,ot_X64,ot_CUDA10":
-    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
 
     "ot_linux,ot_C++,ot_X64,ot_DefaultCPU":
-    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
     
     //windows
     "ot_windows,ot_PyTorch,ot_X64,ot_CUDA10":
-    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
 
     "ot_windows,ot_PyTorch,ot_X64,ot_DefaultCPU":
-    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
 
     "ot_windows,ot_C++,ot_X64,ot_DefaultCPU":
-    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
 
     "ot_windows,ot_C++,ot_X64,ot_CUDA10":
-    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
 
     //mac
     "ot_mac,ot_PyTorch,ot_X64,ot_DefaultCPU":
-    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>.",
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
 
     "ot_mac,ot_C++,ot_X64,ot_DefaultCPU":
-    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build.html#training' target='_blank'>build from source</a>."
+    "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>."
 };
 
 function ot_commandMessage(key) {
@@ -743,30 +743,6 @@ var validCombos = {
 
     "linux,Python(3.6-3.9),X64,DNNL": 
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-mkldnn' target='_blank'>here</a>",
-
-    "linux,C-API,X64,nGraph":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
-
-    "linux,C++,X64,nGraph":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
-
-    "linux,C#,X64,nGraph":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
-
-    "linux,Python(3.6-3.9),X64,nGraph":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
-
-    "windows,C-API,X64,nGraph":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
-
-    "windows,C++,X64,nGraph":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
-
-    "windows,C#,X64,nGraph":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
-
-    "windows,Python(3.6-3.9),X64,nGraph":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-ngraph' target='_blank'>here</a>",
 
     "windows,C-API,X64,NUPHAR":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-nuphar' target='_blank'>here</a>",
