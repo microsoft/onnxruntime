@@ -3,12 +3,30 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import onnxruntime
 import sys
 import torch
 
 from torch.utils.dlpack import from_dlpack, to_dlpack
-from . import _utils
+
+
+def wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace_flag, training_mode_flag, arg):
+    if tensor_flag:
+        # Got a tensor. Assume it's a DLPack tensor
+        # and convert it to Pytorch tensor.
+        if not inplace_flag:
+            wrapped_arg = from_dlpack(arg)
+        else:
+            wrapped_arg = from_dlpack(arg).detach().contiguous()
+
+        if training_mode_flag and grad_flag:
+            wrapped_arg.requires_grad = True
+        else:
+            wrapped_arg.requires_grad = False
+
+        return wrapped_arg
+    else:
+        # Use non-tensor as is. It's a PyObject*.
+        return arg
 
 
 def call_python_forward_function(
@@ -18,66 +36,68 @@ def call_python_forward_function(
         is_training_mode,
         inplace,
         *args):
-    try:
-        wrapped_args = []
-        for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, args):
-            if tensor_flag:
-                # Got a tensor. Assume it's a DLPack tensor
-                # and convert it to Pytorch tensor.
-                if not inplace:
-                    wrapped_arg = from_dlpack(arg)
-                else:
-                    wrapped_arg = from_dlpack(arg).detach().contiguous()
+    def generate_non_leaf_or_not(grad_flag, tensor_flag, arg):
+        if tensor_flag and grad_flag:
+            # "multiply one" helps change the torch tensor's is_leaf to be False.
+            # This is required when the torch tensor is updated in-place during forward pass.
+            # We cannot use view here, because PyTorch handels grad_fn for view differently.
+            non_leaf_arg = arg * arg.new_ones((1,))
+            return non_leaf_arg
+        else:
+            return arg
 
-                if is_training_mode and grad_flag:
-                    wrapped_arg.requires_grad = True
-                else:
-                    wrapped_arg.requires_grad = False
-
-                wrapped_args.append(wrapped_arg)
+    def wrap_all_outputs(result, training_mode_flag):
+        def extract_context(result):
+            # Search for context among all outputs.
+            ctx = None
+            for arg in result:
+                if not isinstance(arg, torch.Tensor) or not hasattr(arg, 'grad_fn'):
+                    continue
+                # Use the first context we see because all of arg's
+                # share the same one.
+                ctx = arg.grad_fn
+                break
+            if training_mode_flag:
+                # Must extract one valid context from result tensors.
+                assert ctx is not None
             else:
-                # Use non-tensor as is. It's a PyObject*.
-                wrapped_args.append(arg)
+                # Context must not present under non-training mode.
+                assert ctx is None
 
-        unwrapped_values = []
-        ctx = None
+            return ctx
+
+        if isinstance(result, torch.Tensor):
+            ctx = extract_context([result])
+            return [ctx, to_dlpack(result)]
+        elif isinstance(result, tuple) or isinstance(result, list):
+            ctx = extract_context(result)
+            wrapped = [ctx]
+            wrapped.extend(list(to_dlpack(value) for value in result))
+            # Inside the returned list, first element is context and the rest
+            # are DLPack tensors.
+            return wrapped
+        else:
+            raise Exception('Unsupported returned type: ', type(result))
+
+    try:
+        wrapped_args = list(wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace, is_training_mode, arg)
+                            for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, args))
+
         with torch.enable_grad():
-            new_wrapped_args = []
-            for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, wrapped_args):
-                if tensor_flag and grad_flag:
-                    # "multiply one" helps change the torch tensor's is_leaf to be False.
-                    # This is required when the torch tensor is updated in-place during forward pass.
-                    # We cannot use view here, because PyTorch handels grad_fn for view differently.
-                    non_leaf_arg = arg * arg.new_ones((1,))
-                    new_wrapped_args.append(non_leaf_arg)
-                else:
-                    new_wrapped_args.append(arg)
+            # Another level of wrap to avoid requires_grad=True for leaf variables.
+            new_wrapped_args = list(generate_non_leaf_or_not(grad_flag, tensor_flag, arg)
+                                    for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, wrapped_args))
+
+            # Run autograd.Function.apply(...).
             result = forward_function(*new_wrapped_args)
 
-            if isinstance(result, torch.Tensor):
-                ctx = result.grad_fn
-                unwrapped_values = [ctx, to_dlpack(result)]
-            elif isinstance(result, tuple) or isinstance(result, list):
-                ctx = result[0].grad_fn
-                unwrapped_values.append(ctx)
-                for value in result:
-                    if not isinstance(value, torch.Tensor):
-                        raise Exception('Unsupported returned element type: ', type(
-                            value), ' by calling ', forward_function)
-                    unwrapped_values.append(to_dlpack(value))
-            else:
-                raise Exception('Unsupported returned type: ', type(
-                    result), ' by calling ', forward_function)
-
-        if is_training_mode:
-            # Must extract one valid context from result tensors.
-            assert ctx is not None
-        else:
-            assert ctx is None
+            # Extract results as DLPack tensors plus autograd context. Also skips all None values.
+            unwrapped_values = wrap_all_outputs(result, is_training_mode)
 
         return tuple(unwrapped_values)
     except:
         # Flush buffers. Otherwise, calling this from C++ may lose them.
+        print('Exception happens when running ', forward_function)
         sys.stdout.flush()
         sys.stderr.flush()
         raise
@@ -90,47 +110,29 @@ def call_python_backward_function(
         is_training_mode,
         inplace,
         *args):
-    try:
-        wrapped_args = []
-        for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, args):
-            if tensor_flag:
-                # Got a tensor. Assume it's a DLPack tensor
-                # and convert it to Pytorch tensor.
-                #wrapped_arg = from_dlpack(arg).clone().contiguous()
-                if not inplace:
-                    wrapped_arg = from_dlpack(arg).contiguous()
-                else:
-                    wrapped_arg = from_dlpack(arg).detach().contiguous()
-
-
-                if is_training_mode and grad_flag:
-                    wrapped_arg.requires_grad = True
-                else:
-                    wrapped_arg.requires_grad = False
-                wrapped_args.append(wrapped_arg)
-            else:
-                # Use non-tensor as is. It's a PyObject*.
-                wrapped_args.append(arg)
-
-        unwrapped_values = []
-        result = backward_function(*wrapped_args)
+    def wrap_all_outputs(result):
         if isinstance(result, torch.Tensor):
-            unwrapped_values = [to_dlpack(result)]
+            return [to_dlpack(result)]
         elif isinstance(result, tuple) or isinstance(result, list):
-            for value in result:
-                if value is None:
-                    continue
-                if not isinstance(value, torch.Tensor):
-                    raise Exception('Unsupported returned element type: ', type(
-                        value), ' by calling ', backward_function)
-                unwrapped_values.append(to_dlpack(value))
+            return [to_dlpack(value) for value in result if value is not None]
         else:
-            raise Exception('Unsupported returned type: ', type(
-                result), ' by calling ', backward_function)
+            raise Exception('Unsupported returned type: ', type(result))
 
-        return tuple(unwrapped_values)
+    try:
+        # Prepare inputs for calling Python function.
+        wrapped_args = list(wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace, is_training_mode, arg)
+                            for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, args))
+
+        # Call Python function.
+        result = backward_function(*wrapped_args)
+
+        # Extract results as DLPack tensor list.
+        wrapped_returned_args = wrap_all_outputs(result)
+
+        return tuple(wrapped_returned_args)
     except:
         # Flush buffers. Otherwise, calling this from C++ may lose them.
+        print('Exception happens when running ', backward_function)
         sys.stdout.flush()
         sys.stderr.flush()
         raise
