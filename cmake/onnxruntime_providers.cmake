@@ -216,6 +216,7 @@ if (onnxruntime_ENABLE_TRAINING)
   add_dependencies(onnxruntime_providers tensorboard)
   onnxruntime_add_include_to_target(onnxruntime_providers tensorboard)
   target_include_directories(onnxruntime_providers PRIVATE ${PYTHON_INCLUDE_DIRS})
+  target_link_libraries(onnxruntime_providers PRIVATE ${PYTHON_LIBRARIES})
 
   if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)
     target_include_directories(onnxruntime_providers PUBLIC ${MPI_CXX_INCLUDE_DIRS})
