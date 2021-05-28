@@ -1385,8 +1385,9 @@ if (onnxruntime_USE_CUDA)
   endif()
   enable_language(CUDA)
   message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
-
-  set(CMAKE_CUDA_STANDARD 14)
+  if (NOT WIN32)
+    set(CMAKE_CUDA_STANDARD 14)
+  endif()
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
 
