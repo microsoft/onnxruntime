@@ -3,6 +3,7 @@
 
 #include <memory>
 #include "default_providers.h"
+#include "providers.h"
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
 #ifdef USE_ROCM
 #include "core/providers/rocm/rocm_provider_factory_creator.h"
