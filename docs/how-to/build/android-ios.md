@@ -8,7 +8,7 @@ grand_parent: How to
 # Build ONNX Runtime for Android and iOS
 {: .no_toc }
 
-Below are pure build instructions for Android and iOS. For instructions on fully deploying ONNX Runtime on mobile platforms (includes overall smaller package size and other configurations), see [How to: Deploy on mobile](../deploy-on-mobile.md).
+Below are general build instructions for Android and iOS. For instructions on fully deploying ONNX Runtime on mobile platforms (includes overall smaller package size and other configurations), see [How to: Deploy on mobile](../mobile).
 
 ## Contents
 {: .no_toc }
@@ -35,18 +35,16 @@ Resources:
 1. [Install](https://developer.android.com/studio) Android Studio
 
 2. Install any additional SDK Platforms if necessary
-
-* File->Settings->Appearance & Behavior->System Settings->Android SDK to see what is currently installed
-* Note that the SDK path you need to use as --android_sdk_path when building ORT is also on this configuration page
-* Most likely you don't require additional SDK Platform packages as the latest platform can target earlier API levels.
+  * File->Settings->Appearance & Behavior->System Settings->Android SDK to see what is currently installed
+  * Note that the SDK path you need to use as --android_sdk_path when building ORT is also on this configuration page
+  * Most likely you don't require additional SDK Platform packages as the latest platform can target earlier API levels.
 
 3. Install an NDK version
-
-* File->Settings->Appearance & Behavior->System Settings->Android SDK
-* 'SDK Tools' tab
-  * Select 'Show package details' checkbox at the bottom to see specific versions. By default the latest will be installed which should be fine.
-* The NDK path will be the 'ndk/{version}' subdirectory of the SDK path shown
-  * e.g. if 21.1.6352462 is installed it will be {SDK path}/ndk/21.1.6352462
+  * File->Settings->Appearance & Behavior->System Settings->Android SDK
+  * 'SDK Tools' tab
+    * Select 'Show package details' checkbox at the bottom to see specific versions. By default the latest will be installed which should be fine.
+  * The NDK path will be the 'ndk/{version}' subdirectory of the SDK path shown
+    * e.g. if 21.1.6352462 is installed it will be {SDK path}/ndk/21.1.6352462
 
 #### sdkmanager from command line tools
 
@@ -124,7 +122,7 @@ To build on Windows with `--build_java` enabled you must also:
 
 ### Android NNAPI Execution Provider
 
-If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Provider](../../reference/execution-providers/NNAPI-ExecutionProvider.md).
+If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Provider](../../reference/execution-providers/NNAPI-ExecutionProvider).
 
 #### Build Instructions
 
@@ -163,6 +161,11 @@ Android NNAPI Execution Provider can be built using building commands in [Androi
 * Code Signing
 
   If the development team ID which has a valid code signing certificate is specified, Xcode will code sign the onnxruntime library in the building process, otherwise, the onnxruntime will be built without code signing. It may be required or desired to code sign the library for iOS devices. For more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
+
+### CoreML Execution Provider
+
+If you want to use CoreML Execution Provider on iOS or macOS, see [CoreML Execution Provider](../../reference/execution-providers/CoreML-ExecutionProvider).
+
 
 ### Build Instructions
 

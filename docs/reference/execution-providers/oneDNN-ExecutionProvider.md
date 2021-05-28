@@ -2,7 +2,6 @@
 title: Intel oneDNN
 parent: Execution Providers
 grand_parent: Reference
-nav_order: 5
 ---
 
 # oneDNN Execution Provider
