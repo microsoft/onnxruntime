@@ -3,38 +3,26 @@
 
 
 import copy
+import onnxruntime
 import os
 import sys
-import onnx
-import numpy as np
-import threading
-
 import torch
-from torch.nn.parameter import Parameter
-from torch.utils.dlpack import from_dlpack, to_dlpack
-from torch import optim
-import torch.nn.functional as F
-# distributed requirements start
-import torch.multiprocessing as mp
 import torch.distributed as dist
-from torch.multiprocessing import Process
+import torch.multiprocessing as mp
+from onnxruntime.training.ortmodule import ORTModule
+from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory
 from torch.nn.parallel import DistributedDataParallel as DDP
-# distributed requirements end
+from torch.nn.parameter import Parameter
 
 torch.manual_seed(1)
+onnxruntime.set_seed(1)
 
-from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
-from onnxruntime.capi import _pybind_state as C
-from onnxruntime.training.ortmodule import ORTModule
-from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory 
 
 def set_onnx_fallthrough_export_type(module):
     onnx_export_type = torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH
     module._execution_manager = GraphExecutionManagerFactory(
         module._module_metadata.flattened_module, onnx_export_type=onnx_export_type)
 
-import pytest
-import _test_helpers
 
 def _reduce(input_):
     """All-reduce the the input tensor across model parallel group."""
@@ -43,26 +31,25 @@ def _reduce(input_):
     torch.distributed.all_reduce(input_)
     address_for_output_torch_tensor = int(id(input_))
     if address_for_output_torch_tensor != address_for_torch_tensor:
-        raise ValueError("The output torch tensor should reuse the input torch tensor, but actually not.")
-    else:
-        print("!!!!!!!!!!!torch.distributed.all_reduce operates inplace")
+        raise ValueError(
+            "The output torch tensor should reuse the input torch tensor, but actually not.")
     return input_
 
+
 def run_with_pytorch_on_gpu(model, input_list, output_shape, device, optimizer):
-    print('Use PyTorch for CUDA run....')
     model.to(device)
     inputs_on_cuda = [input_.to(device) for input_ in input_list]
     output = model(*inputs_on_cuda)
     criterion = torch.nn.MSELoss()
 
-    target=torch.ones(*output_shape).to(device)
+    target = torch.ones(*output_shape).to(device)
     loss = criterion(output, target)
     loss.backward()
     torch.cuda.synchronize()
     return output, [input_.grad for input_ in inputs_on_cuda if input_.requires_grad is True]
 
+
 def run_with_ort_on_gpu(model, input_list, output_shape, rank, optimizer):
-    print('Use ORTModule for CUDA run....')
     device = torch.device('cuda:' + str(rank))
     model.to(device)
     model = ORTModule(model)
@@ -72,17 +59,10 @@ def run_with_ort_on_gpu(model, input_list, output_shape, rank, optimizer):
     output = model(*inputs_on_cuda)
     criterion = torch.nn.MSELoss()
 
-    target=torch.ones(*output_shape).to(device)
+    target = torch.ones(*output_shape).to(device)
     loss = criterion(output, target)
     loss.backward()
 
-    # size = float(dist.get_world_size())
-    # for param in model.parameters():
-    #     print(param.grad.data)
-    #     dist.all_reduce(param.grad.data, op=dist.reduce_op.SUM)
-    #     param.grad.data /= size
-
-    # optimizer.step()
     torch.cuda.synchronize(device)
     grad_outputs = []
     for name, param in model.named_parameters():
@@ -90,18 +70,18 @@ def run_with_ort_on_gpu(model, input_list, output_shape, rank, optimizer):
             grad_outputs.append(param.grad)
     return output, grad_outputs
 
-def compare_tensor_list(val_list_a, val_list_b):
-    for val_a, val_b in zip(val_list_a,val_list_b):
-        _test_helpers.assert_values_are_close(val_a, val_b, atol=1e-7, rtol=1e-6)
 
-#####################################################################################################
+def compare_tensor_list(val_list_a, val_list_b):
+    for val_a, val_b in zip(val_list_a, val_list_b):
+        _test_helpers.assert_values_are_close(
+            val_a, val_b, atol=1e-7, rtol=1e-6)
+
 
 class ReduceWithMarkDirtyFunction(torch.autograd.Function):
     """All-reduce the input from the model parallel region."""
 
     @staticmethod
     def forward(ctx, input_):
-        print("ReduceWithMarkDirtyFunction(torch.autograd.Function) forward")
         ctx.save_for_backward(input_)
         ctx.mark_dirty(input_)
         return _reduce(input_)
@@ -109,6 +89,7 @@ class ReduceWithMarkDirtyFunction(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         return grad_output.add(1.0)
+
 
 class ReduceWithMarkDirtyModel(torch.nn.Module):
     def __init__(self, output_size):
@@ -123,7 +104,6 @@ class ReduceWithMarkDirtyModel(torch.nn.Module):
         with torch.no_grad():
             self.bias.zero_()
             # self.bias.uniform_()
-            print(self.bias)
 
     def forward(self, model_input):
         x = model_input + self.bias
@@ -131,6 +111,7 @@ class ReduceWithMarkDirtyModel(torch.nn.Module):
         y2 = x.add(self.bias)
         out = x + y1 + y2
         return out
+
 
 def test_Distributed_ReduceWithMarkDirtyModel(rank, size):
     try:
@@ -146,13 +127,14 @@ def test_Distributed_ReduceWithMarkDirtyModel(rank, size):
         x_copy = copy.deepcopy(x)
         m = ReduceWithMarkDirtyModel(output_size)
 
-        outputs, grads = run_with_pytorch_on_gpu(m, [x], [output_size], rank, None)
+        outputs, grads = run_with_pytorch_on_gpu(
+            m, [x], [output_size], rank, None)
         torch.cuda.synchronize()
 
         pt_ort_m = copy.deepcopy(m)
-        outputs_ort, grads_ort = run_with_ort_on_gpu(pt_ort_m, [x_copy], [output_size], rank, None)
+        outputs_ort, grads_ort = run_with_ort_on_gpu(
+            pt_ort_m, [x_copy], [output_size], rank, None)
         torch.cuda.synchronize()
-        print("Rank {}:".format(rank), outputs_ort, grads_ort)
 
         val_list_a = [o.detach().cpu() for o in outputs if o is not None]
         val_list_b = [o.detach().cpu() for o in outputs_ort if o is not None]
@@ -162,14 +144,17 @@ def test_Distributed_ReduceWithMarkDirtyModel(rank, size):
         val_list_b = [o.detach().cpu() for o in grads_ort if o is not None]
         compare_tensor_list(val_list_a, val_list_b)
         return 0
-    except Exception as e:
-        print("test_Distributed_ReduceWithMarkDirtyModel:", e)
-        return 0 
+    except:
+        print(
+            f"test_Distributed_ReduceWithMarkDirtyModel fail with rank {rank} with world size {size}.")
+        raise
+
 
 if __name__ == "__main__":
     size = 2
     try:
-        mp.spawn(test_Distributed_ReduceWithMarkDirtyModel, nprocs=size, args=(size,))
+        mp.spawn(test_Distributed_ReduceWithMarkDirtyModel,
+                 nprocs=size, args=(size,))
     except:
         import sys
         sys.stdout.flush()
