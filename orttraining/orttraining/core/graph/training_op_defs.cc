@@ -2757,9 +2757,10 @@ Return true if all elements are true and false otherwise.
         ORT_ENFORCE(input_tensor_types_proto, "PythonOp's must have \"input_tensor_types\" attribute.");
         // Check if the inferred input types match those described in the
         // "input_tensor_types" attributes.
-        ORT_ENFORCE(static_cast<size_t>(input_tensor_types_proto->ints_size()) == ctx.getNumInputs(),
+        int64_t input_tensor_types_count = input_tensor_types_proto->ints_size();
+        ORT_ENFORCE(static_cast<size_t>(input_tensor_types_count) == ctx.getNumInputs(),
                     "PythonOp's input list and \"input_tensor_types\" attribute should have the same length.");
-        for (size_t i = 0; i < ctx.getNumInputs(); ++i) {
+        for (auto i = 0; i < input_tensor_types_count; ++i) {
           const auto inferred_input_type = ctx.getInputType(i);
           ORT_ENFORCE(inferred_input_type, "PythonOp's ", i, "th input type is missing.");
           ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
@@ -2783,15 +2784,15 @@ Return true if all elements are true and false otherwise.
 
         static size_t rank_count = 0;
         // Set inferred output types.
-        for (size_t i = 1; i < ctx.getNumOutputs(); ++i) {
-          updateOutputElemType(ctx, i, output_tensor_types_proto->ints().at(i - 1));
+        for (auto i = 1; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
+          updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i - 1)));
 
           // Create symbolic shape.
           const auto output_tensor_ranks = ctx.getAttribute("output_tensor_ranks");
           ONNX_NAMESPACE::TensorShapeProto rank_only_shape;
           for (int64_t j = 0; j < output_tensor_ranks->ints().at(i - 1); ++j) {
             std::stringstream ss;
-            ss << "PythonOp_unknown_rank_" << rank_count++; 
+            ss << "PythonOp_unknown_rank_" << rank_count++;
             rank_only_shape.add_dim()->set_dim_param(ss.str());
           }
 
@@ -2907,13 +2908,13 @@ Return true if all elements are true and false otherwise.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOp's must have \"output_tensor_types\" attribute.");
         // Set inferred output types.
         static size_t rank_count = 0;
-        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
-          updateOutputElemType(ctx, i, output_tensor_types_proto->ints().at(i));
+        for (auto i = 0; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
+          updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i)));
           const auto output_tensor_ranks = ctx.getAttribute("output_tensor_ranks");
           ONNX_NAMESPACE::TensorShapeProto rank_only_shape;
           for (int64_t j = 0; j < output_tensor_ranks->ints().at(i); ++j) {
             std::stringstream ss;
-            ss << "PythonOpGrad_unknown_rank_" << rank_count++; 
+            ss << "PythonOpGrad_unknown_rank_" << rank_count++;
             rank_only_shape.add_dim()->set_dim_param(ss.str());
           }
 

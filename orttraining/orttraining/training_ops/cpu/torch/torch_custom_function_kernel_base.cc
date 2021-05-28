@@ -23,7 +23,7 @@ std::vector<OrtValue> CreateOrtValueArgs(OpKernelContext* context,
   for (size_t i = 0; i < num_arg; ++i) {
     args.push_back(*ctx_internal->GetInputMLValue(begin_index + i));
   }
-  return std::move(args);
+  return args;
 }
 
 void PythonOpBase::Init(const OpKernelInfo& info) {

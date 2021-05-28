@@ -160,7 +160,7 @@ void InvokeRunner(
     PyObject* py_obj = PyTuple_GetItem(result_ptr.get(), 0);
     if (is_training_mode) {
       const auto& refcnt = Py_REFCNT(py_obj);
-      // we don't need do ref increase here because, python returns tensor.grad_fn as part of
+      // We don't need do ref increase here because, python returns tensor.grad_fn as part of
       // tuple, who increased the refcnt already (and tensor persist until the backward kernels completed).
       // Pytorch also increases refcnt before apply() return, so we should expect refcount >= 2.
       // We say "at least" 2 because user could increase the context refcnt as well in their autograd forward()
@@ -170,7 +170,7 @@ void InvokeRunner(
         LOGS_DEFAULT(WARNING) << "Autograd context refcnt > 2";
       }
     } else {
-      ORT_ENFORCE(py_obj == Py_None, "Under inference mode, autograd context shuld be Py_None.");
+      ORT_ENFORCE(py_obj == Py_None, "Under inference mode, autograd context should be Py_None.");
     }
     *diff_ctx = py_obj;
     ++i;
@@ -232,7 +232,7 @@ PythonObjectPtr CreatePythonCallArguments(
                                "const_args");
   }
 
-  return std::move(args);
+  return args;
 }
 
 void Invoke(

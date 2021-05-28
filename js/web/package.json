@@ -16,6 +16,7 @@
   "scripts": {
     "prepare": "tsc",
     "build": "node ./script/build",
+    "build:doc": "node ./script/generate-operator-md",
     "test": "node ./script/prepare-test-data && node ./script/test-runner-cli",
     "test:e2e": "node ./test/e2e/run",
     "prepack": "node ./script/prepack"

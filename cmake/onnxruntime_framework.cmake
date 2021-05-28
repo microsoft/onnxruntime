@@ -1,6 +1,20 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+if (onnxruntime_ENABLE_TRAINING)
+  if(NOT PYTHON_INCLUDE_DIR)
+    set(PYTHON_NOT_FOUND false)
+    exec_program("${PYTHON_EXECUTABLE}"
+      ARGS "-c \"import distutils.sysconfig; print(distutils.sysconfig.get_python_inc())\""
+      OUTPUT_VARIABLE PYTHON_INCLUDE_DIR
+      RETURN_VALUE PYTHON_NOT_FOUND)
+    if(${PYTHON_NOT_FOUND})
+      message(FATAL_ERROR
+              "Cannot get Python include directory. Is distutils installed?")
+    endif(${PYTHON_NOT_FOUND})
+  endif(NOT PYTHON_INCLUDE_DIR)
+endif()
+
 file(GLOB_RECURSE onnxruntime_framework_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_INCLUDE_DIR}/core/framework/*.h"
     "${ONNXRUNTIME_ROOT}/core/framework/*.h"
@@ -40,6 +54,7 @@ endif()
 # Needed for the provider interface, as it includes training headers when training is enabled
 if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
   target_include_directories(onnxruntime_framework PRIVATE ${ORTTRAINING_ROOT} ${PYTHON_INCLUDE_DIRS})
+  target_link_libraries(onnxruntime_framework PRIVATE ${PYTHON_LIBRARIES})
   if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)  
     target_include_directories(onnxruntime_framework PUBLIC ${MPI_CXX_INCLUDE_DIRS})
   endif()

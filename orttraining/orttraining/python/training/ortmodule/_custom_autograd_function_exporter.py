@@ -4,8 +4,9 @@
 # --------------------------------------------------------------------------
 
 import sys
+import torch
 from torch.onnx import symbolic_helper
-
+from onnxruntime.capi._pybind_state import register_torch_autograd_function
 
 def _export(g, n, *args, **kwargs):
     try:
@@ -132,10 +133,27 @@ def _export(g, n, *args, **kwargs):
 
         returned_args = g.op("com.microsoft::PythonOp", *tensor_args, **attrs)
 
-        sys.stdout.flush()
-        sys.stderr.flush()
         return returned_args
     except:
         sys.stdout.flush()
         sys.stderr.flush()
         raise
+
+def _post_process_after_export(exported_model):
+    index = 0
+    for node in exported_model.graph.node:
+        if node.domain == 'com.microsoft' and node.op_type in ["PythonOp"]:
+            output_names = list(node.output)
+            del node.output[:]
+            node.output.append(output_names[0] + '_ctx')
+            node.output.extend(output_names)
+        if not node.name:
+            node.name = node.op_type + "_id_" + str(index)
+            index += 1
+
+    for kclass in torch.autograd.Function.__subclasses__():
+        # Sometimes, we find the same functions multiple times, so we allow repeated
+        # registrations.
+        register_torch_autograd_function(kclass.__qualname__, kclass, True)
+
+    return exported_model

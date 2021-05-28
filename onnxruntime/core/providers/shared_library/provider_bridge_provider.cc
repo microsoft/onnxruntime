@@ -487,7 +487,9 @@ void PythonOpGradBase::Init(const OpKernelInfo& info) { return g_host->contrib__
 void PythonOpGradBase::RunBackward(OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) const {
   return g_host->contrib__PythonOpGradBase__RunBackward(this, context, returned_ortvalues);
 }
-void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_args) const { return g_host->contrib__PythonOpGradBase__SetOutputs(this, context, returned_args); };
+void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_args) const {
+  return g_host->contrib__PythonOpGradBase__SetOutputs(this, context, returned_args);
+};
 
 }  // namespace contrib
 
