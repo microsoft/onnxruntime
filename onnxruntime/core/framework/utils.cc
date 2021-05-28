@@ -115,11 +115,11 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
                                      const OrtValue& source_mlvalue,
                                      OrtValue& target_mlvalue) {
   if (!allocator) {
-    return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator");
+    return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator.");
   }
   if (source_mlvalue.IsTensor()) {
 
-    auto& source_tensor = source_mlvalue.Get<Tensor>();
+    const Tensor& source_tensor = source_mlvalue.Get<Tensor>();
     std::unique_ptr<Tensor> target_tensor = std::make_unique<Tensor>(source_tensor.DataType(),
                                                                      source_tensor.Shape(),
                                                                      allocator);
@@ -181,16 +181,16 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
   }
 
   if (source_mlvalue.IsTensor()) {
-    auto& source_tensor = source_mlvalue.Get<Tensor>();
-    auto& target_tensor = *target_mlvalue.GetMutable<Tensor>();
+    const Tensor& source_tensor = source_mlvalue.Get<Tensor>();
+    Tensor& target_tensor = *target_mlvalue.GetMutable<Tensor>();
     if (copy_pairs != nullptr) {
       copy_pairs->push_back({source_tensor, target_tensor, 0});
     } else {
       ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(source_tensor, target_tensor));
     }
   } else if (source_mlvalue.IsTensorSequence()) {
-    const auto& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
-    auto& target_tensor_seq = target_mlvalue.Get<TensorSeq>();
+    const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
+    const TensorSeq& target_tensor_seq = target_mlvalue.Get<TensorSeq>();
     ORT_ENFORCE(source_tensor_seq.Size() == target_tensor_seq.Size(),
       "source and target tensor sequence have different number of elements.");
     auto source_iter = source_tensor_seq.begin();
@@ -200,8 +200,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
       if (copy_pairs != nullptr) {
         copy_pairs->push_back({*source_iter, const_cast<Tensor&>(*target_iter), 0});
       } else {
-        ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(*source_iter,
-                                                                          const_cast<Tensor&>(*target_iter)));
+        ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(*source_iter, const_cast<Tensor&>(*target_iter)));
       }
       ++source_iter;
       ++target_iter;
