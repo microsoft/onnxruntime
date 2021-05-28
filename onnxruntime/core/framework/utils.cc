@@ -127,8 +127,8 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
     target_mlvalue.Init(target_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
 
   } else if (source_mlvalue.IsTensorSequence()) {
-    const auto& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
-    std::unique_ptr<TensorSeq> target_tensor_seq = std::make_unique<TensorSeq>(source_tensor_seq.DataType());
+    const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
+    auto target_tensor_seq = std::make_unique<TensorSeq>(source_tensor_seq.DataType());
     std::vector<Tensor> tensors;
     for (auto iter = source_tensor_seq.begin(); iter != source_tensor_seq.end(); ++iter) {
       tensors.emplace_back(iter->DataType(), onnxruntime::TensorShape(iter->Shape()), allocator);

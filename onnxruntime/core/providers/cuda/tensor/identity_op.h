@@ -73,7 +73,7 @@ class IdentityOp final : public CudaKernel {
       auto X_size = X->Size();
       for (size_t i = 0; i < X_size; ++i) {
         const Tensor& source_tensor = X->Get(i);
-        auto target_tensor = Tensor::Create(X_type, source_tensor.Shape(), alloc);
+        std::unique_ptr<Tensor> target_tensor = Tensor::Create(X_type, source_tensor.Shape(), alloc);
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_tensor->MutableDataRaw(),
                                              source_tensor.DataRaw(),
                                              source_tensor.SizeInBytes(),
