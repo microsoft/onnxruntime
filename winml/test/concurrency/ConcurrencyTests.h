@@ -45,6 +45,6 @@ static constexpr uint32_t TENCH_INDEX = 0;
 // - use a consistent and reasonable number of threads (10 vs. 1000)
 // - run them for a consistent and long enough period of time (60 seconds).
 // - the smaller number of threads is also to make sure memory pressure is not an issue
-// - on pre checkin CI test machines
+//   on pre checkin CI test machines
 static constexpr uint32_t NUM_THREADS = 10;
 static constexpr uint32_t NUM_SECONDS = 10;
