@@ -47,7 +47,7 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   // Get ArgMax's next node(Cast)'s outputdefs
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
-  auto it = node.OutputEdgesBegin();
+  auto it = node.InputEdgesBegin();
   const auto* succ_node(graph_viewer.GetNode(node_indices[it->GetNode().Index()]));
 
   *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
@@ -73,27 +73,33 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
   }
 
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
-  NodeIndex succ_node_idx;
+  std::vector<size_t> succ_node_indices;
   for (size_t i = 0; i < node_indices.size(); i++) {
     const auto* curr_node(graph_viewer.GetNode(node_indices[i]));
     if (curr_node->OpType() == "ArgMax") {
       for (auto it = curr_node->OutputEdgesBegin(), end = curr_node->OutputEdgesEnd(); it != end; ++it) {
-        succ_node_idx = it->GetNode().Index();
-        //Case where argmax has multiple successive nodes is not supported
-        if (it != end) {
-          LOGS(logger, VERBOSE) << "Case - [" << curr_node->OpType()
-                                << "] has multiple sucessive nodes: Not supported.";
-          return false;
-        }
+        succ_node_indices.push_back(it->GetNode().Index());
       }
     }
   }
+   //Case where argmax has multiple successive nodes is not supported
+  if (succ_node_indices.size() > 1) {
+    LOGS(logger, VERBOSE) << "Case - [ArgMax] has multiple sucessive nodes: Not supported.";
+    return false;
+  }
+  
+  if (succ_node_indices.empty()) {
+    LOGS(logger, VERBOSE) << "Case - [ArgMax] has no sucessive nodes: Not supported.";
+    return false;
+  }
 
-  const auto* succ_node(graph_viewer.GetNode(node_indices[succ_node_idx]));
+  const auto* succ_node(graph_viewer.GetNode(node_indices[succ_node_indices[0]]));
 
   // Case where argmax's successive node is not "cast" is not supported
   if (succ_node->OpType() != "Cast") {
-    LOGS(logger, VERBOSE) << "Case - [ArgMax]'s next node is not [Cast]: Not supported.";
+    LOGS(logger, VERBOSE) << "Case - [ArgMax]'s next node is not [Cast]: Not supported. "
+                          << "Current next node: [" << succ_node->OpType()
+                          << "]";
     return false;
   }
 
