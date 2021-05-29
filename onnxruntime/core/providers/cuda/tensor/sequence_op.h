@@ -179,6 +179,30 @@ class SequenceEmpty final: public CudaKernel {
   int64_t dtype_{};
 };
 
+class SequenceLength final: public CudaKernel {
+ public:
+  SequenceLength(const OpKernelInfo& info): CudaKernel(info) {}
+
+  Status ComputeInternal(OpKernelContext* context) const override {
+    const auto* X = context->Input<TensorSeq>(0);
+    if (nullptr == X) {
+      return Status(common::ONNXRUNTIME, common::FAIL,
+                    "SequenceLength: failed to get input tensor sequence.");
+    }
+    auto* Y = context->Output(0, {});
+    if (nullptr == Y) {
+      return Status(common::ONNXRUNTIME, common::FAIL,
+                    "SequenceLength: failed to allocate output tensor.");
+    }
+    size_t X_size = static_cast<int64_t>(X->Size());
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->MutableDataRaw(),
+                                         &X_size,
+                                         sizeof(int64_t),
+                                         cudaMemcpyHostToDevice, Stream()));
+    return Status::OK();
+  }
+};
+ 
 } // namespace cuda
 } // namespace onnxruntime
 
