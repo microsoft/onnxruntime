@@ -145,39 +145,53 @@ This project is a library for running ONNX models on browsers. It is the success
    2. in `<ORT_ROOT>/js/common/`, run `npm ci`.
    3. in `<ORT_ROOT>/js/web/`, run `npm ci`.
 
-2. ~~Follow [instructions](https://www.onnxruntime.ai/docs/how-to/build.html#apis-and-language-bindings) for building ONNX Runtime WebAssembly. (TODO: document is not ready. we are working on it. Please see steps described as below.)~~
+2. Prepare ONNX Runtime WebAssembly artifacts.
 
-   in `<ORT_ROOT>/`, run one of the following commands to build WebAssembly:
+   You can either use the prebuilt artifacts or build it by yourself.
 
-   ```sh
-   # In windows, use 'build' to replace './build.sh'
+   - Setup by script.
 
-   # The following command build debug.
-   ./build.sh --build_wasm
+     In `<ORT_ROOT>/js/web/`, run `npm run pull:wasm` to pull WebAssembly artifacts for latest master branch from CI pipeline.
 
-   # The following command build debug with debug info.
-   ./build.sh --build_wasm --skip_tests --enable_wasm_debug_info
+   - Download artifacts from pipeline manually.
 
-   # The following command build release.
-   ./build.sh --config Release --build_wasm --skip_tests --disable_wasm_exception_catching --disable_rtti
-   ```
+     you can download prebuilt WebAssembly artifacts from [Windows WebAssembly CI Pipeline](https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=161&_a=summary). Select a build, download artifacts "Release_ort-wasm" and "Release_ort-wasm-threaded" and unzip. See instructions below to put files into destination folders.
 
-   To build with multi-thread support, append flag `--enable_wasm_threads` to the command. Make sure to build both single-thread and multi-thread before next step.
+   - Build WebAssembly artifacts.
 
-   NOTE: You can also find latest build artifacts on [Windows WebAssembly CI Pipeline](https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=161&_a=summary&repositoryFilter=1&branchFilter=4%2C4%2C4%2C4%2C4%2C4). Choose any build for master branch, download artifacts "Release_ort-wasm" and "Release_ort-wasm-threaded" and unzip.
+     1. Build ONNX Runtime WebAssembly
 
-3. Copy following files from build output folder to `<ORT_ROOT>/js/web/dist/`:
+        ~~Follow [instructions](https://www.onnxruntime.ai/docs/how-to/build.html#apis-and-language-bindings) for building ONNX Runtime WebAssembly. (TODO: document is not ready. we are working on it. Please see steps described as below.)~~
 
-   - ort-wasm.wasm
-   - ort-wasm-threaded.wasm (build with flag '--enable_wasm_threads')
+        in `<ORT_ROOT>/`, run one of the following commands to build WebAssembly:
 
-4. Copy following files from build output folder to `<ORT_ROOT>/js/web/lib/wasm/binding/`:
+        ```sh
+        # In windows, use 'build' to replace './build.sh'
 
-   - ort-wasm.js
-   - ort-wasm-threaded.js (build with flag '--enable_wasm_threads')
-   - ort-wasm-threaded.worker.js (build with flag '--enable_wasm_threads')
+        # The following command build debug.
+        ./build.sh --build_wasm
 
-5. Use following command in folder `<ORT_ROOT>/js/web` to build:
+        # The following command build debug with debug info.
+        ./build.sh --build_wasm --skip_tests --enable_wasm_debug_info
+
+        # The following command build release.
+        ./build.sh --config Release --build_wasm --skip_tests     --disable_wasm_exception_catching --disable_rtti
+        ```
+
+        To build with multi-thread support, append flag `--enable_wasm_threads` to the command. Make sure to build both single-thread and multi-thread before next step.
+
+     2. Copy following files from build output folder to `<ORT_ROOT>/js/web/dist/`:
+
+        - ort-wasm.wasm
+        - ort-wasm-threaded.wasm (build with flag '--enable_wasm_threads')
+
+     3. Copy following files from build output folder to `<ORT_ROOT>/js/web/lib/wasm/binding/`:
+
+        - ort-wasm.js
+        - ort-wasm-threaded.js (build with flag '--enable_wasm_threads')
+        - ort-wasm-threaded.worker.js (build with flag '--enable_wasm_threads')
+
+3. Use following command in folder `<ORT_ROOT>/js/web` to build:
    ```
    npm run build
    ```
