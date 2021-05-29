@@ -47,7 +47,7 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   // Get ArgMax's next node(Cast)'s outputdefs
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
-  auto it = node.InputEdgesBegin();
+  auto it = node.OutputEdgesBegin();
   const auto* succ_node(graph_viewer.GetNode(node_indices[it->GetNode().Index()]));
 
   *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
