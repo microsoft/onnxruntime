@@ -57,7 +57,7 @@ ONNX_OPERATOR_KERNEL_EX(
     14,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes())
         .Alias(0, 0),
     IdentityOp<false>);
 }  // namespace cuda
