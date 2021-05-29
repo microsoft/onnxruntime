@@ -423,6 +423,7 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetType_double() = 0;
   virtual MLDataType DataTypeImpl__GetType_BFloat16() = 0;
   virtual MLDataType DataTypeImpl__GetType_MLFloat16() = 0;
+  virtual MLDataType DataTypeImpl__GetType_string() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_bool() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_int8() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_uint8() = 0;

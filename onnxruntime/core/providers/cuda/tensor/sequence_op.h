@@ -109,6 +109,76 @@ class SequenceConstruct final: public CudaKernel {
   }
 };
 
+class SequenceEmpty final: public CudaKernel {
+ public:
+  SequenceEmpty(const OpKernelInfo& info): CudaKernel(info) {
+    if (!info.GetAttr("dtype", &dtype_).IsOK()) {
+      dtype_ = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+    }
+  }
+
+  Status ComputeInternal(OpKernelContext* context) const override {
+    TensorSeq* Y = context->Output<TensorSeq>(0);
+    if (nullptr == Y) {
+      return Status(common::ONNXRUNTIME, common::FAIL,
+                    "SequenceEmpty: Failed to allocate tensor sequence.");
+    }
+    auto status = Status::OK();
+    MLDataType seq_dtype{};
+    switch (dtype_) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+        seq_dtype = DataTypeImpl::GetType<float>();
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+        seq_dtype = DataTypeImpl::GetType<bool>();
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+        seq_dtype = DataTypeImpl::GetType<int>();
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+        seq_dtype = DataTypeImpl::GetType<double>();
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_STRING:
+        seq_dtype = DataTypeImpl::GetType<std::string>();
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+        seq_dtype = DataTypeImpl::GetType<int8_t>();
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+        seq_dtype = DataTypeImpl::GetType<uint8_t>();
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
+        seq_dtype = DataTypeImpl::GetType<uint16_t>();
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT16:
+        seq_dtype = DataTypeImpl::GetType<int16_t>();
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+        seq_dtype = DataTypeImpl::GetType<int64_t>();
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+        seq_dtype = DataTypeImpl::GetType<uint32_t>();
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
+        seq_dtype = DataTypeImpl::GetType<uint64_t>();
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+        seq_dtype = DataTypeImpl::GetType<MLFloat16>();
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
+        seq_dtype = DataTypeImpl::GetType<BFloat16>();
+        break;
+      default:
+        status = Status(common::ONNXRUNTIME, common::FAIL,
+                        "SequenceEmpty: invalid tensor type");
+    }
+    Y->SetType(seq_dtype);
+    return status;
+  }
+ private:
+  int64_t dtype_{};
+};
+
 } // namespace cuda
 } // namespace onnxruntime
 
