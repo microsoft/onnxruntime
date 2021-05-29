@@ -18,6 +18,7 @@
 #include "core/framework/sequential_executor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/framework/TensorSeq.h"
 #ifdef ENABLE_TRAINING
 #include "core/framework/orttraining_partial_executor.h"
 #endif
@@ -111,19 +112,33 @@ bool ProviderIsCpuBased(const std::string& provider_type) {
 }
 
 static common::Status AllocateHelper(const AllocatorPtr& allocator,
-                                     const Tensor& fetched_tensor, OrtValue& output_mlvalue) {
+                                     const OrtValue& source_mlvalue,
+                                     OrtValue& target_mlvalue) {
   if (!allocator) {
-    return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator");
+    return Status(common::ONNXRUNTIME, common::FAIL, "invalid allocator.");
   }
+  if (source_mlvalue.IsTensor()) {
 
-  std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(fetched_tensor.DataType(),
-                                                                      fetched_tensor.Shape(),
-                                                                      allocator);
-  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-  output_mlvalue.Init(p_tensor.release(),
-                      ml_tensor,
-                      ml_tensor->GetDeleteFunc());
+    const Tensor& source_tensor = source_mlvalue.Get<Tensor>();
+    std::unique_ptr<Tensor> target_tensor = std::make_unique<Tensor>(source_tensor.DataType(),
+                                                                     source_tensor.Shape(),
+                                                                     allocator);
+    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+    target_mlvalue.Init(target_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
 
+  } else if (source_mlvalue.IsTensorSequence()) {
+    const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
+    auto target_tensor_seq = std::make_unique<TensorSeq>(source_tensor_seq.DataType());
+    std::vector<Tensor> tensors;
+    for (auto iter = source_tensor_seq.begin(); iter != source_tensor_seq.end(); ++iter) {
+      tensors.emplace_back(iter->DataType(), onnxruntime::TensorShape(iter->Shape()), allocator);
+    }
+    target_tensor_seq->SetElements(std::move(tensors)); 
+    auto ml_tensor_seq = DataTypeImpl::GetType<TensorSeq>();
+    target_mlvalue.Init(target_tensor_seq.release(), ml_tensor_seq, ml_tensor_seq->GetDeleteFunc());
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported OrtValue type.");
+  }
   return Status::OK();
 }
 
@@ -159,22 +174,40 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
     return Status::OK();
   }
 
-  auto& source_tensor = source_mlvalue.Get<Tensor>();
   if (!target_mlvalue.IsAllocated()) {
     auto allocator = session_state.GetAllocator(copy_info.target_device);
     ORT_ENFORCE(allocator != nullptr, "Failed to find allocator for device ", copy_info.target_device.ToString());
-
-    ORT_RETURN_IF_ERROR(utils::AllocateHelper(allocator, source_tensor, target_mlvalue));
+    ORT_RETURN_IF_ERROR(utils::AllocateHelper(allocator, source_mlvalue, target_mlvalue));
   }
 
-  Tensor* p_output_tensor = target_mlvalue.GetMutable<Tensor>();
-
-  if (copy_pairs != nullptr) {
-    copy_pairs->push_back({source_tensor, *p_output_tensor, 0});
+  if (source_mlvalue.IsTensor()) {
+    const Tensor& source_tensor = source_mlvalue.Get<Tensor>();
+    Tensor& target_tensor = *target_mlvalue.GetMutable<Tensor>();
+    if (copy_pairs != nullptr) {
+      copy_pairs->push_back({source_tensor, target_tensor, 0});
+    } else {
+      ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(source_tensor, target_tensor));
+    }
+  } else if (source_mlvalue.IsTensorSequence()) {
+    const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
+    const TensorSeq& target_tensor_seq = target_mlvalue.Get<TensorSeq>();
+    ORT_ENFORCE(source_tensor_seq.Size() == target_tensor_seq.Size(),
+      "source and target tensor sequence have different number of elements.");
+    auto source_iter = source_tensor_seq.begin();
+    auto target_iter = target_tensor_seq.begin();
+    while (source_iter != source_tensor_seq.end() &&
+           target_iter != target_tensor_seq.end()) {
+      if (copy_pairs != nullptr) {
+        copy_pairs->push_back({*source_iter, const_cast<Tensor&>(*target_iter), 0});
+      } else {
+        ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(*source_iter, const_cast<Tensor&>(*target_iter)));
+      }
+      ++source_iter;
+      ++target_iter;
+    }//while
   } else {
-    ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(source_tensor, *p_output_tensor));
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported OrtValue type to copy between device.");
   }
-
   return Status::OK();
 }
 
