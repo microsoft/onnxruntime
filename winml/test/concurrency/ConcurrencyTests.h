@@ -38,7 +38,7 @@ static constexpr uint32_t TABBY_CAT_INDEX = 281;
 static constexpr uint32_t TENCH_INDEX = 0;
 // concurrency bugs are often race conditions and hard to catch deterministically.
 
-// there are several approach's to find them, from consistent testing to random
+// there are several approaches to find them, from consistent testing to random
 // style stress/fuzz testing
 
 // the testing strategy for *this* test is:
