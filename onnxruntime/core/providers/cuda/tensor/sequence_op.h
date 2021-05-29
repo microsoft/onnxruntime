@@ -194,7 +194,7 @@ class SequenceLength final: public CudaKernel {
       return Status(common::ONNXRUNTIME, common::FAIL,
                     "SequenceLength: failed to allocate output tensor.");
     }
-    size_t X_size = static_cast<int64_t>(X->Size());
+    auto X_size = static_cast<int64_t>(X->Size());
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->MutableDataRaw(),
                                          &X_size,
                                          sizeof(int64_t),
