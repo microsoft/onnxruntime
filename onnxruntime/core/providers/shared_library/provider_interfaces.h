@@ -672,7 +672,6 @@ struct ProviderHost {
   virtual size_t TensorSeq__Size(const TensorSeq* p) noexcept = 0;
   virtual const Tensor& TensorSeq__Get(const TensorSeq* p, size_t i) = 0;
   virtual void TensorSeq__Add(TensorSeq* p, Tensor&& tensor) = 0;
-  virtual void TensorSeq__SetElements(TensorSeq* p, std::vector<Tensor>&& tensors) = 0;
 
   // AllocatorManager
   virtual void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) = 0;
@@ -1691,15 +1690,12 @@ template <>
 inline const MLFloat16* Tensor::Data<MLFloat16>() const { return g_host->Tensor__Data_MLFloat16(this); }
 
 //TensorSeq
-class TensorSeq final {
-public:
+struct TensorSeq final {
   MLDataType DataType() const noexcept { return g_host->TensorSeq__DataType(this); }
   void SetType(MLDataType elem_type) { g_host->TensorSeq__SetType(this, elem_type); }
-  using const_iterator = std::vector<Tensor>::const_iterator;
   size_t Size() const noexcept { return g_host->TensorSeq__Size(this); }
   const Tensor& Get(size_t i) const { return g_host->TensorSeq__Get(this, i); }
   void Add(Tensor&& tensor) { g_host->TensorSeq__Add(this, std::move(tensor)); }
-  void SetElements(std::vector<Tensor>&& tensors) { g_host->TensorSeq__SetElements(this, std::move(tensors)); }
 };
 
 template <>
