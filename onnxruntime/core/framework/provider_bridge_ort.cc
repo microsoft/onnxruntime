@@ -487,6 +487,7 @@ struct ProviderHostImpl : ProviderHost {
   // DataTypeImpl (wrapped)
   MLDataType DataTypeImpl__GetType_Tensor() override { return DataTypeImpl::GetType<Tensor>(); }
   MLDataType DataTypeImpl__GetType_TensorSeq () override { return DataTypeImpl::GetType<TensorSeq>(); }
+  MLDataType DataTypeImpl__GetTypeFromOnnxType (int onnx_type) override { return DataTypeImpl::TensorTypeFromONNXEnum(onnx_type)->GetElementType(); }
   MLDataType DataTypeImpl__GetType_bool() override { return DataTypeImpl::GetType<bool>(); }
   MLDataType DataTypeImpl__GetType_int8() override { return DataTypeImpl::GetType<int8_t>(); }
   MLDataType DataTypeImpl__GetType_uint8() override { return DataTypeImpl::GetType<uint8_t>(); }

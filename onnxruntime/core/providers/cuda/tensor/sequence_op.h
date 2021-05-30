@@ -123,6 +123,9 @@ class SequenceEmpty final: public CudaKernel {
       return Status(common::ONNXRUNTIME, common::FAIL,
                     "SequenceEmpty: Failed to allocate tensor sequence.");
     }
+    Y->SetType(DataTypeImpl::GetTypeFromOnnxType(dtype_));
+    return Status::OK();
+/*
     auto status = Status::OK();
     MLDataType seq_dtype{};
     switch (dtype_) {
@@ -174,6 +177,7 @@ class SequenceEmpty final: public CudaKernel {
     }
     Y->SetType(seq_dtype);
     return status;
+*/
   }
  private:
   int64_t dtype_{};

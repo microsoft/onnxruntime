@@ -99,6 +99,7 @@ template <>
 MLDataType DataTypeImpl::GetType<Tensor>() { return Provider_GetHost()->DataTypeImpl__GetType_Tensor(); }
 template <>
 MLDataType DataTypeImpl::GetType<TensorSeq>() { return Provider_GetHost()->DataTypeImpl__GetType_TensorSeq(); }
+MLDataType DataTypeImpl::GetTypeFromOnnxType(int onnx_type) { return Provider_GetHost()->DataTypeImpl__GetTypeFromOnnxType(onnx_type); }
 template <>
 MLDataType DataTypeImpl::GetType<bool>() { return Provider_GetHost()->DataTypeImpl__GetType_bool(); }
 template <>

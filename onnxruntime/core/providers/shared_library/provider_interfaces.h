@@ -410,6 +410,7 @@ struct ProviderHost {
   // DataTypeImpl
   virtual MLDataType DataTypeImpl__GetType_Tensor() = 0;
   virtual MLDataType DataTypeImpl__GetType_TensorSeq() = 0;
+  virtual MLDataType DataTypeImpl__GetTypeFromOnnxType(int) = 0;
   virtual MLDataType DataTypeImpl__GetType_bool() = 0;
   virtual MLDataType DataTypeImpl__GetType_int8() = 0;
   virtual MLDataType DataTypeImpl__GetType_uint8() = 0;
@@ -1257,6 +1258,7 @@ class DataTypeImpl final {
   static MLDataType GetType();
   template <typename elemT>
   static MLDataType GetTensorType();
+  static MLDataType GetTypeFromOnnxType(int);
 
   bool IsTensorType() const { return g_host->DataTypeImpl__IsTensorType(this); }
   bool IsTensorSequenceType() const { return g_host->DataTypeImpl__IsTensorSequenceType(this); }
