@@ -121,7 +121,9 @@ MlasQLinearGlobalAveragePoolNchw(
         int32x2_t vacc = vadd_s32(vget_high_s32(vacc_lo), vget_low_s32(vacc_lo));
         *sum_buffer++ = vget_lane_s32(vpadd_s32(vacc, vacc), 0);
     }
-    MlasRequantizeOutput(AccumulateBuffer, Output, nullptr, 1, Channels, &scale, false, static_cast<uint8_t>(ZeroPointOutput));
+
+    MlasRequantizeOutput(AccumulateBuffer, Channels, Output, Channels, nullptr, &scale, false,
+                         static_cast<uint8_t>(ZeroPointOutput), 0, 0, 1, Channels);
 }
 
 MLAS_FORCEINLINE
@@ -256,7 +258,8 @@ MlasQLinearGlobalAveragePoolNhwcSingleBatch(
             vst1q_s32(acc + 4, vacc_hi);
         }
     }
-    MlasRequantizeOutput(AccumulateBuffer, Output, nullptr, 1, Channels, &Scale, false, Output_zero_point);
+    MlasRequantizeOutput(AccumulateBuffer, Channels, Output, Channels, nullptr, &Scale, false,
+                         Output_zero_point, 0, 0, 1, Channels);
 }
 
 #elif defined(MLAS_SSE2_INTRINSICS)
@@ -323,7 +326,8 @@ MlasQLinearGlobalAveragePoolNchw(
         vsums = _mm_add_epi32(vsums, vshuf);
         *sum_buffer++ = _mm_cvtsi128_si32(vsums);
     }
-    MlasRequantizeOutput(AccumulateBuffer, Output, nullptr, 1, Channels, &scale, false, static_cast<uint8_t>(ZeroPointOutput));
+    MlasRequantizeOutput(AccumulateBuffer, Channels, Output, Channels, nullptr, &scale, false,
+                         static_cast<uint8_t>(ZeroPointOutput), 0, 0, 1, Channels);
 }
 
 MLAS_FORCEINLINE
@@ -515,7 +519,8 @@ MlasQLinearGlobalAveragePoolNhwcSingleBatch(
             _mm_storeu_si128(((__m128i*)acc) + 1, vacc_hi);
         }
     }
-    MlasRequantizeOutput(AccumulateBuffer, Output, nullptr, 1, Channels, &Scale, false, Output_zero_point);
+    MlasRequantizeOutput(AccumulateBuffer, Channels, Output, Channels, nullptr, &Scale, false,
+                         Output_zero_point, 0, 0, 1, Channels);
 }
 
 #else

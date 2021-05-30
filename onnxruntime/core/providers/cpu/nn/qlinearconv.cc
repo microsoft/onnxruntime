@@ -590,13 +590,16 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
 
       MlasRequantizeOutput(
           worker_gemm_output,
-          worker_requantize_output,
-          Bdata,
-          static_cast<size_t>(output_count),
           static_cast<size_t>(M),
+          worker_requantize_output,
+          static_cast<size_t>(M),
+          Bdata,
           output_scales.data(),
           output_scales.size() > 1,
-          Y_zero_point_value);
+          Y_zero_point_value,
+          0,0,
+          static_cast<size_t>(output_count),
+          static_cast<size_t>(M));
     };
 
     concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, thread_count, conv_worker);
