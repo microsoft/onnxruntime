@@ -30,16 +30,21 @@ If you provide in-memory bytes for the ORT format model, a marker in those bytes
 If you wish to explicitly say that the InferenceSession input is an ORT format model you can do so via SessionOptions, although this generally should not be necessary.
 
 C++ API
-```C++
+```cpp
 Ort::SessionOptions session_options;
 session_options.AddConfigEntry('session.load_model_format', 'ORT');
+
+Ort::Env env;
+Ort::Session session(env, <path to model>, session_options);
 ```
 
-Python
-```python
-so = onnxruntime.SessionOptions()
-so.add_session_config_entry('session.load_model_format', 'ORT')
-session = onnxruntime.InferenceSession(<path to model>, so)
+Java API
+```java
+SessionOptions session_options = new SessionOptions();
+session_options.addConfigEntry("session.load_model_format", "ORT");
+
+OrtEnvironment env = OrtEnvironment.getEnvironment();
+OrtSession session = env.createSession(<path to model>, opsession_optionstions);
 ```
 
 ------

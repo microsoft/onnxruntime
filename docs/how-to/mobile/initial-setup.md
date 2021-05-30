@@ -47,13 +47,6 @@ In your CocoaPods `Podfile`, add the `onnxruntime-mobile` or `onnxruntime-mobile
 
 Run `pod install`.
 
-### Install ONNX Runtime python package
-
-Install the onnxruntime python package from [https://pypi.org/project/onnxruntime/](https://pypi.org/project/onnxruntime/) in order to convert models from ONNX format to the internal ORT format.
-Version v1.8 or higher is required.
-
-- `pip install onnxruntime` will install the latest release
-
 ##### C/C++
 
   ```
@@ -69,6 +62,13 @@ Version v1.8 or higher is required.
 
   pod 'onnxruntime-mobile-objc'
   ```
+
+### Install ONNX Runtime python package
+
+Install the onnxruntime python package from [https://pypi.org/project/onnxruntime/](https://pypi.org/project/onnxruntime/) in order to convert models from ONNX format to the internal ORT format.
+Version v1.8 or higher is required.
+
+- `pip install onnxruntime` will install the latest release
 
 ## Initial setup if performing a custom build
 
