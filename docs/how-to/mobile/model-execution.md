@@ -30,7 +30,7 @@ If you provide in-memory bytes for the ORT format model, a marker in those bytes
 If you wish to explicitly say that the InferenceSession input is an ORT format model you can do so via SessionOptions, although this generally should not be necessary.
 
 C++ API
-```cpp
+```c++
 Ort::SessionOptions session_options;
 session_options.AddConfigEntry('session.load_model_format', 'ORT');
 
