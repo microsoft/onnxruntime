@@ -171,7 +171,6 @@ struct PrimitiveDataTypeBase;
 struct Tensor;
 struct TensorSeq;
 
-class TensorSeq;
 class UnsqueezeBase;
 class SliceBase;
 class SplitBase;
