@@ -387,11 +387,11 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     std::string_view name(opKernel->name);
     if (name == "MemcpyToHost")
     {
-        builder.OutputMemoryType<::OrtMemType::OrtMemTypeCPUOutput>(0);
+        builder.OutputMemoryType(::OrtMemType::OrtMemTypeCPUOutput, 0);
     }
     else if (name == "MemcpyFromHost")
     {
-        builder.InputMemoryType<::OrtMemType::OrtMemTypeCPUInput>(0);
+        builder.InputMemoryType(::OrtMemType::OrtMemTypeCPUInput, 0);
     }
         
     std::vector<uint32_t> constantCpuInputCapture;
@@ -399,7 +399,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
 
     for (uint32_t inputIndex : constantCpuInputCapture)
     {
-        builder.InputMemoryType<::OrtMemType::OrtMemTypeCPUInput>(inputIndex);
+        builder.InputMemoryType(::OrtMemType::OrtMemTypeCPUInput, inputIndex);
     }
 
     if (canAliasFirstInput)
