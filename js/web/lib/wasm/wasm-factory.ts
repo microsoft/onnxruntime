@@ -8,6 +8,8 @@ import {OrtWasmModule} from './binding/ort-wasm';
 import {OrtWasmThreadedModule} from './binding/ort-wasm-threaded';
 import ortWasmFactoryThreaded from './binding/ort-wasm-threaded.js';
 import ortWasmFactory from './binding/ort-wasm.js';
+import ortWasmFactorySimdThreaded from './binding/ort-wasm-simd-threaded.js';
+import ortWasmFactorySimd from './binding/ort-wasm-simd.js';
 
 let wasm: OrtWasmModule;
 let initialized = false;
@@ -33,6 +35,19 @@ const isMultiThreadSupported = (): boolean => {
   }
 };
 
+const isSimdSupported = (): boolean => {
+  try {
+    // Test for WebAssembly SIMD capability (for both browsers and Node.js)
+    // This typed array is a WebAssembly program containing SIMD instructions.
+    return WebAssembly.validate(new Uint8Array([
+      0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3,
+      2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11
+    ]));
+  } catch (e) {
+    return false;
+  }
+};
+
 export const initializeWebAssembly = async(): Promise<void> => {
   if (initialized) {
     return Promise.resolve();
@@ -51,6 +66,7 @@ export const initializeWebAssembly = async(): Promise<void> => {
   const numThreads = env.wasm.numThreads!;
 
   const useThreads = numThreads > 1 && isMultiThreadSupported();
+  const useSimd = isSimdSupported();
   let isTimeout = false;
 
   const tasks: Array<Promise<void>> = [];
@@ -67,14 +83,20 @@ export const initializeWebAssembly = async(): Promise<void> => {
 
   // promise for module initialization
   tasks.push(new Promise((resolve, reject) => {
-    const factory = useThreads ? ortWasmFactoryThreaded : ortWasmFactory;
+    const factory = useThreads ? (useSimd ? ortWasmFactorySimdThreaded : ortWasmFactoryThreaded) :
+        (useSimd ? ortWasmFactorySimd : ortWasmFactory);
     const config: Partial<OrtWasmModule> = {};
 
     if (useThreads) {
       if (typeof Blob === 'undefined') {
-        config.mainScriptUrlOrBlob = path.join(__dirname, 'ort-wasm-threaded.js');
+        if (useSimd) {
+          config.mainScriptUrlOrBlob = path.join(__dirname, 'ort-wasm-simd-threaded.js');
+        } else {
+          config.mainScriptUrlOrBlob = path.join(__dirname, 'ort-wasm-threaded.js');
+        }
       } else {
-        const scriptSourceCode =
+        const scriptSourceCode = useSimd ?
+            `var ortWasmSimdThreaded=(function(){var _scriptDir;return ${ortWasmFactorySimdThreaded.toString()}})();` :
             `var ortWasmThreaded=(function(){var _scriptDir;return ${ortWasmFactoryThreaded.toString()}})();`;
         config.mainScriptUrlOrBlob = new Blob([scriptSourceCode], {type: 'text/javascript'});
         config.locateFile = (fileName: string, scriptDirectory: string) => {
@@ -83,7 +105,8 @@ export const initializeWebAssembly = async(): Promise<void> => {
                 [
                   // This require() function is handled by webpack to load file content of the corresponding .worker.js
                   // eslint-disable-next-line @typescript-eslint/no-require-imports
-                  require('./binding/ort-wasm-threaded.worker.js')
+                  useSimd ? require('./binding/ort-wasm-simd-threaded.worker.js') :
+                      require('./binding/ort-wasm-threaded.worker.js')
                 ],
                 {type: 'text/javascript'}));
           }
