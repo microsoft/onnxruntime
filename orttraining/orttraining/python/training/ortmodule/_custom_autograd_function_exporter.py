@@ -154,6 +154,6 @@ def _post_process_after_export(exported_model):
     for kclass in torch.autograd.Function.__subclasses__():
         # Sometimes, we find the same functions multiple times, so we allow repeated
         # registrations.
-        register_torch_autograd_function(kclass.__qualname__, kclass, True)
+        register_torch_autograd_function(kclass.__name__, kclass, True)
 
     return exported_model

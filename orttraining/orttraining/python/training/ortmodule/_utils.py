@@ -98,17 +98,19 @@ def _create_iobinding(io_binding, inputs, model, device):
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type, device_id=get_device_index(device))
 
+
 def _to_contiguous(tensors):
     '''Make sure all tensors in the list are contiguous.
      If a tensor is not contiguous, use result of tensor.contiguous() to replace the tensor. '''
-    contiguous_tensors = []
-    for idx, _tensor in enumerate(tensors):
-        if _tensor is None:
-            raise ValueError("find some of tensor is None")
-        _contiguous_tensor = _tensor.contiguous()
-        contiguous_tensors.append(_contiguous_tensor)
 
-    return contiguous_tensors
+    def generate_element(index, tensor):
+        if tensor is None:
+            raise ValueError(f"The {index}-th tensor shouldn't be None.")
+        return tensor.contiguous()
+
+    result = list(generate_element(idx, tensor) for idx, tensor in enumerate(tensors))
+    return result
+
 
 class _PytorchModuleMetadata():
     """Encapsulates modules and allows easy access as required"""

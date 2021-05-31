@@ -449,8 +449,8 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
                       dynamic_axes=dynamic_axes,
                       schema=schema,
                       num_positionals=len(inputs),
-                      num_positionals_non_none=len([i for i in inputs if i is not None]),
-                      keyword_names=[v for v in kwargs.keys()])
+                      num_positionals_non_none=len(list(i for i in inputs if i is not None)),
+                      keyword_names=list(v for v in kwargs.keys()))
 
 
 def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs):
