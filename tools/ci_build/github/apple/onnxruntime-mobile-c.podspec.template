@@ -13,4 +13,4 @@ Pod::Spec.new do |spec|
 
     A preview pod for ONNX Runtime Mobile C/C++ library. Pods for Objective-C and Swift coming soon.
                                     DESC
-  end
+end
