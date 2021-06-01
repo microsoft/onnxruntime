@@ -27,15 +27,11 @@ class Memcpy final : public OpKernel {
 
   Status Compute(OpKernelContext* ctx) const override {
     auto X_type = ctx->InputType(0);
-    Status retval{common::ONNXRUNTIME, common::FAIL, "Memcpy: Unsupported input type."};
     if (X_type->IsTensorType()) {
-
       const auto* X = ctx->Input<Tensor>(0);
       Tensor* Y = ctx->Output(0, X->Shape());
-      retval = Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
-
+      return Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
     } else if (X_type->IsTensorSequenceType()) {
-
       const TensorSeq* X = ctx->Input<TensorSeq>(0);
       ORT_ENFORCE(X != nullptr, "Memcpy: Input is nullptr.");
       TensorSeq* Y = ctx->Output<TensorSeq>(0);
@@ -43,26 +39,25 @@ class Memcpy final : public OpKernel {
       ORT_ENFORCE(Y->Size() == 0, "Memcpy: Output tensor sequence is not empty.");
       auto X_dtype = X->DataType();
       Y->SetType(X_dtype);
-
       AllocatorPtr alloc;
       auto status = ctx->GetTempSpaceAllocator(&alloc);
       if (!status.IsOK()) {
         return Status(common::ONNXRUNTIME, common::FAIL,
                       "IdentityOp cuda: unable to get an allocator.");
       }
-
       auto X_size = X->Size();
       for (size_t i = 0; i < X_size; ++i) {
         const Tensor& source_tensor = X->Get(i);
         std::unique_ptr<Tensor> target_tensor = Tensor::Create(X_type, source_tensor.Shape(), alloc);
-        retval =  Info().GetDataTransferManager().CopyTensor(source_tensor, *target_tensor, Info().GetKernelDef().ExecQueueId());
-        if (!status.IsOK()) {
-          break;
+        Status retval = Info().GetDataTransferManager().CopyTensor(source_tensor, *target_tensor, Info().GetKernelDef().ExecQueueId());
+        if (!retval.IsOK()) {
+          return retval;
         }
         Y->Add(std::move(*target_tensor));
       }
+      Status::OK();
     }
-    return retval;
+    return Status(common::ONNXRUNTIME, common::FAIL, "Memcpy: Unsupported input type.");
   }
 };
 
