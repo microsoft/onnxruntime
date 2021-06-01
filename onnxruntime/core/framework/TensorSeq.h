@@ -62,6 +62,12 @@ class TensorSeq {
     return tensors_[i];
   }
 
+  void Add(Tensor&& tensor) {
+    ORT_ENFORCE(IsSameDataType(tensor),
+                "TensorSeq: tensor to be added has a different data type.");
+    tensors_.push_back(std::move(tensor));
+  }
+
  private:
   // A sequence must be associated with only one data type and all tensors in the seq must be of that type
   // One other alternative of storing the data type of a seq is to templatize the TensorSeq class.

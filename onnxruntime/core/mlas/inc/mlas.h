@@ -621,7 +621,7 @@ enum MLAS_CONV_ALGORITHM {
     MlasConvAlgorithmGemmDirect,
     MlasConvAlgorithmExpandThenGemm,
     MlasConvAlgorithmExpandThenGemmSegmented,
-#if defined(MLAS_TARGET_WASM)
+#if defined(MLAS_TARGET_WASM_SCALAR)
     MlasConvAlgorithmDepthwise,
 #endif
 };

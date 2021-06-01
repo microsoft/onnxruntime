@@ -76,7 +76,7 @@ void KernelDef::CalculateHash() {
 
 // TODO: Tell user why it has conflicts
 // TODO: Investigate why IsConflict() was not triggered when there were duplicate Tile CUDA
-// kernels registered. Removing `InputMemoryType<OrtMemTypeCPUInput>(1)` in the kernel definition
+// kernels registered. Removing `InputMemoryType(OrtMemTypeCPUInput, 1)` in the kernel definition
 // triggered the conflict.
 bool KernelDef::IsConflict(const KernelDef& other) const {
   if (op_name_ != other.OpName() || provider_type_ != other.Provider())
