@@ -22,7 +22,7 @@ For build instructions, please see the [BUILD page](../../how-to/build/eps.md#op
 ## Usage
 **C#**
 
-To use csharp api for openvino execution provider create a custom nuget package. Follow the instructions [here](../../how-to/build.md##build-nuget-packages) to install prerequisites for nuget creation. Once prerequisites are installed follow the instructions to [build openvino](../../how-to/build.md#openvino) and add an extra flag `--build_nuget` to create nuget packages. Two nuget packages will be created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
+To use csharp api for openvino execution provider create a custom nuget package. Follow the instructions [here](../../how-to/build/inferencing.md#build-nuget-packages) to install prerequisites for nuget creation. Once prerequisites are installed follow the instructions to [build openvino](../../how-to/build/eps.md#openvino) and add an extra flag `--build_nuget` to create nuget packages. Two nuget packages will be created Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Openvino.
 
 ### Multi-threading for OpenVINO EP
 
@@ -56,26 +56,29 @@ Improved overall inferencing time, since this feature eliminates the preliminary
 
 There are two different methods of exercising this feature:
 
-- option 1. Enabling via Runtime options using c++/python API's.
+#### option 1. Enabling via Runtime options using c++/python API's.
 
-  This flow can be enabled by the runtime option 'use_compiled_network' using the c++/python API'S. This acts like a switch to on and off this feature.
+This flow can be enabled by setting the runtime config option 'use_compiled_network' to True while using the c++/python API'S. This config option acts like a switch to on and off the feature.
 
-  The blobs are saved and loaded from a directory named 'ov_compiled_blobs' from the executable path by default. This path can be overridden using another runtime option 'blob_dump_path' which is used to explicitly specify the path where you would like to dump and load the blobs for the use_compiled_network(save/load blob) feature.
+The blobs are saved and loaded from a directory named 'ov_compiled_blobs' from the executable path by default. This path however can be overridden using another runtime config option 'blob_dump_path' which is used to explicitly specify the path where you would like to dump and load the blobs from when already using the use_compiled_network(save/load blob) setting.
 
-  Refer to [Configuration Options](#configuration-options) for more information about using these runtime options.
+Refer to [Configuration Options](#configuration-options) for more information about using these runtime options.
 
-- option 2. Importing the pre-compiled blobs directly from the path set by the user.
+#### option 2. Importing the pre-compiled blobs directly from the path set by the user.
 
-  This flow enables users to import/load the pre-compiled blob directly if available readily. This option is enabled by explicitly setting the path to the blob using environment variables and setting the OV_USE_COMPILED_NETWORK flag to true.
+This flow enables users to import/load the pre-compiled blob directly if available readily. This option is enabled by explicitly setting the path to the blob using environment variables and setting the OV_USE_COMPILED_NETWORK flag to true.
 
-    For Linux:
-    export OV_USE_COMPILED_NETWORK=1
-    export OV_BLOB_PATH =<path to the blob>
+For Linux:
+```
+export OV_USE_COMPILED_NETWORK=1
+export OV_BLOB_PATH =<path to the blob>
+```
 
-    For Windows:
-    set OV_USE_COMPILED_NETWORK=1
-    set OV_BLOB_PATH =<path to the blob>
-
+For Windows:
+```
+set OV_USE_COMPILED_NETWORK=1
+set OV_BLOB_PATH =<path to the blob>
+```
 
 ## Configuration Options
 
@@ -306,11 +309,13 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 
 
 ### Image Recognition Networks
+
 | **MODEL NAME** | **CPU** | **GPU** | **VPU** | **FPGA** |
 | --- | --- | --- | --- | --- |
 | mnist | Yes | Yes | Yes | Yes* |
 
 ### Object Detection Networks
+
 | **MODEL NAME** | **CPU** | **GPU** | **VPU** | **FPGA** |
 | --- | --- | --- | --- | --- |
 | tiny_yolov2 | Yes | Yes | Yes | Yes* |
@@ -318,6 +323,7 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 | mask_rcnn | No | No | Yes | No* |
 
 ### Image Manipulation Networks
+
 | **MODEL NAME** | **CPU** | **GPU** | **VPU** | **FPGA** |
 | --- | --- | --- | --- | --- |
 | mosaic | Yes | No | No | No* |
@@ -328,3 +334,15 @@ Below topologies from ONNX open model zoo are fully supported on OpenVINO Execut
 
 *FPGA only runs in HETERO mode wherein the layers that are not supported on FPGA fall back to OpenVINO CPU.
 
+## OpenVINO-EP samples Tutorials
+
+In order to showcase what you can do with the OpenVINO Execution Provider for ONNX Runtime, we have created a few samples that shows how you can get that performance boost you’re looking for with just one additional line of code. 
+
+### Python API
+[Object detection with tinyYOLOv2 in Python](../../tutorials/tutorials/OpenVINO_EP_samples/tiny_yolo_v2_object_detection_python.md)
+
+### C/C++ API
+[Image classification with Squeezenet in CPP](../../tutorials/tutorials/OpenVINO_EP_samples/squeezenet_classification_cpp.md)
+
+### Csharp API
+[Object detection with YOLOv3 in C#](../../tutorials/tutorials/OpenVINO_EP_samples/yolov3_object_detection_csharp.md)
