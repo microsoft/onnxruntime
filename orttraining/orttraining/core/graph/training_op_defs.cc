@@ -2607,6 +2607,8 @@ Return true if all elements are true and false otherwise.
       });
 }
 
+}  // namespace training
+
 void RegisterOrtOpSchemas() {
   ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSDomain, 1, 1);
   ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().AddDomainToVersion(onnxruntime::kMSExperimentalDomain, 1, 1);
@@ -2617,5 +2619,4 @@ void RegisterOrtOpSchemas() {
   onnxruntime::training::RegisterTrainingOpSchemas();
 }
 
-}  // namespace training
 }  // namespace onnxruntime

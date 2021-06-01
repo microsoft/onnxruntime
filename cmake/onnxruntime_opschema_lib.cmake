@@ -10,18 +10,21 @@ file(GLOB_RECURSE contrib_ops_schema_src
 
 add_library(ort_opschema_lib ${contrib_ops_schema_src})
 
-target_include_directories(ort_opschema_lib PRIVATE ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${CMAKE_BINARY_DIR})
+# ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" is found
+target_include_directories(ort_opschema_lib PRIVATE ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
 onnxruntime_add_include_to_target(ort_opschema_lib onnxruntime_common onnx onnx_proto protobuf::libprotobuf flatbuffers)
 
 set (OPSCHEMA_LIB_DEPENDENCIES onnxruntime_mlas onnxruntime_common onnxruntime_util onnx onnx_proto protobuf::libprotobuf flatbuffers)
 
 # Test schema library using toy application
+message(STATUS "repo root = ${REPO_ROOT}")
 
-set(OPSCHEMA_LIB_TEST ${ORTTRAINING_ROOT}/tools/opschema_lib_test)
+set(OPSCHEMA_LIB_TEST ${REPO_ROOT}/samples/c_cxx/opschema_lib_use)
 
 file(GLOB_RECURSE opschema_lib_test_src "${OPSCHEMA_LIB_TEST}/*.cc")
 
 add_executable(opschema_lib_test ${opschema_lib_test_src})
 
-target_include_directories(opschema_lib_test ${ORTTRAINING_ROOT})
+target_include_directories(opschema_lib_test PRIVATE ${ORTTRAINING_ROOT})
+
 target_link_libraries(opschema_lib_test ort_opschema_lib ${OPSCHEMA_LIB_DEPENDENCIES}) 

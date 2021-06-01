@@ -4,13 +4,14 @@
 #pragma once
 
 namespace onnxruntime {
+    
 namespace training {
 
 void RegisterTrainingOpSchemas();
 
-// Top-level function for registering all contrib and training op schemas, as well as their domains.
+}  // namespace training
 
+// Top-level function for registering all contrib and training op schemas, as well as their domains.
 void RegisterOrtOpSchemas();
 
-}  // namespace training
 }  // namespace onnxruntime
