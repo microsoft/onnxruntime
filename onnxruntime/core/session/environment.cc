@@ -202,12 +202,22 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
     // Register MemCpy schema;
 
     // These ops are internal-only, so register outside of onnx
+    static std::vector<std::string> all_types = [] () {
+      std::vector<std::string> all_types;
+      std::vector<std::string> all_tensor_types = OpSchema::all_tensor_types_with_bfloat();
+      std::vector<std::string> all_sequence_types = OpSchema::all_tensor_sequence_types();
+      all_types.insert(all_types.end(), all_tensor_types.begin(), all_tensor_types.end());
+      all_types.insert(all_types.end(), all_sequence_types.begin(), all_sequence_types.end());
+      all_types.emplace_back("seq(tensor(bfloat16))");
+      return all_types; } ();
+
+    auto all_sequence_types = OpSchema::all_tensor_sequence_types();
     ORT_ATTRIBUTE_UNUSED ONNX_OPERATOR_SCHEMA(MemcpyFromHost)
         .Input(0, "X", "input", "T")
         .Output(0, "Y", "output", "T")
         .TypeConstraint(
             "T",
-            OpSchema::all_tensor_types_with_bfloat(),
+            all_types,
             "Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type.")
         .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
         .SetDoc(R"DOC(
@@ -219,7 +229,7 @@ Internal copy node
         .Output(0, "Y", "output", "T")
         .TypeConstraint(
             "T",
-            OpSchema::all_tensor_types_with_bfloat(),
+            all_types,
             "Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type.")
         .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
         .SetDoc(R"DOC(
