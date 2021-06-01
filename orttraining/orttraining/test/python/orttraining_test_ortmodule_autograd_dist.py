@@ -14,49 +14,17 @@ from onnxruntime.training.ortmodule._graph_execution_manager_factory import Grap
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn.parameter import Parameter
 
-from _test_helpers import *
+import _test_helpers
 
 torch.manual_seed(1)
 onnxruntime.set_seed(1)
 
 
-def set_onnx_fallthrough_export_type(module):
-    onnx_export_type = torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH
-    module._execution_manager = GraphExecutionManagerFactory(
-        module._module_metadata.flattened_module, onnx_export_type=onnx_export_type)
-
-
-def run_with_pytorch_on_gpu(model, args, rank, device):
-    model.to(device)
-    cuda_args = [input_.to(device) for input_ in args]
-    model = DDP(model, device_ids=[rank])
-    output = model(*cuda_args)
-    output.sum().backward()
-    return output, [arg.grad for arg in cuda_args if arg.requires_grad is True]
-
-
-def run_with_ort_on_gpu(model, args, rank, device):
-    model.to(device)
-    model = ORTModule(model)
-    set_onnx_fallthrough_export_type(model)
-    model = DDP(model, device_ids=[rank])
-    cuda_args = [arg.to(device) for arg in args]
-    output = model(*cuda_args)
-    output.sum().backward()
-    return output, [arg.grad for arg in cuda_args if arg.requires_grad is True]
-
-
-def compare_tensor_list(val_list_a, val_list_b):
-    for val_a, val_b in zip(val_list_a, val_list_b):
-        assert_values_are_close(val_a, val_b, atol=1e-7, rtol=1e-6)
-
-
 class ReduceWithMarkDirtyFunction(torch.autograd.Function):
-    """All-reduce the input from the model parallel region."""
+    # All-reduce the input from the model parallel region.
     @staticmethod
     def forward(ctx, arg):
         def reduce(buffer):
-            """All-reduce the the input tensor across model parallel group."""
             # All-reduce.
             address_for_torch_tensor = int(id(buffer))
             torch.distributed.all_reduce(buffer)
@@ -96,6 +64,26 @@ class ReduceWithMarkDirtyModel(torch.nn.Module):
 
 
 def test_Distributed_ReduceWithMarkDirtyModel(rank, size):
+    def run_with_pytorch_on_gpu(model, args, rank, device):
+        model.to(device)
+        cuda_args = [input_.to(device) for input_ in args]
+        model = DDP(model, device_ids=[rank])
+        output = model(*cuda_args)
+        output.sum().backward()
+        return output, [arg.grad for arg in cuda_args]
+
+
+    def run_with_ort_on_gpu(model, args, rank, device):
+        model.to(device)
+        model = ORTModule(model)
+
+        _test_helpers.set_onnx_fallthrough_export_type(model)
+        model = DDP(model, device_ids=[rank])
+        cuda_args = [arg.to(device) for arg in args]
+        output = model(*cuda_args)
+        output.sum().backward()
+        return output, [arg.grad for arg in cuda_args]
+
     try:
         torch.cuda.set_device('cuda:' + str(rank))
         os.environ['MASTER_ADDR'] = '127.0.0.1'
@@ -124,11 +112,11 @@ def test_Distributed_ReduceWithMarkDirtyModel(rank, size):
 
         val_list_a = [o.detach().cpu() for o in outputs if o is not None]
         val_list_b = [o.detach().cpu() for o in outputs_ort if o is not None]
-        compare_tensor_list(val_list_a, val_list_b)
+        _test_helpers.compare_tensor_list(val_list_a, val_list_b)
 
         val_list_a = [o.detach().cpu() for o in grads if o is not None]
         val_list_b = [o.detach().cpu() for o in grads_ort if o is not None]
-        compare_tensor_list(val_list_a, val_list_b)
+        _test_helpers.compare_tensor_list(val_list_a, val_list_b)
     except Exception as e:
         print(
             f"test_Distributed_ReduceWithMarkDirtyModel fail with rank {rank} with world size {size} with exception: \n{e}.")
