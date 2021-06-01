@@ -31,7 +31,7 @@ class RunStateInfo(object):
         self.output_info = output_info
 
 class GraphExecutionManager(ABC):
-    def __init__(self, module, enable_custom_autograd_function):
+    def __init__(self, module):
         """Manages building and execution of onnx graphs
 
         This class is an abstract class and should not directly be instantiated.
@@ -93,7 +93,7 @@ class GraphExecutionManager(ABC):
         self._run_symbolic_shape_infer = True
 
         # A flag saying if custom autograd.Function should be allowed. True means yes and otherwise False.
-        self._enable_custom_autograd_function = enable_custom_autograd_function
+        self._enable_custom_autograd_function = False
 
         self._input_info = None
         self._module_output_schema = None

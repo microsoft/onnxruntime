@@ -181,8 +181,8 @@ def assert_values_are_close(input, other, rtol=1e-05, atol=1e-06):
         assert False, err_msg
 
 def enable_custom_autograd_function(module):
-    module._execution_manager = GraphExecutionManagerFactory(
-        module._module_metadata.flattened_module, enable_custom_autograd_function=True)
+    for mode in [True, False]:
+        module._execution_manager(mode)._enable_custom_autograd_function = True
 
 def run_with_pytorch_on_device(device, model, input_list, label_input, is_eval_mode=False):
     model.to(device)
