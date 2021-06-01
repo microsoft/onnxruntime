@@ -10,6 +10,19 @@ from torch.utils.dlpack import from_dlpack, to_dlpack
 
 
 def wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace_flag, training_mode_flag, arg):
+    '''
+    If the input is a DLPack tensor, we wrap it as a torch.Tensor and
+    set up its attributes according to other input flags. Otherwise,
+    we return the input as is.
+
+    grad_flag: indicate if "arg" requires gradient. This is only valid if
+            "arg" is a DLPack tensor.
+    tensor_flag: indicate if "arg" is a DLPack tensor.
+    inplace_flag: indicate if "arg" may be modified in custom function. 
+    training_mode_flag: indicate if the top-level model is running
+                        under training (or inference) mode.
+    arg: a DLPack tensor or a normal Python object (e.g, a tuple of ints).
+    '''
     if tensor_flag:
         # Got a tensor. Assume it's a DLPack tensor
         # and convert it to Pytorch tensor.
@@ -28,7 +41,6 @@ def wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace_flag, training_mode_fl
         # Use non-tensor as is. It's a PyObject*.
         return arg
 
-
 def call_python_forward_function(
         forward_function,
         requires_grad_flags,
@@ -36,6 +48,20 @@ def call_python_forward_function(
         is_training_mode,
         inplace,
         *args):
+    '''
+    This function bridges the gap between ORT variables and autograd.Function.apply.
+    It conducts basic casting from ORT to Pytorch (before calling "forward_function") and from Pytorch to ORT
+    (after calling "forward_function"). It also enable autograd in Pytorch. It formats returned outputs,
+    for example, dropping None's from forward_function's output list.
+
+    Args:
+        forward_function: pointer to autograd.Function.apply (e.g., MyReLU.apply).
+        requires_grad_flags: requires_grad_flags[i] indicates if the i-th arg needs gradient.
+        tensor_type_flags: tensor_type_flagsi] indicates the type of the i-th arg.
+        is_training_mode: indicates if this model is running under training mode.
+        inplace: indicates if args can be modified inside the custom function.
+        args: inputs to "backward_function".
+    '''
     def generate_non_leaf_or_not(grad_flag, tensor_flag, arg):
         if tensor_flag and grad_flag:
             # "multiply one" helps change the torch tensor's is_leaf to be False.
@@ -110,6 +136,20 @@ def call_python_backward_function(
         is_training_mode,
         inplace,
         *args):
+    '''
+    This function bridges the gap between ORT variables and autograd.Function.backward.
+    It conducts basic casting from ORT to Pytorch (before calling "backward_function")
+    and from Pytorch to ORT (after calling "backward_function").  It formats returned
+    outputs, example, dropping None's from backward_function's output list.
+
+    Args:
+        backward_function: pointer to autograd.Function.backward (e.g., MyReLU.backward).
+        requires_grad_flags: requires_grad_flags[i] indicates if the i-th arg needs gradient.
+        tensor_type_flags: tensor_type_flagsi] indicates the type of the i-th arg.
+        is_training_mode: indicates if this model is running under training mode.
+        inplace: indicates if args can be modified inside the custom function.
+        args: inputs to "backward_function".
+    '''
     def wrap_all_outputs(result):
         if isinstance(result, torch.Tensor):
             return [to_dlpack(result)]
