@@ -47,8 +47,8 @@ struct RunConfig {
   //
   // TODO(kreeger): with both of these flags on, the extra alloc happens?
   //
-  bool enable_memory_pattern{true};
-  bool enable_cpu_mem_arena{true};
+  bool enable_memory_pattern{false};
+  bool enable_cpu_mem_arena{false};
   bool generate_model_input_binding{false};  // TODO - investigate with this flag
   ExecutionMode execution_mode{ExecutionMode::ORT_SEQUENTIAL};
   int intra_op_num_threads{0};
