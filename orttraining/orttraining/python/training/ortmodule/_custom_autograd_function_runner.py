@@ -31,10 +31,10 @@ def wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace_flag, training_mode_fl
         else:
             wrapped_arg = from_dlpack(arg).detach().contiguous()
 
-        if training_mode_flag and grad_flag:
-            wrapped_arg.requires_grad = True
-        else:
-            wrapped_arg.requires_grad = False
+        # Only requires gradient when running under training mode
+        # and the associated tensor has grad_flag=True (i.e.,
+        # "requires_grad=True" in the original Pytorch script).
+        wrapped_arg.requires_grad = training_mode_flag and grad_flag
 
         return wrapped_arg
     else:
