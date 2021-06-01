@@ -297,21 +297,28 @@ class FusionAttention(Fusion):
         (_, _, add_v, matmul_v) = v_nodes
 
         is_distill = False
+        is_distill_add = False
         qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Div', 'MatMul'], [0, 0, None, 0])
         if qk_nodes is None:
             qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Mul', 'MatMul'], [0, 0, None, 0])
             if qk_nodes is None:
                 qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Where', 'MatMul', 'Div'], [0, 0, 2, 0])
-                is_distill = True
                 if qk_nodes is None:
-                    logger.debug("fuse_attention: failed to match qk path")
-                    return
+                    qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Where', 'MatMul'], [0, 0, 0, 2])
+                    if qk_nodes is None:
+                        logger.debug("fuse_attention: failed to match qk path")
+                        return
+                    is_distill_add = True
+                else:
+                    is_distill = True
 
         add_qk = None
         matmul_qk = None
         where_qk = None
         if is_distill:
             (_, where_qk, matmul_qk, _) = qk_nodes
+        elif is_distill_add:
+            (_, add_qk, where_qk, matmul_qk) = qk_nodes
         else:
             (_, add_qk, _, matmul_qk) = qk_nodes
 
@@ -343,6 +350,9 @@ class FusionAttention(Fusion):
                                                              [(['Expand', 'Reshape', 'Equal'], [0, 0, 0]),
                                                               (['Cast', 'Expand', 'Reshape', 'Equal'], [0, 0, 0, 0])],
                                                              output_name_to_node)
+        elif is_distill_add:
+            mask_nodes = self.model.match_parent_path(where_qk, ['Cast', 'Equal', 'Unsqueeze', 'Unsqueeze'],
+                                                             [0, 0, 0, 0])
         else:
             _, mask_nodes, _ = self.model.match_parent_paths(
                 add_qk, [(['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'], [None, 0, 1, 0, 0]),
@@ -351,6 +361,7 @@ class FusionAttention(Fusion):
             logger.debug("fuse_attention: failed to match mask path")
             return
 
+        #following line: matmul_v.input[0] is repeated twice
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_v.input[0] == root_input:
             mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
 
