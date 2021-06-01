@@ -17,8 +17,6 @@ onnxruntime_add_include_to_target(ort_opschema_lib onnxruntime_common onnx onnx_
 set (OPSCHEMA_LIB_DEPENDENCIES onnxruntime_mlas onnxruntime_common onnxruntime_util onnx onnx_proto protobuf::libprotobuf flatbuffers)
 
 # Test schema library using toy application
-message(STATUS "repo root = ${REPO_ROOT}")
-
 set(OPSCHEMA_LIB_TEST ${REPO_ROOT}/samples/c_cxx/opschema_lib_use)
 
 file(GLOB_RECURSE opschema_lib_test_src "${OPSCHEMA_LIB_TEST}/*.cc")
