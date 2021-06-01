@@ -417,6 +417,7 @@ struct ProviderHost {
 
   // DataTypeImpl
   virtual MLDataType DataTypeImpl__GetType_Tensor() = 0;
+  virtual MLDataType DataTypeImpl__GetType_TensorSeq() = 0;
   virtual MLDataType DataTypeImpl__GetType_bool() = 0;
   virtual MLDataType DataTypeImpl__GetType_int8() = 0;
   virtual MLDataType DataTypeImpl__GetType_uint8() = 0;
@@ -570,10 +571,13 @@ struct ProviderHost {
 
   // OpKernelContext
   virtual const Tensor* OpKernelContext__Input_Tensor(const OpKernelContext* p, int index) = 0;
+  virtual const TensorSeq* OpKernelContext__Input_TensorSeq(const OpKernelContext* p, int index) = 0;
   virtual const Tensor& OpKernelContext__RequiredInput_Tensor(const OpKernelContext* p, int index) = 0;
   virtual Tensor* OpKernelContext__Output_Tensor(OpKernelContext* p, int index) = 0;
+  virtual TensorSeq* OpKernelContext__Output_TensorSeq(OpKernelContext* p, int index) = 0;
   virtual Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape) = 0;
   virtual Tensor& OpKernelContext__RequiredOutput(OpKernelContext* p, int index, const TensorShape& shape) = 0;
+  virtual MLDataType OpKernelContext__InputType(const OpKernelContext* p, int index) = 0; 
   virtual int OpKernelContext__InputCount(const OpKernelContext* p) = 0;
   virtual int OpKernelContext__OutputCount(const OpKernelContext* p) = 0;
   virtual Status OpKernelContext__GetTempSpaceAllocator(const OpKernelContext* p, AllocatorPtr* output) = 0;
@@ -667,6 +671,13 @@ struct ProviderHost {
   virtual const OrtMemoryInfo& Tensor__Location(const Tensor* p) = 0;
   virtual int32_t Tensor__GetElementType(const Tensor* p) = 0;
   virtual MLDataType Tensor__DataType(const Tensor* p) = 0;
+
+  // TensorSeq
+  virtual MLDataType TensorSeq__DataType(const TensorSeq* p) noexcept = 0;
+  virtual void TensorSeq__SetType(TensorSeq* p, MLDataType data_type) = 0;
+  virtual size_t TensorSeq__Size(const TensorSeq* p) noexcept = 0;
+  virtual const Tensor& TensorSeq__Get(const TensorSeq* p, size_t i) = 0;
+  virtual void TensorSeq__Add(TensorSeq* p, Tensor&& tensor) = 0;
 
   // AllocatorManager
   virtual void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) = 0;
@@ -1464,6 +1475,8 @@ struct OpKernelContext final {
   const T* Input(int index) const;
   int InputCount() const { return g_host->OpKernelContext__InputCount(this); }
 
+  MLDataType InputType(int index) const { return g_host->OpKernelContext__InputType(this, index); }
+
   template <typename T>
   T* Output(int index);
 
@@ -1486,8 +1499,18 @@ inline const Tensor* OpKernelContext::Input<Tensor>(int index) const {
 }
 
 template <>
+inline const TensorSeq* OpKernelContext::Input<TensorSeq>(int index) const {
+  return g_host->OpKernelContext__Input_TensorSeq(this, index);
+}
+
+template <>
 inline Tensor* OpKernelContext::Output<Tensor>(int index) {
   return g_host->OpKernelContext__Output_Tensor(this, index);
+}
+
+template <>
+inline TensorSeq* OpKernelContext::Output<TensorSeq>(int index) {
+  return g_host->OpKernelContext__Output_TensorSeq(this, index);
 }
 
 template <>
@@ -1681,6 +1704,15 @@ template <>
 inline const BFloat16* Tensor::Data<BFloat16>() const { return g_host->Tensor__Data_BFloat16(this); }
 template <>
 inline const MLFloat16* Tensor::Data<MLFloat16>() const { return g_host->Tensor__Data_MLFloat16(this); }
+
+//TensorSeq
+struct TensorSeq final {
+  MLDataType DataType() const noexcept { return g_host->TensorSeq__DataType(this); }
+  void SetType(MLDataType elem_type) { g_host->TensorSeq__SetType(this, elem_type); }
+  size_t Size() const noexcept { return g_host->TensorSeq__Size(this); }
+  const Tensor& Get(size_t i) const { return g_host->TensorSeq__Get(this, i); }
+  void Add(Tensor&& tensor) { g_host->TensorSeq__Add(this, std::move(tensor)); }
+};
 
 template <>
 inline gsl::span<const int64_t> Tensor::DataAsSpan() const { return g_host->Tensor__DataAsSpan_int64(this); }
