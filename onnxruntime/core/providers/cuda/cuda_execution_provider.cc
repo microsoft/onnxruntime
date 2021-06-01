@@ -55,7 +55,7 @@ class Memcpy final : public OpKernel {
         }
         Y->Add(std::move(*target_tensor));
       }
-      Status::OK();
+      return Status::OK();
     }
     return Status(common::ONNXRUNTIME, common::FAIL, "Memcpy: Unsupported input type.");
   }
