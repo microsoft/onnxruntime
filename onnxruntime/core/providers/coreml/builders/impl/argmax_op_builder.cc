@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <core/common/safeint.h>
-
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
@@ -29,8 +27,8 @@ class ArgMaxOpBuilder : public BaseOpBuilder {
 
 Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                               const Node& node,
-                                              const GraphViewer& graph_viewer,
-                                              const logging::Logger& /*logger*/) const {
+                                              const GraphViewer& /* graph_viewer */,
+                                              const logging::Logger& logger) const {
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(node);
 
   NodeAttrHelper helper(node);
@@ -46,12 +44,14 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   coreml_argmax->set_removedim(removedim);
 
   // Get ArgMax's next node(Cast)'s outputdefs
-  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
   auto it = node.OutputEdgesBegin();
-  const auto* succ_node(graph_viewer.GetNode(node_indices[it->GetNode().Index()]));
+  const auto& graph_viewer = model_builder.GetGraphViewer();
+  const auto* succ_node(graph_viewer.GetNode(it->GetNode().Index()));
 
+  //TODO: Skip the Cast Node
+  LOGS(logger, VERBOSE) << "Node [" << succ_node->Name() << "] Ignored";
   *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
-  *layer->mutable_input()->Add() = succ_node->OutputDefs()[0]->Name();
+  *layer->mutable_output()->Add() = succ_node->OutputDefs()[0]->Name();
 
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
@@ -72,28 +72,23 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
     }
   }
 
-  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
   std::vector<size_t> succ_node_indices;
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* curr_node(graph_viewer.GetNode(node_indices[i]));
-    if (curr_node->OpType() == "ArgMax") {
-      for (auto it = curr_node->OutputEdgesBegin(), end = curr_node->OutputEdgesEnd(); it != end; ++it) {
-        succ_node_indices.push_back(it->GetNode().Index());
-      }
-    }
+  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+    succ_node_indices.push_back(it->GetNode().Index());
   }
-   //Case where argmax has multiple successive nodes is not supported
+
+  //Case where argmax has multiple successive nodes is not supported
   if (succ_node_indices.size() > 1) {
     LOGS(logger, VERBOSE) << "Case - [ArgMax] has multiple sucessive nodes: Not supported.";
     return false;
   }
-  
+
   if (succ_node_indices.empty()) {
     LOGS(logger, VERBOSE) << "Case - [ArgMax] has no sucessive nodes: Not supported.";
     return false;
   }
 
-  const auto* succ_node(graph_viewer.GetNode(node_indices[succ_node_indices[0]]));
+  const auto* succ_node(graph_viewer.GetNode(succ_node_indices[0]));
 
   // Case where argmax's successive node is not "cast" is not supported
   if (succ_node->OpType() != "Cast") {

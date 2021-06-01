@@ -98,7 +98,18 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
                           << "] supported: [" << supported
                           << "]";
     if (supported) {
-      supported_node_group.push_back(node_idx);
+      // Special case: Check if ArgMax is in supported_node_groups;
+      // If YES, add cast to this supported_node_group. (Cast node will be ignored later as it's not supported in CoreML Model)
+      if (node->OpType() == "ArgMax") {
+        supported_node_group.push_back(node_idx);
+        for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
+          // We already make sure the supported argmax op only has one successive node
+          supported_node_group.push_back(it->GetNode().Index());
+          LOGS(logger, VERBOSE) << "Insert [Cast] after the supported [ArgMax] Op.";
+        }
+      } else {
+        supported_node_group.push_back(node_idx);
+      }
     } else {
       if (!supported_node_group.empty()) {
         supported_node_groups.push_back(supported_node_group);
