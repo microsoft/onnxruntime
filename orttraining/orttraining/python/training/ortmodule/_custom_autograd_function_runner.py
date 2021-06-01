@@ -53,6 +53,9 @@ def call_python_forward_function(
     It conducts basic casting from ORT to Pytorch (before calling "forward_function") and from Pytorch to ORT
     (after calling "forward_function"). It also enable autograd in Pytorch. It formats returned outputs,
     for example, dropping None's from forward_function's output list.
+    
+    The major difference between call_python_forward_function and call_python_backward_function is that
+    in the forward one, we have extra code to process autograd context from Pytorch.
 
     Args:
         forward_function: pointer to autograd.Function.apply (e.g., MyReLU.apply).
