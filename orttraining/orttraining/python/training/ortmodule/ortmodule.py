@@ -56,9 +56,8 @@ class ORTModule(torch.nn.Module):
         # inside _PytorchModuleMetadata
         self._module_metadata = _PytorchModuleMetadata(module, _io._FlattenedModule(module))
 
-        onnx_export_type = torch.onnx.OperatorExportTypes.ONNX
         self._execution_manager = GraphExecutionManagerFactory(self._module_metadata.flattened_module,
-                                                               onnx_export_type=onnx_export_type)
+                                                               enable_custom_autograd_function=False)
 
     # IMPORTANT: DO NOT add code here
     # This declaration is for automatic document generation purposes only

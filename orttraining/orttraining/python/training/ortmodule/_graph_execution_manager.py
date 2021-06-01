@@ -31,7 +31,7 @@ class RunStateInfo(object):
         self.output_info = output_info
 
 class GraphExecutionManager(ABC):
-    def __init__(self, module, onnx_export_type):
+    def __init__(self, module, enable_custom_autograd_function):
         """Manages building and execution of onnx graphs
 
         This class is an abstract class and should not directly be instantiated.
@@ -92,9 +92,8 @@ class GraphExecutionManager(ABC):
         # flag to enable symbolic shape inference for dynamic shape inputs to improve performance
         self._run_symbolic_shape_infer = True
 
-        # Use torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH to allow custom autograd.Functions'.
-        # Use torch.onnx.OperatorExportTypes.ONNX if pure ONNX is needed.
-        self._onnx_export_type = onnx_export_type
+        # A flag saying if custom autograd.Function should be allowed. True means yes and otherwise False.
+        self._enable_custom_autograd_function = enable_custom_autograd_function
 
         self._input_info = None
         self._module_output_schema = None
@@ -256,34 +255,40 @@ class GraphExecutionManager(ABC):
         assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
 
         # Todo: get the flag once wechi provided in later changes.
-        enable_custom_auto_grad = self._onnx_export_type == torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH
+
+        # Use torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH to allow custom autograd.Functions'
+        # s.t. PythonOp can be exported.
+        # Use torch.onnx.OperatorExportTypes.ONNX if pure ONNX (no PythonOp) is needed.
+        operator_export_type = torch.onnx.OperatorExportTypes.ONNX
+        if self._enable_custom_autograd_function:
+            operator_export_type = torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH
         exported_model = None
         try:
-            if enable_custom_auto_grad:
+            if self._enable_custom_autograd_function:
                 flattened_module_for_export = copy.deepcopy(self._flattened_module)
             else:
                 flattened_module_for_export = self._flattened_module
 
-            with torch.set_grad_enabled(enable_custom_auto_grad), \
-                _logger.suppress_os_stream_output(log_level=self._loglevel):
+            with torch.set_grad_enabled(self._enable_custom_autograd_function), \
+                    _logger.suppress_os_stream_output(log_level=self._loglevel):
                 torch.onnx.export(flattened_module_for_export,
-                                sample_inputs_as_tuple,
-                                f,
-                                input_names=self._input_info.names,
-                                output_names=output_names,
-                                opset_version=ONNX_OPSET_VERSION,
-                                do_constant_folding=False,
-                                training=self._export_mode,
-                                dynamic_axes=self._input_info.dynamic_axes,
-                                verbose=self._loglevel < _logger.LogLevel.WARNING,
-                                export_params=False,
-                                keep_initializers_as_inputs=True,
-                                operator_export_type=self._onnx_export_type)
+                                  sample_inputs_as_tuple,
+                                  f,
+                                  input_names=self._input_info.names,
+                                  output_names=output_names,
+                                  opset_version=ONNX_OPSET_VERSION,
+                                  do_constant_folding=False,
+                                  training=self._export_mode,
+                                  dynamic_axes=self._input_info.dynamic_axes,
+                                  verbose=self._loglevel < _logger.LogLevel.WARNING,
+                                  export_params=False,
+                                  keep_initializers_as_inputs=True,
+                                  operator_export_type=operator_export_type)
                 exported_model = onnx.load_model_from_string(f.getvalue())
         except RuntimeError as e:
             raise RuntimeError('There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
 
-        if enable_custom_auto_grad:
+        if self._enable_custom_autograd_function:
             exported_model = _post_process_after_export(exported_model)
 
         return exported_model

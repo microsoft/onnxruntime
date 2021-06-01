@@ -8,9 +8,9 @@ from ._inference_manager import InferenceManager
 
 
 class GraphExecutionManagerFactory(object):
-    def __init__(self, module, onnx_export_type):
-        self._training_manager = TrainingManager(module, onnx_export_type)
-        self._inference_manager = InferenceManager(module, onnx_export_type)
+    def __init__(self, module, enable_custom_autograd_function):
+        self._training_manager = TrainingManager(module, enable_custom_autograd_function)
+        self._inference_manager = InferenceManager(module, enable_custom_autograd_function)
 
     def __call__(self, is_training):
         if is_training:

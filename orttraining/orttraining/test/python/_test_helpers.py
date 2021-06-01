@@ -180,10 +180,9 @@ def assert_values_are_close(input, other, rtol=1e-05, atol=1e-06):
         err_msg = "The maximum atol is {}, maximum rtol is {}".format(max_atol, max_rtol)
         assert False, err_msg
 
-def set_onnx_fallthrough_export_type(module):
-    onnx_export_type = torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH
+def enable_custom_autograd_function(module):
     module._execution_manager = GraphExecutionManagerFactory(
-        module._module_metadata.flattened_module, onnx_export_type=onnx_export_type)
+        module._module_metadata.flattened_module, enable_custom_autograd_function=True)
 
 def run_with_pytorch_on_device(device, model, input_list, label_input, is_eval_mode=False):
     model.to(device)
@@ -211,7 +210,7 @@ def run_with_ort_on_device(device, model, input_list, label_input, is_eval_mode=
     model = copy.deepcopy(model)
     model.to(device)
     model = ORTModule(model)
-    set_onnx_fallthrough_export_type(model)
+    enable_custom_autograd_function(model)
     if is_eval_mode:
         model.eval()
     else:

@@ -599,7 +599,7 @@ def test_InnerModuleCall():
             ctx.inner = InnerModel(dim, device).to(device)
             if use_ort:
                 ctx.inner = ORTModule(ctx.inner)
-                set_onnx_fallthrough_export_type(ctx.inner)
+                enable_custom_autograd_function(ctx.inner)
             z = ctx.inner(x)
             return z
 
