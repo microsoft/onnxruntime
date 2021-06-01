@@ -20,6 +20,7 @@
 #include <memory>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
+#include <iostream> //slx
 
 #ifdef _WIN32
 #include <windows.h>
@@ -1693,6 +1694,16 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
 
         const auto& input_type = ort.GetTensorElementType(tensor_info);
         switch (input_type) {
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
+            auto input_tensor_ptr = ort.GetTensorData<double>(input_tensor);
+            if (input_tensor_ptr == nullptr) {
+              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(double)));
+              buffers[binding_index] = scratch_buffers.back().get();
+            } else {
+              buffers[binding_index] = const_cast<double*>(input_tensor_ptr);
+            }
+            break;
+          }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
             auto input_tensor_ptr = ort.GetTensorData<float>(input_tensor);
             if (input_tensor_ptr == nullptr) {
@@ -1804,6 +1815,16 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         }
 
         switch (output_type) {
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
+            auto output_tensor_ptr = ort.GetTensorMutableData<double>(output_tensor[i]);
+            if (output_tensor_ptr == nullptr) {
+              scratch_buffers.push_back(IAllocator::MakeUniquePtr<void>(alloc, sizeof(double)));
+              buffers[binding_index] = scratch_buffers.back().get();
+            } else {
+              buffers[binding_index] = output_tensor_ptr;
+            }
+            break;
+          }
           case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: {
             auto output_tensor_ptr = ort.GetTensorMutableData<float>(output_tensor[i]);
             if (output_tensor_ptr == nullptr) {
@@ -1904,6 +1925,20 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(buffers[binding_index]), output_tensor_ptr, output_dim_sizes[i]);
           }
         }
+//slx: test
+       else if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
+             double* output_tensors =new double[output_dim_sizes[i]];
+             cudaMemcpy(output_tensors, buffers[binding_index], output_dim_sizes[i] * sizeof(double), cudaMemcpyDeviceToHost);
+
+            std::cout << "output: " << std::endl;
+            //const float* output = static_cast<float*>(output_tensors[i].data);
+            for (int j = 0; j < std::min(20, output_dim_sizes[i]); ++j) {//500
+               std::cout << output_tensors[j] << ", ";
+            }
+            std::cout << std::endl;
+            delete[] output_tensors;	
+	   }
+//slx: test
       }
 
       return Status::OK();
