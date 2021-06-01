@@ -103,7 +103,7 @@ def call_python_forward_function(
             # are DLPack tensors.
             return wrapped
         else:
-            raise Exception('Unsupported returned type: ', type(result))
+            raise TypeError('Unsupported returned type: ', type(result))
 
     try:
         wrapped_args = list(wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace, is_training_mode, arg)

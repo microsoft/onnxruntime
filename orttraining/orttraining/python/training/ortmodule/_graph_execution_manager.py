@@ -262,7 +262,6 @@ class GraphExecutionManager(ABC):
         operator_export_type = torch.onnx.OperatorExportTypes.ONNX
         if self._enable_custom_autograd_function:
             operator_export_type = torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH
-        exported_model = None
         try:
             if self._enable_custom_autograd_function:
                 flattened_module_for_export = copy.deepcopy(self._flattened_module)
@@ -284,9 +283,9 @@ class GraphExecutionManager(ABC):
                                   export_params=False,
                                   keep_initializers_as_inputs=True,
                                   operator_export_type=operator_export_type)
-                exported_model = onnx.load_model_from_string(f.getvalue())
         except RuntimeError as e:
             raise RuntimeError('There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
+        exported_model = onnx.load_model_from_string(f.getvalue())
 
         if self._enable_custom_autograd_function:
             exported_model = _post_process_after_export(exported_model)
