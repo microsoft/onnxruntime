@@ -26,9 +26,42 @@ class Memcpy final : public OpKernel {
   Memcpy(const OpKernelInfo& info) : OpKernel{info} {}
 
   Status Compute(OpKernelContext* ctx) const override {
-    const auto* X = ctx->Input<Tensor>(0);
-    Tensor* Y = ctx->Output(0, X->Shape());
-    Status retval = Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
+    auto X_type = ctx->InputType(0);
+    Status retval{common::ONNXRUNTIME, common::FAIL, "Memcpy: Unsupported input type."};
+    if (X_type->IsTensorType()) {
+
+      const auto* X = ctx->Input<Tensor>(0);
+      Tensor* Y = ctx->Output(0, X->Shape());
+      retval = Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
+
+    } else if (X_type->IsTensorSequenceType()) {
+
+      const TensorSeq* X = ctx->Input<TensorSeq>(0);
+      ORT_ENFORCE(X != nullptr, "Memcpy: Input is nullptr.");
+      TensorSeq* Y = ctx->Output<TensorSeq>(0);
+      ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor sequence.");
+      ORT_ENFORCE(Y->Size() != 0, "Memcpy: Output tensor sequence is not empty.");
+      auto X_dtype = X->DataType();
+      Y->SetType(X_dtype);
+
+      AllocatorPtr alloc;
+      auto status = ctx->GetTempSpaceAllocator(&alloc);
+      if (!status.IsOK()) {
+        return Status(common::ONNXRUNTIME, common::FAIL,
+                      "IdentityOp cuda: unable to get an allocator.");
+      }
+
+      auto X_size = X->Size();
+      for (size_t i = 0; i < X_size; ++i) {
+        const Tensor& source_tensor = X->Get(i);
+        std::unique_ptr<Tensor> target_tensor = Tensor::Create(X_type, source_tensor.Shape(), alloc);
+        retval =  Info().GetDataTransferManager().CopyTensor(source_tensor, *target_tensor, Info().GetKernelDef().ExecQueueId());
+        if (!status.IsOK()) {
+          break;
+        }
+        Y->Add(std::move(*target_tensor));
+      }
+    }
     return retval;
   }
 };
@@ -42,7 +75,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
         .ExecQueueId(kCudaStreamCopyIn)
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
     Memcpy);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -53,7 +86,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
         .ExecQueueId(kCudaStreamCopyOut)
-        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
     Memcpy);
 
 }  // namespace cuda
