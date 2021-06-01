@@ -21,7 +21,6 @@ int64_t ReadIndex(const Tensor& tensor, const char* type_name) {
 class SequenceAt final: public CudaKernel {
  public:
   SequenceAt(const OpKernelInfo& info): CudaKernel(info) {}
-
   Status ComputeInternal(OpKernelContext* context) const override {
     const TensorSeq* X = context->Input<TensorSeq>(0);
     ORT_ENFORCE(X != nullptr, "SequenceAt GPU: Got nullptr for sequence input.");
@@ -57,7 +56,6 @@ class SequenceAt final: public CudaKernel {
 class SequenceConstruct final: public CudaKernel {
  public:
   SequenceConstruct(const OpKernelInfo& info): CudaKernel(info) {}
-
   Status ComputeInternal(OpKernelContext* context) const override {
     TensorSeq* Y = context->Output<TensorSeq>(0);
     ORT_ENFORCE(Y != nullptr, "SequenceConstruct GPU: Got nullptr for output sequence.");
