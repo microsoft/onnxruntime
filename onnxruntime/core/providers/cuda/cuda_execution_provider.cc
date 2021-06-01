@@ -40,7 +40,7 @@ class Memcpy final : public OpKernel {
       ORT_ENFORCE(X != nullptr, "Memcpy: Input is nullptr.");
       TensorSeq* Y = ctx->Output<TensorSeq>(0);
       ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor sequence.");
-      ORT_ENFORCE(Y->Size() != 0, "Memcpy: Output tensor sequence is not empty.");
+      ORT_ENFORCE(Y->Size() == 0, "Memcpy: Output tensor sequence is not empty.");
       auto X_dtype = X->DataType();
       Y->SetType(X_dtype);
 
