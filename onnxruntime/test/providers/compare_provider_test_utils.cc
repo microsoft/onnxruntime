@@ -43,7 +43,8 @@ std::unique_ptr<IExecutionProvider> GetExecutionProvider(const std::string& prov
 void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
                                      double per_sample_tolerance,
                                      double relative_per_sample_tolerance,
-                                     const bool need_cpu_cast) {
+                                     const bool need_cpu_cast,
+                                     const std::unordered_map<std::string, int>& extra_domain_to_version) {
 #ifndef NDEBUG
   run_called_ = true;
 #endif
@@ -51,7 +52,7 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
   std::unique_ptr<IExecutionProvider> target_execution_provider = GetExecutionProvider(target_provider_type);
   ASSERT_TRUE(target_execution_provider != nullptr) << "provider_type " << target_provider_type << " is not supported.";
 
-  auto p_model = BuildGraph();
+  auto p_model = BuildGraph(extra_domain_to_version);
   auto& graph = p_model->MainGraph();
 
   Status status;

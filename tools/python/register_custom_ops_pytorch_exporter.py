@@ -57,8 +57,12 @@ def register_custom_op(is_ortmodule=False):
             reduction = sym_help._maybe_get_const(reduction, 'i')
             reduction_vals = ['none', 'mean', 'sum']
             reduction = reduction_vals[reduction]
-            return g.op("com.microsoft::SoftmaxCrossEntropyLossInternal", self, target, weight, ignore_index,
-                        reduction_s=reduction, outputs=2)[0]
+            output, log_prob = g.op("com.microsoft::SoftmaxCrossEntropyLossInternal",
+                                    self, target, weight, ignore_index,
+                                    reduction_s=reduction, outputs=2)
+            output.setType(self.type())
+            log_prob.setType(self.type())
+            return output
 
         register_custom_op_symbolic('::cross_entropy_loss', cross_entropy_loss, _onnx_opset_version)
 
