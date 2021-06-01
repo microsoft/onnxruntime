@@ -244,13 +244,20 @@
                    1,
                    std::multiplies<int64_t>());
 
-    if (output_tensor.tensor_info.data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+    size_t output_data_byte_size = 0;
+    auto type = output_tensor.tensor_info.data_type;
+    switch ( type ) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+        output_data_byte_size = num_elements * sizeof(float);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+        output_data_byte_size = num_elements * sizeof(int32_t);
+        break;
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                              "Input data type is not float, actual type: ",
                              output_tensor.tensor_info.data_type);
     }
-
-    size_t output_data_byte_size = num_elements * sizeof(float);
     memcpy(output_tensor.buffer, model_output_data, output_data_byte_size);
   }
 

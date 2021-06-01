@@ -93,6 +93,13 @@ bool BaseOpBuilder::HasSupportedInputsImpl(const Node& node, const logging::Logg
   if (!GetType(input, input_type, logger))
     return false;
 
+  if (node.OpType() == "Cast" && input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+    LOGS(logger, VERBOSE) << "[" << node.OpType()
+                          << "] Input type: [" << input_type
+                          << "] is not actually supported (used for supporting argmax op).";
+    return true;
+  }
+
   if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     LOGS(logger, VERBOSE) << "[" << node.OpType()
                           << "] Input type: [" << input_type

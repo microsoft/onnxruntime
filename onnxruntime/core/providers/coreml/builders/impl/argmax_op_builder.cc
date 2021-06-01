@@ -48,8 +48,6 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& graph_viewer = model_builder.GetGraphViewer();
   const auto* succ_node(graph_viewer.GetNode(it->GetNode().Index()));
 
-  //TODO: Skip the Cast Node
-  LOGS(logger, VERBOSE) << "Node [" << succ_node->Name() << "] Ignored";
   *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
   *layer->mutable_output()->Add() = succ_node->OutputDefs()[0]->Name();
 
@@ -77,20 +75,20 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
     succ_node_indices.push_back(it->GetNode().Index());
   }
 
-  //Case where argmax has multiple successive nodes is not supported
+  //Case where argmax has multiple succeeding nodes is not supported
   if (succ_node_indices.size() > 1) {
-    LOGS(logger, VERBOSE) << "Case - [ArgMax] has multiple sucessive nodes: Not supported.";
+    LOGS(logger, VERBOSE) << "Case - [ArgMax] has multiple succedding nodes: Not supported.";
     return false;
   }
 
   if (succ_node_indices.empty()) {
-    LOGS(logger, VERBOSE) << "Case - [ArgMax] has no sucessive nodes: Not supported.";
+    LOGS(logger, VERBOSE) << "Case - [ArgMax] has no succeeding nodes: Not supported.";
     return false;
   }
 
   const auto* succ_node(graph_viewer.GetNode(succ_node_indices[0]));
 
-  // Case where argmax's successive node is not "cast" is not supported
+  // Case where ArgMax's succeeding node is not "cast" is not supported
   if (succ_node->OpType() != "Cast") {
     LOGS(logger, VERBOSE) << "Case - [ArgMax]'s next node is not [Cast]: Not supported. "
                           << "Current next node: [" << succ_node->OpType()
@@ -98,20 +96,7 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
     return false;
   }
 
-  // Check if the output type of cast node is int32
-  const auto& succ_node_output = *succ_node->OutputDefs()[0];
-  int32_t succ_node_output_type;
-  if (!GetType(succ_node_output, succ_node_output_type, logger)) {
-    return false;
-  }
-  if (succ_node_output_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-    LOGS(logger, VERBOSE) << "[" << succ_node->OpType()
-                          << "] Output type: [" << succ_node_output_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  //Attribute `select_last_index` of ArgMax op is not supported
+  // Attribute `select_last_index` of ArgMax op is not supported
   NodeAttrHelper helper(node);
   const auto select_last_index = helper.Get("select_last_index", 0);
   if (select_last_index != 0) {
