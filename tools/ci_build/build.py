@@ -2003,7 +2003,7 @@ def main():
             # since emscripten doesn't support file packaging required for unit tests,
             # need to apply patch with the specific version of emscripten.
             # once patch is committed to emsdk repository, this must be replaced with 'latest'.
-            emsdk_version = "2.0.13"
+            emsdk_version = "2.0.23"
 
             emsdk_dir = os.path.join(source_dir, "cmake", "external", "emsdk")
             emsdk_file = os.path.join(emsdk_dir, "emsdk.bat") if is_windows() else os.path.join(emsdk_dir, "emsdk")
