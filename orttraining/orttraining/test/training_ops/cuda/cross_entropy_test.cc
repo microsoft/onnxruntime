@@ -284,11 +284,6 @@ static void TestSoftmaxCrossEntropyLoss(CompareOpTester& test, const std::vector
                                         const std::vector<int64_t>* Y_dims, const std::vector<int64_t>* log_prob_dims,
                                         const std::string& reduction, const std::int64_t ignore_index,
                                         const bool test_fp16, const bool is_internal_op, const double error_tolerance) {
-  // Can we add a empty optional input before a non-empty input?
-  if (is_internal_op && !weight_dims && ignore_index != -1) {
-    return;
-  }
-
   test.AddAttribute("reduction", reduction);
   if (!is_internal_op) {
     test.AddAttribute("ignore_index", ignore_index);
@@ -363,9 +358,13 @@ static void TestSoftmaxCrossEntropyLoss(const std::vector<int64_t>* X_dims, cons
   CompareOpTester test("SoftmaxCrossEntropyLoss", 12, onnxruntime::kOnnxDomain);
   TestSoftmaxCrossEntropyLoss(test, X_dims, index_dims, weight_dims, Y_dims, log_prob_dims, reduction, ignore_index,
                               test_fp16, false, error_tolerance);
-  CompareOpTester test_internal("SoftmaxCrossEntropyLossInternal", 1, onnxruntime::kMSDomain);
-  TestSoftmaxCrossEntropyLoss(test_internal, X_dims, index_dims, weight_dims, Y_dims, log_prob_dims, reduction,
-                              ignore_index, test_fp16, true, error_tolerance);
+
+  // Can we add a empty optional input before a non-empty input?
+  if (weight_dims || ignore_index == -1) {
+    CompareOpTester test_internal("SoftmaxCrossEntropyLossInternal", 1, onnxruntime::kMSDomain);
+    TestSoftmaxCrossEntropyLoss(test_internal, X_dims, index_dims, weight_dims, Y_dims, log_prob_dims, reduction,
+                                ignore_index, test_fp16, true, error_tolerance);
+  }
 }
 
 TEST(CudaKernelTest, SoftmaxCrossEntropyLoss_TinySizeTensor) {
