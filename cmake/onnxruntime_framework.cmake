@@ -2,21 +2,43 @@
 # Licensed under the MIT License.
 
 if(onnxruntime_ENABLE_TRAINING AND NOT EXISTS "${PYTHON_LIBRARIES}")
-  if(MSVC)
-    set(PYTHON_LIBRARY_SUFFIX_NOT_FOUND false)
-    exec_program("${PYTHON_EXECUTABLE}"
-      ARGS "-c \"from distutils import sysconfig as s; print(s.get_config_var('LDVERSION') or s.get_config_var('VERSION'))\""
-      OUTPUT_VARIABLE PYTHON_LIBRARY_SUFFIX
-      RETURN_VALUE PYTHON_LIBRARY_SUFFIX_NOT_FOUND)
-    if(${PYTHON_LIBRARY_SUFFIX_NOT_FOUND})
-      message(FATAL_ERROR
-              "Cannot get Python library suffix. Is distutils installed?")
-    endif(${PYTHON_LIBRARY_SUFFIX_NOT_FOUND})
+  set(PYTHON_LIBRARY_SUFFIX_NOT_FOUND false)
+  exec_program("${PYTHON_EXECUTABLE}"
+    ARGS "-c \"from distutils import sysconfig as s; print(s.get_config_var('LDVERSION') or s.get_config_var('VERSION'))\""
+    OUTPUT_VARIABLE PYTHON_LIBRARY_SUFFIX
+    RETURN_VALUE PYTHON_LIBRARY_SUFFIX_NOT_FOUND)
 
+  if(MSVC)
     # construct PYTHON_LIBRARIES from PYTHON_INCLUDE_DIR.
-      get_filename_component(_PYTHON_ROOT ${PYTHON_INCLUDE_DIR} DIRECTORY)
-      set(PYTHON_LIBRARIES
-          "${_PYTHON_ROOT}/libs/Python${PYTHON_LIBRARY_SUFFIX}.lib")
+    get_filename_component(_PYTHON_ROOT ${PYTHON_INCLUDE_DIR} DIRECTORY)
+    set(PYTHON_LIBRARIES
+        "${_PYTHON_ROOT}/libs/Python${PYTHON_LIBRARY_SUFFIX}.lib")
+  else()
+
+    set(PYTHON_LIBDIR_NOT_FOUND false)
+    exec_program("${PYTHON_EXECUTABLE}"
+      ARGS "-c \"from distutils import sysconfig as s; print(s.get_config_var('LIBDIR') or '')\""
+      OUTPUT_VARIABLE PYTHON_LIBDIR
+      RETURN_VALUE PYTHON_LIBDIR_NOT_FOUND)
+
+    set(PYTHON_MULTIARCH_NOT_FOUND false)
+    exec_program("${PYTHON_EXECUTABLE}"
+      ARGS "-c \"from distutils import sysconfig as s; print(s.get_config_var('MULTIARCH') or '')\""
+      OUTPUT_VARIABLE PYTHON_MULTIARCH
+      RETURN_VALUE PYTHON_MULTIARCH_NOT_FOUND)
+
+    if(PYTHON_MULTIARCH)
+      set(_PYTHON_LIBS_SEARCH "${PYTHON_LIBDIR}/${PYTHON_MULTIARCH}" "${PYTHON_LIBDIR}")
+    else()
+      set(_PYTHON_LIBS_SEARCH "${PYTHON_LIBDIR}")
+    endif()
+
+    # searching for Python libs in ${_PYTHON_LIBS_SEARCH}")
+    find_library(
+      PYTHON_LIBRARIES
+      NAMES "python${PYTHON_LIBRARY_SUFFIX}"
+      PATHS ${_PYTHON_LIBS_SEARCH}
+      NO_DEFAULT_PATH)
   endif()
 
   # raise an error if the python libs are still not found.
