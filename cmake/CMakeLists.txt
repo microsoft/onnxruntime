@@ -1022,7 +1022,7 @@ function(onnxruntime_set_source_file_properties target_name)
 
   # enable ARC for Objective-C/C++
   set(objective_c_cc_srcs ${srcs})
-  list(FILTER objective_c_cc_srcs INCLUDE REGEX "\.mm?$")
+  list(FILTER objective_c_cc_srcs INCLUDE REGEX "\\.mm?$")
   set_property(SOURCE ${objective_c_cc_srcs} APPEND PROPERTY COMPILE_OPTIONS "-fobjc-arc")
 endfunction()
 
@@ -1366,8 +1366,11 @@ if (onnxruntime_USE_CUDA)
   endif()
   enable_language(CUDA)
   message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
-
-  set(CMAKE_CUDA_STANDARD 14)
+  if (WIN32)
+    set(CMAKE_CUDA_STANDARD 17)
+  else()
+    set(CMAKE_CUDA_STANDARD 14)
+  endif()
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
 
@@ -1681,6 +1684,10 @@ if (onnxruntime_BUILD_CSHARP)
 endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
+  if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+    string(APPEND CMAKE_CXX_FLAGS " -msimd128")
+  endif()
+
   if (onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING)
     string(APPEND CMAKE_CXX_FLAGS " -s DISABLE_EXCEPTION_CATCHING=0")
   endif()

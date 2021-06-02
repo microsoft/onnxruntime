@@ -336,6 +336,7 @@ def parse_arguments():
 
     # WebAssembly build
     parser.add_argument("--build_wasm", action='store_true', help="Build for WebAssembly")
+    parser.add_argument("--enable_wasm_simd", action='store_true', help="Enable WebAssembly SIMD")
     parser.add_argument(
         "--disable_wasm_exception_catching", action='store_true',
         help="Disable exception catching in WebAssembly.")
@@ -743,6 +744,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
         "-Donnxruntime_BUILD_WEBASSEMBLY=" + ("ON" if args.build_wasm else "OFF"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING=" + ("OFF" if args.disable_wasm_exception_catching
                                                                   else "ON"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
@@ -1269,16 +1271,20 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
 
 
 def run_ios_tests(args, source_dir, config, cwd):
-    cpr = run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
-                          "-configuration", config,
-                          "-scheme",  "onnxruntime_test_all_xc", "-destination",
-                          "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
-    if cpr.returncode == 0:
-        cpr = run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
-                              "-configuration", config,
-                              "-scheme",  "onnxruntime_shared_lib_test_xc", "-destination",
-                              "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
-    cpr.check_returncode()
+    run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
+                    "-configuration", config,
+                    "-scheme",  "onnxruntime_test_all_xc", "-destination",
+                    "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
+
+    run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
+                    "-configuration", config,
+                    "-scheme",  "onnxruntime_shared_lib_test_xc", "-destination",
+                    "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
+
+    if args.build_apple_framework:
+        package_test_py = os.path.join(source_dir, 'tools', 'ci_build', 'github', 'apple', 'test_ios_packages.py')
+        framework_dir = os.path.join(cwd, config + '-' + args.ios_sysroot)
+        run_subprocess([sys.executable, package_test_py, '--c_framework_dir', framework_dir], cwd=cwd)
 
 
 def run_orttraining_test_orttrainer_frontend_separately(cwd):

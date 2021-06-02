@@ -122,7 +122,7 @@ namespace rocm {
       T,                                                                        \
       kRocmExecutionProvider,                                                   \
       KernelDefBuilder()                                                        \
-          .InputMemoryType<OrtMemTypeCPUInput>(1)                               \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),               \
       name<T>);
 
