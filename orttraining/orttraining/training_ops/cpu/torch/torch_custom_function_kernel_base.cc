@@ -21,7 +21,7 @@ std::vector<OrtValue> CreateOrtValueArgs(OpKernelContext* context,
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
   std::vector<OrtValue> args;
   for (size_t i = 0; i < num_arg; ++i) {
-    args.push_back(*ctx_internal->GetInputMLValue(begin_index + i));
+    args.push_back(*ctx_internal->GetInputMLValue(static_cast<int>(begin_index + i)));
   }
   return args;
 }
@@ -210,7 +210,7 @@ void PythonOpBase::SetContextOutput(OpKernelContext* context, void* diff_ctx) co
 void PythonOpBase::SetOtherOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) const {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
   for (size_t i = 0; i < returned_ortvalues.size(); ++i) {
-    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(i + 1, returned_ortvalues[i]));
+    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(static_cast<int>(i + 1), returned_ortvalues[i]));
   }
 }
 
@@ -254,7 +254,7 @@ void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue
   // In that case, returned_args may contain less arguments.
   outputs_count = outputs_count > returned_ortvalues.size() ? returned_ortvalues.size() : outputs_count;
   for (size_t i = 0; i < outputs_count; ++i) {
-    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(i, returned_ortvalues.at(i)));
+    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(static_cast<int>(i), returned_ortvalues.at(i)));
   }
 }
 
