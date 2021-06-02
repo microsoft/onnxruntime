@@ -296,19 +296,21 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
   // The BFC allocator tries to find the best fit first.
   BinNum bin_num = BinNumForSize(rounded_bytes);
 
+    constexpr size_t MB_BYTES = 1000000;
+  if (rounded_bytes > MB_BYTES * 1) {
+    LOGS_DEFAULT(WARNING) << "$$$ Large allocation: " << rounded_bytes / MB_BYTES << " MB";
+    if (rounded_bytes > 0) {
+      rounded_bytes = rounded_bytes;
+    }
+  }
+
   std::lock_guard<OrtMutex> lock(lock_);
   void* ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
   if (ptr != nullptr) {
     return ptr;
   }
 
-  constexpr size_t MB_BYTES = 1000000;
-  if (rounded_bytes > MB_BYTES * 10) {
-    LOGS_DEFAULT(INFO) << "$$$ Large allocation: " << rounded_bytes / MB_BYTES << " MB";
-    if (rounded_bytes > 0) {
-      rounded_bytes = rounded_bytes;
-    }
-  }
+
 
   LOGS_DEFAULT(INFO) << "Extending BFCArena for " << device_allocator_->Info().name
                      << ". bin_num:" << bin_num << " (requested) num_bytes: " << num_bytes << " (actual) rounded_bytes:" << rounded_bytes;
