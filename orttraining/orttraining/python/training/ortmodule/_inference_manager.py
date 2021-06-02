@@ -89,8 +89,7 @@ class InferenceManager(GraphExecutionManager):
                                                                          self._optimized_onnx_model,
                                                                          self._device,
                                                                          *_io._combine_input_buffers_initializers(
-                                                                             [param for name, param in self._flattened_module.named_parameters()
-                                                                                if name in self._graph_initializer_names],
+                                                                             self._graph_initializers,
                                                                              self._graph_info.user_input_names,
                                                                              self._input_info,
                                                                              self._flattened_module.named_buffers(),
