@@ -257,6 +257,9 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
           inputAllocs.push(dataOffset);
           let dataIndex = dataOffset / 4;
           for (let i = 0; i < data.length; i++) {
+            if (typeof data[i] !== 'string') {
+              throw new TypeError(`tensor data at index ${i} is not a string`);
+            }
             wasm.HEAPU32[dataIndex++] = allocWasmString(data[i], inputAllocs);
           }
         } else {
