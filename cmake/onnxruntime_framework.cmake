@@ -20,13 +20,13 @@ if(onnxruntime_ENABLE_TRAINING AND NOT EXISTS "${PYTHON_LIBRARY_PATH}")
       ARGS "-c \"from distutils import sysconfig as s; print(s.get_config_var('LIBDIR') or '')\""
       OUTPUT_VARIABLE PYTHON_LIBDIR
       RETURN_VALUE PYTHON_LIBDIR_NOT_FOUND)
-
+    message("PYTHON_LIBDIR: ${PYTHON_LIBDIR}")
     set(PYTHON_MULTIARCH_NOT_FOUND false)
     exec_program("${PYTHON_EXECUTABLE}"
       ARGS "-c \"from distutils import sysconfig as s; print(s.get_config_var('MULTIARCH') or '')\""
       OUTPUT_VARIABLE PYTHON_MULTIARCH
       RETURN_VALUE PYTHON_MULTIARCH_NOT_FOUND)
-
+    message("PYTHON_EXECUTABLE: ${PYTHON_EXECUTABLE}, PYTHON_MULTIARCH: ${PYTHON_MULTIARCH}")
     if(PYTHON_MULTIARCH)
       set(_PYTHON_LIBS_SEARCH "${PYTHON_LIBDIR}/${PYTHON_MULTIARCH}" "${PYTHON_LIBDIR}")
     else()
@@ -39,8 +39,13 @@ if(onnxruntime_ENABLE_TRAINING AND NOT EXISTS "${PYTHON_LIBRARY_PATH}")
       NAMES "python${PYTHON_LIBRARY_SUFFIX}"
       PATHS ${_PYTHON_LIBS_SEARCH}
       NO_DEFAULT_PATH)
-  endif()
 
+    # If all else fails, just set the name/version and let the linker figure out the path.
+    if(NOT PYTHON_LIBRARY_PATH)
+        set(PYTHON_LIBRARY_PATH python${PYTHON_LIBRARY_SUFFIX})
+    endif()
+  endif()
+  message("PYTHON_LIBRARY_PATH ${PYTHON_LIBRARY_PATH}")
   # raise an error if the python libs are still not found.
   if(NOT EXISTS "${PYTHON_LIBRARY_PATH}")
       message(FATAL_ERROR "Python libraries not found")
