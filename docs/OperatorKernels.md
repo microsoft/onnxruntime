@@ -10,6 +10,7 @@ Do not modify directly.*
 ---------------
 
 <a name="cpuexecutionprovider"/>
+
 ## Operators implemented by CPUExecutionProvider
 
 | Op Name | Parameters | OpSet Version | Types Supported |
@@ -420,6 +421,7 @@ Do not modify directly.*
 
 
 <a name="cudaexecutionprovider"/>
+
 ## Operators implemented by CUDAExecutionProvider
 
 | Op Name | Parameters | OpSet Version | Types Supported |
