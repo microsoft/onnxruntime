@@ -178,7 +178,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
           p.reset();
       });
     }
-    std::shared_ptr<PerThreadContextMap> p{std::make_shared<PerThreadContextMap>()};
+    std::shared_ptr<PerThreadContextMap> p = std::make_shared<PerThreadContextMap>();
   };
 
   static const std::shared_ptr<PerThreadContextMap>& PerThreadContextCache() {
