@@ -88,7 +88,6 @@ yum -y install \
     ${TOOLCHAIN_DEPS} \
     diffutils \
     gettext \
-    graphviz \
     file \
     kernel-devel \
     libffi-devel \
