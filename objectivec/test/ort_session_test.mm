@@ -3,6 +3,7 @@
 
 #import <XCTest/XCTest.h>
 
+#import "ort_coreml_execution_provider.h"
 #import "ort_env.h"
 #import "ort_session.h"
 #import "ort_value.h"
@@ -189,6 +190,28 @@ NS_ASSUME_NONNULL_BEGIN
                                runOptions:[ORTSessionTest makeRunOptions]
                                     error:&err];
   ORTAssertBoolResultUnsuccessful(runResult, err);
+}
+
+- (void)testAppendCoreMLEP {
+  NSError* err = nil;
+  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+  ORTCoreMLExecutionProviderOptions* coreMLOptions = [[ORTCoreMLExecutionProviderOptions alloc] init];
+
+  BOOL appendResult = [sessionOptions appendCoreMLExecutionProviderWithOptions:coreMLOptions
+                                                                         error:&err];
+
+  if (!ORTIsCoreMLExecutionProviderAvailable()) {
+    ORTAssertBoolResultUnsuccessful(appendResult, err);
+    return;
+  }
+
+  ORTAssertBoolResultSuccessful(appendResult, err);
+
+  ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
+                                              modelPath:[ORTSessionTest getAddModelPath]
+                                         sessionOptions:sessionOptions
+                                                  error:&err];
+  ORTAssertNullableResultSuccessful(session, err);
 }
 
 @end
