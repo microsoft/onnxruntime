@@ -20,11 +20,10 @@ export const initializeFlags = (): void => {
     env.wasm.initTimeout = 0;
   }
 
-  if (typeof env.wasm.numThreads !== 'number' || !Number.isInteger(env.wasm.numThreads) || env.wasm.numThreads < 0) {
+  if (typeof env.wasm.numThreads !== 'number' || !Number.isInteger(env.wasm.numThreads) || env.wasm.numThreads <= 0) {
     const numCpuLogicalCores = typeof navigator === 'undefined' ? cpus().length : navigator.hardwareConcurrency;
-    env.wasm.numThreads = Math.ceil((numCpuLogicalCores || 1) / 2);
+    env.wasm.numThreads = Math.min(4, Math.ceil((numCpuLogicalCores || 1) / 2));
   }
-  env.wasm.numThreads = Math.min(4, env.wasm.numThreads);
 };
 
 class OnnxruntimeWebAssemblyBackend implements Backend {
