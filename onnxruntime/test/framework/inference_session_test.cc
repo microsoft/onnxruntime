@@ -265,6 +265,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
                                ProviderType bind_provider_type,
                                bool is_preallocate_output_vec,
                                ProviderType allocation_provider,
+                               IExecutionProvider *gpu_provider,
                                OrtDevice* output_device) {
   unique_ptr<IOBinding> io_binding;
   Status st = session_object.NewIOBinding(&io_binding);
@@ -312,16 +313,8 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     if (allocation_provider == kCpuExecutionProvider) {
       AllocateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), expected_output_dims,
                              &output_ml_value);
-    } else if (allocation_provider == kCudaExecutionProvider) {
-#ifdef USE_CUDA
-      AllocateMLValue<float>(DefaultCudaExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), expected_output_dims,
-                             &output_ml_value);
-#endif
-    } else if (allocation_provider == kRocmExecutionProvider) {
-#ifdef USE_ROCM
-      AllocateMLValue<float>(TestRocmExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), expected_output_dims,
-                             &output_ml_value);
-#endif
+    } else if (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider) {
+      AllocateMLValue<float>(gpu_provider->GetAllocator(0, OrtMemTypeDefault), expected_output_dims, &output_ml_value);
     } else {
       ORT_THROW("Unsupported provider");
     }
@@ -359,10 +352,10 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
                                                                   shape,
                                                                   cpu_allocator);
 #ifdef USE_CUDA
-    cudaStream_t stream = static_cast<cudaStream_t>(DefaultCudaExecutionProvider()->GetComputeStream());
+    cudaStream_t stream = static_cast<cudaStream_t>(gpu_provider->GetComputeStream());
     st = GetProviderInfo_CUDA()->CreateGPUDataTransfer(stream)->CopyTensor(rtensor, *cpu_tensor.get(), 0);
 #elif USE_ROCM
-    hipStream_t stream = static_cast<hipStream_t>(static_cast<const onnxruntime::ROCMExecutionProvider*>(TestRocmExecutionProvider())->GetComputeStream());
+    hipStream_t stream = static_cast<hipStream_t>(gpu_provider->GetComputeStream());
     st = GPUDataTransfer(stream).CopyTensor(rtensor, *cpu_tensor.get(), 0);
 #endif
     ASSERT_TRUE(st.IsOK());
@@ -373,14 +366,8 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     VerifyOutputs({ml_value}, expected_output_dims, expected_values_mul_y);
 #endif
   } else {
-    if (allocation_provider == kCudaExecutionProvider) {
-#ifdef USE_CUDA
-      DefaultCudaExecutionProvider()->Sync();
-#endif
-    } else if (allocation_provider == kRocmExecutionProvider) {
-#ifdef USE_ROCM
-      TestRocmExecutionProvider()->Sync();
-#endif
+    if (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider) {
+      gpu_provider->Sync();
     }
     VerifyOutputs(io_binding->GetOutputs(), expected_output_dims, expected_values_mul_y);
   }
@@ -862,14 +849,21 @@ static void TestBindHelper(const std::string& log_str,
   so.session_log_verbosity_level = 1;  // change to 1 for detailed logging
 
   InferenceSession session_object{so, GetEnvironment()};
+  IExecutionProvider *gpu_provider{};
 
   if (bind_provider_type == kCudaExecutionProvider || bind_provider_type == kRocmExecutionProvider) {
 #ifdef USE_CUDA
-    EXPECT_TRUE(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()).IsOK());
+    auto provider = DefaultCudaExecutionProvider(); 
+    gpu_provider = provider.get();
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(provider)).IsOK());
 #elif USE_ROCM
     ROCMExecutionProviderInfo epi;
     epi.device_id = 0;
-    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(epi)).IsOK());
+
+    auto provider = std::make_unique<ROCMExecutionProvider>(epi);
+    gpu_provider = provider.get();
+
+    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(provider)).IsOK());
 #endif
   }
 
@@ -891,6 +885,7 @@ static void TestBindHelper(const std::string& log_str,
                             bind_provider_type,
                             preallocate_output,
                             allocation_provider,
+                            gpu_provider,
                             output_device);
 }
 
