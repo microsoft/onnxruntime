@@ -74,26 +74,6 @@ class DnnlReduceMean : public DnnlKernel {
       ort_source_format_ = GetSourceFormat(static_cast<int>(xdim));
       x_shape = TensorShape(xshape, xdim);
 
-      //We need to calculate output tensor shape
-      //First we initialize it with input shape and then we modify it based on the attribute values
-      //This is because the attribute values decide the output shape
-
-      auto yshape = xshape;
-      //Now the output shape is same as input shape
-
-      for (unsigned long int i = 0; i < xdim; i++) {
-          if (axes_attr_.size() == 0)
-              yshape[i] = 1; //If no axis is specified, then output shape is just all 1's
-          else if (i < axes_attr_.size()) {
-            if (axes_attr_[i] < 0)
-                yshape[xdim+axes_attr_[i]] = 1;
-            else
-                yshape[axes_attr_[i]] = 1;
-          } //If there is axis, then make the respective dimensions 1, keeping the other dimension values untouched.
-      }
-
-      primitive_dst_shape_ = TensorShape(yshape, xdim);
-
       if (x_shape.NumDimensions() == 0) {
         primitive_created_status_ = Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Shape of size zero " + x_shape.ToString());
         return;
@@ -128,7 +108,24 @@ class DnnlReduceMean : public DnnlKernel {
       ort_source_desc_ = parents_[0].get()->ort_source_desc_;
       source_desc_ = parents_[0].get()->primitive_dst_desc_;
     }
-    
+    //We need to calculate output tensor shape
+    //First we initialize it with input shape and then we modify it based on the attribute values
+    //This is because the attribute values decide the output shape
+
+    auto xshape = x_shape.GetDims();
+    auto ndim = x_shape.NumDimensions();
+    for (unsigned long int i = 0; i < ndim; i++) {
+      if (axes_attr_.size() == 0)
+        xshape[i] = 1;  //If no axis is specified, then output shape is just all 1's
+      else if (i < axes_attr_.size()) {
+        if (axes_attr_[i] < 0)
+          xshape[ndim + axes_attr_[i]] = 1;
+        else
+          xshape[axes_attr_[i]] = 1;
+      }  //If there is axis, then make the respective dimensions 1, keeping the other dimension values untouched.
+    }
+    primitive_dst_shape_ = TensorShape(xshape.data(), ndim);
+
     dnnl::memory::dims dst_dims_mkl(primitive_dst_shape_.GetDims().begin(), primitive_dst_shape_.GetDims().end());
 
     primitive_dst_md_ = std::make_unique<dnnl::memory::desc>(
