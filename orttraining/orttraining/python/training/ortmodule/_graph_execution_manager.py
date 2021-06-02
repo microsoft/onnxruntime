@@ -54,6 +54,7 @@ class GraphExecutionManager(ABC):
         self._graph_info = None
         self._graph_initializer_names = None
         self._graph_initializer_names_to_train = None
+        self._graph_initializers = None
 
         # TrainingAgent or InferenceAgent
         self._execution_agent = None
@@ -342,3 +343,8 @@ class GraphExecutionManager(ABC):
         #       a set (unordered_set in the backend) that does not require a copy on each reference.
         self._graph_initializer_names = set(initializer_names)
         self._graph_initializer_names_to_train = set(initializer_names_to_train)
+
+        # Initializers can be cached and used since they are expected not to be re-instantiated
+        # between forward calls.
+        self._graph_initializers = [param for name, param in self._flattened_module.named_parameters() 
+                                    if name in self._graph_initializer_names]

@@ -856,17 +856,10 @@ void addGlobalMethods(py::module& m, Environment& env) {
         std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> factories = {
             onnxruntime::CreateExecutionProviderFactory_CPU(0),
 #ifdef USE_CUDA
-            onnxruntime::CreateExecutionProviderFactory_CUDA(
-                [&]() {
-                  CUDAExecutionProviderInfo info{};
-                  info.device_id = cuda_device_id;
-                  info.gpu_mem_limit = gpu_mem_limit;
-                  info.arena_extend_strategy = arena_extend_strategy;
-                  info.cudnn_conv_algo_search = cudnn_conv_algo_search;
-                  info.do_copy_in_default_stream = do_copy_in_default_stream;
-                  info.external_allocator_info = external_allocator_info;
-                  return info;
-                }()),
+            []() {
+              OrtCUDAProviderOptions provider_options{};
+              return CreateExecutionProviderFactory_Cuda(&provider_options);
+            }(),
 #endif
 #ifdef USE_ROCM
             onnxruntime::CreateExecutionProviderFactory_ROCM(
