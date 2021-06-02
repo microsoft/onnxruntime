@@ -72,7 +72,7 @@ The _extended_ level optimizations introduce the custom FusedConv nodes, which t
 
 ## 2. Initial Performance Testing
 
-The best optimization settings will differ by model. Some models may perform better with NNAPI, some models may not. As the performance will be model specific you must performance test to determine the best combination for your model.
+The best optimization settings will differ by model. Some models may perform better with NNAPI, some models may not. As the performance will be model specific you must run performance tests to determine the best combination for your model.
 
 It is suggested to run performance tests:
   - with NNAPI enabled and an ORT format model created with _basic_ level optimization

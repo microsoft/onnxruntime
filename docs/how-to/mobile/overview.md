@@ -9,7 +9,7 @@ nav_order: 1
 
 # Overview
 
-ONNX Runtime Mobile is a special build of ONNX Runtime that minimize the binary size and reduces memory usage. It does this primarily by only including specified operators and types in the build, and by saving a pre-optimized ONNX model to an internal format ('ORT format model').
+ONNX Runtime Mobile is a special build of ONNX Runtime that minimizes the binary size and reduces memory usage. It does this primarily by only including specified operators and types in the build, and by saving a pre-optimized ONNX model to an internal format ('ORT format model').
 
 An ONNX model must be converted to an ORT format model to be used with ONNX Runtime Mobile.
 

@@ -43,7 +43,7 @@ Ort::Session session(env, model_path, so);
 
 There are several run time options available for the NNAPI EP.
 
-To use the NNAPI EP run time options, create an unsigned integer representing the options, and set each individual options by using the bitwise OR operator.
+To use the NNAPI EP run time options, create an unsigned integer representing the options, and set each individual option by using the bitwise OR operator.
 
 ```
 uint32_t nnapi_flags = 0;
