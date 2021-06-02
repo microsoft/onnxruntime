@@ -248,6 +248,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
         let dataByteLength: number;
 
         if (Array.isArray(data)) {
+          // string tensor
           dataByteLength = 4 * data.length;
           dataOffset = wasm._malloc(dataByteLength);
           inputAllocs.push(dataOffset);
