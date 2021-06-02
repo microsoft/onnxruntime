@@ -13,6 +13,7 @@ jobs:
           --apple_deploy_target 12.1 \
           --use_xcode \
           --config RelWithDebInfo \
+          --build_apple_framework \
           --parallel
       displayName: (CPU EP) Build onnxruntime for iOS x86_64 and run tests using simulator
     - script: |
@@ -25,5 +26,6 @@ jobs:
           --apple_deploy_target 12.1 \
           --use_xcode \
           --config RelWithDebInfo \
+          --build_apple_framework \
           --parallel
       displayName: (CoreML EP) Build onnxruntime for iOS x86_64 and run tests using simulator
