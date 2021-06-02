@@ -21,15 +21,36 @@ Abstract:
 // Quantized integer matrix/matrix dispatch structure.
 //
 
+//
+// Define the default striding parameters used for the quantized integer
+// matrix/matrix multiply operation.
+//
+
+struct MLAS_GEMM_U8X8_STRIDES {
+    size_t M;
+    size_t N;
+    size_t K;
+};
+
 typedef
 void
 (MLAS_GEMM_U8X8_OPERATION)(
     const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
     const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
+    const MLAS_GEMM_U8X8_STRIDES& Strides,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
     const size_t RangeCountN
+    );
+
+typedef
+void
+(MLAS_GEMM_U8X8_BLK_OPERATION)(
+    const MLAS_GEMM_U8X8_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_U8X8_DATA_PARAMS* DataParams,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 typedef
@@ -45,8 +66,7 @@ void
     );
 
 struct MLAS_GEMM_U8X8_DISPATCH {
-    MLAS_GEMM_U8X8_OPERATION* Operation;
-    MLAS_GEMM_U8X8_OPERATION* PackedOperation;
+    MLAS_GEMM_U8X8_BLK_OPERATION* Operation;
     MLAS_GEMM_U8X8_COPY_PACKB_ROUTINE* CopyPackBRoutine;
     size_t PackedK;
     size_t StrideK;
@@ -88,17 +108,6 @@ MlasGemmU8X8GetDispatch(
 struct MLAS_GEMM_U8X8_WORK_BLOCK {
     ptrdiff_t ThreadCountM;
     ptrdiff_t ThreadCountN;
-};
-
-//
-// Define the default striding parameters used for the quantized integer
-// matrix/matrix multiply operation.
-//
-
-struct MLAS_GEMM_U8X8_STRIDES {
-    size_t M;
-    size_t N;
-    size_t K;
 };
 
 void
@@ -149,73 +158,36 @@ MlasGemmU8X8TryGemvKernel(
     return false;
 }
 
-
-/**
- * Heap buffer for packing panels used in QGEMM
- */
-struct MLAS_GEMM_U8X8_PACK_PANELS {
-    std::vector<uint8_t> BufHolder;
-    std::ptrdiff_t AddrA = 0;
-    std::ptrdiff_t AddrB = 0;
-};
-
-thread_local MLAS_GEMM_U8X8_PACK_PANELS MlasQGemmPckBuf;
-
 //
-// When defining multiple Kernels for the same CPU,
-// sizes of panel A and B must agree among these kernels!
-//
+// TODO!! query L2 data cache size from system
+// 
+constexpr size_t CacheSize = 256 * 1024;
+
+thread_local uint8_t PackPanels[CacheSize];
 
 template <typename KernelType>
 MLAS_FORCEINLINE
 size_t
-MlasQGemmPackPanelASize()
+MlasQGemmPackPanelASize(const MLAS_GEMM_U8X8_STRIDES& Strides)
 {
-    constexpr MLAS_GEMM_U8X8_STRIDES Strides = KernelType::Strides;
-    constexpr size_t PackPanelASize =
-        Strides.M * Strides.K * sizeof(typename KernelType::PackedAType);
+    const size_t K = (Strides.K + KernelType::PackedK - 1) & ~(KernelType::PackedK - 1);
+    const size_t PackPanelASize =
+        Strides.M * K * sizeof(typename KernelType::PackedAType);
 
     return PackPanelASize;
 }
 
 template <typename KernelType>
 MLAS_FORCEINLINE size_t
-MlasQGemmPackPanelBSize()
+MlasQGemmPackPanelBSize(const MLAS_GEMM_U8X8_STRIDES& Strides)
 {
-    constexpr MLAS_GEMM_U8X8_STRIDES Strides = KernelType::Strides;
-    constexpr size_t PackPanelBSize =
-        Strides.K * Strides.N * sizeof(typename KernelType::PackedBType);
+    const size_t K = (Strides.K + KernelType::PackedK - 1) & ~(KernelType::PackedK - 1);
+    const size_t N = (Strides.N + 15) & ~15;
+    const size_t PackPanelBSize = K * N * sizeof(typename KernelType::PackedBType);
 
     return PackPanelBSize;
 }
 
-template <typename KernelType>
-MLAS_FORCEINLINE 
-void 
-MlasQGemmGetPackPanels(
-    typename KernelType::PackedAType*& PanelA,
-    typename KernelType::PackedBType*& PanelB
-    )
-{
-
-    if (MlasQGemmPckBuf.AddrA == 0) {
-        // Multiple Kernels defined for the same CPU will cause buffer overrun problem
-        // they must specialize panel size functions to make panel sizes agree.
-        constexpr size_t AlignPadding = 64;
-
-        const size_t PackPanelASize = MlasQGemmPackPanelASize<KernelType>();
-        const size_t PackPanelBSize = MlasQGemmPackPanelBSize<KernelType>();
-        const size_t PanelBufSize = PackPanelASize + PackPanelBSize + AlignPadding - 1;
-
-        MlasQGemmPckBuf.BufHolder.resize(PanelBufSize);
-        MlasQGemmPckBuf.AddrA = reinterpret_cast<size_t>(MlasQGemmPckBuf.BufHolder.data());
-        MlasQGemmPckBuf.AddrA = (MlasQGemmPckBuf.AddrA + AlignPadding - 1) & ~(AlignPadding - 1);
-        MlasQGemmPckBuf.AddrB = MlasQGemmPckBuf.AddrA + PackPanelASize;
-    }
-
-    PanelA = reinterpret_cast<typename KernelType::PackedAType*>(MlasQGemmPckBuf.AddrA);
-    PanelB = reinterpret_cast<typename KernelType::PackedBType*>(MlasQGemmPckBuf.AddrB);
-}
 
 template<typename KernelType>
 int32_t
@@ -305,6 +277,7 @@ void
 MlasGemmU8X8Operation(
     const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
     const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
+    const MLAS_GEMM_U8X8_STRIDES& Strides,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
@@ -337,15 +310,17 @@ Return Value:
 
 --*/
 {
-    constexpr MLAS_GEMM_U8X8_STRIDES Strides = KernelType::Strides;
 
-    typename KernelType::PackedAType* PanelA;
-    typename KernelType::PackedBType* PanelB;
-    MlasQGemmGetPackPanels<KernelType>(PanelA, PanelB);
+    typename KernelType::PackedAType* PanelA =
+        reinterpret_cast<typename KernelType::PackedAType*>(PackPanels);
 
-    MLAS_DECLSPEC_ALIGN(int32_t RowSumBuffer[Strides.M], 64);
-    MLAS_DECLSPEC_ALIGN(int32_t ColumnSumBuffer[Strides.N], 64);
-    MLAS_DECLSPEC_ALIGN(int32_t ZeroPointBBuffer[Strides.N], 64);
+    typename KernelType::PackedBType* PanelB = reinterpret_cast<typename KernelType::PackedBType*>(
+        PackPanels + MlasQGemmPackPanelASize<KernelType>(Strides));
+
+
+    MLAS_DECLSPEC_ALIGN(int32_t RowSumBuffer[1024], 64);
+    MLAS_DECLSPEC_ALIGN(int32_t ColumnSumBuffer[1024], 64);
+    MLAS_DECLSPEC_ALIGN(int32_t ZeroPointBBuffer[1024], 64);
 
     const size_t K = Shape->K;
 
@@ -532,6 +507,7 @@ void
 MlasGemmU8X8PackedOperation(
     const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
     const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
+    const MLAS_GEMM_U8X8_STRIDES& Strides,
     const size_t RangeStartM,
     const size_t RangeCountM,
     const size_t RangeStartN,
@@ -564,16 +540,12 @@ Return Value:
 
 --*/
 {
-    constexpr MLAS_GEMM_U8X8_STRIDES Strides = KernelType::Strides;
+    typename KernelType::PackedAType* PanelA =
+        reinterpret_cast<typename KernelType::PackedAType*>(PackPanels);
 
-    // Only need PanelA, PanelB is just for the function interface;
-    typename KernelType::PackedAType* PanelA;
-    typename KernelType::PackedBType* PanelB;
-    MlasQGemmGetPackPanels<KernelType>(PanelA, PanelB);
-
-    MLAS_DECLSPEC_ALIGN(int32_t RowSumBuffer[Strides.M], 64);
-    MLAS_DECLSPEC_ALIGN(int32_t ColumnSumBuffer[Strides.N], 64);
-    MLAS_DECLSPEC_ALIGN(int32_t ZeroPointBBuffer[Strides.N], 64);
+    MLAS_DECLSPEC_ALIGN(int32_t RowSumBuffer[1024], 64);
+    MLAS_DECLSPEC_ALIGN(int32_t ColumnSumBuffer[1024], 64);
+    MLAS_DECLSPEC_ALIGN(int32_t ZeroPointBBuffer[1024], 64);
 
     const size_t K = Shape->K;
 
@@ -655,8 +627,8 @@ Return Value:
             // Step through each slice of matrix A along the M dimension.
             //
 
-            const uint8_t* b = PackedB + (RangeStartN + n) *
-                KernelType::PackedK * PackedCountK;
+            const auto* b = reinterpret_cast<const KernelType::PackedBType*>(
+                PackedB + (RangeStartN + n) * KernelType::PackedK * PackedCountK);
             int32_t* c = C + n;
             size_t CountM;
 
@@ -746,6 +718,98 @@ Return Value:
         A += CountK;
         PackedB = (const uint8_t*)PackedB + AlignedN * CountK;
     }
+}
+
+
+template <typename KernelType>
+void
+MLASCALL
+MlasGemmBatchBlockPartition(
+    const MLAS_GEMM_U8X8_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_U8X8_DATA_PARAMS* DataParams,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool)
+{
+
+    constexpr size_t unitwork = 2097152;
+    //
+    // Start with strides of 16, to reduce false sharing between threads.
+    // increase the strides if K is too small.
+    //
+    size_t StrideN = 16;
+    size_t StrideM = 48;
+
+    size_t multipler = unitwork / (StrideM * StrideN * Shape.K);
+    multipler = std::max(multipler, size_t(1));
+
+    StrideN *= multipler;
+    if (StrideN >= (Shape.N - (Shape.N / 4))) {
+        StrideN = Shape.N;
+    }
+
+    multipler = unitwork / (StrideM * StrideN * Shape.K);
+    multipler = std::max(multipler, size_t(1));
+
+    StrideM *= multipler;
+    if (StrideM >= (Shape.M - (Shape.M / 4))) {
+        StrideM = Shape.M;
+    }
+
+    size_t numJobN = (Shape.N + StrideN - 1) / StrideN;
+    size_t numJobM = (Shape.M + StrideM - 1) / StrideM;
+    size_t NumJobPerGemm = numJobM * numJobN;
+
+    constexpr size_t BPanelSize = CacheSize / 3;
+    constexpr size_t AllPanelSize = CacheSize * 5 / 8;
+
+    MLAS_GEMM_U8X8_STRIDES Strides;
+    Strides.K = std::min(Shape.K, KernelType::Strides.K);
+
+    // try to find a shape for panel B that fill half cache
+    const size_t AlignKernelStrideK =
+        (Strides.K + KernelType::PackedK - 1) & ~(KernelType::PackedK - 1);
+
+    size_t BStrideLimit =
+        std::min(size_t(1024), BPanelSize / (AlignKernelStrideK * sizeof(KernelType::PackedBType)));
+    if (BStrideLimit >= StrideN) {
+        Strides.N = StrideN;
+    } else {
+        Strides.N = BStrideLimit & ~15;
+    }
+
+    const size_t AlignKernelStrideN = (Strides.N + 15) & ~15;
+    size_t AStrideLimit =
+        std::min(size_t(1024),
+        (AllPanelSize - MlasQGemmPackPanelBSize<KernelType>(Strides)) /
+                     (AlignKernelStrideK * sizeof(KernelType::PackedAType)));
+    if (AStrideLimit >= StrideM) {
+        Strides.M = StrideM;
+    } else {
+        Strides.M = AStrideLimit - (AStrideLimit % 48);
+    }
+
+    MLAS_GEMM_U8X8_OPERATION* GemmU8X8Operation;
+
+    if (DataParams->BIsPacked) {
+        GemmU8X8Operation = MlasGemmU8X8PackedOperation<KernelType>;
+    } else {
+        GemmU8X8Operation = MlasGemmU8X8Operation<KernelType>;
+    }
+
+    MlasTrySimpleParallel(ThreadPool, BatchN * NumJobPerGemm, [&](ptrdiff_t tid) {
+        const auto gemm_i = tid / NumJobPerGemm;
+        const auto blk_i = tid % NumJobPerGemm;
+
+        const auto m_idx = blk_i % numJobM;
+        const auto n_idx = blk_i / numJobM; 
+        
+        const auto StartM = m_idx * StrideM;
+        const auto CountM = std::min(StrideM, Shape.M - StartM);
+        const auto StartN = n_idx * StrideN;
+        const auto CountN = std::min(StrideN, Shape.N - StartN);
+        GemmU8X8Operation(&Shape, &(DataParams[gemm_i]), Strides, StartM, CountM,
+            StartN, CountN);
+    });
 }
 
 #if defined(MLAS_SSE2_INTRINSICS)
@@ -1215,8 +1279,7 @@ MlasGemmU8X8Kernel<MLAS_GEMM_U8X8_KERNEL_SSE>(
 }
 
 const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchSse = {
-    MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_SSE>,
-    nullptr,
+    MlasGemmBatchBlockPartition<MLAS_GEMM_U8X8_KERNEL_SSE>,
     nullptr,
     MLAS_GEMM_U8X8_KERNEL_SSE::PackedK,
     0,
@@ -1240,20 +1303,6 @@ struct MLAS_GEMM_U8S8_KERNEL_SSE41
 
 constexpr size_t MLAS_GEMM_U8S8_KERNEL_SSE41::PackedK;
 constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8S8_KERNEL_SSE41::Strides;
-
-template <>
-MLAS_FORCEINLINE size_t
-MlasQGemmPackPanelASize<MLAS_GEMM_U8S8_KERNEL_SSE41>()
-{
-    return MlasQGemmPackPanelASize<MLAS_GEMM_U8X8_KERNEL_SSE>();
-}
-
-template <>
-MLAS_FORCEINLINE size_t
-MlasQGemmPackPanelBSize<MLAS_GEMM_U8S8_KERNEL_SSE41>()
-{
-    return MlasQGemmPackPanelBSize<MLAS_GEMM_U8X8_KERNEL_SSE>();
-}
 
 template<>
 void
@@ -1656,8 +1705,7 @@ MlasGemmU8X8Kernel<MLAS_GEMM_U8S8_KERNEL_SSE41>(
 }
 
 const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchSse41 = {
-    MlasGemmU8X8Operation<MLAS_GEMM_U8S8_KERNEL_SSE41>,
-    MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_SSE41>,
+    MlasGemmBatchBlockPartition<MLAS_GEMM_U8S8_KERNEL_SSE41>,
     MlasGemmU8X8CopyPackB<MLAS_GEMM_U8S8_KERNEL_SSE41>,
     MLAS_GEMM_U8S8_KERNEL_SSE41::PackedK,
     MLAS_GEMM_U8S8_KERNEL_SSE41::Strides.K,
@@ -1733,7 +1781,7 @@ struct MLAS_GEMM_U8S8_KERNEL_AVX2
     typedef int8_t OffsetBType;
 
     static constexpr size_t PackedK = 4;
-    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{48, 256, 384};
+    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{48, 256, 768};
 };
 
 constexpr size_t MLAS_GEMM_U8S8_KERNEL_AVX2::PackedK;
@@ -1828,8 +1876,7 @@ MlasGemmU8X8Kernel<MLAS_GEMM_U8S8_KERNEL_AVX2>(
 }
 
 const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchAvx2 = {
-    MlasGemmU8X8Operation<MLAS_GEMM_U8S8_KERNEL_AVX2>,
-    MlasGemmU8X8PackedOperation<MLAS_GEMM_U8S8_KERNEL_AVX2>,
+    MlasGemmBatchBlockPartition<MLAS_GEMM_U8S8_KERNEL_AVX2>,
     MlasGemmU8X8CopyPackB<MLAS_GEMM_U8S8_KERNEL_AVX2>,
     MLAS_GEMM_U8S8_KERNEL_AVX2::PackedK,
     MLAS_GEMM_U8S8_KERNEL_AVX2::Strides.K,
@@ -1842,30 +1889,11 @@ struct MLAS_GEMM_U8U8_KERNEL_AVX2
     typedef uint8_t OffsetBType;
 
     static constexpr size_t PackedK = 2;
-    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{48, 256, 384};
+    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{48, 256, 768};
 };
 
 constexpr size_t MLAS_GEMM_U8U8_KERNEL_AVX2::PackedK;
 constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8U8_KERNEL_AVX2::Strides;
-
-//
-//  this U8U8 kernel needs a bigger packing panel, need to make
-// the corresponding U8S8 kernel agree with the panel size
-//
-
-template <>
-MLAS_FORCEINLINE size_t
-MlasQGemmPackPanelASize<MLAS_GEMM_U8S8_KERNEL_AVX2>()
-{
-    return MlasQGemmPackPanelASize<MLAS_GEMM_U8U8_KERNEL_AVX2>();
-}
-
-template <>
-MLAS_FORCEINLINE size_t
-MlasQGemmPackPanelBSize<MLAS_GEMM_U8S8_KERNEL_AVX2>()
-{
-    return MlasQGemmPackPanelBSize<MLAS_GEMM_U8U8_KERNEL_AVX2>();
-}
 
 template<>
 MLAS_FORCEINLINE
@@ -1922,8 +1950,7 @@ MlasGemmU8X8Kernel<MLAS_GEMM_U8U8_KERNEL_AVX2>(
 }
 
 const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8U8DispatchAvx2 = {
-    MlasGemmU8X8Operation<MLAS_GEMM_U8U8_KERNEL_AVX2>,
-    MlasGemmU8X8PackedOperation<MLAS_GEMM_U8U8_KERNEL_AVX2>,
+    MlasGemmBatchBlockPartition<MLAS_GEMM_U8U8_KERNEL_AVX2>,
     MlasGemmU8X8CopyPackB<MLAS_GEMM_U8U8_KERNEL_AVX2>,
     MLAS_GEMM_U8U8_KERNEL_AVX2::PackedK,
     MLAS_GEMM_U8U8_KERNEL_AVX2::Strides.K,
@@ -3169,94 +3196,11 @@ MlasGemmU8X8Kernel<MLAS_GEMM_U8X8_KERNEL_DEFAULT>(
 }
 
 const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchDefault = {
-    MlasGemmU8X8Operation<MLAS_GEMM_U8X8_KERNEL_DEFAULT>,
-    nullptr,
+    MlasGemmBatchBlockPartition<MLAS_GEMM_U8X8_KERNEL_DEFAULT>,
     nullptr,
     MLAS_GEMM_U8X8_KERNEL_DEFAULT::PackedK,
     0,
 };
-
-
-void
-MlasGemmU8X8Threaded(
-    const MLAS_GEMM_U8X8_WORK_BLOCK* WorkBlock,
-    const MLAS_GEMM_U8X8_SHAPE_PARAMS* Shape,
-    const MLAS_GEMM_U8X8_DATA_PARAMS* Data,
-    ptrdiff_t ThreadId
-    )
-/*++
-
-Routine Description:
-
-    This routine is invoked from a worker thread to execute a segment of a
-    QGEMM operation.
-
-Arguments:
-
-    ThreadInfo - Supplies the structure containing the thread task partition info.
-
-    Shape - Supplies the structure containing the GEMM input and output shapes.
-
-    Data  - Supplies the structure containing the GEMM input and output data layout
-
-    ThreadId - Supplies the current index of the threaded operation.
-
-Return Value:
-
-    None.
-
---*/
-{
-    const ptrdiff_t ThreadIdM = ThreadId / WorkBlock->ThreadCountN;
-    const ptrdiff_t ThreadIdN = ThreadId % WorkBlock->ThreadCountN;
-
-    //
-    // Partition the operation along the M dimension.
-    //
-
-    size_t RangeStartM;
-    size_t RangeCountM;
-
-    const size_t M = Shape->M;
-
-    MlasPartitionWork(ThreadIdM, WorkBlock->ThreadCountM, M, &RangeStartM, &RangeCountM);
-
-    //
-    // Partition the operation along the N dimension.
-    //
-
-    size_t RangeStartN;
-    size_t RangeCountN;
-
-    const size_t N = Shape->N;
-
-    const size_t BlockedN = (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) /
-        MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
-
-    MlasPartitionWork(ThreadIdN, WorkBlock->ThreadCountN, BlockedN,
-        &RangeStartN, &RangeCountN);
-
-    RangeStartN *= MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
-    RangeCountN *= MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
-
-    RangeCountN = std::min(N - RangeStartN, RangeCountN);
-
-    //
-    // Dispatch the partitioned operation.
-    //
-
-    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(Shape->BIsSigned);
-    MLAS_GEMM_U8X8_OPERATION* GemmU8X8Operation;
-
-    if (Data->BIsPacked) {
-        GemmU8X8Operation = GemmU8X8Dispatch->PackedOperation;
-    } else {
-        GemmU8X8Operation = GemmU8X8Dispatch->Operation;
-    }
-
-    GemmU8X8Operation(Shape, Data, RangeStartM, RangeCountM, RangeStartN, RangeCountN);
-}
-
 
 void
 MLASCALL
@@ -3297,73 +3241,9 @@ MlasGemmBatch(
     const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool)
 {
-    const size_t M = Shape.M;
-    const size_t N = Shape.N;
-    const size_t K = Shape.K;
+    const auto* GemmU8X8Dispatch = MlasGemmU8X8GetDispatch(Shape.BIsSigned);
+    GemmU8X8Dispatch->Operation(Shape, DataParams, BatchN, ThreadPool);
 
-    //
-    // Compute the number of target threads given the complexity of the SGEMM
-    // operation. Small requests should run using the single threaded path.
-    //
-
-    const double Complexity = double(M) * double(N) * double(K) * double(BatchN);
-
-    ptrdiff_t TargetThreadCount;
-
-    if (Complexity < double(MLAS_QGEMM_THREAD_COMPLEXITY * MlasPlatform.MaximumThreadCount)) {
-        TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_QGEMM_THREAD_COMPLEXITY)) + 1;
-    } else {
-        TargetThreadCount = MlasPlatform.MaximumThreadCount;
-    }
-
-    ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
-
-    if (TargetThreadCount >= MaximumThreadCount) {
-        TargetThreadCount = MaximumThreadCount;
-    }
-
-    ptrdiff_t ThreadsPerGemm = TargetThreadCount / BatchN;
-    if (ThreadsPerGemm < 1) {
-        ThreadsPerGemm = 1;
-    }
-
-    //
-    // Segment the operation across multiple threads.
-    //
-    // N.B. Currently, the operation is segmented as a 1D partition, which
-    // works okay for operations involving skinny matrices.
-    //
-
-    MLAS_GEMM_U8X8_WORK_BLOCK WorkBlock;
-
-    if (N > M) {
-
-        const size_t BlockedN = (N + MLAS_QGEMM_STRIDEN_THREAD_ALIGN - 1) /
-            MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
-
-        if (size_t(ThreadsPerGemm) > BlockedN) {
-            ThreadsPerGemm = ptrdiff_t(BlockedN);
-        }
-
-        WorkBlock.ThreadCountM = 1;
-        WorkBlock.ThreadCountN = ThreadsPerGemm;
-
-    } else {
-
-        if (size_t(ThreadsPerGemm) > M) {
-            ThreadsPerGemm = ptrdiff_t(M);
-        }
-
-        WorkBlock.ThreadCountM = ThreadsPerGemm;
-        WorkBlock.ThreadCountN = 1;
-    }
-    TargetThreadCount = ThreadsPerGemm * BatchN;
-
-    MlasTrySimpleParallel(ThreadPool, TargetThreadCount, [&](ptrdiff_t tid) {
-        const auto gemm_i = tid / ThreadsPerGemm;
-        const auto blk_i = tid % ThreadsPerGemm;
-        MlasGemmU8X8Threaded(&WorkBlock, &Shape, &DataParams[gemm_i], blk_i);
-    });
 }
 
 
