@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-if(onnxruntime_ENABLE_TRAINING AND NOT EXISTS "${PYTHON_LIBRARIES}")
+if(onnxruntime_ENABLE_TRAINING AND NOT EXISTS "${PYTHON_LIBRARY_PATH}")
   set(PYTHON_LIBRARY_SUFFIX_NOT_FOUND false)
   exec_program("${PYTHON_EXECUTABLE}"
     ARGS "-c \"from distutils import sysconfig as s; print(s.get_config_var('LDVERSION') or s.get_config_var('VERSION'))\""
@@ -9,9 +9,9 @@ if(onnxruntime_ENABLE_TRAINING AND NOT EXISTS "${PYTHON_LIBRARIES}")
     RETURN_VALUE PYTHON_LIBRARY_SUFFIX_NOT_FOUND)
 
   if(MSVC)
-    # construct PYTHON_LIBRARIES from PYTHON_INCLUDE_DIR.
+    # construct PYTHON_LIBRARY_PATH from PYTHON_INCLUDE_DIR.
     get_filename_component(_PYTHON_ROOT ${PYTHON_INCLUDE_DIR} DIRECTORY)
-    set(PYTHON_LIBRARIES
+    set(PYTHON_LIBRARY_PATH
         "${_PYTHON_ROOT}/libs/Python${PYTHON_LIBRARY_SUFFIX}.lib")
   else()
 
@@ -35,14 +35,14 @@ if(onnxruntime_ENABLE_TRAINING AND NOT EXISTS "${PYTHON_LIBRARIES}")
 
     # searching for Python libs in ${_PYTHON_LIBS_SEARCH}")
     find_library(
-      PYTHON_LIBRARIES
+      PYTHON_LIBRARY_PATH
       NAMES "python${PYTHON_LIBRARY_SUFFIX}"
       PATHS ${_PYTHON_LIBS_SEARCH}
       NO_DEFAULT_PATH)
   endif()
 
   # raise an error if the python libs are still not found.
-  if(NOT EXISTS "${PYTHON_LIBRARIES}")
+  if(NOT EXISTS "${PYTHON_LIBRARY_PATH}")
       message(FATAL_ERROR "Python libraries not found")
   endif()
 endif()
@@ -86,7 +86,7 @@ endif()
 # Needed for the provider interface, as it includes training headers when training is enabled
 if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
   target_include_directories(onnxruntime_framework PRIVATE ${ORTTRAINING_ROOT} ${PYTHON_INCLUDE_DIR})
-  target_link_libraries(onnxruntime_framework PRIVATE ${PYTHON_LIBRARIES})
+  target_link_libraries(onnxruntime_framework PRIVATE ${PYTHON_LIBRARY_PATH})
   if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)  
     target_include_directories(onnxruntime_framework PUBLIC ${MPI_CXX_INCLUDE_DIRS})
   endif()
