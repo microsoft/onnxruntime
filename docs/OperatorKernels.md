@@ -9,8 +9,8 @@ Do not modify directly.*
 
 ---------------
 
-## Operators implemented by CPUExecutionProvider
 <a name="cpuexecutionprovider"/>
+## Operators implemented by CPUExecutionProvider
 
 | Op Name | Parameters | OpSet Version | Types Supported |
 |---------|------------|---------------|-----------------|
@@ -419,8 +419,8 @@ Do not modify directly.*
 | |
 
 
-## Operators implemented by CUDAExecutionProvider
 <a name="cudaexecutionprovider"/>
+## Operators implemented by CUDAExecutionProvider
 
 | Op Name | Parameters | OpSet Version | Types Supported |
 |---------|------------|---------------|-----------------|

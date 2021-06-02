@@ -123,8 +123,8 @@ def main(output_path: pathlib.Path, provider_filter: [str]):
             if providers and provider.lower() not in providers:
                 continue
 
-            fout.write('\n\n## Operators implemented by {}\n'.format(provider))
-            fout.write('<a name="{}"/>\n\n'.format(provider.lower()))
+            fout.write('\n\n<a name="{}"/>\n'.format(provider.lower()))
+            fout.write('## Operators implemented by {}\n\n'.format(provider))
             fout.write('| Op Name | Parameters | OpSet Version | Types Supported |\n')
             fout.write('|---------|------------|---------------|-----------------|\n')
             for domain, namemap in sorted(domainmap.items()):
