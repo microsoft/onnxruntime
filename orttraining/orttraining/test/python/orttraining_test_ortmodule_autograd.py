@@ -538,14 +538,22 @@ def test_TwoOutputFunction():
         @staticmethod
         def backward(ctx, dw, dz):
             x, y = ctx.saved_tensors
-            # dL/dx = dL/dw * dw/dx + dL/dz * dz/dx
-            # dw/dx = 1
-            # dz/dx = y
+            # Based on chain rule, we can drive Jacobian
+            # of this function.
+            #   dL/dx = dL/dw * dw/dx + dL/dz * dz/dx
+            # where
+            #   dw/dx = 1
+            #   dz/dx = y
+            # Thus, dL/dx can be computed using the
+            # following line. Note that dL is omitted
+            # for convenience.
             dx = dw * 1.0 + dz * y
-            #
-            # dL/dw = dL/dw * dw/dy + dL/dz * dz/dy
-            # dw/dy = 1
-            # dz/dy = x
+            # Similarly, we drive and then implement
+            # the Jacobian for dy using chain rule
+            #   dL/dw = dL/dw * dw/dy + dL/dz * dz/dy
+            # where
+            #   dw/dy = 1
+            #   dz/dy = x
             dy = dw * 1.0 + dz * x
             return dx, dy
 
@@ -599,7 +607,7 @@ def test_InnerModuleCall():
             ctx.inner = InnerModel(dim, device).to(device)
             if use_ort:
                 ctx.inner = ORTModule(ctx.inner)
-                set_onnx_fallthrough_export_type(ctx.inner)
+                enable_custom_autograd_function(ctx.inner)
             z = ctx.inner(x)
             return z
 

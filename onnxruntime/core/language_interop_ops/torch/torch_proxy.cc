@@ -129,9 +129,9 @@ PyObject* CreateRequiresGradFlags(
   for (size_t i = 0; i < requires_grads.size(); ++i) {
     PyObject* value;
     if (requires_grads.at(i) != 0) {
-      value = PyLong_FromLong(1);
+      value = Py_True;
     } else {
-      value = PyLong_FromLong(0);
+      value = Py_False;
     }
     Ort_PyList_SetItem_NoIncref(flags, i, value, std::to_string(__LINE__));
   }

@@ -9,6 +9,11 @@ from torch.onnx import symbolic_helper
 from onnxruntime.capi._pybind_state import register_torch_autograd_function
 
 def _export(g, n, *args, **kwargs):
+    '''
+    This function exports PythonOp (input: "n") into a graph
+    node in "g". "args" and "kwargs" are inputs to that PythonOp.
+    A PythonOp represents a call to autograd.Function.
+    '''
     try:
         name = kwargs['name']
         inplace = kwargs['inplace']
@@ -36,6 +41,7 @@ def _export(g, n, *args, **kwargs):
         input_pointer_scalar_positions = []
 
         tensor_args = []
+        # Encode inputs to autograd.Function.
         for i, arg, call_type in zip(range(len(args)), args, cconv):
             if call_type == 'd':
                 # Got a tensor variable.
