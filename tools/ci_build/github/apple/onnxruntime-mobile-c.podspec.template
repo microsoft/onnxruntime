@@ -1,0 +1,16 @@
+Pod::Spec.new do |spec|
+    spec.name                   = "onnxruntime-mobile-c"
+    spec.version                = "${ORT_VERSION}"
+    spec.authors                = { "ONNX Runtime" => "onnxruntime@microsoft.com" }
+    spec.license                = { :type => "MIT" }
+    spec.homepage               = "https://github.com/microsoft/onnxruntime"
+    spec.source                 = { :http => "_ORT_DOWNLOAD_URL_" }
+    spec.summary                = "ONNX Runtime Mobile C/C++ Pod"
+    spec.platform               = :ios, "${CMAKE_OSX_DEPLOYMENT_TARGET}"
+    spec.vendored_frameworks    = "onnxruntime.framework"
+    spec.weak_framework         = 'CoreML'
+    spec.source_files           = 'onnxruntime.framework/Headers/*.h'
+    spec.description            = <<-DESC
+    A preview pod for ONNX Runtime Mobile C/C++ library. Pods for Objective-C and Swift coming soon.
+                                    DESC
+end
