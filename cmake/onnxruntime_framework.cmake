@@ -33,6 +33,9 @@ if(onnxruntime_ENABLE_TRAINING AND NOT EXISTS "${PYTHON_LIBRARY_PATH}")
       set(_PYTHON_LIBS_SEARCH "${PYTHON_LIBDIR}")
     endif()
 
+    get_filename_component(_PYTHON_BIN_DIR ${PYTHON_EXECUTABLE} DIRECTORY)
+    set(_PYTHON_LIBS_SEARCH "${_PYTHON_LIBS_SEARCH} ${_PYTHON_BIN_DIR}/../lib")
+
     # searching for Python libs in ${_PYTHON_LIBS_SEARCH}")
     find_library(
       PYTHON_LIBRARY_PATH
