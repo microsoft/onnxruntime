@@ -77,7 +77,7 @@ class BFCArena : public IArenaAllocator {
 
   // Frees all allocation regions in which no chunk is in use.
   // Does not free any reserved chunks.
-  // Resets the size that the arena will grow by in the next allocation to
+  // Resets the size that the arena will grow by in the next allocation to 
   // `initial_growth_chunk_size_bytes_` but ultimately all
   // future allocation sizes are determined by the arena growth strategy
   // and the allocation request.

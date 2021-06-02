@@ -654,7 +654,7 @@ export class CoordsGlslLib extends GlslLib {
 
     if (inRank === 1 && !isInputScalar && !isOutputScalar) {
       output = `
-        return vec4(outputValue.xy, outputValue.xy);
+        return vec4(outputValue.xx, outputValue.yy);
       `;
     } else if (isInputScalar && !isOutputScalar) {
       if (outRank === 1) {
@@ -1168,7 +1168,7 @@ export class CoordsGlslLib extends GlslLib {
             return ${funcName}(${getSqueezedParams(params, keptDims)});
           }
         `;
-      return new GlslLibRoutine(source, ['coordinates.sampleTexture']);
+      return new GlslLibRoutine(source, ['coordinates.sampleTexture', 'coordinates.uvFromFlat']);
     }
 
     const texNumR = inputLayout.width;

@@ -35,11 +35,16 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(embed_layer_norm::CheckInputs(context));
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* segment_ids = context->Input<Tensor>(1);  // optional. nullptr if it's distill-bert
+
+  // Inputs via DequantizeLinear ops (to-fuse):
   const Tensor* word_embedding = context->Input<Tensor>(2);
   const Tensor* position_embedding = context->Input<Tensor>(3);
   const Tensor* segment_embedding = context->Input<Tensor>(4);  // optional. nullptr if it's distill-bert
+
+  // Operator weights:
   const Tensor* gamma = context->Input<Tensor>(5);
   const Tensor* beta = context->Input<Tensor>(6);
+
   const Tensor* mask = context->Input<Tensor>(7);  // optional. nullptr if not provided
 
   const auto& input_dims = input_ids->Shape().GetDims();
@@ -60,9 +65,13 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
 
   const int32_t* input_ids_data = input_ids->template Data<int32_t>();
   const int32_t* segment_ids_data = (nullptr == segment_ids) ? nullptr : segment_ids->template Data<int32_t>();
+
+  // DequantizeLinear output pointers (can these be fused?)
   const T* word_embedding_data = word_embedding->template Data<T>();
   const T* position_embedding_data = position_embedding->template Data<T>();
   const T* segment_embedding_data = (nullptr == segment_embedding) ? nullptr : segment_embedding->template Data<T>();
+
+
   const T* gamma_data = gamma->template Data<T>();
   const T* beta_data = beta->template Data<T>();
   T* output_data = output->template MutableData<T>();
