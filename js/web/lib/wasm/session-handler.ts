@@ -213,10 +213,6 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
       if (index === -1) {
         throw new Error(`invalid input '${name}'`);
       }
-      // if (tensor.type === 'string') {
-      //   // TODO: support string tensor
-      //   throw new TypeError('string tensor is not supported');
-      // }
       inputArray.push(tensor);
       inputIndices.push(index);
     });
