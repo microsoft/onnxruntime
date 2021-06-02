@@ -2,7 +2,6 @@
 title: Training API
 parent: API docs
 grand_parent: Reference
-nav_order: 7
 ---
 
 # Training API (PyTorch)

@@ -1,7 +1,7 @@
 ---
 title: Citing ONNX Runtime
 parent: Reference
-nav_order: 4
+nav_order: 10
 ---
 
 # Citing ONNX Runtime

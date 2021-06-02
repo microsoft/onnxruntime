@@ -8,7 +8,7 @@ grand_parent: How to
 # Build ONNX Runtime for Android and iOS
 {: .no_toc }
 
-Below are pure build instructions for Android and iOS. For instructions on fully deploying ONNX Runtime on mobile platforms (includes overall smaller package size and other configurations), see [How to: Deploy on mobile](../deploy-on-mobile.md).
+Below are general build instructions for Android and iOS. For instructions on fully deploying ONNX Runtime on mobile platforms (includes overall smaller package size and other configurations), see [How to: Deploy on mobile](../mobile).
 
 ## Contents
 {: .no_toc }
@@ -35,18 +35,16 @@ Resources:
 1. [Install](https://developer.android.com/studio) Android Studio
 
 2. Install any additional SDK Platforms if necessary
-
-* File->Settings->Appearance & Behavior->System Settings->Android SDK to see what is currently installed
-* Note that the SDK path you need to use as --android_sdk_path when building ORT is also on this configuration page
-* Most likely you don't require additional SDK Platform packages as the latest platform can target earlier API levels.
+  * File->Settings->Appearance & Behavior->System Settings->Android SDK to see what is currently installed
+  * Note that the SDK path you need to use as --android_sdk_path when building ORT is also on this configuration page
+  * Most likely you don't require additional SDK Platform packages as the latest platform can target earlier API levels.
 
 3. Install an NDK version
-
-* File->Settings->Appearance & Behavior->System Settings->Android SDK
-* 'SDK Tools' tab
-  * Select 'Show package details' checkbox at the bottom to see specific versions. By default the latest will be installed which should be fine.
-* The NDK path will be the 'ndk/{version}' subdirectory of the SDK path shown
-  * e.g. if 21.1.6352462 is installed it will be {SDK path}/ndk/21.1.6352462
+  * File->Settings->Appearance & Behavior->System Settings->Android SDK
+  * 'SDK Tools' tab
+    * Select 'Show package details' checkbox at the bottom to see specific versions. By default the latest will be installed which should be fine.
+  * The NDK path will be the 'ndk/{version}' subdirectory of the SDK path shown
+    * e.g. if 21.1.6352462 is installed it will be {SDK path}/ndk/21.1.6352462
 
 #### sdkmanager from command line tools
 
@@ -110,7 +108,7 @@ e.g. using the paths from our example
 
 #### Build Android Archive (AAR)
 
-Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/outputs/aar, by using the above building commands with `--build_java`
+Android Archive (AAR) files, which can be imported directly in Android Studio, will be generated in your_build_dir/java/build/android/outputs/aar, by using the above building commands with `--build_java`
 
 To build on Windows with `--build_java` enabled you must also:
 
@@ -124,7 +122,7 @@ To build on Windows with `--build_java` enabled you must also:
 
 ### Android NNAPI Execution Provider
 
-If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Provider](../../reference/execution-providers/NNAPI-ExecutionProvider.md).
+If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Provider](../../reference/execution-providers/NNAPI-ExecutionProvider).
 
 #### Build Instructions
 
@@ -162,7 +160,11 @@ Android NNAPI Execution Provider can be built using building commands in [Androi
 
 * Code Signing
 
-  If the development team ID which has a valid code signing certificate is specified, Xcode will code sign the onnxruntime library in the building process, otherwise, the onnxruntime will be built without code signing. It may be required or desired to code sign the library for iOS devices. For more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
+  If the code signing development team ID or code signing identity is specified, and has a valid code signing certificate, Xcode will code sign the onnxruntime library in the building process. Otherwise, the onnxruntime will be built without code signing. It may be required or desired to code sign the library for iOS devices. For more information, see [Code Signing](https://developer.apple.com/support/code-signing/).
+
+* Bitcode
+
+  Bitcode is an Apple technology that enables you to recompile your app to reduce its size. It is by default enabled for building onnxruntime. Bitcode can be disabled by using the building commands in [iOS Build instructions](#build-instructions-1) with `--apple_disable_bitcode`. For more information about bitcode, please see [Doing Basic Optimization to Reduce Your App’s Size](https://developer.apple.com/documentation/xcode/doing-basic-optimization-to-reduce-your-app-s-size).
 
 ### Build Instructions
 
@@ -182,10 +184,26 @@ Run one of the following build scripts from the ONNX Runtime repository root:
            --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version>
 ```
 
-#### Cross build for iOS device and code sign the library
+#### Cross build for iOS device and code sign the library using development team ID
 
 ```bash
 ./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
            --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version> \
            --xcode_code_signing_team_id <Your Apple developmemt team ID>
 ```
+
+#### Cross build for iOS device and code sign the library using code sign identity
+
+```bash
+./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
+           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version> \
+           --xcode_code_signing_identity <Your preferred code sign identity>
+```
+
+### CoreML Execution Provider
+
+If you want to use CoreML Execution Provider on iOS or macOS, see [CoreML Execution Provider](../../reference/execution-providers/CoreML-ExecutionProvider).
+
+#### Build Instructions
+
+CoreML Execution Provider can be built using building commands in [iOS Build instructions](#build-instructions-1) with `--use_coreml`
