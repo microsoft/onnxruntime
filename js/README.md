@@ -175,7 +175,7 @@ This project is a library for running ONNX models on browsers. It is the success
         ./build.sh --build_wasm --skip_tests --enable_wasm_debug_info
 
         # The following command build release.
-        ./build.sh --config Release --build_wasm --skip_tests     --disable_wasm_exception_catching --disable_rtti
+        ./build.sh --config Release --build_wasm --skip_tests --disable_wasm_exception_catching --disable_rtti
         ```
 
         To build with multi-thread support, append flag `--enable_wasm_threads` to the command. Make sure to build both single-thread and multi-thread before next step.
