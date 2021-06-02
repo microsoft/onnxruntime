@@ -27,25 +27,23 @@ if(onnxruntime_ENABLE_TRAINING AND NOT EXISTS "${PYTHON_LIBRARY_PATH}")
       OUTPUT_VARIABLE PYTHON_MULTIARCH
       RETURN_VALUE PYTHON_MULTIARCH_NOT_FOUND)
     message("PYTHON_EXECUTABLE: ${PYTHON_EXECUTABLE}, PYTHON_MULTIARCH: ${PYTHON_MULTIARCH}")
-    if(PYTHON_MULTIARCH)
-      set(_PYTHON_LIBS_SEARCH "${PYTHON_LIBDIR}/${PYTHON_MULTIARCH}" "${PYTHON_LIBDIR}")
-    else()
-      set(_PYTHON_LIBS_SEARCH "${PYTHON_LIBDIR}")
-    endif()
-
     get_filename_component(_PYTHON_BIN_DIR ${PYTHON_EXECUTABLE} DIRECTORY)
-    set(_PYTHON_LIBS_SEARCH "${_PYTHON_LIBS_SEARCH} ${_PYTHON_BIN_DIR}/../lib")
+    if(PYTHON_MULTIARCH)
+      set(_PYTHON_LIBS_SEARCH "${PYTHON_LIBDIR}/${PYTHON_MULTIARCH}" "${PYTHON_LIBDIR}" "${_PYTHON_BIN_DIR}/../lib")
+    else()
+      set(_PYTHON_LIBS_SEARCH "${PYTHON_LIBDIR}" "${_PYTHON_BIN_DIR}/../lib")
+    endif()
 
     # searching for Python libs in ${_PYTHON_LIBS_SEARCH}")
     find_library(
       PYTHON_LIBRARY_PATH
-      NAMES "python${PYTHON_LIBRARY_SUFFIX}"
+      NAMES "libpython${PYTHON_LIBRARY_SUFFIX}.so"
       PATHS ${_PYTHON_LIBS_SEARCH}
       NO_DEFAULT_PATH)
 
     # If all else fails, just set the name/version and let the linker figure out the path.
     if(NOT PYTHON_LIBRARY_PATH)
-        set(PYTHON_LIBRARY_PATH python${PYTHON_LIBRARY_SUFFIX})
+        set(PYTHON_LIBRARY_PATH libpython${PYTHON_LIBRARY_SUFFIX}.so)
     endif()
   endif()
   message("PYTHON_LIBRARY_PATH ${PYTHON_LIBRARY_PATH}")
