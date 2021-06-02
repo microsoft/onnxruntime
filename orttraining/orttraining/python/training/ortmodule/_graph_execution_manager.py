@@ -264,14 +264,9 @@ class GraphExecutionManager(ABC):
         if self._enable_custom_autograd_function:
             operator_export_type = torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH
         try:
-            if self._enable_custom_autograd_function:
-                flattened_module_for_export = copy.deepcopy(self._flattened_module)
-            else:
-                flattened_module_for_export = self._flattened_module
-
             with torch.set_grad_enabled(self._enable_custom_autograd_function), \
                     _logger.suppress_os_stream_output(log_level=self._loglevel):
-                torch.onnx.export(flattened_module_for_export,
+                torch.onnx.export(self._flattened_module,
                                   sample_inputs_as_tuple,
                                   f,
                                   input_names=self._input_info.names,
