@@ -15,5 +15,5 @@ Pod::Spec.new do |spec|
   # if you are going to use a file as the spec.source, add 'file:' before your file path
   spec.source               = { :http => '${ORT_BASE_FRAMEWORK_ARCHIVE}' }
   spec.vendored_frameworks  = 'onnxruntime.framework'
-  spec.public_header_files  = 'onnxruntime.framework/Headers/*.h'
+  spec.source_files         = 'onnxruntime.framework/Headers/*.h'
 end
