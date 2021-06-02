@@ -15,12 +15,12 @@ namespace coreml {
 class CastOpBuilder : public BaseOpBuilder {
   // Add operator related
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const GraphViewer& graph_viewer,
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node, const GraphViewer& graph_viewer,
+  bool IsOpSupportedImpl(const Node& node, OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 };
 
@@ -28,17 +28,14 @@ class CastOpBuilder : public BaseOpBuilder {
 
 Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& /* model_builder */,
                                             const Node& /* node */,
-                                            const GraphViewer& /* graph_viewer */,
                                             const logging::Logger& /* logger */) const {
   return Status::OK();
 }
 
 // Operator support related
 
-bool CastOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                                      const GraphViewer& graph_viewer, const logging::Logger& logger) const {
-
-                                          
+bool CastOpBuilder::IsOpSupportedImpl(const Node& node, OpBuilderInputParams& input_params,
+                                      const logging::Logger& logger) const {
   // Check if the preceding node is [ArgMax] and the argmax op is supported
   std::vector<size_t> prec_node_indices;
   for (auto it = node.InputEdgesBegin(), end = node.InputEdgesEnd(); it != end; ++it) {
@@ -55,21 +52,21 @@ bool CastOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializer
     return false;
   }
 
-  const auto* prec_node(graph_viewer.GetNode(prec_node_indices[0]));
+  const auto* prec_node(input_params.graph_viewer.GetNode(prec_node_indices[0]));
   if (prec_node->OpType() != "ArgMax") {
     LOGS(logger, VERBOSE) << "Case - [Cast]'s preceding node is not [ArgMax]: Not supported. "
                           << "Current previous node: [" << prec_node->OpType()
                           << "]";
     return false;
   }
-  if (!IsNodeSupported(*prec_node, graph_viewer, logger)) {
+  if (!IsNodeSupported(*prec_node, input_params.graph_viewer, logger)) {
     LOGS(logger, VERBOSE) << "Case - [Cast]'s preceding node ["
                           << prec_node->OpType()
                           << "] is not a supported op.";
     return false;
   }
 
-  // Check if the input type of cast node is int32
+  // Check if the output type of cast node is int32
   const auto& node_output = *node.OutputDefs()[0];
   int32_t node_output_type;
   if (!GetType(node_output, node_output_type, logger)) {

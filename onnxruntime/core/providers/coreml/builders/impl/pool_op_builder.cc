@@ -16,12 +16,12 @@ namespace coreml {
 class PoolOpBuilder : public BaseOpBuilder {
   // Add operator related
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const GraphViewer& graph_viewer,
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node, const GraphViewer& graph_viewer,
+  bool IsOpSupportedImpl(const Node& node, OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 };
 
@@ -29,7 +29,6 @@ class PoolOpBuilder : public BaseOpBuilder {
 
 Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                             const Node& node,
-                                            const GraphViewer& /* graph_viewer */,
                                             const logging::Logger& logger) const {
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(node);
 
@@ -108,8 +107,8 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related
-bool PoolOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                                      const GraphViewer& /* graph_viewer */, const logging::Logger& logger) const {
+bool PoolOpBuilder::IsOpSupportedImpl(const Node& node, OpBuilderInputParams& /* input_params */,
+                                      const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
 

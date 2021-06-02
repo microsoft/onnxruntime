@@ -15,12 +15,12 @@ namespace coreml {
 class ConcatOpBuilder : public BaseOpBuilder {
   // Add operator related
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const GraphViewer& graph_viewer,
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node, const GraphViewer& graph_viewer,
+  bool IsOpSupportedImpl(const Node& node, OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 };
 
@@ -28,7 +28,6 @@ class ConcatOpBuilder : public BaseOpBuilder {
 
 Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                               const Node& node,
-                                              const GraphViewer& /* graph_viewer */,
                                               const logging::Logger& logger) const {
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(node);
 
@@ -46,8 +45,8 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related
-bool ConcatOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                                        const GraphViewer& /* graph_viewer */, const logging::Logger& logger) const {
+bool ConcatOpBuilder::IsOpSupportedImpl(const Node& node, OpBuilderInputParams& /* input_params */,
+                                        const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   if (input_defs.size() < 2) {
     LOGS(logger, VERBOSE) << "Concat only support 2+ inputs, actual number of inputs: " << input_defs.size();

@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
@@ -14,12 +13,12 @@ namespace coreml {
 class ArgMaxOpBuilder : public BaseOpBuilder {
   // Add operator related
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const GraphViewer& graph_viewer,
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node, const GraphViewer& graph_viewer,
+  bool IsOpSupportedImpl(const Node& node, OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 };
 
@@ -27,9 +26,9 @@ class ArgMaxOpBuilder : public BaseOpBuilder {
 
 Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                               const Node& node,
-                                              const GraphViewer& /* graph_viewer */,
-                                              const logging::Logger& logger) const {
+                                              const logging::Logger& /* logger */) const {
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(node);
+  const auto& graph_viewer = model_builder.GetGraphViewer();
 
   NodeAttrHelper helper(node);
   const auto axis = helper.Get("axis", 0);
@@ -45,9 +44,10 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   // Get ArgMax's next node(Cast)'s outputdefs
   auto it = node.OutputEdgesBegin();
-  const auto& graph_viewer = model_builder.GetGraphViewer();
+  //const auto& graph_viewer = model_builder.GetGraphViewer();
   const auto* succ_node(graph_viewer.GetNode(it->GetNode().Index()));
 
+  // Skip the cast's input/argmax's output
   *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
   *layer->mutable_output()->Add() = succ_node->OutputDefs()[0]->Name();
 
@@ -57,10 +57,10 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related
 
-bool ArgMaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                                        const GraphViewer& graph_viewer, const logging::Logger& logger) const {
+bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node, OpBuilderInputParams& input_params,
+                                        const logging::Logger& logger) const {
   // Check if Argmax's output is the graph output
-  const auto& graph_output_list = graph_viewer.GetOutputs();
+  const auto& graph_output_list = input_params.graph_viewer.GetOutputs();
   std::unordered_set<const NodeArg*> graph_outputs(graph_output_list.cbegin(), graph_output_list.cend());
   const auto& output_defs = node.OutputDefs();
   for (const auto* output_def : output_defs) {
@@ -75,7 +75,7 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
     succ_node_indices.push_back(it->GetNode().Index());
   }
 
-  //Case where argmax has multiple succeeding nodes is not supported
+  // Case where argmax has multiple succeeding nodes is not supported
   if (succ_node_indices.size() > 1) {
     LOGS(logger, VERBOSE) << "Case - [ArgMax] has multiple succedding nodes: Not supported.";
     return false;
@@ -86,7 +86,7 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
     return false;
   }
 
-  const auto* succ_node(graph_viewer.GetNode(succ_node_indices[0]));
+  const auto* succ_node(input_params.graph_viewer.GetNode(succ_node_indices[0]));
 
   // Case where ArgMax's succeeding node is not "cast" is not supported
   if (succ_node->OpType() != "Cast") {

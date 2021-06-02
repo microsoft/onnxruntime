@@ -20,12 +20,12 @@ class ReshapeOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const GraphViewer& graph_viewer,
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node, const GraphViewer& graph_viewer,
+  bool IsOpSupportedImpl(const Node& node, OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 
   // Reshape opset 4- uses attributes for new shape which we do not support for now
@@ -40,7 +40,6 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
 
 Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                const Node& node,
-                                               const GraphViewer& /* graph_viewer */,
                                                const logging::Logger& logger) const {
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(node);
 
@@ -66,10 +65,11 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related
 
-bool ReshapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                                         const GraphViewer& /* graph_viewer */, const logging::Logger& logger) const {
+bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, OpBuilderInputParams& input_params,
+                                         const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& perm_name = input_defs[1]->Name();
+  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
   if (!Contains(initializers, perm_name)) {
     LOGS(logger, VERBOSE) << "New shape of reshape must be a constant initializer";
     return false;

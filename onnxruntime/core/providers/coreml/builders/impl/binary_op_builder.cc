@@ -15,7 +15,7 @@ namespace coreml {
 class BinaryOpBuilder : public BaseOpBuilder {
   // Add operator related
  private:
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const GraphViewer& graph_viewer,
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related
@@ -26,7 +26,7 @@ class BinaryOpBuilder : public BaseOpBuilder {
 // Add operator related
 
 Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                              const GraphViewer& /* graph_viewer */, const logging::Logger& /* logger */) const {
+                                              const logging::Logger& /* logger */) const {
   const auto& op_type(node.OpType());
   const auto& input_defs(node.InputDefs());
 

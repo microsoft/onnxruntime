@@ -18,6 +18,9 @@
 namespace onnxruntime {
 namespace coreml {
 
+class ModelBuilder;
+struct OpBuilderInputParams;
+
 bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger) {
   const auto* shape_proto = node_arg.Shape();
   if (!shape_proto) {
@@ -37,7 +40,8 @@ bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const lo
   const auto& op_builders = GetOpBuilders();
   if (Contains(op_builders, node.OpType())) {
     const auto* op_builder = op_builders.at(node.OpType());
-    return op_builder->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, graph_viewer, logger);
+    OpBuilderInputParams input_params(graph_viewer);
+    return op_builder->IsOpSupported(node, input_params, logger);
   } else {
     return false;
   }

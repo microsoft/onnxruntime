@@ -9,6 +9,7 @@ namespace onnxruntime {
 namespace coreml {
 
 class ModelBuilder;
+struct OpBuilderInputParams;
 
 class BaseOpBuilder : public IOpBuilder {
  public:
@@ -17,23 +18,23 @@ class BaseOpBuilder : public IOpBuilder {
   // Add operator related
  public:
   virtual void AddInitializersToSkip(ModelBuilder& /* model_builder */, const Node& /* node */) const override {}
-  Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node, const GraphViewer& graph_viewer,
+  Status AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
                            const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
 
  protected:
-  virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node, const GraphViewer& graph_viewer,
+  virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                        const logging::Logger& logger) const ORT_MUST_USE_RESULT = 0;
 
   static std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> CreateNNLayer(const Node& node);
 
   // Operator support related
  public:
-  bool IsOpSupported(const InitializedTensorSet& initializers, const Node& node, const GraphViewer& graph_viewer,
+  bool IsOpSupported(const Node& node, OpBuilderInputParams& input_params,
                      const logging::Logger& logger) const override;
 
  protected:
-  virtual bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& /* node */,
-                                 const GraphViewer& /* graph_viewer */, const logging::Logger& /* logger */) const {
+  virtual bool IsOpSupportedImpl(const Node& /* node */, OpBuilderInputParams& /* input_params */,
+                                 const logging::Logger& /* logger */) const {
     return true;
   }
 

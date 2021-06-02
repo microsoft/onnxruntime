@@ -36,14 +36,15 @@ bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node
 
 // Add operator related
 
-Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node, const GraphViewer& graph_viewer,
+Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
                                         const logging::Logger& logger) const {
+  OpBuilderInputParams input_params(model_builder.GetGraphViewer());
   ORT_RETURN_IF_NOT(
-      IsOpSupported(model_builder.GetInitializerTensors(), node, graph_viewer, logger),
+      IsOpSupported(node, input_params, logger),
       "Unsupported operator ",
       node.OpType());
 
-  ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node, graph_viewer, logger));
+  ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node, logger));
   LOGS(logger, VERBOSE) << "Operator name: [" << node.Name()
                         << "] type: [" << node.OpType() << "] was added";
   return Status::OK();
@@ -58,19 +59,20 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
 
 // Operator support related
 
-bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
-                                  const GraphViewer& graph_viewer, const logging::Logger& logger) const {
+bool BaseOpBuilder::IsOpSupported(const Node& node, OpBuilderInputParams& input_params,
+                                  const logging::Logger& logger) const {
   if (!HasSupportedInputs(node, logger))
     return false;
 
   // We do not support external initializers for now
+  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
   if (HasExternalInitializer(initializers, node, logger))
     return false;
 
   if (!HasSupportedOpSet(node, logger))
     return false;
 
-  return IsOpSupportedImpl(initializers, node, graph_viewer, logger);
+  return IsOpSupportedImpl(node, input_params, logger);
 }
 
 bool BaseOpBuilder::HasSupportedInputs(const Node& node, const logging::Logger& logger) const {
