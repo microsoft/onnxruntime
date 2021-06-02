@@ -2,10 +2,11 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "core/language_interop_ops/torch/python_common.h"
+
 #include <mutex>
 #include <unordered_map>
 #include <vector>
-#include <Python.h>
 
 namespace onnxruntime {
 namespace language_interop_ops {

@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <Python.h>
+#include "core/language_interop_ops/torch/python_common.h"
 #include "core/framework/ml_value.h"
 #include <dlpack/dlpack.h>
 

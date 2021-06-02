@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <Python.h>
+#include "core/language_interop_ops/torch/python_common.h"
+
 #include <iostream>
 #include "core/common/logging/logging.h"
 #include "core/language_interop_ops/torch/refcount_tracker.h"

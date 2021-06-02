@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #ifdef ENABLE_TRAINING
 
-#include <Python.h>
+#include "core/language_interop_ops/torch/python_common.h"
 #ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel_context_internal.h"
 #endif

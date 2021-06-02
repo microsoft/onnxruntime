@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <Python.h>
+#include "core/language_interop_ops/torch/python_common.h"
 
 #ifndef SHARED_PROVIDER
 #include "core/platform/env.h"

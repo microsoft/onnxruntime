@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/language_interop_ops/torch/python_common.h"
 #include "core/language_interop_ops/torch/torch_proxy.h"
-
-#include <Python.h>
 #include "core/dlpack/dlpack_converter.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"

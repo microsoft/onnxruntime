@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include <Python.h>
+#include "core/language_interop_ops/torch/python_common.h"
 
 // Holder of GIL
 // (Global Interpreter Lock, https://wiki.python.org/moin/GlobalInterpreterLock)
