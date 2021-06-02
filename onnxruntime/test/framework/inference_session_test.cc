@@ -615,7 +615,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
 
   InferenceSession session_object(so, GetEnvironment());
 #ifdef USE_CUDA
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()).IsOK());
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #endif
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.Initialize());
@@ -855,7 +855,7 @@ static void TestBindHelper(const std::string& log_str,
 #ifdef USE_CUDA
     auto provider = DefaultCudaExecutionProvider(); 
     gpu_provider = provider.get();
-    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(provider)).IsOK());
+    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
 #elif USE_ROCM
     ROCMExecutionProviderInfo epi;
     epi.device_id = 0;
@@ -863,7 +863,7 @@ static void TestBindHelper(const std::string& log_str,
     auto provider = std::make_unique<ROCMExecutionProvider>(epi);
     gpu_provider = provider.get();
 
-    EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(provider)).IsOK());
+    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
 #endif
   }
 
@@ -1478,11 +1478,11 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
   InferenceSession session_object{so, GetEnvironment()};
 
 #ifdef USE_CUDA
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()).IsOK());
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
   ROCMExecutionProviderInfo epi;
   epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(epi)).IsOK());
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(epi)));
 #endif
 
   status = session_object.Load(model_file_name);
@@ -1616,11 +1616,11 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
   InferenceSession session_object{so, GetEnvironment()};
 
 #ifdef USE_CUDA
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()).IsOK());
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
   ROCMExecutionProviderInfo epi;
   epi.device_id = 0;
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(epi)).IsOK());
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(epi)));
 #endif
 
   status = session_object.Load(model_file_name);
@@ -1982,7 +1982,7 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
   so.session_logid = "InferenceSessionTests.TestParallelExecutionWithCudaProvider";
   InferenceSession session_object{so, GetEnvironment()};
 
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()).IsOK());
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 
   ASSERT_STATUS_OK(session_object.Load(model_uri));
 
@@ -2009,7 +2009,7 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
   auto factory = CreateExecutionProviderFactory_Cuda(&provider_options);
 
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(factory->CreateProvider()).IsOK());
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(factory->CreateProvider()));
   ASSERT_STATUS_OK(session_object.Initialize());
 
   // Fetch the CUDA allocator to analyze its stats
