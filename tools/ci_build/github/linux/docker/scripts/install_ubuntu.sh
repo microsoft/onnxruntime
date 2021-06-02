@@ -53,7 +53,8 @@ if [ "$OS_VERSION" = "18.04" ]; then
         zip \
         rsync libunwind8 libpng-dev libexpat1-dev \
         python3-setuptools python3-numpy python3-wheel python python3-pip python3-pytest \
-        openjdk-11-jdk"
+        openjdk-11-jdk \
+        graphviz"
 else # ubuntu20.04
     PACKAGE_LIST="autotools-dev \
         automake \
@@ -85,7 +86,8 @@ else # ubuntu20.04
         zip \
         rsync libunwind8 libpng-dev libexpat1-dev \
         python3-setuptools python3-numpy python3-wheel python python3-pip python3-pytest \
-        openjdk-11-jdk"
+        openjdk-11-jdk \
+        graphviz"
 fi
 
 if [ $DEVICE_TYPE = "Normal" ]; then
