@@ -6,6 +6,7 @@
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/framework/test_utils.h"
+#include "test/util/include/default_providers.h"
 #include "core/common/path_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/environment.h"
@@ -17,9 +18,7 @@
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 #include "bert_toy_fetches.h"
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_execution_provider.h"
-#elif USE_ROCM
+#ifdef USE_ROCM
 #include "core/providers/rocm/rocm_execution_provider.h"
 #endif
 #endif
@@ -70,7 +69,7 @@ static std::unique_ptr<TrainingSession> RunTrainingSessionWithChecks(
   std::unique_ptr<Environment> env;
   ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
 
-  std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, *env);
+  std::unique_ptr<TrainingSession> training_session = std::make_unique<TrainingSession>(so, *env);
 
   ORT_THROW_IF_ERROR(training_session->Load(backprop_model_file));
 
@@ -184,36 +183,120 @@ TEST(GradientGraphBuilderTest, TrainingSession_Basic) {
   RunTrainingSessionWithChecks(so, backprop_model_file);
 }
 
-TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
+TEST(GradientGraphBuilderTest, GraphTransformation_WithGist) {
+  // Setup training session configuration
   auto config = MakeBasicTrainingConfig();
-  config.gist_config = TrainingSession::TrainingConfiguration::GistConfiguration{};
+  const int op_type_max = 9;
+  const vector<std::string> compr_type_vec = {"GistBinarize", "GistPack8", "GistPack16", "GistPackMsfp15"};
+
   PathString backprop_model_file;
-  ASSERT_STATUS_OK(BuildBackPropGraph(ORIGINAL_MODEL_PATH, config, backprop_model_file));
+  for (auto& compr_type : compr_type_vec) {
+    // Add GIST config to training session (op_type_max ensures GIST is applied to all applicable ops)
+    TrainingSession::TrainingConfiguration::GistConfiguration gist{};
+    gist.op_type = op_type_max;
+    gist.compr_type = compr_type;
+    config.gist_config = gist;
 
-  std::cout << "Loading model file = " << ToMBString(backprop_model_file) << "\n";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(onnxruntime::Model::Load(backprop_model_file, p_model, nullptr, DefaultLoggingManager().DefaultLogger()));
+    // Create backward graph with gist transformations
+    ASSERT_STATUS_OK(BuildBackPropGraph(ORIGINAL_MODEL_PATH, config, backprop_model_file));
 
-  const Graph& graph = p_model->MainGraph();
-  bool found_encoder = false;
-  bool found_decoder = false;
-  for (auto& node : graph.Nodes()) {
-    const std::string& node_name = node.Name();
-    std::cout << "Node name='" << node_name << "' op_type=" << node.OpType() << "\n";
-    if (node_name.find(onnxruntime::GistEncodeDecode::GIST_ENCODER_NODE_NAME_BASE) != std::string::npos) {
-      found_encoder = true;
-      std::cout << "Found encoder node " << node_name << "\n";
-    } else if (node_name.find(onnxruntime::GistEncodeDecode::GIST_DECODER_NODE_NAME_BASE) != std::string::npos) {
-      found_decoder = true;
-      std::cout << "Found decoder node " << node_name << "\n";
-    }
+    // Check correctness of GIST transformation
+    backprop_model_file = config.model_with_training_graph_path.value();
+    std::shared_ptr<Model> pModel;
+    ASSERT_STATUS_OK(Model::Load(backprop_model_file, pModel, nullptr, DefaultLoggingManager().DefaultLogger()));
+    Graph& graph = pModel->MainGraph();
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    std::cout << "Type: "
+              << "com.microsoft." + gist.compr_type + "Encoder"
+              << ", Count: " << op_to_count["com.microsoft." + gist.compr_type + "Encoder"] << std::endl;
+    ASSERT_TRUE(op_to_count["com.microsoft.GistPack1Encoder"] == op_to_count["com.microsoft.GistPack1Decoder"]);
+    ASSERT_TRUE(op_to_count["com.microsoft." + gist.compr_type + "Encoder"] == op_to_count["com.microsoft." + gist.compr_type + "Decoder"]);
+    ASSERT_TRUE(op_to_count["com.microsoft." + gist.compr_type + "Encoder"] + op_to_count["com.microsoft.GistPack1Encoder"] > 0);
   }
-  ASSERT_TRUE(found_encoder);
-  ASSERT_TRUE(found_decoder);
+}
+
+#ifdef USE_CUDA
+TEST(GradientGraphBuilderTest, TrainingSession_WithGist) {
+  // Setup training session configuration including GIST config (op_flag 9 ensures GIST will be applied to all possible supported node types)
+  auto config = MakeBasicTrainingConfig();
+  TrainingSession::TrainingConfiguration::GistConfiguration gist{};
+  gist.op_type = 9;  // Apply Gist to all applicable operator types
+  gist.compr_type = "GistPack8";
+  config.gist_config = gist;
+
+  // Create backward graph with gist transformations
+  const PathString& forward_model_file = ORIGINAL_MODEL_PATH;
+  std::unique_ptr<Environment> env;
+  ORT_THROW_IF_ERROR(Environment::Create(nullptr, env));
 
   SessionOptions so{};
-  RunTrainingSessionWithChecks(so, backprop_model_file);
+  TrainingSession training_session{so, *env};
+
+  std::cout << "Loading source model file = " << ToMBString(forward_model_file) << "\n";
+
+  ORT_THROW_IF_ERROR(training_session.Load(forward_model_file));
+
+  TrainingSession::TrainingConfigurationResult config_result{};
+  ORT_THROW_IF_ERROR(training_session.ConfigureForTraining(config, config_result));
+
+  // Check correctness of GIST transformation
+  PathString backprop_model_file = config.model_with_training_graph_path.value();
+  std::shared_ptr<Model> pModel;
+  ASSERT_STATUS_OK(Model::Load(backprop_model_file, pModel, nullptr, DefaultLoggingManager().DefaultLogger()));
+  Graph& graph = pModel->MainGraph();
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  std::cout << "Type: "
+            << "com.microsoft." + gist.compr_type + "Encoder"
+            << ", Count: " << op_to_count["com.microsoft." + gist.compr_type + "Encoder"] << std::endl;
+  ASSERT_TRUE(op_to_count["com.microsoft.GistPack1Encoder"] == op_to_count["com.microsoft.GistPack1Decoder"]);
+  ASSERT_TRUE(op_to_count["com.microsoft." + gist.compr_type + "Encoder"] == op_to_count["com.microsoft." + gist.compr_type + "Decoder"]);
+  ASSERT_TRUE(op_to_count["com.microsoft." + gist.compr_type + "Encoder"] + op_to_count["com.microsoft.GistPack1Encoder"] > 0);
+
+  // Run training session with checks
+  std::pair<common::Status, const ModelMetadata*> res = training_session.GetModelMetadata();
+  ORT_THROW_IF_ERROR(res.first);
+  ORT_ENFORCE(res.second != nullptr);
+  auto model_metadata = res.second;
+  std::cout << "Loaded " << model_metadata->graph_name << '\n';
+
+  // Add cuda execution provider for gist encode/decode nodes
+  ASSERT_STATUS_OK(training_session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+
+  ORT_THROW_IF_ERROR(training_session.Initialize());
+
+  std::vector<MLValue> gradient_fetches;
+  RunOptions run_options;
+  run_options.run_log_verbosity_level = so.session_log_verbosity_level;
+  run_options.run_tag = so.session_logid;
+  run_options.training_mode = true;
+
+  // Create dummy feeds
+  std::vector<int64_t> image_dims = {1, 784};
+  std::vector<int64_t> label_dims = {1, 10};
+  std::vector<float> image_value(784, 1);
+  std::vector<float> label_value(10, 1);
+
+  MLValue imageMLValue;
+  TrainingUtil::CreateCpuMLValue(image_dims, image_value, &imageMLValue);
+  MLValue labelMLValue;
+  TrainingUtil::CreateCpuMLValue(label_dims, label_value, &labelMLValue);
+
+  auto fw_feeds = std::make_pair<std::vector<std::string>, std::vector<MLValue>>({"X", "labels"}, {imageMLValue, labelMLValue});
+
+  auto output_names_include_gradients = GetModelOutputNames(training_session);
+  std::vector<std::string> training_output_names(output_names_include_gradients.begin(), output_names_include_gradients.end());
+
+  auto start_time = std::chrono::high_resolution_clock::now();
+
+  ORT_THROW_IF_ERROR(training_session.Run(run_options, fw_feeds.first, fw_feeds.second, training_output_names, &gradient_fetches));
+
+  auto end_time = std::chrono::high_resolution_clock::now();
+  auto elapsed = TimeDiffMicroSeconds(start_time, end_time);
+  std::cout << "Training session run completed in " << elapsed << " microseconds.\n";
 }
+#endif
 
 TEST(GradientGraphBuilderTest, TrainingSession_WithLogging) {
   const auto& log_manager = DefaultLoggingManager();
@@ -310,7 +393,7 @@ static void RunBertTrainingWithChecks(
   std::unique_ptr<Environment> env;
   ASSERT_STATUS_OK(Environment::Create(nullptr, env));
 
-  std::unique_ptr<TrainingSession> training_session = onnxruntime::make_unique<TrainingSession>(so, *env);
+  std::unique_ptr<TrainingSession> training_session = std::make_unique<TrainingSession>(so, *env);
 
   ASSERT_STATUS_OK(training_session->Load(backprop_model_file));
 
@@ -321,11 +404,10 @@ static void RunBertTrainingWithChecks(
   std::cout << "Loaded " << model_metadata->graph_name << '\n';
 
 #ifdef USE_CUDA
-  CUDAExecutionProviderInfo xp_info;
-  ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(onnxruntime::make_unique<CUDAExecutionProvider>(xp_info)));
+  ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
   ROCMExecutionProviderInfo xp_info;
-  ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(onnxruntime::make_unique<ROCMExecutionProvider>(xp_info)));
+  ASSERT_STATUS_OK(training_session->RegisterExecutionProvider(std::make_unique<ROCMExecutionProvider>(xp_info)));
 #endif
   ASSERT_STATUS_OK(training_session->Initialize());
 
@@ -1010,21 +1092,21 @@ class PipelineBatchPlanner {
 };
 
 void RetrieveEventOperators(
-  Graph& graph,
-  const int stage_index,
-  const int num_stages,
-  Node** forward_recv_wait,
-  Node** forward_recv_record,
-  Node** forward_compute_wait,
-  Node** forward_compute_record,
-  Node** forward_send_wait,
-  Node** forward_send_record,
-  Node** backward_recv_wait,
-  Node** backward_recv_record,
-  Node** backward_compute_wait,
-  Node** backward_compute_record,
-  Node** backward_send_wait,
-  Node** backward_send_record) {
+    Graph& graph,
+    const int stage_index,
+    const int num_stages,
+    Node** forward_recv_wait,
+    Node** forward_recv_record,
+    Node** forward_compute_wait,
+    Node** forward_compute_record,
+    Node** forward_send_wait,
+    Node** forward_send_record,
+    Node** backward_recv_wait,
+    Node** backward_recv_record,
+    Node** backward_compute_wait,
+    Node** backward_compute_record,
+    Node** backward_send_wait,
+    Node** backward_send_record) {
   // Initialize retrieved nodes.
   // Non-existing nodes may hold NULL forever.
   // Existing nodes may get valid pointers below.
@@ -1110,16 +1192,16 @@ void RetrieveEventOperators(
     *backward_send_record = records[2];
   } else {
     ORT_THROW("Wrong number of WaitEvent operators: ",
-        waits.size(), " allowed value range is [0, ", num_stages - 1, ").");
+              waits.size(), " allowed value range is [0, ", num_stages - 1, ").");
   }
 }
 
 void RetrieveSendRecvOperators(
-  Graph& graph,
-  Node** forward_recv,
-  Node** forward_send,
-  Node** backward_recv,
-  Node** backward_send) {
+    Graph& graph,
+    Node** forward_recv,
+    Node** forward_send,
+    Node** backward_recv,
+    Node** backward_send) {
   // Initialize retrieved nodes.
   // Non-existing nodes may hold NULL forever.
   // Existing nodes may get valid pointers below.
@@ -1171,32 +1253,30 @@ PathString GenerateFileNameWithIndex(const std::string& base_str, int index, con
 
 // DistributedRunTestContext provides a method to override existing DistributedRunTestContext instance.
 // This is for test purpose only. Please don't use it for other scenarios.
-class DistributedRunTestContext : public DistributedRunContext
-{
-public:
-    DistributedRunTestContext(const TrainingSession::TrainingConfiguration &config)
-        : DistributedRunContext(config.distributed_config.world_rank,
-                                config.distributed_config.world_size,
-                                config.distributed_config.local_rank,
-                                config.distributed_config.local_size,
-                                config.distributed_config.data_parallel_size,
-                                config.distributed_config.horizontal_parallel_size,
-                                config.distributed_config.pipeline_parallel_size)
-    {
-    }
+class DistributedRunTestContext : public DistributedRunContext {
+ public:
+  DistributedRunTestContext(const TrainingSession::TrainingConfiguration& config)
+      : DistributedRunContext(config.distributed_config.world_rank,
+                              config.distributed_config.world_size,
+                              config.distributed_config.local_rank,
+                              config.distributed_config.local_size,
+                              config.distributed_config.data_parallel_size,
+                              config.distributed_config.horizontal_parallel_size,
+                              config.distributed_config.pipeline_parallel_size) {
+  }
 
-    // Reset the static DistributedRunContext object with new value.
-    void ResetDistributedRunContext(){
-      DistributedRunContext::GetRunConfig() = params_;
-      auto& dp_group = DistributedRunContext::GetWorkerGroup(WorkerGroupType::DataParallel);
-      dp_group = groups_[WorkerGroupType::DataParallel];
+  // Reset the static DistributedRunContext object with new value.
+  void ResetDistributedRunContext() {
+    DistributedRunContext::GetRunConfig() = params_;
+    auto& dp_group = DistributedRunContext::GetWorkerGroup(WorkerGroupType::DataParallel);
+    dp_group = groups_[WorkerGroupType::DataParallel];
 
-      auto& hp_group = DistributedRunContext::GetWorkerGroup(WorkerGroupType::HorizontalParallel);
-      hp_group = groups_[WorkerGroupType::HorizontalParallel];
+    auto& hp_group = DistributedRunContext::GetWorkerGroup(WorkerGroupType::HorizontalParallel);
+    hp_group = groups_[WorkerGroupType::HorizontalParallel];
 
-      auto& mp_group = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::PipelineParallel);
-      mp_group = groups_[WorkerGroupType::PipelineParallel];
-    }
+    auto& mp_group = DistributedRunContext::GetInstance().GetWorkerGroup(WorkerGroupType::PipelineParallel);
+    mp_group = groups_[WorkerGroupType::PipelineParallel];
+  }
 };
 
 void OverwritePipelineRank(const TrainingSession::TrainingConfiguration& config, const int pipeline_rank) {
@@ -1339,7 +1419,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
 
   // 2 test variations - full precision and mixed precision
   const std::vector<bool> test_with_fp32{true, false};
-  for(auto is_fp32 : test_with_fp32) {
+  for (auto is_fp32 : test_with_fp32) {
     // graph is partitioned into 3 parts.
     for (int i = 0; i < 3; ++i) {
       PathString output_file = GenerateFileNameWithIndex("pipeline_partition_", i, "_back.onnx");
@@ -1364,7 +1444,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
 
       PathString backprop_model_file;
       Status status = BuildBackPropGraph(model_uri, config, backprop_model_file);
-      ASSERT_TRUE(status.IsOK()) << status<<" (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+      ASSERT_TRUE(status.IsOK()) << status << " (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
 
       // Skip the re-load for mixed-precision case. This model contains grad op that has function body,
       // which takes a const tensor input. Const cast for input in function body won't be saved in the output
@@ -1375,7 +1455,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_MLP) {
         std::shared_ptr<Model> model;
         // Ensure the partitioned model load.
         status = Model::Load(backprop_model_file, model, nullptr, DefaultLoggingManager().DefaultLogger());
-        ASSERT_TRUE(status.IsOK()) << status<<" (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
+        ASSERT_TRUE(status.IsOK()) << status << " (is_fp32 = " << is_fp32 << ", stage = " << i << ").\n";
       }
     }
   }
@@ -1434,7 +1514,7 @@ TEST(GradientGraphBuilderTest, PipelineOnlinePartition_Invalid_Input) {
 
 // verify pipeline config can load and gradient graph can construct.
 TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
- std::string filename_base = "testdata/test_training_model_";
+  std::string filename_base = "testdata/test_training_model_";
 
   auto load_and_check_gradient_graph = [](int stageIdx, PathString& input_file, PathString& output_file) {
     auto config = MakeBasicTrainingConfig();
@@ -1470,21 +1550,21 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
 
     // Find event nodes.
     RetrieveEventOperators(
-      graph,
-      stageIdx,
-      3,
-      &forward_recv_wait,
-      &forward_recv_record,
-      &forward_compute_wait,
-      &forward_compute_record,
-      &forward_send_wait,
-      &forward_send_record,
-      &backward_recv_wait,
-      &backward_recv_record,
-      &backward_compute_wait,
-      &backward_compute_record,
-      &backward_send_wait,
-      &backward_send_record);
+        graph,
+        stageIdx,
+        3,
+        &forward_recv_wait,
+        &forward_recv_record,
+        &forward_compute_wait,
+        &forward_compute_record,
+        &forward_send_wait,
+        &forward_send_record,
+        &backward_recv_wait,
+        &backward_recv_record,
+        &backward_compute_wait,
+        &backward_compute_record,
+        &backward_send_wait,
+        &backward_send_record);
 
     // Check event nodes.
     if (stageIdx == 2) {
@@ -1546,11 +1626,11 @@ TEST(GradientGraphBuilderTest, TrainingSession_PipelineTransform_base) {
     Node* backward_send{nullptr};
 
     RetrieveSendRecvOperators(
-      graph,
-      &forward_recv,
-      &forward_send,
-      &backward_recv,
-      &backward_send);
+        graph,
+        &forward_recv,
+        &forward_send,
+        &backward_recv,
+        &backward_send);
 
     // Except the last partion, each partition should have send forward and recv backward.
     if (stageIdx == 0 || stageIdx == 1) {
@@ -1615,23 +1695,21 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
         {},
         {},
         {}},
-       {{
-            "MeanSquaredError_reduce_mean_Grad/Sized_X",
-            "MeanSquaredError_reduce_mean_Grad/Sized_Grad",
-            "MeanSquaredError_reduce_mean_Grad/Scale",
-            "MeanSquaredError_reduce_mean_Grad/Scaled_Grad",
-            "MeanSquaredError_reduce_mean_Grad/Shaped_X",
-            "MeanSquaredError_diff_square_grad",
-            "MeanSquaredError_pow_Grad/Sub_I1",
-            "MeanSquaredError_pow_Grad/Pow_I0",
-            "MeanSquaredError_pow_Grad/Mul_Pow_I0_I1",
-            "MeanSquaredError_diff_grad",
-            "predictions_grad",
-            "B3_grad",
-            "T7_grad",
-            "W3_grad",
-            "T6_grad"
-        },
+       {{"MeanSquaredError_reduce_mean_Grad/Sized_X",
+         "MeanSquaredError_reduce_mean_Grad/Sized_Grad",
+         "MeanSquaredError_reduce_mean_Grad/Scale",
+         "MeanSquaredError_reduce_mean_Grad/Scaled_Grad",
+         "MeanSquaredError_reduce_mean_Grad/Shaped_X",
+         "MeanSquaredError_diff_square_grad",
+         "MeanSquaredError_pow_Grad/Sub_I1",
+         "MeanSquaredError_pow_Grad/Pow_I0",
+         "MeanSquaredError_pow_Grad/Mul_Pow_I0_I1",
+         "MeanSquaredError_diff_grad",
+         "predictions_grad",
+         "B3_grad",
+         "T7_grad",
+         "W3_grad",
+         "T6_grad"},
         {},
         {"T6_grad"},
         {},
@@ -1667,7 +1745,7 @@ TEST(GradientGraphBuilderTest, TrainingSession_WithPipeline) {
     sub_sess.run_options.run_tag = sub_sess.so.session_logid;
     sub_sess.run_options.training_mode = true;
 
-    sub_sess.sess = onnxruntime::make_unique<TrainingSession>(sub_sess.so, *env);
+    sub_sess.sess = std::make_unique<TrainingSession>(sub_sess.so, *env);
     ASSERT_STATUS_OK(sub_sess.sess->Load(sub_model_files[sub_id]));
     ASSERT_STATUS_OK(sub_sess.sess->Initialize());
   }

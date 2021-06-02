@@ -1494,6 +1494,25 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
                 ORT_IGNORE_RETURN_VALUE(outer_scope_node_args_consumed.insert(input_arg_name));
               }
             }
+          } else {
+            // Check all the inputs are found.
+            //
+            // Ignore a Fused node as it could have moved things like initializers to a different device
+            // (they're internally available to the fused node but removed from the Graph instance).
+            // Fusion happens after the model was loaded in full so we know the inputs were valid originally.
+            bool check = node.NodeType() != Node::Type::Fused;
+#if defined(ENABLE_TRAINING)
+            // Only check initial model load for training as graph modifications there also render inputs 'invalid'.
+            check = check && num_resolves_ == 0;
+#endif
+            if (check &&
+                resolve_context_.inputs_and_initializers.find(input_arg_name) ==
+                    resolve_context_.inputs_and_initializers.cend() &&
+                // if we're manually creating a Graph for use as a subgraph the outer scope names are manually set
+                outer_scope_node_arg_names_.find(input_arg_name) == outer_scope_node_arg_names_.cend()) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid model. Node input '", input_arg_name,
+                                     "' is not a graph input, initializer, or output of a previous node.");
+            }
           }
         }
       }
@@ -1874,7 +1893,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     auto* subgraph = node_.GetMutableGraphAttribute(attribute_name);
 
     if (subgraph) {
-      auto inferencer = onnxruntime::make_unique<GraphInferencerImpl>(node_, *subgraph, subgraph_inferencing_func_, options_);
+      auto inferencer = std::make_unique<GraphInferencerImpl>(node_, *subgraph, subgraph_inferencing_func_, options_);
       graph_inferencer = inferencer.get();
       graph_inferencers_.push_back(std::move(inferencer));
     } else {
@@ -2062,7 +2081,7 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
           // The type-parameter T is bound to different values for different inputs.
           Status status(ONNXRUNTIME, FAIL,
                         "Type Error: Type parameter (" + op_formal_parameter.GetTypeStr() +
-                            ") bound to different types (" + *(param_to_type_iter->second) +
+                            ") of Optype (" + op.Name() + ") bound to different types (" + *(param_to_type_iter->second) +
                             " and " + *(input_def->Type()) +
                             " in node (" + node_name + ").");
           return status;
@@ -2381,7 +2400,8 @@ void Graph::InitFunctionBodyForNode(Node& node) {
           input_types.emplace_back();
       }
       onnx::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
-      node.op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto);
+      if (!node.op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto))
+        return;
     } else {
       onnx_function_proto = *(node.op_->GetFunction());
     }
@@ -2391,11 +2411,11 @@ void Graph::InitFunctionBodyForNode(Node& node) {
     for (const auto& fn_import : onnx_function_proto.opset_import()) {
       auto it = graphImports.find(fn_import.domain());
       if ((it != graphImports.end()) && (it->second != fn_import.version()))
-        return; // Incompatible. Do not use this function expansion.
+        return;  // Incompatible. Do not use this function expansion.
     }
 
-    auto func_ptr = onnxruntime::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
-                                                                        logger_);
+    auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
+                                                                logger_);
 
     function_container_.emplace_back(std::move(func_ptr));
     node.SetFunctionBody(*function_container_.back());
@@ -3148,12 +3168,20 @@ void Graph::ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const 
 void Graph::CleanUnusedInitializers(const std::unordered_set<std::string>* initializer_names_to_preserve) {
   std::unordered_set<std::string> used_args;
 
+  // anything that provides a required graph input (GetInputs), an optional graph input (GetOverridableInitializers)
+  // or a graph output (GetOutputs) cannot be removed
   const auto& inputs = GetInputs();
+  const auto& overridable_initializers = GetOverridableInitializers();
   const auto& outputs = GetOutputs();
 
   std::for_each(inputs.cbegin(), inputs.cend(), [&used_args](const NodeArg* input) {
     ORT_IGNORE_RETURN_VALUE(used_args.insert(input->Name()));
   });
+
+  std::for_each(overridable_initializers.cbegin(), overridable_initializers.cend(),
+                [&used_args](const NodeArg* input) {
+                  ORT_IGNORE_RETURN_VALUE(used_args.insert(input->Name()));
+                });
 
   std::for_each(outputs.cbegin(), outputs.cend(), [&used_args](const NodeArg* output) {
     ORT_IGNORE_RETURN_VALUE(used_args.insert(output->Name()));
@@ -3194,23 +3222,28 @@ void Graph::CleanUnusedInitializers(const std::unordered_set<std::string>* initi
                 [this](const std::string& name) {
                   RemoveInitializedTensor(name);
 
-                  // handle edge case where the unused initializer has a matching graph input
-                  auto& proto_inputs = *graph_proto_->mutable_input();
-                  auto i = std::find_if(proto_inputs.begin(), proto_inputs.end(),
-                                        [&name](const ONNX_NAMESPACE::ValueInfoProto& input) {
-                                          return input.name() == name;
-                                        });
+                  // handle edge case where the unused initializer has a matching graph input.
+                  // this can only happen when initializers cannot be overridden via an optional graph input.
+                  // (otherwise this initializer wouldn't be allowed to be removed due to it backing an optional
+                  // graph input).
+                  if (CanOverrideInitializer() == false) {
+                    auto& proto_inputs = *graph_proto_->mutable_input();
+                    auto i = std::find_if(proto_inputs.begin(), proto_inputs.end(),
+                                          [&name](const ONNX_NAMESPACE::ValueInfoProto& input) {
+                                            return input.name() == name;
+                                          });
 
-                  if (i != proto_inputs.end()) {
-                    RemoveRepeatedFieldEntry(proto_inputs, i);
-                  }
+                    if (i != proto_inputs.end()) {
+                      RemoveRepeatedFieldEntry(proto_inputs, i);
+                    }
 
-                  auto& inputs_including_initializers = graph_inputs_including_initializers_;
-                  auto j = std::find_if(inputs_including_initializers.begin(), inputs_including_initializers.end(),
-                                        [&name](const NodeArg* input) { return input->Name() == name; });
+                    auto& inputs_including_initializers = graph_inputs_including_initializers_;
+                    auto j = std::find_if(inputs_including_initializers.begin(), inputs_including_initializers.end(),
+                                          [&name](const NodeArg* input) { return input->Name() == name; });
 
-                  if (j != inputs_including_initializers.end()) {
-                    inputs_including_initializers.erase(j);
+                    if (j != inputs_including_initializers.end()) {
+                      inputs_including_initializers.erase(j);
+                    }
                   }
                 });
 }
@@ -3460,7 +3493,7 @@ Node& Graph::BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::stri
   // if this is a full build create the lightweight Function implementation that provides the schema so that
   // kernel lookup works as per usual. in an extended minimal build we do the lookup via a hash so don't
   // need to create the schema.
-  auto func = onnxruntime::make_unique<ViewerFunctionImpl>(*this, sub_graph, logger_);
+  auto func = std::make_unique<ViewerFunctionImpl>(*this, sub_graph, logger_);
   function_container_.push_back(std::move(func));
   node.SetFunctionBody(*function_container_.back());
 #endif

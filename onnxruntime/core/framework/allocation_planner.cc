@@ -257,6 +257,20 @@ class PlannerImpl {
 
   // Find if there exists some input tensor that we can use in-place for output_arg_num-th input in the node.
   bool FindReusableInput(const onnxruntime::Node& node, int output_arg_num, OrtValueIndex* reusable_input) {
+#ifdef ENABLE_TRAINING
+    // Inputs of Yields are essentially the outputs for FW partial subgraph
+    // Thses tensors will be pass back to pytorch, thus cannot share the buffer with other tensors
+
+    // Unhandled corner case: 
+    // If FW output tensor is consumed by BW graph, and pytorch performs an inplace operation on th returned tensor,
+    // we will run into a buffer corruption problem. 
+    // One potential fix is returning a copy of output tensor, if it has downstream dependency
+    auto p_next_node = node.OutputNodesBegin();
+    if (p_next_node != node.OutputNodesEnd() && p_next_node->OpType() == "YieldOp") {
+      return false;
+    }
+#endif  //ENABLE_TRAINING
+
     auto p_output_arg = node.OutputDefs()[output_arg_num];
     const KernelCreateInfo& ci = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
 
@@ -389,6 +403,9 @@ class PlannerImpl {
 
   // Find if freelist contains a buffer of the same size as output_arg
   bool FindReusableTensor(const onnxruntime::NodeArg& output_arg, OrtValueIndex* reusable_tensor) {
+    if (!context_.GetEnableMemoryReuse()) {
+      return false;
+    }
     auto p_required_buffer_shape = context_.GetShape(output_arg);
     if (nullptr == p_required_buffer_shape || p_required_buffer_shape->dim_size() == 0) return false;
     auto& required_memory_info = AllocPlan(output_arg.Name()).location;
@@ -679,7 +696,13 @@ class PlannerImpl {
         // Declare OrtValue index of the reused buffer.
         // The the OrtValue indexed by current may reuse the memory in the OrtValue indexed by reused.
         OrtValueIndex reused;
-        if (std::find(graph_outputs.begin(), graph_outputs.end(), node_output) != graph_outputs.end()) {
+        if (has_external_outputs) {
+          ORT_ENFORCE(!IsNonTensor(*node_output), "Only tensors are supported for external outputs for now.");
+          AllocPlan(current).alloc_kind = AllocKind::kAllocatedExternally;
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+          AllocPlan(current).life_interval.second = execution_plan.size();
+#endif
+        } else if (std::find(graph_outputs.begin(), graph_outputs.end(), node_output) != graph_outputs.end()) {
           // node_output is graph's output, so we can't reuse intermediate buffer
           AllocPlan(current).alloc_kind = AllocKind::kAllocateOutput;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -718,17 +741,12 @@ class PlannerImpl {
               }
             }
           }
-        } else if (has_external_outputs) {
-          ORT_ENFORCE(!IsNonTensor(*node_output), "Only tensors are supported for external outputs for now.");
-          AllocPlan(current).alloc_kind = AllocKind::kAllocatedExternally;
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-          AllocPlan(current).life_interval.second = execution_plan.size();
-#endif
         } else if (IsNonTensor(*node_output)) {
           // we do not try sharing-optimization for non-tensors
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
           AllocPlan(current).program_counter.AddStart(program_counter);
-        } else if (FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
+        } else if (!context_.IsParallelExecutionEnabled() &&
+                   FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
           // Reuse one of this node's input buffers as the output buffer (for in-place update)
           Reuse(reused, current, AllocKind::kReuse);
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -1048,7 +1066,7 @@ Status SequentialPlanner::CreatePlan(
     const ISequentialPlannerContext& context,
     std::unique_ptr<SequentialExecutionPlan>& plan) {
   // allocate/reset here so we know it's clean
-  plan = onnxruntime::make_unique<SequentialExecutionPlan>();
+  plan = std::make_unique<SequentialExecutionPlan>();
 
   PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers,
                       kernel_create_info_map, ort_value_name_idx_map, context, *plan);

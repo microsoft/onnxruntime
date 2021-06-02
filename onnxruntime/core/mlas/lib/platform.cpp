@@ -163,16 +163,28 @@ Return Value:
 
 #endif
 
-    //
-    // Check if the processor supports the AVX and OSXSAVE features.
-    //
-
     unsigned Cpuid1[4];
 #if defined(_WIN32)
     __cpuid((int*)Cpuid1, 1);
 #else
     __cpuid(1, Cpuid1[0], Cpuid1[1], Cpuid1[2], Cpuid1[3]);
 #endif
+
+#if defined(MLAS_TARGET_AMD64) && defined(_MSC_VER)
+
+    //
+    // Check if the processor supports SSE 4.1 instructions.
+    //
+
+    if ((Cpuid1[2] & 0x80000) != 0) {
+        this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchSse41;
+    }
+
+#endif
+
+    //
+    // Check if the processor supports the AVX and OSXSAVE features.
+    //
 
     if ((Cpuid1[2] & 0x18000000) == 0x18000000) {
 

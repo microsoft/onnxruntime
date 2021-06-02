@@ -219,7 +219,6 @@
                            [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
   }
 
-  //   NSSet<NSString*>* output_feature_names = [output_feature featureNames];
   for (auto& output : outputs) {
     NSString* output_name = [NSString stringWithCString:output.first.c_str()
                                                encoding:[NSString defaultCStringEncoding]];
@@ -311,7 +310,7 @@ Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>&
 }
 
 Model::Model(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags)
-    : execution_(onnxruntime::make_unique<Execution>(path, logger, coreml_flags)) {
+    : execution_(std::make_unique<Execution>(path, logger, coreml_flags)) {
 }
 
 Model::~Model() {}

@@ -14,7 +14,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .Alias(1, 0)  // Update weights in-place
         .Alias(2, 1)  // Update gradients in-place
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),

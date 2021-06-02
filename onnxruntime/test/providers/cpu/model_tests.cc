@@ -57,7 +57,7 @@ TEST_P(ModelTest, Run) {
     relative_per_sample_tolerance = 0.009;
   }
 
-  std::unique_ptr<OnnxModelInfo> model_info = onnxruntime::make_unique<OnnxModelInfo>(model_path.c_str());
+  std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
   if (model_info->GetONNXOpSetVersion() != 8 && provider_name == "tensorrt") {
     // TensorRT can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
@@ -710,7 +710,8 @@ TEST_P(ModelTest, Run) {
       ORT_TSTR("fp16_test_tiny_yolov2-Candy"),
       ORT_TSTR("fp16_coreml_FNS-Candy"),
       ORT_TSTR("fp16_test_tiny_yolov2"),
-      ORT_TSTR("fp16_test_shufflenet")};
+      ORT_TSTR("fp16_test_shufflenet"),
+      ORT_TSTR("keras2coreml_SimpleRNN_ImageNet")};
   static const ORTCHAR_T* openvino_disabled_tests[] = {ORT_TSTR("tf_mobilenet_v1_1.0_224"),
                                                        ORT_TSTR("bertsquad"),
                                                        ORT_TSTR("yolov3"),

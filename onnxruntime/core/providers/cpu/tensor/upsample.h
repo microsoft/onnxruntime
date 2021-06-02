@@ -3,7 +3,9 @@
 
 #pragma once
 
+#ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel.h"
+#endif
 #include <cmath>
 
 namespace onnxruntime {
@@ -16,8 +18,8 @@ constexpr const char* UpsampleModeCubic = "cubic";
 // is a 4x4 matrix
 const size_t CubicModeGridLength = 4;
 
-using GetNearestPixelFunc = std::function<int64_t(float, bool)>;
-using GetOriginalCoordinateFunc = std::function<float(float, float, float, float, float, float)>;
+using GetNearestPixelFunc = int64_t(*)(float, bool);
+using GetOriginalCoordinateFunc = float (*)(float, float, float, float, float, float);
 
 enum UpsampleMode {
   NN = 0,      // nearest neighbour
@@ -46,7 +48,7 @@ enum ResizeNearestMode {
 
 class UpsampleBase {
  protected:
-  UpsampleBase(OpKernelInfo info) : scales_cached_(false), roi_cached_(false), use_extrapolation_(false) {
+  UpsampleBase(const OpKernelInfo& info) : scales_cached_(false), roi_cached_(false), use_extrapolation_(false) {
     const auto& node = info.node();
     auto opset = node.SinceVersion();
     is_resize_ = (opset >= 10);

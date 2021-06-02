@@ -5,9 +5,8 @@
         "x86",
         "x86_64"
     ],
-    "build_flavor": "Release",
     "android_min_sdk_version": 21,
-    "android_target_sdk_version": 28,
+    "android_target_sdk_version": 24,
     "build_params": [
         "--android",
         "--parallel",
@@ -18,6 +17,7 @@
         "--disable_rtti",
         "--disable_ml_ops",
         "--disable_exceptions",
+        "--enable_reduced_operator_type_support",
         "--use_nnapi",
         "--skip_tests"
     ]

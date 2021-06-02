@@ -1,13 +1,45 @@
 jobs:
-- job: 'build'
+- job: Extract_commit
+  pool: 'Win-CPU-2019'
+  timeoutInMinutes: 30
+  workspace:
+    clean: all
+  steps:
+  - checkout: none
+    fetchDepth: 1
+    submodules: false
+  - script: |
+     echo.$(Build.SourceVersion)
+     echo.$(Build.SourceVersion)>$(Build.ArtifactStagingDirectory)\__commit.txt
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact'
+    inputs:
+      artifactName: '__commit'
+      targetPath: '$(Build.ArtifactStagingDirectory)'
+
+- job: build_WASM
+  dependsOn: Extract_commit
   pool: 'Win-CPU-2019'
   strategy:
-    maxParallel: 2
+    maxParallel: 4
     matrix:
-      debug:
+      'debug':
         BuildConfig: 'Debug'
-      release:
+        CmdParams: ''
+        WasmFileName: 'ort-wasm'
+      'release':
         BuildConfig: 'Release'
+        CmdParams: '--skip_tests --disable_wasm_exception_catching --disable_rtti'
+        WasmFileName: 'ort-wasm'
+      'threads debug':
+        BuildConfig: 'Debug'
+        CmdParams: '--enable_wasm_threads'
+        WasmFileName: 'ort-wasm-threaded'
+      'threads release':
+        BuildConfig: 'Release'
+        CmdParams: '--enable_wasm_threads --skip_tests --disable_wasm_exception_catching --disable_rtti'
+        WasmFileName: 'ort-wasm-threaded'
+
   variables:
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     EnvSetupScript: setup_env.bat
@@ -15,36 +47,56 @@ jobs:
   timeoutInMinutes: 120
   workspace:
     clean: all
-  steps:    
+  steps:
+  - checkout: self
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      artifact: '__commit'
+      path: $(Pipeline.Workspace)
+    displayName: 'Get commit SHA'
+  - script: |
+     set /p __commit__=<$(Pipeline.Workspace)\__commit.txt
+     git fetch origin +%__commit__%:refs/remotes/origin/%__commit__%
+     git checkout --force %__commit__%
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Read commit SHA and checkout'
+  - script: |
+     git submodule sync --recursive
+     git submodule update --init --recursive
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Checkout submodules'
   - task: UsePythonVersion@0
-    inputs: 
-      versionSpec: '3.7' 
-      addToPath: true 
+    inputs:
+      versionSpec: '3.7'
+      addToPath: true
       architecture: $(buildArch)
-
   - task: NodeTool@0
     inputs:
       versionSpec: '14.x'
-
   - task: BatchScript@1
     displayName: 'setup env'
     inputs:
       filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
       modifyEnvironment: true
       workingFolder: '$(Build.BinariesDirectory)'
-
   - script: |
      python -m pip install -q pyopenssl setuptools wheel numpy ninja flake8
     workingDirectory: '$(Build.BinariesDirectory)'
     displayName: 'Install python modules'
-
   - task: PythonScript@0
     displayName: 'Build and test'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_wasm --cmake_generator "Visual Studio 16 2019"'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_wasm --cmake_generator "Visual Studio 16 2019" $(CmdParams)'
       workingDirectory: '$(Build.BinariesDirectory)'
-
+  - script: |
+      copy $(Build.BinariesDirectory)\$(BuildConfig)\$(WasmFileName)*.* $(Build.ArtifactStagingDirectory)
+    displayName: 'Create Artifacts'
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact'
+    inputs:
+      artifactName: '$(BuildConfig)_$(WasmFileName)'
+      targetPath: '$(Build.ArtifactStagingDirectory)'
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
     inputs:
@@ -52,11 +104,152 @@ jobs:
       searchFolder: '$(Build.BinariesDirectory)'
       testRunTitle: 'Unit Test Run'
     condition: succeededOrFailed()
-
   - template: templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
 
+- job: build_onnxruntime_web
+  dependsOn: build_WASM
+  pool: 'Win-CPU-2019'
+  strategy:
+    maxParallel: 2
+    matrix:
+      'debug':
+        BuildConfig: 'Debug'
+      'release':
+        BuildConfig: 'Release'
+
+  timeoutInMinutes: 30
+  workspace:
+    clean: all
+  steps:
+  - checkout: self
+    submodules: false
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      artifact: '__commit'
+      path: $(Pipeline.Workspace)
+    displayName: 'Get commit SHA'
+  - script: |
+     set /p __commit__=<$(Pipeline.Workspace)\__commit.txt
+     git fetch origin +%__commit__%:refs/remotes/origin/%__commit__%
+     git checkout --force %__commit__%
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Read commit SHA and checkout'
+  - script: |
+     git submodule sync -- cmake\external\onnx
+     git submodule update --init -- cmake\external\onnx
+    workingDirectory: '$(Build.SourcesDirectory)'
+    displayName: 'Checkout submodule onnx'
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '14.x'
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      patterns: '$(BuildConfig)_*/**/*'
+      path: $(Pipeline.Workspace)\artifacts
+    displayName: 'Download WebAssembly artifacts'
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Pipeline.Workspace)\artifacts
+      contents: |
+        **\*.wasm
+      targetFolder: $(Build.SourcesDirectory)\js\web\dist
+      flattenFolders: true
+    displayName: 'Binplace dist files'
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Pipeline.Workspace)\artifacts
+      contents: |
+        **\*.js
+      targetFolder: $(Build.SourcesDirectory)\js\web\lib\wasm\binding
+      flattenFolders: true
+    displayName: 'Binplace js files'
+  - script: |
+     npm ci
+    workingDirectory: '$(Build.SourcesDirectory)\js'
+    displayName: 'npm ci /js/'
+  - script: |
+     npm ci
+    workingDirectory: '$(Build.SourcesDirectory)\js\common'
+    displayName: 'npm ci /js/common/'
+  - script: |
+     npm ci
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'npm ci /js/web/'
+  - script: |
+     npm run lint
+    workingDirectory: '$(Build.SourcesDirectory)\js'
+    displayName: 'ESLint'
+  - script: |
+     npm run format
+    workingDirectory: '$(Build.SourcesDirectory)\js'
+    displayName: 'Clang-format'
+  - script: |
+     node -e "a=require('child_process').execSync('git ls-files -m').toString();if(a)throw new Error('Following source files are not formatted: (did you run \"npm run format\"?)\n'+a)"
+    workingDirectory: '$(Build.SourcesDirectory)\js'
+    displayName: 'Check unformatted files'
+  - script: |
+     npm run build:doc
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Generating documents'
+  - script: |
+     node -e "a=require('child_process').execSync('git ls-files -m').toString();if(a)throw new Error('Following documents are not up-to-date: (did you run \"npm run build:doc\"?)\n'+a)"
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Check out of dated documents'
+  - script: |
+     npm run build
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Build ort-web'
+  - script: |
+     npm test
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Run ort-web tests - unpacked mode'
+  - script: |
+     npm test --  --webgl-texture-pack-mode -b=webgl
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Run ort-web tests - packed mode'
+  - script: |
+      npm pack
+    workingDirectory: '$(Build.SourcesDirectory)\js\common'
+    displayName: 'Generate NPM package (onnxruntime-common)'
+    condition: and(succeeded(), eq(variables['BuildConfig'], 'Release'))
+  - script: |
+      npm pack
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Generate NPM package (onnxruntime-web)'
+    condition: and(succeeded(), eq(variables['BuildConfig'], 'Release'))
+  - script: |
+      npm run test:e2e
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'E2E package consuming test'
+    condition: and(succeeded(), eq(variables['BuildConfig'], 'Release'))
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Build.SourcesDirectory)\js\common
+      contents: onnxruntime-common-*.tgz
+      targetFolder: $(Build.ArtifactStagingDirectory)
+    displayName: 'Create Artifacts (onnxruntime-common)'
+    condition: and(succeeded(), eq(variables['BuildConfig'], 'Release'))
+  - task: CopyFiles@2
+    inputs:
+      sourceFolder: $(Build.SourcesDirectory)\js\web
+      contents: onnxruntime-web-*.tgz
+      targetFolder: $(Build.ArtifactStagingDirectory)
+    displayName: 'Create Artifacts (onnxruntime-web)'
+    condition: and(succeeded(), eq(variables['BuildConfig'], 'Release'))
+  - task: PublishPipelineArtifact@0
+    inputs:
+      artifactName: 'NPM_packages'
+      targetPath: '$(Build.ArtifactStagingDirectory)'
+    displayName: 'Publish Pipeline Artifact'
+    condition: and(succeeded(), eq(variables['BuildConfig'], 'Release'))
+  - template: templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'succeeded'
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()

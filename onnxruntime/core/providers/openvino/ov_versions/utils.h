@@ -4,7 +4,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-int GetInputCount(const Node* node, const Provider_InitializedTensorSet& initializer_set);
+int GetInputCount(const Node* node, const InitializedTensorSet& initializer_set);
 
 bool IsOpSupportedOnlyInModel(std::string name);
 

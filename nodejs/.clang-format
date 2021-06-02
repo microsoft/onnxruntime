@@ -1,8 +1,0 @@
----
-Language: JavaScript
-BasedOnStyle: Google
-ColumnLimit: 120
----
-Language: Cpp
-BasedOnStyle: LLVM
-ColumnLimit: 120

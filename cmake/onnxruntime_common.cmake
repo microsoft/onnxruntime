@@ -11,7 +11,6 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/common/logging/*.cc"
     "${ONNXRUNTIME_ROOT}/core/common/logging/sinks/*.h"
     "${ONNXRUNTIME_ROOT}/core/common/logging/sinks/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/inc/*.h"
     "${ONNXRUNTIME_ROOT}/core/platform/env.h"
     "${ONNXRUNTIME_ROOT}/core/platform/env.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.h"
@@ -21,6 +20,8 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/scoped_resource.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.h"
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.cc"
 )
 
 if(WIN32)
@@ -52,6 +53,13 @@ else()
             "${ONNXRUNTIME_ROOT}/core/platform/android/logging/*.h"
             "${ONNXRUNTIME_ROOT}/core/platform/android/logging/*.cc"
         )
+    endif()
+
+    if (APPLE)
+        list(APPEND onnxruntime_common_src_patterns
+            "${ONNXRUNTIME_ROOT}/core/platform/apple/logging/*.h"
+            "${ONNXRUNTIME_ROOT}/core/platform/apple/logging/*.mm"
+            )
     endif()
 endif()
 
@@ -86,20 +94,13 @@ file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
     ${onnxruntime_common_src_patterns}
     )
 
-if (onnxruntime_BUILD_WEBASSEMBLY)
-    list(REMOVE_ITEM onnxruntime_common_src
-        "${ONNXRUNTIME_ROOT}/core/platform/posix/ort_mutex.cc"
-    )
-endif()
-
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 
-add_library(onnxruntime_common ${onnxruntime_common_src})
+onnxruntime_add_static_library(onnxruntime_common ${onnxruntime_common_src})
 
 if (onnxruntime_USE_CUDA)
-  target_include_directories(onnxruntime_common PUBLIC ${onnxruntime_CUDA_HOME}/include ${onnxruntime_CUDA_HOME}/extras/CUPTI/include)
-  target_link_directories(onnxruntime_common PUBLIC ${onnxruntime_CUDA_HOME}/extras/CUPTI/lib64)
-  target_link_libraries(onnxruntime_common cupti)
+  # Some files, like the provider_bridge_ort include files that depend on cuda headers
+  target_include_directories(onnxruntime_common PUBLIC ${onnxruntime_CUDA_HOME}/include)
 endif()
 
 if (onnxruntime_USE_TELEMETRY)
@@ -125,12 +126,11 @@ target_include_directories(onnxruntime_common
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS}
     # propagate include directories of dependencies that are part of public interface
     PUBLIC
-        $<TARGET_PROPERTY:safeint_interface,INTERFACE_INCLUDE_DIRECTORIES>
         ${OPTIONAL_LITE_INCLUDE_DIR})
 
-target_link_libraries(onnxruntime_common Boost::mp11)
+target_link_libraries(onnxruntime_common safeint_interface Boost::mp11)
 
-if(NOT WIN32 AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+if(NOT WIN32)
   target_include_directories(onnxruntime_common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
 endif()
 
@@ -171,4 +171,8 @@ endif()
 # e.g. Raspberry Pi requires this
 if (onnxruntime_LINK_LIBATOMIC)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES atomic)
+endif()
+
+if(APPLE)
+  target_link_libraries(onnxruntime_common "-framework Foundation")
 endif()

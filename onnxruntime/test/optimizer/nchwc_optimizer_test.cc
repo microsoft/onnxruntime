@@ -10,6 +10,7 @@
 #include "test/test_environment.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include <cmath>
 
 #include "gtest/gtest.h"
 
@@ -54,18 +55,17 @@ struct NchwcTestHelper {
     return &graph_.GetOrCreateNodeArg(name, nullptr);
   }
 
-  NodeArg* MakeInitializer(const std::vector<int64_t>& shape, const std::vector<float>& data) {
+  template <typename T>
+  NodeArg* MakeInitializer(const std::vector<int64_t>& shape, const std::vector<T>& data) {
     std::string name = graph_.GenerateNodeArgName("constant");
     ONNX_NAMESPACE::TensorProto tensor_proto;
     tensor_proto.set_name(name);
-    tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    tensor_proto.set_data_type(utils::ToTensorProtoElementType<T>());
+    tensor_proto.set_raw_data(data.data(), data.size() * sizeof(T));
 
     for (auto& dim : shape) {
       tensor_proto.add_dims(dim);
     }
-
-    tensor_proto.mutable_float_data()->Resize(static_cast<int>(data.size()), 0.f);
-    std::copy_n(data.data(), data.size(), tensor_proto.mutable_float_data()->mutable_data());
 
     graph_.AddInitializedTensor(tensor_proto);
 
@@ -73,10 +73,11 @@ struct NchwcTestHelper {
   }
 
   NodeArg* MakeInitializer(const std::vector<int64_t>& shape) {
-    return MakeInitializer(shape, FillRandomData<float>(shape));
+    return MakeInitializer<float>(shape, FillRandomData<float>(shape));
   }
 
-  NodeArg* Make1DInitializer(const std::vector<float>& data) {
+  template <typename T>
+  NodeArg* Make1DInitializer(const std::vector<T>& data) {
     return MakeInitializer({static_cast<int64_t>(data.size())}, data);
   }
 
@@ -104,8 +105,8 @@ struct NchwcTestHelper {
     int opset_version = graph_.DomainToVersionMap().find(kOnnxDomain)->second;
     std::vector<NodeArg*> input_args{input_arg};
     if (opset_version >= 11) {
-      input_args.push_back(Make1DInitializer({min}));
-      input_args.push_back(Make1DInitializer({max}));
+      input_args.push_back(Make1DInitializer<float>({min}));
+      input_args.push_back(Make1DInitializer<float>({max}));
     }
     auto& node = AddNode("Clip", input_args, {output_arg});
     if (opset_version < 11) {
@@ -969,10 +970,10 @@ TEST(NchwcOptimizerTests, MixedOutputUsage) {
 
 TEST(NchwcOptimizerTests, TensorAlignment) {
   auto build_test_case = [&](NchwcTestHelper& helper) {
-    // Input channel count must currently be a multiple of the NCHWc block size.
-    auto* input1_arg = helper.MakeInput<float>({1, 60, 28, 42});
+    // Input channel count must currently be a multiple of 4.
+    auto* input1_arg = helper.MakeInput<float>({1, 62, 28, 42});
     auto* output1_arg = helper.MakeOutput();
-    helper.AddConvNode(input1_arg, output1_arg, {128, 60, 1, 1});
+    helper.AddConvNode(input1_arg, output1_arg, {128, 62, 1, 1});
 
     // Grouped input channel count must be a multiple of the NCHWc block size.
     auto* input2_arg = helper.MakeInput<float>({1, 48, 28, 42});
@@ -1084,7 +1085,7 @@ TEST(NchwcOptimizerTests, BatchNormalization) {
 
       // Override the sample tolerance for this test. By default, the NCHWc
       // tests generate bit identical results when run with and without
-      // optimizations, but the BatchNormalizationtransform does introduce
+      // optimizations, but the BatchNormalization transform does introduce
       // small bit differences.
       helper.per_sample_tolerance_ = .00025;
     };
@@ -1112,7 +1113,37 @@ TEST(NchwcOptimizerTests, BatchNormalization) {
   // should be skipped if the batch normalization node has the optional training
   // outputs supplied.
   test_case(false);
+#if defined(ENABLE_TRAINING)
   test_case(true);
+#endif
+}
+
+TEST(NchwcOptimizerTests, ConvReorderInputNhwc) {
+  auto test_case = [&](int64_t channels) {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({5, 27, 29, channels});
+      auto* transpose_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddTransposeToNchwNode(input_arg, transpose_output_arg);
+      helper.AddConvNode(transpose_output_arg, output_arg, {34, channels, 1, 1});
+    };
+
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+      EXPECT_EQ(op_to_count["Transpose"], 0);
+    };
+
+    // Verify that a NHWC->NCHW transpose is fused into ReorderInput.
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph);
+  };
+
+  for (int64_t channels = 16; channels <= 32; channels += 4) {
+    test_case(channels);
+  }
 }
 
 TEST(NchwcOptimizerTests, ConvReorderOutputNhwc) {
@@ -1184,22 +1215,32 @@ TEST(NchwcOptimizerTests, ConvReorderOutputCnhw) {
   NchwcOptimizerTester(build_test_case, check_nchwc_graph);
 }
 
-TEST(NchwcOptimizerTests, Upsample) {
-  auto test_case = [&](int opset_version, float scale_h, float scale_w) {
+TEST(NchwcOptimizerTests, UpsampleNearest) {
+  auto test_case = [&](int opset_version, float scale_h, float scale_w, bool use_sizes_arg) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
       auto* input_arg = helper.MakeInput<float>({3, 16, 27, 15});
       auto* conv_output_arg = helper.MakeIntermediate();
       auto* output_arg = helper.MakeOutput();
 
-      helper.AddConvNode(input_arg, conv_output_arg, {132, 16, 1, 1});
+      helper.AddConvNode(input_arg, conv_output_arg, {42, 16, 1, 1});
 
       std::string op_name = opset_version >= 10 ? "Resize" : "Upsample";
       std::vector<NodeArg*> input_args;
       input_args.push_back(conv_output_arg);
       if (opset_version >= 11) {
-        input_args.push_back(helper.Make1DInitializer({0.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f, 1.f}));
+        input_args.push_back(helper.Make1DInitializer<float>({0.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f, 1.f}));
       }
-      input_args.push_back(helper.Make1DInitializer({1.f, 1.f, scale_h, scale_w}));
+      if (use_sizes_arg) {
+        std::vector<int64_t> sizes_shape(4);
+        sizes_shape[0] = 3;
+        sizes_shape[1] = 42;
+        sizes_shape[2] = static_cast<int64_t>(scale_h * 27);
+        sizes_shape[3] = static_cast<int64_t>(scale_w * 15);
+        input_args.push_back(helper.Make1DInitializer<float>({}));
+        input_args.push_back(helper.Make1DInitializer<int64_t>(sizes_shape));
+      } else {
+        input_args.push_back(helper.Make1DInitializer<float>({1.f, 1.f, scale_h, scale_w}));
+      }
       Node& resize_node = helper.AddNode(op_name, input_args, {output_arg});
       if (opset_version >= 11) {
         resize_node.AddAttribute("coordinate_transformation_mode", "asymmetric");
@@ -1208,6 +1249,65 @@ TEST(NchwcOptimizerTests, Upsample) {
         // Explicitly set the mode to nearest as an extra test.
         resize_node.AddAttribute("mode", "nearest");
       }
+    };
+
+    auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.Conv"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderInput"], 1);
+      EXPECT_EQ(op_to_count["com.microsoft.nchwc.ReorderOutput"], 1);
+      if (scale_h == std::round(scale_h) && scale_w == std::round(scale_w)) {
+        EXPECT_EQ(op_to_count["com.microsoft.nchwc.Upsample"], 1);
+        EXPECT_EQ(op_to_count["Resize"] + op_to_count["Upsample"], 0);
+      } else {
+        EXPECT_EQ(op_to_count["com.microsoft.nchwc.Upsample"], 0);
+        EXPECT_EQ(op_to_count["Resize"] + op_to_count["Upsample"], 1);
+      }
+    };
+
+    NchwcOptimizerTester(build_test_case, check_nchwc_graph, opset_version);
+  };
+
+  // Verify that upsample nodes can be converted to the NCHWc format for
+  // various versions of the operator.
+  static const int opset_versions[] = {9, 10, 11, 13};
+  for (auto opset_version : opset_versions) {
+    test_case(opset_version, 1.f, 1.f, false);
+    test_case(opset_version, 2.f, 2.f, false);
+    test_case(opset_version, 3.f, 5.f, false);
+    if (opset_version >= 11) {
+      test_case(opset_version, 2.f, 2.f, true);
+      test_case(opset_version, 5.f, 3.f, true);
+    }
+  }
+  // Verify that non-integral scales are not converted to the NCHWc format.
+  test_case(13, 2.2f, 2.8f, false);
+  test_case(13, 2.2f, 2.8f, true);
+}
+
+TEST(NchwcOptimizerTests, UpsampleLinear) {
+  auto test_case = [&](int opset_version, float scale_h, float scale_w, const std::string& transformation_mode) {
+    auto build_test_case = [&](NchwcTestHelper& helper) {
+      auto* input_arg = helper.MakeInput<float>({3, 16, 21, 25});
+      auto* conv_output_arg = helper.MakeIntermediate();
+      auto* output_arg = helper.MakeOutput();
+
+      helper.AddConvNode(input_arg, conv_output_arg, {28, 16, 1, 1});
+
+      std::string op_name = opset_version >= 10 ? "Resize" : "Upsample";
+      std::vector<NodeArg*> input_args;
+      input_args.push_back(conv_output_arg);
+      if (opset_version >= 11) {
+        input_args.push_back(helper.Make1DInitializer<float>({0.f, 0.f, 0.f, 0.f, 1.f, 1.f, 1.f, 1.f}));
+      }
+      input_args.push_back(helper.Make1DInitializer<float>({1.f, 1.f, scale_h, scale_w}));
+      Node& resize_node = helper.AddNode(op_name, input_args, {output_arg});
+      resize_node.AddAttribute("mode", "linear");
+      if (opset_version >= 11) {
+        resize_node.AddAttribute("coordinate_transformation_mode", transformation_mode);
+      }
+
+      helper.per_sample_tolerance_ = .001f;
     };
 
     auto check_nchwc_graph = [&](InferenceSessionWrapper& session) {
@@ -1224,11 +1324,19 @@ TEST(NchwcOptimizerTests, Upsample) {
 
   // Verify that upsample nodes can be converted to the NCHWc format for
   // various versions of the operator.
-  static const int opset_versions[] = {9, 10, 11, 12};
-  for (auto opset_version : opset_versions) {
-    test_case(opset_version, 1.f, 1.f);
-    test_case(opset_version, 2.f, 2.f);
-    test_case(opset_version, 3.f, 5.f);
+  std::vector<std::string> transformation_modes{"asymmetric", "align_corners", "half_pixel"};
+  for (auto& transformation_mode : transformation_modes) {
+    static const int opset_versions[] = {9, 10, 11, 13};
+    for (auto opset_version : opset_versions) {
+      // Older versions of the operator do not support transformation modes.
+      if (opset_version < 11 && transformation_mode == "asymmetric") {
+        continue;
+      }
+      test_case(opset_version, 1.f, 1.f, transformation_mode);
+      test_case(opset_version, 2.f, 2.f, transformation_mode);
+      test_case(opset_version, 3.f, 5.f, transformation_mode);
+      test_case(opset_version, 9.f, 7.f, transformation_mode);
+    }
   }
 }
 

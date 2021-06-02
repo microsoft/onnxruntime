@@ -222,7 +222,7 @@ static void Scenario5AsyncEval() {
 }
 
 //! Scenario6: use BindInputWithProperties - BitmapBounds, BitmapPixelFormat
-// apparently this scenario is cut for rs5. - not cut, just rewprked. move props
+// apparently this scenario is cut for rs5. - not cut, just reworked. move props
 // to the image value when that is checked in.
 static void Scenario6BindWithProperties() {
   // load a model
@@ -609,7 +609,7 @@ void SubmitEval(LearningModel model, SwapChainEntry* sessionBindings, int swapch
   // return without waiting for the submit to finish, setup the completion handler
 }
 
-//Scenario14:Load single model, run it mutliple times on a single gpu device using a fast swapchain pattern
+//Scenario14:Load single model, run it multiple times on a single gpu device using a fast swapchain pattern
 static void Scenario14RunModelSwapchain() {
   const int swapchainentrycount = 3;
   SwapChainEntry sessionBindings[swapchainentrycount];
@@ -1389,7 +1389,7 @@ static void DeviceLostRecovery() {
   } catch (...) {
   }
 
-  // remove all references to the device by reseting the session and binding.
+  // remove all references to the device by resetting the session and binding.
   session = nullptr;
   binding = nullptr;
 

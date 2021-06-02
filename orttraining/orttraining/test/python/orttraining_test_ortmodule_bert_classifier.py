@@ -17,7 +17,7 @@ import datetime
 
 
 import onnxruntime
-from onnxruntime.training import ORTModule
+from onnxruntime.training.ortmodule import ORTModule
 
 def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
     # ========================================
@@ -378,9 +378,9 @@ def main():
     if not args.pytorch_only:
         model = ORTModule(model)
 
-    # TODO: change it to False to stop saving ONNX models
-    model._save_onnx = True
-    model._save_onnx_prefix = 'BertForSequenceClassification'
+    # Just for future debugging
+    model._execution_manager(model._is_training())._save_onnx = False
+    model._execution_manager(model._is_training())._save_onnx_prefix = 'BertForSequenceClassification'
 
     # Tell pytorch to run this model on the GPU.
     if torch.cuda.is_available() and not args.no_cuda:
