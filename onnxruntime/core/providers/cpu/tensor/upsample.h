@@ -194,7 +194,7 @@ class UpsampleBase {
       ResizeCoordinateTransformationMode coordinate_transform_mode) {
     switch (coordinate_transform_mode) {
       case ASYMMETRIC:
-        return [](float x_resized, float x_scale, float, float, float, float) -> float {
+        return [](float x_resized, float x_scale, float, float, float, float) {
           return x_resized / x_scale;
         };
       case PYTORCH_HALF_PIXEL:
