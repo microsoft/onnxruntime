@@ -36,11 +36,8 @@ class InferenceManager(GraphExecutionManager):
         io_binding = execution_session.io_binding()
         run_options = C.RunOptions()
 
-        # Make sure inputs are contiguous, as a requirement converting it to ortvalue.
-        contiguous_inputs = _utils._to_contiguous(inputs)
-
         # Use IO binding
-        _utils._create_iobinding(io_binding, contiguous_inputs, onnx_model, device)
+        _utils._create_iobinding(io_binding, inputs, onnx_model, device)
 
         # Run and return module outputs.
         ort_output = execution_session.run_forward(io_binding, run_options)
