@@ -840,11 +840,11 @@ if(onnxruntime_ENABLE_EAGER_MODE)
     )
   add_executable(onnxruntime_eager_mode_test ${onnxruntime_eager_mode_test_src})
   target_include_directories(onnxruntime_eager_mode_test PRIVATE ${ONNXRUNTIME_ROOT}
-          ${onnxruntime_graph_header} 
+          ${onnxruntime_graph_header}
           ${onnxruntime_exec_src_dir}
           ${CMAKE_CURRENT_BINARY_DIR}
           "${TEST_SRC_DIR}/util/include")
-  set(onnxruntime_eager_mode_libs 
+  set(onnxruntime_eager_mode_libs
           onnxruntime_eager
           onnxruntime_session
           onnxruntime_optimizer
@@ -852,11 +852,11 @@ if(onnxruntime_ENABLE_EAGER_MODE)
           onnxruntime_util
           onnxruntime_framework
           flatbuffers
-          onnxruntime_graph 
+          onnxruntime_graph
           onnxruntime_common
           onnxruntime_mlas
-          onnx 
-          onnx_proto 
+          onnx
+          onnx_proto
           protobuf::libprotobuf
           GTest::gtest
           re2::re2
@@ -864,7 +864,7 @@ if(onnxruntime_ENABLE_EAGER_MODE)
           ${CMAKE_DL_LIBS}
           )
   if(onnxruntime_ENABLE_TRAINING)
-    list(APPEND onnxruntime_eager_mode_libs onnxruntime_training tensorboard) 
+    list(APPEND onnxruntime_eager_mode_libs onnxruntime_training tensorboard)
   endif()
   IF(NOT WIN32)
     list(APPEND onnxruntime_eager_mode_libs nsync_cpp)
@@ -1075,7 +1075,11 @@ if (onnxruntime_BUILD_WEBASSEMBLY)
   endif()
 endif()
 
-onnxruntime_add_shared_library_module(custom_op_library ${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.cc)
+find_package(CUDA REQUIRED)
+include_directories("${CUDA_INCLUDE_DIRS}")
+add_library(custom_op_library SHARED ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc
+                                     ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/sequence_pooling.h
+                                     ${REPO_ROOT}/onnxruntime/test/testdata/custom_op_library/sequence_pooling.cu)
 target_include_directories(custom_op_library PRIVATE ${REPO_ROOT}/include)
 if(UNIX)
   if (APPLE)
@@ -1125,7 +1129,7 @@ if (onnxruntime_BUILD_JAVA)
 endif()
 
 # limit to only test on windows first, due to a runtime path issue on linux
-if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD 
+if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
                                   AND NOT onnxruntime_ENABLE_TRAINING
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
                                   AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
