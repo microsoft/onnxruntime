@@ -211,14 +211,13 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       all_types.emplace_back("seq(tensor(bfloat16))");
       return all_types; } ();
 
-    auto all_sequence_types = OpSchema::all_tensor_sequence_types();
     ORT_ATTRIBUTE_UNUSED ONNX_OPERATOR_SCHEMA(MemcpyFromHost)
         .Input(0, "X", "input", "T")
         .Output(0, "Y", "output", "T")
         .TypeConstraint(
             "T",
             all_types,
-            "Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type.")
+            "Constrain to all tensor and sequence types. If the dtype attribute is not provided this must be a valid output type.")
         .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
         .SetDoc(R"DOC(
 Internal copy node
@@ -230,7 +229,7 @@ Internal copy node
         .TypeConstraint(
             "T",
             all_types,
-            "Constrain to any tensor type. If the dtype attribute is not provided this must be a valid output type.")
+            "Constrain to all tensor and sequence types. If the dtype attribute is not provided this must be a valid output type.")
         .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
         .SetDoc(R"DOC(
 Internal copy node

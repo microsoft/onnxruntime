@@ -7,6 +7,7 @@
 namespace onnxruntime {
 namespace test {
 
+
 TEST(SequenceOpsTest, ConcatFromSequence_Stack_Axis0) {
   OpTester test("ConcatFromSequence", 11);
   test.AddAttribute<int64_t>("axis", 0);

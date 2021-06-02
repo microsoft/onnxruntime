@@ -52,6 +52,42 @@ ONNX_OPERATOR_KERNEL_EX(
         .Alias(0, 0),
     SequenceLength);
 
+ONNX_OPERATOR_KERNEL_EX(
+    ConcatFromSequence,
+    kOnnxDomain,
+    11,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes())
+        .Alias(0, 0),
+    ConcatFromSequence);
+
+ONNX_OPERATOR_KERNEL_EX(
+    SequenceErase,
+    kOnnxDomain,
+    11,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes())
+        .TypeConstraint("I", std::vector<MLDataType>{
+                                 DataTypeImpl::GetTensorType<int32_t>(),
+                                 DataTypeImpl::GetTensorType<int64_t>()})
+        .Alias(0, 0),
+    SequenceErase);
+
+ONNX_OPERATOR_KERNEL_EX(
+    SequenceInsert,
+    kOnnxDomain,
+    11,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes())
+        .TypeConstraint("I", std::vector<MLDataType>{
+                                 DataTypeImpl::GetTensorType<int32_t>(),
+                                 DataTypeImpl::GetTensorType<int64_t>()})
+        .Alias(0, 0),
+    SequenceInsert);
+
 } // namespace cuda
 } // namespace onnxruntime
 
