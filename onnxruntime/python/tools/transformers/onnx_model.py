@@ -781,7 +781,8 @@ class OnnxModel:
                             return False
         return True
 
-    def graph_topological_sort(self, graph):
+    @staticmethod
+    def graph_topological_sort(graph):
         deps_count = [0]*len(graph.node) # dependency count of each node
         deps_to_nodes = {} # input to node indice
         sorted_nodes = []  # initialize sorted_nodes
@@ -827,14 +828,15 @@ class OnnxModel:
                             end = end + 1
             start = start + 1
 
-        # TODO: This assertion does not apply to the subgraphs, need other type of check
-        #assert(end == len(graph.node)), "Graph is not a DAG"
+        assert(end == len(graph.node)), "Graph is not a DAG"
         graph.ClearField('node')
         graph.node.extend(sorted_nodes)
 
     def topological_sort(self):
-        for graph in self.graphs():
-            self.graph_topological_sort(graph)
+        #TODO: support graph_topological_sort() in subgraphs
+        #for graph in self.graphs():
+        #    self.graph_topological_sort(graph)
+        OnnxModel.graph_topological_sort(self.model.graph)
 
     def save_model_to_file(self, output_path, use_external_data_format=False):
         logger.info(f"Sort graphs in topological order")
