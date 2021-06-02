@@ -5,7 +5,7 @@ Pod::Spec.new do |spec|
     spec.license                = { :type => "MIT" }
     spec.homepage               = "https://github.com/microsoft/onnxruntime"
     spec.source                 = { :http => "_ORT_DOWNLOAD_URL_" }
-    spec.summary                = "Onnx Runtime Mobile C/C++ Pod"
+    spec.summary                = "ONNX Runtime Mobile C/C++ Pod"
     spec.platform               = :ios, "${CMAKE_OSX_DEPLOYMENT_TARGET}"
     spec.vendored_frameworks    = "onnxruntime.framework"
     spec.weak_framework         = 'CoreML'

@@ -3,9 +3,9 @@
 Pod::Spec.new do |spec|
   spec.name                 = "onnxruntime-mobile"
   spec.version              = "${ORT_VERSION}"
-  spec.summary              = "Onnx Runtime C/C++ Package"
+  spec.summary              = "ONNX Runtime C/C++ Package"
   spec.description          = <<-DESC
-  Onnx Runtime C/C++ framework pod.
+  ONNX Runtime C/C++ framework pod.
                    DESC
 
   spec.homepage             = "https://github.com/microsoft/onnxruntime"
