@@ -184,7 +184,8 @@ def parse_arguments():
 
     # generate documentation
     parser.add_argument("--gen_doc", nargs='?', const='yes', type=str,
-                        help="Generate operator kernels and contrib operator documentation. "
+                        help="Generate documentation listing standard ONNX operators and types implemented by "
+                             "various execution providers and contrib operator schemas. "
                              "Use `--gen_doc validate` to validate these match the current contents in /docs.")
 
     parser.add_argument(
