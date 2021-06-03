@@ -145,11 +145,11 @@ rm -rf /var/lib/apt/lists/*
 
 if [ "$SYS_LONG_BIT" = "64" ]; then
     if [ "$DEVICE_TYPE" = "Normal" ]; then
-        if [ "$OS_VERSION" = "20.04" ]; then
-            aria2c -q -d /tmp -o llvm.tar.xz https://github.com/llvm/llvm-project/releases/download/llvmorg-11.0.0/llvm-project-11.0.0.tar.xz
-        else			
-	        aria2c -q -d /tmp -o llvm.tar.xz http://releases.llvm.org/9.0.0/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-${OS_VERSION}.tar.xz
-        fi	
-	tar --strip 1 -Jxf /tmp/llvm.tar.xz -C /usr
+	    if [ "$OS_VERSION" = "20.04" ]; then
+	        #llvm 9.0 doesn't have a release for 20.04, but the binaries for 18.04 should work well.
+            OS_VERSION="18.04"
+	    fi
+        aria2c -q -d /tmp -o llvm.tar.xz http://releases.llvm.org/9.0.0/clang+llvm-9.0.0-x86_64-linux-gnu-ubuntu-${OS_VERSION}.tar.xz
+	    tar --strip 1 -Jxf /tmp/llvm.tar.xz -C /usr
     fi
 fi
