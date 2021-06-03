@@ -5,12 +5,7 @@
 #include "core/framework/allocatormgr.h"
 #include "core/providers/cuda/cuda_provider_factory.h"
 
-void CallOnTestExit(std::function<void()>&& function);
-
 namespace onnxruntime {
-#ifdef USE_CUDA
-ProviderInfo_CUDA* GetProviderInfo_CUDA();
-#endif
 namespace test {
 
 // Dummy Arena which just call underline device allocator directly.
@@ -95,23 +90,11 @@ AllocatorManager& AllocatorManager::Instance() {
 
 AllocatorManager::AllocatorManager() {
   InitializeAllocators();
-
-  // We need to clear the map on test exit, otherwise we crash since the cuda provider will be unloaded
-  // before the static variable holding the AllocatorManager gets destroyed
-  CallOnTestExit([this]() { map_.clear(); });
 }
 
 Status AllocatorManager::InitializeAllocators() {
   auto cpu_alocator = std::make_unique<CPUAllocator>();
   ORT_RETURN_IF_ERROR(RegisterAllocator(map_, std::move(cpu_alocator), std::numeric_limits<size_t>::max(), true));
-#ifdef USE_CUDA
-  auto cuda_alocator = GetProviderInfo_CUDA()->CreateCUDAAllocator(static_cast<OrtDevice::DeviceId>(0), CUDA);
-  ORT_RETURN_IF_ERROR(RegisterAllocator(map_, std::move(cuda_alocator), std::numeric_limits<size_t>::max(), true));
-
-  auto cuda_pinned_alocator = GetProviderInfo_CUDA()->CreateCUDAPinnedAllocator(static_cast<OrtDevice::DeviceId>(0), CUDA_PINNED);
-  ORT_RETURN_IF_ERROR(RegisterAllocator(map_, std::move(cuda_pinned_alocator), std::numeric_limits<size_t>::max(), true));
-#endif  // USE_CUDA
-
   return Status::OK();
 }
 
