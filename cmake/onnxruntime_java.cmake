@@ -170,7 +170,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   file(MAKE_DIRECTORY ${ANDROID_PACKAGE_JNILIBS_DIR})
   file(MAKE_DIRECTORY ${ANDROID_PACKAGE_ABI_DIR})
 
-  # Create symbolic links for onnxruntime.so and onnxruntime4j_jni.so for building Android AAR package
+  # Copy onnxruntime.so and onnxruntime4j_jni.so for building Android AAR package
   add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime> ${ANDROID_PACKAGE_ABI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime>)
   add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime4j_jni> ${ANDROID_PACKAGE_ABI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime4j_jni>)
   # Generate the Android AAR package
