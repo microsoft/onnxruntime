@@ -1920,7 +1920,8 @@ def main():
     configs = set(args.config)
 
     # setup paths and directories
-    # cmake_path and ctest_path can be None
+    # cmake_path and ctest_path can be None. For example, if a person only wants to run the tests, he/she doesn't need
+    # to have cmake/ctest.
     cmake_path = resolve_executable_path(args.cmake_path)
     ctest_path = None if args.use_vstest else resolve_executable_path(
         args.ctest_path)
