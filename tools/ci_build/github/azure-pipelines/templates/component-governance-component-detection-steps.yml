@@ -12,4 +12,6 @@ steps:
           and(eq('${{parameters.condition}}', 'always'), always())),
           and(eq('${{parameters.condition}}', 'succeeded'), succeeded()))
   inputs:
-    ignoreDirectories: '$(Build.SourcesDirectory)/cmake/external/tvm/3rdparty/dmlc-core/tracker' # ignore dmlc-core tracker for its CI, which is not used in onnxruntime build
+    # ignore dmlc-core tracker for its CI, which is not used in onnxruntime build
+    # ignore emsdk. emsdk is used to prepare toolsets for building WebAssembly. It is not a part of onnxruntime source code.
+    ignoreDirectories: '$(Build.SourcesDirectory)/cmake/external/tvm/3rdparty/dmlc-core/tracker,$(Build.SourcesDirectory)/cmake/external/emsdk'
