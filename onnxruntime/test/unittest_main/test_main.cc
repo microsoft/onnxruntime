@@ -40,7 +40,11 @@
 #include "core/util/thread_utils.h"
 #include "gtest/gtest.h"
 #include "test/test_environment.h"
-#include "test/framework/TestAllocatorManager.h"
+
+// We keep a list of functions to call on exit before we destroy the OrtEnv.
+// This is needed to do any cleanup that must be done before the OrtEnv gets destroyed and all shared providers get unloaded.
+static std::vector<std::function<void()>> exit_functions;
+void CallOnTestExit(std::function<void()>&& function) { exit_functions.emplace_back(std::move(function)); }
 
 std::unique_ptr<Ort::Env> ort_env;
 void ortenv_setup(){
@@ -74,8 +78,9 @@ int TEST_MAIN(int argc, char** argv) {
     });
   }
 
-  // Delete the allocators before the shared providers get unloaded, otherwise we crash
-  onnxruntime::test::AllocatorManager::Instance().Shutdown();
+  // Run exit functions that must be done before we delete the env (like allocators that reference shared providers)
+  for (auto& exit_function : exit_functions)
+    exit_function();
 
   //TODO: Fix the C API issue
   ort_env.reset();  //If we don't do this, it will crash

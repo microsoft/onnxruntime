@@ -5,6 +5,8 @@
 #include "core/framework/allocatormgr.h"
 #include "core/providers/cuda/cuda_provider_factory.h"
 
+void CallOnTestExit(std::function<void()>&& function);
+
 namespace onnxruntime {
 #ifdef USE_CUDA
 ProviderInfo_CUDA* GetProviderInfo_CUDA();
@@ -93,6 +95,10 @@ AllocatorManager& AllocatorManager::Instance() {
 
 AllocatorManager::AllocatorManager() {
   InitializeAllocators();
+
+  // We need to clear the map on test exit, otherwise we crash since the cuda provider will be unloaded
+  // before the static variable holding the AllocatorManager gets destroyed
+  CallOnTestExit([this]() { map_.clear(); });
 }
 
 Status AllocatorManager::InitializeAllocators() {
