@@ -644,6 +644,13 @@ def use_dev_mode(args):
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home,
                         mpi_home, nccl_home, tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
                         path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
+
+    import subprocess
+    print("pengwa debugging tag, to remove!!!")
+    print(subprocess.getoutput("ls -l /opt/_internal/cpython-3.7.10/lib/"))
+    print(subprocess.getoutput("ls -l /opt/_internal/cpython-3.7.10/lib/x86_64-linux-gnu/"))
+    print(subprocess.getoutput("ls -l /opt/python/cp37-cp37m/lib/"))
+
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
     cmake_args = [
