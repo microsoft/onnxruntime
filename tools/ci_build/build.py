@@ -1552,7 +1552,7 @@ def nuphar_run_python_tests(build_dir, configs):
         # this needs to happen after onnx_test_data preparation which
         # uses onnx 1.3.0
         run_subprocess(
-            [sys.executable, '-m', 'pip', 'install', '--user', 'onnx==1.5.0'])
+            [sys.executable, '-m', 'pip', 'install', '--user', 'onnx==1.8.0'])
         run_subprocess(
             [sys.executable, 'onnxruntime_test_python_nuphar.py'],
             cwd=cwd, dll_path=dll_path)
