@@ -382,7 +382,12 @@ export class TensorResultValidator {
     }
 
     for (let i = actual.length - 1; i >= 0; i--) {
-      const a = actual[i], b = Math.max(Math.min(expected[i], this.maxFloatValue), -this.maxFloatValue);
+      const a = actual[i];
+      let b = expected[i];
+
+      if (a === b) {
+        continue;  // exact the same value, treat as equal
+      }
 
       // check for NaN
       //
@@ -393,6 +398,16 @@ export class TensorResultValidator {
         Logger.error('Validator', `a or b isNan -- index:${i}: actual=${actual[i]},expected=${expected[i]}`);
         return false;  // one is NaN and the other is not
       }
+
+      // check for Infinity
+      //
+      if (!Number.isFinite(a) || !Number.isFinite(b)) {
+        Logger.error('Validator', `a or b is Infinity -- index:${i}: actual=${actual[i]},expected=${expected[i]}`);
+        return false;  // at least one is Infinity and the other is not or their sign is different
+      }
+
+      // normalize value of b
+      b = Math.max(Math.min(expected[i], this.maxFloatValue), -this.maxFloatValue);
 
       // Comparing 2 float numbers: (Suppose a >= b)
       //

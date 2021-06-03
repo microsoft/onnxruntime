@@ -3,12 +3,14 @@
 # Licensed under the MIT License.
 
 # Minimum CMake required
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.18)
 cmake_policy(SET CMP0069 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
 
-if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.15")
-  cmake_policy(SET CMP0092 NEW)
+cmake_policy(SET CMP0092 NEW)
+cmake_policy(SET CMP0091 NEW)
+if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.20")
+  cmake_policy(SET CMP0117 NEW)
 endif()
 
 # Support OS X versions 10.12+
@@ -29,6 +31,7 @@ set (CMAKE_C_STANDARD 99)
 
 include(CheckCXXCompilerFlag)
 include(CheckLanguage)
+include(CMakeDependentOption)
 
 set(CMAKE_CXX_STANDARD 14)
 
@@ -61,8 +64,6 @@ option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_FEATURIZERS "Build ML Featurizers support" OFF)
 option(onnxruntime_DEV_MODE "Enable developer warnings and treat most of them as error." OFF)
-option(onnxruntime_MSVC_STATIC_RUNTIME "Compile for the static CRT" OFF)
-option(onnxruntime_GCC_STATIC_CPP_RUNTIME "Compile for the static libstdc++" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
@@ -116,7 +117,7 @@ option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
 # Options related to reducing the binary size produced by the build
 option(onnxruntime_DISABLE_CONTRIB_OPS "Disable contrib ops" OFF)
 option(onnxruntime_DISABLE_ML_OPS "Disable traditional ML ops" OFF)
-option(onnxruntime_DISABLE_RTTI "Disable RTTI" OFF)
+cmake_dependent_option(onnxruntime_DISABLE_RTTI "Disable RTTI" ON "NOT onnxruntime_ENABLE_PYTHON" OFF)
 # For now onnxruntime_DISABLE_EXCEPTIONS will only work with onnxruntime_MINIMAL_BUILD, more changes (ONNX, non-CPU EP, ...) are required to run this standalone
 option(onnxruntime_DISABLE_EXCEPTIONS "Disable exception handling. Requires onnxruntime_MINIMAL_BUILD currently." OFF)
 option(onnxruntime_MINIMAL_BUILD "Exclude as much as possible from the build. Support ORT format models. No support for ONNX format models." OFF)
@@ -379,6 +380,12 @@ if(onnxruntime_DISABLE_RTTI)
   else()
     add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>")
   endif()
+else()
+  #MSVC RTTI flag /GR is not added to CMAKE_CXX_FLAGS by default. But, anyway VC++2019 treats "/GR" default on.
+  #So we don't need the following three lines. But it's better to make it more explicit.
+  if(MSVC)
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/GR>")
+  endif()
 endif()
 
 # If this is only enabled in an onnxruntime_ORT_MODEL_FORMAT_ONLY build we don't need ONNX changes
@@ -474,33 +481,6 @@ endmacro()
 #Set global compile flags for all the source code(including third_party code like protobuf)
 #This section must be before any add_subdirectory, otherwise build may fail because /MD,/MT mismatch
 if (MSVC)
-  if (onnxruntime_MSVC_STATIC_RUNTIME)
-    # set all of our submodules to static runtime
-    set(ONNX_USE_MSVC_STATIC_RUNTIME ON)
-    set(protobuf_MSVC_STATIC_RUNTIME ON CACHE BOOL "" FORCE)
-    set(gtest_force_shared_crt OFF CACHE BOOL "" FORCE)
-
-    # In case we are building static libraries, link also the runtime library statically
-    # so that MSVCR*.DLL is not required at runtime.
-    # https://msdn.microsoft.com/en-us/library/2kzt1wy3.aspx
-    # This is achieved by replacing msvc option /MD with /MT and /MDd with /MTd
-    # https://gitlab.kitware.com/cmake/community/wikis/FAQ#how-can-i-build-my-msvc-application-with-a-static-runtime
-    foreach(flag_var
-        CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
-        CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO
-        CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
-        CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO)
-      if(${flag_var} MATCHES "/MD")
-        string(REGEX REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
-      endif(${flag_var} MATCHES "/MD")
-    endforeach(flag_var)
-  else()
-    set(ONNX_USE_MSVC_STATIC_RUNTIME OFF)
-    set(protobuf_WITH_ZLIB  OFF CACHE BOOL "" FORCE)
-    set(protobuf_MSVC_STATIC_RUNTIME OFF CACHE BOOL "Link protobuf to static runtime libraries" FORCE)
-    set(gtest_force_shared_crt ON CACHE BOOL "Use shared (DLL) run-time lib for gtest" FORCE)
-  endif()
-
   #Always enable exception handling, even for Windows ARM
   if(NOT onnxruntime_DISABLE_EXCEPTIONS)
     string(APPEND CMAKE_CXX_FLAGS " /EHsc /wd26812")
@@ -557,9 +537,6 @@ else()
   elseif(onnxruntime_USE_AVX512)
     string(APPEND CMAKE_CXX_FLAGS " -mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl")
     string(APPEND CMAKE_C_FLAGS " -mavx512f -mavx512cd -mavx512bw -mavx512dq -mavx512vl")
-  endif()
-  if(onnxruntime_GCC_STATIC_CPP_RUNTIME)
-    string(APPEND CMAKE_CXX_FLAGS " -static-libstdc++")
   endif()
 
   # Check support for AVX and f16c.
@@ -629,6 +606,8 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     add_subdirectory(${PROJECT_SOURCE_DIR}/external/googletest EXCLUDE_FROM_ALL)
     set_msvc_c_cpp_compiler_warning_level(3)
     set_target_properties(gmock PROPERTIES FOLDER "External/GTest")
+    # disable treating all warnings as errors for gmock
+    target_compile_options(gmock PRIVATE "-w")
     set_target_properties(gmock_main PROPERTIES FOLDER "External/GTest")
     set_target_properties(gtest PROPERTIES FOLDER "External/GTest")
     set_target_properties(gtest_main PROPERTIES FOLDER "External/GTest")
@@ -650,10 +629,13 @@ endif()
 #Need python to generate def file
 if(onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
   if(onnxruntime_ENABLE_PYTHON)
-    find_package(PythonInterp 3.5 REQUIRED)
-    find_package(PythonLibs 3.5 REQUIRED)
+    if(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+      find_package(Python 3.6 COMPONENTS Interpreter Development NumPy)
+    else()
+      find_package(Python 3.6 COMPONENTS Interpreter Development.Module NumPy)
+    endif()
   else()
-    find_package(PythonInterp 3.4 REQUIRED)
+    find_package(Python 3.6 COMPONENTS Interpreter)
   endif()
 endif()
 
@@ -713,8 +695,11 @@ else()
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     set(protobuf_BUILD_PROTOC_BINARIES OFF CACHE BOOL "Build protobuf tests" FORCE)
   endif()
-
+  if(onnxruntime_DISABLE_RTTI)
+    set(protobuf_DISABLE_RTTI OFF CACHE BOOL "Remove runtime type information in the binaries" FORCE)
+  endif()
   add_subdirectory(${PROJECT_SOURCE_DIR}/external/protobuf/cmake EXCLUDE_FROM_ALL)
+  
   if(TARGET libprotoc)
     set_target_properties(libprotoc PROPERTIES FOLDER "External/Protobuf")
     add_executable(protobuf::protoc ALIAS protoc)
@@ -723,10 +708,8 @@ else()
     set_target_properties(protoc PROPERTIES FOLDER "External/Protobuf")
   endif()
   if (onnxruntime_USE_FULL_PROTOBUF)
-    add_library(protobuf::libprotobuf ALIAS libprotobuf)
     set(PROTOBUF_LIB libprotobuf)
   else()
-    add_library(protobuf::libprotobuf ALIAS libprotobuf-lite)
     set(PROTOBUF_LIB libprotobuf-lite)
   endif()
 endif()
@@ -1385,8 +1368,11 @@ if (onnxruntime_USE_CUDA)
   endif()
   enable_language(CUDA)
   message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
-
-  set(CMAKE_CUDA_STANDARD 14)
+  if (WIN32)
+    set(CMAKE_CUDA_STANDARD 17)
+  else()
+    set(CMAKE_CUDA_STANDARD 14)
+  endif()
   file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
   set(ONNXRUNTIME_CUDA_LIBRARIES ${CUDA_LIBRARIES})
 
