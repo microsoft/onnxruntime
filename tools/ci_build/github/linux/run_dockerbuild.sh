@@ -100,11 +100,11 @@ else
         IMAGE="$BUILD_OS"
 		IMAGE_OS_VERSION=""
 		if [ $BUILD_OS = "ubuntu18.04" ]; then
-		   IMAGE_OS_VERSION = "18.04"
-		   PYTHON_VER  = "3.6"
+		   IMAGE_OS_VERSION="18.04"
+		   PYTHON_VER="3.6"
 		elif [ $BUILD_OS = "ubuntu20.04" ]; then
-		   IMAGE_OS_VERSION = "20.04"
-		   PYTHON_VER  = "3.8"
+		   IMAGE_OS_VERSION="20.04"
+		   PYTHON_VER="3.8"
 		else
 		   exit 1
 	    fi
