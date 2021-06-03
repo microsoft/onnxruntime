@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 import logging
 import os
 import sys
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class OnnxModel:
     def __init__(self, model):
         self.model = model
-        self.node_name_counter = {}
+        self._node_name_suffix: Dict[str, int] = {}  # key is node name prefix, value is the last suffix generated
         self.shape_infer_helper = None
         self.all_graphs = None
 
@@ -553,25 +553,39 @@ class OnnxModel:
                 cast_node.attribute.extend([helper.make_attribute("to", int(TensorProto.FLOAT))])
                 self.add_node(cast_node)
 
-    # create a new name for node
     def create_node_name(self, op_type, name_prefix=None):
-        if op_type in self.node_name_counter:
-            self.node_name_counter[op_type] += 1
+        """Create a unique node name that starts with a prefix (default is operator type).
+           The name will not be duplicated with any name that generated or existed in current graphs.
+        Args:
+            op_type (str): operator type
+            name_prefix (str, optional): prefix of node name. Defaults to None.
+
+        Returns:
+            str: node name
+        """
+
+        if name_prefix:
+            prefix = name_prefix if name_prefix.endswith("_") else (name_prefix + "_")
         else:
-            self.node_name_counter[op_type] = 1
+            prefix = op_type + "_"
 
-        if name_prefix is not None:
-            full_name = name_prefix + str(self.node_name_counter[op_type])
+        suffix: int = 0
+        if prefix in self._node_name_suffix:
+            suffix = self._node_name_suffix[prefix] + 1
         else:
-            full_name = op_type + "_" + str(self.node_name_counter[op_type])
+            # Check existed node name only once for a prefix as we assume create_node_name is called for every new node in fusion.
+            for node in self.nodes():
+                if node.name and node.name.startswith(prefix):
+                    try:
+                        index = int(node.name[len(prefix):])
+                        suffix = max(index + 1, suffix)
+                    except ValueError:
+                        continue
 
-        # Check whether the name is taken:
-        nodes = self.get_nodes_by_op_type(op_type)
-        for node in nodes:
-            if node.name == full_name:
-                raise Exception("Node name already taken:", full_name)
+        # Record the generated suffix so that we can avoid generating duplicated name.
+        self._node_name_suffix[prefix] = suffix
 
-        return full_name
+        return prefix + str(suffix)
 
     def find_graph_input(self, input_name):
         for input in self.model.graph.input:

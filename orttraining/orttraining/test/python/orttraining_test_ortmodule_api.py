@@ -592,7 +592,7 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
         
         if use_fp16:
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-3)
-            _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=1e-2, atol=1.1e-2)
+            _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=1e-2, atol=2e-2)
         else:
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-5)
             _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=5e-3, atol=4e-3)
@@ -1666,26 +1666,26 @@ def test_model_initializer_requires_grad_changes_from_one_forward_to_next():
     model.fc1.requires_grad_(True)
     model = ORTModule(model)
     x = torch.randn(N, D_in, device=device)
-    assert model._original_module.fc1.weight.grad is None
-    assert model._original_module.fc1.bias.grad is None
+    assert model._module_metadata.original_module.fc1.weight.grad is None
+    assert model._module_metadata.original_module.fc1.bias.grad is None
 
     # Make sure no exception is raised
     output = model(x)
     loss = torch.sum(output)
     loss.backward()
     training_session1 = model._execution_manager(model._is_training())._execution_agent
-    weight_grad_2 = model._original_module.fc1.weight.grad
-    bias_grad_2 = model._original_module.fc1.bias.grad
+    weight_grad_2 = model._module_metadata.original_module.fc1.weight.grad
+    bias_grad_2 = model._module_metadata.original_module.fc1.bias.grad
     assert weight_grad_2 is not None
     assert bias_grad_2 is not None
 
-    model._original_module.fc1.requires_grad_(False)
+    model._module_metadata.original_module.fc1.requires_grad_(False)
     output = model(x)
     loss = torch.sum(output)
     loss.backward()
     training_session2 = model._execution_manager(model._is_training())._execution_agent
-    weight_grad_3 = model._original_module.fc1.weight.grad
-    bias_grad_3 = model._original_module.fc1.bias.grad
+    weight_grad_3 = model._module_metadata.original_module.fc1.weight.grad
+    bias_grad_3 = model._module_metadata.original_module.fc1.bias.grad
 
     assert training_session1 != training_session2
     assert torch.equal(weight_grad_2, weight_grad_3)
@@ -2619,3 +2619,31 @@ def test_unused_parameters_does_not_unnecssarily_reinitilize(model):
                                                   {})
 
     assert not training_manager._reinitialize_graph_builder(input_info)
+
+def test_load_state_dict_for_wrapped_ortmodule():
+    class WrapperModule(torch.nn.Module):
+        def __init__(self, ortmodule):
+            super(WrapperModule, self).__init__()
+            self._ortmodule = ortmodule
+
+        def forward(self, x):
+            return self._ortmodule(x)
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    model = ORTModule(copy.deepcopy(model))
+    wrapper_module = WrapperModule(model)
+    x = torch.randn(N, D_in, device=device)
+    _ = wrapper_module(x)
+
+    state_dict1 = wrapper_module.state_dict()
+    list(next(iter(state_dict1.items())))[1] += 10
+    wrapper_module.load_state_dict(state_dict1)
+    state_dict2 = wrapper_module.state_dict()
+
+    assert state_dict1
+    assert len(state_dict1.keys()) == len(state_dict2.keys())
+    for param_name, param_value in state_dict1.items():
+        assert param_name in state_dict2
+        assert torch.equal(param_value, state_dict2[param_name])
