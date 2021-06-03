@@ -647,7 +647,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
 
     import subprocess
     print("pengwa debugging tag, to remove!!!")
-    print(subprocess.getoutput("ls -l /opt/_internal/cpython-3.7.10/lib/python3.7"))
+    print(subprocess.getoutput("ls -l /opt/python/cp37-cp37m/"))
+    print(subprocess.getoutput("find / -name libpython*.so -print"))
     print(subprocess.getoutput("ls -l /opt/_internal/cpython-3.7.10/lib/x86_64-linux-gnu/"))
     print(subprocess.getoutput("ls -l /opt/python/cp37-cp37m/lib/"))
     print(subprocess.getoutput("ls -l /Users/runner/hostedtoolcache/Python/3.8.10/x64/lib"))
