@@ -1,4 +1,4 @@
-All the files in this folder were copied from https://github.com/pypa/manylinux with two tiny changes:
+All the files in this folder were copied from https://github.com/pypa/manylinux (commit id 1858a1073fd9690546a442fde8bd3c4db8df1798) with two tiny changes:
 
 ```diff
 diff -r /data/bt/os/manylinux/docker/build_scripts/install-entrypoint.sh ./install-entrypoint.sh
