@@ -1229,7 +1229,7 @@ MlasBroadcastFloat32x4(const float* Value)
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_load_ps1(Value);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
-    return wasm_v32x4_load_splat(Value);
+    return wasm_v128_load32_splat(Value);
 #else
     return MLAS_FLOAT32X4{*Value, *Value, *Value, *Value};
 #endif
@@ -1390,7 +1390,7 @@ MLAS_FLOAT32X4
 MlasShuffleFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
 #if defined(MLAS_WASM_SIMD_INTRINSICS)
-    return wasm_v32x4_shuffle(Vector1, Vector2, Index0, Index1, Index2, Index3);
+    return wasm_i32x4_shuffle(Vector1, Vector2, Index0, Index1, Index2, Index3);
 #elif defined(__clang__)
     return __builtin_shufflevector(Vector1, Vector2, Index0, Index1, Index2, Index3);
 #else
