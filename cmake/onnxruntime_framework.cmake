@@ -39,7 +39,8 @@ target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} ${e
 endif()
 # Needed for the provider interface, as it includes training headers when training is enabled
 if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
-  target_include_directories(onnxruntime_framework PRIVATE ${ORTTRAINING_ROOT} Python::Module)
+  target_include_directories(onnxruntime_framework PRIVATE ${ORTTRAINING_ROOT})
+  onnxruntime_add_include_to_target(onnxruntime_framework Python::Module)
   target_link_libraries(onnxruntime_framework PRIVATE Python::Python)
   if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)  
     target_include_directories(onnxruntime_framework PUBLIC ${MPI_CXX_INCLUDE_DIRS})
