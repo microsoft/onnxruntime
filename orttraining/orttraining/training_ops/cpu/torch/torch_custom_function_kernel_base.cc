@@ -77,13 +77,6 @@ void PythonOpBase::Init(const OpKernelInfo& info) {
   CreateArgPositions();
 }
 
-PythonOpBase::~PythonOpBase() {
-  for (auto ptr : const_args_) {
-    auto obj = reinterpret_cast<PyObject*>(ptr);
-    Py_DECREF(obj);
-  }
-}
-
 void PythonOpBase::RunForward(OpKernelContext* context,
                               void** diff_ctx,
                               std::vector<OrtValue>& returned_ortvalues) const {

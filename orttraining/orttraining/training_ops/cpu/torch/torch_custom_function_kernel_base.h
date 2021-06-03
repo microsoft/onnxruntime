@@ -38,8 +38,6 @@ class PythonOpBase {
                   void* diff_ctx,
                   std::vector<OrtValue>& returned_args) const;
 
-  ~PythonOpBase();
-
  protected:
   std::vector<int64_t> const_arg_positions_;
   std::vector<void*> const_args_;
