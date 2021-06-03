@@ -1038,7 +1038,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-ios' target='_blank'>here</a>",
     
     "ios,objectivec,ARM64,DefaultCPU":
-        "Add 'onnxruntime-mobile-c' using CocoaPods",
+        "<i>Coming soon!</i>",
     
     "windows,Python,X86,VitisAI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
