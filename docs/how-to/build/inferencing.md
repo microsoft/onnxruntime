@@ -26,7 +26,7 @@ Basic CPU build
    git clone --recursive https://github.com/Microsoft/onnxruntime
    cd onnxruntime
    ```
-* [Install](https://cmake.org/download/) cmake-3.13 or higher.
+* [Install](https://cmake.org/download/) cmake-3.18 or higher.
 
 
 ### Build Instructions
@@ -101,7 +101,7 @@ GCC 4.x and below are not supported.
 | OS/Compiler | Supports VC  | Supports GCC     |  Supports Clang  |
 |-------------|:------------:|:----------------:|:----------------:|
 |Windows 10   | YES          | Not tested       | Not tested       |
-|Linux        | NO           | YES(gcc>=4.8)    | Not tested       |
+|Linux        | NO           | YES(gcc>=8)    | Not tested       |
 |macOS        | NO           | Not tested       | YES (Minimum version required not ascertained)|
 
 ---
@@ -112,7 +112,6 @@ GCC 4.x and below are not supported.
 |-----------|-----------|-----------|
 |**Basic build**|build.bat (Windows)<br>./build.sh (Linux)||
 |**Release build**|--config Release|Release build. Other valid config values are RelWithDebInfo and Debug.|
-|**Use OpenMP**|--use_openmp|OpenMP will parallelize some of the code for potential performance improvements. This is not recommended for running on single threads.|
 |**Build using parallel processing**|--parallel|This is strongly recommended to speed up the build.|
 |**Build Shared Library**|--build_shared_lib||
 |**Enable Training support**|--enable_training||
@@ -158,7 +157,7 @@ Nuget packages are created under <native_build_dir>\nuget-artifacts
 ### Reduced Operator Kernel Build
 Reduced Operator Kernel builds allow you to customize the kernels in the build to provide smaller binary sizes - [see instructions](https://github.com/microsoft/onnxruntime/blob/master/docs/Reduced_Operator_Kernel_build.md).
 
-### OpenMP
+### OpenMP (Deprecated)
 #### Build Instructions
 ##### Windows
 
@@ -170,24 +169,6 @@ Reduced Operator Kernel builds allow you to customize the kernels in the build t
 
 ```bash
 ./build.sh --use_openmp
-```
-
-### OpenBLAS
-#### Prerequisites
-   * Windows: See build instructions [here](https://github.com/xianyi/OpenBLAS/wiki/How-to-use-OpenBLAS-in-Microsoft-Visual-Studio#build-openblas-for-universal-windows-platform)
-   * Linux: Install the libopenblas-dev package `sudo apt-get install libopenblas-dev`
-
-#### Build Instructions
-##### Windows
-
-```
-.\build.bat --use_openblas
-```
-
-##### Linux
-
-```bash
-./build.sh --use_openblas
 ```
 
 ### DebugNodeInputsOutputs
