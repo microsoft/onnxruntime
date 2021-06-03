@@ -131,7 +131,7 @@ stages:
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
               onnxruntimecpubuild \
-                bash /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release
+                bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/onnxruntime*.whl && /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release " ;
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
@@ -438,13 +438,22 @@ stages:
           script: |
             mkdir -p $HOME/.onnx
             docker run --rm \
+              --device=/dev/kfd \
+              --device=/dev/dri \
+              --group-add $(video) \
+              --group-add $(render) \
+              --privileged \
+              --ipc=host \
+              --network=host \
+              --cap-add=SYS_PTRACE \
+              --security-opt seccomp=unconfined \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
+              -e HIP_VISIBLE_DEVICES \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
-              --entrypoint /bin/bash \
               onnxruntimetrainingrocmbuild \
-                /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release
+                bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/onnxruntime*.whl && /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release " ;
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
@@ -604,6 +613,8 @@ stages:
           script: |
             mkdir -p $HOME/.onnx
             docker run --rm \
+              --gpus all \
+              -e NVIDIA_VISIBLE_DEVICES=all \
               --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
@@ -612,7 +623,7 @@ stages:
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
               onnxruntimetraininggpubuild \
-                bash /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release
+                bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/onnxruntime*.whl && /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release " ;
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
@@ -781,6 +792,8 @@ stages:
           script: |
             mkdir -p $HOME/.onnx
             docker run --rm \
+              --gpus all \
+              -e NVIDIA_VISIBLE_DEVICES=all \
               --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
@@ -789,7 +802,7 @@ stages:
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
               onnxruntimetraininggpubuild \
-                bash /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release
+                bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/onnxruntime*.whl && /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release " ;
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
