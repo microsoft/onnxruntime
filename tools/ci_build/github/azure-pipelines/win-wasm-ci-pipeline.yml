@@ -31,7 +31,6 @@ jobs:
         CmdParams: '--skip_tests --disable_wasm_exception_catching --disable_rtti'
 
   variables:
-    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     EnvSetupScript: setup_env.bat
     buildArch: x64
   timeoutInMinutes: 120
@@ -77,42 +76,37 @@ jobs:
     displayName: 'Build and test'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_wasm --cmake_generator "Visual Studio 16 2019" $(CmdParams)'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory)\wasm --skip_submodule_sync --build_wasm --cmake_generator "Visual Studio 16 2019" $(CmdParams)'
       workingDirectory: '$(Build.BinariesDirectory)'
   - task: PythonScript@0
     displayName: 'Build and test (threads)'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_wasm --cmake_generator "Visual Studio 16 2019" --enable_wasm_threads $(CmdParams)'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory)\wasm_threads --skip_submodule_sync --build_wasm --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --cmake_generator "Visual Studio 16 2019" --enable_wasm_threads $(CmdParams)'
       workingDirectory: '$(Build.BinariesDirectory)'
   - task: PythonScript@0
     displayName: 'Build and test (simd + threads)'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_wasm --cmake_generator "Visual Studio 16 2019" --enable_wasm_simd --enable_wasm_threads $(CmdParams)'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory)\wasm_simd_threads --skip_submodule_sync --build_wasm --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --cmake_generator "Visual Studio 16 2019" --enable_wasm_simd --enable_wasm_threads $(CmdParams)'
       workingDirectory: '$(Build.BinariesDirectory)'
   - task: PythonScript@0
     displayName: 'Build and test (simd)'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_wasm --cmake_generator "Visual Studio 16 2019" --enable_wasm_simd $(CmdParams)'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory)\wasm_simd --skip_submodule_sync --build_wasm --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --cmake_generator "Visual Studio 16 2019" --enable_wasm_simd $(CmdParams)'
       workingDirectory: '$(Build.BinariesDirectory)'
   - script: |
-      copy $(Build.BinariesDirectory)\$(BuildConfig)\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+      copy $(Build.BinariesDirectory)\wasm\$(BuildConfig)\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+      copy $(Build.BinariesDirectory)\wasm_threads\$(BuildConfig)\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+      copy $(Build.BinariesDirectory)\wasm_simd_threads\$(BuildConfig)\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+      copy $(Build.BinariesDirectory)\wasm_simd\$(BuildConfig)\ort-wasm*.* $(Build.ArtifactStagingDirectory)
     displayName: 'Create Artifacts'
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline Artifact'
     inputs:
       artifactName: '$(BuildConfig)_wasm'
       targetPath: '$(Build.ArtifactStagingDirectory)'
-  - task: PublishTestResults@2
-    displayName: 'Publish unit test results'
-    condition: and(succeeded(), eq(variables['BuildConfig'], 'Debug'))
-    inputs:
-      testResultsFiles: '**/*.results.xml'
-      searchFolder: '$(Build.BinariesDirectory)'
-      testRunTitle: 'Unit Test Run'
-    condition: succeededOrFailed()
   - template: templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
