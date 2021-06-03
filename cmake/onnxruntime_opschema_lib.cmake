@@ -11,7 +11,7 @@ file(GLOB_RECURSE contrib_ops_schema_src
    "${TRAINING_OPS_DIR}/training_op_defs.cc"
 )
 
-add_library(ort_opschema_lib ${contrib_ops_schema_src})
+onnxruntime_add_static_library(ort_opschema_lib ${contrib_ops_schema_src})
 
 set (OPSCHEMA_LIB_DEPENDENCIES onnxruntime_mlas onnxruntime_common onnxruntime_util onnx onnx_proto protobuf::libprotobuf flatbuffers)
 
