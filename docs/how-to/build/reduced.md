@@ -2,7 +2,7 @@
 title: Build with reduced size
 grand_parent: How to
 parent: Build ORT
-nav_order: 5
+nav_order: 6
 ---
 
 # Build ORT with reduced size
