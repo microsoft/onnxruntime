@@ -351,7 +351,8 @@ def parse_arguments():
     parser.add_argument(
         "--cmake_path", default="cmake", help="Path to the CMake program.")
     parser.add_argument(
-        "--ctest_path", default="ctest", help="Path to the CTest program.")
+        "--ctest_path", default="ctest", help="Path to the CTest program. It can be an empty string. If it is empty, "
+        "we will use this script driving the test programs directly.")
     parser.add_argument(
         "--skip_submodule_sync", action='store_true', help="Don't do a "
         "'git submodule update'. Makes the Update phase faster.")
