@@ -6,14 +6,5 @@ grand_parent: How to
 ---
 
 # Build ONNX Runtime for Web
-{: .no_toc }
 
-TBD.
-
-## Contents
-{: .no_toc }
-
-* TOC placeholder
-{:toc}
-
-TBD.
+ *[COMING SOON]* 
