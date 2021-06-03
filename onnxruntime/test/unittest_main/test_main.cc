@@ -40,6 +40,7 @@
 #include "core/util/thread_utils.h"
 #include "gtest/gtest.h"
 #include "test/test_environment.h"
+#include "test/framework/TestAllocatorManager.h"
 
 std::unique_ptr<Ort::Env> ort_env;
 void ortenv_setup(){
@@ -72,6 +73,9 @@ int TEST_MAIN(int argc, char** argv) {
       status = -1;
     });
   }
+
+  // Delete the allocators before the shared providers get unloaded, otherwise we crash
+  onnxruntime::test::AllocatorManager::Instance().Shutdown();
 
   //TODO: Fix the C API issue
   ort_env.reset();  //If we don't do this, it will crash

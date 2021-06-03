@@ -18,6 +18,8 @@ class AllocatorManager {
 
   AllocatorPtr GetAllocator(const std::string& name, const int id = 0, bool arena = true);
 
+  void Shutdown() { map_.clear(); }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(AllocatorManager);
 
