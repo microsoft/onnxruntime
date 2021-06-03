@@ -58,6 +58,7 @@ by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
 
 
 ## Training
+ 
 ||Official build|Nightly build|
 |---|---|---|
 |PyTorch (CUDA 10.2)|[**onnxruntime-training**](https://pypi.org/project/onnxruntime-training)|[onnxruntime_nightly_cu102](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_cu102.html)|
