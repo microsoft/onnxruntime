@@ -54,6 +54,11 @@ LATENCY_FILE = ".latency_map"
 METRICS_FILE = ".metrics_map"
 MEMORY_FILE = './temp_memory.csv'
 
+def split_and_sort_output(string_list):
+    string_list.split("\n")
+    string_list.sort()
+    return string_list
+
 def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     logger.info("running standalone trt")
     model_path = "--onnx=" + model_path
@@ -186,6 +191,7 @@ def end_memory_tracking(p, trtexec, success):
     logger.info("terminating memory tracking process")
     p.terminate()
     p.wait()
+    p.kill()
     mem_usage = None
     if success:
         mem_usage = get_max_memory(trtexec) 
@@ -209,7 +215,6 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
             logger.info("ORT session outputs:")
             logger.info(sess_outputs)
 
-        p = None # keep track of process to kill upon error
         try:
             runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
             runtimes += runtime[1:] # remove warmup
@@ -277,8 +282,7 @@ def get_acl_version():
 def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
     logger.info("Parsing test data in {} ...".format(path))
     output = get_output(["find", path, "-name", "test_data*", "-type", "d"])
-    test_data_set_dir = output.split("\n")
-    test_data_set_dir.sort()
+    test_data_set_dir = split_and_sort_output(output)
     logger.info(test_data_set_dir)
 
     inputs = []
@@ -296,8 +300,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
 
         # load inputs
         output = get_output(["find", ".", "-name", "input*"])
-        input_data = output.split("\n")
-        input_data.sort()
+        input_data = split_and_sort_output(output)
         logger.info(input_data)
 
         input_data_pb = []
@@ -317,8 +320,7 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
 
         # load outputs
         output = get_output(["find", ".", "-name", "output*"])
-        output_data = output.split("\n")
-        output_data.sort()
+        output_data = split_and_sort_output(output)
 
         if len(output_data) > 0 and output_data[0] != '':
             logger.info(output_data)
@@ -686,7 +688,7 @@ def get_system_info(workspace):
 
 def find_model_path(path):
     output = get_output(["find", path, "-name", "*.onnx"])
-    model_path = output.split("\n")
+    model_path = split_and_sort_output(output)
     logger.info(model_path)
 
     if model_path == ['']:
@@ -707,8 +709,7 @@ def find_model_path(path):
 
 def find_model_directory(path):
     output = get_output(["find", path, "-maxdepth", "1", "-mindepth", "1", "-name", "*", "-type", "d"])
-    model_dir = output.split("\n")
-
+    model_dir = split_and_sort_output(output)
     if model_dir == ['']:
         return None
 
@@ -716,7 +717,7 @@ def find_model_directory(path):
 
 def find_test_data_directory(path):
     output = get_output(["find", path, "-maxdepth", "1", "-name", "test_data*", "-type", "d"])
-    test_data_dir = output.split("\n")
+    test_data_dir = split_and_sort_output(output)
     logger.info(test_data_dir)
 
     if test_data_dir == ['']:
@@ -1018,13 +1019,11 @@ def run_onnxruntime(args, models):
                     else: 
                         result = inference_ort(args, name, sess, ep, inputs, result_template, args.test_times, batch_size)
                 if result:
-                    logger.info(result)
                     latency_result[ep] = {}
                     latency_result[ep]["average_latency_ms"] = result["average_latency_ms"]
                     latency_result[ep]["latency_90_percentile"] = result["latency_90_percentile"]
                     if mem_usage: 
                         latency_result[ep]["memory"] = mem_usage
-                    logger.info(result)
 
                     if not args.trtexec: # skip standalone
                         success_results.append(result)
