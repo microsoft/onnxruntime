@@ -3,7 +3,6 @@
 
 #include "test/framework/TestAllocatorManager.h"
 #include "core/framework/allocatormgr.h"
-#include "core/providers/cuda/cuda_provider_factory.h"
 
 namespace onnxruntime {
 namespace test {
