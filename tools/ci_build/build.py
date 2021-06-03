@@ -351,7 +351,8 @@ def parse_arguments():
     parser.add_argument(
         "--cmake_path", default="cmake", help="Path to the CMake program.")
     parser.add_argument(
-        "--ctest_path", default="ctest", help="Path to the CTest program.")
+        "--ctest_path", default="ctest", help="Path to the CTest program. It can be an empty string. If it is empty, "
+        "we will use this script driving the test programs directly.")
     parser.add_argument(
         "--skip_submodule_sync", action='store_true', help="Don't do a "
         "'git submodule update'. Makes the Update phase faster.")
@@ -530,11 +531,14 @@ def is_reduced_ops_build(args):
 
 def resolve_executable_path(command_or_path):
     """Returns the absolute path of an executable."""
-    executable_path = shutil.which(command_or_path)
-    if executable_path is None:
-        raise BuildError("Failed to resolve executable path for "
-                         "'{}'.".format(command_or_path))
-    return os.path.abspath(executable_path)
+    if command_or_path and command_or_path.strip():
+        executable_path = shutil.which(command_or_path)
+        if executable_path is None:
+            raise BuildError("Failed to resolve executable path for "
+                             "'{}'.".format(command_or_path))
+        return os.path.abspath(executable_path)
+    else:
+        return None
 
 
 def get_linux_distro():
@@ -652,6 +656,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_WINML_TESTS=" + ("OFF" if args.skip_winml_tests else "ON"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
         "-Donnxruntime_DEV_MODE=" + use_dev_mode(args),
+        # There are two ways of locating python C API header file. "find_package(PythonLibs 3.5 REQUIRED)"
+        # and "find_package(Python 3.5 COMPONENTS Development.Module)". The first one is deprecated and it
+        # depends on the "PYTHON_EXECUTABLE" variable. The second needs "Python_EXECUTABLE". Here we set both
+        # of them to get the best compatibility.
+        "-DPython_EXECUTABLE=" + sys.executable,
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
         "-Donnxruntime_CUDA_VERSION=" + (args.cuda_version if args.use_cuda else ""),
@@ -706,7 +715,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_MINIMAL_BUILD_CUSTOM_OPS=" + ("ON" if args.minimal_build and 'custom_ops' in args.minimal_build
                                                      else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
-        "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
         # enable pyop if it is nightly build
         "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
@@ -744,6 +752,17 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
     ]
+
+    if args.enable_msvc_static_runtime:
+        cmake_args += ["-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>",
+                       "-DONNX_USE_MSVC_STATIC_RUNTIME=ON",
+                       "-Dprotobuf_MSVC_STATIC_RUNTIME=ON",
+                       "-Dgtest_force_shared_crt=OFF"]
+    else:
+        cmake_args += ["-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>DLL",
+                       "-DONNX_USE_MSVC_STATIC_RUNTIME=OFF",
+                       "-Dprotobuf_MSVC_STATIC_RUNTIME=OFF",
+                       "-Dgtest_force_shared_crt=ON"]
 
     if acl_home and os.path.exists(acl_home):
         cmake_args += ["-Donnxruntime_ACL_HOME=" + acl_home]
@@ -1405,27 +1424,38 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         if len(dll_path_list) > 0:
             dll_path = os.pathsep.join(dll_path_list)
 
-        if ctest_path is None:
-            # Get the "Google Test Adapter" for vstest.
-            if not os.path.exists(os.path.join(cwd,
-                                               'googletestadapter.0.17.1')):
+        if not ctest_path:
+            if is_windows():
+                # Get the "Google Test Adapter" for vstest.
+                if not os.path.exists(os.path.join(cwd,
+                                                   'googletestadapter.0.17.1')):
+                    run_subprocess(
+                        ['nuget.exe', 'restore',
+                         os.path.join(source_dir, 'packages.config'),
+                         '-ConfigFile', os.path.join(source_dir, 'NuGet.config'),
+                         '-PackagesDirectory', cwd])
+                cwd2 = os.path.join(cwd, config)
+                executables = ['onnxruntime_test_all.exe']
+                if args.build_shared_lib:
+                    executables.append('onnxruntime_shared_lib_test.exe')
+                    executables.append('onnxruntime_global_thread_pools_test.exe')
+                    executables.append('onnxruntime_api_tests_without_env.exe')
                 run_subprocess(
-                    ['nuget.exe', 'restore',
-                     os.path.join(source_dir, 'packages.config'),
-                     '-ConfigFile', os.path.join(source_dir, 'NuGet.config'),
-                     '-PackagesDirectory', cwd])
-            cwd2 = os.path.join(cwd, config)
-            executables = ['onnxruntime_test_all.exe']
-            if args.build_shared_lib:
-                executables.append('onnxruntime_shared_lib_test.exe')
-                executables.append('onnxruntime_global_thread_pools_test.exe')
-            run_subprocess(
-                ['vstest.console.exe', '--parallel',
-                 '--TestAdapterPath:..\\googletestadapter.0.17.1\\build\\_common',  # noqa
-                 '/Logger:trx', '/Enablecodecoverage', '/Platform:x64',
-                 "/Settings:%s" % os.path.join(
-                     source_dir, 'cmake\\codeconv.runsettings')] + executables,
-                cwd=cwd2, dll_path=dll_path)
+                    ['vstest.console.exe', '--parallel',
+                     '--TestAdapterPath:..\\googletestadapter.0.17.1\\build\\_common',  # noqa
+                     '/Logger:trx', '/Enablecodecoverage', '/Platform:x64',
+                     "/Settings:%s" % os.path.join(
+                         source_dir, 'cmake\\codeconv.runsettings')] + executables,
+                    cwd=cwd2, dll_path=dll_path)
+            else:
+                executables = ['onnxruntime_test_all']
+                if args.build_shared_lib:
+                    executables.append('onnxruntime_shared_lib_test')
+                    executables.append('onnxruntime_global_thread_pools_test')
+                    executables.append('onnxruntime_api_tests_without_env')
+                for exe in executables:
+                    run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
+
         else:
             ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", "7200"]
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
@@ -1850,6 +1880,9 @@ def main():
     if args.build_nuget and cross_compiling:
         raise BuildError('Currently nuget package creation is not supported while cross-compiling')
 
+    if args.enable_pybind and args.disable_rtti:
+        raise BuildError("Python bindings use typeid so you can't disable RTTI")
+
     if args.enable_pybind and args.disable_exceptions:
         raise BuildError('Python bindings require exceptions to be enabled.')
 
@@ -1888,6 +1921,8 @@ def main():
     configs = set(args.config)
 
     # setup paths and directories
+    # cmake_path and ctest_path can be None. For example, if a person only wants to run the tests, he/she doesn't need
+    # to have cmake/ctest.
     cmake_path = resolve_executable_path(args.cmake_path)
     ctest_path = None if args.use_vstest else resolve_executable_path(
         args.ctest_path)
