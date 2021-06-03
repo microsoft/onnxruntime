@@ -48,7 +48,7 @@ def register_custom_op(is_ortmodule=False):
             output = g.op("com.microsoft::ATenOp", weight, indices, name_s='aten::embedding',
                           custom_attributes_json_s=custom_attributes_json)
             indices_shape = _get_tensor_sizes(indices)
-            if indices_shape is not None:
+            if indices_shape is not None and hasattr(weight.type(), 'with_sizes'):
                 output_type = weight.type().with_sizes(indices_shape + [_get_tensor_dim_size(weight, 1)])
                 output.setType(output_type)
             return output
