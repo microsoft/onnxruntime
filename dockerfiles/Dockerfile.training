@@ -32,7 +32,10 @@ RUN apt-get -y update &&\
 RUN unattended-upgrade
 
 RUN locale-gen en_US.UTF-8 && \
-    update-locale LANG=en_US.UTF-8
+    update-locale LANG=en_US.UTF-8 \
+	wget --quiet https://github.com/Kitware/CMake/releases/download/v3.20.3/cmake-3.20.3-Linux-x86_64.tar.gz \
+    tar -zxf cmake-3.20.3-Linux-x86_64.tar.gz --strip=1 -C /usr \
+    rm -rf cmake-3.20.3-Linux-x86_64.tar.gz
 
 # install miniconda (comes with python 3.7 default)
 ARG CONDA_VERSION
@@ -42,12 +45,11 @@ RUN cd /stage && curl -fSsL --insecure ${CONDA_URL} -o install-conda.sh &&\
     /opt/conda/bin/conda clean -ya
 ENV PATH=/opt/conda/bin:${PATH}
 
-# install cmake, setuptools, numpy, and onnx
+# install setuptools, numpy, and onnx
 ARG NUMPY_VERSION
 ARG ONNX_VERSION
 RUN conda install -y \
         setuptools \
-        cmake \
         numpy=${NUMPY_VERSION} &&\
     pip install \
         onnx=="${ONNX_VERSION}"
@@ -215,8 +217,7 @@ LABEL PYTORCH_VERSION=${PYTORCH_VERSION}
 
 # clean\finalize environment
 # note: adds onnxruntime license and third party notices
-RUN conda remove -y cmake &&\
-    apt-get purge -y build-essential &&\
+RUN apt-get purge -y build-essential &&\
     apt-get autoremove -y &&\
     rm -fr /stage
 WORKDIR /workspace
