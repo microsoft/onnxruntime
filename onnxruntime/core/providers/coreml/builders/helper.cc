@@ -18,7 +18,6 @@
 namespace onnxruntime {
 namespace coreml {
 
-class ModelBuilder;
 struct OpBuilderInputParams;
 
 bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger) {
