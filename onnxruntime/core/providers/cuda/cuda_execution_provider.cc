@@ -71,7 +71,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
         .ExecQueueId(kCudaStreamCopyIn)
-        .TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes()),
     Memcpy);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -82,7 +82,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
         .ExecQueueId(kCudaStreamCopyOut)
-        .TypeConstraint("T", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes()),
     Memcpy);
 
 }  // namespace cuda

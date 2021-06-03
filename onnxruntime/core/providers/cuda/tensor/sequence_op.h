@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template<typename DataType>
+template <typename DataType>
 int64_t ReadIndex(const Tensor& tensor, const char* type_name) {
   DataType data{0};
   if (!CUDA_CALL(cudaMemcpy(&data, tensor.Data<DataType>(),
@@ -20,17 +20,16 @@ int64_t ReadIndex(const Tensor& tensor, const char* type_name) {
   return static_cast<int64_t>(data);
 }
 
-class SequenceAt final: public CudaKernel {
+class SequenceAt final : public CudaKernel {
  public:
-  SequenceAt(const OpKernelInfo& info): CudaKernel(info) {}
+  SequenceAt(const OpKernelInfo& info) : CudaKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override {
     const TensorSeq* X = context->Input<TensorSeq>(0);
     ORT_ENFORCE(X != nullptr, "SequenceAt GPU: Got nullptr for sequence input.");
     const Tensor* I = context->Input<Tensor>(1);
     ORT_ENFORCE(I != nullptr, "SequenceAt GPU: Got nullptr input for index tensor.");
 
-    int64_t idx = I->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT32 ?
-                  ReadIndex<int32_t>(*I, "int32_t") : ReadIndex<int64_t>(*I, "int64_t");
+    int64_t idx = I->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT32 ? ReadIndex<int32_t>(*I, "int32_t") : ReadIndex<int64_t>(*I, "int64_t");
     int64_t sequence_size = static_cast<int64_t>(X->Size());
     if (idx < 0) {
       idx = sequence_size + idx;
@@ -40,11 +39,11 @@ class SequenceAt final: public CudaKernel {
     const Tensor& source_tensor = X->Get(idx);
     auto source_type = source_tensor.DataType();
     const void* source_addr = source_tensor.DataRaw(source_type);
- 
+
     Tensor* target_tensor = context->Output(0, source_tensor.Shape());
     ORT_ENFORCE(target_tensor != nullptr, "SequenceAt GPU: Got nullptr for output tensor.");
     void* target_addr = target_tensor->MutableDataRaw(source_type);
- 
+
     if (source_addr != target_addr) {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_addr,
                                            source_addr,
@@ -53,11 +52,11 @@ class SequenceAt final: public CudaKernel {
     }
     return Status::OK();
   }
-}; // SequenceAt
+};  // SequenceAt
 
-class SequenceConstruct final: public CudaKernel {
+class SequenceConstruct final : public CudaKernel {
  public:
-  SequenceConstruct(const OpKernelInfo& info): CudaKernel(info) {}
+  SequenceConstruct(const OpKernelInfo& info) : CudaKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override {
     TensorSeq* Y = context->Output<TensorSeq>(0);
     ORT_ENFORCE(Y != nullptr, "SequenceConstruct GPU: Got nullptr for output sequence.");
@@ -79,15 +78,15 @@ class SequenceConstruct final: public CudaKernel {
                                            source_tensor->DataRaw(),
                                            source_tensor->SizeInBytes(),
                                            cudaMemcpyDeviceToDevice, Stream()));
-      Y->Add(std::move(*target_tensor)); // Add will check type consistency inside
+      Y->Add(std::move(*target_tensor));  // Add will check type consistency inside
     }
     return Status::OK();
   }
-}; // SequenceConstruct
+};  // SequenceConstruct
 
-class SequenceEmpty final: public CudaKernel {
+class SequenceEmpty final : public CudaKernel {
  public:
-  SequenceEmpty(const OpKernelInfo& info): CudaKernel(info) {
+  SequenceEmpty(const OpKernelInfo& info) : CudaKernel(info) {
     if (!info.GetAttr("dtype", &dtype_).IsOK()) {
       dtype_ = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
     }
@@ -102,13 +101,14 @@ class SequenceEmpty final: public CudaKernel {
 #endif
     return Status::OK();
   }
+
  private:
   int64_t dtype_{};
-}; // SequenceEmpty
+};  // SequenceEmpty
 
-class SequenceLength final: public CudaKernel {
+class SequenceLength final : public CudaKernel {
  public:
-  SequenceLength(const OpKernelInfo& info): CudaKernel(info) {}
+  SequenceLength(const OpKernelInfo& info) : CudaKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override {
     const TensorSeq* X = context->Input<TensorSeq>(0);
     ORT_ENFORCE(X != nullptr, "SequenceLength GPU: Input tensor sequence is nullptr.");
@@ -120,12 +120,12 @@ class SequenceLength final: public CudaKernel {
                                          sizeof(int64_t),
                                          cudaMemcpyHostToDevice, Stream()));
     return Status::OK();
-  } // SequenceLength
+  }  // SequenceLength
 };
 
-class ConcatFromSequence final: public CudaKernel, public ConcatBase {
+class ConcatFromSequence final : public CudaKernel, public ConcatBase {
  public:
-  ConcatFromSequence(const OpKernelInfo& info): CudaKernel(info), ConcatBase(info, true) {}
+  ConcatFromSequence(const OpKernelInfo& info) : CudaKernel(info), ConcatBase(info, true) {}
 
   Status ComputeInternal(OpKernelContext* context) const override {
     const TensorSeq* X = context->Input<TensorSeq>(0);
@@ -157,9 +157,9 @@ class ConcatFromSequence final: public CudaKernel, public ConcatBase {
       int64_t cur_in_offset = 0;
       for (size_t idx_copy = 0, end = input_size / input_axis_pitch; idx_copy < end; ++idx_copy) {
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
-          output + (initial_output_offset + cur_out_offset) * element_bytes,
-          input + cur_in_offset * element_bytes, input_axis_pitch * element_bytes,
-          cudaMemcpyHostToDevice, Stream()));
+            output + (initial_output_offset + cur_out_offset) * element_bytes,
+            input + cur_in_offset * element_bytes, input_axis_pitch * element_bytes,
+            cudaMemcpyHostToDevice, Stream()));
         cur_out_offset += p.output_axis_pitch;
         cur_in_offset += input_axis_pitch;
       }
@@ -167,11 +167,11 @@ class ConcatFromSequence final: public CudaKernel, public ConcatBase {
     }
     return Status::OK();
   }
-}; // ConcatFromSequence
+};  // ConcatFromSequence
 
-class SequenceErase final: public CudaKernel {
+class SequenceErase final : public CudaKernel {
  public:
-  SequenceErase(const OpKernelInfo& info): CudaKernel(info) {}
+  SequenceErase(const OpKernelInfo& info) : CudaKernel(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override {
     const TensorSeq* X = context->Input<TensorSeq>(0);
@@ -180,8 +180,7 @@ class SequenceErase final: public CudaKernel {
     int64_t idx = X_size - 1;
     const Tensor* I = context->Input<Tensor>(1);
     if (I != nullptr) {
-      idx = I->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT32 ?
-            ReadIndex<int32_t>(*I, "int32_t") : ReadIndex<int64_t>(*I, "int64_t");
+      idx = I->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT32 ? ReadIndex<int32_t>(*I, "int32_t") : ReadIndex<int64_t>(*I, "int64_t");
       if (idx < 0) {
         idx = X_size + idx;
       }
@@ -211,11 +210,11 @@ class SequenceErase final: public CudaKernel {
     }
     return Status::OK();
   }
-}; // SequenceErase
+};  // SequenceErase
 
-class SequenceInsert final: public CudaKernel {
+class SequenceInsert final : public CudaKernel {
  public:
-  SequenceInsert(const OpKernelInfo& info): CudaKernel(info) {}
+  SequenceInsert(const OpKernelInfo& info) : CudaKernel(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override {
     const TensorSeq* S = context->Input<TensorSeq>(0);
@@ -224,8 +223,7 @@ class SequenceInsert final: public CudaKernel {
     int64_t idx = S_size;
     const Tensor* I = context->Input<Tensor>(2);
     if (I != nullptr) {
-      idx = I->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT32 ?
-            ReadIndex<int32_t>(*I, "int32_t") : ReadIndex<int64_t>(*I, "int64_t");
+      idx = I->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT32 ? ReadIndex<int32_t>(*I, "int32_t") : ReadIndex<int64_t>(*I, "int64_t");
       if (idx < 0) {
         idx = S_size + idx;
       }
@@ -253,14 +251,14 @@ class SequenceInsert final: public CudaKernel {
       }
       const Tensor& source_tensor = S->Get(i);
       std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(),
-                                                               source_tensor.Shape(), alloc);
+                                                             source_tensor.Shape(), alloc);
       ORT_ENFORCE(target_tensor, "SequenceInsert GPU: Failed to allocate new tensor.");
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(target_tensor->MutableDataRaw(),
                                            source_tensor.DataRaw(),
                                            source_tensor.SizeInBytes(),
                                            cudaMemcpyDeviceToDevice, Stream()));
-      Y->Add(std::move(*target_tensor)); // Add will check type consistency inside
-    } // for
+      Y->Add(std::move(*target_tensor));  // Add will check type consistency inside
+    }                                     // for
     if (idx == S_size) {
       std::unique_ptr<Tensor> target_tensor = Tensor::Create(X->DataType(),
                                                              X->Shape(), alloc);
@@ -272,7 +270,7 @@ class SequenceInsert final: public CudaKernel {
     }
     return Status::OK();
   }
-}; // SequenceInsert
+};  // SequenceInsert
 
-} // namespace cuda
-} // namespace onnxruntime
+}  // namespace cuda
+}  // namespace onnxruntime
