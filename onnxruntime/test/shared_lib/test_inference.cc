@@ -522,53 +522,53 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
 #endif
 
 //It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
-#if defined(__ANDROID__)
-TEST(CApiTest, DISABLED_test_custom_op_library) {
-#else
-TEST(CApiTest, test_custom_op_library) {
-#endif
-  std::cout << "Running inference using custom op shared library" << std::endl;
+// #if defined(__ANDROID__)
+// TEST(CApiTest, DISABLED_test_custom_op_library) {
+// #else
+// TEST(CApiTest, test_custom_op_library) {
+// #endif
+//   std::cout << "Running inference using custom op shared library" << std::endl;
 
-  std::vector<Input> inputs(2);
-  inputs[0].name = "input_1";
-  inputs[0].dims = {3, 5};
-  inputs[0].values = {1.1f, 2.2f, 3.3f, 4.4f, 5.5f,
-                      6.6f, 7.7f, 8.8f, 9.9f, 10.0f,
-                      11.1f, 12.2f, 13.3f, 14.4f, 15.5f};
-  inputs[1].name = "input_2";
-  inputs[1].dims = {3, 5};
-  inputs[1].values = {15.5f, 14.4f, 13.3f, 12.2f, 11.1f,
-                      10.0f, 9.9f, 8.8f, 7.7f, 6.6f,
-                      5.5f, 4.4f, 3.3f, 2.2f, 1.1f};
+//   std::vector<Input> inputs(2);
+//   inputs[0].name = "input_1";
+//   inputs[0].dims = {3, 5};
+//   inputs[0].values = {1.1f, 2.2f, 3.3f, 4.4f, 5.5f,
+//                       6.6f, 7.7f, 8.8f, 9.9f, 10.0f,
+//                       11.1f, 12.2f, 13.3f, 14.4f, 15.5f};
+//   inputs[1].name = "input_2";
+//   inputs[1].dims = {3, 5};
+//   inputs[1].values = {15.5f, 14.4f, 13.3f, 12.2f, 11.1f,
+//                       10.0f, 9.9f, 8.8f, 7.7f, 6.6f,
+//                       5.5f, 4.4f, 3.3f, 2.2f, 1.1f};
 
-  // prepare expected inputs and outputs
-  std::vector<int64_t> expected_dims_y = {3, 5};
-  std::vector<int32_t> expected_values_y =
-      {17, 17, 17, 17, 17,
-       17, 18, 18, 18, 17,
-       17, 17, 17, 17, 17};
+//   // prepare expected inputs and outputs
+//   std::vector<int64_t> expected_dims_y = {3, 5};
+//   std::vector<int32_t> expected_values_y =
+//       {17, 17, 17, 17, 17,
+//        17, 18, 18, 18, 17,
+//        17, 17, 17, 17, 17};
 
-  std::string lib_name;
-#if defined(_WIN32)
-  lib_name = "custom_op_library.dll";
-#elif defined(__APPLE__)
-  lib_name = "libcustom_op_library.dylib";
-#else
-lib_name = "./libcustom_op_library.so";
-#endif
+//   std::string lib_name;
+// #if defined(_WIN32)
+//   lib_name = "custom_op_library.dll";
+// #elif defined(__APPLE__)
+//   lib_name = "libcustom_op_library.dylib";
+// #else
+// lib_name = "./libcustom_op_library.so";
+// #endif
 
-  void* library_handle = nullptr;
-  TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
-                         expected_values_y, 0, nullptr, lib_name.c_str(), &library_handle);
+//   void* library_handle = nullptr;
+//   TestInference<int32_t>(*ort_env, CUSTOM_OP_LIBRARY_TEST_MODEL_URI, inputs, "output", expected_dims_y,
+//                          expected_values_y, 0, nullptr, lib_name.c_str(), &library_handle);
 
-#ifdef _WIN32
-  bool success = ::FreeLibrary(reinterpret_cast<HMODULE>(library_handle));
-  ORT_ENFORCE(success, "Error while closing custom op shared library");
-#else
-  int retval = dlclose(library_handle);
-  ORT_ENFORCE(retval == 0, "Error while closing custom op shared library");
-#endif
-}
+// #ifdef _WIN32
+//   bool success = ::FreeLibrary(reinterpret_cast<HMODULE>(library_handle));
+//   ORT_ENFORCE(success, "Error while closing custom op shared library");
+// #else
+//   int retval = dlclose(library_handle);
+//   ORT_ENFORCE(retval == 0, "Error while closing custom op shared library");
+// #endif
+// }
 
 #if defined(ENABLE_LANGUAGE_INTEROP_OPS)
 std::once_flag my_module_flag;
