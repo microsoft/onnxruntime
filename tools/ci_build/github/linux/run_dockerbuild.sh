@@ -79,7 +79,7 @@ elif [ $BUILD_OS = "yocto" ]; then
 else
     if [ $BUILD_DEVICE = "gpu" ]; then
         #This code path is only for training. Inferecing pipeline uses CentOS
-        IMAGE="ubuntu_gpu_training"
+        IMAGE="$BUILD_OS-gpu_training"
         INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -t"
         if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -m"
@@ -88,7 +88,7 @@ else
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -u"
         fi
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-            --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA} --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64  --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-9/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-9/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-9/root/usr/lib64:/opt/rh/devtoolset-9/root/usr/lib:/opt/rh/devtoolset-9/root/usr/lib64/dyninst:/opt/rh/devtoolset-9/root/usr/lib/dyninst:/usr/local/lib64" \
+            --docker-build-args="--build-arg BASEIMAGE=nvcr.io/nvidia/cuda:11.1.1-cudnn8-devel-${BUILD_OS} --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA} --network=host" \
             --dockerfile Dockerfile.ubuntu_gpu_training --context .
     elif [ $BUILD_DEVICE = "tensorrt" ]; then
         # TensorRT container release 20.12
