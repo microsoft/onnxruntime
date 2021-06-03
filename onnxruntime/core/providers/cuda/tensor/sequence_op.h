@@ -88,16 +88,22 @@ class SequenceConstruct final: public CudaKernel {
 class SequenceEmpty final: public CudaKernel {
  public:
   SequenceEmpty(const OpKernelInfo& info): CudaKernel(info) {
-    info.GetAttr("dtype", &dtype_);
+    if (!info.GetAttr("dtype", &dtype_).IsOK()) {
+      dtype_ = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+    }
   }
   Status ComputeInternal(OpKernelContext* context) const override {
     TensorSeq* Y = context->Output<TensorSeq>(0);
     ORT_ENFORCE(Y != nullptr, "SequenceEmpty GPU: Failed to allocate output tensor sequence.");
-    Y->SetType(DataTypeImpl::GetTypeFromOnnxType(dtype_));
+#ifdef SHARED_PROVIDER
+    Y->SetType(DataTypeImpl::GetTypeFromOnnxType(static_cast<int>(dtype_)));
+#else
+    Y->SetType(DataTypeImpl::TensorTypeFromONNXEnum(static_cast<int>(dtype_))->GetElementType());
+#endif
     return Status::OK();
   }
  private:
-  int64_t dtype_ = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+  int64_t dtype_{};
 }; // SequenceEmpty
 
 class SequenceLength final: public CudaKernel {
