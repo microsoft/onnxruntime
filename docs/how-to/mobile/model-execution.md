@@ -49,8 +49,9 @@ Java API
 try(OrtEnvironment env = OrtEnvironment.getEnvironment();
     SessionOptions session_options = new SessionOptions()) {
     session_options.addConfigEntry("session.load_model_format", "ORT");
-    OrtSession session = env.createSession(<path to model> or <byte array contains the model data>, session_options);
-    ...
+    try(OrtSession session = env.createSession(<path to model> or <byte array contains the model data>, session_options)) {
+        ...
+    }
 }
 ```
 
