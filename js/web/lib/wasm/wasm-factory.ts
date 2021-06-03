@@ -8,8 +8,6 @@ import {OrtWasmModule} from './binding/ort-wasm';
 import {OrtWasmThreadedModule} from './binding/ort-wasm-threaded';
 import ortWasmFactoryThreaded from './binding/ort-wasm-threaded.js';
 import ortWasmFactory from './binding/ort-wasm.js';
-import ortWasmFactorySimdThreaded from './binding/ort-wasm-simd-threaded.js';
-import ortWasmFactorySimd from './binding/ort-wasm-simd.js';
 
 let wasm: OrtWasmModule;
 let initialized = false;
@@ -39,10 +37,8 @@ const isSimdSupported = (): boolean => {
   try {
     // Test for WebAssembly SIMD capability (for both browsers and Node.js)
     // This typed array is a WebAssembly program containing SIMD instructions.
-    return WebAssembly.validate(new Uint8Array([
-      0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3,
-      2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11
-    ]));
+    return WebAssembly.validate(new Uint8Array(
+        [0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 10, 9, 1, 7, 0, 65, 0, 253, 15, 26, 11]));
   } catch (e) {
     return false;
   }
@@ -64,9 +60,10 @@ export const initializeWebAssembly = async(): Promise<void> => {
   // wasm flags are already initialized
   const timeout = env.wasm.initTimeout!;
   const numThreads = env.wasm.numThreads!;
+  const simd = env.wasm.simd!;
 
   const useThreads = numThreads > 1 && isMultiThreadSupported();
-  const useSimd = isSimdSupported();
+  const useSimd = simd && isSimdSupported();
   let isTimeout = false;
 
   const tasks: Array<Promise<void>> = [];
@@ -83,20 +80,21 @@ export const initializeWebAssembly = async(): Promise<void> => {
 
   // promise for module initialization
   tasks.push(new Promise((resolve, reject) => {
-    const factory = useThreads ? (useSimd ? ortWasmFactorySimdThreaded : ortWasmFactoryThreaded) :
-        (useSimd ? ortWasmFactorySimd : ortWasmFactory);
+    const factory = useThreads ? ortWasmFactoryThreaded : ortWasmFactory;
     const config: Partial<OrtWasmModule> = {};
 
-    if (useThreads) {
-      if (typeof Blob === 'undefined') {
-        if (useSimd) {
-          config.mainScriptUrlOrBlob = path.join(__dirname, 'ort-wasm-simd-threaded.js');
-        } else {
-          config.mainScriptUrlOrBlob = path.join(__dirname, 'ort-wasm-threaded.js');
+    if (!useThreads) {
+      config.locateFile = (fileName: string, scriptDirectory: string) => {
+        if (useSimd && fileName === 'ort-wasm.wasm') {
+          fileName = 'ort-wasm-simd.wasm';
         }
+        return scriptDirectory + fileName;
+      };
+    } else {
+      if (typeof Blob === 'undefined') {
+        config.mainScriptUrlOrBlob = path.join(__dirname, 'ort-wasm-threaded.js');
       } else {
-        const scriptSourceCode = useSimd ?
-            `var ortWasmSimdThreaded=(function(){var _scriptDir;return ${ortWasmFactorySimdThreaded.toString()}})();` :
+        const scriptSourceCode =
             `var ortWasmThreaded=(function(){var _scriptDir;return ${ortWasmFactoryThreaded.toString()}})();`;
         config.mainScriptUrlOrBlob = new Blob([scriptSourceCode], {type: 'text/javascript'});
         config.locateFile = (fileName: string, scriptDirectory: string) => {
@@ -105,10 +103,13 @@ export const initializeWebAssembly = async(): Promise<void> => {
                 [
                   // This require() function is handled by webpack to load file content of the corresponding .worker.js
                   // eslint-disable-next-line @typescript-eslint/no-require-imports
-                  useSimd ? require('./binding/ort-wasm-simd-threaded.worker.js') :
-                      require('./binding/ort-wasm-threaded.worker.js')
+                  require('./binding/ort-wasm-threaded.worker.js')
                 ],
                 {type: 'text/javascript'}));
+          }
+
+          if (useSimd && fileName === 'ort-wasm-threaded.wasm') {
+            fileName = 'ort-wasm-simd-threaded.wasm';
           }
           return scriptDirectory + fileName;
         };
@@ -150,7 +151,7 @@ export const dispose = (): void => {
   if (initialized && !initializing && !aborted) {
     initializing = true;
 
-    (wasm as OrtWasmThreadedModule).PThread?.terminateAllThreads();
+    (wasm as OrtWasmThreadedModule).PThread ?.terminateAllThreads();
 
     initializing = false;
     initialized = false;

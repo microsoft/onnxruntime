@@ -39,6 +39,22 @@ jobs:
         BuildConfig: 'Release'
         CmdParams: '--enable_wasm_threads --skip_tests --disable_wasm_exception_catching --disable_rtti'
         WasmFileName: 'ort-wasm-threaded'
+      'simd debug':
+        BuildConfig: 'Debug'
+        CmdParams: '--enable_wasm_simd'
+        WasmFileName: 'ort-wasm'
+      'simd release':
+        BuildConfig: 'Release'
+        CmdParams: '--enable_wasm_simd --skip_tests --disable_wasm_exception_catching --disable_rtti'
+        WasmFileName: 'ort-wasm'
+      'simd threads debug':
+        BuildConfig: 'Debug'
+        CmdParams: '--enable_wasm_simd --enable_wasm_threads'
+        WasmFileName: 'ort-wasm-threaded'
+      'simd threads release':
+        BuildConfig: 'Release'
+        CmdParams: '--enable_wasm_simd --enable_wasm_threads --skip_tests --disable_wasm_exception_catching --disable_rtti'
+        WasmFileName: 'ort-wasm-threaded'
 
   variables:
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'

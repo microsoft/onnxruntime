@@ -192,9 +192,6 @@ This project is a library for running ONNX models on browsers. It is the success
         - ort-wasm.js
         - ort-wasm-threaded.js (build with flag '--enable_wasm_threads')
         - ort-wasm-threaded.worker.js (build with flag '--enable_wasm_threads')
-        - ort-wasm-simd.js (build with flag '--enable_wasm_simd')
-        - ort-wasm-simd-threaded.js (build with flags '--enable_wasm_threads' and '--enable_wasm_simd')
-        - ort-wasm-simd-threaded.worker.js (build with flags '--enable_wasm_threads' and '--enable_wasm_simd')
 
 3. Use following command in folder `<ORT_ROOT>/js/web` to build:
    ```
