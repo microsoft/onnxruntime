@@ -14,7 +14,7 @@ ARG OPENMPI_PATH=/opt/openmpi-${OPENMPI_VERSION}
 ARG COMMIT=master
 
 # cuda development image for building sources
-FROM nvidia/cuda:10.2-cudnn8-devel-ubuntu18.04 as builder
+FROM nvcr.io/nvidia/cuda:11.1.1-cudnn8-devel-ubuntu18.04 as builder
 
 # set location for builds
 WORKDIR /stage
@@ -157,7 +157,7 @@ RUN pip install azureml-defaults sentencepiece==0.1.92 transformers==2.11.0 msgp
 
 # switch to cuda runtime environment
 # note: launch with --gpus all or nvidia-docker
-FROM nvidia/cuda:10.2-cudnn8-runtime-ubuntu18.04
+FROM nvcr.io/nvidia/cuda:11.1.1-cudnn8-runtime-ubuntu18.04
 WORKDIR /stage
 
 # install ucx

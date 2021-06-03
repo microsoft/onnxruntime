@@ -5,7 +5,7 @@
 # Dockerfile to run ONNXRuntime with CUDA, CUDNN integration
 
 # nVidia cuda 10.2 Base Image
-FROM nvidia/cuda:10.2-cudnn8-devel
+FROM nvcr.io/nvidia/cuda:11.1.1-cudnn8-devel-ubuntu18.04
 MAINTAINER Changming Sun "chasun@microsoft.com"
 ADD . /code
 
@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3-dev ca-
 
 RUN cd /code && /bin/bash ./build.sh --skip_submodule_sync --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_cuda --config Release --build_wheel --update --build --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER) 'CMAKE_CUDA_ARCHITECTURES=30;37;50;52;60;70'
 
-FROM nvidia/cuda:10.2-cudnn8-runtime
+FROM nvcr.io/nvidia/cuda:11.1.1-cudnn8-runtime-ubuntu18.04
 COPY --from=0 /code/build/Linux/Release/dist /root
 COPY --from=0 /code/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt
 ENV DEBIAN_FRONTEND=noninteractive
