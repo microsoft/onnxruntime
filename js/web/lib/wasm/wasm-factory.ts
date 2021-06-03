@@ -86,7 +86,7 @@ export const initializeWebAssembly = async(): Promise<void> => {
     if (!useThreads) {
       config.locateFile = (fileName: string, scriptDirectory: string) => {
         if (useSimd && fileName === 'ort-wasm.wasm') {
-          fileName = 'ort-wasm-simd.wasm';
+          return scriptDirectory + 'ort-wasm-simd.wasm';
         }
         return scriptDirectory + fileName;
       };
@@ -109,7 +109,7 @@ export const initializeWebAssembly = async(): Promise<void> => {
           }
 
           if (useSimd && fileName === 'ort-wasm-threaded.wasm') {
-            fileName = 'ort-wasm-simd-threaded.wasm';
+            return scriptDirectory + 'ort-wasm-simd-threaded.wasm';
           }
           return scriptDirectory + fileName;
         };
@@ -151,7 +151,7 @@ export const dispose = (): void => {
   if (initialized && !initializing && !aborted) {
     initializing = true;
 
-    (wasm as OrtWasmThreadedModule).PThread ?.terminateAllThreads();
+    (wasm as OrtWasmThreadedModule).PThread?.terminateAllThreads();
 
     initializing = false;
     initialized = false;
