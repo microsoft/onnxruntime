@@ -888,16 +888,16 @@ var validCombos = {
         "npm install onnxruntime-web",
     
     "android,JS,ARM64,DefaultCPU":
-        "npm install onnxruntime-react-native",
+        "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/tree/master/js#onnxruntime-react-native' target='_blank'>here</a>",
     
     "android,JS,X64,DefaultCPU":
-        "npm install onnxruntime-react-native",
+        "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/tree/master/js#onnxruntime-react-native' target='_blank'>here</a>",
     
     "android,JS,X86,DefaultCPU":
-        "npm install onnxruntime-react-native",
+        "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/tree/master/js#onnxruntime-react-native' target='_blank'>here</a>",
     
     "ios,JS,ARM64,DefaultCPU":
-        "npm install onnxruntime-react-native",
+        "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/tree/master/js#onnxruntime-react-native' target='_blank'>here</a>",
     
     "windows,WinRT,X86,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
@@ -960,7 +960,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
     "android,Java,ARM64,NNAPI":
-        "Coming soon to Maven Central!",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle",
     
     "android,C-API,X86,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
@@ -969,7 +969,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
     "android,Java,X64,NNAPI":
-        "Coming soon to Maven Central!",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle",
     
     "android,C-API,X64,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
@@ -978,7 +978,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
     "android,Java,X86,NNAPI":
-        "Coming soon to Maven Central!",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle",
     
     "android,C-API,ARM32,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
@@ -987,7 +987,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
     "android,Java,ARM32,NNAPI":
-        "Coming soon to Maven Central!",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle",
     
     "android,C-API,ARM64,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
@@ -996,7 +996,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,Java,ARM64,DefaultCPU":
-        "Coming soon to Maven Central!",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle",
 
     "android,C-API,ARM32,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
@@ -1005,7 +1005,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,Java,ARM32,DefaultCPU":
-        "Coming soon to Maven Central!",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle",
 
     "android,C-API,X86,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
@@ -1014,7 +1014,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,Java,X86,DefaultCPU":
-        "Coming soon to Maven Central!",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle",
     
     "android,C-API,X64,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
@@ -1023,13 +1023,13 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,Java,X64,DefaultCPU":
-        "Coming soon to Maven Central!",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle",
 
     "ios,C-API,ARM64,DefaultCPU":
-        "Available soon through CocoaPods!",
+        "Add 'onnxruntime-mobile-c' using CocoaPods",
     
     "ios,C++,ARM64,DefaultCPU":
-        "Available soon through CocoaPods!",
+        "Add 'onnxruntime-mobile-c' using CocoaPods",
     
     "ios,C-API,ARM64,CoreML":
         "Follow build instructions from <a href='https://aka.ms/build-ort-ios' target='_blank'>here</a>",
@@ -1038,7 +1038,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-ios' target='_blank'>here</a>",
     
     "ios,objectivec,ARM64,DefaultCPU":
-        "Available soon through CocoaPods!",
+        "Add 'onnxruntime-mobile-c' using CocoaPods",
     
     "windows,Python,X86,VitisAI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
