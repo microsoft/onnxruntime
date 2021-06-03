@@ -37,8 +37,8 @@ The following build variants are available as officially supported packages. Oth
 |Java|CPU: [**com.microsoft.onnxruntime:onnxruntime**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime)|
 ||GPU: [**com.microsoft.onnxruntime:onnxruntime_gpu**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu)|
 |Android|[**com.microsoft.onnxruntime:onnxruntime-mobile**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime-mobile) ||
-|iOS (C/C++)|CocoaPods: `onnxruntime-mobile-c`||
-|Objective-C|CocoaPods: `onnxruntime-mobile-objc`||
+|iOS (C/C++)|CocoaPods: **onnxruntime-mobile-c**||
+|Objective-C|CocoaPods: **onnxruntime-mobile-objc**||
 |Node.js|[**onnxruntime-node**](https://www.npmjs.com/package/onnxruntime)|
 |Web|[**onnxruntime-web**](https://www.npmjs.com/package/onnxruntime-web)||
 
