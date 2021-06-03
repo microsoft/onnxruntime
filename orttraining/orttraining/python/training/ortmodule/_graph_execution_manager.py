@@ -282,7 +282,11 @@ class GraphExecutionManager(ABC):
         except RuntimeError as e:
             raise RuntimeError('There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
         exported_model = onnx.load_model_from_string(f.getvalue())
-
+        import subprocess
+        print("pengwa debugging tag, to remove!!!")
+        print(subprocess.getoutput("ls -l /opt/_internal/cpython-3.7.10/lib/"))
+        print(subprocess.getoutput("ls -l /opt/_internal/cpython-3.7.10/lib/x86_64-linux-gnu/"))
+        print(subprocess.getoutput("ls -l /opt/python/cp37-cp37m/lib/"))
         if self._enable_custom_autograd_function:
             exported_model = _post_process_after_export(exported_model)
 
