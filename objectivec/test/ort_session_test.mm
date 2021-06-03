@@ -196,6 +196,7 @@ NS_ASSUME_NONNULL_BEGIN
   NSError* err = nil;
   ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
   ORTCoreMLExecutionProviderOptions* coreMLOptions = [[ORTCoreMLExecutionProviderOptions alloc] init];
+  coreMLOptions.enableOnSubgraphs = YES;  // set an arbitrary option
 
   BOOL appendResult = [sessionOptions appendCoreMLExecutionProviderWithOptions:coreMLOptions
                                                                          error:&err];
