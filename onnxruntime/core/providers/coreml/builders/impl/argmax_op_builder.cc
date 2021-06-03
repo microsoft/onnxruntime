@@ -44,7 +44,6 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   // Get ArgMax's next node(Cast)'s outputdefs
   auto it = node.OutputEdgesBegin();
-  //const auto& graph_viewer = model_builder.GetGraphViewer();
   const auto* succ_node(graph_viewer.GetNode(it->GetNode().Index()));
 
   // Skip the cast's input/argmax's output
