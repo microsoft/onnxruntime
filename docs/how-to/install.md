@@ -25,16 +25,23 @@ The following build variants are available as officially supported packages. Oth
 2. GPU Provider - NVIDIA CUDA
 3. GPU Provider - [DirectML](../reference/execution-providers/DirectML-ExecutionProvider.md) (Windows) - *recommended for optimized performance and compatibility with a broad set of GPUs on Windows devices*
 
-|Repository|Official build|Nightly build|
+||Official build|Nightly build|
 |---|---|---|
 |Python|If using pip, run `pip install --upgrade pip` prior to downloading.||
 ||CPU: [**onnxruntime**](https://pypi.org/project/onnxruntime)| [ort-nightly (dev)](https://test.pypi.org/project/ort-nightly)|
 ||GPU: [**onnxruntime-gpu**](https://pypi.org/project/onnxruntime-gpu) | [ort-gpu-nightly (dev)](https://test.pypi.org/project/ort-gpu-nightly)|
 |C#/C/C++|CPU: [**Microsoft.ML.OnnxRuntime**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime) | [ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)|
-||GPU: [**Microsoft.ML.OnnxRuntime.Gpu**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu)|[ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)|
-|Java|CPU: [**com.microsoft.onnxruntime/onnxruntime**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime)|
-||GPU: [**com.microsoft.onnxruntime/onnxruntime_gpu**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu)|
-|nodejs|CPU: [**onnxruntime**](https://www.npmjs.com/package/onnxruntime)|
+||GPU - CUDA: [**Microsoft.ML.OnnxRuntime.Gpu**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu)|[ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)|
+||GPU - DirectML: [**Microsoft.ML.OnnxRuntime.DirectML**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML)|[ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)|
+|WinML|[**Microsoft.AI.MachineLearning**](https://www.nuget.org/packages/Microsoft.AI.MachineLearning)||
+|Java|CPU: [**com.microsoft.onnxruntime:onnxruntime**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime)|
+||GPU: [**com.microsoft.onnxruntime:onnxruntime_gpu**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu)|
+|Android|[**com.microsoft.onnxruntime:onnxruntime-mobile**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime-mobile) ||
+|iOS (C/C++)|CocoaPods: `onnxruntime-mobile-c`||
+|Objective-C|CocoaPods: `onnxruntime-mobile-objc`||
+|Node.js|[**onnxruntime-node**](https://www.npmjs.com/package/onnxruntime)|
+|Web|[**onnxruntime-web**](https://www.npmjs.com/package/onnxruntime-web)||
+
 
 
 *Note: Dev builds created from the master branch are available for testing newer changes between official releases. Please use these at your own risk. We strongly advise against deploying these to production workloads as support is limited for dev builds.*
@@ -51,4 +58,8 @@ by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
 
 
 ## Training
-*COMING SOON*
+||Official build|Nightly build|
+|---|---|---|
+|PyTorch (CUDA 10.2)|[**onnxruntime-training**](https://pypi.org/project/onnxruntime-training)|[onnxruntime_nightly_cu102](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_cu102.html)|
+|PyTorch (CUDA 11.1)|[**onnxruntime_stable_cu111**](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_cu111.html)|[onnxruntime_nightly_cu111](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_cu111.html)|
+|[*Preview*] PyTorch (ROCm 4.2)|[**onnxruntime_stable_rocm42**](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_rocm42.html)|[onnxruntime_nightly_rocm42](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_rocm42.html)|
