@@ -102,7 +102,7 @@ def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     logger.info(result)
     return result
 
-def get_latency_result(runtimes, batch_size, mem_mb=None):
+def get_latency_result(runtimes, batch_size):
     latency_ms = sum(runtimes) / float(len(runtimes)) * 1000.0
     latency_variance = numpy.var(runtimes, dtype=numpy.float64) * 1000.0
     throughput = batch_size * (1000.0 / latency_ms)
@@ -116,8 +116,6 @@ def get_latency_result(runtimes, batch_size, mem_mb=None):
         "average_latency_ms": "{:.2f}".format(latency_ms),
         "QPS": "{:.2f}".format(throughput),
     }
-    if mem_mb:
-        result.update({"memory":mem_mb})
     return result
 
 
@@ -172,7 +170,6 @@ def get_trtexec_pid(df, python_pid):
 def get_max_memory(trtexec): 
     df = pd.read_csv(MEMORY_FILE)
     pid = df['pid'].iloc[0]
-    
     if trtexec: 
         pid = get_trtexec_pid(df, pid) 
     
@@ -181,14 +178,19 @@ def get_max_memory(trtexec):
     return max_mem
 
 def start_memory_tracking(): 
+    logger.info("starting memory tracking process")
     p = subprocess.Popen(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv", "-l", "1", "-f", MEMORY_FILE])
     return p
 
-def end_memory_tracking(p, trtexec): 
+def end_memory_tracking(p, trtexec, success): 
+    logger.info("terminating memory tracking process")
     p.terminate()
     p.wait()
-    mem_usage = get_max_memory(trtexec) 
-    os.remove(MEMORY_FILE)
+    mem_usage = None
+    if success:
+        mem_usage = get_max_memory(trtexec) 
+    if os.path.exists(MEMORY_FILE):
+        os.remove(MEMORY_FILE)
     return mem_usage
 
 def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_times, batch_size):
@@ -209,21 +211,11 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
 
         p = None # keep track of process to kill upon error
         try:
-            if args.track_memory and track_ep_memory(ep): 
-
-                p = start_memory_tracking()            
-                runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
-                mem_usage = end_memory_tracking(p, False)
-            else: 
-                runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
-
+            runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
             runtimes += runtime[1:] # remove warmup
-
+        
         except Exception as e:
             logger.error(e)
-            if args.track_memory: 
-                logger.info("terminating memory tracking for process {}".format(p))
-                p.kill()
             return None
 
     logger.info(runtimes)
@@ -231,9 +223,8 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
     result = {}
     result.update(result_template)
     result.update({"io_binding": False})
-    latency_result = get_latency_result(runtimes, batch_size, mem_usage)
+    latency_result = get_latency_result(runtimes, batch_size)
     result.update(latency_result)
-    logger.info(result)
     return result
 
 def inference_ort_and_get_prediction(name, session, ort_inputs):
@@ -971,30 +962,29 @@ def run_onnxruntime(args, models):
                     update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
                     continue
                 
+                # memory tracking variables 
+                p = None # keep track of process to kill upon error
+                mem_usage = None
+         
                 # get standalone TensorRT perf
-                if standalone_trt in ep and args.trtexec:
-                    p = None # keep track of process to kill upon error
+                if standalone_trt in ep and args.trtexec: 
+                    trtexec = True 
                     try: 
                         if args.track_memory: 
                             p = start_memory_tracking()            
                             result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
-                            mem_usage = end_memory_tracking(p, True)
-                            if result and mem_usage: 
-                                result["memory"] = mem_usage
-
+                            mem_usage = end_memory_tracking(p, trtexec, True)
                         else: 
                             result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
                     except Exception as e: 
                         logger.error(e)
-                        update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
                         if args.track_memory:
-                            logger.info("terminating memory tracking for process {}".format(p))
-                            p.kill()
+                            end_memory_tracking(p, trtexec, False)
+                        update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
                         continue
 
-                # inference with ort ep
-                else:
-                        
+                # inference with onnxruntime ep
+                else:         
                     logger.info("start to inference {} with {} ...".format(name, ep))
                     logger.info(sess.get_providers())
 
@@ -1018,23 +1008,28 @@ def run_onnxruntime(args, models):
                         "batch_size": batch_size,
                         "sequence_length": 1,
                         "datetime": str(datetime.now()),}
-                        
-                    result = inference_ort(args, name, sess, ep, inputs, result_template, args.test_times, batch_size)
-                
+                     
+                    if args.track_memory and track_ep_memory(ep): 
+                        trtexec = False
+                        p = start_memory_tracking()            
+                        result = inference_ort(args, name, sess, ep, inputs, result_template, args.test_times, batch_size)
+                        success = True if result else False
+                        mem_usage = end_memory_tracking(p, trtexec, success)
+                    else: 
+                        result = inference_ort(args, name, sess, ep, inputs, result_template, args.test_times, batch_size)
                 if result:
-
+                    logger.info(result)
                     latency_result[ep] = {}
                     latency_result[ep]["average_latency_ms"] = result["average_latency_ms"]
                     latency_result[ep]["latency_90_percentile"] = result["latency_90_percentile"]
-                    if "memory" in result: 
-                        mem_usage = result.pop("memory")
+                    if mem_usage: 
                         latency_result[ep]["memory"] = mem_usage
+                    logger.info(result)
 
                     if not args.trtexec: # skip standalone
                         success_results.append(result)
 
                     model_to_latency[name] = copy.deepcopy(latency_result)
-
                 logger.info("---------------------------- benchmark [end] ----------------------------------\n")
 
 
@@ -1050,7 +1045,6 @@ def run_onnxruntime(args, models):
                 # create onnxruntime inference session
                 try:
                     sess = create_session(model_path, ep_to_provider_list[ep], options)
-
                 except Exception as e:
                     logger.error(e)
                     update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
