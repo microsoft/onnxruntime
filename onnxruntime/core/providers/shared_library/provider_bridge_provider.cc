@@ -478,6 +478,7 @@ Status Group::Compute(OpKernelContext* context) const { return g_host->contrib__
 Status PassThrough::Compute(OpKernelContext* context) const { return g_host->contrib__PassThrough__Compute(this, context); }
 Status YieldOp::Compute(OpKernelContext* context) const { return g_host->contrib__YieldOp__Compute(this, context); }
 void PythonOpBase::Init(const OpKernelInfo& info) { return g_host->contrib__PythonOpBase__Init(this, info); }
+void PythonOpBase::Clear() { return g_host->contrib__PythonOpBase__Clear(this); }
 void PythonOpBase::RunForward(OpKernelContext* context, void** diff_ctx, std::vector<OrtValue>& returned_ortvalues) const {
   return g_host->contrib__PythonOpBase__RunForward(this, context, diff_ctx, returned_ortvalues);
 }

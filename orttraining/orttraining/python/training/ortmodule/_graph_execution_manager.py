@@ -257,12 +257,6 @@ class GraphExecutionManager(ABC):
 
         # Todo: get the flag once wechi provided in later changes.
 
-        # Use torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH to allow custom autograd.Functions'
-        # s.t. PythonOp can be exported.
-        # Use torch.onnx.OperatorExportTypes.ONNX if pure ONNX (no PythonOp) is needed.
-        operator_export_type = torch.onnx.OperatorExportTypes.ONNX
-        if self._enable_custom_autograd_function:
-            operator_export_type = torch.onnx.OperatorExportTypes.ONNX_FALLTHROUGH
         try:
             with torch.set_grad_enabled(self._enable_custom_autograd_function), \
                     _logger.suppress_os_stream_output(log_level=self._loglevel):
@@ -277,8 +271,7 @@ class GraphExecutionManager(ABC):
                                   dynamic_axes=self._input_info.dynamic_axes,
                                   verbose=self._loglevel < _logger.LogLevel.WARNING,
                                   export_params=False,
-                                  keep_initializers_as_inputs=True,
-                                  operator_export_type=operator_export_type)
+                                  keep_initializers_as_inputs=True)
         except RuntimeError as e:
             raise RuntimeError('There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
         exported_model = onnx.load_model_from_string(f.getvalue())
