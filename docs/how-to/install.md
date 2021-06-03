@@ -34,7 +34,8 @@ The following build variants are available as officially supported packages. Oth
 ||GPU: [**Microsoft.ML.OnnxRuntime.Gpu**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu)|[ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)|
 |Java|CPU: [**com.microsoft.onnxruntime/onnxruntime**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime)|
 ||GPU: [**com.microsoft.onnxruntime/onnxruntime_gpu**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu)|
-|nodejs|CPU: [**onnxruntime**](https://www.npmjs.com/package/onnxruntime)|
+|Node.js|[**onnxruntime-node**](https://www.npmjs.com/package/onnxruntime-node)|
+|Web|[**onnxruntime-web**](https://www.npmjs.com/package/onnxruntime-web)|
 
 
 *Note: Dev builds created from the master branch are available for testing newer changes between official releases. Please use these at your own risk. We strongly advise against deploying these to production workloads as support is limited for dev builds.*
