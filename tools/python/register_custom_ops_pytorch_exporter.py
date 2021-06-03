@@ -66,6 +66,20 @@ def register_custom_op(is_ortmodule=False):
 
         register_custom_op_symbolic('::max_pool2d', max_pool2d, _onnx_opset_version)
 
+        @parse_args('v', 'i', 'i', 'i')
+        def unfold(g, input, dimension, size, step):
+            custom_attributes_json = (
+                '{'
+                f'"dimension":{str(dimension)},'
+                f'"size":{str(size)},'
+                f'"step":{str(step)}'
+                '}'
+            )
+            return g.op("com.microsoft::ATenOp", input, name_s='aten::unfold',
+                        custom_attributes_json_s=custom_attributes_json)
+
+        register_custom_op_symbolic('::unfold', unfold, _onnx_opset_version)
+
 
 def unregister_custom_op():
     """

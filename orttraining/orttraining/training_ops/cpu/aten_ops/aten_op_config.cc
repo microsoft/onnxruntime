@@ -21,7 +21,10 @@ static const std::vector<std::pair<std::string, std::string>> ATEN_FUNCS = {
     {"aten::max_pool2d_with_indices(Tensor<T> self, int[] kernel_size, int[] stride, int[] padding=[0,0], int[] "
      "dilation=[1,1], bool ceil_mode=False) -> (Tensor<T> output, Tensor<int64> indices)",
      "aten::max_pool2d_with_indices_backward(Tensor<T> grad_output, Tensor<T> self, int[] kernel_size, int[] stride, "
-     "int[] padding=[0,0], int[] dilation=[1,1], bool ceil_mode=False, Tensor<int64> indices) -> Tensor<T> grad_self"}};
+     "int[] padding=[0,0], int[] dilation=[1,1], bool ceil_mode=False, Tensor<int64> indices) -> Tensor<T> grad_self"},
+    {"aten::unfold(Tensor<T> self, int dimension, int size, int step) -> Tensor<T> output",
+     "aten::unfold_backward(Tensor<T> grad_output, Tensor<T> self, int dimension, int size, int step) -> Tensor<T> "
+     "grad_self"}};
 
 const std::regex regex_expr_whole("([a-z0-9:_]+)\\(([A-Za-z0-9_ ,.=+-\\[\\]<>]+)\\) -> \\(?([A-Za-z0-9_ ,<>]+)\\)?");
 const std::regex regex_expr_argument(

@@ -8,6 +8,7 @@ import onnx
 import sys
 from onnx import helper, numpy_helper, shape_inference
 import sympy
+import json
 
 from packaging import version
 assert version.parse(onnx.__version__) >= version.parse("1.5.0")
@@ -152,7 +153,8 @@ class SymbolicShapeInference:
         }
         self.aten_op_dispatcher_ = {
             'aten::embedding': self._infer_Gather,
-            'aten::max_pool2d_with_indices': self._infer_MaxPool2d,
+            'aten::max_pool2d_with_indices': self._infer_aten_max_pool2d,
+            'aten::unfold': self._infer_aten_unfold,
         }
         self.run_ = True
         self.suggested_merge_ = {}
@@ -883,7 +885,7 @@ class SymbolicShapeInference:
                 helper.make_tensor_value_info(o, vi.type.tensor_type.elem_type,
                                               get_shape_from_sympy_shape(sympy_shape)))
 
-    def _infer_MaxPool2d(self, node):
+    def _infer_aten_max_pool2d(self, node):
         sympy_shape = self._get_sympy_shape(node, 0)
         assert len(sympy_shape) == 4
         sympy_shape[-2:] = [self._new_symbolic_dim_from_output(node, 0, i) for i in [2, 3]]
@@ -895,6 +897,22 @@ class SymbolicShapeInference:
             elem_type = onnx.TensorProto.INT64 if i == 1 else self.known_vi_[node.input[0]].type.tensor_type.elem_type
             vi.CopyFrom(
                 helper.make_tensor_value_info(o, elem_type,
+                                              get_shape_from_sympy_shape(sympy_shape)))
+
+    def _infer_aten_unfold(self, node):
+        attr_values = json.loads(get_attribute(node, 'custom_attributes_json'))
+        dimension = attr_values['dimension']
+        size = attr_values['size']
+        step = attr_values['step']
+        sympy_shape = self._get_sympy_shape(node, 0)
+        assert dimension < len(sympy_shape)
+        sympy_shape[dimension] = (sympy_shape[dimension] - size) // step + 1
+        sympy_shape.append(size)
+        self._update_computed_dims(sympy_shape)
+        if node.output[0]:
+            vi = self.known_vi_[node.output[0]]
+            vi.CopyFrom(
+                helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
                                               get_shape_from_sympy_shape(sympy_shape)))
 
     def _infer_BatchNormalization(self, node):
@@ -942,7 +960,6 @@ class SymbolicShapeInference:
                 helper.make_tensor_value_info(node.output[0], vi.type.tensor_type.elem_type,
                                               get_shape_from_sympy_shape(self._new_symbolic_shape(shape_rank, node))))
         else:
-            input_shape = self._get_shape(node, 0)
             input_sympy_shape = self._get_sympy_shape(node, 0)
             total = int(1)
             for d in input_sympy_shape:
@@ -967,8 +984,8 @@ class SymbolicShapeInference:
             if -1 in new_sympy_shape:
                 new_dim = total // non_deferred_size
                 new_sympy_shape[deferred_dim_idx] = new_dim
-                self._update_computed_dims(new_sympy_shape)
 
+            self._update_computed_dims(new_sympy_shape)
             vi.CopyFrom(
                 helper.make_tensor_value_info(node.output[0], vi.type.tensor_type.elem_type,
                                               get_shape_from_sympy_shape(new_sympy_shape)))
