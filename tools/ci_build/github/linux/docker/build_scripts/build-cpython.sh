@@ -33,12 +33,11 @@ tar -xzf Python-${CPYTHON_VERSION}.tgz
 pushd Python-${CPYTHON_VERSION}
 PREFIX="/opt/_internal/cpython-${CPYTHON_VERSION}"
 mkdir -p ${PREFIX}/lib
-# configure with hardening options only for the interpreter & stdlib C extensions
-# do not change the default for user built extension (yet?)
+# configure with hardening options only for the interpreter & stdlib C extensions && user built extension
 ./configure \
 	CFLAGS_NODIST="${MANYLINUX_CFLAGS} ${MANYLINUX_CPPFLAGS}" \
 	LDFLAGS_NODIST="${MANYLINUX_LDFLAGS}" \
-	--prefix=${PREFIX} --disable-shared --with-ensurepip=no > /dev/null
+	--prefix=${PREFIX} --enable-shared --with-ensurepip=no > /dev/null
 make -j$(nproc) > /dev/null
 make install > /dev/null
 popd

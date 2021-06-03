@@ -21,7 +21,10 @@ fi
 
 yum install -y java-11-openjdk-devel
 
-yum install -y ccache gcc gcc-c++ python3 python3-devel python3-pip
+# If the /opt/python folder exists, we assume this is the manylinux docker image
+if [ ! -d "/opt/python/cp37-cp37m" ]; then
+  yum install -y ccache gcc gcc-c++ python3 python3-devel python3-pip
+fi
 
 # install automatic documentation generation dependencies
 yum install -y graphviz
