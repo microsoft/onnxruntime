@@ -13,6 +13,8 @@ namespace onnxruntime {
 struct VitisAIExecutionProviderInfo {
   int device_id{0};
   std::string backend_type;
+  std::string export_runtime_module;
+  std::string load_runtime_module;
 };
 
 // Logical device representation.
@@ -31,8 +33,16 @@ class VitisAIExecutionProvider : public IExecutionProvider {
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
  private:
-  std::string backend_type_; 
+  // The Vitis AI DPU target
+  std::string backend_type_;
+  // Device ID (Unused for now)
   int device_id_;
+  // If not empty, the path to the file where the PyXIR runtime module
+  //	should be exported to (used for cross compilation)
+  std::string export_runtime_module_;
+  // If not empty, the path to the file where the PyXIR runtime module
+  //	should be loaded from
+  std::string load_runtime_module_;
 };
 
 }  // namespace onnxruntime
