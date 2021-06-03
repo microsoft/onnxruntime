@@ -42,14 +42,6 @@ void WinMLTelemetryHelper::LogWinMLShutDown() {
       TraceLoggingString(message.c_str(), "message"));
 }
 
-void WinMLTelemetryHelper::LogWinMLSuspended() {
-  WinMLTraceLoggingWrite(
-      provider_,
-      "WinMLSuspended",
-      TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
-      TraceLoggingInt32(runtime_session_id_, "runtimeSessionId"));
-}
-
 void WinMLTelemetryHelper::LogRuntimeError(HRESULT hr, PCSTR message, PCSTR file, PCSTR function, int line) {
   if (!telemetry_enabled_)
     return;

@@ -7,8 +7,6 @@
 #include "core/platform/windows/TraceLoggingConfig.h"
 #include <evntrace.h>
 #include <windows.h>
-#include <winrt/Windows.ApplicationModel.h>
-#include <winrt/Windows.ApplicationModel.Core.h>
 
 using namespace _winml;
 
@@ -190,18 +188,6 @@ static void __stdcall WinmlOrtProfileEventCallback(const OrtProfilerEventRecord*
   }
 }
 
-static void OnSuspending(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::ApplicationModel::SuspendingEventArgs const& args) {
-  telemetry_helper.LogWinMLSuspended();
-}
-
-void OnnxruntimeEnvironment::RegisterSuspendHandler() {
-  try {
-    auto suspend_event_handler = winrt::Windows::Foundation::EventHandler<winrt::Windows::ApplicationModel::SuspendingEventArgs>(&OnSuspending);
-    suspend_token_ = winrt::Windows::ApplicationModel::Core::CoreApplication::Suspending(suspend_event_handler);
-  } catch (...) {
-  }  //Catch in case CoreApplication cannot be found for non-UWP executions
-}
-
 OnnxruntimeEnvironment::OnnxruntimeEnvironment(const OrtApi* ort_api) : ort_env_(nullptr, nullptr) {
   OrtEnv* ort_env = nullptr;
   THROW_IF_NOT_OK_MSG(ort_api->CreateEnv(OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE, "Default", &ort_env),
@@ -216,15 +202,6 @@ OnnxruntimeEnvironment::OnnxruntimeEnvironment(const OrtApi* ort_api) : ort_env_
                       ort_api);
 
   THROW_IF_NOT_OK_MSG(winml_adapter_api->OverrideSchema(), ort_api);
-
-  // Register suspend handler for UWP applications
-  RegisterSuspendHandler();
-}
-
-OnnxruntimeEnvironment::~OnnxruntimeEnvironment() {
-  if (suspend_token_) {
-    winrt::Windows::ApplicationModel::Core::CoreApplication::Suspending(suspend_token_);
-  }
 }
 
 HRESULT OnnxruntimeEnvironment::GetOrtEnvironment(_Out_ OrtEnv** ort_env) {

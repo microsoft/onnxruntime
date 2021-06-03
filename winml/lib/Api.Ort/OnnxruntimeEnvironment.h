@@ -11,16 +11,11 @@ namespace _winml {
 class OnnxruntimeEnvironment {
  public:
   OnnxruntimeEnvironment(const OrtApi* ort_api);
-  ~OnnxruntimeEnvironment();
   HRESULT GetOrtEnvironment(_Out_ OrtEnv** ert_env);
   HRESULT EnableDebugOutput(bool is_enabled);
 
  private:
-  void RegisterSuspendHandler();
-
- private:
   UniqueOrtEnv ort_env_;
-  winrt::event_token suspend_token_;
 };
 
 const OrtApi* GetVersionedOrtApi();
