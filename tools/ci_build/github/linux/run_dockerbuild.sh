@@ -98,6 +98,7 @@ elif [ $BUILD_DEVICE = "openvino" ]; then
             --dockerfile $DOCKER_FILE --context .
 else
         IMAGE="$BUILD_OS"
+		IMAGE_OS_VERSION=""
 		if [ $BUILD_OS = "ubuntu18.04" ]; then
 		   IMAGE_OS_VERSION = "18.04"
 		   PYTHON_VER  = "3.6"
