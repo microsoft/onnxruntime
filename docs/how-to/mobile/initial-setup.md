@@ -32,18 +32,18 @@ In your Android Studio Project, make the following changes to:
 2. build.gradle (Module):
     ```
     dependencies {
-        compile 'com.microsoft.onnxruntime:onnxruntime-mobile:1.8.0'
+        implementation 'com.microsoft.onnxruntime:onnxruntime-mobile:<onnxruntime mobile version>'
     }
     ```
 
-##### C/C++ 
+##### C/C++
 
-Download the onnxruntime-mobile AAR hosted at MavenCentral, change the file extension from `.aar` to `.zip`, and unzip it. Include the header files from the `headers` folder, and the relevant `libonnxruntime.so` dynamic library from the `jni` folder in your NDK project.
+Download the onnxruntime-mobile AAR hosted at [MavenCentral](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile), change the file extension from `.aar` to `.zip`, and unzip it. Include the header files from the `headers` folder, and the relevant `libonnxruntime.so` dynamic library from the `jni` folder in your NDK project.
 
 
 ### iOS
 
-In your CocoaPods `Podfile`, add the `onnxruntime-mobile` or `onnxruntime-mobile-objc` pod depending on which API you wish to use. 
+In your CocoaPods `Podfile`, add the `onnxruntime-mobile-c` or `onnxruntime-mobile-objc` pod depending on which API you wish to use.
 
 Run `pod install`.
 
@@ -52,7 +52,7 @@ Run `pod install`.
   ```
   use_frameworks!
 
-  pod 'onnxruntime-mobile'
+  pod 'onnxruntime-mobile-c'
   ```
 
 ##### Objective-C
@@ -77,9 +77,9 @@ Version v1.8 or higher is required.
 Use git to clone the ONNX Runtime repository
   - `git clone --recursive https://github.com/Microsoft/onnxruntime`
     - this will create an 'onnxruntime' directory with the repository contents
-  - See the [Build for inferencing](../build/inferencing) documentation for further details on supported environments. Ignore the build instructions on that page as they are for a full build and we will cover the mobile build instructions here. 
+  - See the [Build for inferencing](../build/inferencing) documentation for further details on supported environments. Ignore the build instructions on that page as they are for a full build and we will cover the mobile build instructions here.
 
-Select the branch you wish to use. The latest release is recommended. 
+Select the branch you wish to use. The latest release is recommended.
   - `git checkout <branch>`
     - e.g. `git checkout rel-1.8.0`
 
@@ -87,7 +87,7 @@ It is suggested you do not use the unreleased 'master' branch unless there is a 
 
 | Release | Date | Branch |
 |---------|--------|
-| 1.8 | 2021-??-?? | rel-1.8.0 |
+| 1.8 | 2021-06-02 | rel-1.8.0 |
 | 1.7 | 2021-03-03 | rel-1.7.2 |
 | 1.6 | 2020-12-11 | rel-1.6.0 |
 | 1.5 | 2020-10-30 | rel-1.5.3 |
@@ -102,7 +102,7 @@ Install the onnxruntime python package from [https://pypi.org/project/onnxruntim
 - `pip install onnxruntime` will install the latest release
 
 You must match the python package version to the branch of the ONNX Runtime repository you checked out
-  - e.g. if you wanted to use the 1.7 release 
+  - e.g. if you wanted to use the 1.7 release
     - `git checkout rel-1.7.2` in your local git repository
     - `pip install onnxruntime==1.7.2`
 
