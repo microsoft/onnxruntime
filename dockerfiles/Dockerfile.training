@@ -149,7 +149,7 @@ RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
         --build_dir build \
         --build \
         --build_wheel \
-        --skip_tests &&\
+        --skip_tests --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=35;37;50;52;60;61;70;75;80;86' &&\
     pip install build/${BUILD_CONFIG}/dist/*.whl
 
 # Install AzureML support and commonly used packages.
