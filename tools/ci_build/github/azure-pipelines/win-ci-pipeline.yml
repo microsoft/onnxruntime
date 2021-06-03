@@ -14,7 +14,7 @@ jobs:
         UseOmp: '--use_openmp'
         EnvSetupScript: setup_env.bat
         buildArch: x64
-        additionalBuildFlags: --use_dnnl --build_java --build_nodejs --gen_doc
+        additionalBuildFlags: --use_dnnl --build_java --build_nodejs
         msbuildPlatform: x64
         isX86: false
       x64_release:
@@ -22,7 +22,7 @@ jobs:
         UseOmp: ''
         EnvSetupScript: setup_env.bat
         buildArch: x64
-        additionalBuildFlags: --use_dnnl --build_java --build_nodejs --gen_doc
+        additionalBuildFlags: --use_dnnl --build_java --build_nodejs
         msbuildPlatform: x64
         isX86: false
       x86_release:

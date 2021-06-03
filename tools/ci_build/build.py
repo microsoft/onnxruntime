@@ -149,8 +149,7 @@ def parse_arguments():
         help="Use parallel build. The optional value specifies the maximum number of parallel jobs. "
              "If the optional value is 0 or unspecified, it is interpreted as the number of CPUs.")
     parser.add_argument("--test", action='store_true', help="Run unit tests.")
-    parser.add_argument(
-        "--skip_tests", action='store_true', help="Skip all tests.")
+    parser.add_argument("--skip_tests", action='store_true', help="Skip all tests.")
 
     # Training options
     parser.add_argument(
@@ -184,9 +183,10 @@ def parse_arguments():
         available test data directories.""")
 
     # generate documentation
-    parser.add_argument(
-        "--gen_doc", action='store_true',
-        help="Generate documentation on contrib ops")
+    parser.add_argument("--gen_doc", nargs='?', const='yes', type=str,
+                        help="Generate documentation listing standard ONNX operators and types implemented by "
+                             "various execution providers and contrib operator schemas. "
+                             "Use `--gen_doc validate` to validate these match the current contents in /docs.")
 
     parser.add_argument(
         "--gen-api-doc", action='store_true',
@@ -336,6 +336,7 @@ def parse_arguments():
 
     # WebAssembly build
     parser.add_argument("--build_wasm", action='store_true', help="Build for WebAssembly")
+    parser.add_argument("--enable_wasm_simd", action='store_true', help="Enable WebAssembly SIMD")
     parser.add_argument(
         "--disable_wasm_exception_catching", action='store_true',
         help="Disable exception catching in WebAssembly.")
@@ -411,15 +412,11 @@ def parse_arguments():
         "--use_full_protobuf", action='store_true',
         help="Use the full protobuf library")
 
-    parser.add_argument(
-        "--skip_onnx_tests", action='store_true', help="Explicitly disable "
-        "all onnx related tests. Note: Use --skip_tests to skip all tests.")
-    parser.add_argument(
-        "--skip_winml_tests", action='store_true',
-        help="Explicitly disable all WinML related tests")
-    parser.add_argument(
-        "--skip_nodejs_tests", action='store_true',
-        help="Explicitly disable all Node.js binding tests")
+    parser.add_argument("--skip_onnx_tests", action='store_true',
+                        help="Explicitly disable all onnx related tests. Note: Use --skip_tests to skip all tests.")
+    parser.add_argument("--skip_winml_tests", action='store_true', help="Explicitly disable all WinML related tests")
+    parser.add_argument("--skip_nodejs_tests", action='store_true', help="Explicitly disable all Node.js binding tests")
+
     parser.add_argument(
         "--enable_msvc_static_runtime", action='store_true',
         help="Enable static linking of MSVC runtimes.")
@@ -740,6 +737,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
         "-Donnxruntime_BUILD_WEBASSEMBLY=" + ("ON" if args.build_wasm else "OFF"),
+        "-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING=" + ("OFF" if args.disable_wasm_exception_catching
                                                                   else "ON"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
@@ -1255,16 +1253,20 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
 
 
 def run_ios_tests(args, source_dir, config, cwd):
-    cpr = run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
-                          "-configuration", config,
-                          "-scheme",  "onnxruntime_test_all_xc", "-destination",
-                          "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
-    if cpr.returncode == 0:
-        cpr = run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
-                              "-configuration", config,
-                              "-scheme",  "onnxruntime_shared_lib_test_xc", "-destination",
-                              "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
-    cpr.check_returncode()
+    run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
+                    "-configuration", config,
+                    "-scheme",  "onnxruntime_test_all_xc", "-destination",
+                    "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
+
+    run_subprocess(["xcodebuild", "test-without-building", "-project", "./onnxruntime.xcodeproj",
+                    "-configuration", config,
+                    "-scheme",  "onnxruntime_shared_lib_test_xc", "-destination",
+                    "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)"], cwd=cwd)
+
+    if args.build_apple_framework:
+        package_test_py = os.path.join(source_dir, 'tools', 'ci_build', 'github', 'apple', 'test_ios_packages.py')
+        framework_dir = os.path.join(cwd, config + '-' + args.ios_sysroot)
+        run_subprocess([sys.executable, package_test_py, '--c_framework_dir', framework_dir], cwd=cwd)
 
 
 def run_orttraining_test_orttrainer_frontend_separately(cwd):
@@ -1536,7 +1538,8 @@ def run_nodejs_tests(nodejs_binding_dir):
 def build_python_wheel(
         source_dir, build_dir, configs, use_cuda, cuda_version, use_rocm, rocm_version, use_dnnl,
         use_tensorrt, use_openvino, use_nuphar, use_vitisai, use_acl, use_armnn, use_dml,
-        wheel_name_suffix, enable_training, nightly_build=False, featurizers_build=False, use_ninja=False):
+        wheel_name_suffix, enable_training, nightly_build=False, default_training_package_device=False,
+        featurizers_build=False, use_ninja=False):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
         if is_windows() and not use_ninja:
@@ -1558,6 +1561,8 @@ def build_python_wheel(
         # Any combination of the following arguments can be applied
         if nightly_build:
             args.append('--nightly_build')
+        if default_training_package_device:
+            args.append('--default_training_package_device')
         if featurizers_build:
             args.append("--use_featurizers")
         if wheel_name_suffix:
@@ -1761,52 +1766,49 @@ def build_protoc_for_host(cmake_path, source_dir, build_dir, args):
     return expected_protoc_path
 
 
-def generate_documentation(source_dir, build_dir, configs):
+def generate_documentation(source_dir, build_dir, configs, validate):
     # Randomly choose one build config
     config = next(iter(configs))
     cwd = get_config_build_dir(build_dir, config)
     if is_windows():
         cwd = os.path.join(cwd, config)
-    operator_doc_path = os.path.join(source_dir, 'docs', 'ContribOperators.md')
-    opkernel_doc_path = os.path.join(source_dir, 'docs', 'OperatorKernels.md')
-    shutil.copy(
-        os.path.join(source_dir, 'tools', 'python', 'gen_contrib_doc.py'), cwd)
-    shutil.copy(
-         os.path.join(source_dir, 'tools', 'python', 'gen_opkernel_doc.py'),
-         cwd)
-    run_subprocess(
-        [sys.executable,
-         'gen_contrib_doc.py',
-         '--output_path', operator_doc_path], cwd=cwd)
-    run_subprocess(
-        [sys.executable,
-         'gen_opkernel_doc.py',
-         '--output_path', opkernel_doc_path], cwd=cwd)
-    docdiff = ''
-    try:
-        docdiff = subprocess.check_output(['git', 'diff', opkernel_doc_path], cwd=source_dir)
-    except subprocess.CalledProcessError:
-        print('git diff returned non-zero error code')
-    if len(docdiff) > 0:
-        # Show warning instead of throwing exception, because it is
-        # dependent on build configuration for including
-        # execution propviders
-        log.warning(
-            'The updated opkernel document file ' + str(opkernel_doc_path) +
-            ' is different from the checked in version. Consider '
-            'regenerating the file with CPU, DNNL and CUDA providers enabled.')
-        log.debug('diff:\n' + str(docdiff))
 
-    docdiff = ''
-    try:
-        docdiff = subprocess.check_output(['git', 'diff', operator_doc_path], cwd=source_dir)
-    except subprocess.CalledProcessError:
-        print('git diff returned non-zero error code')
-    if len(docdiff) > 0:
-        raise BuildError(
-            'The updated operator document file ' +
-            str(operator_doc_path) + ' must be checked in.\n diff:\n' +
-            str(docdiff))
+    contrib_op_doc_path = os.path.join(source_dir, 'docs', 'ContribOperators.md')
+    opkernel_doc_path = os.path.join(source_dir, 'docs', 'OperatorKernels.md')
+    shutil.copy(os.path.join(source_dir, 'tools', 'python', 'gen_contrib_doc.py'), cwd)
+    shutil.copy(os.path.join(source_dir, 'tools', 'python', 'gen_opkernel_doc.py'), cwd)
+    # limit to just com.microsoft (excludes purely internal stuff like com.microsoft.nchwc).
+    run_subprocess([sys.executable, 'gen_contrib_doc.py', '--output_path', contrib_op_doc_path,
+                   '--domains', 'com.microsoft'], cwd=cwd)
+    # we currently limit the documentation created by a build to the CPU and CUDA EPs.
+    # Run get_opkernel_doc.py directly if you need/want documentation from other EPs that are enabled in the build.
+    run_subprocess([sys.executable, 'gen_opkernel_doc.py', '--output_path', opkernel_doc_path,
+                    '--providers', 'CPU', 'CUDA'], cwd=cwd)
+
+    if validate:
+        try:
+            have_diff = False
+
+            def diff_file(path, regenerate_qualifiers=''):
+                diff = subprocess.check_output(['git', 'diff', path], cwd=source_dir)
+                if diff:
+                    nonlocal have_diff
+                    have_diff = True
+                    log.warning('The updated document {} is different from the checked in version. '
+                                'Please regenerate the file{}, or copy the updated version from the '
+                                'CI build\'s published artifacts if applicable.'.format(path, regenerate_qualifiers))
+                    log.debug('diff:\n' + str(diff))
+
+            diff_file(opkernel_doc_path, ' with CPU and CUDA execution providers enabled')
+            diff_file(contrib_op_doc_path)
+
+            if have_diff:
+                # Output for the CI to publish the updated md files as an artifact
+                print('##vso[task.setvariable variable=DocUpdateNeeded]true')
+                raise BuildError('Generated documents have diffs. Check build output for details.')
+
+        except subprocess.CalledProcessError:
+            raise BuildError('git diff returned non-zero error code')
 
 
 def main():
@@ -2043,10 +2045,13 @@ def main():
                     "currently through this script")
             if not is_docker() and not args.use_acl and not args.use_armnn:
                 install_python_deps()
+
         if args.enable_pybind and is_windows():
             install_python_deps(args.numpy_version)
+
         if args.enable_onnx_tests:
             setup_test_data(build_dir, configs)
+
         if args.use_cuda and args.cuda_version is None:
             if is_windows():
                 # cuda_version is used while generating version_info.py on Windows.
@@ -2055,6 +2060,7 @@ def main():
                 args.cuda_version = ""
         if args.use_rocm and args.rocm_version is None:
             args.rocm_version = ""
+
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
             tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
@@ -2087,6 +2093,7 @@ def main():
     if args.build:
         if args.build_wheel:
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')
+            default_training_package_device = bool(os.getenv('DEFAULT_TRAINING_PACKAGE_DEVICE') == '1')
             build_python_wheel(
                 source_dir,
                 build_dir,
@@ -2106,6 +2113,7 @@ def main():
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,
+                default_training_package_device=default_training_package_device,
                 featurizers_build=args.use_featurizers,
                 use_ninja=(args.cmake_generator == 'Ninja')
             )
@@ -2131,7 +2139,7 @@ def main():
             args.use_dnnl)
 
     if args.gen_doc and (args.build or args.test):
-        generate_documentation(source_dir, build_dir, configs)
+        generate_documentation(source_dir, build_dir, configs, args.gen_doc == 'validate')
 
     if args.gen_api_doc and (args.build or args.test):
         print('Generating Python doc for ORTModule...')

@@ -6,18 +6,28 @@
 #include <optional>
 #include <vector>
 
-#include "core/session/onnxruntime_cxx_api.h"
+#include "onnxruntime_cxx_api.h"
 
 #import "src/error_utils.h"
 #import "src/ort_enums_internal.h"
 #import "src/ort_env_internal.h"
 #import "src/ort_value_internal.h"
 
+namespace {
+enum class NamedValueType {
+  Input,
+  OverridableInitializer,
+  Output,
+};
+}  // namespace
+
 NS_ASSUME_NONNULL_BEGIN
 
 @implementation ORTSession {
   std::optional<Ort::Session> _session;
 }
+
+#pragma mark - Public
 
 - (nullable instancetype)initWithEnv:(ORTEnv*)env
                            modelPath:(NSString*)path
@@ -126,6 +136,62 @@ NS_ASSUME_NONNULL_BEGIN
     }
 
     return outputs;
+  }
+  ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
+}
+
+- (nullable NSArray<NSString*>*)inputNamesWithError:(NSError**)error {
+  return [self namesWithType:NamedValueType::Input error:error];
+}
+
+- (nullable NSArray<NSString*>*)overridableInitializerNamesWithError:(NSError**)error {
+  return [self namesWithType:NamedValueType::OverridableInitializer error:error];
+}
+
+- (nullable NSArray<NSString*>*)outputNamesWithError:(NSError**)error {
+  return [self namesWithType:NamedValueType::Output error:error];
+}
+
+#pragma mark - Private
+
+- (nullable NSArray<NSString*>*)namesWithType:(NamedValueType)namedValueType
+                                        error:(NSError**)error {
+  try {
+    auto getCount = [&session = *_session, namedValueType]() {
+      if (namedValueType == NamedValueType::Input) {
+        return session.GetInputCount();
+      } else if (namedValueType == NamedValueType::OverridableInitializer) {
+        return session.GetOverridableInitializerCount();
+      } else {
+        return session.GetOutputCount();
+      }
+    };
+
+    auto getName = [&session = *_session, namedValueType](size_t i, OrtAllocator* allocator) {
+      if (namedValueType == NamedValueType::Input) {
+        return session.GetInputName(i, allocator);
+      } else if (namedValueType == NamedValueType::OverridableInitializer) {
+        return session.GetOverridableInitializerName(i, allocator);
+      } else {
+        return session.GetOutputName(i, allocator);
+      }
+    };
+
+    const size_t nameCount = getCount();
+
+    Ort::AllocatorWithDefaultOptions allocator;
+    auto deleter = [ortAllocator = static_cast<OrtAllocator*>(allocator)](void* p) {
+      ortAllocator->Free(ortAllocator, p);
+    };
+
+    NSMutableArray<NSString*>* result = [NSMutableArray arrayWithCapacity:nameCount];
+
+    for (size_t i = 0; i < nameCount; ++i) {
+      auto name = std::unique_ptr<char[], decltype(deleter)>{getName(i, allocator), deleter};
+      [result addObject:[NSString stringWithUTF8String:name.get()]];
+    }
+
+    return result;
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
 }

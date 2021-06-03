@@ -21,6 +21,7 @@ jobs:
     msbuildPlatform: x64
     isX86: false
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+    DocUpdateNeeded: false
   timeoutInMinutes: 180
   workspace:
     clean: all
@@ -94,7 +95,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) $(UseOmp) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_rtti --use_winml  --build_shared_lib --enable_onnx_tests --enable_wcos $(additionalBuildFlags)'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) $(UseOmp) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_rtti --use_winml  --build_shared_lib --enable_onnx_tests --enable_wcos --gen_doc $(additionalBuildFlags)'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
@@ -147,11 +148,27 @@ jobs:
 
   - powershell: |
      Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) $(UseOmp) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_rtti --use_winml  --build_shared_lib --enable_onnx_tests --enable_wcos $(additionalBuildFlags)
-   
+     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) $(UseOmp) --test --enable_onnx_tests  --gen_doc validate $(additionalBuildFlags)
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     condition: and(succeeded(), eq('${{ parameters.RunOnnxRuntimeTests}}', true))
     displayName: 'Run tests'
+
+  # if the validation from --gen_doc failed it sets a variable so we can publish the latest version of the docs
+  # as an artifact, allowing a developer to download this and replace the current version instead of having to build
+  # and generate the docs locally themselves. handle each of the two md files separately - simpler than copying
+  # them to another location and publishing from there in a single task.
+  - task: PublishBuildArtifacts@1
+    condition: and(failed(), eq(variables['DocUpdateNeeded'], 'true'))
+    inputs:
+      pathtoPublish: '$(Build.SourcesDirectory)/docs/OperatorKernels.md'
+      artifactName: 'OperatorKernels.md'
+
+  - task: PublishBuildArtifacts@1
+    condition: and(failed(), eq(variables['DocUpdateNeeded'], 'true'))
+    inputs:
+      pathtoPublish: '$(Build.SourcesDirectory)/docs/ContribOperators.md'
+      artifactName: 'ContribOperators.md'
+
 
   - task: PythonScript@0
     displayName: 'Regenerate cmake config with STATIC_ANALYSIS=ON '
