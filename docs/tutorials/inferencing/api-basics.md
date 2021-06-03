@@ -36,5 +36,5 @@ These tutorials demonstrate basic inferencing with ONNX Runtime with each langua
 ## Java
 * [Number recognition (MNIST)](../tutorials/mnist_java.html)
 
-## Node.js
-* [Basic usage](https://github.com/microsoft/onnxruntime/tree/master/samples/nodejs)
+## JavaScript
+* [ONNX Runtime JavaScript examples](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/js)
