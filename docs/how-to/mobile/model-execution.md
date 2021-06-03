@@ -9,7 +9,7 @@ nav_order: 5
 
 # Executing an ORT format model
 
-The API for executing ORT format models is the same as for ONNX models.
+The API for executing ORT format models is the same as for ONNX models. 
 
 See the [ONNX Runtime API documentation](../../reference/api) for details on individual API usage.
 
@@ -35,24 +35,16 @@ Ort::SessionOptions session_options;
 session_options.AddConfigEntry('session.load_model_format', 'ORT');
 
 Ort::Env env;
-```
-```
 Ort::Session session(env, <path to model>, session_options);
-```
-or
-```
-Ort::Session session(env, <byte array contains the model data>, <byte size of the model data>, session_options);
 ```
 
 Java API
 ```java
-try(OrtEnvironment env = OrtEnvironment.getEnvironment();
-    SessionOptions session_options = new SessionOptions()) {
-    session_options.addConfigEntry("session.load_model_format", "ORT");
-    try(OrtSession session = env.createSession(<path to model> or <byte array contains the model data>, session_options)) {
-        ...
-    }
-}
+SessionOptions session_options = new SessionOptions();
+session_options.addConfigEntry("session.load_model_format", "ORT");
+
+OrtEnvironment env = OrtEnvironment.getEnvironment();
+OrtSession session = env.createSession(<path to model>, opsession_optionstions);
 ```
 
 ------
