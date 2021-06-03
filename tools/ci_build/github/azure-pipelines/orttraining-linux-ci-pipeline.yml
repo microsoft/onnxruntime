@@ -39,8 +39,7 @@ jobs:
               --build_wheel \
               --use_openmp \
               --enable_onnx_tests \
-              --enable_pybind --build_java --build_nodejs --enable_training \
-              --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so PYTHON_LIBRARY_PATH=/opt/_internal/cpython-3.7.10/lib/python3.7/libpython3.7m.so
+              --enable_pybind --build_java --build_nodejs --enable_training
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishTestResults@2

@@ -19,7 +19,7 @@ file(GLOB_RECURSE onnxruntime_training_srcs
 
 onnxruntime_add_static_library(onnxruntime_training ${onnxruntime_training_srcs})
 add_dependencies(onnxruntime_training onnx tensorboard ${onnxruntime_EXTERNAL_DEPENDENCIES})
-onnxruntime_add_include_to_target(onnxruntime_training onnxruntime_common onnx onnx_proto tensorboard protobuf::libprotobuf flatbuffers)
+onnxruntime_add_include_to_target(onnxruntime_training onnxruntime_common onnx onnx_proto tensorboard ${PROTOBUF_LIB} flatbuffers)
 
 # fix event_writer.cc 4100 warning
 if(WIN32)
@@ -62,7 +62,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   onnxruntime_add_static_library(onnxruntime_training_runner ${onnxruntime_training_runner_srcs} ${onnxruntime_perf_test_src})
   add_dependencies(onnxruntime_training_runner ${onnxruntime_EXTERNAL_DEPENDENCIES} onnx onnxruntime_providers)
 
-  onnxruntime_add_include_to_target(onnxruntime_training_runner onnxruntime_training onnxruntime_framework onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_training_runner onnxruntime_training onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} onnxruntime_training flatbuffers)
 
   target_include_directories(onnxruntime_training_runner PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${onnxruntime_graph_header})
   target_link_libraries(onnxruntime_training_runner PRIVATE nlohmann_json::nlohmann_json)
@@ -100,8 +100,8 @@ if (onnxruntime_BUILD_UNIT_TESTS)
       "${ORTTRAINING_SOURCE_DIR}/models/mnist/main.cc"
   )
   onnxruntime_add_executable(onnxruntime_training_mnist ${training_mnist_src})
-  onnxruntime_add_include_to_target(onnxruntime_training_mnist onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training flatbuffers)
-  target_include_directories(onnxruntime_training_mnist PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner ${PYTHON_INCLUDE_DIR})
+  onnxruntime_add_include_to_target(onnxruntime_training_mnist onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} onnxruntime_training flatbuffers)
+  target_include_directories(onnxruntime_training_mnist PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner Python::Module)
 
   set(ONNXRUNTIME_LIBS
       onnxruntime_session
@@ -127,7 +127,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
       target_compile_options(onnxruntime_training_mnist PUBLIC "-Wno-maybe-uninitialized")
     endif()
   endif()
-  target_link_libraries(onnxruntime_training_mnist PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES} ${PYTHON_LIBRARY_PATH})
+  target_link_libraries(onnxruntime_training_mnist PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES} Python::Python)
   set_target_properties(onnxruntime_training_mnist PROPERTIES FOLDER "ONNXRuntimeTest")
 
   # squeezenet
@@ -138,7 +138,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
       "${ORTTRAINING_SOURCE_DIR}/models/squeezenet/*.cc"
   )
   onnxruntime_add_executable(onnxruntime_training_squeezenet ${training_squeezene_src})
-  onnxruntime_add_include_to_target(onnxruntime_training_squeezenet onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_training_squeezenet onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} onnxruntime_training flatbuffers)
   target_include_directories(onnxruntime_training_squeezenet PUBLIC ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
   if(UNIX AND NOT APPLE)
     target_compile_options(onnxruntime_training_squeezenet PUBLIC "-Wno-maybe-uninitialized")
@@ -160,10 +160,10 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     endif()
   endif()
 
-  onnxruntime_add_include_to_target(onnxruntime_training_bert onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training flatbuffers)
-  target_include_directories(onnxruntime_training_bert PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_CXX_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner ${PYTHON_INCLUDE_DIR})
+  onnxruntime_add_include_to_target(onnxruntime_training_bert onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} onnxruntime_training flatbuffers)
+  target_include_directories(onnxruntime_training_bert PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_CXX_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner Python::Module)
 
-  target_link_libraries(onnxruntime_training_bert PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES} ${PYTHON_LIBRARY_PATH})
+  target_link_libraries(onnxruntime_training_bert PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES} Python::Python)
   set_target_properties(onnxruntime_training_bert PROPERTIES FOLDER "ONNXRuntimeTest")
 
   # Pipeline
@@ -179,8 +179,8 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     endif()
   endif()
 
-  onnxruntime_add_include_to_target(onnxruntime_training_pipeline_poc onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training flatbuffers)
-  target_include_directories(onnxruntime_training_pipeline_poc PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_CXX_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner ${PYTHON_INCLUDE_DIR})
+  onnxruntime_add_include_to_target(onnxruntime_training_pipeline_poc onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} onnxruntime_training flatbuffers)
+  target_include_directories(onnxruntime_training_pipeline_poc PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_CXX_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner Python::Module)
   if (onnxruntime_USE_NCCL)
     target_include_directories(onnxruntime_training_pipeline_poc PRIVATE ${NCCL_INCLUDE_DIRS})
   endif()
@@ -199,10 +199,10 @@ if (onnxruntime_BUILD_UNIT_TESTS)
       target_compile_options(onnxruntime_training_gpt2 PUBLIC "-Wno-maybe-uninitialized")
     endif()
   endif()
-  onnxruntime_add_include_to_target(onnxruntime_training_gpt2 onnxruntime_common onnx onnx_proto protobuf::libprotobuf onnxruntime_training flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_training_gpt2 onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} onnxruntime_training flatbuffers)
   target_include_directories(onnxruntime_training_gpt2 PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_CXX_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
 
-  target_link_libraries(onnxruntime_training_gpt2 PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES} ${PYTHON_LIBRARY_PATH})
+  target_link_libraries(onnxruntime_training_gpt2 PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES} Python::Python)
   set_target_properties(onnxruntime_training_gpt2 PROPERTIES FOLDER "ONNXRuntimeTest")
 
 endif()
