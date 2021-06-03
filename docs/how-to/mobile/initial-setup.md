@@ -38,7 +38,7 @@ In your Android Studio Project, make the following changes to:
 
 ##### C/C++
 
-Download the onnxruntime-mobile AAR hosted at MavenCentral, change the file extension from `.aar` to `.zip`, and unzip it. Include the header files from the `headers` folder, and the relevant `libonnxruntime.so` dynamic library from the `jni` folder in your NDK project.
+Download the onnxruntime-mobile AAR hosted at [MavenCentral](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile), change the file extension from `.aar` to `.zip`, and unzip it. Include the header files from the `headers` folder, and the relevant `libonnxruntime.so` dynamic library from the `jni` folder in your NDK project.
 
 
 ### iOS
