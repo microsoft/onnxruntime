@@ -769,7 +769,7 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
   )
 endif()
 
-target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs} ${PYTHON_LIBRARIES})
+target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
 
 if(onnxruntime_ENABLE_TRAINING)
   target_link_libraries(onnx_test_runner PRIVATE Python::Python)
