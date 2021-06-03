@@ -6,7 +6,7 @@ parameters:
 
 jobs:
 - job: 'build'
-  pool: 'Win-CPU-2019'
+  pool: 'chasuntest1'
   strategy:
     matrix:
       x64_debug:
@@ -228,7 +228,7 @@ jobs:
       condition : 'succeeded'
    
 - job: 'x86_no_contrib_ops'
-  pool: 'Win-CPU-2019'
+  pool: 'chasuntest1'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
@@ -345,7 +345,7 @@ jobs:
       condition : 'succeeded'
 
 - job: 'build_x64_no_contrib_ops'
-  pool: 'Win-CPU-2019'
+  pool: 'chasuntest1'
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime'
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'

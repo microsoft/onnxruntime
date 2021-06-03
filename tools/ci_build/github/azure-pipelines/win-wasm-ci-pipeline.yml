@@ -1,6 +1,6 @@
 jobs:
 - job: Extract_commit
-  pool: 'Win-CPU-2019'
+  pool: 'chasuntest1'
   timeoutInMinutes: 30
   workspace:
     clean: all
@@ -19,7 +19,7 @@ jobs:
 
 - job: build_WASM
   dependsOn: Extract_commit
-  pool: 'Win-CPU-2019'
+  pool: 'chasuntest1'
   strategy:
     maxParallel: 4
     matrix:
@@ -113,7 +113,7 @@ jobs:
 
 - job: build_onnxruntime_web
   dependsOn: build_WASM
-  pool: 'Win-CPU-2019'
+  pool: 'chasuntest1'
   strategy:
     maxParallel: 2
     matrix:
