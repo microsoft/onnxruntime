@@ -34,13 +34,13 @@ Refer to the following links for development information:
 
 ### Compatibility
 
-|    OS/Browser    |   Chrome    |    Edge     | Safari |  Electron   | Node.js |
-| :--------------: | :---------: | :---------: | :----: | :---------: | :-----: |
-|    Windows 10    | wasm, webgl | wasm, webgl |   -    | wasm, webgl |  wasm   |
-|      macOS       |    wasm     |      -      |  wasm  |    wasm     |  wasm   |
-| Ubuntu LTS 18.04 |    wasm     |      -      |   -    |    wasm     |  wasm   |
-|       iOS        |    wasm     |    wasm     |  wasm  |      -      |    -    |
-|     Android      |    wasm     |      -      |   -    |      -      |    -    |
+|    OS/Browser    |   Chrome    |    Edge     |   Safari    |  Electron   | Node.js |
+| :--------------: | :---------: | :---------: | :---------: | :---------: | :-----: |
+|    Windows 10    | wasm, webgl | wasm, webgl |      -      | wasm, webgl |  wasm   |
+|      macOS       | wasm, webgl |      -      | wasm, webgl | wasm, webgl |  wasm   |
+| Ubuntu LTS 18.04 |    wasm     |      -      |      -      |    wasm     |  wasm   |
+|       iOS        |    wasm     |    wasm     |  wasm       |      -      |    -    |
+|     Android      |    wasm     |      -      |      -      |      -      |    -    |
 
 ### Operators
 
