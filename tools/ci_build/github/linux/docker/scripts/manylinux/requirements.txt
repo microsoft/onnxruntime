@@ -1,4 +1,4 @@
-numpy==1.17.1
+numpy==1.16.6
 mypy
 pytest
 setuptools>=41.4.0
@@ -9,4 +9,5 @@ sympy==1.1.1
 flake8
 flatbuffers
 torch==1.8.1
-transformers==4.3.3
+#tensorflow==2.5.0
+#transformers==4.3.3
