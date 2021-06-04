@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #ifdef ENABLE_PYTHON
+
 #include "core/dlpack/dlpack_python.h"
 
 namespace onnxruntime {
@@ -18,8 +19,7 @@ static void DlpackCapsuleDestructor(PyObject* data) {
     // PyCapsule_GetPointer has set an error indicator.
     PyErr_Clear();
   }
-};
-
+}
 
 PyObject* ToDlpack(OrtValue ort_value) {
   DLManagedTensor* dlmanaged_tensor = dlpack::OrtValueToDlpack(ort_value);
