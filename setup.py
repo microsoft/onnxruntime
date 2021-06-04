@@ -1,13 +1,13 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
-from setuptools import setup, find_packages, Extension
+from setuptools import setup, Extension
 from distutils import log as logger
 from distutils.command.build_ext import build_ext as _build_ext
 from glob import glob
-from os import path, getcwd, environ, remove, walk, makedirs, listdir
+from os import path, getcwd, environ, remove, listdir
 from shutil import copyfile, copytree, rmtree
 import platform
 import subprocess
@@ -19,6 +19,7 @@ featurizers_build = False
 package_name = 'onnxruntime'
 wheel_name_suffix = None
 
+
 def parse_arg_remove_boolean(argv, arg_name):
     arg_value = False
     if arg_name in sys.argv:
@@ -26,6 +27,7 @@ def parse_arg_remove_boolean(argv, arg_name):
         argv.remove(arg_name)
 
     return arg_value
+
 
 def parse_arg_remove_string(argv, arg_name_equal):
     arg_value = None
@@ -36,6 +38,7 @@ def parse_arg_remove_string(argv, arg_name_equal):
             break
 
     return arg_value
+
 
 # Any combination of the following arguments can be applied
 featurizers_build = parse_arg_remove_boolean(sys.argv, '--use_featurizers')
@@ -107,6 +110,7 @@ class build_ext(_build_ext):
 
 try:
     from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
+
     class bdist_wheel(_bdist_wheel):
         def finalize_options(self):
             _bdist_wheel.finalize_options(self)
@@ -134,19 +138,33 @@ try:
                 logger.info('copying %s -> %s', source, dest)
                 copyfile(source, dest)
                 result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
-                cuda_dependencies = ['libcublas.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so', 'libcufft.so', 'libnvToolsExt.so']
-                cuda_dependencies.extend(['librccl.so', 'libamdhip64.so', 'librocblas.so', 'libMIOpen.so', 'libhsa-runtime64.so', 'libhsakmt.so'])
+                dependencies = ['librccl.so', 'libamdhip64.so', 'librocblas.so', 'libMIOpen.so', 'libhsa-runtime64.so', 'libhsakmt.so']
                 to_preload = []
                 args = ['patchelf', '--debug']
                 for line in result.stdout.split('\n'):
-                    for dependency in cuda_dependencies:
+                    for dependency in dependencies:
                         if dependency in line:
                             to_preload.append(line)
                             args.extend(['--remove-needed', line])
                 args.append(dest)
-                if len(to_preload) > 0:
+                if len(args) > 3:
                     subprocess.run(args, check=True, stdout=subprocess.PIPE)
-                self._rewrite_ld_preload(to_preload)
+
+                dest = 'onnxruntime/capi/libonnxruntime_providers_cuda.so'
+                if path.isfile(dest):
+                    result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
+                    cuda_dependencies = ['libcublas.so', 'libcublasLt.so', 'libcudnn.so', 'libcudart.so', 'libcurand.so', 'libcufft.so', 'libnvToolsExt.so']
+                    args = ['patchelf', '--debug']
+                    for line in result.stdout.split('\n'):
+                        for dependency in cuda_dependencies:
+                            if dependency in line:
+                                if not dependency in to_preload:
+                                    to_preload.append(line)
+                                args.extend(['--remove-needed', line])
+                    args.append(dest)
+                    if len(args) > 3:
+                        subprocess.run(args, check=True, stdout=subprocess.PIPE)
+                    self._rewrite_ld_preload(to_preload)
             _bdist_wheel.run(self)
             if is_manylinux:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
@@ -165,6 +183,7 @@ except ImportError as error:
 # Additional binaries
 if platform.system() == 'Linux':
   libs = ['onnxruntime_pybind11_state.so', 'libdnnl.so.2', 'libmklml_intel.so', 'libmklml_gnu.so', 'libiomp5.so', 'mimalloc.so']
+  dl_libs = ['libonnxruntime_providers_shared.so', 'libonnxruntime_providers_cuda.so']
   # DNNL, TensorRT & OpenVINO EPs are built as shared libs
   libs.extend(['libonnxruntime_providers_shared.so'])
   libs.extend(['libonnxruntime_providers_dnnl.so'])
@@ -201,6 +220,7 @@ else:
 
 if is_manylinux:
     data = ['capi/libonnxruntime_pywrapper.so'] if nightly_build else []
+    data += [path.join('capi', x) for x in dl_libs if path.isfile(path.join('onnxruntime', 'capi', x))]
     ext_modules = [
         Extension(
             'onnxruntime.capi.onnxruntime_pybind11_state',
@@ -250,6 +270,8 @@ requirements_file = "requirements.txt"
 
 local_version = None
 enable_training = parse_arg_remove_boolean(sys.argv, '--enable_training')
+default_training_package_device = parse_arg_remove_boolean(sys.argv, '--default_training_package_device')
+
 if enable_training:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
@@ -264,13 +286,16 @@ if enable_training:
     # this is needed immediately by pytorch/ort so that the user is able to
     # install an onnxruntime training package with matching torch cuda version.
     package_name = 'onnxruntime-training'
-    if cuda_version:
-        # removing '.' to make local Cuda version number in the same form as Pytorch.
-        local_version = '+cu' + cuda_version.replace('.', '')
-    if rocm_version:
-        # removing '.' to make Cuda version number in the same form as Pytorch.
-        rocm_version = rocm_version.replace('.', '')
-        local_version = '+rocm' + rocm_version
+
+    # we want put default training packages to pypi. pypi does not accept package with a local version.
+    if not default_training_package_device:
+        if cuda_version:
+            # removing '.' to make local Cuda version number in the same form as Pytorch.
+            local_version = '+cu' + cuda_version.replace('.', '')
+        if rocm_version:
+            # removing '.' to make Cuda version number in the same form as Pytorch.
+            rocm_version = rocm_version.replace('.', '')
+            local_version = '+rocm' + rocm_version
 
 
 package_data = {}
@@ -370,6 +395,15 @@ if not path.exists(requirements_path):
     raise FileNotFoundError("Unable to find " + requirements_file)
 with open(requirements_path) as f:
     install_requires = f.read().splitlines()
+
+
+if is_manylinux:
+    AUDITWHEEL_PLAT = environ.get('AUDITWHEEL_PLAT', None)
+    if AUDITWHEEL_PLAT == 'manylinux2014_aarch64':
+        for i in range(len(install_requires)):
+            req = install_requires[i]
+            if req.startswith("numpy"):
+                install_requires[i] = "numpy >= 1.19.5"
 
 if enable_training:
     def save_build_and_package_info(package_name, version_number, cuda_version):

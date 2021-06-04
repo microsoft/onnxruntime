@@ -1,8 +1,18 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-if(${CMAKE_VERSION} VERSION_LESS "3.18")
-    message(FATAL_ERROR "CMake 3.18+ is required when building the Objective-C API.")
+if(NOT APPLE)
+    message(FATAL_ERROR "The Objective-C API must be built on an Apple platform.")
+endif()
+
+set(ONNXRUNTIME_OBJC_MIN_CMAKE_VERSION "3.18")
+
+if(CMAKE_VERSION VERSION_LESS ONNXRUNTIME_OBJC_MIN_CMAKE_VERSION)
+    message(FATAL_ERROR "The Objective-C API requires CMake ${ONNXRUNTIME_OBJC_MIN_CMAKE_VERSION}+.")
+endif()
+
+if(NOT onnxruntime_BUILD_SHARED_LIB)
+    message(FATAL_ERROR "The Objective-C API requires onnxruntime_BUILD_SHARED_LIB to be enabled.")
 endif()
 
 check_language(OBJC)
@@ -29,45 +39,44 @@ endif()
 
 set(OBJC_ROOT "${REPO_ROOT}/objectivec")
 
-set(OBJC_ARC_COMPILE_OPTIONS "-fobjc-arc" "-fobjc-arc-exceptions")
-
 # onnxruntime_objc target
 
 # these headers are the public interface
 # explicitly list them here so it is easy to see what is included
 set(onnxruntime_objc_headers
     "${OBJC_ROOT}/include/onnxruntime.h"
+    "${OBJC_ROOT}/include/ort_coreml_execution_provider.h"
     "${OBJC_ROOT}/include/ort_enums.h"
     "${OBJC_ROOT}/include/ort_env.h"
     "${OBJC_ROOT}/include/ort_session.h"
     "${OBJC_ROOT}/include/ort_value.h"
     )
 
-file(GLOB onnxruntime_objc_srcs
+file(GLOB onnxruntime_objc_srcs CONFIGURE_DEPENDS
     "${OBJC_ROOT}/src/*.h"
     "${OBJC_ROOT}/src/*.m"
     "${OBJC_ROOT}/src/*.mm")
 
-# files common to implementation and test targets
-set(onnxruntime_objc_common_srcs
-    "${OBJC_ROOT}/common/assert_arc_enabled.mm")
-
 source_group(TREE "${OBJC_ROOT}" FILES
     ${onnxruntime_objc_headers}
-    ${onnxruntime_objc_srcs}
-    ${onnxruntime_objc_common_srcs})
+    ${onnxruntime_objc_srcs})
 
-add_library(onnxruntime_objc SHARED
+onnxruntime_add_shared_library(onnxruntime_objc
     ${onnxruntime_objc_headers}
-    ${onnxruntime_objc_srcs}
-    ${onnxruntime_objc_common_srcs})
+    ${onnxruntime_objc_srcs})
 
 target_include_directories(onnxruntime_objc
     PUBLIC
         "${OBJC_ROOT}/include"
     PRIVATE
-        "${ONNXRUNTIME_ROOT}"
+        "${ONNXRUNTIME_INCLUDE_DIR}/core/session"
         "${OBJC_ROOT}")
+
+if(onnxruntime_USE_COREML)
+    target_include_directories(onnxruntime_objc
+        PRIVATE
+            "${ONNXRUNTIME_INCLUDE_DIR}/core/providers/coreml")
+endif()
 
 find_library(FOUNDATION_LIB Foundation REQUIRED)
 
@@ -76,8 +85,6 @@ target_link_libraries(onnxruntime_objc
         onnxruntime
         safeint_interface
         ${FOUNDATION_LIB})
-
-target_compile_options(onnxruntime_objc PRIVATE ${OBJC_ARC_COMPILE_OPTIONS})
 
 set_target_properties(onnxruntime_objc PROPERTIES
     FRAMEWORK TRUE
@@ -88,6 +95,8 @@ set_target_properties(onnxruntime_objc PROPERTIES
     FOLDER "ONNXRuntime"
     CXX_STANDARD 17 # TODO remove when everything else moves to 17
     )
+
+set_property(TARGET onnxruntime_objc APPEND PROPERTY COMPILE_OPTIONS "-fvisibility=default")
 
 target_link_options(onnxruntime_objc PRIVATE "-Wl,-headerpad_max_install_names")
 
@@ -110,7 +119,7 @@ if(onnxruntime_BUILD_UNIT_TESTS)
 
     # onnxruntime_objc_test target
 
-    file(GLOB onnxruntime_objc_test_srcs
+    file(GLOB onnxruntime_objc_test_srcs CONFIGURE_DEPENDS
         "${OBJC_ROOT}/test/*.h"
         "${OBJC_ROOT}/test/*.m"
         "${OBJC_ROOT}/test/*.mm")
@@ -119,22 +128,22 @@ if(onnxruntime_BUILD_UNIT_TESTS)
 
     xctest_add_bundle(onnxruntime_objc_test onnxruntime_objc
         ${onnxruntime_objc_headers}
-        ${onnxruntime_objc_test_srcs}
-        ${onnxruntime_objc_common_srcs})
+        ${onnxruntime_objc_test_srcs})
+
+    onnxruntime_configure_target(onnxruntime_objc_test)
 
     target_include_directories(onnxruntime_objc_test
         PRIVATE
             "${OBJC_ROOT}")
 
-    target_compile_options(onnxruntime_objc_test PRIVATE ${OBJC_ARC_COMPILE_OPTIONS})
-
     set_target_properties(onnxruntime_objc_test PROPERTIES
-        FOLDER "ONNXRuntimeTest")
+        FOLDER "ONNXRuntimeTest"
+        XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO")
 
     add_custom_command(TARGET onnxruntime_objc_test POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${OBJC_ROOT}/test/testdata"
-            "$<TARGET_BUNDLE_CONTENT_DIR:onnxruntime_objc_test>/Resources/testdata")
+            "$<TARGET_BUNDLE_CONTENT_DIR:onnxruntime_objc_test>/Resources")
 
     xctest_add_test(XCTest.onnxruntime_objc_test onnxruntime_objc_test)
 

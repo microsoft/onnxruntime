@@ -723,7 +723,9 @@ struct SessionIOBinding {
  public:
   SessionIOBinding(InferenceSession* session);
 
+  const IOBinding* Get() const;
   IOBinding* Get();
+  const InferenceSession* GetInferenceSession() const;
   InferenceSession* GetInferenceSession();
 
  private:
