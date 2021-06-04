@@ -40,7 +40,7 @@ endif()
 # Needed for the provider interface, as it includes training headers when training is enabled
 if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
   target_include_directories(onnxruntime_framework PRIVATE ${ORTTRAINING_ROOT})
-  if (onnxruntime_ENABLE_TRAINING)
+  if (onnxruntime_ENABLE_TRAINING AND onnxruntime_ENABLE_PYTHON)
     onnxruntime_add_include_to_target(onnxruntime_framework Python::Module)
     target_link_libraries(onnxruntime_framework PRIVATE Python::Python)
   endif()

@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
 
 #include "core/language_interop_ops/torch/python_common.h"
 #ifndef SHARED_PROVIDER

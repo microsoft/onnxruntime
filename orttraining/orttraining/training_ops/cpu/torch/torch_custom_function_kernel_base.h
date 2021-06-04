@@ -4,7 +4,7 @@
 // Use void* instead of PyObject* to avoid adding unnecessary
 // python.h dependency for the consumers (for example: the
 // provider bridge file).
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
 
 #pragma once
 

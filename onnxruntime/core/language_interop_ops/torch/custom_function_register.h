@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+
 #pragma once
 #include "core/language_interop_ops/torch/python_common.h"
 
@@ -60,3 +62,5 @@ class OrtTorchFunctionPool final {
 }  // namespace torch
 }  // namespace language_interop_ops
 }  // namespace onnxruntime
+
+#endif
