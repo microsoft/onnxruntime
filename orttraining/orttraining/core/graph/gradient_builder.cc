@@ -967,8 +967,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
     }
   } else {
     //GetShape failed, build shape-independent gradient graph
-    ArgDef a_axes = IA("ReduceAxes_a_" + a.name);
-    ArgDef b_axes = IA("ReduceAxes_b_" + b.name);
+    ArgDef a_axes = IA("ReduceAxes_" + a.name);
+    ArgDef b_axes = IA("ReduceAxes_" + b.name);
     ArgDef A_shape = IA("Shape_" + a.name);
     ArgDef B_shape = IA("Shape_" + b.name);
     ComputeBroadcastBackwardAxesDynamic(a, b, A_shape, B_shape, &a_axes, &b_axes, output);

@@ -214,6 +214,7 @@ endif()
 
 if (onnxruntime_ENABLE_TRAINING)
   add_dependencies(onnxruntime_providers tensorboard)
+  onnxruntime_add_include_to_target(onnxruntime_providers tensorboard)
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     onnxruntime_add_include_to_target(onnxruntime_providers tensorboard Python::Module)
     target_link_libraries(onnxruntime_providers PRIVATE Python::Python)

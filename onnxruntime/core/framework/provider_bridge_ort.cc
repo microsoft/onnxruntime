@@ -64,12 +64,14 @@ Status LongformerAttentionBase__CheckInputs(const LongformerAttentionBase* p, co
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
 #include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
 #include "orttraining/training_ops/cpu/tensor/split.h"
-#endif
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
 #include "core/language_interop_ops/torch/refcount_tracker.h"
 #endif
+
+#endif
+
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "orttraining/core/framework/distributed_run_context.h"
@@ -904,7 +906,6 @@ struct ProviderHostImpl : ProviderHost {
 #if defined(ORT_USE_NCCL)
   training::DistributedRunContext& GetDistributedRunContextInstance() override { return training::DistributedRunContext::GetInstance(); }
 #endif
-#endif
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
   void contrib__PythonOpBase__Init(contrib::PythonOpBase* p, const OpKernelInfo& info) override { p->PythonOpBase::Init(info); }
@@ -926,6 +927,7 @@ struct ProviderHostImpl : ProviderHost {
   void RefCountTracker__DumpDetails(const language_interop_ops::torch::RefCountTracker* p, const std::string& phase_name) override {
     return p->language_interop_ops::torch::RefCountTracker::DumpDetails(phase_name);
   }
+#endif
 #endif
 #endif
 } provider_host_;
