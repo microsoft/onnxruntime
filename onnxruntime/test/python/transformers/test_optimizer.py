@@ -339,6 +339,7 @@ def _get_test_model_path(name):
 #     def test_huggingface_bart_fusion(self):
 #         self._test_optimizer_on_huggingface_model("facebook/bart-base", [0, 0, 0, 0, 12, 2, 30])
 
+      #tensorflow 2.5.0 cause numpy version conficts
 #     @pytest.mark.slow
 #     def test_huggingface_bert_base_cased_from_tf2onnx(self):
 #         self._test_optimizer_on_tf_model("bert-base-cased", [0, 12, 0, 0, 0, 0, 25], 1)
