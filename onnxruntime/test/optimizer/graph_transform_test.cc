@@ -3606,6 +3606,10 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionMultiple_OpSet13) {
 }
 
 TEST_F(GraphTransformationTests, QuantizedEmbedLayerNormFusionTest) {
+  //
+  // TODO(kreeger): write me!
+  // -- Need a model, work on that python script first!
+  //
   printf("This is a test\n");
 }
 
