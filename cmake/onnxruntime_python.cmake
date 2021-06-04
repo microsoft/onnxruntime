@@ -221,6 +221,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   )
   file(GLOB onnxruntime_python_transformers_test_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/test/python/transformers/*.py"
+      "${ONNXRUNTIME_ROOT}/test/python/transformers/test_data/fusion/*.onnx"
   )
 endif()
 

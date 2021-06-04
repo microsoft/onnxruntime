@@ -453,6 +453,9 @@ def parse_arguments():
         "--enable_lto", action='store_true',
         help="Enable Link Time Optimization")
     parser.add_argument(
+        "--enable_transformers_tool_test", action='store_true',
+        help="Enable transformers tool test")
+    parser.add_argument(
         "--use_acl", nargs="?", const="ACL_1905",
         choices=["ACL_1902", "ACL_1905", "ACL_1908", "ACL_2002"],
         help="Build with ACL for ARM architectures.")
@@ -722,6 +725,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_MS_EXPERIMENTAL_OPS=" + ("ON" if args.ms_experimental else "OFF"),
         "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
+        "-Donnxruntime_ENABLE_TRANSFORMERS_TOOL_TEST=" + ("ON" if args.enable_transformers_tool_test else "OFF"),
         "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),
         "-Donnxruntime_USE_ACL_1902=" + ("ON" if args.use_acl == "ACL_1902" else "OFF"),
         "-Donnxruntime_USE_ACL_1905=" + ("ON" if args.use_acl == "ACL_1905" else "OFF"),
@@ -1507,8 +1511,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 if not args.disable_contrib_ops:
                     run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'quantization'],
                                    cwd=cwd, dll_path=dll_path)
-                    run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'transformers'],
-                                   cwd=cwd, dll_path=dll_path)
+                    if args.enable_transformers_tool_test:
+                        run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'transformers'],
+                                       cwd=cwd, dll_path=dll_path)
 
                 if not args.disable_ml_ops:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_backend_mlops.py'],
