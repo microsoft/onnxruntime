@@ -3,10 +3,10 @@ import unittest
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from onnx_exporter import export_onnx_model_from_pt
-from huggingface_models import MODELS
-from benchmark_helper import Precision
-from shape_infer_helper import *
+from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_pt
+from onnxruntime.transformers.huggingface_models import MODELS
+from onnxruntime.transformers.benchmark_helper import Precision
+from onnxruntime.transformers.shape_infer_helper import *
 
 
 class SymbolicShapeInferenceHelperTest(unittest.TestCase):

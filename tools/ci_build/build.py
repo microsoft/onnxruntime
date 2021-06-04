@@ -1507,6 +1507,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 if not args.disable_contrib_ops:
                     run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'quantization'],
                                    cwd=cwd, dll_path=dll_path)
+                    run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'transformers'],
+                                   cwd=cwd, dll_path=dll_path)
 
                 if not args.disable_ml_ops:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_backend_mlops.py'],

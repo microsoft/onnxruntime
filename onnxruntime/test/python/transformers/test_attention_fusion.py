@@ -12,7 +12,7 @@ from bert_model_generator import create_bert_attention, create_tf2onnx_attention
 
 # set path so that we could import from parent directory
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from optimizer import optimize_model
+from onnxruntime.transformers.optimizer import optimize_model
 
 
 class TestFusion(unittest.TestCase):

@@ -22,8 +22,8 @@ import sys
 # set path so that we could import from parent directory
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from optimizer import optimize_model, optimize_by_onnxruntime
-from onnx_model import OnnxModel
+from onnxruntime.transformers.optimizer import optimize_model, optimize_by_onnxruntime
+from onnxruntime.transformers.onnx_model import OnnxModel
 
 BERT_TEST_MODELS = {
     "bert_pytorch_1": ('bert_squad_pytorch1.4_opset11', 'BertForQuestionAnswering_1.onnx'),
@@ -299,7 +299,7 @@ class TestBertOptimization(unittest.TestCase):
 
     @pytest.mark.slow
     def test_huggingface_roberta_fusion(self):
-        self._test_optimizer_on_huggingface_model("roberta-base", [0, 12, 0, 0, 12, 0, 25])
+        self._test_optimizer_on_huggingface_model("roberta-base", [0, 12, 0, 0, 12, 1, 24])
 
     @pytest.mark.slow
     def test_huggingface_distillbert_fusion(self):
@@ -309,11 +309,11 @@ class TestBertOptimization(unittest.TestCase):
     @pytest.mark.slow
     def test_huggingface_camembert_fusion(self):
         # output not close issue
-        self._test_optimizer_on_huggingface_model("camembert-base", [0, 12, 0, 0, 12, 0, 25], validate_model=False)
+        self._test_optimizer_on_huggingface_model("camembert-base", [0, 12, 0, 0, 12, 1, 24], validate_model=False)
 
     @pytest.mark.slow
     def test_huggingface_albert_fusion(self):
-        self._test_optimizer_on_huggingface_model("albert-base-v1", [0, 12, 0, 0, 12, 0, 25])
+        self._test_optimizer_on_huggingface_model("albert-base-v1", [0, 12, 0, 0, 12, 1, 24])
 
     @pytest.mark.slow
     def test_huggingface_t5_fusion(self):
@@ -321,7 +321,7 @@ class TestBertOptimization(unittest.TestCase):
 
     @pytest.mark.slow
     def test_huggingface_xlmroberta_fusion(self):
-        self._test_optimizer_on_huggingface_model("xlm-roberta-base", [0, 12, 0, 0, 12, 0, 25])
+        self._test_optimizer_on_huggingface_model("xlm-roberta-base", [0, 12, 0, 0, 12, 1, 24])
 
     @pytest.mark.slow
     def test_huggingface_flaubert_fusion(self):
@@ -352,7 +352,7 @@ class TestBertOptimization(unittest.TestCase):
     @pytest.mark.slow
     def test_huggingface_albert_from_tf2onnx(self):
         self._test_optimizer_on_tf_model("albert-base-v1", [0, 0, 0, 0, 0, 0, 25], 1)
-    
+
     @pytest.mark.slow
     def test_huggingface_gpt2_from_tf2onnx(self):
         self._test_optimizer_on_tf_model("gpt2", [0, 0, 0, 0, 0, 24, 1], 1, validate_model=False)
@@ -360,7 +360,7 @@ class TestBertOptimization(unittest.TestCase):
     @pytest.mark.slow
     def test_huggingface_roberta_from_tf2onnx(self):
         self._test_optimizer_on_tf_model("roberta-base", [0, 12, 0, 0, 0, 0, 25], 1, validate_model=False)
-    
+
     @pytest.mark.slow
     def test_huggingface_distilbert_from_tf2onnx(self):
         self._test_optimizer_on_tf_model("distilbert-base-uncased", [0, 0, 0, 0, 0, 0, 13], 1, validate_model=False)

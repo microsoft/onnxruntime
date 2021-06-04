@@ -46,7 +46,7 @@ class TestGeluFusions(unittest.TestCase):
 
     def test_fusions(self):
         sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-        from optimizer import optimize_model
+        from onnxruntime.transformers.optimizer import optimize_model
 
         for test_case in test_cases:
             source, operator, model_class = test_case
