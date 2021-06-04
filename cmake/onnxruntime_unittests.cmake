@@ -659,9 +659,6 @@ endif()
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
-if (onnxruntime_ENABLE_TRAINING AND onnxruntime_ENABLE_PYTHON)
-  target_link_libraries(onnxruntime_test_all PRIVATE Python::Python)
-endif()
 if (onnxruntime_USE_ROCM)
   target_include_directories(onnxruntime_test_all PRIVATE  ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
 endif()
@@ -770,11 +767,6 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
 endif()
 
 target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
-
-if(onnxruntime_ENABLE_TRAINING AND onnxruntime_ENABLE_PYTHON)
-  target_link_libraries(onnx_test_runner PRIVATE Python::Python)
-endif()
-
 target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
 set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
 
