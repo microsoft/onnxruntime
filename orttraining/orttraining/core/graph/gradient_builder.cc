@@ -822,6 +822,25 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
 
   const ArgDef a = I(0), b = I(1);
   std::vector<NodeDef> output;
+  if (a.name.compare(b.name) == 0) {
+    if (IsGradientRequiredForSrcNodeInput(0)) {
+        output.push_back(
+            NodeDef("Identity",
+                    {GO(0)},
+                    {GI(0)}));
+    }
+
+    if (IsGradientRequiredForSrcNodeInput(1)) {
+        if (is_sub) {
+          output.push_back(
+              NodeDef("Neg",
+                      {GO(0)},
+                      {GI(1)}));
+        }
+    }
+    return output;
+  }
+
   std::vector<Dimension> a_shape, b_shape;
   if (GetShape(a, a_shape).IsOK() && GetShape(b, b_shape).IsOK()) {
     std::vector<int64_t> a_axes, b_axes;
@@ -864,8 +883,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
     }
   } else {
     //GetShape failed, build shape-independent gradient graph
-    ArgDef a_axes = IA("ReduceAxes_a_" + a.name);
-    ArgDef b_axes = IA("ReduceAxes_b_" + b.name);
+    ArgDef a_axes = IA("ReduceAxes_" + a.name);
+    ArgDef b_axes = IA("ReduceAxes_" + b.name);
     ArgDef A_shape = IA("Shape_" + a.name);
     ArgDef B_shape = IA("Shape_" + b.name);
     ComputeBroadcastBackwardAxesDynamic(a, b, A_shape, B_shape, &a_axes, &b_axes, output);
@@ -874,8 +893,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
       HandleBroadcastingDynamic(GO(0), a, A_shape, GI(0), a_axes, output);
     }
 
-    // Skip when two inputs are same.
-    if (a.name.compare(b.name) != 0 && IsGradientRequiredForSrcNodeInput(1)) {
+    if (IsGradientRequiredForSrcNodeInput(1)) {
       ArgDef reshape_output = is_sub ? IA("ReshapeReduceSum_2", IType(1)) : GI(1);
       HandleBroadcastingDynamic(GO(0), b, B_shape, reshape_output, b_axes, output);
 
@@ -894,6 +912,23 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
   const ArgDef a = I(0), b = I(1);
 
   std::vector<NodeDef> output;
+  if (a.name.compare(b.name) == 0) {
+    if(IsGradientRequiredForSrcNodeInput(0)) {
+      output.push_back(
+          NodeDef("Mul",
+                  {GO(0), I(1)},
+                  {GI(0)}));
+    }
+
+    if(IsGradientRequiredForSrcNodeInput(1)) {
+      output.push_back(
+          NodeDef("Mul",
+                  {GO(0), I(0)},
+                  {GI(1)}));
+    }
+    return output;
+  }
+
   std::vector<Dimension> a_shape, b_shape;
   if (GetShape(a, a_shape).IsOK() && GetShape(b, b_shape).IsOK()) {
     std::vector<int64_t> a_axes, b_axes;
@@ -970,6 +1005,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
     // Y = A / B, dA = dY / B
     const ArgDef a = I(0), b = I(1);
     std::vector<NodeDef> output;
+    if (a.name.compare(b.name) == 0) {
+      output.push_back(NodeDef("Div", {GO(0), I(1)}, {GI(0)}));
+      return output;
+    }
+
     std::vector<Dimension> a_shape, b_shape;
     if (GetShape(a, a_shape).IsOK() && GetShape(b, b_shape).IsOK()) {
       std::vector<int64_t> a_axes, b_axes;
@@ -1587,6 +1627,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
   if (IsGradientRequiredForSrcNodeInput(0)) {
     result.push_back(NodeDef("Not", {IA("Mask_1")}, {IA("Mask_0")}));
   }
+  const ArgDef a = I(0), b = I(1);
   for (int i = 0; i < num_src_node_inputs; i++) {
     if (IsGradientRequiredForSrcNodeInput(i)) {
       const ArgDef x = I(i);
@@ -1597,6 +1638,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
                                {mask_cast_i_def},
                                {MakeAttribute("to", int64_t(IElemType(0)))}));
       result.push_back(NodeDef("Mul", {mask_cast_i_def, GO(0)}, {pre_reduce_grad_i_def}));
+      if (a.name.compare(b.name) == 0) {
+        result.push_back(NodeDef("Identity", {pre_reduce_grad_i_def}, {GI(i)}));
+        continue;
+      }
+
       std::vector<Dimension> x_shape;
       if (get_y_shape_ok && GetShape(x, x_shape).IsOK()) {
         std::vector<int64_t> x_axes;
