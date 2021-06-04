@@ -807,7 +807,7 @@ ADD_LIST_ATTR_IMPL(std::string, AttributeProto_AttributeType::AttributeProto_Att
 ADD_LIST_ATTR_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS, tensors)
 ADD_LIST_ATTR_IMPL(GraphProto, AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPHS, graphs)
 ADD_LIST_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSORS, sparse_tensors)
-// ADD_LIST_ATTR_IMPL(TypeProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTOS, tps)
+ADD_LIST_ATTR_IMPL(TypeProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTOS, type_protos)
 
 #if !defined(ORT_MINIMAL_BUILD)
 bool Node::ClearAttribute(const std::string& attr_name) {
