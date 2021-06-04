@@ -90,12 +90,28 @@ void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, boo
       ostream << "P999 Latency: " << sorted_time[n999] << " s" << std::endl;
     };
 
+    // CSV Output stuff:
+    auto csv_stats = [&](std::ostream& ostream) {
+      ostream << sorted_time[0] << ", ";
+      ostream << sorted_time[total - 1] << ", ";
+      ostream << sorted_time[n50] << ", ";
+      ostream << sorted_time[n90] << ", ";
+      ostream << sorted_time[n95] << ", ";
+      ostream << sorted_time[n99] << ", ";
+      ostream << sorted_time[n999] << ", " << std::endl;
+    };
+
     if (have_file) {
       outfile << std::endl;
       output_stats(outfile);
     }
 
     output_stats(std::cout);
+
+    // Output CSV stuff
+    std::cout << std::endl;
+    std::cout << "" << peak_workingset_size << ", ";
+    csv_stats(std::cout);
   }
 }
 

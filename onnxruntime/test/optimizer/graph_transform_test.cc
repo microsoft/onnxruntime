@@ -3605,6 +3605,10 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionMultiple_OpSet13) {
   EmbedLayerNormFusionFormatMultiple(MODEL_FOLDER "fusion/embed_layer_norm_multiple_opset13.onnx", logger_.get());
 }
 
+TEST_F(GraphTransformationTests, QuantizedEmbedLayerNormFusionTest) {
+  printf("This is a test\n");
+}
+
 TEST_F(GraphTransformationTests, DynamicQuantizeMatMulTest) {
   auto model_uri = MODEL_FOLDER "fusion/dynamic_quantize_matmul.onnx";
   std::shared_ptr<Model> p_model;
