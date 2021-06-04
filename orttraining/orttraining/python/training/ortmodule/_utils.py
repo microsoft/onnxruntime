@@ -98,7 +98,6 @@ def _create_iobinding(io_binding, inputs, model, device):
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type, device_id=get_device_index(device))
 
-
 class _PytorchModuleMetadata():
     """Encapsulates modules and allows easy access as required"""
 

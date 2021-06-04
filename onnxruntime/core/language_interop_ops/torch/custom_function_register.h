@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/language_interop_ops/torch/python_common.h"
+#include "core/dlpack/python_common.h"
 
 #include "core/language_interop_ops/torch/torch_proxy.h"
 #include <mutex>

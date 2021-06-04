@@ -8,7 +8,7 @@
 #include "core/framework/op_kernel.h"
 #endif
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "core/language_interop_ops/torch/custom_function_register.h"
 #include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
 

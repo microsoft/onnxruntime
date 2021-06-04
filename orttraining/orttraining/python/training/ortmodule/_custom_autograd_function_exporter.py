@@ -158,8 +158,8 @@ def _post_process_after_export(exported_model):
             index += 1
 
     for kclass in torch.autograd.Function.__subclasses__():
-        # Sometimes, we find the same functions multiple times, so we allow repeated
-        # registrations.
-        register_torch_autograd_function(kclass.__name__, kclass, True)
+        # Sometimes, we find the same functions multiple times, so we skip
+        # registrations when their keys already exist.
+        register_torch_autograd_function(kclass.__name__, kclass)
 
     return exported_model

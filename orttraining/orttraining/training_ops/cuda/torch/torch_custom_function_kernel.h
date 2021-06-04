@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+
 #pragma once
 #include "core/providers/cuda/cuda_kernel.h"
 #include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
@@ -24,3 +26,5 @@ class PythonOpGrad final : public contrib::PythonOpGradBase, public CudaKernel {
 
 }  // namespace cuda
 }  // namespace onnxruntime
+
+#endif

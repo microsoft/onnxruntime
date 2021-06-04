@@ -659,9 +659,6 @@ endif()
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   target_link_libraries(onnxruntime_test_all PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
-if (onnxruntime_ENABLE_TRAINING)
-  target_link_libraries(onnxruntime_test_all PRIVATE ${PYTHON_LIBRARY_PATH})
-endif()
 if (onnxruntime_USE_ROCM)
   target_include_directories(onnxruntime_test_all PRIVATE  ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
 endif()
@@ -769,12 +766,7 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
   )
 endif()
 
-target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs} ${PYTHON_LIBRARIES})
-
-if(onnxruntime_ENABLE_TRAINING)
-  target_link_libraries(onnx_test_runner PRIVATE ${PYTHON_LIBRARY_PATH})
-endif()
-
+target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
 target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
 set_target_properties(onnx_test_runner PROPERTIES FOLDER "ONNXRuntimeTest")
 
@@ -865,7 +857,7 @@ if(onnxruntime_ENABLE_EAGER_MODE)
           onnxruntime_mlas
           onnx 
           onnx_proto 
-          protobuf::libprotobuf
+          ${PROTOBUF_LIB}
           GTest::gtest
           re2::re2
           onnxruntime_flatbuffers
@@ -1096,7 +1088,7 @@ else()
 endif()
 set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG})
 
-if (onnxruntime_BUILD_JAVA)
+if (onnxruntime_BUILD_JAVA AND NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
     message(STATUS "Running Java tests")
     # native-test is added to resources so custom_op_lib can be loaded
     # and we want to symlink it there
@@ -1105,7 +1097,7 @@ if (onnxruntime_BUILD_JAVA)
 
     # delegate to gradle's test runner
     if(WIN32)
-      add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:custom_op_library>
+      add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
                        ${JAVA_NATIVE_TEST_DIR}/$<TARGET_FILE_NAME:custom_op_library>)
       # On windows ctest requires a test to be an .exe(.com) file
       # So there are two options 1) Install Chocolatey and its gradle package
@@ -1119,7 +1111,7 @@ if (onnxruntime_BUILD_JAVA)
         ${ORT_PROVIDER_CMAKE_FLAGS}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
     else()
-      add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:custom_op_library>
+      add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
                        ${JAVA_NATIVE_TEST_DIR}/$<TARGET_LINKER_FILE_NAME:custom_op_library>)
       if (onnxruntime_USE_CUDA)
         add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} -DUSE_CUDA=1

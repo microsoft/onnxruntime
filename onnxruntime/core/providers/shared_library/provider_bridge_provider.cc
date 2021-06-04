@@ -35,8 +35,12 @@
 #include "orttraining/training_ops/cpu/aten_ops/aten_op.h"
 #include "orttraining/training_ops/cpu/controlflow/group.h"
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
+
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
 #include "core/language_interop_ops/torch/refcount_tracker.h"
+#endif
+
 #endif
 
 #ifndef _Ret_notnull_
@@ -477,6 +481,10 @@ Status ATenOpBase::Compute(OpKernelContext* p_ctx) const { return g_host->ATenOp
 Status Group::Compute(OpKernelContext* context) const { return g_host->contrib__Group__Compute(this, context); }
 Status PassThrough::Compute(OpKernelContext* context) const { return g_host->contrib__PassThrough__Compute(this, context); }
 Status YieldOp::Compute(OpKernelContext* context) const { return g_host->contrib__YieldOp__Compute(this, context); }
+}
+
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+namespace contrib {
 void PythonOpBase::Init(const OpKernelInfo& info) { return g_host->contrib__PythonOpBase__Init(this, info); }
 void PythonOpBase::Clear() { return g_host->contrib__PythonOpBase__Clear(this); }
 void PythonOpBase::RunForward(OpKernelContext* context, void** diff_ctx, std::vector<OrtValue>& returned_ortvalues) const {
@@ -492,8 +500,7 @@ void PythonOpGradBase::RunBackward(OpKernelContext* context, std::vector<OrtValu
 }
 void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_args) const {
   return g_host->contrib__PythonOpGradBase__SetOutputs(this, context, returned_args);
-};
-
+}
 }  // namespace contrib
 
 namespace language_interop_ops {
@@ -504,6 +511,8 @@ void RefCountTracker::DumpDetails(const std::string& phase_name) const {
 
 }  // namespace torch
 }  // namespace language_interop_ops
+#endif
+
 #endif
 #endif
 }  // namespace onnxruntime

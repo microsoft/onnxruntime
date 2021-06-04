@@ -1,5 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
+#ifdef ENABLE_PYTHON
+
 #pragma once
 
 // Avoid  linking to pythonX_d.lib on Windows in debug build
@@ -20,4 +23,6 @@
 #undef ORT_DISABLE_INCLUDE_DEBUG_PYTHON_LIB
 #endif
 #pragma warning(pop)
+#endif
+
 #endif

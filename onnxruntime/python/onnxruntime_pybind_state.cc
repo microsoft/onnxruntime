@@ -30,7 +30,11 @@
 
 #ifdef ENABLE_TRAINING
 #include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
+
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "core/language_interop_ops/torch/custom_function_register.h"
+#endif
+
 #endif
 
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
@@ -48,7 +52,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(c
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id,
+                                                                                  const char* export_runtime_module,
+                                                                                  const char* load_runtime_module);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
@@ -575,7 +581,34 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_VITISAI("dpuv1", 0));
+      // Retrieve Vitis AI provider options
+      // `target`: The name of the DPU target (default is DPUCADX8G for backward compatibility).
+      // `export_runtime_module`: export a Vitis AI PyXIR runtime module to the specified file.
+      //    This can be used for cross compilation or saving state.
+      // `load_runtime_module`: Load an exported runtime module from disk.
+      std::string target = "DPUCADX8G";
+      std::string export_runtime_module = "";
+      std::string load_runtime_module = "";
+      auto it = provider_options_map.find(type);
+      if (it != provider_options_map.end()) {
+        auto vitis_ai_provider_options = it->second;
+        auto vai_options_it = vitis_ai_provider_options.find("target");
+        if (vai_options_it != vitis_ai_provider_options.end()) {
+          target = vai_options_it->second;
+        }
+        vai_options_it = vitis_ai_provider_options.find("export_runtime_module");
+        if (vai_options_it != vitis_ai_provider_options.end()) {
+          export_runtime_module = vai_options_it->second;
+        }
+        vai_options_it = vitis_ai_provider_options.find("load_runtime_module");
+        if (vai_options_it != vitis_ai_provider_options.end()) {
+          load_runtime_module = vai_options_it->second;
+        }
+      }
+      RegisterExecutionProvider(
+        sess, *onnxruntime::CreateExecutionProviderFactory_VITISAI(target.c_str(), 0,
+                                                                   export_runtime_module.c_str(),
+                                                                   load_runtime_module.c_str()));
 #endif
     } else if (type == kAclExecutionProvider) {
 #ifdef USE_ACL
@@ -773,6 +806,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
         void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
         contrib::aten_ops::ATenOperatorExecutor::Initialize(p_aten_op_executor);
       });
+  #ifdef ENABLE_TRAINING_TORCH_INTEROP
   m.def("register_forward_runner", [](py::object obj) -> void {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     pool.RegisterForwardRunner(obj.ptr());
@@ -785,6 +819,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     pool.RegisterTorchAutogradFunction(key, obj.ptr());
   });
+  #endif
 #endif
 
 #ifdef USE_NUPHAR
@@ -874,7 +909,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
             onnxruntime::CreateExecutionProviderFactory_MIGraphX(0),
 #endif
 #ifdef USE_VITISAI
-            onnxruntime::CreateExecutionProviderFactory_VitisAI("DPU", 0),
+            onnxruntime::CreateExecutionProviderFactory_VITISAI("DPUCADX8G", 0, "", ""),
 #endif
 #ifdef USE_ACL
             onnxruntime::CreateExecutionProviderFactory_ACL(0),

@@ -5,6 +5,7 @@
 #include "core/common/common.h"
 #include "core/language_interop_ops/torch/refcount_tracker.h"
 #include "core/platform/env.h"
+#include <cstdio>
 
 namespace onnxruntime {
 namespace language_interop_ops {
@@ -101,7 +102,7 @@ static void RegisterEntry(
   ORT_ENFORCE(obj, "Cannot register NULL PyObject*.");
 
   // Skip registration if storage already stores a Python object.
-  if (storage.get() == nullptr) {
+  if (storage.get() != nullptr) {
     return;
   }
 
@@ -114,11 +115,11 @@ static void RegisterEntry(
   storage = std::move(ptr);
 }
 
-void OrtTorchFunctionPool::RegisterForwardRunner(PyObject* obj, bool overwrite) {
+void OrtTorchFunctionPool::RegisterForwardRunner(PyObject* obj) {
   RegisterEntry(mutex_, obj, forward_runner_);
 }
 
-void OrtTorchFunctionPool::RegisterBackwardRunner(PyObject* obj, bool overwrite) {
+void OrtTorchFunctionPool::RegisterBackwardRunner(PyObject* obj) {
   RegisterEntry(mutex_, obj, backward_runner_);
 }
 

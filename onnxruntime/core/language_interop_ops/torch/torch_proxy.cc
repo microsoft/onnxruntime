@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/language_interop_ops/torch/torch_proxy.h"
-
-#include "core/dlpack/dlpack_converter.h"
+#include "core/dlpack/python_common.h"
+#include "core/dlpack/dlpack_python.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
 #include "core/language_interop_ops/torch/refcount_tracker.h"

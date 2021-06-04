@@ -118,8 +118,8 @@ void EMSCRIPTEN_KEEPALIVE OrtFree(void* ptr);
 /**
  * create an instance of ORT tensor.
  * @param data_type data type defined in enum ONNXTensorElementDataType.
- * @param data a pointer to the tensor data.
- * @param data_length size of the tensor data in bytes.
+ * @param data for numeric tensor: a pointer to the tensor data buffer. for string tensor: a pointer to a C-Style null terminated string array.
+ * @param data_length size of the buffer 'data' in bytes.
  * @param dims a pointer to an array of dims. the array should contain (dims_length) element(s).
  * @param dims_length the length of the tensor's dimension
  * @returns a handle of the tensor.
@@ -130,10 +130,11 @@ ort_tensor_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateTensor(int data_type, void* da
  * get type, shape info and data of the specified tensor.
  * @param tensor handle of the tensor.
  * @param data_type [out] specify the memory to write data type
- * @param data [out] specify the memory to write the tensor data
+ * @param data [out] specify the memory to write the tensor data. for string tensor: an array of C-Style null terminated string.
  * @param dims [out] specify the memory to write address of the buffer containing value of each dimension.
  * @param dims_length [out] specify the memory to write dims length
- * @remarks a temporary buffer 'dims' is allocated during the call. Caller must release the buffer after use by calling OrtFree().
+ * @remarks following temporary buffers are allocated during the call. Caller must release the buffers after use by calling OrtFree():
+ *           'dims' (for all types of tensor), 'data' (only for string tensor)
  */
 int EMSCRIPTEN_KEEPALIVE OrtGetTensorData(ort_tensor_handle_t tensor, int* data_type, void** data, size_t** dims, size_t* dims_length);
 

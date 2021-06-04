@@ -132,30 +132,21 @@ void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
                                          std::vector<NodeDef>& output) {
   // Populate the node names explicitly in case a and b are the same tensor and
   // resulting in duplicated node name for Shape node. For example, y = x^2 is sometimes represented as Mul(x,x)
-  bool shared_same_input_tensor = false;
-  if (a.name.compare(b.name) == 0) {
-    shared_same_input_tensor = true;
-  }
   output.push_back(
       NodeDef("Shape", {a}, {a_shape}, NodeAttributes(), a_shape.name + "_lhs"));
 
-  if (!shared_same_input_tensor) {
-    output.push_back(
-        NodeDef("Shape", {b}, {b_shape}, NodeAttributes(), b_shape.name + "_rhs"));
-  }
+  output.push_back(
+      NodeDef("Shape", {b}, {b_shape}, NodeAttributes(), b_shape.name + "_rhs"));
+
 
   ArgDef a_op = ArgDef(""), b_op = ArgDef("");
   if (a_axes)
     a_op = *a_axes;
   if (b_axes)
     b_op = *b_axes;
-
-  ORT_ENFORCE(a_op.name != b_op.name, "BroadcastGradientArgs should not have duplicated output names.");
-  
-  const ArgDef& final_b_shape = shared_same_input_tensor? a_shape : b_shape;
   output.push_back(
       NodeDef(OpDef{"BroadcastGradientArgs", kMSDomain, 1},
-              {a_shape, final_b_shape},
+              {a_shape, b_shape},
               {a_op, b_op}));
 }
 

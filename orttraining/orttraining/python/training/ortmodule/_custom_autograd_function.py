@@ -10,7 +10,7 @@ def enable_custom_autograd_support():
     from ._custom_autograd_function_exporter import _export
     from ._custom_autograd_function_runner import call_python_forward_function, call_python_backward_function
 
-    register_forward_runner(call_python_forward_function, False)
-    register_backward_runner(call_python_backward_function, False)
+    register_forward_runner(call_python_forward_function)
+    register_backward_runner(call_python_backward_function)
 
     register_custom_op_symbolic('::prim_PythonOp', _export, 1)

@@ -155,21 +155,34 @@ if (onnxruntime_ENABLE_TRAINING)
   source_group(TREE ${ORTTRAINING_ROOT}/ FILES ${onnxruntime_cpu_training_ops_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
 
-  file(GLOB_RECURSE onnxruntime_providers_dlpack_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/dlpack/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/dlpack/*.h"
+  file(GLOB_RECURSE onnxruntime_providers_dlpack_cpp_interfaces_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_converter.cc"
+    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_converter.h"
   )
+  set(onnxruntime_providers_dlpack_srcs ${onnxruntime_providers_dlpack_cpp_interfaces_srcs})
+
+  if (onnxruntime_ENABLE_PYTHON)
+    file(GLOB_RECURSE onnxruntime_providers_dlpack_python_interfaces_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.cc"
+      "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.h"
+      "${ONNXRUNTIME_ROOT}/core/dlpack/python_common.cc"
+      "${ONNXRUNTIME_ROOT}/core/dlpack/python_common.h"
+    )
+    list(APPEND onnxruntime_providers_dlpack_srcs ${onnxruntime_providers_dlpack_python_interfaces_srcs})
+  endif()
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dlpack_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_providers_dlpack_srcs})
 
-  file(GLOB_RECURSE onnxruntime_language_interop_torch_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/*.h"
-    "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/*.cc"
-  )
+  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    file(GLOB_RECURSE onnxruntime_language_interop_torch_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/*.h"
+      "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/*.cc"
+    )
 
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_language_interop_torch_srcs})
-  list(APPEND onnxruntime_providers_src ${onnxruntime_language_interop_torch_srcs})
+    source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_language_interop_torch_srcs})
+    list(APPEND onnxruntime_providers_src ${onnxruntime_language_interop_torch_srcs})
+  endif()
 endif()
 
 onnxruntime_add_static_library(onnxruntime_providers ${onnxruntime_providers_src})
@@ -180,7 +193,7 @@ if (MSVC)
       target_compile_options(onnxruntime_providers PRIVATE "/wd4244")
    endif()
 endif()
-onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
+onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
 
 if (onnxruntime_BUILD_MS_EXPERIMENTAL_OPS)
   target_compile_definitions(onnxruntime_providers PRIVATE BUILD_MS_EXPERIMENTAL_OPS=1)
@@ -215,8 +228,10 @@ endif()
 if (onnxruntime_ENABLE_TRAINING)
   add_dependencies(onnxruntime_providers tensorboard)
   onnxruntime_add_include_to_target(onnxruntime_providers tensorboard)
-  target_include_directories(onnxruntime_providers PRIVATE ${PYTHON_INCLUDE_DIR})
-  target_link_libraries(onnxruntime_providers PRIVATE ${PYTHON_LIBRARY_PATH})
+  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    onnxruntime_add_include_to_target(onnxruntime_providers tensorboard Python::Module)
+    target_link_libraries(onnxruntime_providers PRIVATE Python::Python)
+  endif()
 
   if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)
     target_include_directories(onnxruntime_providers PUBLIC ${MPI_CXX_INCLUDE_DIRS})
@@ -348,12 +363,14 @@ if (onnxruntime_USE_CUDA)
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4834>")
     target_compile_options(onnxruntime_providers_cuda PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>")
   endif()
-  onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
   if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
     onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_training)
     target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_training)
-    target_include_directories(onnxruntime_providers_cuda PRIVATE ${PYTHON_INCLUDE_DIR})
-    target_link_libraries(onnxruntime_providers_cuda PRIVATE ${PYTHON_LIBRARY_PATH})
+    if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+      onnxruntime_add_include_to_target(onnxruntime_providers_cuda Python::Module)
+      target_link_libraries(onnxruntime_providers_cuda PRIVATE Python::Python)
+    endif()
   endif()
 
   add_dependencies(onnxruntime_providers_cuda onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES} ${onnxruntime_tvm_dependencies})
@@ -528,7 +545,7 @@ if (onnxruntime_USE_TENSORRT)
   onnxruntime_add_shared_library_module(onnxruntime_providers_tensorrt ${onnxruntime_providers_tensorrt_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt onnxruntime_common onnx flatbuffers)
   add_dependencies(onnxruntime_providers_tensorrt onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${onnxparser_link_libs} ${trt_link_libs} cudart ${ONNXRUNTIME_PROVIDERS_SHARED} protobuf::libprotobuf flatbuffers)
+  target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${onnxparser_link_libs} ${trt_link_libs} cudart ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers)
   target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/tensorrt  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
@@ -592,7 +609,7 @@ if (onnxruntime_USE_NUPHAR)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_nuphar_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_nuphar ${onnxruntime_providers_nuphar_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_nuphar onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_providers_nuphar onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
   set_target_properties(onnxruntime_providers_nuphar PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_nuphar PRIVATE ${ONNXRUNTIME_ROOT} ${TVM_INCLUDES} ${eigen_INCLUDE_DIRS})
   set_target_properties(onnxruntime_providers_nuphar PROPERTIES LINKER_LANGUAGE CXX)
@@ -609,7 +626,7 @@ if (onnxruntime_USE_VITISAI)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_vitisai_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_vitisai ${onnxruntime_providers_vitisai_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_vitisai onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_providers_vitisai onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
   add_dependencies(onnxruntime_providers_vitisai ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_vitisai PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_vitisai PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${VITISAI_INCLUDE_DIR})
@@ -695,8 +712,8 @@ if (onnxruntime_USE_COREML)
     "${COREML_PROTO_ROOT}/*.proto"
   )
   onnxruntime_add_static_library(onnxruntime_coreml_proto ${coreml_proto_srcs})
-  target_include_directories(onnxruntime_coreml_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}")
-  target_compile_definitions(onnxruntime_coreml_proto PUBLIC $<TARGET_PROPERTY:protobuf::libprotobuf,INTERFACE_COMPILE_DEFINITIONS>)
+  target_include_directories(onnxruntime_coreml_proto PUBLIC $<TARGET_PROPERTY:${PROTOBUF_LIB},INTERFACE_INCLUDE_DIRECTORIES> "${CMAKE_CURRENT_BINARY_DIR}")
+  target_compile_definitions(onnxruntime_coreml_proto PUBLIC $<TARGET_PROPERTY:${PROTOBUF_LIB},INTERFACE_COMPILE_DEFINITIONS>)
   set_target_properties(onnxruntime_coreml_proto PROPERTIES COMPILE_FLAGS "-fvisibility=hidden")
   set_target_properties(onnxruntime_coreml_proto PROPERTIES COMPILE_FLAGS "-fvisibility-inlines-hidden")
   set(_src_sub_dir "coreml/")
@@ -743,7 +760,7 @@ if (onnxruntime_USE_COREML)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_coreml_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_coreml ${onnxruntime_providers_coreml_cc_srcs} ${onnxruntime_providers_coreml_objcc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
   onnxruntime_add_include_to_target(onnxruntime_providers_coreml onnxruntime_coreml_proto)
   target_link_libraries(onnxruntime_providers_coreml PRIVATE onnxruntime_coreml_proto "-framework Foundation" "-framework CoreML")
   add_dependencies(onnxruntime_providers_coreml onnx onnxruntime_coreml_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
@@ -870,7 +887,7 @@ if (onnxruntime_USE_DML)
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dml_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_dml ${onnxruntime_providers_dml_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_dml onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_providers_dml onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
   add_dependencies(onnxruntime_providers_dml ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_dml PRIVATE ${ONNXRUNTIME_ROOT} ${ONNXRUNTIME_ROOT}/../cmake/external/wil/include)
 
@@ -958,7 +975,7 @@ if (onnxruntime_USE_ACL)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_acl_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_acl ${onnxruntime_providers_acl_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_acl onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_providers_acl onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
   target_link_libraries(onnxruntime_providers_acl -L$ENV{LD_LIBRARY_PATH})
   add_dependencies(onnxruntime_providers_acl ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_acl PROPERTIES FOLDER "ONNXRuntime")
@@ -976,7 +993,7 @@ if (onnxruntime_USE_ARMNN)
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_armnn_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_armnn ${onnxruntime_providers_armnn_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_armnn onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_providers_armnn onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
   add_dependencies(onnxruntime_providers_armnn ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_armnn PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_armnn PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${onnxruntime_ARMNN_HOME} ${onnxruntime_ARMNN_HOME}/include ${onnxruntime_ACL_HOME} ${onnxruntime_ACL_HOME}/include)
@@ -1102,11 +1119,14 @@ if (onnxruntime_USE_ROCM)
   target_include_directories(onnxruntime_providers_rocm PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${MPI_CXX_INCLUDE_DIRS} ${ONNXRUNTIME_ROOT}/../cmake/external/eigen)
 
   if (onnxruntime_ENABLE_TRAINING)
-    target_include_directories(onnxruntime_providers_rocm PRIVATE ${ORTTRAINING_ROOT} ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining ${PYTHON_INCLUDE_DIR})
-    target_link_libraries(onnxruntime_providers_rocm PRIVATE ${PYTHON_LIBRARY_PATH})
+    target_include_directories(onnxruntime_providers_rocm PRIVATE ${ORTTRAINING_ROOT} ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
+    if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+      onnxruntime_add_include_to_target(onnxruntime_providers_rocm Python::Module)
+      target_link_libraries(onnxruntime_providers_rocm PRIVATE Python::Python)
+    endif()
   endif()
 
-  onnxruntime_add_include_to_target(onnxruntime_providers_rocm onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf flatbuffers)
+  onnxruntime_add_include_to_target(onnxruntime_providers_rocm onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
   add_dependencies(onnxruntime_providers_rocm ${onnxruntime_EXTERNAL_DEPENDENCIES})
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/hip  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
   set_target_properties(onnxruntime_providers_rocm PROPERTIES LINKER_LANGUAGE CXX)

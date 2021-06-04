@@ -44,6 +44,10 @@ class AttentionBase;
 class Group;
 class PassThrough;
 class YieldOp;
+}  // namespace contrib
+
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+namespace contrib {
 class PythonOpBase;
 class PythonOpGradBase;
 }  // namespace contrib
@@ -53,6 +57,7 @@ namespace torch {
 class RefCountTracker;
 }  // namespace torch
 }  // namespace language_interop_ops
+#endif
 
 namespace training {
 class DistributedRunContext;
@@ -577,7 +582,7 @@ struct ProviderHost {
   virtual TensorSeq* OpKernelContext__Output_TensorSeq(OpKernelContext* p, int index) = 0;
   virtual Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape) = 0;
   virtual Tensor& OpKernelContext__RequiredOutput(OpKernelContext* p, int index, const TensorShape& shape) = 0;
-  virtual MLDataType OpKernelContext__InputType(const OpKernelContext* p, int index) = 0; 
+  virtual MLDataType OpKernelContext__InputType(const OpKernelContext* p, int index) = 0;
   virtual int OpKernelContext__InputCount(const OpKernelContext* p) = 0;
   virtual int OpKernelContext__OutputCount(const OpKernelContext* p) = 0;
   virtual Status OpKernelContext__GetTempSpaceAllocator(const OpKernelContext* p, AllocatorPtr* output) = 0;
@@ -810,6 +815,12 @@ struct ProviderHost {
   virtual Status contrib__PrepareForTrainingCompute(const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims, int& after_dims_including_split_axis, int& after_dims_excluding_split, std::vector<int64_t>& split_sizes) = 0;
   virtual Status contrib__YieldOp__Compute(const contrib::YieldOp* p, OpKernelContext* context) = 0;
 
+#if defined(ORT_USE_NCCL)
+  virtual training::DistributedRunContext& GetDistributedRunContextInstance() = 0;
+#endif
+#endif
+
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
   virtual void contrib__PythonOpBase__Init(contrib::PythonOpBase* p, const OpKernelInfo& info) = 0;
   virtual void contrib__PythonOpBase__Clear(contrib::PythonOpBase* p) = 0;
   virtual void contrib__PythonOpBase__RunForward(const contrib::PythonOpBase* p, OpKernelContext* context, void** diff_ctx, std::vector<OrtValue>& returned_ortvalues) = 0;
@@ -821,10 +832,6 @@ struct ProviderHost {
 
   virtual language_interop_ops::torch::RefCountTracker& GetRefCountTrackerInstance() = 0;
   virtual void RefCountTracker__DumpDetails(const language_interop_ops::torch::RefCountTracker* p, const std::string& phase_name) = 0;
-
-#if defined(ORT_USE_NCCL)
-  virtual training::DistributedRunContext& GetDistributedRunContextInstance() = 0;
-#endif
 #endif
 #endif
 };

@@ -7,12 +7,13 @@ jobs:
     JobName: 'Onnxruntime_Linux_GPU_Training'
     SubmoduleCheckoutMode: 'recursive'
     RunDockerBuildArgs: >
-      -o ubuntu18.04 -d gpu -r $(Build.BinariesDirectory)
+      -o ubuntu20.04 -p 3.8 -d gpu -r $(Build.BinariesDirectory)
       -x "
       --enable_training
       --config $(buildConfig)
       --build_wheel
       --enable_nvtx_profile
+      --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=70
       "
     DoNugetPack: 'false'
     ArtifactName: 'drop-linux'
