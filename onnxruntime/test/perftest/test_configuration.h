@@ -39,7 +39,7 @@ struct RunConfig {
   std::basic_string<ORTCHAR_T> profile_file;
   TestMode test_mode{TestMode::kFixDurationMode};
   size_t repeated_times{1000};
-  size_t duration_in_seconds{1};
+  size_t duration_in_seconds{10};
   size_t concurrent_session_runs{1};
   bool f_dump_statistics{false};
   bool f_verbose{false};

@@ -6,8 +6,10 @@
 
 namespace onnxruntime {
 
+/*
 Status QuantizedEmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   return Status::OK();
 }
+*/
 
 }  // namespace onnxruntime
