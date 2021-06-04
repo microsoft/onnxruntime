@@ -7,7 +7,7 @@ export interface OrtWasmModule extends EmscriptenModule {
   stackRestore(stack: number): void;
   stackAlloc(size: number): number;
 
-  UTF8ToString(offset: number): string;
+  UTF8ToString(offset: number, maxBytesToRead?: number): string;
   lengthBytesUTF8(str: string): number;
   stringToUTF8(str: string, offset: number, maxBytes: number): void;
   //#endregion

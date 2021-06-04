@@ -1666,5 +1666,20 @@ IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
   return std::vector<NodeDef>{NodeDef(OpDef{"ATenOpGrad", kMSDomain, 1}, input_args, output_args, attrs)};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetPadGradient) {
+  const auto& attributes = SrcNodeAttributes();
+  std::string mode = "constant";
+  if (attributes.find("mode") != attributes.end() && utils::HasString(attributes.at("mode"))) {
+    mode = attributes.at("mode").s();
+  }
+
+  if (mode != "constant") {
+    ORT_THROW("Pad gradient currently supports constant mode only.");
+  }
+
+  return std::vector<NodeDef>{NodeDef("Neg", {I(1)}, {IA("Neg_pads")}),
+                              NodeDef("Pad", {GO(0), IA("Neg_pads")}, {GI(0)})};
+}
+
 }  // namespace training
 }  // namespace onnxruntime
