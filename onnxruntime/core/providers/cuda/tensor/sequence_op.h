@@ -120,8 +120,8 @@ class SequenceLength final : public CudaKernel {
                                          sizeof(int64_t),
                                          cudaMemcpyHostToDevice, Stream()));
     return Status::OK();
-  }  // SequenceLength
-};
+  }
+};  // SequenceLength
 
 class ConcatFromSequence final : public CudaKernel, public ConcatBase {
  public:

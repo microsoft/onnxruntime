@@ -44,7 +44,7 @@ class Memcpy final : public OpKernel {
       auto status = ctx->GetTempSpaceAllocator(&alloc);
       if (!status.IsOK()) {
         return Status(common::ONNXRUNTIME, common::FAIL,
-                      "IdentityOp cuda: unable to get an allocator.");
+                      "Memcpy cuda: unable to get an allocator.");
       }
       auto X_size = X->Size();
       for (size_t i = 0; i < X_size; ++i) {
