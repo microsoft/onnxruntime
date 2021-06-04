@@ -1,11 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_TRAINING_TORCH_INTEROP
-
 #include "core/language_interop_ops/torch/python_common.h"
 #include "core/language_interop_ops/torch/torch_proxy.h"
-#include "core/dlpack/dlpack_converter.h"
+#include "core/dlpack/dlpack_python.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
 #include "core/language_interop_ops/torch/refcount_tracker.h"
@@ -328,5 +326,3 @@ void TorchProxy::Backward(
 }  // namespace torch
 }  // namespace language_interop_ops
 }  // namespace onnxruntime
-
-#endif

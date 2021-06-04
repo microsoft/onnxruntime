@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+/// C++ level interface for DLPack conversion.
+
 #pragma once
 
-#include "core/language_interop_ops/torch/python_common.h"
 #include "core/framework/ml_value.h"
 #include <dlpack/dlpack.h>
 
@@ -19,13 +20,5 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value);
 // tell ORT the data type when creating OrtValue.
 OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor = false);
 
-// Allocate a new Capsule object, which takes the ownership of OrtValue.
-// Caller is responsible for releasing.
-// This function calls OrtValueToDlpack(...).
-PyObject* ToDlpack(OrtValue ort_value);
-
-// Consume a Capsule object and claims the ownership of its underlying tensor to
-// create a OrtValue. This function calls DlpackToOrtValue(...) to do the conversion.
-OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor);
 }  // namespace dlpack
 }  // namespace onnxruntime

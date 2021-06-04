@@ -197,19 +197,6 @@ bool IsContiguousTensor(const DLTensor& tensor) {
 
 }  // namespace
 
-static void DlpackCapsuleDestructor(PyObject* data) {
-  DLManagedTensor* dlmanged_tensor = reinterpret_cast<DLManagedTensor*>(
-      PyCapsule_GetPointer(data, "dltensor"));
-  if (dlmanged_tensor) {
-    // The dlmanged_tensor has not been consumed, call deleter ourselves.
-    dlmanged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanged_tensor));
-  } else {
-    // The dlmanged_tensor has been consumed,
-    // PyCapsule_GetPointer has set an error indicator.
-    PyErr_Clear();
-  }
-};
-
 // This function returns a pointer to DLManagedTensor constructed from an OrtValue
 // The OrtValue inside OrtDLManagedTensor will increase its own buffer's ref count by one
 // When the consumer of DLManagedTensor is done with the tensor, it should invoke the deleter.
@@ -229,20 +216,6 @@ DLManagedTensor* OrtValueToDlpack(OrtValue& ort_value) {
   ort_dlmanaged_tensor->tensor.dl_tensor.strides = nullptr;
   ort_dlmanaged_tensor->tensor.dl_tensor.byte_offset = 0;
   return &(ort_dlmanaged_tensor->tensor);
-}
-
-PyObject* ToDlpack(OrtValue ort_value) {
-  DLManagedTensor* dlmanaged_tensor = dlpack::OrtValueToDlpack(ort_value);
-  return PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
-}
-
-OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor) {
-  // Extract DLPack tensor pointer from the capsule carrier.
-  DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(dlpack_tensor, "dltensor");
-  OrtValue ort_value = dlpack::DlpackToOrtValue(dlmanaged_tensor, is_bool_tensor);
-  // Make sure this capsule will never be used again.
-  PyCapsule_SetName(dlpack_tensor, "used_dltensor");
-  return ort_value;
 }
 
 OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
