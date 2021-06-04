@@ -155,21 +155,34 @@ if (onnxruntime_ENABLE_TRAINING)
   source_group(TREE ${ORTTRAINING_ROOT}/ FILES ${onnxruntime_cpu_training_ops_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
 
-  file(GLOB_RECURSE onnxruntime_providers_dlpack_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/dlpack/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/dlpack/*.h"
+  file(GLOB_RECURSE onnxruntime_providers_dlpack_cpp_interfaces_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_converter.cc"
+    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_converter.h"
   )
+  set(onnxruntime_providers_dlpack_srcs ${onnxruntime_providers_dlpack_cpp_interfaces_srcs})
+
+  if (onnxruntime_ENABLE_PYTHON)
+    file(GLOB_RECURSE onnxruntime_providers_dlpack_python_interfaces_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.cc"
+      "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.h"
+      "${ONNXRUNTIME_ROOT}/core/dlpack/python_common.cc"
+      "${ONNXRUNTIME_ROOT}/core/dlpack/python_common.h"
+    )
+    list(APPEND onnxruntime_providers_dlpack_srcs ${onnxruntime_providers_dlpack_python_interfaces_srcs})
+  endif()
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dlpack_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_providers_dlpack_srcs})
 
-  file(GLOB_RECURSE onnxruntime_language_interop_torch_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/*.h"
-    "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/*.cc"
-  )
+  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    file(GLOB_RECURSE onnxruntime_language_interop_torch_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/*.h"
+      "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/*.cc"
+    )
 
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_language_interop_torch_srcs})
-  list(APPEND onnxruntime_providers_src ${onnxruntime_language_interop_torch_srcs})
+    source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_language_interop_torch_srcs})
+    list(APPEND onnxruntime_providers_src ${onnxruntime_language_interop_torch_srcs})
+  endif()
 endif()
 
 onnxruntime_add_static_library(onnxruntime_providers ${onnxruntime_providers_src})
