@@ -836,6 +836,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
               NodeDef("Neg",
                       {GO(0)},
                       {GI(1)}));
+        } else /*is_add*/ {
+          output.push_back(
+              NodeDef("Identity",
+                      {GO(0)},
+                      {GI(1)}));
         }
     }
     return output;
