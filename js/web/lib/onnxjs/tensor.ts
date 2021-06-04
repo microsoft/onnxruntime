@@ -186,7 +186,7 @@ export class Tensor {
       }
 
       if (empty) {
-        cache = new Array<string>(size);
+        this.cache = new Array<string>(size);
       }
     } else {
       if (cache !== undefined) {

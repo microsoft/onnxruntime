@@ -14,7 +14,7 @@ ARG OPENMPI_PATH=/opt/openmpi-${OPENMPI_VERSION}
 ARG COMMIT=master
 
 # cuda development image for building sources
-FROM nvidia/cuda:10.2-cudnn8-devel-ubuntu18.04 as builder
+FROM nvcr.io/nvidia/cuda:11.1.1-cudnn8-devel-ubuntu18.04 as builder
 
 # set location for builds
 WORKDIR /stage
@@ -32,7 +32,10 @@ RUN apt-get -y update &&\
 RUN unattended-upgrade
 
 RUN locale-gen en_US.UTF-8 && \
-    update-locale LANG=en_US.UTF-8
+    update-locale LANG=en_US.UTF-8 && \
+	curl -O -L https://github.com/Kitware/CMake/releases/download/v3.20.3/cmake-3.20.3-Linux-x86_64.tar.gz && \
+    tar -zxf cmake-3.20.3-Linux-x86_64.tar.gz --strip=1 -C /usr && \
+    rm -rf cmake-3.20.3-Linux-x86_64.tar.gz
 
 # install miniconda (comes with python 3.7 default)
 ARG CONDA_VERSION
@@ -42,12 +45,11 @@ RUN cd /stage && curl -fSsL --insecure ${CONDA_URL} -o install-conda.sh &&\
     /opt/conda/bin/conda clean -ya
 ENV PATH=/opt/conda/bin:${PATH}
 
-# install cmake, setuptools, numpy, and onnx
+# install setuptools, numpy, and onnx
 ARG NUMPY_VERSION
 ARG ONNX_VERSION
 RUN conda install -y \
         setuptools \
-        cmake \
         numpy=${NUMPY_VERSION} &&\
     pip install \
         onnx=="${ONNX_VERSION}"
@@ -147,7 +149,7 @@ RUN cd /stage && git clone https://github.com/microsoft/onnxruntime.git &&\
         --build_dir build \
         --build \
         --build_wheel \
-        --skip_tests &&\
+        --skip_tests --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=35;37;50;52;60;61;70;75;80;86' &&\
     pip install build/${BUILD_CONFIG}/dist/*.whl
 
 # Install AzureML support and commonly used packages.
@@ -155,7 +157,7 @@ RUN pip install azureml-defaults sentencepiece==0.1.92 transformers==2.11.0 msgp
 
 # switch to cuda runtime environment
 # note: launch with --gpus all or nvidia-docker
-FROM nvidia/cuda:10.2-cudnn8-runtime-ubuntu18.04
+FROM nvcr.io/nvidia/cuda:11.1.1-cudnn8-runtime-ubuntu18.04
 WORKDIR /stage
 
 # install ucx
@@ -215,8 +217,7 @@ LABEL PYTORCH_VERSION=${PYTORCH_VERSION}
 
 # clean\finalize environment
 # note: adds onnxruntime license and third party notices
-RUN conda remove -y cmake &&\
-    apt-get purge -y build-essential &&\
+RUN apt-get purge -y build-essential &&\
     apt-get autoremove -y &&\
     rm -fr /stage
 WORKDIR /workspace
