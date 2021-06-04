@@ -255,8 +255,6 @@ class GraphExecutionManager(ABC):
         # For example, the Dropout node in a model is dropped under eval mode.
         assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
 
-        # Todo: get the flag once wechi provided in later changes.
-
         try:
             with torch.set_grad_enabled(self._enable_custom_autograd_function), \
                     _logger.suppress_os_stream_output(log_level=self._loglevel):

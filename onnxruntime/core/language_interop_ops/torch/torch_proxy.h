@@ -3,16 +3,28 @@
 
 #pragma once
 #include <mutex>
+#include "core/language_interop_ops/torch/python_common.h"
 
 #ifndef SHARED_PROVIDER
-#include "core/platform/env.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/op_kernel_context_internal.h"
+#include "core/platform/env.h"
 #endif
 
 namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
+
+// For handling temporary PyObject pointer newly created with Py_XXX APIs, here is our practice:
+// Convention:
+//     Wrap those PyObject* in format of "PythonObjectPtr(Py_XXX(), PythonObjectDeleter)".
+// Explaination:
+//     That means, for the PyObject* created by Py_XXX(), its refcnt will be decreased by one
+//     in the PythonObjectDeleter which is triggered once lifetime of PythonObjectPtr instance
+//     ends.
+
+void PythonObjectDeleter(PyObject* ptr);
+using PythonObjectPtr = std::unique_ptr<PyObject, std::function<void(PyObject*)>>;
 
 /// Use void* instead of PyObject* to avoid add unnecessary
 /// python.h dependency for the consumers.

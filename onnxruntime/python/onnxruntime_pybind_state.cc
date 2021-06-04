@@ -773,32 +773,17 @@ void addGlobalMethods(py::module& m, Environment& env) {
         void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
         contrib::aten_ops::ATenOperatorExecutor::Initialize(p_aten_op_executor);
       });
-  m.def("register_forward_runner", [](py::object obj, bool overwrite) -> void {
+  m.def("register_forward_runner", [](py::object obj) -> void {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
-    pool.RegisterForwardRunner(obj.ptr(), overwrite);
+    pool.RegisterForwardRunner(obj.ptr());
   });
-  m.def("unregister_forward_runner", []() -> void {
-    // todo: call this somewhere when program exits
+  m.def("register_backward_runner", [](py::object obj) -> void {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
-    pool.UnregisterForwardRunner();
+    pool.RegisterBackwardRunner(obj.ptr());
   });
-  m.def("register_backward_runner", [](py::object obj, bool overwrite) -> void {
+  m.def("register_torch_autograd_function", [](std::string key, py::object obj) -> void {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
-    pool.RegisterBackwardRunner(obj.ptr(), overwrite);
-  });
-  m.def("unregister_backward_runner", []() -> void {
-    // todo: call this somewhere when program exits
-    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
-    pool.UnregisterBackwardRunner();
-  });
-  m.def("register_torch_autograd_function", [](std::string key, py::object obj, bool overwrite) -> void {
-    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
-    pool.RegisterTorchAutogradFunction(key, obj.ptr(), overwrite);
-  });
-  m.def("unregister_torch_autograd_function", [](std::string key) -> void {
-    // todo: call this somewhere when program exits
-    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
-    pool.UnregisterTorchAutogradFunction(key);
+    pool.RegisterTorchAutogradFunction(key, obj.ptr());
   });
 #endif
 

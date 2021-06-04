@@ -252,6 +252,8 @@ void PythonOpGradBase::RunBackward(OpKernelContext* context,
       const_arg_positions_,
       returned_ortvalues,
       inplace_ != 0);
+
+  OrtTorchFunctionPool::GetInstance().UnregisterContext(*context_index_ptr);
 }
 
 void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) const {

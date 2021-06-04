@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/language_interop_ops/torch/python_common.h"
 #include "core/language_interop_ops/torch/torch_proxy.h"
+
 #include "core/dlpack/dlpack_converter.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
@@ -14,15 +14,7 @@ namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
 
-// For handling temporary PyObject pointer newly created with Py_XXX APIs, here is our practice:
-// Convention:
-//     Wrap those PyObject* in format of "PythonObjectPtr(Py_XXX(), PythonObjectDeleter)".
-// Explaination:
-//     That means, for the PyObject* created by Py_XXX(), its refcnt will be decreased by one
-//     in the PythonObjectDeleter which is triggered once lifetime of PythonObjectPtr instance
-//     ends.
-void PythonObjectDeleter(PyObject* ptr) { Py_XDECREF(ptr); }
-using PythonObjectPtr = std::unique_ptr<PyObject, std::function<void(PyObject*)>>;
+void PythonObjectDeleter(PyObject* ptr) { Py_XDECREF(ptr); };
 
 PyObject* Ort_PyTuple_New(const size_t len, const std::string& log_tag) {
   PyObject* item = PyTuple_New(len);
@@ -279,8 +271,11 @@ void TorchProxy::Forward(
     std::vector<OrtValue>& returned_ortvalues,
     const bool is_training_mode,
     const bool is_inplace) {
-  // Python-related calls should happen only if guard is alive.
+  // Semantically, this lock uniquely takes the ownership of TorchProxy
+  // so that there will be only one of TorchProxy::Forward TorchProxy::Backward
+  // can be run at one time. 
   std::lock_guard<std::mutex> lock(mutex_);
+  // Python-related calls should happen only if guard is alive.
   GilGuard guard;
   auto runner = OrtTorchFunctionPool::GetInstance().GetForwardRunner();
   Invoke(
@@ -306,8 +301,11 @@ void TorchProxy::Backward(
     const std::vector<int64_t>& obj_indices,
     std::vector<OrtValue>& returned_ortvalues,
     const bool is_inplace) {
-  // Python-related calls should happen only if guard is alive.
+  // Semantically, this lock uniquely takes the ownership of TorchProxy
+  // so that there will be only one of TorchProxy::Forward TorchProxy::Backward
+  // can be run at one time. 
   std::lock_guard<std::mutex> lock(mutex_);
+  // Python-related calls should happen only if guard is alive.
   GilGuard guard;
   auto runner = OrtTorchFunctionPool::GetInstance().GetBackwardRunner();
   Invoke(
