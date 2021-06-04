@@ -1,10 +1,8 @@
 // copyright (c) microsoft corporation. all rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_TRAINING_TORCH_INTEROP
-
 #pragma once
-#include "core/language_interop_ops/torch/python_common.h"
+#include "core/dlpack/python_common.h"
 
 // Holder of GIL
 // (Global Interpreter Lock, https://wiki.python.org/moin/GlobalInterpreterLock)
@@ -22,5 +20,3 @@ class GilGuard {
   PyGILState_STATE state_;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GilGuard);
 };
-
-#endif

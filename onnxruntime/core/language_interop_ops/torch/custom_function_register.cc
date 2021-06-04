@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_TRAINING_TORCH_INTEROP
-
 #include "core/common/common.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
 #include "core/language_interop_ops/torch/refcount_tracker.h"
@@ -259,5 +257,3 @@ OrtTorchFunctionPool::~OrtTorchFunctionPool() {
 }  // namespace torch
 }  // namespace language_interop_ops
 }  // namespace onnxruntime
-
-#endif

@@ -1,9 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_TRAINING_TORCH_INTEROP
-
-#include "core/language_interop_ops/torch/python_common.h"
+#include "core/dlpack/python_common.h"
 
 #include <iostream>
 #include "core/common/logging/logging.h"
@@ -65,5 +63,3 @@ void RefCountTracker::Reset() {
 }  // namespace torch
 }  // namespace language_interop_ops
 }  // namespace onnxruntime
-
-#endif

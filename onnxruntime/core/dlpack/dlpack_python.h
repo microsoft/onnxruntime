@@ -8,9 +8,10 @@
 #pragma once
 
 #include "core/dlpack/dlpack_converter.h"
-#include "core/language_interop_ops/torch/python_common.h"
+#include "core/dlpack/python_common.h"
 
 namespace onnxruntime {
+
 namespace dlpack {
 // Allocate a new Capsule object, which takes the ownership of OrtValue.
 // Caller is responsible for releasing.
