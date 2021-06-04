@@ -13,7 +13,7 @@ file(GLOB_RECURSE contrib_ops_schema_src
 
 onnxruntime_add_static_library(ort_opschema_lib ${contrib_ops_schema_src})
 
-set (OPSCHEMA_LIB_DEPENDENCIES onnxruntime_mlas onnxruntime_common onnxruntime_util onnx onnx_proto protobuf::libprotobuf flatbuffers)
+set (OPSCHEMA_LIB_DEPENDENCIES onnxruntime_util onnxruntime_common onnxruntime_mlas onnx onnx_proto protobuf::libprotobuf flatbuffers)
 if(NOT WIN32)
    list(APPEND OPSCHEMA_LIB_DEPENDENCIES nsync_cpp)
 endif()
