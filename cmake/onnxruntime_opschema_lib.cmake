@@ -13,7 +13,10 @@ file(GLOB_RECURSE contrib_ops_schema_src
 
 onnxruntime_add_static_library(ort_opschema_lib ${contrib_ops_schema_src})
 
-set (OPSCHEMA_LIB_DEPENDENCIES onnxruntime_mlas onnxruntime_common onnxruntime_util onnx onnx_proto protobuf::libprotobuf flatbuffers ${onnxruntime_EXTERNAL_LIBRARIES})
+set (OPSCHEMA_LIB_DEPENDENCIES onnxruntime_mlas onnxruntime_common onnxruntime_util onnx onnx_proto protobuf::libprotobuf flatbuffers)
+if(NOT WIN32)
+   list(APPEND OPSCHEMA_LIB_DEPENDENCIES nsync_cpp)
+endif()
 
 # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" is found
 target_include_directories(ort_opschema_lib PRIVATE ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
