@@ -23,7 +23,7 @@ jobs:
 
     - template: templates/run-docker-build-steps.yml
       parameters:
-        RunDockerBuildArgs: '-o ubuntu20.04 -d openvino -v 2020.2 -r $(Build.BinariesDirectory) -x "--use_openvino GPU_FP32 --build_wheel"'
+        RunDockerBuildArgs: '-o ubuntu20.04 -p 3.8 -d openvino -v 2020.2 -r $(Build.BinariesDirectory) -x "--use_openvino GPU_FP32 --build_wheel"'
 
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
