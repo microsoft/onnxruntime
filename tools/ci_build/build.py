@@ -346,6 +346,8 @@ def parse_arguments():
     parser.add_argument(
         "--enable_wasm_debug_info", action='store_true',
         help="Build WebAssembly with DWARF format debug info")
+    parser.add_argument(
+        "--wasm_malloc", default="dlmalloc", help="Specify memory allocator for WebAssembly")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -750,6 +752,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                                                                   else "ON"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
+        "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
     ]
 
@@ -1548,11 +1551,6 @@ def nuphar_run_python_tests(build_dir, configs):
         if is_windows():
             cwd = os.path.join(cwd, config)
         dll_path = os.path.join(build_dir, config, "external", "tvm", config)
-        # install onnx for shape inference in testing Nuphar scripts
-        # this needs to happen after onnx_test_data preparation which
-        # uses onnx 1.3.0
-        run_subprocess(
-            [sys.executable, '-m', 'pip', 'install', '--user', 'onnx==1.5.0'])
         run_subprocess(
             [sys.executable, 'onnxruntime_test_python_nuphar.py'],
             cwd=cwd, dll_path=dll_path)
