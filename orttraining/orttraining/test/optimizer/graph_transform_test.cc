@@ -23,6 +23,7 @@
 #include "test/util/include/asserts.h"
 #include "orttraining/test/optimizer/horizontal_parallel_test_utils.h"
 #include "orttraining/core/session/training_session.h"
+#include "orttraining/core/optimizer/loss_rewriter.h"
 
 #include <random>
 
@@ -533,6 +534,80 @@ TEST_F(GraphTransformationTests, BiasGeluRecomputeTest) {
       ASSERT_TRUE(node.InputDefs().size() == 2);
     }
   }
+}
+
+TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithoutCast) {
+  Model model("SoftmaxCrossEntropyLossInternalFusion", true, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{"", 13}, {"com.microsoft", 1}}, {}, *logger_);
+  auto& graph = model.MainGraph();
+
+  TypeProto tensor_float;
+  tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  TypeProto tensor_int;
+  tensor_int.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+  onnxruntime::NodeArg x_def("X", &tensor_float);
+  onnxruntime::NodeArg ls_out_def("ls_out", &tensor_float);
+  onnxruntime::NodeArg target_def("target", &tensor_int);
+  onnxruntime::NodeArg weight_def("weight", &tensor_float);
+  onnxruntime::NodeArg ignore_index_def("ignore_index", &tensor_int);
+  onnxruntime::NodeArg y_def("Y", &tensor_float);
+
+  graph.AddNode("ls", "LogSoftmax", "LogSoftmax operator", {&x_def}, {&ls_out_def});
+  graph.AddNode("nl_loss_internal", "NegativeLogLikelihoodLossInternal", "NegativeLogLikelihoodLossInternal operator",
+                {&ls_out_def, &target_def, &weight_def, &ignore_index_def}, {&y_def}, nullptr, onnxruntime::kMSDomain);
+
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK());
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(),
+                                    TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["LogSoftmax"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.NegativeLogLikelihoodLossInternal"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
+}
+
+TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithCast) {
+  Model model("SoftmaxCrossEntropyLossInternalFusion", true, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{"", 13}, {"com.microsoft", 1}}, {}, *logger_);
+  auto& graph = model.MainGraph();
+
+  TypeProto tensor_half;
+  tensor_half.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+  TypeProto tensor_float;
+  tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  TypeProto tensor_int;
+  tensor_int.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+  onnxruntime::NodeArg x_def("X", &tensor_half);
+  onnxruntime::NodeArg ls_out_def("ls_out", &tensor_half);
+  onnxruntime::NodeArg ct_out_def("ct_out", &tensor_float);
+  onnxruntime::NodeArg target_def("target", &tensor_int);
+  onnxruntime::NodeArg weight_def("weight", &tensor_float);
+  onnxruntime::NodeArg ignore_index_def("ignore_index", &tensor_int);
+  onnxruntime::NodeArg y_def("Y", &tensor_float);
+
+  graph.AddNode("ls", "LogSoftmax", "LogSoftmax operator", {&x_def}, {&ls_out_def});
+  Node& cast_node = graph.AddNode("ct", "Cast", "Cast operator", {&ls_out_def}, {&ct_out_def});
+  cast_node.AddAttribute("to", static_cast<int64_t>(1));
+  graph.AddNode("nl_loss_internal", "NegativeLogLikelihoodLossInternal", "NegativeLogLikelihoodLossInternal operator",
+                {&ct_out_def, &target_def, &weight_def, &ignore_index_def}, {&y_def}, nullptr, onnxruntime::kMSDomain);
+
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK());
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(),
+                                    TransformerLevel::Level1);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Cast"] == 1);
+  ASSERT_TRUE(op_to_count["LogSoftmax"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.NegativeLogLikelihoodLossInternal"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
 }
 
 // We only tested on CUDA run.

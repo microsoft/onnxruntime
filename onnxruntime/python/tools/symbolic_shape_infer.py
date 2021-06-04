@@ -130,6 +130,7 @@ class SymbolicShapeInference:
             'Slice': self._infer_Slice,
             'SoftmaxCrossEntropyLoss': self._infer_SoftmaxCrossEntropyLoss,
             'SoftmaxCrossEntropyLossInternal': self._infer_SoftmaxCrossEntropyLoss,
+            'NegativeLogLikelihoodLossInternal': self._infer_SoftmaxCrossEntropyLoss,
             'Split': self._infer_Split,
             'SplitToSequence': self._infer_SplitToSequence,
             'Squeeze': self._infer_Squeeze,
