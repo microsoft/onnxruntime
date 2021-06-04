@@ -2580,6 +2580,7 @@ TEST(GradientCheckerTest, TileGrad) {
   }
 }
 
+#ifdef USE_CUDA
 TEST(GradientCheckerTest, PadGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
@@ -2648,6 +2649,7 @@ TEST(GradientCheckerTest, PadGrad) {
     ASSERT_TRUE(has_error);
   }
 }
+#endif  // USE_CUDA
 
 }  // namespace test
 }  // namespace onnxruntime
