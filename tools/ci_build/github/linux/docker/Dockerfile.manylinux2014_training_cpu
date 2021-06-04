@@ -1,7 +1,7 @@
 FROM quay.io/pypa/manylinux2014_x86_64:latest
 
 ADD scripts /tmp/scripts
-RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh && /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
+RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh
 
 # Remove existing symbolic link and python installation.
 RUN rm -rf /opt/python/cp37-cp37m && rm -rf /opt/_internal/cpython-3.7.10
@@ -18,6 +18,8 @@ RUN ln -sf /opt/_internal/cpython-3.7.10 /opt/python/cp37-cp37m && \
     ln -sf /opt/python/cp37-cp37m/bin/python3.7 /opt/python/cp37-cp37m/bin/python3 &&\
     # We do not need the Python test suites
     find ${PREFIX} -depth \( -type d -a -name test -o -name tests \) | xargs rm -rf
+
+RUN /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
 
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
