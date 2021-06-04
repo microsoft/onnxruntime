@@ -1551,11 +1551,6 @@ def nuphar_run_python_tests(build_dir, configs):
         if is_windows():
             cwd = os.path.join(cwd, config)
         dll_path = os.path.join(build_dir, config, "external", "tvm", config)
-        # install onnx for shape inference in testing Nuphar scripts
-        # this needs to happen after onnx_test_data preparation which
-        # uses onnx 1.3.0
-        run_subprocess(
-            [sys.executable, '-m', 'pip', 'install', '--user', 'onnx==1.5.0'])
         run_subprocess(
             [sys.executable, 'onnxruntime_test_python_nuphar.py'],
             cwd=cwd, dll_path=dll_path)
