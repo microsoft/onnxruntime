@@ -24,7 +24,7 @@ class ConvOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const Node& /* node */, OpBuilderInputParams& /* input_params */,
+  bool IsOpSupportedImpl(const Node& /* node */, const OpBuilderInputParams& /* input_params */,
                          const logging::Logger& /* logger */) const override;
 };
 
@@ -116,7 +116,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 // Operator support related
 
-bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, OpBuilderInputParams& input_params,
+bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                       const logging::Logger& logger) const {
   const auto& name = node.Name();
   const auto& input_defs = node.InputDefs();

@@ -59,7 +59,7 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
 
 // Operator support related
 
-bool BaseOpBuilder::IsOpSupported(const Node& node, OpBuilderInputParams& input_params,
+bool BaseOpBuilder::IsOpSupported(const Node& node, const OpBuilderInputParams& input_params,
                                   const logging::Logger& logger) const {
   if (!HasSupportedInputs(node, logger))
     return false;

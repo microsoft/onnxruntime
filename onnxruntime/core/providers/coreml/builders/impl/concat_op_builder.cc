@@ -20,7 +20,7 @@ class ConcatOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const Node& node, OpBuilderInputParams& input_params,
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 };
 
@@ -45,7 +45,7 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related
-bool ConcatOpBuilder::IsOpSupportedImpl(const Node& node, OpBuilderInputParams& /* input_params */,
+bool ConcatOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& /* input_params */,
                                         const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   if (input_defs.size() < 2) {

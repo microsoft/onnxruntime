@@ -34,7 +34,7 @@ class IOpBuilder {
   // Operator support related
  public:
   // Check if an operator is supported
-  virtual bool IsOpSupported(const Node& node, OpBuilderInputParams& input_params,
+  virtual bool IsOpSupported(const Node& node, const OpBuilderInputParams& input_params,
                              const logging::Logger& logger) const = 0;
 };
 

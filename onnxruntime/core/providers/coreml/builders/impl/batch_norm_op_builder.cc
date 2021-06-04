@@ -24,7 +24,7 @@ class BatchNormalizationOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const Node& node, OpBuilderInputParams& input_params,
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 
   // BatchNormalization opset 6- has unsupported attributes
@@ -78,7 +78,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 
 // Operator support related
 
-bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const Node& node, OpBuilderInputParams& input_params,
+bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                                     const logging::Logger& logger) const {
   if (node.OutputDefs().size() != 1) {
     LOGS(logger, VERBOSE) << "Your onnx model may be in training mode, please export "

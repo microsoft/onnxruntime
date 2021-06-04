@@ -21,7 +21,7 @@ class ClipOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const Node& node, OpBuilderInputParams& input_params,
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 };
 
@@ -118,7 +118,7 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related
 
-bool ClipOpBuilder::IsOpSupportedImpl(const Node& node, OpBuilderInputParams& input_params,
+bool ClipOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                       const logging::Logger& logger) const {
   float min, max;
   const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();

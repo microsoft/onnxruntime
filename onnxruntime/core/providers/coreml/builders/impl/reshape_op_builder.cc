@@ -25,7 +25,7 @@ class ReshapeOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const Node& node, OpBuilderInputParams& input_params,
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 
   // Reshape opset 4- uses attributes for new shape which we do not support for now
@@ -65,7 +65,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related
 
-bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, OpBuilderInputParams& input_params,
+bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                          const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& perm_name = input_defs[1]->Name();

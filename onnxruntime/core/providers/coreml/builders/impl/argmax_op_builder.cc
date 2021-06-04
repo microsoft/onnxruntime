@@ -18,7 +18,7 @@ class ArgMaxOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const Node& node, OpBuilderInputParams& input_params,
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 };
 
@@ -56,7 +56,7 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related
 
-bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node, OpBuilderInputParams& input_params,
+bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                         const logging::Logger& logger) const {
   // Check if Argmax's output is the graph output
   const auto& graph_output_list = input_params.graph_viewer.GetOutputs();
@@ -69,23 +69,19 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node, OpBuilderInputParams& 
     }
   }
 
-  std::vector<size_t> succ_node_indices;
-  for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
-    succ_node_indices.push_back(it->GetNode().Index());
-  }
-
-  // Case where argmax has multiple succeeding nodes is not supported
-  if (succ_node_indices.size() > 1) {
-    LOGS(logger, VERBOSE) << "Case - [ArgMax] has multiple succedding nodes: Not supported.";
-    return false;
-  }
-
-  if (succ_node_indices.empty()) {
+  // Case where argmax has no succeeding nodes is not supported
+  if (node.GetOutputEdgesCount() == 0) {
     LOGS(logger, VERBOSE) << "Case - [ArgMax] has no succeeding nodes: Not supported.";
     return false;
   }
 
-  const auto* succ_node(input_params.graph_viewer.GetNode(succ_node_indices[0]));
+  // Case where argmax has multiple succeeding nodes is not supported
+  if (node.GetOutputEdgesCount() > 1) {
+    LOGS(logger, VERBOSE) << "Case - [ArgMax] has multiple succedding nodes: Not supported.";
+    return false;
+  }
+
+  const auto* succ_node(input_params.graph_viewer.GetNode(node.OutputEdgesBegin()->GetNode().Index()));
 
   // Case where ArgMax's succeeding node is not "cast" is not supported
   if (succ_node->OpType() != "Cast") {

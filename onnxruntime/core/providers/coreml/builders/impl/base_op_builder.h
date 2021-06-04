@@ -9,7 +9,6 @@ namespace onnxruntime {
 namespace coreml {
 
 class ModelBuilder;
-struct OpBuilderInputParams;
 
 class BaseOpBuilder : public IOpBuilder {
  public:
@@ -29,11 +28,11 @@ class BaseOpBuilder : public IOpBuilder {
 
   // Operator support related
  public:
-  bool IsOpSupported(const Node& node, OpBuilderInputParams& input_params,
+  bool IsOpSupported(const Node& node, const OpBuilderInputParams& input_params,
                      const logging::Logger& logger) const override;
 
  protected:
-  virtual bool IsOpSupportedImpl(const Node& /* node */, OpBuilderInputParams& /* input_params */,
+  virtual bool IsOpSupportedImpl(const Node& /* node */, const OpBuilderInputParams& /* input_params */,
                                  const logging::Logger& /* logger */) const {
     return true;
   }

@@ -25,7 +25,7 @@ class GemmOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const Node& /* node */, OpBuilderInputParams& /* input_params */,
+  bool IsOpSupportedImpl(const Node& /* node */, const OpBuilderInputParams& /* input_params */,
                          const logging::Logger& /* logger */) const override;
 };
 
@@ -111,7 +111,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 // Operator support related
 
-bool GemmOpBuilder::IsOpSupportedImpl(const Node& node, OpBuilderInputParams& input_params,
+bool GemmOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                       const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
   const auto& input_defs(node.InputDefs());
