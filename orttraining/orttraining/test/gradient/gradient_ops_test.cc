@@ -2580,6 +2580,75 @@ TEST(GradientCheckerTest, TileGrad) {
   }
 }
 
+TEST(GradientCheckerTest, PadGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Pad", kOnnxDomain, 11};
+
+  {
+    TensorInfo x_info({2, 4}, true);
+    TensorInfo pads_info({4}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {0, 2, 2, 0}};
+
+    TensorInfo y_info({4, 6}, true);
+
+    gradient_checker.ComputeGradientError(op_def, {x_info, pads_info}, {y_info}, &max_error, x_datas);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {
+    TensorInfo x_info({2, 4}, true);
+    TensorInfo pads_info({4}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {0, -2, 2, 0}};
+
+    TensorInfo y_info({4, 2}, true);
+
+    gradient_checker.ComputeGradientError(op_def, {x_info, pads_info}, {y_info}, &max_error, x_datas,
+                                          {MakeAttribute("mode", "constant")});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {
+    TensorInfo x_info({2, 4}, true);
+    TensorInfo pads_info({4}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {0, 2, 2, 0}};
+
+    TensorInfo y_info({4, 6}, true);
+
+    bool has_error = false;
+    try {
+      gradient_checker.ComputeGradientError(op_def, {x_info, pads_info}, {y_info}, &max_error, x_datas,
+                                            {MakeAttribute("mode", "reflect")});
+    } catch (const std::exception& ex) {
+      auto ret = std::string(ex.what()).find("Pad gradient currently supports constant mode only.");
+      ASSERT_TRUE(ret != std::string::npos);
+      has_error = true;
+    }
+
+    ASSERT_TRUE(has_error);
+  }
+
+  {
+    TensorInfo x_info({2, 4}, true);
+    TensorInfo pads_info({4}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {0, 2, 2, 0}};
+
+    TensorInfo y_info({4, 6}, true);
+
+    bool has_error = false;
+    try {
+      gradient_checker.ComputeGradientError(op_def, {x_info, pads_info}, {y_info}, &max_error, x_datas,
+                                            {MakeAttribute("mode", "edge")});
+    } catch (const std::exception& ex) {
+      auto ret = std::string(ex.what()).find("Pad gradient currently supports constant mode only.");
+      ASSERT_TRUE(ret != std::string::npos);
+      has_error = true;
+    }
+
+    ASSERT_TRUE(has_error);
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 

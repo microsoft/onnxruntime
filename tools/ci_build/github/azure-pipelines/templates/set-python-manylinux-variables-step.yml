@@ -9,30 +9,21 @@ steps:
     script: |
       version = "$(PythonVersion)"
 
-      if version == "3.5":
+      if version == "3.6":
         variables = {
-          "PythonManylinuxDir": "/opt/python/cp35-cp35m",
-          "PythonManylinuxIncludeDir": "/opt/python/cp35-cp35m/include/python3.5m",
-        }
-      elif version == "3.6":
-        variables = {
-          "PythonManylinuxDir": "/opt/python/cp36-cp36m",
-          "PythonManylinuxIncludeDir": "/opt/python/cp36-cp36m/include/python3.6m",
+          "PythonManylinuxDir": "/opt/python/cp36-cp36m"
         }
       elif version == "3.7":
         variables = {
-          "PythonManylinuxDir": "/opt/python/cp37-cp37m",
-          "PythonManylinuxIncludeDir": "/opt/python/cp37-cp37m/include/python3.7m",
+          "PythonManylinuxDir": "/opt/python/cp37-cp37m"
         }
       elif version == "3.8":
         variables = {
-          "PythonManylinuxDir": "/opt/python/cp38-cp38",
-          "PythonManylinuxIncludeDir": "/opt/python/cp38-cp38/include/python3.8",
+          "PythonManylinuxDir": "/opt/python/cp38-cp38"
         }
       elif version == "3.9":
         variables = {
-          "PythonManylinuxDir": "/opt/python/cp39-cp39",
-          "PythonManylinuxIncludeDir": "/opt/python/cp39-cp39/include/python3.9",
+          "PythonManylinuxDir": "/opt/python/cp39-cp39"
         }
       else:
         raise ValueError("Unsupported Python version: '{}'".format(version))

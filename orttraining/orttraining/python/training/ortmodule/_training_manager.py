@@ -47,9 +47,6 @@ class TrainingManager(GraphExecutionManager):
         execution_session.run_forward(forward_inputs, forward_outputs, state)
         user_outputs = tuple(_utils._ortvalue_to_torch_tensor(forward_output) for forward_output in forward_outputs)
 
-        # Assert that the outputs and model device match
-        _utils._check_same_device(device, "Output argument from forward", *user_outputs)
-
         output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
         run_info = RunStateInfo(state, output_info)
         # Return user outputs and forward run information
@@ -192,8 +189,7 @@ class TrainingManager(GraphExecutionManager):
         return _io.unflatten_user_output(self._module_output_schema,
                                         _ORTModuleFunction.apply(
                                             *_io._combine_input_buffers_initializers(
-                                                [param for name, param in self._flattened_module.named_parameters()
-                                                    if name in self._graph_initializer_names],
+                                                self._graph_initializers,
                                                 self._graph_info.user_input_names,
                                                 self._input_info,
                                                 self._flattened_module.named_buffers(),

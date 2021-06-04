@@ -1,7 +1,11 @@
 #!/bin/bash
 set -e -x
 
-#Download a file from internet
+# Development tools and libraries
+yum -y install \
+    graphviz
+
+# Download a file from internet
 function GetFile {
   local uri=$1
   local path=$2
