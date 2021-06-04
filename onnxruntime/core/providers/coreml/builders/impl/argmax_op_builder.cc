@@ -33,10 +33,7 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   NodeAttrHelper helper(node);
   const auto axis = helper.Get("axis", 0);
   const auto keep_dims = helper.Get("keep_dims", 1);
-  bool removedim = false;
-  if (keep_dims != 1) {
-    removedim = true;
-  }
+  const bool removedim = keep_dims != 1;
 
   auto* coreml_argmax = layer->mutable_argmax();
   coreml_argmax->set_axis(axis);
@@ -64,28 +61,23 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
   const auto& output_defs = node.OutputDefs();
   for (const auto* output_def : output_defs) {
     if (graph_outputs.count(output_def) != 0) {
-      LOGS(logger, VERBOSE) << "Case: ArgMax's output is the graph output: Not supported.";
+      LOGS(logger, VERBOSE) << "ArgMax not supported when it produces a graph output";
       return false;
     }
   }
 
-  // Case where argmax has no succeeding nodes is not supported
-  if (node.GetOutputEdgesCount() == 0) {
-    LOGS(logger, VERBOSE) << "Case - [ArgMax] has no succeeding nodes: Not supported.";
-    return false;
-  }
-
   // Case where argmax has multiple succeeding nodes is not supported
   if (node.GetOutputEdgesCount() > 1) {
-    LOGS(logger, VERBOSE) << "Case - [ArgMax] has multiple succedding nodes: Not supported.";
+    LOGS(logger, VERBOSE) << "Multiple nodes consuming ArgMax's output";
     return false;
   }
 
   const auto* succ_node(input_params.graph_viewer.GetNode(node.OutputEdgesBegin()->GetNode().Index()));
 
-  // Case where ArgMax's succeeding node is not "cast" is not supported
+  /*We're only handling the case: an ArgMax op followed by a Cast to int32 type right now so as to fuse
+  the int64 output (not a supported output type by CoreML model) of ArgMax.*/
   if (succ_node->OpType() != "Cast") {
-    LOGS(logger, VERBOSE) << "Case - [ArgMax]'s next node is not [Cast]: Not supported. "
+    LOGS(logger, VERBOSE) << "ArgMax not supported when next node is not [Cast]"
                           << "Current next node: [" << succ_node->OpType()
                           << "]";
     return false;

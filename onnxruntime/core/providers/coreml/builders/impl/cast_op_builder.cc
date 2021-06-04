@@ -28,9 +28,9 @@ class CastOpBuilder : public BaseOpBuilder {
 Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& /* model_builder */,
                                             const Node& /* node */,
                                             const logging::Logger& /* logger */) const {
-  /* CoreML does not have cast op, so [cast] is not actually supported here, only aimed for supporting argmax.
-     We use the case [ArgMax(int64)-Cast(int32)] to skip argmax's output int64 type which is not supported in CoreML.
-  */
+  // Right now we're only handling an ArgMax op followed by a Cast to int32 type.
+  // This can fuse the ArgMax's int64 output type which is not supported in CoreML model.
+  // And that ArgMax fused with the cast node produces an int32 output, so we're skipping adding the Cast node here.
   return Status::OK();
 }
 
@@ -38,29 +38,29 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& /* model_builder */,
 
 bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                       const logging::Logger& logger) const {
-  // Check if the preceding node is [ArgMax] and the argmax op is supported
   if (node.GetInputEdgesCount() == 0) {
-    LOGS(logger, VERBOSE) << "Failed to get [Cast]'s preceding nodes.";
+    LOGS(logger, VERBOSE) << "Failed to get Cast's preceding nodes.";
     return false;
   }
 
   if (node.GetInputEdgesCount() > 1) {
-    LOGS(logger, VERBOSE) << "Case - [Cast] has multiple preceding nodes: Not supported.";
+    LOGS(logger, VERBOSE) << "Multiple nodes consuming Cast's output.";
     return false;
   }
 
   const auto* prec_node(input_params.graph_viewer.GetNode(node.InputEdgesBegin()->GetNode().Index()));
 
+  /*Cast node is only aimed for supporting argmax and we are only handling the case where an argmax 
+    followed by a cast node. We need to check if the preceding node is an argmax and also if it's a
+    supported argmax op type.*/
   if (prec_node->OpType() != "ArgMax") {
-    LOGS(logger, VERBOSE) << "Case - [Cast]'s preceding node is not [ArgMax]: Not supported. "
-                          << "Current previous node: [" << prec_node->OpType()
+    LOGS(logger, VERBOSE) << "Cast's producing node is not ArgMax is not supported."
+                          << "Current producing node: [" << prec_node->OpType()
                           << "]";
     return false;
   }
-  /* Cast node op is only aimed for supporting argmax. 
-    If the preceding argmax op is not supported, then cast op is not needed */
   if (!IsNodeSupported(*prec_node, input_params.graph_viewer, logger)) {
-    LOGS(logger, VERBOSE) << "Case - [Cast]'s preceding node ["
+    LOGS(logger, VERBOSE) << "Cast's producing node ["
                           << prec_node->OpType()
                           << "] is not a supported op.";
     return false;
