@@ -2585,6 +2585,8 @@ TEST(GradientCheckerTest, PadGrad) {
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"Pad", kOnnxDomain, 11};
 
+  std::cout << "Debug 1" << std::endl;
+
   {
     TensorInfo x_info({2, 4}, true);
     TensorInfo pads_info({4}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
@@ -2595,6 +2597,8 @@ TEST(GradientCheckerTest, PadGrad) {
     gradient_checker.ComputeGradientError(op_def, {x_info, pads_info}, {y_info}, &max_error, x_datas);
     EXPECT_IS_TINY(max_error);
   }
+
+  std::cout << "Debug 2" << std::endl;
 
   {
     TensorInfo x_info({2, 4}, true);
@@ -2607,6 +2611,8 @@ TEST(GradientCheckerTest, PadGrad) {
                                           {MakeAttribute("mode", "constant")});
     EXPECT_IS_TINY(max_error);
   }
+
+  std::cout << "Debug 3" << std::endl;
 
   {
     TensorInfo x_info({2, 4}, true);
@@ -2628,6 +2634,8 @@ TEST(GradientCheckerTest, PadGrad) {
     ASSERT_TRUE(has_error);
   }
 
+  std::cout << "Debug 4" << std::endl;
+
   {
     TensorInfo x_info({2, 4}, true);
     TensorInfo pads_info({4}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
@@ -2647,6 +2655,8 @@ TEST(GradientCheckerTest, PadGrad) {
 
     ASSERT_TRUE(has_error);
   }
+
+  std::cout << "Debug 5" << std::endl;
 }
 
 }  // namespace test
