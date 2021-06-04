@@ -45,8 +45,6 @@ Download the onnxruntime-mobile AAR hosted at [MavenCentral](https://mvnreposito
 
 In your CocoaPods `Podfile`, add the `onnxruntime-mobile-c` or `onnxruntime-mobile-objc` pod depending on which API you wish to use.
 
-Run `pod install`.
-
 ##### C/C++
 
   ```
@@ -60,8 +58,11 @@ Run `pod install`.
   ```
   use_frameworks!
 
-  pod 'onnxruntime-mobile-objc'
+  # currently, there is only a pre-release version for onnxruntime-mobile-objc
+  pod 'onnxruntime-mobile-objc', '1.8.0-preview'
   ```
+
+Run `pod install`.
 
 ### Install ONNX Runtime python package
 
