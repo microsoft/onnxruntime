@@ -19,6 +19,9 @@ RUN ln -sf /opt/_internal/cpython-3.7.10 /opt/python/cp37-cp37m && \
     # We do not need the Python test suites
     find ${PREFIX} -depth \( -type d -a -name test -o -name tests \) | xargs rm -rf
 
+ENV PATH /opt/python/cp37-cp37m/bin:$PATH
+ENV LD_LIBRARY_PATH /opt/_internal/cpython-3.7.10/lib/:$LD_LIBRARY_PATH
+
 RUN /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
 
 ARG BUILD_UID=1001
@@ -26,5 +29,5 @@ ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER
 WORKDIR /home/$BUILD_USER
 USER $BUILD_USER
-ENV PATH /usr/local/gradle/bin:/opt/python/cp37-cp37m/bin:$PATH
+ENV PATH /usr/local/gradle/bin:$PATH
 ENV LD_LIBRARY_PATH /opt/_internal/cpython-3.7.10/lib/:$LD_LIBRARY_PATH

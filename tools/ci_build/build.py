@@ -648,11 +648,6 @@ def use_dev_mode(args):
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home,
                         mpi_home, nccl_home, tensorrt_home, migraphx_home, acl_home, acl_libs, armnn_home, armnn_libs,
                         path_to_protoc_exe, configs, cmake_extra_defines, args, cmake_extra_args):
-
-    import distutils.sysconfig as s
-    import numpy
-    print("get_python_inc()", s.get_python_inc(), ", sysconfig.get_config_var('LIBDIR'):", s.get_config_var('LIBDIR'))
-    print("numpy.get_include():", numpy.get_include())
     log.info("Generating CMake build tree")
     cmake_dir = os.path.join(source_dir, "cmake")
     cmake_args = [
