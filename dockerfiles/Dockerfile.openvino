@@ -12,7 +12,7 @@ ARG ONNXRUNTIME_BRANCH=master
 WORKDIR /code
 ARG MY_ROOT=/code
 
-ENV PATH /opt/miniconda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:$PATH
+ENV PATH /opt/miniconda/bin:/code/cmake-3.20.3-Linux-x86_64/bin:$PATH
 ENV LD_LIBRARY_PATH=/opt/miniconda/lib:/usr/lib:/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
 
 ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2021.3.394
