@@ -9,7 +9,7 @@ if ! rpm -q --quiet epel-release ; then
 fi
 
 echo "installing for os major version : $os_major_version"
-yum install -y which gdb redhat-lsb-core expat-devel libcurl-devel tar unzip curl zlib-devel make libunwind icu aria2 rsync bzip2 git bzip2-devel wget
+yum install -y which gdb redhat-lsb-core expat-devel libcurl-devel tar unzip curl zlib-devel make libunwind icu aria2 rsync bzip2 git bzip2-devel wget libffi-devel
 
 if [ "$os_major_version" == "7" ]; then
     # install dotnet core dependencies

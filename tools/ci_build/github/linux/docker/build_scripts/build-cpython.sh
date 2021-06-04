@@ -47,7 +47,7 @@ else
 	./configure \
 		CFLAGS_NODIST="${MANYLINUX_CFLAGS} ${MANYLINUX_CPPFLAGS}" \
 		LDFLAGS_NODIST="${MANYLINUX_LDFLAGS}" \
-		--prefix=${PREFIX} --enable-shared --with-ensurepip=no > /dev/null
+		--prefix=${PREFIX} --enable-shared --with-ensurepip=yes > /dev/null
 fi
 
 make -j$(nproc) > /dev/null
