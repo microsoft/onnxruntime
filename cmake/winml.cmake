@@ -9,7 +9,6 @@ include(precompiled_header.cmake)
 include(target_delayload.cmake)
 include(winml_sdk_helpers.cmake)
 include(winml_cppwinrt.cmake)
-include(nuget_helpers.cmake)
 
 # get the current nuget sdk kit directory
 get_sdk(sdk_folder sdk_version)
@@ -26,22 +25,6 @@ set(winml_lib_api_image_dir ${REPO_ROOT}/winml/lib/api.image)
 set(winml_lib_api_ort_dir ${REPO_ROOT}/winml/lib/api.ort)
 set(winml_lib_common_dir ${REPO_ROOT}/winml/lib/common)
 set(winml_lib_telemetry_dir ${REPO_ROOT}/winml/lib/telemetry)
-
-# Retrieve the version of cppwinrt nuget
-package_version(
-  Microsoft.Windows.CppWinRT
-  CppWinRT_version
-  ${PROJECT_SOURCE_DIR}/../packages.config
-)
-
-# Override and use the the cppwinrt from NuGet package as opposed to the one in the SDK.
-set(winml_CPPWINRT_EXE_PATH_OVERRIDE ${CMAKE_CURRENT_BINARY_DIR}/../packages/Microsoft.Windows.CppWinRT.${CppWinRT_version}/bin/cppwinrt.exe)
-
-# add custom target to fetch the nugets
-add_fetch_nuget_target(
-  RESTORE_NUGET_PACKAGES # target name
-  winml_CPPWINRT_EXE_PATH_OVERRIDE # cppwinrt is the target package
-  )
 
 set(winml_is_inbox OFF)
 if (onnxruntime_WINML_NAMESPACE_OVERRIDE)
@@ -95,7 +78,6 @@ add_generate_cppwinrt_sdk_headers_target(
   ${CMAKE_CURRENT_BINARY_DIR}/winml/sdk/cppwinrt/include  # output folder relative to CMAKE_BINARY_DIR where the generated sdk will be placed in the
   ${target_folder}                                        # folder where this target will be placed
 )
-add_dependencies(winml_sdk_cppwinrt RESTORE_NUGET_PACKAGES)
 
 # generate winml headers from idl
 target_cppwinrt(winml_api
@@ -109,7 +91,6 @@ target_cppwinrt(winml_api
   ${winml_api_use_ns_prefix} # set ns_prefix
   ""                         # set additional cppwinrt ref path
 )
-add_dependencies(winml_api RESTORE_NUGET_PACKAGES)
 
 # generate winml.experimental headers from idl
 target_cppwinrt(winml_api_experimental
@@ -123,7 +104,6 @@ target_cppwinrt(winml_api_experimental
   ${winml_api_use_ns_prefix}  # set ns_prefix
   ${winrt_winmd}              # set additional cppwinrt ref path
 )
-add_dependencies(winml_api_experimental RESTORE_NUGET_PACKAGES)
 add_dependencies(winml_api_experimental winml_api)
 
 target_midl(winml_api_native
@@ -134,7 +114,6 @@ target_midl(winml_api_native
   ${target_folder}          # the folder this target will be placed under
   "${winml_midl_defines}"   # the midl compiler defines
 )
-add_dependencies(winml_api_native RESTORE_NUGET_PACKAGES)
 
 target_midl(winml_api_native_internal
   ${idl_native_internal}             # winml internal native idl to compile
@@ -144,7 +123,6 @@ target_midl(winml_api_native_internal
   ${target_folder}                   # the folder this target will be placed under
   "${winml_midl_defines}"            # the midl compiler defines
 )
-add_dependencies(winml_api_native_internal RESTORE_NUGET_PACKAGES)
 
 ###########################
 # Add winml_lib_telemetry
