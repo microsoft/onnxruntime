@@ -252,7 +252,7 @@ OrtTorchFunctionPool::~OrtTorchFunctionPool() {
 
   UnregisterAllEntries(mutex_, forward_core_pool);
   UnregisterAllEntries(mutex_, backward_core_pool);
-};
+}
 
 }  // namespace torch
 }  // namespace language_interop_ops
