@@ -182,10 +182,12 @@ class ORTModule(torch.nn.Module):
 
         yield from self._module_metadata.original_module.modules()
 
-    def named_modules(self, memo: Optional[Set['Module']] = None, prefix: str = ''):
+    def named_modules(self, memo: Optional[Set['Module']] = None, prefix: str = '', **kwargs):
         """Override original method to delegate execution to the original PyTorch user module"""
 
-        yield from self._module_metadata.original_module.named_modules(memo, prefix)
+        # PyTorch >1.8.1 has an extra arg remove_duplicate that is not present in 1.8.1
+        # To support both, use kwargs
+        yield from self._module_metadata.original_module.named_modules(memo, prefix, **kwargs)
 
     def add_module(self, name: str, module: Optional['Module']) -> None:
         """Raises a NotImplementedError exception since ORTModule does not support adding modules to it"""
