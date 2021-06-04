@@ -195,9 +195,11 @@ bool AreEqual(const ONNX_NAMESPACE::AttributeProto& lhs, const ONNX_NAMESPACE::A
     case onnx::AttributeProto_AttributeType_TENSOR:
     case onnx::AttributeProto_AttributeType_GRAPH:
     case onnx::AttributeProto_AttributeType_SPARSE_TENSOR:
+    case onnx::AttributeProto_AttributeType_TYPE_PROTO:
     case onnx::AttributeProto_AttributeType_TENSORS:
     case onnx::AttributeProto_AttributeType_GRAPHS:
     case onnx::AttributeProto_AttributeType_SPARSE_TENSORS:
+    case onnx::AttributeProto_AttributeType_TYPE_PROTOS:
     case onnx::AttributeProto_AttributeType_UNDEFINED:
       return false;  // Don't support these attributes for now; corresponding nodes will be considered distinct.
   }
@@ -233,9 +235,11 @@ std::size_t GetAttributeHash(const ONNX_NAMESPACE::AttributeProto& attr) {
     case onnx::AttributeProto_AttributeType_TENSOR:
     case onnx::AttributeProto_AttributeType_GRAPH:
     case onnx::AttributeProto_AttributeType_SPARSE_TENSOR:
+    case onnx::AttributeProto_AttributeType_TYPE_PROTO:
     case onnx::AttributeProto_AttributeType_TENSORS:
     case onnx::AttributeProto_AttributeType_GRAPHS:
     case onnx::AttributeProto_AttributeType_SPARSE_TENSORS:
+    case onnx::AttributeProto_AttributeType_TYPE_PROTOS:
     case onnx::AttributeProto_AttributeType_UNDEFINED:
       break;
   }
