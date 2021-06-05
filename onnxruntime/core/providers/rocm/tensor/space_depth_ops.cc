@@ -55,7 +55,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kRocmExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()}),
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<MLFloat16>()}),
     DepthToSpace);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -65,7 +66,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kRocmExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()}),
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<MLFloat16>()}),
     DepthToSpace);
 
 static Status SpaceDepthOpRocmImpl(const hipDeviceProp_t& prop,

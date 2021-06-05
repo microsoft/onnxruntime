@@ -54,8 +54,10 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     12,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()}),
+        .TypeConstraint("T",
+                        {DataTypeImpl::GetTensorType<float>(),
+                         DataTypeImpl::GetTensorType<double>(),
+                         DataTypeImpl::GetTensorType<MLFloat16>()}),
     DepthToSpace);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -64,8 +66,9 @@ ONNX_OPERATOR_KERNEL_EX(
     13,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
-                              DataTypeImpl::GetTensorType<double>()}),
+                        {DataTypeImpl::GetTensorType<float>(),
+                         DataTypeImpl::GetTensorType<double>(),
+                         DataTypeImpl::GetTensorType<MLFloat16>()}),
     DepthToSpace);
 
 static Status SpaceDepthOpCudaImpl(const cudaDeviceProp& prop,
