@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#import "ort_session_internal.h"
+#import "src/ort_session_internal.h"
 
 #include <optional>
 #include <vector>
 
-#include "core/session/onnxruntime_cxx_api.h"
+#include "onnxruntime_cxx_api.h"
 
 #import "src/error_utils.h"
 #import "src/ort_enums_internal.h"

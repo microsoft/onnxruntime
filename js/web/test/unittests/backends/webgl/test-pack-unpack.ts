@@ -219,12 +219,6 @@ describe('#UnitTest# - pack - Tensor pack', () => {
       it(`Test pack kernal ${textureLayout[w]} ${JSON.stringify(testData)}`, () => {
         const webglInferenceHandler = inferenceHandler as WebGLInferenceHandler;
 
-        // TODO support WebGl 1.0
-        if (webglInferenceHandler.session.textureManager.glContext.version === 1) {
-          console.log('Running pack with webgl1 is not supported. Skipping.');
-          return;
-        }
-
         const op = new WebGLPack();
 
         const elementCount = testData.elementCount;
@@ -286,12 +280,6 @@ describe('#UnitTest# - unpack - Tensor unpack', () => {
     describe(`Test unpack ${JSON.stringify(testData)}`, () => {});
     it(`Test unpack kernal ${testData.inputShape}`, () => {
       const webglInferenceHandler = inferenceHandler as WebGLInferenceHandler;
-
-      // TODO support WebGl 1.0
-      if (webglInferenceHandler.session.textureManager.glContext.version === 1) {
-        console.log('Running unpack with webgl1 is not supported. Skipping.');
-        return;
-      }
 
       const op = new WebGLUnpack();
 
@@ -369,12 +357,6 @@ describe('#UnitTest# - pack-unpack round trip', () => {
     describe(`Test pack-unpack ${JSON.stringify(testData)}`, () => {});
     it(`Test pack-unpack round trip ${JSON.stringify(testData)}`, () => {
       const webglInferenceHandler = inferenceHandler as WebGLInferenceHandler;
-
-      // TODO support WebGl 1.0
-      if (webglInferenceHandler.session.textureManager.glContext.version === 1) {
-        console.log('Running pack with webgl1 is not supported. Skipping.');
-        return;
-      }
 
       const packOp = new WebGLPack();
 
