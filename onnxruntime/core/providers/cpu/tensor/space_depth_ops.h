@@ -8,17 +8,21 @@
 namespace onnxruntime {
 
 class SpaceDepthBase : public OpKernel {
- public:
+ protected:
   SpaceDepthBase(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(info.GetAttr("blocksize", &blocksize_).IsOK(),
                 "Attribute blocksize is not set.");
   }
 
- protected:
+  Status InputValidationsAndOutputDims(const Tensor& input,
+                                       int64_t& batch,
+                                       int64_t& input_depth, int64_t& input_height, int64_t& input_width,
+                                       int64_t& output_depth, int64_t& output_height, int64_t& output_width,
+                                       bool is_space_to_depth) const;
+
   int64_t blocksize_;
 };
 
-template <typename T>
 class SpaceToDepth final : public SpaceDepthBase {
  public:
   SpaceToDepth(const OpKernelInfo& info) : SpaceDepthBase(info) {
@@ -27,7 +31,6 @@ class SpaceToDepth final : public SpaceDepthBase {
   Status Compute(OpKernelContext* context) const override;
 };
 
-template <typename T>
 class DepthToSpace final : public SpaceDepthBase {
  public:
   DepthToSpace(const OpKernelInfo& info) : SpaceDepthBase(info) {
@@ -39,7 +42,7 @@ class DepthToSpace final : public SpaceDepthBase {
         is_dcr_ = false;
 
       else if (mode != "DCR")
-        ORT_THROW("DepthToSpace op: only 'DCR' and 'CRD' modes are supported"); 
+        ORT_THROW("DepthToSpace op: only 'DCR' and 'CRD' modes are supported");
     }
   }
 
