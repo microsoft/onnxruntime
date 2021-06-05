@@ -9,5 +9,6 @@ sympy==1.1.1
 flake8
 flatbuffers
 torch==1.8.1
+coloredlogs
 #tensorflow==2.5.0
 #transformers==4.3.3
