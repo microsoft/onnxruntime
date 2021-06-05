@@ -107,7 +107,7 @@ Status SpaceToDepth::ComputeInternal(OpKernelContext* context) const {
 
   std::vector<size_t> permutation = {0, 3, 5, 1, 2, 4};
 
-  ORT_RETURN_IF_ERROR(SpaceDepthOpRocmImpl(GetDeviceProp(), Stream(), CublasHandle(), input, output, permutation, batch,
+  ORT_RETURN_IF_ERROR(SpaceDepthOpRocmImpl(GetDeviceProp(), Stream(), RocblasHandle(), input, output, permutation, batch,
                                            input_depth, input_height / blocksize_, blocksize_, input_width / blocksize_, blocksize_));
 
   // Reshape to "actual" output shape
