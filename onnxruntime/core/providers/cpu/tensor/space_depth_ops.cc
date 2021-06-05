@@ -16,32 +16,42 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     SpaceToDepth,
     1,
     12,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}),
+    KernelDefBuilder()
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>()}),
     SpaceToDepth);
 
 ONNX_CPU_OPERATOR_KERNEL(
     SpaceToDepth,
     13,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}),
+    KernelDefBuilder()
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>()}),
     SpaceToDepth);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     DepthToSpace,
     1, 10,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}),
+    KernelDefBuilder()
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>()}),
     DepthToSpace);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     DepthToSpace,
     11,
     12,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}),
+    KernelDefBuilder()
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>()}),
     DepthToSpace);
 
 ONNX_CPU_OPERATOR_KERNEL(
     DepthToSpace,
     13,
-    KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}),
+    KernelDefBuilder()
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>()}),
     DepthToSpace);
 
 // intermediate tensor shapes are:

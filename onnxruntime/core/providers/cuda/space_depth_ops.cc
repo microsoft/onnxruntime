@@ -43,8 +43,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .TypeConstraint("T",
                         {DataTypeImpl::GetTensorType<float>(),
-                         DataTypeImpl::GetTensorType<double>(), 
-            \DataTypeImpl::GetTensorType<MLFloat16>()}),
+                         DataTypeImpl::GetTensorType<double>(),
+                         DataTypeImpl::GetTensorType<MLFloat16>()}),
     DepthToSpace);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -53,7 +53,9 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     11,
     12,
     kCudaExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}),
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>()}),
     DepthToSpace);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -61,7 +63,9 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     13,
     kCudaExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<double>()}),
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>()}),
     DepthToSpace);
 
 static Status SpaceDepthOpCudaImpl(const cudaDeviceProp& prop,
@@ -97,11 +101,19 @@ Status SpaceToDepth::ComputeInternal(OpKernelContext* context) const {
                                                     output_depth, output_height, output_width,
                                                     true));
 
-  Tensor& output = *context->Output(0, {batch, output_depth, output_height, output_width});
+  // We use the "virtual" output shape to construct the output tensor
+  Tensor& output = *context->Output(0,
+                                    {batch, blocksize_, blocksize_, input_depth, input_height / blocksize_, input_width / blocksize_});
 
   std::vector<size_t> permutation = {0, 3, 5, 1, 2, 4};
-  return SpaceDepthOpCudaImpl(GetDeviceProp(), Stream(), CublasHandle(), input, output, permutation, batch,
-                              input_depth, input_height / blocksize_, blocksize_, input_width / blocksize_, blocksize_);
+
+  ORT_RETURN_IF_ERROR(SpaceDepthOpCudaImpl(GetDeviceProp(), Stream(), CublasHandle(), input, output, permutation, batch,
+                                           input_depth, input_height / blocksize_, blocksize_, input_width / blocksize_, blocksize_));
+
+  // Reshape to "actual" output shape
+  output.Reshape({batch, output_depth, output_height, output_width});
+
+  return Status::OK();
 }
 
 Status DepthToSpace::ComputeInternal(OpKernelContext* context) const {
@@ -125,7 +137,9 @@ Status DepthToSpace::ComputeInternal(OpKernelContext* context) const {
                                                     output_depth, output_height, output_width,
                                                     false));
 
-  Tensor& output = *context->Output(0, {batch, output_depth, output_height, output_width});
+  // We use the "virtual" output shape to construct the output tensor
+  Tensor& output = *context->Output(0,
+                                    {batch, input_depth / blocksize_ / blocksize_, input_height, blocksize_, input_width, blocksize_});
 
   std::vector<size_t> permutation;
   permutation.reserve(6);
@@ -149,10 +163,15 @@ Status DepthToSpace::ComputeInternal(OpKernelContext* context) const {
   int64_t dim1 = is_dcr_ ? blocksize_ : input_depth / blocksize_ / blocksize_;
   int64_t dim3 = is_dcr_ ? input_depth / blocksize_ / blocksize_ : blocksize_;
 
-  return SpaceDepthOpCudaImpl(GetDeviceProp(), Stream(), CublasHandle(), input, output,
-                              permutation,
-                              batch,
-                              dim1, blocksize_, dim3, input_height, input_width);
+  ORT_RETURN_IF_ERROR(SpaceDepthOpCudaImpl(GetDeviceProp(), Stream(), CublasHandle(), input, output,
+                                           permutation,
+                                           batch,
+                                           dim1, blocksize_, dim3, input_height, input_width));
+
+  // Reshape to "actual" output shape
+  output.Reshape({batch, output_depth, output_height, output_width});
+
+  return Status::OK();
 }
 
 }  // namespace cuda
