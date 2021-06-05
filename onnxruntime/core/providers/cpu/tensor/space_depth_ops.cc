@@ -96,11 +96,11 @@ Status SpaceToDepth::Compute(OpKernelContext* context) const {
   int64_t output_height;
   int64_t output_width;
 
-  ORT_RETURN_IF_ERROR(InputValidationsAndOutputDims(input,
-                                                    batch,
-                                                    input_depth, input_height, input_width,
-                                                    output_depth, output_height, output_width,
-                                                    true));
+  ORT_RETURN_IF_ERROR(InputValidationsAndOutputDimsCalc(input,
+                                                        batch,
+                                                        input_depth, input_height, input_width,
+                                                        output_depth, output_height, output_width,
+                                                        true));
 
   Tensor& output = *context->Output(0, {batch, output_depth, output_height, output_width});
 
@@ -137,11 +137,11 @@ Status DepthToSpace::Compute(OpKernelContext* context) const {
   int64_t output_height;
   int64_t output_width;
 
-  ORT_RETURN_IF_ERROR(InputValidationsAndOutputDims(input,
-                                                    batch,
-                                                    input_depth, input_height, input_width,
-                                                    output_depth, output_height, output_width,
-                                                    false));
+  ORT_RETURN_IF_ERROR(InputValidationsAndOutputDimsCalc(input,
+                                                        batch,
+                                                        input_depth, input_height, input_width,
+                                                        output_depth, output_height, output_width,
+                                                        false));
 
   Tensor& output = *context->Output(0, {batch, output_depth, output_height, output_width});
 

@@ -14,11 +14,11 @@ class SpaceDepthBase {
                 "Attribute blocksize is not set.");
   }
 
-  Status InputValidationsAndOutputDims(const Tensor& input,
-                                       int64_t& batch,
-                                       int64_t& input_depth, int64_t& input_height, int64_t& input_width,
-                                       int64_t& output_depth, int64_t& output_height, int64_t& output_width,
-                                       bool is_space_to_depth) const {
+  Status InputValidationsAndOutputDimsCalc(const Tensor& input,
+                                           int64_t& batch,
+                                           int64_t& input_depth, int64_t& input_height, int64_t& input_width,
+                                           int64_t& output_depth, int64_t& output_height, int64_t& output_width,
+                                           bool is_space_to_depth) const {
     const TensorShape& input_shape = input.Shape();
 
     if (input_shape.NumDimensions() != 4) {
