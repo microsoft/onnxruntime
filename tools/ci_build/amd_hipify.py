@@ -144,6 +144,8 @@ provider_excluded_files = [
                 'tensor/resize_impl.h',
                 'tensor/transpose.cc',
                 'tensor/transpose.h',
+                'tensor/space_depth_ops.cc',
+                'tensor/space_depth_ops.h',
                 'tensor/upsample.cc',
                 'tensor/upsample.h',
                 'tensor/upsample_impl.cu',
