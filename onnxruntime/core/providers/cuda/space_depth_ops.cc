@@ -85,15 +85,15 @@ Status SpaceToDepth::ComputeInternal(OpKernelContext* context) const {
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& input = *tensor_pointer;
 
-  int64_t batch;
+  int64_t batch = -1;
 
-  int64_t input_depth;
-  int64_t input_height;
-  int64_t input_width;
+  int64_t input_depth = -1;
+  int64_t input_height = -1;
+  int64_t input_width = -1;
 
-  int64_t output_depth;
-  int64_t output_height;
-  int64_t output_width;
+  int64_t output_depth = -1;
+  int64_t output_height = -1;
+  int64_t output_width = -1;
 
   ORT_RETURN_IF_ERROR(InputValidationsAndOutputDimsCalc(input,
                                                         batch,
@@ -121,15 +121,15 @@ Status DepthToSpace::ComputeInternal(OpKernelContext* context) const {
   if (tensor_pointer == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const Tensor& input = *tensor_pointer;
 
-  int64_t batch;
+  int64_t batch = -1;
 
-  int64_t input_depth;
-  int64_t input_height;
-  int64_t input_width;
+  int64_t input_depth = -1;
+  int64_t input_height = -1;
+  int64_t input_width = -1;
 
-  int64_t output_depth;
-  int64_t output_height;
-  int64_t output_width;
+  int64_t output_depth = -1;
+  int64_t output_height = -1;
+  int64_t output_width = -1;
 
   ORT_RETURN_IF_ERROR(InputValidationsAndOutputDimsCalc(input,
                                                         batch,
