@@ -66,6 +66,7 @@ ONNX_OPERATOR_KERNEL_EX(
     13,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
+        .TypeConstraint("T",
                         {DataTypeImpl::GetTensorType<float>(),
                          DataTypeImpl::GetTensorType<double>(),
                          DataTypeImpl::GetTensorType<MLFloat16>()}),
