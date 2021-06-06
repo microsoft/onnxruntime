@@ -31,14 +31,14 @@ def install_new_ort_wheel(ort_master_path):
 def main():
     args = parse_arguments()
 
-    cmake_tar = "cmake-3.17.4-Linux-x86_64.tar.gz" 
+    cmake_tar = "cmake-3.18.4-Linux-x86_64.tar.gz" 
     if not os.path.exists(cmake_tar):
-        p = subprocess.run(["sudo", "wget", "-c", "https://cmake.org/files/v3.17/" + cmake_tar], check=True)
+        p = subprocess.run(["sudo", "wget", "-c", "https://cmake.org/files/v3.18/" + cmake_tar], check=True)
     tar = tarfile.open(cmake_tar)
     tar.extractall()
     tar.close()
     
-    os.environ["PATH"] = os.path.join(os.path.abspath("cmake-3.17.4-Linux-x86_64"), "bin") + ":" + os.environ["PATH"]
+    os.environ["PATH"] = os.path.join(os.path.abspath("cmake-3.18.4-Linux-x86_64"), "bin") + ":" + os.environ["PATH"]
     os.environ["CUDACXX"] = os.path.join(args.cuda_home, "bin", "nvcc") 
 
     ort_master_path = args.ort_master_path 
