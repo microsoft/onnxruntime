@@ -55,7 +55,7 @@ METRICS_FILE = ".metrics_map"
 MEMORY_FILE = './temp_memory.csv'
 
 def split_and_sort_output(string_list):
-    string_list.split("\n")
+    string_list = string_list.split("\n")
     string_list.sort()
     return string_list
 
