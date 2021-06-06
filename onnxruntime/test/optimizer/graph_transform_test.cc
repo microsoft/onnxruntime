@@ -3617,6 +3617,10 @@ static void QuantizedEmbedLayerNormFusionFormat(const std::basic_string<ORTCHAR_
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger);
   ASSERT_TRUE(ret.IsOK());
 
+  //
+  // TODO(kreeger): Left off right here. Need to write a fake model to test for transformation in the python stuff.
+  //
+
   /*
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   EXPECT_EQ(op_to_count["Shape"], 0);
