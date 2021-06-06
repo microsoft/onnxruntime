@@ -13,24 +13,30 @@ file(GLOB_RECURSE contrib_ops_schema_src
 
 onnxruntime_add_static_library(ort_opschema_lib ${contrib_ops_schema_src})
 
-set (OPSCHEMA_LIB_DEPENDENCIES onnxruntime_util onnxruntime_common onnxruntime_mlas onnx onnx_proto protobuf::libprotobuf flatbuffers)
-if(NOT WIN32)
-   list(APPEND OPSCHEMA_LIB_DEPENDENCIES nsync_cpp)
-endif()
+# set (OPSCHEMA_LIB_DEPENDENCIES onnxruntime_util onnxruntime_common onnxruntime_mlas onnx onnx_proto protobuf::libprotobuf flatbuffers)
+# if(NOT WIN32)
+#    list(APPEND OPSCHEMA_LIB_DEPENDENCIES nsync_cpp)
+# endif()
+
+set (OPSCHEMA_LIB_DEPENDENCIES onnx onnx_proto protobuf::libprotobuf flatbuffers)
+
 
 # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" is found
 target_include_directories(ort_opschema_lib PRIVATE ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
-add_dependencies(ort_opschema_lib ${OPSCHEMA_LIB_DEPENDENCIES})
 onnxruntime_add_include_to_target(ort_opschema_lib onnxruntime_common onnx onnx_proto protobuf::libprotobuf flatbuffers)
+add_dependencies(ort_opschema_lib ${OPSCHEMA_LIB_DEPENDENCIES})
 
 # Test schema library using toy application
 
 set(OPSCHEMA_LIB_TEST ${REPO_ROOT}/samples/c_cxx/opschema_lib_use)
 
-file(GLOB_RECURSE opschema_lib_test_src "${OPSCHEMA_LIB_TEST}/*.cc")
+# Dummy implementation of dependencies, for temporary testing.
+add_library(opschema_import_dummy_lib STATIC ${OPSCHEMA_LIB_TEST}/dummy.cc)
+
+file(GLOB_RECURSE opschema_lib_test_src "${OPSCHEMA_LIB_TEST}/main.cc")
 
 add_executable(opschema_lib_test ${opschema_lib_test_src})
 
 target_include_directories(opschema_lib_test PRIVATE ${ORTTRAINING_ROOT})
 
-target_link_libraries(opschema_lib_test ort_opschema_lib ${OPSCHEMA_LIB_DEPENDENCIES}) 
+target_link_libraries(opschema_lib_test ort_opschema_lib ${OPSCHEMA_LIB_DEPENDENCIES} opschema_import_dummy_lib) 
