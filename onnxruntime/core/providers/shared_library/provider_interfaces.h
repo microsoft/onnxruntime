@@ -423,6 +423,7 @@ struct ProviderHost {
   // DataTypeImpl
   virtual MLDataType DataTypeImpl__GetType_Tensor() = 0;
   virtual MLDataType DataTypeImpl__GetType_TensorSeq() = 0;
+  virtual MLDataType DataTypeImpl__GetTypeFromOnnxType(int) = 0;
   virtual MLDataType DataTypeImpl__GetType_bool() = 0;
   virtual MLDataType DataTypeImpl__GetType_int8() = 0;
   virtual MLDataType DataTypeImpl__GetType_uint8() = 0;
@@ -436,6 +437,7 @@ struct ProviderHost {
   virtual MLDataType DataTypeImpl__GetType_double() = 0;
   virtual MLDataType DataTypeImpl__GetType_BFloat16() = 0;
   virtual MLDataType DataTypeImpl__GetType_MLFloat16() = 0;
+  virtual MLDataType DataTypeImpl__GetType_string() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_bool() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_int8() = 0;
   virtual MLDataType DataTypeImpl__GetTensorType_uint8() = 0;
@@ -458,6 +460,9 @@ struct ProviderHost {
   virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() = 0;
   virtual const std::vector<MLDataType>& DataTypeImpl__AllIEEEFloatTensorTypes() = 0;
   virtual const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypes() = 0;
+  virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypes() = 0;
   virtual size_t DataTypeImpl__Size(const DataTypeImpl* p) = 0;
   virtual const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) = 0;
 
@@ -1282,6 +1287,7 @@ class DataTypeImpl final {
   static MLDataType GetType();
   template <typename elemT>
   static MLDataType GetTensorType();
+  static MLDataType GetTypeFromOnnxType(int);
 
   bool IsTensorType() const { return g_host->DataTypeImpl__IsTensorType(this); }
   bool IsTensorSequenceType() const { return g_host->DataTypeImpl__IsTensorSequenceType(this); }
@@ -1292,6 +1298,9 @@ class DataTypeImpl final {
   static const std::vector<MLDataType>& AllTensorTypes() { return g_host->DataTypeImpl__AllTensorTypes(); }
   static const std::vector<MLDataType>& AllIEEEFloatTensorTypes() { return g_host->DataTypeImpl__AllIEEEFloatTensorTypes(); }
   static const std::vector<MLDataType>& AllTensorAndSequenceTensorTypes() { return g_host->DataTypeImpl__AllTensorAndSequenceTensorTypes(); }
+  static const std::vector<MLDataType>& AllFixedSizeTensorAndSequenceTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypes(); }
+  static const std::vector<MLDataType>& AllSequenceTensorTypes() { return g_host->DataTypeImpl__AllSequenceTensorTypes(); }
+  static const std::vector<MLDataType>& AllFixedSizeSequenceTensorTypes() { return g_host->DataTypeImpl__AllFixedSizeSequenceTensorTypes(); }
 
   const PrimitiveDataTypeBase* AsPrimitiveDataType() const { return g_host->DataTypeImpl__AsPrimitiveDataType(this); }
 
