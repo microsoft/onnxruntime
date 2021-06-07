@@ -1,0 +1,36 @@
+FROM quay.io/pypa/manylinux2014_x86_64:latest
+
+COPY build_scripts/build_utils.sh /build_scripts/
+COPY build_scripts/cpython-pubkeys.txt /build_scripts/cpython-pubkeys.txt
+COPY build_scripts/build-openssl.sh /build_scripts/
+RUN export OPENSSL_ROOT=openssl-1.1.1k && \
+    export OPENSSL_HASH=892a0875b9872acd04a9fde79b1f943075d5ea162415de3047c327df33fbaee5 && \
+    export OPENSSL_DOWNLOAD_URL=https://www.openssl.org/source && \
+    manylinux-entrypoint /build_scripts/build-openssl.sh
+
+ADD scripts /tmp/scripts
+RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh
+
+# Remove existing symbolic link and python installation.
+RUN rm -rf /opt/python/cp37-cp37m && rm -rf /opt/_internal/cpython-3.7.10
+
+# Build Python.
+COPY build_scripts/build-cpython.sh /build_scripts/
+RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.7.10 1
+
+ENV SSL_CERT_FILE=/opt/_internal/certs.pem
+
+ENV PATH /opt/python/cp37-cp37m/bin:$PATH
+ENV LD_LIBRARY_PATH /opt/_internal/cpython-3.7.10/lib/:$LD_LIBRARY_PATH
+
+# Create symbolic link pointing to new built python installation.
+RUN ln -sf /opt/_internal/cpython-3.7.10 /opt/python/cp37-cp37m && /opt/python/cp37-cp37m/bin/python3.7 -m pip install --upgrade pip
+
+RUN /tmp/scripts/manylinux/install_deps.sh && rm -rf /tmp/scripts
+
+ARG BUILD_UID=1001
+ARG BUILD_USER=onnxruntimedev
+RUN adduser --uid $BUILD_UID $BUILD_USER
+WORKDIR /home/$BUILD_USER
+USER $BUILD_USER
+ENV PATH /usr/local/gradle/bin:$PATH

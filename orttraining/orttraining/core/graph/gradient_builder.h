@@ -75,6 +75,7 @@ DECLARE_GRADIENT_BUILDER(GetTileGradient)
 DECLARE_GRADIENT_BUILDER(GetATenOpGradient)
 DECLARE_GRADIENT_BUILDER(GetPadGradient)
 DECLARE_GRADIENT_BUILDER(GetIdentityGradient)
+DECLARE_GRADIENT_BUILDER(GetPythonOpGradient)
 
 }  // namespace training
 }  // namespace onnxruntime

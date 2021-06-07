@@ -135,6 +135,8 @@ if (onnxruntime_ENABLE_TRAINING_OPS)
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/aten_ops/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/aten_ops/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.cc"
+    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.h"
   )
 
   list(REMOVE_ITEM onnxruntime_providers_src ${onnxruntime_cpu_full_training_only_srcs})
@@ -153,13 +155,34 @@ if (onnxruntime_ENABLE_TRAINING)
   source_group(TREE ${ORTTRAINING_ROOT}/ FILES ${onnxruntime_cpu_training_ops_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
 
-  file(GLOB_RECURSE onnxruntime_providers_dlpack_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/dlpack/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/dlpack/*.h"
+  file(GLOB_RECURSE onnxruntime_providers_dlpack_cpp_interfaces_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_converter.cc"
+    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_converter.h"
   )
+  set(onnxruntime_providers_dlpack_srcs ${onnxruntime_providers_dlpack_cpp_interfaces_srcs})
+
+  if (onnxruntime_ENABLE_PYTHON)
+    file(GLOB_RECURSE onnxruntime_providers_dlpack_python_interfaces_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.cc"
+      "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.h"
+      "${ONNXRUNTIME_ROOT}/core/dlpack/python_common.cc"
+      "${ONNXRUNTIME_ROOT}/core/dlpack/python_common.h"
+    )
+    list(APPEND onnxruntime_providers_dlpack_srcs ${onnxruntime_providers_dlpack_python_interfaces_srcs})
+  endif()
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_dlpack_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_providers_dlpack_srcs})
+
+  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    file(GLOB_RECURSE onnxruntime_language_interop_torch_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/*.h"
+      "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/*.cc"
+    )
+
+    source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_language_interop_torch_srcs})
+    list(APPEND onnxruntime_providers_src ${onnxruntime_language_interop_torch_srcs})
+  endif()
 endif()
 
 onnxruntime_add_static_library(onnxruntime_providers ${onnxruntime_providers_src})
@@ -205,6 +228,10 @@ endif()
 if (onnxruntime_ENABLE_TRAINING)
   add_dependencies(onnxruntime_providers tensorboard)
   onnxruntime_add_include_to_target(onnxruntime_providers tensorboard)
+  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    onnxruntime_add_include_to_target(onnxruntime_providers tensorboard Python::Module)
+    target_link_libraries(onnxruntime_providers PRIVATE Python::Python)
+  endif()
 
   if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)
     target_include_directories(onnxruntime_providers PUBLIC ${MPI_CXX_INCLUDE_DIRS})
@@ -340,6 +367,10 @@ if (onnxruntime_USE_CUDA)
   if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
     onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_training)
     target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_training)
+    if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+      onnxruntime_add_include_to_target(onnxruntime_providers_cuda Python::Module)
+      target_link_libraries(onnxruntime_providers_cuda PRIVATE Python::Python)
+    endif()
   endif()
 
   add_dependencies(onnxruntime_providers_cuda onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES} ${onnxruntime_tvm_dependencies})
@@ -1092,6 +1123,10 @@ if (onnxruntime_USE_ROCM)
 
   if (onnxruntime_ENABLE_TRAINING)
     target_include_directories(onnxruntime_providers_rocm PRIVATE ${ORTTRAINING_ROOT} ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
+    if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+      onnxruntime_add_include_to_target(onnxruntime_providers_rocm Python::Module)
+      target_link_libraries(onnxruntime_providers_rocm PRIVATE Python::Python)
+    endif()
   endif()
 
   onnxruntime_add_include_to_target(onnxruntime_providers_rocm onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
