@@ -225,6 +225,12 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   file(GLOB onnxruntime_python_transformers_testdata_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/test/python/transformers/test_data/fusion/*.onnx"
   )
+  file(GLOB onnxruntime_python_transformers_testdata_bert_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/test/python/transformers/test_data/bert_squad_tensorflow2.1_keras2onnx_opset11/*.onnx"
+  )
+  file(GLOB onnxruntime_python_transformers_testdata_gpt2_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/test/python/transformers/test_data/gpt2_pytorch1.5_opset11/*.onnx"
+  )
 endif()
 
 file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
@@ -286,6 +292,8 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/fusion
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/bert_squad_tensorflow2.1_keras2onnx_opset11
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/gpt2_pytorch1.5_opset11
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
@@ -385,6 +393,12 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_testdata_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/fusion
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_transformers_testdata_bert_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/bert_squad_tensorflow2.1_keras2onnx_opset11
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_transformers_testdata_gpt2_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/gpt2_pytorch1.5_opset11
   )
 endif()
 

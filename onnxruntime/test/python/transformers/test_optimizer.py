@@ -127,38 +127,38 @@ class TestBertOptimization(unittest.TestCase):
     #     }
     #     self.verify_node_count(bert_model, expected_node_count, 'test_keras_model_1')
 
-    # def test_keras_squad_model(self):
-    #     input = _get_test_model_path('bert_keras_squad')
+    def test_keras_squad_model(self):
+        input = _get_test_model_path('bert_keras_squad')
 
-    #     bert_model = optimize_model(input, 'bert_keras', num_heads=2, hidden_size=8)
+        bert_model = optimize_model(input, 'bert_keras', num_heads=2, hidden_size=8)
 
-    #     print("fused_operator_statistics for test_keras_squad_model", bert_model.get_fused_operator_statistics())
+        print("fused_operator_statistics for test_keras_squad_model", bert_model.get_fused_operator_statistics())
 
-    #     self.assertTrue(bert_model.is_fully_optimized())
+        self.assertTrue(bert_model.is_fully_optimized())
 
-    # def test_gpt2_past(self):
-    #     input = _get_test_model_path('gpt2_past')
-    #     model = optimize_model(input, 'gpt2', num_heads=2, hidden_size=4)
+    def test_gpt2_past(self):
+        input = _get_test_model_path('gpt2_past')
+        model = optimize_model(input, 'gpt2', num_heads=2, hidden_size=4)
 
-    #     expected_node_count = {
-    #         'EmbedLayerNormalization': 0,
-    #         'Attention': 12,
-    #         'Gelu': 0,
-    #         'FastGelu': 12,
-    #         'BiasGelu': 0,
-    #         'LayerNormalization': 25,
-    #         'SkipLayerNormalization': 0
-    #     }
-    #     self.verify_node_count(model, expected_node_count, 'test_gpt2_past')
+        expected_node_count = {
+            'EmbedLayerNormalization': 0,
+            'Attention': 12,
+            'Gelu': 0,
+            'FastGelu': 12,
+            'BiasGelu': 0,
+            'LayerNormalization': 25,
+            'SkipLayerNormalization': 0
+        }
+        self.verify_node_count(model, expected_node_count, 'test_gpt2_past')
 
-    # def test_gpt2_past_fp16(self):
-    #     input_model_path = _get_test_model_path('gpt2_past')
-    #     model = OnnxModel(load_model(input_model_path, format=None, load_external_data=True))
-    #     model.convert_model_float32_to_float16(cast_input_output=False)
-    #     for input in model.graph().input[1:]:
-    #         self.assertEqual(input.type.tensor_type.elem_type, TensorProto.FLOAT16)
-    #     for output in model.graph().output:
-    #         self.assertEqual(output.type.tensor_type.elem_type, TensorProto.FLOAT16)
+    def test_gpt2_past_fp16(self):
+        input_model_path = _get_test_model_path('gpt2_past')
+        model = OnnxModel(load_model(input_model_path, format=None, load_external_data=True))
+        model.convert_model_float32_to_float16(cast_input_output=False)
+        for input in model.graph().input[1:]:
+            self.assertEqual(input.type.tensor_type.elem_type, TensorProto.FLOAT16)
+        for output in model.graph().output:
+            self.assertEqual(output.type.tensor_type.elem_type, TensorProto.FLOAT16)
 
     def test_gpt2_past_mask(self):
         input = _get_test_model_path('gpt2_past_mask')
