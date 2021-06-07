@@ -392,13 +392,13 @@ if (onnxruntime_BUILD_UNIT_TESTS)
         $<TARGET_FILE_DIR:${build_output_target}>/transformers/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_testdata_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/fusion
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/fusion/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_testdata_bert_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/bert_squad_tensorflow2.1_keras2onnx_opset11
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/bert_squad_tensorflow2.1_keras2onnx_opset11/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_testdata_gpt2_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/gpt2_pytorch1.5_opset11
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/gpt2_pytorch1.5_opset11/
   )
 endif()
 
