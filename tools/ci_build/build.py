@@ -1513,8 +1513,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                                    cwd=cwd, dll_path=dll_path)
                     if args.enable_transformers_tool_test:
                         required = {
-                            'numpy==1.20.3', 'coloredlogs==15.0', 'tf2onnx-1.8.5', 'transformers==4.6.1', 'torch==1.8.1',
-                            'tensorflow==2.5.0', 'onnxconverter-common-1.8.1'}
+                            'numpy==1.20.3', 'coloredlogs==15.0', 'tf2onnx-1.8.5', 'transformers==4.6.1',
+                            'torch==1.8.1', 'tensorflow==2.5.0', 'onnxconverter-common-1.8.1'}
                         run_subprocess([sys.executable, '-m', 'pip', 'install', *required])
                         run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'transformers'],
                                        cwd=cwd, dll_path=dll_path)
