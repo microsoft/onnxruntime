@@ -103,7 +103,7 @@ jobs:
       testResultsFiles: '**/*.results.xml'
       searchFolder: '$(Build.BinariesDirectory)'
       testRunTitle: 'Unit Test Run'
-    condition: succeededOrFailed()
+    condition: and(succeededOrFailed(), eq(variables['BuildConfig'], 'Debug'))
   - template: templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
