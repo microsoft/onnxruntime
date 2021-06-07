@@ -538,7 +538,7 @@ TEST_F(GraphTransformationTests, BiasGeluRecomputeTest) {
 
 TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithoutCast) {
   Model model("SoftmaxCrossEntropyLossInternalFusion", true, ModelMetaData(), PathString(),
-              IOnnxRuntimeOpSchemaRegistryList(), {{"", 13}, {"com.microsoft", 1}}, {}, *logger_);
+              IOnnxRuntimeOpSchemaRegistryList(), {{"", 12}, {"com.microsoft", 1}}, {}, *logger_);
   auto& graph = model.MainGraph();
 
   TypeProto tensor_float;
@@ -553,8 +553,10 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithoutCas
   onnxruntime::NodeArg y_def("Y", &tensor_float);
 
   graph.AddNode("ls", "LogSoftmax", "LogSoftmax operator", {&x_def}, {&ls_out_def});
-  graph.AddNode("nl_loss_internal", "NegativeLogLikelihoodLossInternal", "NegativeLogLikelihoodLossInternal operator",
-                {&ls_out_def, &target_def, &weight_def, &ignore_index_def}, {&y_def}, nullptr, onnxruntime::kMSDomain);
+  Node& nll_loss_node = graph.AddNode(
+      "nl_loss_internal", "NegativeLogLikelihoodLossInternal", "NegativeLogLikelihoodLossInternal operator",
+      {&ls_out_def, &target_def, &weight_def, &ignore_index_def}, {&y_def}, nullptr, onnxruntime::kMSDomain);
+  nll_loss_node.AddAttribute("reduction", "none");
 
   auto status = graph.Resolve();
   EXPECT_EQ(status, Status::OK());
@@ -572,7 +574,7 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithoutCas
 
 TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithCast) {
   Model model("SoftmaxCrossEntropyLossInternalFusion", true, ModelMetaData(), PathString(),
-              IOnnxRuntimeOpSchemaRegistryList(), {{"", 13}, {"com.microsoft", 1}}, {}, *logger_);
+              IOnnxRuntimeOpSchemaRegistryList(), {{"", 12}, {"com.microsoft", 1}}, {}, *logger_);
   auto& graph = model.MainGraph();
 
   TypeProto tensor_half;
@@ -592,8 +594,10 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithCast) 
   graph.AddNode("ls", "LogSoftmax", "LogSoftmax operator", {&x_def}, {&ls_out_def});
   Node& cast_node = graph.AddNode("ct", "Cast", "Cast operator", {&ls_out_def}, {&ct_out_def});
   cast_node.AddAttribute("to", static_cast<int64_t>(1));
-  graph.AddNode("nl_loss_internal", "NegativeLogLikelihoodLossInternal", "NegativeLogLikelihoodLossInternal operator",
-                {&ct_out_def, &target_def, &weight_def, &ignore_index_def}, {&y_def}, nullptr, onnxruntime::kMSDomain);
+  Node& nll_loss_node = graph.AddNode(
+      "nl_loss_internal", "NegativeLogLikelihoodLossInternal", "NegativeLogLikelihoodLossInternal operator",
+      {&ct_out_def, &target_def, &weight_def, &ignore_index_def}, {&y_def}, nullptr, onnxruntime::kMSDomain);
+  nll_loss_node.AddAttribute("reduction", "mean");
 
   auto status = graph.Resolve();
   EXPECT_EQ(status, Status::OK());

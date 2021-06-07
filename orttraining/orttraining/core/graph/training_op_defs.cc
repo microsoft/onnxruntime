@@ -135,6 +135,250 @@ static void propagateRecvOutputTensorElemTypes(
   }
 }
 
+TensorProto ToDimensionOneFloatTensor(float value) {
+  auto t = ToTensor(std::vector<float>({value}));
+  t.add_dims(1);
+  return t;
+}
+
+TensorProto ToDimensionOneTensor(int32_t value) {
+  auto t = ToTensor(std::vector<int32_t>({value}));
+  t.add_dims(1);
+  return t;
+}
+
+bool BuildContextDependentFunctionBodyNllLossInternal(
+    const FunctionBodyBuildContext& ctx,
+    const OpSchema& schema,
+    FunctionProto& functionProto) {  
+  if (ctx.getInputType(0) == nullptr) {
+    // we cannot create a correct function body without knowing the input type
+    return false;
+  }
+  auto input_type = ctx.getInputType(0)->tensor_type().elem_type();
+  bool float_input = input_type == TensorProto_DataType_FLOAT;
+  std::vector<FunctionBodyHelper::NodeDef> body;
+  body.push_back(
+      {{"const_zero"},
+       "Constant",
+       {},
+       {MakeAttribute("value", ToDimensionOneTensor(0))}});
+
+  body.push_back(
+      {{"const_one"},
+       "Constant",
+       {},
+       {MakeAttribute("value", ToDimensionOneTensor(1))}});
+
+  body.push_back(
+      {{"expanded_target"},
+       "Unsqueeze",
+       {"target"},
+       {MakeAttribute("axes", std::vector<int64_t>({1}))}});
+
+  if (!ctx.hasInput(3)) {
+    body.push_back(
+        {{"input_gather_element"},
+         "GatherElements",
+         {"input", "expanded_target"},
+         {MakeAttribute("axis", (int64_t)1)}});
+
+    body.push_back({{"loss_NCdd"}, "Neg", {"input_gather_element"}});
+
+    body.push_back(
+        {{"loss_N1dd"},
+         "Slice",
+         {"loss_NCdd", "const_zero", "const_one", "const_one"}});
+
+    if (!ctx.hasInput(2)) {
+      if (ctx.getAttribute("reduction")->s() == "none") {
+        body.push_back(
+            {{"loss"},
+             "Squeeze",
+             {"loss_N1dd"},
+             {MakeAttribute("axes", std::vector<int64_t>({1}))}});
+      } else {
+        body.push_back(
+            {{"loss_Ndd"},
+             "Squeeze",
+             {"loss_N1dd"},
+             {MakeAttribute("axes", std::vector<int64_t>({1}))}});
+        if (ctx.getAttribute("reduction")->s() == "mean") {
+          body.push_back(
+              {{"loss"},
+               "ReduceMean",
+               {"loss_Ndd"},
+               {MakeAttribute("keepdims", (int64_t)0)}});
+        } else {
+          body.push_back(
+              {{"loss"},
+               "ReduceSum",
+               {"loss_Ndd"},
+               {MakeAttribute("keepdims", (int64_t)0)}});
+        }
+      }
+    } else {
+      body.push_back({{"weight_gather"}, "Gather", {"weight", "target"}});
+      body.push_back(
+          {{"loss_unweighted"},
+           "Squeeze",
+           {"loss_N1dd"},
+           {MakeAttribute("axes", std::vector<int64_t>({1}))}});
+      if (ctx.getAttribute("reduction")->s() == "none") {
+        body.push_back({{"loss"}, "Mul", {"loss_unweighted", "weight_gather"}});
+      } else {
+        body.push_back(
+            {{"loss_Ndd"}, "Mul", {"loss_unweighted", "weight_gather"}});
+        if (ctx.getAttribute("reduction")->s() == "mean") {
+          body.push_back(
+              {{"loss_sum"},
+               "ReduceSum",
+               {"loss_Ndd"},
+               {MakeAttribute("keepdims", (int64_t)0)}});
+          body.push_back(
+              {{"weight_gather_sum"},
+               "ReduceSum",
+               {"weight_gather"},
+               {MakeAttribute("keepdims", (int64_t)0)}});
+          body.push_back({{"loss"}, "Div", {"loss_sum", "weight_gather_sum"}});
+        } else {
+          body.push_back(
+              {{"loss"},
+               "ReduceSum",
+               {"loss_Ndd"},
+               {MakeAttribute("keepdims", (int64_t)0)}});
+        }
+      }
+    }
+  } else {
+    body.push_back(
+        {{"const_zero_target_typed"},
+         "Sub",
+         {"expanded_target", "expanded_target"}});
+    body.push_back(
+        {{"expanded_target_int64"},
+         "Cast",
+         {"expanded_target"},
+         {MakeAttribute(
+             "to",
+             (int64_t)TensorProto_DataType::TensorProto_DataType_INT64)}});
+
+    body.push_back(
+        {{"mask"}, "Equal", {"expanded_target_int64", "ignore_index"}});
+    body.push_back(
+        {{"transform_targets"},
+         "Where",
+         {"mask", "const_zero_target_typed", "expanded_target"}});
+    body.push_back(
+        {{"input_gather_element"},
+         "GatherElements",
+         {"input", "transform_targets"},
+         {MakeAttribute("axis", (int64_t)1)}});
+    body.push_back(
+        {{"const_zero_float"},
+         "Constant",
+         {},
+         {MakeAttribute("value", ToDimensionOneFloatTensor(0.0f))}});
+    if (!float_input) {
+      body.push_back(
+          {{"const_zero_casted"}, 
+          "Cast", 
+          {"const_zero_float"}, 
+          {MakeAttribute("to", static_cast<int64_t>(input_type))}});
+    }
+    body.push_back(
+        {{"input_gather_element_transform"},
+         "Where",
+         {"mask", float_input ? "const_zero_float" : "const_zero_casted", "input_gather_element"}});
+    body.push_back({{"loss_NCdd"}, "Neg", {"input_gather_element_transform"}});
+    body.push_back(
+        {{"loss_N1dd"},
+         "Slice",
+         {"loss_NCdd", "const_zero", "const_one", "const_one"}});
+
+    if (!ctx.hasInput(2)) {
+      body.push_back(
+          {{"squeeze_mask"},
+           "Squeeze",
+           {"mask"},
+           {MakeAttribute("axes", std::vector<int64_t>({1}))}});
+
+      body.push_back(
+          {{"const_one_float"},
+           "Constant",
+           {},
+           {MakeAttribute("value", ToDimensionOneFloatTensor(1.0f))}});
+      if (!float_input) {
+        body.push_back(
+          {{"const_one_casted"}, 
+           "Cast", 
+           {"const_one_float"}, 
+           {MakeAttribute("to", static_cast<int64_t>(input_type))}});
+      }
+      body.push_back(
+          {{"weight_gather"},
+           "Where",
+           {"squeeze_mask", float_input ? "const_zero_float" : "const_zero_casted", 
+           float_input ? "const_one_float" :"const_one_casted"}});
+
+    } else {
+      body.push_back(
+          {{"weight_gather_temp"}, "Gather", {"weight", "transform_targets"}});
+
+      body.push_back(
+          {{"weight_gather_temp_1"},
+           "Where",
+           {"mask", float_input ? "const_zero_float" : "const_zero_casted", "weight_gather_temp"}});
+
+      body.push_back(
+          {{"weight_gather"},
+           "Squeeze",
+           {"weight_gather_temp_1"},
+           {MakeAttribute("axes", std::vector<int64_t>({1}))}});
+    }
+
+    body.push_back(
+        {{"loss_unweighted"},
+         "Squeeze",
+         {"loss_N1dd"},
+         {MakeAttribute("axes", std::vector<int64_t>({1}))}});
+    if (ctx.getAttribute("reduction")->s() == "none") {
+      body.push_back({{"loss"}, "Mul", {"loss_unweighted", "weight_gather"}});
+    } else {
+      body.push_back(
+          {{"loss_Ndd"}, "Mul", {"loss_unweighted", "weight_gather"}});
+      if (ctx.getAttribute("reduction")->s() == "mean") {
+        body.push_back(
+            {{"loss_sum"},
+             "ReduceSum",
+             {"loss_Ndd"},
+             {MakeAttribute("keepdims", (int64_t)0)}});
+        body.push_back(
+            {{"weight_gather_sum"},
+             "ReduceSum",
+             {"weight_gather"},
+             {MakeAttribute("keepdims", (int64_t)0)}});
+        body.push_back({{"loss"}, "Div", {"loss_sum", "weight_gather_sum"}});
+      } else {
+        body.push_back(
+            {{"loss"},
+             "ReduceSum",
+             {"loss_Ndd"},
+             {MakeAttribute("keepdims", (int64_t)0)}});
+      }
+    }
+  }
+
+  auto func_nodes = FunctionBodyHelper::BuildNodes(body);
+  for (const auto& node : func_nodes) {
+    auto new_node = functionProto.add_node();
+    new_node->CopyFrom(node);
+  }
+
+  schema.BuildFunction(functionProto);
+  return true;
+}
+
 // TODO: This is copied from onnx schemas. When the change is in and we update this can be removed.
 // For Brevity documentation was not copied
 OpSchema& RegisterLambOpSchema(OpSchema&& op_schema) {
@@ -2693,7 +2937,7 @@ Return true if all elements are true and false otherwise.
              "If ignore_index is specified, it may have a value outside [0, C) and the target values should either be "
              "in the range [0, C) or have the value ignore_index.",
              "Tind")
-      .Input(2, "weights",
+      .Input(2, "weight",
              "Optional rescaling weight tensor. "
              "If given, it has to be a tensor of size C. Otherwise, it is treated as if having all ones.",
              "T", OpSchema::Optional)
@@ -2705,6 +2949,7 @@ Return true if all elements are true and false otherwise.
                       "Constrain input and output types to float tensors.")
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain target to integer types")
       .TypeConstraint("I", {"tensor(int64)"}, "Constrain ignore_index tensor to int64")
+      .SetContextDependentFunctionBodyBuilder(BuildContextDependentFunctionBodyNllLossInternal)
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) { propagateElemTypeFromInputToOutput(ctx, 0, 0); })
       .SetDoc(R"DOC(NegativeLogLikelihoodLossInternal)DOC");
 }

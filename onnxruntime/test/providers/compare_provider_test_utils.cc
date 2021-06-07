@@ -120,7 +120,7 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
 
   // run with target provider
   // build the graph again as the cpu graph may be with casts
-  auto p_tp_model = BuildGraph();
+  auto p_tp_model = BuildGraph(extra_domain_to_version);
   auto& tp_graph = p_tp_model->MainGraph();
 
   status = tp_graph.Resolve();
