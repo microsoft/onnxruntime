@@ -14,6 +14,7 @@ source $MY_DIR/build_utils.sh
 CPYTHON_VERSION=$1
 CPYTHON_DOWNLOAD_URL=https://www.python.org/ftp/python
 
+BUILD_PYTHON_SO="${2:-0}"
 
 function pyver_dist_dir {
 	# Echoes the dist directory name of given pyver, removing alpha/beta prerelease
@@ -33,12 +34,22 @@ tar -xzf Python-${CPYTHON_VERSION}.tgz
 pushd Python-${CPYTHON_VERSION}
 PREFIX="/opt/_internal/cpython-${CPYTHON_VERSION}"
 mkdir -p ${PREFIX}/lib
-# configure with hardening options only for the interpreter & stdlib C extensions
-# do not change the default for user built extension (yet?)
-./configure \
-	CFLAGS_NODIST="${MANYLINUX_CFLAGS} ${MANYLINUX_CPPFLAGS}" \
-	LDFLAGS_NODIST="${MANYLINUX_LDFLAGS}" \
-	--prefix=${PREFIX} --disable-shared --with-ensurepip=no > /dev/null
+
+if test ${BUILD_PYTHON_SO} -eq 0
+then
+	# configure with hardening options only for the interpreter & stdlib C extensions
+	# do not change the default for user built extension (yet?)
+	./configure \
+		CFLAGS_NODIST="${MANYLINUX_CFLAGS} ${MANYLINUX_CPPFLAGS}" \
+		LDFLAGS_NODIST="${MANYLINUX_LDFLAGS}" \
+		--prefix=${PREFIX} --disable-shared --with-ensurepip=no > /dev/null
+else
+	./configure \
+		CFLAGS_NODIST="${MANYLINUX_CFLAGS} ${MANYLINUX_CPPFLAGS}" \
+		LDFLAGS_NODIST="${MANYLINUX_LDFLAGS}" \
+		--prefix=${PREFIX} --enable-shared --with-ensurepip=yes > /dev/null
+fi
+
 make -j$(nproc) > /dev/null
 make install > /dev/null
 popd
