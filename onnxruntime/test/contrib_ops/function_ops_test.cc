@@ -108,5 +108,26 @@ TEST_F(ContribFunExpansionTest, FastGeluWithoutBias) {
   CheckFastGelu<MLFloat16, false>(false);
 }
 
+template <typename T, bool RunTest = true>
+void CheckBernoulli() {
+  FunctionTestCase testCase("Bernoulli", kMSDomain);
+  std::vector<int64_t> shape{8, 12};
+
+  testCase.AddInput<T, RunTest>("x", shape);
+  const int64_t seed = 42;
+  testCase.AddAttribute("seed", seed);
+  testCase.AddOutput("y");
+
+  if (RunTest)
+    testCase.RunTest();
+  else
+    testCase.CreateModel(true);
+}
+
+TEST_F(ContribFunExpansionTest, Bernoulli) {
+  CheckBernoulli<float>();
+  CheckBernoulli<double>();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

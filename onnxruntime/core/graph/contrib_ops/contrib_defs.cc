@@ -2592,13 +2592,13 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .Attr(
           "seed",
           "(Optional) Seed to the random generator, if not specified we will auto generate one.",
-          AttributeProto::FLOAT,
+          AttributeProto::INT,
           OPTIONAL_VALUE)
       .Attr(
           "dtype",
           "The data type for the elements of the output tensor. if not specified, we will use "
           "the data type of the input tensor.",
-          AttributeProto::FLOAT,
+          AttributeProto::INT,
           OPTIONAL_VALUE)
       .Input(
           0,
@@ -2642,7 +2642,68 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
             return;
           }
           propagateShapeFromInputToOutput(ctx, 0, 0);
-        });
+        })
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx,
+              const OpSchema& schema,
+              FunctionProto& functionProto) {
+            if (ctx.getInputType(0) == nullptr) {
+              // we cannot create a correct function body without knowing the input type
+              return false;
+            }
+            auto input_type = (ONNX_NAMESPACE::TensorProto_DataType)ctx.getInputType(0)->tensor_type().elem_type();
+            auto dtype = ctx.getAttribute("dtype") != nullptr
+            ? static_cast<TensorProto_DataType>(ctx.getAttribute("dtype")->i())
+            : input_type;
+            auto seed_attr = ctx.getAttribute("seed");
+            int seed = (seed_attr != nullptr) ? seed_attr->i() : 0;
+            std::vector<FunctionBodyHelper::NodeDef> body{
+                {
+                    {"X_greater"},
+                    "Greater",
+                    {"X_random", "input"}
+                },
+                {
+                    {"output"},
+                    "Cast",
+                    {"X_greater"},
+                    {MakeAttribute("to", (int64_t)(dtype))}
+                }
+              };
+            if (seed_attr)
+              body.insert(
+                body.begin(), 
+                {
+                    {"X_random"},
+                    "RandomUniformLike",
+                    {"input"},
+                    {
+                        MakeAttribute("high", 1.0f),
+                        MakeAttribute("low", 0.f),
+                        MakeAttribute("seed", (float)seed),
+                        MakeAttribute("dtype", (int64_t)(dtype))
+                    }
+                });
+            else
+                body.insert(
+                body.begin(), 
+                {
+                    {"X_random"},
+                    "RandomUniformLike",
+                    {"input"},
+                    {
+                        MakeAttribute("high", 1.0f),
+                        MakeAttribute("low", 0.f),
+                        MakeAttribute("dtype", (int64_t)(dtype))
+                    }
+                });
+
+            OperatorSetIdProto onnx_opset_13;
+            onnx_opset_13.set_domain("");
+            onnx_opset_13.set_version(13);
+
+            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+          });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BiasSoftmax)
       .SetDomain(kMSDomain)
