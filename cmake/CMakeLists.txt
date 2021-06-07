@@ -899,8 +899,9 @@ else()
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers
-#The list of legacy providers that have not been converted to dynamic loading
-#But DNNL is an exception, it still needs be here.
+#ONNXRUNTIME_PROVIDER_NAMES is the list of providers that needs to export additional symbols in the global namespace. 
+#For example CUDA EP exports "OrtSessionOptionsAppendExecutionProvider_CUDA", which is a global function.
+#However, all these things are legacy and deprecated and should be replaced with functions in onnxruntime_c_api.h.
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)
 
 set(ORT_PROVIDER_FLAGS)
@@ -923,6 +924,7 @@ if (onnxruntime_USE_DNNL)
 endif()
 if (onnxruntime_USE_OPENVINO)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_OPENVINO=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES openvino)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_OPENVINO=1)
 endif()
 if (onnxruntime_USE_TENSORRT)
