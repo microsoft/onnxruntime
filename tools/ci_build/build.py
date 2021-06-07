@@ -5,7 +5,6 @@
 import argparse
 import contextlib
 import glob
-import json
 import os
 import re
 import shutil
@@ -346,6 +345,10 @@ def parse_arguments():
     parser.add_argument(
         "--enable_wasm_debug_info", action='store_true',
         help="Build WebAssembly with DWARF format debug info")
+    parser.add_argument(
+        "--wasm_malloc", default="dlmalloc", help="Specify memory allocator for WebAssembly")
+    parser.add_argument(
+        "--emsdk_version", default="2.0.23", help="Specify version of emsdk")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -427,7 +430,7 @@ def parse_arguments():
     parser.add_argument(
         "--cmake_generator",
         choices=['Visual Studio 15 2017', 'Visual Studio 16 2019', 'Ninja'],
-        default='Visual Studio 15 2017' if is_windows() else None,
+        default='Visual Studio 16 2019' if is_windows() else None,
         help="Specify the generator that CMake invokes. "
         "This is only supported on Windows")
     parser.add_argument(
@@ -750,6 +753,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                                                                   else "ON"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
+        "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
     ]
 
@@ -1548,11 +1552,6 @@ def nuphar_run_python_tests(build_dir, configs):
         if is_windows():
             cwd = os.path.join(cwd, config)
         dll_path = os.path.join(build_dir, config, "external", "tvm", config)
-        # install onnx for shape inference in testing Nuphar scripts
-        # this needs to happen after onnx_test_data preparation which
-        # uses onnx 1.3.0
-        run_subprocess(
-            [sys.executable, '-m', 'pip', 'install', '--user', 'onnx==1.5.0'])
         run_subprocess(
             [sys.executable, 'onnxruntime_test_python_nuphar.py'],
             cwd=cwd, dll_path=dll_path)
@@ -2034,38 +2033,36 @@ def main():
                     args.test = False
 
         if args.build_wasm:
-            # install emscripten if not exist.
-            # since emscripten doesn't support file packaging required for unit tests,
-            # need to apply patch with the specific version of emscripten.
-            # once patch is committed to emsdk repository, this must be replaced with 'latest'.
-            emsdk_version = "2.0.23"
-
+            emsdk_version = args.emsdk_version
             emsdk_dir = os.path.join(source_dir, "cmake", "external", "emsdk")
             emsdk_file = os.path.join(emsdk_dir, "emsdk.bat") if is_windows() else os.path.join(emsdk_dir, "emsdk")
-            emsdk_version_file = os.path.join(emsdk_dir, "upstream", "emscripten", "emscripten-version.txt")
-            emscripten_cmake_toolchain_file = os.path.join(emsdk_dir, "upstream", "emscripten", "cmake", "Modules",
-                                                           "Platform", "Emscripten.cmake")
 
-            if os.path.exists(emsdk_version_file):
-                with open(emsdk_version_file) as f:
-                    emsdk_version_data = json.load(f)
-                emsdk_version_match = isinstance(emsdk_version_data, str) and emsdk_version_data == emsdk_version
-            if not os.path.exists(emscripten_cmake_toolchain_file) or not emsdk_version_match:
-                print("Installing emsdk...")
-                run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
-            print("Activating emsdk...")
+            # apply patch to emsdk/emsdk.py
+            #
+            # Note: this patch fixes bug in emsdk to install a single emscripten tool.
+            #
+            #       should remove patch file and remove "ignore = dirty" in .gitmodules once the following PR get
+            #       merged and included in a new release:
+            #         https://github.com/emscripten-core/emsdk/pull/834
+            shutil.copy(
+                os.path.join(SCRIPT_DIR, "wasm", "emsdk.py.patch"),
+                os.path.join(emsdk_dir, "emsdk.py"))
+
+            log.info("Installing emsdk...")
+            run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
+            log.info("Activating emsdk...")
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
 
-            if args.test:
-                # if wasm test is enabled, apply emsdk file_packager.py patch to enable file I/O from node.js
-                #
-                # Note: this patch enables file_packager.py to generate JavaScript code to support preload files in
-                #       Node.js
-                #       should be removed once the following PR get merged:
-                #       https://github.com/emscripten-core/emscripten/pull/11785
-                shutil.copy(
-                    os.path.join(SCRIPT_DIR, "wasm", "file_packager.py.patch"),
-                    os.path.join(emsdk_dir, "upstream", "emscripten", "tools", "file_packager.py"))
+            # apply patch to file_packager.py
+            #
+            # Note: this patch enables file_packager.py to generate JavaScript code to support preload files in Node.js
+            #
+            #       should remove patch file once the following PR get merged and included in a new release:
+            #         https://github.com/emscripten-core/emscripten/pull/11785   (merged, not release yet)
+            #         https://github.com/emscripten-core/emscripten/pull/14372   (merged, not release yet)
+            shutil.copy(
+                os.path.join(SCRIPT_DIR, "wasm", "file_packager.py.patch"),
+                os.path.join(emsdk_dir, "upstream", "emscripten", "tools", "file_packager.py"))
 
         if (args.android or args.ios or args.enable_windows_store or args.build_wasm
                 or is_cross_compiling_on_apple(args)) and args.path_to_protoc_exe is None:

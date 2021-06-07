@@ -5,7 +5,6 @@
 import argparse
 import numpy as np
 import onnx
-import sys
 from onnx import helper, numpy_helper, shape_inference
 import sympy
 import json
@@ -149,6 +148,7 @@ class SymbolicShapeInference:
             'Gelu': self._infer_Gelu,
             'LayerNormalization': self._infer_LayerNormalization,
             'LongformerAttention': self._infer_LongformerAttention,
+            'PythonOp': self._infer_PythonOp,
             'SkipLayerNormalization': self._infer_SkipLayerNormalization
         }
         self.aten_op_dispatcher_ = {
@@ -338,7 +338,13 @@ class SymbolicShapeInference:
         # skip onnx shape inference for some ops, as they are handled in _infer_*
         skip_infer = node.op_type in [
             'If', 'Loop', 'Scan', 'SplitToSequence', 'ZipMap', \
-            'Attention', 'BiasGelu', 'EmbedLayerNormalization', 'FastGelu', 'Gelu', 'LayerNormalization', 'LongformerAttention', 'SkipLayerNormalization' # contrib ops
+            # contrib ops
+            'Attention', 'BiasGelu', \
+            'EmbedLayerNormalization', \
+            'FastGelu', 'Gelu', 'LayerNormalization', \
+            'LongformerAttention', \
+            'SkipLayerNormalization', \
+            'PythonOp'
         ]
 
         if not skip_infer:
@@ -1376,6 +1382,28 @@ class SymbolicShapeInference:
 
     def _infer_SkipLayerNormalization(self, node):
         self._propagate_shape_and_type(node)
+
+    def _infer_PythonOp(self, node):
+        output_tensor_types = get_attribute(node, 'output_tensor_types')
+        assert output_tensor_types
+        output_tensor_ranks = get_attribute(node, 'output_tensor_ranks')
+        assert output_tensor_ranks
+
+        # set the context output seperately.
+        # The first output is autograd's context.
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, []))
+
+        # Outputs after autograd's context are tensors.
+        # We assume their ranks are fixed for different model inputs.
+        for i in range(len(node.output) - 1):
+            # Process the i-th tensor outputs.
+            vi = self.known_vi_[node.output[i + 1]]
+            sympy_shape = self._new_symbolic_shape(output_tensor_ranks[i], node)
+            shape = get_shape_from_sympy_shape(sympy_shape)
+            value_info = helper.make_tensor_value_info(node.output[i + 1], output_tensor_types[i], shape)
+            vi.CopyFrom(value_info)
+
 
     def _propagate_shape_and_type(self, node, input_index=0, output_index=0):
         shape = self._get_shape(node, input_index)
