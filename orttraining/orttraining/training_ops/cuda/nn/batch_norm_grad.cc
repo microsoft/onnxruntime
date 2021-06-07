@@ -56,7 +56,7 @@ Status BatchNormalizationGrad<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(scale_bias_tensor.Set(input_tensor, cudnn_batch_norm_mode_));
 
   if (X->IsDataType<MLFloat16>()) {
-    const int C = input_shape.GetDims()[1];
+    const int64_t C = input_shape.GetDims()[1];
     auto f_scale = GetScratchBuffer<float>(C);
     auto f_dScale = GetScratchBuffer<float>(C);
     auto f_dBias = GetScratchBuffer<float>(C);

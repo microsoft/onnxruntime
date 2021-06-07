@@ -382,7 +382,7 @@ def convert_model_loss_fn_to_onnx(model, loss_fn, model_desc, device, inputs, op
                 if name in replace_name_dict:
                     n.input[i] = replace_name_dict[name]
 
-    onnx.save_model(onnx_model, '/workspace/transfer/twinbert_official_model.onnx')
+    # onnx.save_model(onnx_model, '/workspace/transfer/tb_model.onnx')
 
     return onnx_model
 

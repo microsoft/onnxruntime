@@ -72,6 +72,8 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
   BatchNormHelper::NormalizeDims(x_shape, new_dims);
   ORT_RETURN_IF_ERROR(data_desc.Set(new_dims, CudnnTensor::GetDataType<CudaT>()));
 
+  const int64_t C = x_shape.GetDims()[1];
+
   // For half data type, the alpha, beta, scale, B, mean, var need to be float type
   if (X->IsDataType<MLFloat16>()) {
     CudnnTensor scale_desc;
@@ -80,7 +82,6 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
     ORT_RETURN_IF_ERROR(bn_tensor_desc.Set(data_desc, cudnn_batch_norm_mode_));
 
     // Convert the scale, B, mean, var to float
-    const int64_t C = x_shape.GetDims()[1];
     auto f_scale = GetScratchBuffer<float>(C);
     auto f_B = GetScratchBuffer<float>(C);
     auto f_mean = GetScratchBuffer<float>(C);
@@ -155,6 +156,13 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* p_op_kernel_context) const
     auto running_var_data = reinterpret_cast<CudaT*>(running_var->template MutableData<T>());
     auto saved_mean_data = reinterpret_cast<CudaT*>(saved_mean->template MutableData<T>());
     auto saved_inv_var_data = reinterpret_cast<CudaT*>(saved_var->template MutableData<T>());
+
+    if (mean_data != running_mean_data) {
+      Impl_Cast<CudaT, CudaT>(mean_data, running_mean_data, C);
+      Impl_Cast<CudaT, CudaT>(var_data, running_var_data, C);
+      // CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(running_mean_data, mean_data, C * sizeof(T), cudaMemcpyDeviceToDevice, Stream()));
+      // CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(running_var_data, var_data, C * sizeof(T), cudaMemcpyDeviceToDevice, Stream()));
+    }
 
     CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
         CudnnHandle(),

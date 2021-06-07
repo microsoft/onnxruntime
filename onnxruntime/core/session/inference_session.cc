@@ -1222,9 +1222,9 @@ common::Status InferenceSession::Initialize() {
     }
   }
 
-  PathString path_str("/workspace/transfer/twinbert_training.onnx");
-  std::remove(ToMBString(path_str).c_str());
-  Model::Save(*model_, path_str);
+  // PathString path_str("/workspace/transfer/model_training.onnx");
+  // std::remove(ToMBString(path_str).c_str());
+  // Model::Save(*model_, path_str);
 
   return status;
 }

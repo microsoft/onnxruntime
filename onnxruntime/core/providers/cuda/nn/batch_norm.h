@@ -26,6 +26,8 @@ class BatchNorm final : public CudaKernel {
       spatial_ = tmp_spatial;
     }
 
+    spatial_ = 0;
+
     if (spatial_ == 0) {
       cudnn_batch_norm_mode_ = CUDNN_BATCHNORM_PER_ACTIVATION;
     }
@@ -34,6 +36,7 @@ class BatchNorm final : public CudaKernel {
     if (op_kernel_info.GetAttr<float>("momentum", &tmp_momentum).IsOK()) {
       momentum_ = static_cast<double>(tmp_momentum);
     }
+    momentum_ = 0.1;
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;

@@ -144,6 +144,10 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
   auto opt_ret = graph_transformation_mgr_.ApplyTransformers(*graph_, TransformerLevel::Level2, logger_);
   ORT_RETURN_IF_ERROR(opt_ret);
 
+  for (auto& node : graph_->Nodes()) {
+    std::cout << "after transform, Node op type: " << node.OpType() << std::endl;
+  }
+
   GraphAugmenter::GraphDefs gradient_graph_defs;
   // add "gradient of the loss" node, always 1.
   if (loss_node_arg_name_ != "") {

@@ -24,6 +24,7 @@ class BatchNormalizationGrad final : public CudaKernel {
     if (info.GetAttr<int64_t>("spatial", &tmp_spatial).IsOK()) {
       spatial_ = tmp_spatial;
     }
+    spatial_ = 0;
 
     if (spatial_ == 0) {
       cudnn_batch_norm_mode_ = CUDNN_BATCHNORM_PER_ACTIVATION;
