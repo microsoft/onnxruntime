@@ -1512,6 +1512,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'quantization'],
                                    cwd=cwd, dll_path=dll_path)
                     if args.enable_transformers_tool_test:
+                        run_subprocess([sys.executable, '-m', 'pip', 'install', 'numpy', '--upgrade'])
+                        run_subprocess([sys.executable, '-m', 'pip', 'install', 'transformers', '--upgrade'])
                         run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'transformers'],
                                        cwd=cwd, dll_path=dll_path)
 

@@ -2,10 +2,6 @@ import os
 import unittest
 import sys
 
-import subprocess
-required = {'numpy','transformers'}
-subprocess.check_call([sys.executable, '-m', 'pip3', 'install',*required, '--upgrade'])
-
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_pt
