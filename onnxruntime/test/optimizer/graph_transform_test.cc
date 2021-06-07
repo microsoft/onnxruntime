@@ -50,6 +50,7 @@
 #include "core/optimizer/matmul_transpose_fusion.h"
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
+#include "core/optimizer/quantized_embed_layer_norm_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -3605,12 +3606,40 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionMultiple_OpSet13) {
   EmbedLayerNormFusionFormatMultiple(MODEL_FOLDER "fusion/embed_layer_norm_multiple_opset13.onnx", logger_.get());
 }
 
+static void QuantizedEmbedLayerNormFusionFormat(const std::basic_string<ORTCHAR_T>& file_path, logging::Logger* logger) {
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, *logger).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  // TODO(kreeger): what is |5| here?
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::make_unique<QuantizedEmbedLayerNormFusion>(), TransformerLevel::Level2);
+  auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger);
+  ASSERT_TRUE(ret.IsOK());
+
+  //
+  // TODO(kreeger): Left off right here. Need to write a fake model to test for transformation in the python stuff.
+  //
+
+  /*
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["Shape"], 0);
+  EXPECT_EQ(op_to_count["Expand"], 0);
+  EXPECT_EQ(op_to_count["Gather"], 0);
+  EXPECT_EQ(op_to_count["Unsqueeze"], 0);
+  EXPECT_EQ(op_to_count["LayerNormalization"], 0);
+  EXPECT_EQ(op_to_count["com.microsoft.SkipLayerNormalization"], 0);
+  EXPECT_EQ(op_to_count["ReduceSum"], 1);
+  EXPECT_EQ(op_to_count["MatMul"], 1);
+  EXPECT_EQ(op_to_count["Add"], 2);
+  EXPECT_EQ(op_to_count["Cast"], 3);
+  EXPECT_EQ(op_to_count["com.microsoft.Attention"], 1);
+  EXPECT_EQ(op_to_count["com.microsoft.EmbedLayerNormalization"], 1);
+  */
+}
+
 TEST_F(GraphTransformationTests, QuantizedEmbedLayerNormFusionTest) {
-  //
-  // TODO(kreeger): write me!
-  // -- Need a model, work on that python script first!
-  //
-  printf("This is a test\n");
+  QuantizedEmbedLayerNormFusionFormat(MODEL_FOLDER "fusion/embed_layer_norm_format3.onnx", logger_.get());
 }
 
 TEST_F(GraphTransformationTests, DynamicQuantizeMatMulTest) {
