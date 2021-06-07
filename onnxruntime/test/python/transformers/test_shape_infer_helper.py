@@ -4,7 +4,7 @@ import sys
 
 import subprocess
 required = {'numpy','transformers'}
-subprocess.check_call([sys.executable, '-m', 'pip', 'install',*required, '--upgrade'])
+subprocess.check_call([sys.executable, '-m', 'pip3', 'install',*required, '--upgrade'])
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
