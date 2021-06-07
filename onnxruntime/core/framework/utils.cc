@@ -200,8 +200,6 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
       std::unique_ptr<Tensor> target_tensor = std::make_unique<Tensor>(source_tensor.DataType(), source_tensor.Shape(), allocator);
       target_tensor_seq.Add(std::move(*target_tensor));
     }
-    ORT_ENFORCE(source_tensor_seq.Size() == target_tensor_seq.Size(),
-      "source and target tensor sequence have different number of elements.");
     auto source_iter = source_tensor_seq.begin();
     auto target_iter = target_tensor_seq.begin();
     while (source_iter != source_tensor_seq.end() &&

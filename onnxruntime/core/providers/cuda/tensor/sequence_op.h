@@ -175,7 +175,7 @@ class SequenceErase final : public CudaKernel {
 
   Status ComputeInternal(OpKernelContext* context) const override {
     const TensorSeq* X = context->Input<TensorSeq>(0);
-    ORT_ENFORCE(X != nullptr, "SequenceAt GPU: Got nullptr for sequence input.");
+    ORT_ENFORCE(X != nullptr, "SequenceErase GPU: Got nullptr for sequence input.");
     int64_t X_size = static_cast<int64_t>(X->Size());
     int64_t idx = X_size - 1;
     const Tensor* I = context->Input<Tensor>(1);
@@ -234,7 +234,7 @@ class SequenceInsert final : public CudaKernel {
 
     AllocatorPtr alloc;
     ORT_ENFORCE(context->GetTempSpaceAllocator(&alloc).IsOK(),
-                "SequenceConstruct GPU: Unable to get an allocator.");
+                "SequenceInsert GPU: Unable to get an allocator.");
 
     TensorSeq* Y = context->Output<TensorSeq>(0);
     ORT_ENFORCE(Y != nullptr, "SequenceInsert GPU: Failed to allocate output tensor sequence.");

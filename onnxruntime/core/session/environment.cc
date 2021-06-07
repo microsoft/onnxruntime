@@ -219,7 +219,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
         .TypeConstraint(
             "T",
             all_fixed_size_types,
-            "Constrain to all tensor and sequence types. If the dtype attribute is not provided this must be a valid output type.")
+            "Constrain to all fixed size tensor and sequence types. If the dtype attribute is not provided this must be a valid output type.")
         .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
         .SetDoc(R"DOC(
 Internal copy node
@@ -231,7 +231,7 @@ Internal copy node
         .TypeConstraint(
             "T",
             all_fixed_size_types,
-            "Constrain to all tensor and sequence types. If the dtype attribute is not provided this must be a valid output type.")
+            "Constrain to all fixed size tensor and sequence types. If the dtype attribute is not provided this must be a valid output type.")
         .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
         .SetDoc(R"DOC(
 Internal copy node
