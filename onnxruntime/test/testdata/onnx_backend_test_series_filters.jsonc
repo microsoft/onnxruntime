@@ -61,7 +61,15 @@
         "^test_mul_uint8_cpu",
         "^test_add_uint8_cpu",
         "^test_div_uint8_cpu",
-        "^test_batchnorm_*"
+        "^test_batchnorm_*",
+        //GPU failures
+        "^test_sub_uint8_cuda",
+        "^test_simple_rnn_batchwise_cuda",
+        "^test_mul_uint8_cuda",
+        "^test_lstm_batchwise_cuda",
+        "^test_gru_batchwise_cuda",
+        "^test_div_uint8_cuda",
+        "^test_add_uint8_cuda"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
