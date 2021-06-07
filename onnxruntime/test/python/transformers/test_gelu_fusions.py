@@ -27,12 +27,8 @@ class MegatronFastGelu(torch.nn.Module):
         return 0.5 * x * (1.0 + torch.tanh(0.7978845608028654 * x * (1.0 + 0.044715 * x * x)))
 
 
-test_cases = [
-    ('huggingface', 'Gelu', HuggingfaceGelu),
-    ('huggingface', 'FastGelu', HuggingfaceFastGelu),
-    ('megatron', 'Gelu', MegatronGelu),
-    ('megatron', 'FastGelu', MegatronFastGelu)
-]
+test_cases = [('huggingface', 'Gelu', HuggingfaceGelu), ('huggingface', 'FastGelu', HuggingfaceFastGelu),
+              ('megatron', 'Gelu', MegatronGelu), ('megatron', 'FastGelu', MegatronFastGelu)]
 
 
 class TestGeluFusions(unittest.TestCase):

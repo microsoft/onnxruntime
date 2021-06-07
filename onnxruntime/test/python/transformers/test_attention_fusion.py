@@ -14,7 +14,6 @@ from bert_model_generator import create_bert_attention, create_tf2onnx_attention
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from onnxruntime.transformers.optimizer import optimize_model
 
-
 # class TestFusion(unittest.TestCase):
 #     def test_attention_fusion_pruned_model(self):
 #         model = create_bert_attention()
@@ -55,7 +54,6 @@ from onnxruntime.transformers.optimizer import optimize_model
 #                                            'bert_3d_attention_opt.onnx')
 #         expected = onnx.load(expected_model_path)
 #         self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
-
 
 # if __name__ == '__main__':
 #     unittest.main()

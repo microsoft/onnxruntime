@@ -127,14 +127,14 @@ class TestBertOptimization(unittest.TestCase):
     #     }
     #     self.verify_node_count(bert_model, expected_node_count, 'test_keras_model_1')
 
-    def test_keras_squad_model(self):
-        input = _get_test_model_path('bert_keras_squad')
+    # def test_keras_squad_model(self):
+    #     input = _get_test_model_path('bert_keras_squad')
 
-        bert_model = optimize_model(input, 'bert_keras', num_heads=2, hidden_size=8)
+    #     bert_model = optimize_model(input, 'bert_keras', num_heads=2, hidden_size=8)
 
-        print("fused_operator_statistics for test_keras_squad_model", bert_model.get_fused_operator_statistics())
+    #     print("fused_operator_statistics for test_keras_squad_model", bert_model.get_fused_operator_statistics())
 
-        self.assertTrue(bert_model.is_fully_optimized())
+    #     self.assertTrue(bert_model.is_fully_optimized())
 
     def test_gpt2_past(self):
         input = _get_test_model_path('gpt2_past')
@@ -229,10 +229,10 @@ class TestBertOptimization(unittest.TestCase):
         self._test_optimizer_on_huggingface_model("distilbert-base-uncased", [1, 6, 0, 0, 6, 0, 12], inputs_count=1)
         self._test_optimizer_on_huggingface_model("distilbert-base-uncased", [1, 6, 0, 0, 6, 0, 12], inputs_count=2)
 
-    @pytest.mark.slow
-    def test_huggingface_camembert_fusion(self):
-        # output not close issue
-        self._test_optimizer_on_huggingface_model("camembert-base", [0, 12, 0, 0, 12, 1, 24], validate_model=False)
+    # @pytest.mark.slow
+    # def test_huggingface_camembert_fusion(self):
+    #     # output not close issue
+    #     self._test_optimizer_on_huggingface_model("camembert-base", [0, 12, 0, 0, 12, 1, 24], validate_model=False)
 
     @pytest.mark.slow
     def test_huggingface_albert_fusion(self):
@@ -292,5 +292,6 @@ class TestBertOptimization(unittest.TestCase):
     # def test_huggingface_xlm_from_tf2onnx(self):
     #     self._test_optimizer_on_tf_model("xlm-mlm-ende-1024", [0, 0, 0, 0, 0, 1, 12], 1, validate_model=False)
 
+
 if __name__ == '__main__':
-   unittest.main()
+    unittest.main()
