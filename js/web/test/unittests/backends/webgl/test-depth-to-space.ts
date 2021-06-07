@@ -131,12 +131,6 @@ describe('#UnitTest# - unpacked WebGLDepthToSpace - Tensor WebGLDepthToSpace', (
     it('Test depth to space ', () => {
       const webglInferenceHandler = inferenceHandler as WebGLInferenceHandler;
 
-      // TODO support WebGl 1.0
-      if (webglInferenceHandler.session.textureManager.glContext.version === 1) {
-        console.log('Running depth to space with webgl1 is not supported. Skipping.');
-        return;
-      }
-
       const op = new WebGLDepthToSpace();
       const attributes = new Attribute(undefined);
       const blocksize = testData.blocksize;
