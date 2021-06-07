@@ -124,7 +124,7 @@ PyObject* CreateRequiresGradFlags(
     } else {
       value = Py_False;
     }
-    Ort_PyList_SetItem_NoIncref(flags, i, value, std::to_string(__LINE__));
+    Ort_PyList_SetItem_Incref(flags, i, value, std::to_string(__LINE__));
   }
   return flags;
 }
@@ -273,7 +273,7 @@ void TorchProxy::Forward(
     const bool is_inplace) {
   // Semantically, this lock uniquely takes the ownership of TorchProxy
   // so that there will be only one of TorchProxy::Forward TorchProxy::Backward
-  // can be run at one time. 
+  // can be run at one time.
   std::lock_guard<std::mutex> lock(mutex_);
   // Python-related calls should happen only if guard is alive.
   GilGuard guard;
@@ -303,7 +303,7 @@ void TorchProxy::Backward(
     const bool is_inplace) {
   // Semantically, this lock uniquely takes the ownership of TorchProxy
   // so that there will be only one of TorchProxy::Forward TorchProxy::Backward
-  // can be run at one time. 
+  // can be run at one time.
   std::lock_guard<std::mutex> lock(mutex_);
   // Python-related calls should happen only if guard is alive.
   GilGuard guard;
