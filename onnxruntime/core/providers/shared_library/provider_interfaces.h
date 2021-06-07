@@ -46,6 +46,19 @@ class PassThrough;
 class YieldOp;
 }  // namespace contrib
 
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+namespace contrib {
+class PythonOpBase;
+class PythonOpGradBase;
+}  // namespace contrib
+
+namespace language_interop_ops {
+namespace torch {
+class RefCountTracker;
+}  // namespace torch
+}  // namespace language_interop_ops
+#endif
+
 namespace training {
 class DistributedRunContext;
 }
@@ -569,7 +582,7 @@ struct ProviderHost {
   virtual TensorSeq* OpKernelContext__Output_TensorSeq(OpKernelContext* p, int index) = 0;
   virtual Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape) = 0;
   virtual Tensor& OpKernelContext__RequiredOutput(OpKernelContext* p, int index, const TensorShape& shape) = 0;
-  virtual MLDataType OpKernelContext__InputType(const OpKernelContext* p, int index) = 0; 
+  virtual MLDataType OpKernelContext__InputType(const OpKernelContext* p, int index) = 0;
   virtual int OpKernelContext__InputCount(const OpKernelContext* p) = 0;
   virtual int OpKernelContext__OutputCount(const OpKernelContext* p) = 0;
   virtual Status OpKernelContext__GetTempSpaceAllocator(const OpKernelContext* p, AllocatorPtr* output) = 0;
@@ -805,6 +818,20 @@ struct ProviderHost {
 #if defined(ORT_USE_NCCL)
   virtual training::DistributedRunContext& GetDistributedRunContextInstance() = 0;
 #endif
+#endif
+
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+  virtual void contrib__PythonOpBase__Init(contrib::PythonOpBase* p, const OpKernelInfo& info) = 0;
+  virtual void contrib__PythonOpBase__Clear(contrib::PythonOpBase* p) = 0;
+  virtual void contrib__PythonOpBase__RunForward(const contrib::PythonOpBase* p, OpKernelContext* context, void** diff_ctx, std::vector<OrtValue>& returned_ortvalues) = 0;
+  virtual void contrib__PythonOpBase__SetOutputs(const contrib::PythonOpBase* p, OpKernelContext* context, void* diff_ctx, std::vector<OrtValue>& returned_args) = 0;
+
+  virtual void contrib__PythonOpGradBase__Init(contrib::PythonOpGradBase* p, const OpKernelInfo& info) = 0;
+  virtual void contrib__PythonOpGradBase__RunBackward(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) = 0;
+  virtual void contrib__PythonOpGradBase__SetOutputs(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_args) = 0;
+
+  virtual language_interop_ops::torch::RefCountTracker& GetRefCountTrackerInstance() = 0;
+  virtual void RefCountTracker__DumpDetails(const language_interop_ops::torch::RefCountTracker* p, const std::string& phase_name) = 0;
 #endif
 #endif
 };

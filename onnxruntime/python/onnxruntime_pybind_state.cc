@@ -30,6 +30,11 @@
 
 #ifdef ENABLE_TRAINING
 #include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
+
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+#include "core/language_interop_ops/torch/custom_function_register.h"
+#endif
+
 #endif
 
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
@@ -801,6 +806,20 @@ void addGlobalMethods(py::module& m, Environment& env) {
         void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
         contrib::aten_ops::ATenOperatorExecutor::Initialize(p_aten_op_executor);
       });
+  #ifdef ENABLE_TRAINING_TORCH_INTEROP
+  m.def("register_forward_runner", [](py::object obj) -> void {
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterForwardRunner(obj.ptr());
+  });
+  m.def("register_backward_runner", [](py::object obj) -> void {
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterBackwardRunner(obj.ptr());
+  });
+  m.def("register_torch_autograd_function", [](std::string key, py::object obj) -> void {
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterTorchAutogradFunction(key, obj.ptr());
+  });
+  #endif
 #endif
 
 #ifdef USE_NUPHAR
