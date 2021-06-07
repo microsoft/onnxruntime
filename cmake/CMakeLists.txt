@@ -608,6 +608,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     set_target_properties(gmock PROPERTIES FOLDER "External/GTest")
     # disable treating all warnings as errors for gmock
     target_compile_options(gmock PRIVATE "-w")
+    target_compile_options(gtest PRIVATE "-w")
     set_target_properties(gmock_main PROPERTIES FOLDER "External/GTest")
     set_target_properties(gtest PROPERTIES FOLDER "External/GTest")
     set_target_properties(gtest_main PROPERTIES FOLDER "External/GTest")
