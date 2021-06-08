@@ -55,6 +55,9 @@ jobs:
   timeoutInMinutes: 3000 
       
   steps:
+    - script: 'conda activate perf3.7'
+      displayName: 'Activate Python 3.7 env'
+      
     - ${{ if eq(parameters.BuildORT, true) }}:
       - ${{ if eq(parameters.RunDocker, true) }}:
         - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.tensorrt-perf -b $(branch) -i ort-$(branch)'
