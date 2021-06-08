@@ -8,7 +8,7 @@
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 
-#include "core/dlpack/dlpack_python.h"
+#include "core/language_interop_ops/python/dlpack_python.h"
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/agent/training_agent.h"

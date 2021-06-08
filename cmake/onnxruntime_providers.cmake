@@ -135,8 +135,6 @@ if (onnxruntime_ENABLE_TRAINING_OPS)
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/aten_ops/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/aten_ops/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.h"
   )
 
   list(REMOVE_ITEM onnxruntime_providers_src ${onnxruntime_cpu_full_training_only_srcs})
@@ -163,10 +161,10 @@ if (onnxruntime_ENABLE_TRAINING)
 
   if (onnxruntime_ENABLE_PYTHON)
     file(GLOB_RECURSE onnxruntime_providers_dlpack_python_interfaces_srcs CONFIGURE_DEPENDS
-      "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.cc"
-      "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.h"
-      "${ONNXRUNTIME_ROOT}/core/dlpack/python_common.cc"
-      "${ONNXRUNTIME_ROOT}/core/dlpack/python_common.h"
+      "${ONNXRUNTIME_ROOT}/core/language_interop_ops/python/dlpack_python.cc"
+      "${ONNXRUNTIME_ROOT}/core/language_interop_ops/python/dlpack_python.h"
+      "${ONNXRUNTIME_ROOT}/core/language_interop_ops/python/python_common.cc"
+      "${ONNXRUNTIME_ROOT}/core/language_interop_ops/python/python_common.h"
     )
     list(APPEND onnxruntime_providers_dlpack_srcs ${onnxruntime_providers_dlpack_python_interfaces_srcs})
   endif()

@@ -3,7 +3,7 @@
 
 #ifdef ENABLE_PYTHON
 
-#include "core/dlpack/dlpack_python.h"
+#include "core/language_interop_ops/python/dlpack_python.h"
 
 namespace onnxruntime {
 namespace dlpack {
