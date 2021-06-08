@@ -55,9 +55,7 @@ jobs:
   timeoutInMinutes: 3000 
       
   steps:
-    - script: 'conda activate perf3.7'
-      displayName: 'Activate Python 3.7 env'
-      
+
     - ${{ if eq(parameters.BuildORT, true) }}:
       - ${{ if eq(parameters.RunDocker, true) }}:
         - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.tensorrt-perf -b $(branch) -i ort-$(branch)'
@@ -97,7 +95,6 @@ jobs:
           LD_LIBRARY_PATH : "/home/hcsuser/TensorRT-7.2.2.3/lib"
     
     - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
-    #- script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r /home/hcsuser/perf/result/ $(Build.SourcesDirectory)/Artifact'
       displayName: 'Prepare Artifacts'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
@@ -113,7 +110,7 @@ jobs:
         env:
           DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
 
-    - script: sudo rm -rf $(Agent.BuildDirectory)
-      displayName: Clean build files (POSIX)
-      condition: not(eq(variables['Agent.OS'], 'Windows_NT')) # and always()
-      continueOnError: true  # continuing on error for this step, since linux build folder is somehow getting permission issue
+    # - script: sudo rm -rf $(Agent.BuildDirectory)
+    #   displayName: Clean build files (POSIX)
+    #   condition: not(eq(variables['Agent.OS'], 'Windows_NT')) # and always()
+    #   continueOnError: true  # continuing on error for this step, since linux build folder is somehow getting permission issue
