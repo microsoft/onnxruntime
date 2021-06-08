@@ -17,6 +17,10 @@ Status QuantizedEmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, in
       continue;
     }
 
+    std::string op_type = p_layer_norm->OpType();
+    if (op_type.size() > 0) {
+    }
+
     //
     // TODO(kreeger): LEFT OFF RIGHT HERE. NEED TO WRITE THIS FUNCTION!
     //
