@@ -4,7 +4,7 @@
 # Register pytorch symbolic for export using ONNX Runtime contrib ops
 
 from torch.onnx import register_custom_op_symbolic
-from torch.onnx.symbolic_helper import parse_args
+from torch.onnx.symbolic_helper import parse_args, _get_tensor_dim_size, _get_tensor_sizes
 
 
 _onnx_opset_version = 1
@@ -18,16 +18,16 @@ def register_custom_op(is_ortmodule=False):
 
     # Symbolic definition
     def inverse(g, self):
-        return g.op("com.microsoft::Inverse", self)
+        return g.op("com.microsoft::Inverse", self).setType(self.type())
 
     def gelu(g, self):
-        return g.op("com.microsoft::Gelu", self)
+        return g.op("com.microsoft::Gelu", self).setType(self.type())
 
     def triu(g, self, diagonal):
-        return g.op("com.microsoft::Trilu", self, diagonal, upper_i=1)
+        return g.op("com.microsoft::Trilu", self, diagonal, upper_i=1).setType(self.type())
 
     def tril(g, self, diagonal):
-        return g.op("com.microsoft::Trilu", self, diagonal, upper_i=0)
+        return g.op("com.microsoft::Trilu", self, diagonal, upper_i=0).setType(self.type())
 
     # Op Registration
     register_custom_op_symbolic('::inverse', inverse, _onnx_opset_version)
@@ -45,8 +45,13 @@ def register_custom_op(is_ortmodule=False):
                 f'"sparse":{str(sparse).lower()}'
                 '}'
             )
-            return g.op("com.microsoft::ATenOp", weight, indices, name_s='aten::embedding',
-                        custom_attributes_json_s=custom_attributes_json)
+            output = g.op("com.microsoft::ATenOp", weight, indices, name_s='aten::embedding',
+                          custom_attributes_json_s=custom_attributes_json)
+            indices_shape = _get_tensor_sizes(indices)
+            if indices_shape is not None and hasattr(weight.type(), 'with_sizes'):
+                output_type = weight.type().with_sizes(indices_shape + [_get_tensor_dim_size(weight, 1)])
+                output.setType(output_type)
+            return output
 
         register_custom_op_symbolic('::embedding', embedding, _onnx_opset_version)
 
