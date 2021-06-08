@@ -453,9 +453,10 @@ stages:
               -e HIP_VISIBLE_DEVICES \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
+              -e PythonManylinuxDir=$(PythonManylinuxdir) \
               --user onnxruntimedev \
               onnxruntimetrainingrocmbuild \
-                -c " export HIP_VISIBLE_DEVICES=$(HIP_VISIBLE_DEVICES) && echo HIP_VISIBLE_DEVICES=$HIP_VISIBLE_DEVICES && $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/*.whl && /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release " ;
+                /onnxruntime_src/tools/ci_build/github/pai/wrap_rocm_python_doc_publisher.sh
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
