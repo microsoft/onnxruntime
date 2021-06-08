@@ -101,7 +101,7 @@ GCC 4.x and below are not supported.
 | OS/Compiler | Supports VC  | Supports GCC     |  Supports Clang  |
 |-------------|:------------:|:----------------:|:----------------:|
 |Windows 10   | YES          | Not tested       | Not tested       |
-|Linux        | NO           | YES(gcc>=8)    | Not tested       |
+|Linux        | NO           | YES(gcc>=8)      | Not tested       |
 |macOS        | NO           | Not tested       | YES (Minimum version required not ascertained)|
 
 ---

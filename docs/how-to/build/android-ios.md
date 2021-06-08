@@ -1,7 +1,7 @@
 ---
 title: Build for Android/iOS
 parent: Build ORT
-nav_order: 4
+nav_order: 5
 grand_parent: How to
 ---
 
