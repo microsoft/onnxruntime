@@ -1262,12 +1262,12 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptions, _Inout_ OrtAllocator* a
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(allocator);
-  ORT_UNUSED_PARAMETER(ptr);
   return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
 #endif
 }
 
 ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptions* ptr) {
+#ifdef USE_TENSORRT
   if (ptr != nullptr) {
     if (ptr->trt_int8_calibration_table_name != nullptr) {
       delete ptr->trt_int8_calibration_table_name;
@@ -1283,4 +1283,7 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
   }
 
   delete ptr;
+#else
+  ORT_UNUSED_PARAMETER(ptr);
+#endif
 }
