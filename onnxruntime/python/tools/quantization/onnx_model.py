@@ -112,7 +112,7 @@ class ONNXModel:
 
     def find_node_by_name(self, node_name, new_nodes_list, graph):
         '''
-        Find out if a node exists in a graph or a node is in the 
+        Find out if a node exists in a graph or a node is in the
         new set of nodes created during quantization. Return the node found.
         '''
         graph_nodes_list = list(graph.node)  #deep copy
@@ -256,6 +256,8 @@ class ONNXModel:
                 return True
         return False
 
+    # TODO:use OnnxModel.graph_topological_sort(self.model.graph) from transformers.onnx_model
+    # Currently it breaks Openvino/Linux training gpu pipeline so hold off for 1.8 release
     def topological_sort(self):
         deps_count = [0]*len(self.nodes()) # dependency count of each node
         deps_to_nodes = {} # input to node indice

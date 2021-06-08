@@ -43,7 +43,7 @@ foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
 endforeach()
 
 add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
-  COMMAND ${PYTHON_EXECUTABLE} "${REPO_ROOT}/tools/ci_build/gen_def.py"
+  COMMAND ${Python_EXECUTABLE} "${REPO_ROOT}/tools/ci_build/gen_def.py"
     --version_file "${ONNXRUNTIME_ROOT}/../VERSION_NUMBER" --src_root "${ONNXRUNTIME_ROOT}"
     --config ${ONNXRUNTIME_PROVIDER_NAMES} --style=${OUTPUT_STYLE} --output ${SYMBOL_FILE}
     --output_source ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
@@ -66,10 +66,14 @@ elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
     "${CMAKE_CURRENT_BINARY_DIR}/generated_source.c"
   )
 
+  # create Info.plist for the framework and podspec for CocoaPods (optional)
   set(MACOSX_FRAMEWORK_NAME "onnxruntime")
   set(MACOSX_FRAMEWORK_IDENTIFIER "com.microsoft.onnxruntime")
   configure_file(${REPO_ROOT}/cmake/Info.plist.in ${CMAKE_CURRENT_BINARY_DIR}/Info.plist)
-
+  configure_file(
+    ${REPO_ROOT}/tools/ci_build/github/apple/onnxruntime-mobile-c.podspec.template
+    ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime-mobile-c.podspec
+  )
   set_target_properties(onnxruntime PROPERTIES
     FRAMEWORK TRUE
     FRAMEWORK_VERSION A

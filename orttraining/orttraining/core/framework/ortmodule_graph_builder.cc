@@ -52,7 +52,8 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
   // Remove all the initializers from the graph and move them to graph inputs.
   for (const auto& initializer_name : config_.initializer_names) {
     const NodeArg* node_arg = graph.GetNodeArg(initializer_name);
-    ORT_ENFORCE(node_arg != nullptr);
+    ORT_ENFORCE(node_arg != nullptr, "node arg is nullptr for initializer name: ", initializer_name);
+
     input_args.emplace_back(node_arg);
     graph.RemoveInitializedTensor(initializer_name);
   }

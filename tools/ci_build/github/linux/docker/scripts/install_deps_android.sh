@@ -1,8 +1,7 @@
 #!/bin/bash
 set -e
 
-# cmake==3.13.2 is actually 3.12.2 lol
-python3 -m pip install cmake==3.13.2.post1
+python3 -m pip install cmake==3.20.2
 
 cmake --version
 
