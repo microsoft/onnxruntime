@@ -10,6 +10,10 @@
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
 #include <numpy/arrayobject.h>
 
+#ifdef ENABLE_TRAINING
+#include "core/dlpack/dlpack_python.h"
+#endif
+
 #include "core/framework/ml_value.h"
 #include "core/framework/tensor.h"
 #include "core/framework/sparse_tensor.h"
@@ -203,10 +207,10 @@ void addOrtValueMethods(pybind11::module& m) {
       })
 #ifdef ENABLE_TRAINING
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
-        return ToDlpack(*ort_value);
+        return py::reinterpret_steal<py::object>(dlpack::ToDlpack(*ort_value));
       })
       .def_static("from_dlpack", [](py::object data, bool is_bool_tensor = false) {
-        return FromDlpack(data, is_bool_tensor);
+        return dlpack::FromDlpack(data.ptr(), is_bool_tensor);
       })
 #endif
       ;
