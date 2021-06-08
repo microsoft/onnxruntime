@@ -898,18 +898,6 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     AppendNodesToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), inputs, outputs, result);
 
   } else {  // unsupported_nodes_idx.empty()
-    if (!unsupported_nodes.empty())
-    {
-      std::cout << "=======================================" << std::endl;
-      std::cout << "Unsupported_node_num = " << unsupported_nodes.size() << std::endl;
-      for (auto& idx : unsupported_nodes)
-      {
-        auto&& node = graph_viewer.GetNode(idx);
-        std::cout << "idx = " << idx << ", op_type = " << node->OpType() << std::endl;
-      }
-      std::cout << "=======================================" << std::endl;
-    }
-
     auto mgx_clusters = GetPartitionedSubgraphs(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
 
     // check whether a subgrap should fallback to CPU
@@ -1002,9 +990,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
                                           std::vector<NodeComputeInfo>& node_compute_funcs) {
   migraphx::onnx_options options;
   bool no_input_shape = false;
-  std::size_t fused_node_index = 0;
   for (const auto& fused_node : fused_nodes) {
-    std::cout << "In compile funciton ======================== " << std::endl;
     // map parameter input name to index
     std::unordered_map<std::string, std::size_t> input_name_index;
     const auto& input_defs = fused_node->InputDefs();
@@ -1017,11 +1003,6 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     onnx::ModelProto model_proto = GetModelProtoFromFusedNode(fused_node, *GetLogger());
     std::string onnx_string_buffer;
     model_proto.SerializeToString(&onnx_string_buffer);
-
-    std::string name = "ort_compile_" + std::to_string(fused_node_index++) + ".onnx";
-    std::ofstream ofs(name, std::ios::binary);
-    ofs.write(onnx_string_buffer.data(), onnx_string_buffer.size());
-    ofs.close();
 
     std::vector<std::string> input_names, output_names;
     no_input_shape = no_input_shape or get_input_output_names(onnx_string_buffer, input_names, output_names);

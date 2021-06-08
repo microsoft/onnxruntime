@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y gnupg2 --no-install-recommends curl && 
 
 RUN apt-get update &&\
     apt-get install -y sudo git bash build-essential rocm-dev libpython3.6-dev python3-pip miopen-hip \
-    rocblas half migraphx aria2
+    rocblas half aria2
 
 RUN aria2c -q -d /tmp -o cmake-3.20.3-Linux-x86_64.tar.gz \
 https://github.com/Kitware/CMake/releases/download/v3.20.3/cmake-3.20.3-Linux-x86_64.tar.gz &&\ 
@@ -35,6 +35,13 @@ tar -zxf /tmp/cmake-3.20.3-Linux-x86_64.tar.gz --strip=1 -C /usr
 RUN pip3 install https://github.com/RadeonOpenCompute/rbuild/archive/master.tar.gz
 
 ENV PATH /opt/miniconda/bin:/code/cmake-3.20.3-Linux-x86_64/bin:${PATH}
+
+# Install MIGraphX from source
+RUN mkdir -p /migraphx
+RUN cd /migraphx && git clone --depth=1 --branch migraphx_for_ort https://github.com/ROCmSoftwarePlatform/AMDMIGraphX src
+RUN cd /migraphx && rbuild package --cxx /opt/rocm-4.2.0/llvm/bin/clang++ -d /migraphx/deps -B /migraphx/build -S /migraphx/src/ -DPYTHON_EXECUTABLE=/usr/bin/python3
+RUN dpkg -i /migraphx/build/*.deb
+RUN rm -rf /migraphx
 
 WORKDIR /code
 
