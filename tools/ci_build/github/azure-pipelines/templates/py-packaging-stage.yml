@@ -453,6 +453,7 @@ stages:
               -e HIP_VISIBLE_DEVICES \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
+              --user onnxruntimedev \
               onnxruntimetrainingrocmbuild \
                 -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/*.whl && /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release " ;
           workingDirectory: $(Build.SourcesDirectory)
