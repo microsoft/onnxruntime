@@ -13,6 +13,13 @@ export declare namespace Env {
     numThreads?: number;
 
     /**
+     * set or get a boolean value indicating whether to enable SIMD. If set to false, SIMD will be forcely disabled.
+     *
+     * This setting is available only when WebAssembly SIMD feature is available in current context.
+     */
+    simd?: boolean;
+
+    /**
      * Set or get a number specifying the timeout for initialization of WebAssembly backend, in milliseconds. A zero
      * value indicates no timeout is set. (default is 0)
      */
