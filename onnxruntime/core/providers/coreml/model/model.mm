@@ -255,8 +255,8 @@
         break;
       default:
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                              "Output data type is not float/int32, actual type: ",
-                              type);
+                               "Output data type is not float/int32, actual type: ",
+                               type);
   }
     memcpy(output_tensor.buffer, model_output_data, output_data_byte_size);
   }

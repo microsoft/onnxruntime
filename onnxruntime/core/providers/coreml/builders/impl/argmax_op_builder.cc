@@ -72,13 +72,13 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
     return false;
   }
 
-  const auto* succ_node(input_params.graph_viewer.GetNode(node.OutputEdgesBegin()->GetNode().Index()));
+  const auto& succ_node = node.OutputEdgesBegin()->GetNode();
 
   /*We're only handling the case: an ArgMax op followed by a Cast to int32 type right now so as to fuse
   the int64 output (not a supported output type by CoreML model) of ArgMax.*/
-  if (succ_node->OpType() != "Cast") {
+  if (succ_node.OpType() != "Cast") {
     LOGS(logger, VERBOSE) << "ArgMax not supported when next node is not [Cast]"
-                          << "Current next node: [" << succ_node->OpType()
+                          << "Current next node: [" << succ_node.OpType()
                           << "]";
     return false;
   }

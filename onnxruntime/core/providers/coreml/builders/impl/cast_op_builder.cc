@@ -39,29 +39,33 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& /* model_builder */,
 bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                       const logging::Logger& logger) const {
   if (node.GetInputEdgesCount() == 0) {
-    LOGS(logger, VERBOSE) << "Failed to get Cast's preceding nodes.";
+    LOGS(logger, VERBOSE) << "Cast has no preceding nodes.";
     return false;
   }
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                         "Output data type is not float/int32, actual type: ",
+                         type);
 
   if (node.GetInputEdgesCount() > 1) {
-    LOGS(logger, VERBOSE) << "Multiple nodes consuming Cast's output.";
+    LOGS(logger, VERBOSE) << "Multiple nodes producing Cast's input.";
     return false;
   }
 
-  const auto* prec_node(input_params.graph_viewer.GetNode(node.InputEdgesBegin()->GetNode().Index()));
+  const auto& prec_node = node.InputEdgesBegin()->GetNode();
 
   /*Cast node is only aimed for supporting argmax and we are only handling the case where an argmax 
     followed by a cast node. We need to check if the preceding node is an argmax and also if it's a
     supported argmax op type.*/
-  if (prec_node->OpType() != "ArgMax") {
+  if (prec_node.OpType() != "ArgMax") {
     LOGS(logger, VERBOSE) << "Cast's producing node is not ArgMax is not supported."
-                          << "Current producing node: [" << prec_node->OpType()
+                          << "Current producing node: [" << prec_node.OpType()
                           << "]";
     return false;
   }
-  if (!IsNodeSupported(*prec_node, input_params.graph_viewer, logger)) {
+  if (!IsNodeSupported(prec_node, input_params.graph_viewer, logger)) {
     LOGS(logger, VERBOSE) << "Cast's producing node ["
-                          << prec_node->OpType()
+                          << prec_node.OpType()
                           << "] is not a supported op.";
     return false;
   }
