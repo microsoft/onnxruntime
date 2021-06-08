@@ -1639,6 +1639,46 @@ class EluOpSupportChecker : public BaseOpSupportChecker {
 
 #pragma endregion
 
+#pragma region op_slice
+
+class SliceOpSupportChecker : public BaseOpSupportChecker {
+ private:
+  int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
+    return ANEURALNETWORKS_FEATURE_LEVEL_2;
+  }
+
+  // We only support slice from opset 10
+  int GetMinSupportedOpSet(const Node& /* node */) const override { return 10; }
+
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+                         const OpSupportCheckParams& params) const override;
+};
+
+bool SliceOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+                                              const OpSupportCheckParams& /* params */) const {
+  if (!CheckIsInitializerTensor(initializers, node, 1, "name")) {
+    return false;
+  }
+  if (!CheckIsInitializerTensor(initializers, node, 2, "end")) {
+    return false;
+  }
+  const auto& input_defs = node.InputDefs();
+  if (input_defs.size() > 3) {
+    if (!CheckIsInitializerTensor(initializers, node, 3, "axes")) {
+      return false;
+    }
+    if (input_defs.size() > 4) {
+      if (!CheckIsInitializerTensor(initializers, node, 4, "steps")) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+#pragma endregion
+
 #pragma region CreateGetOpSupportCheckers
 
 // The reason we use macros to create OpBuilders is for easy exclusion in build if certain op(s) are not used
@@ -1726,6 +1766,7 @@ static OpSupportCheckerRegistrations CreateOpSupportCheckerRegistrations() {
   }
 
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Elu", EluOpSupportChecker);
+  NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Slice", SliceOpSupportChecker);
 
   return op_registrations;
 }
