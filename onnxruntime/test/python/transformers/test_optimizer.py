@@ -19,9 +19,6 @@ import numpy as np
 from onnx import numpy_helper
 import sys
 
-# set path so that we could import from parent directory
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-
 from onnxruntime.transformers.optimizer import optimize_model, optimize_by_onnxruntime
 from onnxruntime.transformers.onnx_model import OnnxModel
 
@@ -41,7 +38,7 @@ def _get_test_model_path(name):
         #return os.path.join('..', '..', '..', '..', 'test', 'testdata', 'transform', 'fusion', file)
         return os.path.join('./', 'testdata', 'transform', 'fusion', file)
     else:
-        return os.path.join('test_data', sub_dir, file)
+        return os.path.join('transformers', 'test_data', sub_dir, file)
 
 
 class TestBertOptimization(unittest.TestCase):
