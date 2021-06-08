@@ -2,10 +2,8 @@
 // Licensed under the MIT License.
 
 import {expect} from 'chai';
-
 import {Attribute} from '../../../../lib/onnxjs/attribute';
 import {Backend, InferenceHandler, resolveBackend, SessionHandler} from '../../../../lib/onnxjs/backend';
-import {WebGLBackend} from '../../../../lib/onnxjs/backends/backend-webgl';
 import {WebGLInferenceHandler} from '../../../../lib/onnxjs/backends/webgl/inference-handler';
 import {WebGLDepthToSpace} from '../../../../lib/onnxjs/backends/webgl/ops/depth-to-space';
 import {Profiler} from '../../../../lib/onnxjs/instrument';
@@ -126,23 +124,12 @@ describe('#UnitTest# - unpacked WebGLDepthToSpace - Tensor WebGLDepthToSpace', (
     inferenceHandler = sessionhandler.createInferenceHandler();
   });
 
-  // Set it back to false, apparently this state is sticky throughout all the tests running in same browser session..
-  after('Resetting Context', () => {
-    (backend as WebGLBackend).pack = false;
-  });
-
   const testDataSet = getTestData();
   for (let k = 0; k < testDataSet.length; ++k) {
     const testData = testDataSet[k];
     describe(`Test concat ${JSON.stringify(testData)}`, () => {});
     it('Test depth to space ', () => {
       const webglInferenceHandler = inferenceHandler as WebGLInferenceHandler;
-
-      // TODO support WebGl 1.0
-      if (webglInferenceHandler.session.textureManager.glContext.version === 1) {
-        console.log('Running depth to space with webgl1 is not supported. Skipping.');
-        return;
-      }
 
       const op = new WebGLDepthToSpace();
       const attributes = new Attribute(undefined);

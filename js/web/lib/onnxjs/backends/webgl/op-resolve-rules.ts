@@ -24,6 +24,7 @@ import {WebGLAveragePool, WebGLGlobalAveragePool, WebGLGlobalMaxPool, WebGLMaxPo
 import * as reduceOps from './ops/reduce';
 import {WebGLReshape} from './ops/reshape';
 import {WebGLResizePacked} from './ops/resize-packed';
+import {WebGLShape} from './ops/shape';
 import {WebGLSlice, WebGLSliceV10} from './ops/slice';
 import {WebGLSoftmax} from './ops/softmax';
 import {WebGLSplit} from './ops/split';
@@ -89,6 +90,7 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Reshape', '', '5+', () => new WebGLReshape()],
   ['Resize', '', '10', () => new WebGLResizePacked(10)],
   ['Resize', '', '11+', () => new WebGLResizePacked(11)],
+  ['Shape', '', '1+', () => new WebGLShape()],
   ['Sigmoid', '', '6+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslSigmoid())],
   ['Sin', '', '7+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslSin())],
   ['Slice', '', '10+', () => new WebGLSliceV10()],  // TODO: support 'steps' for Slice-10

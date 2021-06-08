@@ -592,7 +592,7 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
         
         if use_fp16:
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-3)
-            _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=1e-2, atol=1.1e-2)
+            _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=1e-2, atol=2e-2)
         else:
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-5)
             _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=5e-3, atol=4e-3)
@@ -626,6 +626,66 @@ def test_gradient_correctness_embedding(device, padding_idx):
 
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-5)
+
+def test_gradient_correctness_maxpool2d():
+    class NeuralNetMaxPool2d(torch.nn.Module):
+        def __init__(self):
+            super(NeuralNetMaxPool2d, self).__init__()
+            self.conv = torch.nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+            self.maxpool = torch.nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+
+        def forward(self, input):
+            return self.maxpool(self.conv(input))
+
+    N, C, H, W = 8, 3, 224, 224
+    device = 'cuda'
+    pt_model = NeuralNetMaxPool2d().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    for _ in range(10):
+        input = torch.randn(N, C, H, W, device=device)
+        pt_prediction = run_step(pt_model, input)
+        ort_prediction = run_step(ort_model, input)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=5e-3, atol=4e-3)
+
+def test_gradient_correctness_unfold():
+    class NeuralNetUnfold(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, unfold_dim, unfold_size, unfold_step):
+            super(NeuralNetUnfold, self).__init__()
+            self.linear= torch.nn.Linear(input_size, hidden_size)
+            self.unfold_dim = unfold_dim
+            self.unfold_size = unfold_size
+            self.unfold_step = unfold_step
+
+        def forward(self, input):
+            return self.linear(input).unfold(dimension=self.unfold_dim, size=self.unfold_size, step=self.unfold_step)
+
+    N, D, H = 16, 256, 128
+    device = 'cuda'
+    pt_model = NeuralNetUnfold(D, H, 1, 50, 30).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    for _ in range(10):
+        input = torch.randn(N, D, device=device)
+        pt_prediction = run_step(pt_model, input)
+        ort_prediction = run_step(ort_model, input)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 def test_module_with_non_differential_output():
     device = 'cuda'
@@ -1666,26 +1726,26 @@ def test_model_initializer_requires_grad_changes_from_one_forward_to_next():
     model.fc1.requires_grad_(True)
     model = ORTModule(model)
     x = torch.randn(N, D_in, device=device)
-    assert model._original_module.fc1.weight.grad is None
-    assert model._original_module.fc1.bias.grad is None
+    assert model._module_metadata.original_module.fc1.weight.grad is None
+    assert model._module_metadata.original_module.fc1.bias.grad is None
 
     # Make sure no exception is raised
     output = model(x)
     loss = torch.sum(output)
     loss.backward()
     training_session1 = model._execution_manager(model._is_training())._execution_agent
-    weight_grad_2 = model._original_module.fc1.weight.grad
-    bias_grad_2 = model._original_module.fc1.bias.grad
+    weight_grad_2 = model._module_metadata.original_module.fc1.weight.grad
+    bias_grad_2 = model._module_metadata.original_module.fc1.bias.grad
     assert weight_grad_2 is not None
     assert bias_grad_2 is not None
 
-    model._original_module.fc1.requires_grad_(False)
+    model._module_metadata.original_module.fc1.requires_grad_(False)
     output = model(x)
     loss = torch.sum(output)
     loss.backward()
     training_session2 = model._execution_manager(model._is_training())._execution_agent
-    weight_grad_3 = model._original_module.fc1.weight.grad
-    bias_grad_3 = model._original_module.fc1.bias.grad
+    weight_grad_3 = model._module_metadata.original_module.fc1.weight.grad
+    bias_grad_3 = model._module_metadata.original_module.fc1.bias.grad
 
     assert training_session1 != training_session2
     assert torch.equal(weight_grad_2, weight_grad_3)
@@ -2619,3 +2679,31 @@ def test_unused_parameters_does_not_unnecssarily_reinitilize(model):
                                                   {})
 
     assert not training_manager._reinitialize_graph_builder(input_info)
+
+def test_load_state_dict_for_wrapped_ortmodule():
+    class WrapperModule(torch.nn.Module):
+        def __init__(self, ortmodule):
+            super(WrapperModule, self).__init__()
+            self._ortmodule = ortmodule
+
+        def forward(self, x):
+            return self._ortmodule(x)
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    model = ORTModule(copy.deepcopy(model))
+    wrapper_module = WrapperModule(model)
+    x = torch.randn(N, D_in, device=device)
+    _ = wrapper_module(x)
+
+    state_dict1 = wrapper_module.state_dict()
+    list(next(iter(state_dict1.items())))[1] += 10
+    wrapper_module.load_state_dict(state_dict1)
+    state_dict2 = wrapper_module.state_dict()
+
+    assert state_dict1
+    assert len(state_dict1.keys()) == len(state_dict2.keys())
+    for param_name, param_value in state_dict1.items():
+        assert param_name in state_dict2
+        assert torch.equal(param_value, state_dict2[param_name])

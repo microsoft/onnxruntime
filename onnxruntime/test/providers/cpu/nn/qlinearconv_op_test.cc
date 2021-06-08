@@ -736,6 +736,26 @@ TEST(QLinearConvTest, Conv2D_U8S8_Groups_PerChannel) {
   test.Run();
 }
 
+TEST(QLinearConvTest, Conv2D_U8S8_Groups_Pointwise) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({1, 12, 17, 13}, .03f, 7);
+  test.GenerateRandomWeights({15, 4, 1, 1}, .10f, 0);
+  test.GenerateRandomBias();
+  test.SetGroups(3);
+  test.SetOutputScaleAndZeroPoint(.26f, 88);
+  test.Run();
+}
+
+TEST(QLinearConvTest, Conv3D_U8S8_Groups_Pointwise) {
+  QLinearConvOpTester<uint8_t, int8_t> test;
+  test.GenerateRandomInput({2, 4, 13, 17, 13}, .03f, 7);
+  test.GenerateRandomWeights({6, 2, 1, 1, 1}, .10f, 0);
+  test.GenerateRandomBias();
+  test.SetGroups(2);
+  test.SetOutputScaleAndZeroPoint(.26f, 88);
+  test.Run();
+}
+
 TEST(QLinearConvTest, Conv1D_U8S8_Depthwise) {
   for (int64_t channels : std::initializer_list<int64_t>{7, 8, 9, 16, 25, 64}) {
     QLinearConvOpTester<uint8_t, int8_t> test;

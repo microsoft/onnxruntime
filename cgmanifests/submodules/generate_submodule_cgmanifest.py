@@ -15,25 +15,24 @@ package_url = None
 
 registrations = []
 
-with open(os.path.join(REPO_DIR, 'tools', 'ci_build', 'github', 'linux', 'docker', 'manylinux2014_build_scripts',
-                       'build_env.sh'), "r") as f:
+with open(os.path.join(REPO_DIR, 'tools', 'ci_build', 'github', 'linux', 'docker', 'Dockerfile.manylinux2014_cuda11'), "r") as f:
     for line in f:
         if not line.strip():
             package_name = None
             package_filename = None
             package_url = None
         if package_filename is None:
-            m = re.match("(.+?)_ROOT=(.*)$", line)
+            m = re.match("RUN\s+export\s+(.+?)_ROOT=(\S+).*", line)
             if m is not None:
                 package_name = m.group(1)
                 package_filename = m.group(2)
             else:
-                m = re.match("(.+?)_VERSION=(.*)$", line)
+                m = re.match("RUN\s+export\s+(.+?)_VERSION=(\S+).*", line)
                 if m is not None:
                     package_name = m.group(1)
                     package_filename = m.group(2)
         elif package_url is None:
-            m = re.match("(.+?)_DOWNLOAD_URL=(.+)$", line)
+            m = re.match("(.+?)_DOWNLOAD_URL=(\S+)", line)
             if m is not None:
                 package_url = m.group(2)
                 if package_name == 'LIBXCRYPT':
