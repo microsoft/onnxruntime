@@ -50,7 +50,7 @@ class TestFusion(unittest.TestCase):
         optimized_model = optimize_model(model_path, model_type='bert_tf', num_heads=4, hidden_size=16)
         os.remove(model_path)
 
-        expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'fusion',
+        expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models',
                                            'bert_3d_attention_opt.onnx')
         expected = onnx.load(expected_model_path)
         self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
