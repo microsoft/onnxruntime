@@ -10,7 +10,7 @@
 // This is the minimal Android API Level required by ORT NNAPI EP to run
 // ORT running on any host system with Android API level less than this will fall back to CPU EP
 #ifndef ORT_NNAPI_MIN_API_LEVEL
-#define ORT_NNAPI_MIN_API_LEVEL 27
+#define ORT_NNAPI_MIN_API_LEVEL ANEURALNETWORKS_FEATURE_LEVEL_1
 #endif
 
 // This is the maximum Android API level supported in the ort model conversion for NNAPI EP

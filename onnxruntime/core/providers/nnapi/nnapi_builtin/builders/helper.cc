@@ -197,7 +197,7 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
         return false;
       }
 
-      if (params.android_sdk_ver < 29) {
+      if (params.android_sdk_ver < ANEURALNETWORKS_FEATURE_LEVEL_3) {
         LOGS_DEFAULT(VERBOSE) << op_type << " only supports per-channel quantization on Android API 29+, "
                               << "system API level: " << params.android_sdk_ver;
         return false;
