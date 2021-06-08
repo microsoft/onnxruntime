@@ -38,7 +38,7 @@ def _get_test_model_path(name):
         #return os.path.join('..', '..', '..', '..', 'test', 'testdata', 'transform', 'fusion', file)
         return os.path.join('./', 'testdata', 'transform', 'fusion', file)
     else:
-        return os.path.join('transformers', 'test_data', sub_dir, file)
+        return os.path.join('./', 'transformers', 'test_data', sub_dir, file)
 
 
 class TestBertOptimization(unittest.TestCase):
@@ -56,6 +56,10 @@ class TestBertOptimization(unittest.TestCase):
                                              expected_fusion_result_list,
                                              inputs_count=1,
                                              validate_model=True):
+        # Remove cached model so that CI machine will have space
+        import shutil
+        shutil.rmtree('./cache_models', ignore_errors=True)
+        shutil.rmtree('./onnx_models', ignore_errors=True)
         # expect fusion result list have the following keys
         # EmbedLayerNormalization, Attention, Gelu, FastGelu, BiasGelu, LayerNormalization, SkipLayerNormalization
         model_fusion_statistics = {}
