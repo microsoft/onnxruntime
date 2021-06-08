@@ -39,6 +39,7 @@ steps:
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.lib $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.SourcesDirectory)\include\onnxruntime\core\session\onnxruntime_*.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
+          copy $(Build.SourcesDirectory)\include\onnxruntime\core\framework\provider_options.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
           copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\cpu\cpu_provider_factory.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
           copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\cuda\cuda_provider_factory.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
 

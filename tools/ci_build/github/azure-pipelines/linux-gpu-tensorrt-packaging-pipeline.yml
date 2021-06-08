@@ -35,7 +35,6 @@ jobs:
           artifactNameNoVersionString:  'onnxruntime-linux-x64-gpu-tensorrt'
           libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
           commitId: $(OnnxRuntimeGitCommitHash)
-          artifactCopyScript: 'tools/ci_build/github/linux/copy_strip_binary_trt.sh'
 
     - template: templates/component-governance-component-detection-steps.yml
       parameters :
