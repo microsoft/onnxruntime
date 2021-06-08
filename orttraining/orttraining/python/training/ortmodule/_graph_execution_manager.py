@@ -4,11 +4,11 @@
 # --------------------------------------------------------------------------
 
 from . import _utils, _io, _logger, _cpp_extensions as _cpp_ext
+from ._custom_autograd_function_exporter import _post_process_after_export
 from onnxruntime.training.ortmodule import ONNX_OPSET_VERSION
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
-
 from abc import ABC, abstractmethod
 import copy
 import io
@@ -54,6 +54,7 @@ class GraphExecutionManager(ABC):
         self._graph_info = None
         self._graph_initializer_names = None
         self._graph_initializer_names_to_train = None
+        self._graph_initializers = None
 
         # TrainingAgent or InferenceAgent
         self._execution_agent = None
@@ -91,6 +92,9 @@ class GraphExecutionManager(ABC):
 
         # flag to enable symbolic shape inference for dynamic shape inputs to improve performance
         self._run_symbolic_shape_infer = True
+
+        # A flag saying if custom autograd.Function should be allowed. True means yes and otherwise False.
+        self._enable_custom_autograd_function = False
 
         self._input_info = None
         self._module_output_schema = None
@@ -252,7 +256,8 @@ class GraphExecutionManager(ABC):
         assert self._export_mode is not None, "Please use a concrete instance of ExecutionManager"
 
         try:
-            with torch.no_grad(), _logger.suppress_os_stream_output(log_level=self._loglevel):
+            with torch.set_grad_enabled(self._enable_custom_autograd_function), \
+                    _logger.suppress_os_stream_output(log_level=self._loglevel):
                 torch.onnx.export(self._flattened_module,
                                   sample_inputs_as_tuple,
                                   f,
@@ -267,8 +272,11 @@ class GraphExecutionManager(ABC):
                                   keep_initializers_as_inputs=True)
         except RuntimeError as e:
             raise RuntimeError('There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
+        exported_model = onnx.load_model_from_string(f.getvalue())
+        if self._enable_custom_autograd_function:
+            exported_model = _post_process_after_export(exported_model)
 
-        return onnx.load_model_from_string(f.getvalue())
+        return exported_model
 
     def _set_device_from_module(self, inputs, kwargs):
         """Get the device from the module and save it to self._device"""
@@ -320,3 +328,8 @@ class GraphExecutionManager(ABC):
         #       a set (unordered_set in the backend) that does not require a copy on each reference.
         self._graph_initializer_names = set(initializer_names)
         self._graph_initializer_names_to_train = set(initializer_names_to_train)
+
+        # Initializers can be cached and used since they are expected not to be re-instantiated
+        # between forward calls.
+        self._graph_initializers = [param for name, param in self._flattened_module.named_parameters() 
+                                    if name in self._graph_initializer_names]
