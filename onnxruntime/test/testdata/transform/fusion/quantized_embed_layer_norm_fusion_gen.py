@@ -22,4 +22,4 @@ for model_name in MODEL_LIST:
     sess_options.optimized_model_filepath = optimized_model_path
     session = onnxruntime.InferenceSession(model_name, sess_options)
 
-    onnxruntime.quantization.quantize_dynamic(optimized_model_path, "{}_opt.quant.onnx".format(path_prefix))
+    quantization.quantize_dynamic(optimized_model_path, "{}_opt.quant.onnx".format(path_prefix))
