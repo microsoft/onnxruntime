@@ -664,102 +664,6 @@ static void AppendNodesToSubGraph(const std::vector<NodeIndex>& nodes,
   result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
 }
 
-static void print_arg_shape(const NodeArg *arg)
-{
-  const auto* type_proto = arg->TypeAsProto();
-  if (type_proto)
-  { 
-    auto type = type_proto->tensor_type().elem_type();
-    std::cout << "type = " << type << ", dims = {";
-    auto&& tensor_dims = type_proto->tensor_type().shape().dim();
-    for (int i = 0; i < tensor_dims.size(); ++i)
-    {
-      const auto& td = tensor_dims[i];
-      if (i > 0) std::cout << ", ";
-      if (td.has_dim_value())
-      {
-        std::cout << td.dim_value();
-      }
-      else if (td.has_dim_param())
-      {
-        std::cout << td.dim_param();
-      }
-    }
-    std::cout << "}";
-  }
-  else
-  { 
-    std::cout << "<<<<< No shape >>>>>";
-  }
-}
-
-static void print_node_info(const Node* node)
-{
-  std::cout << "=========================" << std::endl;
-  std::cout << "node_name = " << node->Name() << std::endl;
-  std::cout << "node_optype = " << node->OpType() << std::endl;
-
-  // input arguments info
-  auto inputs = node->InputDefs();
-  std::cout << "\tintput_arg_info:" << std::endl;
-  std::cout << "\tinpput_arg_count = " << inputs.size() << std::endl;
-  for (std::size_t i = 0; i < inputs.size(); ++i)
-  { 
-    const auto& arg = inputs[i];
-    if (arg)
-    { 
-      std::cout << "\t\targ_" << i << ": name = " << arg->Name() << ", shape: ";
-      print_arg_shape(arg);
-      std::cout << std::endl;
-    }
-    else
-    { 
-      std::cout << "\t\tnullptr" << std::endl;
-    }
-  }
-  
-  std::cout << "\toutput_arg_info = " << std::endl;
-  auto outputs = node->OutputDefs();
-  std::cout << "\toutput_arg_count = " << outputs.size() << std::endl;
-  for (std::size_t i = 0; i < outputs.size(); ++i)
-  { 
-    const auto& arg = outputs[i];
-    if (arg)
-    { 
-      std::cout << "\t\targ_" << i << ": name = " << arg->Name() << ", shape: ";
-      print_arg_shape(arg);
-      std::cout << std::endl;
-    }
-    else
-    { 
-      std::cout << "\t\tnullptr" << std::endl;
-    }
-  }
-  
-  // Input node info
-  std::cout << "\tInput node info:" << std::endl;
-  auto edges_begin = node->InputEdgesBegin();
-  auto edges_end = node->InputEdgesEnd();
-  std::cout << "\tInput_node_num = " << std::distance(edges_begin, edges_end) << std::endl;
-  for (auto eit = edges_begin; eit != edges_end; ++eit)
-  {
-    std::cout << "\t\tnode_name = " << eit->GetNode().Name() << ", op_type = " << eit->GetNode().OpType();
-    std::cout << ", index = " << eit->GetNode().Index() << std::endl;
-  } 
-  std::cout << "*****************************" << std::endl << std::endl;
-}
-
-void print_graph(const Graph& graph)
-{
-  GraphViewer graph_viewer(graph);
-  const auto& orders = graph_viewer.GetNodesInTopologicalOrder();
-  std::cout << "graph_size = " << orders.size() << std::endl;
-  for (const auto& node_idx : orders) {
-    auto node = graph_viewer.GetNode(node_idx);
-    print_node_info(node);
-  }
-}
-
 static std::vector<NodeIndex>
 GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                           /*out*/ std::unordered_set<std::string>& mgx_required_initializers,
@@ -777,8 +681,6 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
       "Sub", "Sum", "Tan", "Tanh", "Tile", "Transpose", "Unsqueeze", "Where", "Xor"};
   std::vector<NodeIndex> unsupported_nodes_idx;
   for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
-    auto node = graph_viewer.GetNode(node_idx);
-    print_node_info(node);
     if (IsNodeSupported(mgx_supported_ops, graph_viewer, node_idx, logger)) {
       // Collect inputs that are initializers
       graph_viewer.GetNode(node_idx)->ForEachDef([&mgx_required_initializers, &graph_viewer](const onnxruntime::NodeArg& node_arg, bool is_input) {
@@ -960,8 +862,6 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
   model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
   auto status = graph_build.Resolve();
-  std::cout << "The graph is: ========================" << std::endl;
-  print_graph(graph_build);
   
   std::string onnx_string_buffer;
   model_proto.SerializeToString(&onnx_string_buffer);

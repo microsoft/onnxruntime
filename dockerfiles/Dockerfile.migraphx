@@ -36,13 +36,6 @@ RUN pip3 install https://github.com/RadeonOpenCompute/rbuild/archive/master.tar.
 
 ENV PATH /opt/miniconda/bin:/code/cmake-3.20.3-Linux-x86_64/bin:${PATH}
 
-# Install MIGraphX from source
-#RUN mkdir -p /migraphx
-#RUN cd /migraphx && git clone --depth=1 --branch migraphx_for_ort https://github.com/ROCmSoftwarePlatform/AMDMIGraphX src
-#RUN cd /migraphx && rbuild package --cxx /opt/rocm-4.2.0/llvm/bin/clang++ -d /migraphx/deps -B /migraphx/build -S /migraphx/src/ -DPYTHON_EXECUTABLE=/usr/bin/python3
-#RUN dpkg -i /migraphx/build/*.deb
-#RUN rm -rf /migraphx
-
 WORKDIR /code
 
 # Prepare onnxruntime repository & build onnxruntime
