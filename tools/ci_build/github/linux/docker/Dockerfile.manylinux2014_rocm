@@ -14,7 +14,7 @@ ARG LD_LIBRARY_PATH_ARG
 ARG PREPEND_PATH
 LABEL maintainer="The ManyLinux project"
 
-RUN yum remove -y devtoolset\*  git\* && conda remove -y cmake
+RUN yum remove -y devtoolset\*  git\* && rm -rf /opt/conda
 
 ENV AUDITWHEEL_POLICY=${POLICY} AUDITWHEEL_ARCH=${PLATFORM} AUDITWHEEL_PLAT=${POLICY}_${PLATFORM}
 ENV LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 LANGUAGE=en_US.UTF-8
