@@ -9,9 +9,11 @@
 #include "test/framework/test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/cpu/reduction/reduction_test_cases.h"
+#include "test/util/include/default_providers.h"
 #include "test/util/include/test_utils.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/ml_value.h"
+#include "core/providers/coreml/coreml_execution_provider.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
 
