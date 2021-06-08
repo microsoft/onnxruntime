@@ -8,6 +8,7 @@
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 
+#include "core/dlpack/dlpack_python.h"
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/agent/training_agent.h"
@@ -304,7 +305,28 @@ std::unordered_map<std::string, std::unordered_map<std::string, py::object>> Con
 }
 
 void addObjectMethodsForTraining(py::module& m) {
-  py::bind_vector<std::vector<OrtValue>>(m, "OrtValueVector");
+  py::class_<std::vector<OrtValue>>(m, "OrtValueVector")
+      .def(py::init<>())
+      .def("push_back", [](std::vector<OrtValue>* v, const OrtValue& ortvalue) {
+        v->push_back(ortvalue);
+      })
+      .def("push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor, const bool is_bool_tensor) {
+        v->push_back(dlpack::FromDlpack(dlpack_tensor.ptr(), is_bool_tensor));
+      })
+      .def("reserve", [](std::vector<OrtValue>* v, const size_t len) { v->reserve(len); })
+      .def("shrink_to_fit", [](std::vector<OrtValue>* v) { v->shrink_to_fit(); })
+      .def("__len__", [](const std::vector<OrtValue>& v) { return v.size(); })
+      .def(
+          "__iter__", [](const std::vector<OrtValue>& v) {
+            return py::make_iterator(v.cbegin(), v.cend());
+          },
+          py::keep_alive<0, 1>())
+      .def("__getitem__", [](const std::vector<OrtValue>& v, const size_t idx) {
+        return v.at(idx);
+      })
+      .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) {
+        return py::reinterpret_steal<py::object>(dlpack::ToDlpack(v->at(idx)));
+      });
 
   py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
   parameters.def(py::init())

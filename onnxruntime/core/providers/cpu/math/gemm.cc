@@ -70,10 +70,11 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
     Gemm<double>);
 
-bool GemmPackBFp32(const OpKernelInfo& info,
+bool GemmPackBFp32(AllocatorPtr& alloc,
                    const Tensor& tensor_b,
                    bool trans_b,
                    BufferUniquePtr& packed_b,
+                   size_t& packed_b_size,
                    TensorShape& b_shape) {
   // Only handle the common case of a 2D weight matrix. Additional matrices
   // could be handled by stacking the packed buffers.
@@ -85,13 +86,18 @@ bool GemmPackBFp32(const OpKernelInfo& info,
   const size_t K = trans_b ? static_cast<size_t>(b_shape[1]) : static_cast<size_t>(b_shape[0]);
   const size_t N = trans_b ? static_cast<size_t>(b_shape[0]) : static_cast<size_t>(b_shape[1]);
 
-  const size_t packed_b_size = MlasGemmPackBSize(N, K);
+  packed_b_size = MlasGemmPackBSize(N, K);
   if (packed_b_size == 0) {
     return false;
   }
 
-  auto alloc = info.GetAllocator(0, OrtMemTypeDefault);
   auto* packed_b_data = alloc->Alloc(packed_b_size);
+
+  // Initialize memory to 0 as there could be some padding associated with pre-packed
+  // buffer memory and we don not want it uninitialized and generate different hashes
+  // if and when we try to cache this pre-packed buffer for sharing between sessions.
+  memset(packed_b_data, 0, packed_b_size);
+
   packed_b = BufferUniquePtr(packed_b_data, BufferDeleter(alloc));
   MlasGemmPackB(trans_b ? CblasTrans : CblasNoTrans,
                 N,
@@ -164,18 +170,49 @@ template void Gemm<float>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE 
                                        concurrency::ThreadPool* thread_pool);
 
 template <typename T>
-Status Gemm<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, bool& is_packed) {
+Status Gemm<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, AllocatorPtr /*alloc_for_caching*/,
+                        /*out*/ bool& is_packed,
+                        /*out*/ PrePackedWeights* /*prepacked_weight_for_caching*/) {
   is_packed = false;
   return Status::OK();
 }
 
 template <>
-Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx,
+                            AllocatorPtr alloc, /*out*/ bool& is_packed,
+                            /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
   // only pack Matrix B
   if (input_idx == 1) {
-    is_packed = GemmPackBFp32(Info(), tensor, trans_B_ != CblasNoTrans, packed_b_, b_shape_);
+    size_t packed_b_size;
+    is_packed = GemmPackBFp32(alloc, tensor, trans_B_ != CblasNoTrans, packed_b_, packed_b_size, b_shape_);
+    bool share_prepacked_weights = (prepacked_weights != nullptr);
+    if (is_packed && share_prepacked_weights) {
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size);
+    }
+  }
+  return Status::OK();
+}
+
+template <typename T>
+Status Gemm<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& /*prepacked_buffers*/,
+                                          int /*input_idx*/,
+                                          /*out*/ bool& used_shared_buffers) {
+  used_shared_buffers = false;
+  return Status::OK();
+}
+
+template <>
+Status Gemm<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                              int input_idx,
+                                              /*out*/ bool& used_shared_buffers) {
+  used_shared_buffers = false;
+
+  if (input_idx == 1) {
+    used_shared_buffers = true;
+    packed_b_ = std::move(prepacked_buffers[0]);
   }
   return Status::OK();
 }

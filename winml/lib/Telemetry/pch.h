@@ -3,6 +3,6 @@
 
 #pragma once
 
-#include "common.h"
+#include "winrt_headers.h"
 #include "TraceLoggingConfig.h"
 #include "NamespaceAliases.h"

@@ -170,6 +170,7 @@ ORT_RUNTIME_CLASS(ModelMetadata);
 ORT_RUNTIME_CLASS(ThreadPoolParams);
 ORT_RUNTIME_CLASS(ThreadingOptions);
 ORT_RUNTIME_CLASS(ArenaCfg);
+ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -268,10 +269,13 @@ typedef enum OrtCudnnConvAlgoSearch {
 typedef struct OrtCUDAProviderOptions {
   int device_id;                                  // cuda device with id=0 as default device.
   OrtCudnnConvAlgoSearch cudnn_conv_algo_search;  // cudnn conv algo search option
-  size_t gpu_mem_limit;                           // default cuda memory limitation to maximum finite value of size_t.
-                                                  // (will be overridden by "max_mem" value used while creating `arena_cfg` if `arena_cfg` is provided)
-  int arena_extend_strategy;                      // default area extend strategy to KNextPowerOfTwo.
-                                                  // (will be overridden by "arena_extend_strategy" value used while creating `arena_cfg` if `arena_cfg` is provided)
+
+  size_t gpu_mem_limit;  // default cuda memory limitation to maximum finite value of size_t.
+                         // (will be overridden by "max_mem" value used while creating `arena_cfg` if `arena_cfg` is provided)
+
+  int arena_extend_strategy;  // default area extend strategy to KNextPowerOfTwo.
+                              // (will be overridden by "arena_extend_strategy" value used while creating `arena_cfg` if `arena_cfg` is provided)
+
   int do_copy_in_default_stream;
   int has_user_compute_stream;
   void* user_compute_stream;
@@ -295,12 +299,20 @@ typedef struct OrtTensorRTProviderOptions {
   int device_id;                                // cuda device id.
   int has_user_compute_stream;                  // indicator of user specified CUDA compute stream.
   void* user_compute_stream;                    // user specified CUDA compute stream.
-  int has_trt_options;                          // override environment variables with following TensorRT settings at runtime.
+  int trt_max_partition_iterations;             // maximum iterations for TensorRT parser to get capability
+  int trt_min_subgraph_size;                    // minimum size of TensorRT subgraphs
   size_t trt_max_workspace_size;                // maximum workspace size for TensorRT.
   int trt_fp16_enable;                          // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
   int trt_int8_enable;                          // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
   const char* trt_int8_calibration_table_name;  // TensorRT INT8 calibration table name.
   int trt_int8_use_native_calibration_table;    // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
+  int trt_dla_enable;                           // enable DLA. Default 0 = false, nonzero = true
+  int trt_dla_core;                             // DLA core number. Default 0
+  int trt_dump_subgraphs;                       // dump TRT subgraph. Default 0 = false, nonzero = true
+  int trt_engine_cache_enable;                  // enable engine caching. Default 0 = false, nonzero = true
+  const char* trt_engine_cache_path;            // specify engine cache path
+  int trt_engine_decryption_enable;             // enable engine decryption. Default 0 = false, nonzero = true
+  const char* trt_engine_decryption_lib_path;   // specify engine decryption library path
   int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
 } OrtTensorRTProviderOptions;
 
@@ -326,7 +338,7 @@ struct OrtApiBase {
   const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;  // Pass in ORT_API_VERSION
   // nullptr will be returned if the version is unsupported, for example when using a runtime older than this header file
 
-  const char*(ORT_API_CALL* GetVersionString)() NO_EXCEPTION;
+  const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;
 };
 typedef struct OrtApiBase OrtApiBase;
 
@@ -495,7 +507,8 @@ struct OrtApi {
                   _Outptr_ OrtTypeInfo** type_info);
 
   /**
-   * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
+   * \param value is set to a null terminated UTF-8 encoded string allocated using 'allocator'.
+   *              The caller is responsible for freeing it.
    */
   ORT_API2_STATUS(SessionGetInputName, _In_ const OrtSession* sess, size_t index, _Inout_ OrtAllocator* allocator,
                   _Outptr_ char** value);
@@ -773,13 +786,13 @@ struct OrtApi {
      * \name - name of the attribute to be parsed
      * \out - pointer to memory where the attribute's contents are to be stored
      * \size - actual size of string attribute
-     * (If `out` is nullptr, the value of `size` is set to the true size of the string 
+     * (If `out` is nullptr, the value of `size` is set to the true size of the string
         attribute, and a success status is returned.
-     
+
         If the `size` parameter is greater than or equal to the actual string attribute's size,
         the value of `size` is set to the true size of the string attribute, the provided memory
         is filled with the attribute's contents, and a success status is returned.
-        
+
         If the `size` parameter is lesser than the actual string attribute's size and `out`
         is not nullptr, the value of `size` is set to the true size of the string attribute
         and a failure status is returned.)
@@ -1246,14 +1259,14 @@ struct OrtApi {
      * \name - name of the attribute to be parsed
      * \out - pointer to memory where the attribute's contents are to be stored
      * \size - actual size of attribute array
-     * (If `out` is nullptr, the value of `size` is set to the true size of the attribute 
+     * (If `out` is nullptr, the value of `size` is set to the true size of the attribute
         array's size, and a success status is returned.
-     
+
         If the `size` parameter is greater than or equal to the actual attribute array's size,
         the value of `size` is set to the true size of the attribute array's size,
-        the provided memory is filled with the attribute's contents, 
+        the provided memory is filled with the attribute's contents,
         and a success status is returned.
-        
+
         If the `size` parameter is lesser than the actual attribute array's size and `out`
         is not nullptr, the value of `size` is set to the true size of the attribute array's size
         and a failure status is returned.)
@@ -1267,14 +1280,14 @@ struct OrtApi {
      * \name - name of the attribute to be parsed
      * \out - pointer to memory where the attribute's contents are to be stored
      * \size - actual size of attribute array
-     * (If `out` is nullptr, the value of `size` is set to the true size of the attribute 
+     * (If `out` is nullptr, the value of `size` is set to the true size of the attribute
         array's size, and a success status is returned.
-     
+
         If the `size` parameter is greater than or equal to the actual attribute array's size,
         the value of `size` is set to the true size of the attribute array's size,
-        the provided memory is filled with the attribute's contents, 
+        the provided memory is filled with the attribute's contents,
         and a success status is returned.
-        
+
         If the `size` parameter is lesser than the actual attribute array's size and `out`
         is not nullptr, the value of `size` is set to the true size of the attribute array's size
         and a failure status is returned.)
@@ -1289,16 +1302,16 @@ struct OrtApi {
   * \param arena_config_values - values to configure the arena
   * \param num_keys - number of keys passed in
   * Supported keys are (See docs/C_API.md for details on what the following parameters mean and how to choose these values.):
-  * "max_mem": Maximum memory that can be allocated by the arena based allocator. 
+  * "max_mem": Maximum memory that can be allocated by the arena based allocator.
      Use 0 for ORT to pick the best value. Default is 0.
-  * "arena_extend_strategy": 0 = kNextPowerOfTwo, 1 = kSameAsRequested. 
+  * "arena_extend_strategy": 0 = kNextPowerOfTwo, 1 = kSameAsRequested.
      Use -1 to allow ORT to choose the default.
-  * "initial_chunk_size_bytes": (Possible) Size of the first allocation in the arena. 
+  * "initial_chunk_size_bytes": (Possible) Size of the first allocation in the arena.
      Only relevant if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
-     Ultimately, the first allocation size is determined by the allocation memory request. 
-  * "max_dead_bytes_per_chunk": Threshold of unused memory in an allocated chunk of arena memory after 
+     Ultimately, the first allocation size is determined by the allocation memory request.
+  * "max_dead_bytes_per_chunk": Threshold of unused memory in an allocated chunk of arena memory after
      crossing which the current chunk is chunked into 2.
-  * "initial_regrowth_chunk_size_bytes": (Possible) Size of the second allocation in the arena. 
+  * "initial_growth_chunk_size_bytes": (Possible) Size of the second allocation in the arena.
      Only relevant if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
      Ultimately, the allocation size is determined by the allocation memory request.
      Further allocation sizes are governed by the arena extend strategy.
@@ -1316,6 +1329,59 @@ struct OrtApi {
      */
   ORT_API2_STATUS(AddRunConfigEntry, _Inout_ OrtRunOptions* options,
                   _In_z_ const char* config_key, _In_z_ const char* config_value);
+
+  /*
+     * Creates an OrtPrepackedWeightsContainer instance.
+     * This container will hold pre-packed buffers of shared initializers for sharing between sessions
+     * (i.e.) if there are shared initializers that can be shared between sessions, the pre-packed buffers
+     * of these (if any) may possibly be shared to provide memory footprint savings. Pass this container
+     * to sessions that you would like to share pre-packed buffers of shared initializers at session
+     * creation time.
+     *  \out - created OrtPrepackedWeightsContainer instance
+    */
+  ORT_API2_STATUS(CreatePrepackedWeightsContainer, _Outptr_ OrtPrepackedWeightsContainer** out);
+
+  /*
+     * Release OrtPrepackedWeightsContainer instance
+     *  Note: The OrtPrepackedWeightsContainer instance must not be released until the sessions using it are released
+    */
+  ORT_CLASS_RELEASE(PrepackedWeightsContainer);
+
+  /**
+     * Same functionality offered by CreateSession() API except that a container that contains
+     pre-packed weights' buffers is written into/read from by the created session.
+     This is useful when used in conjunction with the AddInitializer() API which injects
+     shared initializer info into sessions. Wherever possible, the pre-packed versions of these
+     shared initializers are cached in this container so that multiple sessions can just re-use
+     these instead of duplicating these in memory.
+     * \env - OrtEnv instance instance
+     * \model_path - model path
+     * \options - OrtSessionOptions instance
+     * \prepacked_weights_container - OrtPrepackedWeightsContainer instance
+     * \out - created session instance
+     */
+  ORT_API2_STATUS(CreateSessionWithPrepackedWeightsContainer, _In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path,
+                  _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
+                  _Outptr_ OrtSession** out);
+
+  /**
+     * Same functionality offered by CreateSessionFromArray() API except that a container that contains
+     pre-packed weights' buffers is written into/read from by the created session.
+     This is useful when used in conjunction with the AddInitializer() API which injects
+     shared initializer info into sessions. Wherever possible, the pre-packed versions of these
+     shared initializers are cached in this container so that multiple sessions can just re-use
+     these instead of duplicating these in memory.
+     * \env - OrtEnv instance instance
+     * \model_data - model byte array
+     * \model_data_length - the size of the model byte array
+     * \options - OrtSessionOptions instance
+     * \prepacked_weights_container - OrtPrepackedWeightsContainer instance
+     * \out - created session instance
+     */
+  ORT_API2_STATUS(CreateSessionFromArrayWithPrepackedWeightsContainer, _In_ const OrtEnv* env,
+                  _In_ const void* model_data, size_t model_data_length,
+                  _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
+                  _Outptr_ OrtSession** out);
 };
 
 /*

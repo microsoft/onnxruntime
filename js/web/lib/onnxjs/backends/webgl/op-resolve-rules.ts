@@ -9,6 +9,7 @@ import * as binaryOps from './ops/binary-op';
 import {WebGLClip} from './ops/clip';
 import {WebGLConcat} from './ops/concat';
 import {WebGLConv} from './ops/conv';
+import {WebGLDepthToSpace} from './ops/depth-to-space';
 import {WebGLDropout} from './ops/dropout';
 import {WebGLElu} from './ops/elu';
 import {WebGLFlatten} from './ops/flatten';
@@ -23,6 +24,7 @@ import {WebGLAveragePool, WebGLGlobalAveragePool, WebGLGlobalMaxPool, WebGLMaxPo
 import * as reduceOps from './ops/reduce';
 import {WebGLReshape} from './ops/reshape';
 import {WebGLResizePacked} from './ops/resize-packed';
+import {WebGLShape} from './ops/shape';
 import {WebGLSlice, WebGLSliceV10} from './ops/slice';
 import {WebGLSoftmax} from './ops/softmax';
 import {WebGLSplit} from './ops/split';
@@ -50,6 +52,7 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Cos', '', '7+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslCos())],
   ['Div', '', '7+', () => new binaryOps.WebGLBinaryOp(NUMBER_TYPES, binaryOps.glslDiv())],
   ['Dropout', '', '7+', () => new WebGLDropout()],
+  ['DepthToSpace', '', '1+', () => new WebGLDepthToSpace()],
   ['Equal', '', '7+', () => new binaryOps.WebGLBinaryOp(NUMBER_TYPES, binaryOps.glslEqual(), undefined, 'bool')],
   ['Elu', '', '6+', () => new WebGLElu()],
   ['Exp', '', '6+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslExp())],
@@ -87,6 +90,7 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Reshape', '', '5+', () => new WebGLReshape()],
   ['Resize', '', '10', () => new WebGLResizePacked(10)],
   ['Resize', '', '11+', () => new WebGLResizePacked(11)],
+  ['Shape', '', '1+', () => new WebGLShape()],
   ['Sigmoid', '', '6+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslSigmoid())],
   ['Sin', '', '7+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslSin())],
   ['Slice', '', '10+', () => new WebGLSliceV10()],  // TODO: support 'steps' for Slice-10

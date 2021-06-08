@@ -5,9 +5,9 @@
       "Component": {
         "Type": "other",
         "other": {
-          "Name": "patchelf",
-          "Version": "0.12",
-          "DownloadUrl": "https://github.com/NixOS/patchelf/archive/0.12.tar.gz"
+          "Name": "autoconf",
+          "Version": "2.71",
+          "DownloadUrl": "http://ftp.gnu.org/gnu/autoconf/autoconf-2.71.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -17,8 +17,8 @@
         "Type": "other",
         "other": {
           "Name": "automake",
-          "Version": "1.16.2",
-          "DownloadUrl": "http://ftp.gnu.org/gnu/automake/automake-1.16.2.tar.gz"
+          "Version": "1.16.3",
+          "DownloadUrl": "http://ftp.gnu.org/gnu/automake/automake-1.16.3.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -38,20 +38,9 @@
       "Component": {
         "Type": "other",
         "other": {
-          "Name": "sqlite_autoconf",
-          "Version": "3340000",
-          "DownloadUrl": "https://www.sqlite.org/2020/sqlite-autoconf-3340000.tar.gz"
-        },
-        "comments": "manylinux dependency"
-      }
-    },
-    {
-      "Component": {
-        "Type": "other",
-        "other": {
-          "Name": "cmake",
-          "Version": "3.18.3",
-          "DownloadUrl": "https://github.com/Kitware/CMake/releases/download/v3.18.3/cmake-3.18.3.tar.gz"
+          "Name": "patchelf",
+          "Version": "0.12",
+          "DownloadUrl": "https://github.com/NixOS/patchelf/archive/0.12.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -72,8 +61,52 @@
         "Type": "other",
         "other": {
           "Name": "git",
-          "Version": "2.30.0",
-          "DownloadUrl": "https://www.kernel.org/pub/software/scm/git/git-2.30.0.tar.gz"
+          "Version": "2.31.1",
+          "DownloadUrl": "https://www.kernel.org/pub/software/scm/git/git-2.31.1.tar.gz"
+        },
+        "comments": "manylinux dependency"
+      }
+    },
+    {
+      "Component": {
+        "Type": "other",
+        "other": {
+          "Name": "cmake",
+          "Version": "3.20.2",
+          "DownloadUrl": "https://github.com/Kitware/CMake/releases/download/v3.20.2/cmake-3.20.2.tar.gz"
+        },
+        "comments": "manylinux dependency"
+      }
+    },
+    {
+      "Component": {
+        "Type": "other",
+        "other": {
+          "Name": "swig",
+          "Version": "4.0.2",
+          "DownloadUrl": "https://sourceforge.net/projects/swig/files/swig/${SWIG_ROOT}/swig-4.0.2.tar.gz"
+        },
+        "comments": "manylinux dependency"
+      }
+    },
+    {
+      "Component": {
+        "Type": "other",
+        "other": {
+          "Name": "sqlite_autoconf",
+          "Version": "3350500",
+          "DownloadUrl": "https://www.sqlite.org/2021/sqlite-autoconf-3350500.tar.gz"
+        },
+        "comments": "manylinux dependency"
+      }
+    },
+    {
+      "Component": {
+        "Type": "other",
+        "other": {
+          "Name": "openssl",
+          "Version": "1.1.1k",
+          "DownloadUrl": "https://www.openssl.org/source/openssl-1.1.1k.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -182,7 +215,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "8b32b7def837a15e766039501630549149d3db41",
+          "commitHash": "f44b84154703d29a946d51ddee08f4e5725a61db",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -196,6 +229,16 @@
           "repositoryUrl": "https://github.com/google/flatbuffers.git"
         },
         "comments": "git submodule at cmake/external/flatbuffers"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "7d0d9061d83b663ce05d9de5da3d5865a3845b79",
+          "repositoryUrl": "https://github.com/google/benchmark.git"
+        },
+        "comments": "git submodule at cmake/external/googlebenchmark"
       }
     },
     {

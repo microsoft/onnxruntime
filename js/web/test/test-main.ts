@@ -1,16 +1,54 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import '../lib/index'; // this need to be the first line
+// Load onnxruntime-web and testdata-config.
+// NOTE: this need to be called before import any other library.
+const ort = require('..');
+const ORT_WEB_TEST_CONFIG = require('./testdata-config.json') as Test.Config;
 
-import * as ort from 'onnxruntime-common';
 import * as platform from 'platform';
 
 import {Logger} from '../lib/onnxjs/instrument';
 
 import {Test} from './test-types';
 
-const ORT_WEB_TEST_CONFIG = (ort.env as any).ORT_WEB_TEST_DATA as Test.Config;
+if (ORT_WEB_TEST_CONFIG.model.some(testGroup => testGroup.tests.some(test => test.backend === 'cpu'))) {
+  // require onnxruntime-node
+  require('../../node');
+}
+
+// set flags
+const options = ORT_WEB_TEST_CONFIG.options;
+if (options.debug !== undefined) {
+  ort.env.debug = options.debug;
+}
+if (options.globalEnvFlags) {
+  const flags = options.globalEnvFlags;
+  if (flags.logLevel !== undefined) {
+    ort.env.logLevel = flags.logLevel;
+  }
+  if (flags.webgl?.contextId !== undefined) {
+    ort.env.webgl.contextId = flags.webgl.contextId;
+  }
+  if (flags.webgl?.matmulMaxBatchSize !== undefined) {
+    ort.env.webgl.matmulMaxBatchSize = flags.webgl.matmulMaxBatchSize;
+  }
+  if (flags.webgl?.textureCacheMode !== undefined) {
+    ort.env.webgl.textureCacheMode = flags.webgl.textureCacheMode;
+  }
+  if (flags.webgl?.pack !== undefined) {
+    ort.env.webgl.pack = flags.webgl.pack;
+  }
+  if (flags.wasm?.numThreads !== undefined) {
+    ort.env.wasm.numThreads = flags.wasm.numThreads;
+  }
+  if (flags.wasm?.simd !== undefined) {
+    ort.env.wasm.simd = flags.wasm.simd;
+  }
+  if (flags.wasm?.initTimeout !== undefined) {
+    ort.env.wasm.initTimeout = flags.wasm.initTimeout;
+  }
+}
 
 // Set logging configuration
 for (const logConfig of ORT_WEB_TEST_CONFIG.log) {

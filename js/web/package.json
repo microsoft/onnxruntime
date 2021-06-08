@@ -7,7 +7,7 @@
     "type": "git"
   },
   "author": "fs-eire",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "keywords": [
     "ONNX",
     "ONNXRuntime",
@@ -16,7 +16,10 @@
   "scripts": {
     "prepare": "tsc",
     "build": "node ./script/build",
+    "build:doc": "node ./script/generate-operator-md",
+    "pull:wasm": "node ./script/pull-prebuilt-wasm-artifacts",
     "test": "node ./script/prepare-test-data && node ./script/test-runner-cli",
+    "test:e2e": "node ./test/e2e/run",
     "prepack": "node ./script/prepack"
   },
   "dependencies": {
@@ -44,6 +47,7 @@
     "electron": "^12.0.2",
     "fs-extra": "^9.1.0",
     "globby": "^11.0.3",
+    "jszip": "^3.6.0",
     "karma": "^6.3.2",
     "karma-browserstack-launcher": "^1.6.0",
     "karma-chai": "^0.1.0",
@@ -72,12 +76,5 @@
   "jsdelivr": "dist/ort.min.js",
   "unpkg": "dist/ort.min.js",
   "module": "./lib/index.js",
-  "browser": {
-    "fs": false,
-    "path": false,
-    "util": false,
-    "worker_threads": false,
-    "perf_hooks": false,
-    "os": false
-  }
+  "browser": "dist/ort-web.min.js"
 }

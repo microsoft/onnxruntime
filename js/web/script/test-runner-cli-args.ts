@@ -60,6 +60,7 @@ Options:
 
  --wasm-number-threads         Set the WebAssembly number of threads
  --wasm-init-timeout           Set the timeout for WebAssembly backend initialization, in milliseconds
+ --wasm-enable-simd            Set whether to enable SIMD
  --webgl-context-id            Set the WebGL context ID (webgl/webgl2)
  --webgl-matmul-max-batch-size Set the WebGL matmulMaxBatchSize
  --webgl-texture-cache-mode    Set the WebGL texture cache mode (initializerOnly/full)
@@ -119,11 +120,12 @@ export interface TestRunnerCliArgs {
    *
    * For running tests, the default mode is 'dev'. If flag '--perf' is set, the mode will be set to 'perf'.
    *
-   * Mode   | Output File        | Main                 | Source Map         | Webpack Config
-   * ------ | ------------------ | -------------------- | ------------------ | --------------
-   * prod   | /dist/ort.min.js   | /lib/index.ts        | source-map         | production
-   * dev    | /test/ort.dev.js   | /test/test-main.ts   | inline-source-map  | development
-   * perf   | /test/ort.perf.js  | /test/test-main.ts   | (none)             | production
+   * Mode   | Output File           | Main                 | Source Map         | Webpack Config
+   * ------ | --------------------- | -------------------- | ------------------ | --------------
+   * prod   | /dist/ort.min.js      | /lib/index.ts        | source-map         | production
+   * node   | /dist/ort-web.node.js | /lib/index.ts        | source-map         | production
+   * dev    | /test/ort.dev.js      | /test/test-main.ts   | inline-source-map  | development
+   * perf   | /test/ort.perf.js     | /test/test-main.ts   | (none)             | production
    */
   bundleMode: TestRunnerCliArgs.BundleMode;
 
@@ -145,14 +147,11 @@ export interface TestRunnerCliArgs {
   times?: number;
 
   cpuOptions?: InferenceSession.CpuExecutionProviderOption;
-  cpuFlags?: Record<string, unknown>;
   cudaOptions?: InferenceSession.CudaExecutionProviderOption;
   cudaFlags?: Record<string, unknown>;
   wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
-  wasmFlags?: Env.WebAssemblyFlags;
   webglOptions?: InferenceSession.WebGLExecutionProviderOption;
-  webglFlags?: Env.WebGLFlags;
-
+  globalEnvFlags?: Env;
   noSandbox?: boolean;
 }
 
@@ -253,7 +252,11 @@ function parseWasmFlags(args: minimist.ParsedArgs): Env.WebAssemblyFlags {
   if (typeof initTimeout !== 'undefined' && typeof initTimeout !== 'number') {
     throw new Error('Flag "wasm-init-timeout" must be a number value');
   }
-  return {numThreads, initTimeout};
+  const simd = args['wasm-enable-simd'];
+  if (typeof simd !== 'undefined' && typeof simd !== 'boolean') {
+    throw new Error('Flag "wasm-enable-simd" must be a boolean value');
+  }
+  return {numThreads, initTimeout, simd};
 }
 
 function parseWebglOptions(_args: minimist.ParsedArgs): InferenceSession.WebGLExecutionProviderOption {
@@ -281,6 +284,13 @@ function parseWebglFlags(args: minimist.ParsedArgs): Env.WebGLFlags {
   return {contextId, matmulMaxBatchSize, textureCacheMode, pack};
 }
 
+function parseGlobalEnvFlags(args: minimist.ParsedArgs): Env {
+  const wasmFlags = parseWasmFlags(args);
+  const webglFlags = parseWebglFlags(args);
+  const cpuFlags = parseCpuFlags(args);
+  return {webgl: webglFlags, wasm: wasmFlags, cpuFlags};
+}
+
 export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs {
   const args = minimist(cmdlineArgs);
 
@@ -298,25 +308,26 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
 
   const mode = args._.length === 0 ? 'suite0' : args._[0];
 
-  // Option: -b=<...>, --backend=<...>
-  const backendArgs = args.backend || args.b;
-  const backend = (typeof backendArgs !== 'string') ? ['webgl', 'wasm'] : backendArgs.split(',');
-  for (const b of backend) {
-    if (b !== 'webgl' && b !== 'wasm') {
-      throw new Error(`not supported backend ${b}`);
-    }
-  }
-
   // Option: -e=<...>, --env=<...>
   const envArg = args.env || args.e;
   const env = (typeof envArg !== 'string') ? 'chrome' : envArg;
   if (['chrome', 'edge', 'firefox', 'electron', 'safari', 'node', 'bs'].indexOf(env) === -1) {
     throw new Error(`not supported env ${env}`);
   }
-  if (env === 'node') {
-    // TODO: support node
-    throw new Error('node is currently not supported.');
+
+  // Option: -b=<...>, --backend=<...>
+  const browserBackends = ['webgl', 'wasm'];
+  const nodejsBackends = ['cpu', 'wasm'];
+  const backendArgs = args.backend || args.b;
+  const backend =
+      (typeof backendArgs !== 'string') ? (env === 'node' ? nodejsBackends : browserBackends) : backendArgs.split(',');
+  for (const b of backend) {
+    if ((env !== 'node' && browserBackends.indexOf(b) === -1) || (env === 'node' && nodejsBackends.indexOf(b) === -1)) {
+      throw new Error(`backend ${b} is not supported in env ${env}`);
+    }
   }
+
+  const globalEnvFlags = parseGlobalEnvFlags(args);
 
   // Options:
   // --log-verbose=<...>
@@ -324,7 +335,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   // --log-warning=<...>
   // --log-error=<...>
   const logConfig = parseLogConfig(args);
-
+  globalEnvFlags.logLevel = logConfig[0]?.config.minimalSeverity;
   // Option: -p, --profile
   const profile = (args.profile || args.p) ? true : false;
   if (profile) {
@@ -332,6 +343,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     logConfig.push({category: 'Profiler.node', config: {minimalSeverity: 'verbose'}});
     logConfig.push({category: 'Profiler.op', config: {minimalSeverity: 'verbose'}});
     logConfig.push({category: 'Profiler.backend', config: {minimalSeverity: 'verbose'}});
+    globalEnvFlags.logLevel = 'verbose';
   }
 
   // Option: -P[=<...>], --perf[=<...>]
@@ -352,11 +364,9 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   const fileCache = parseBooleanArg(args['file-cache'] || args.c, false);
 
   const cpuOptions = parseCpuOptions(args);
-  const cpuFlags = parseCpuFlags(args);
   const wasmOptions = parseWasmOptions(args);
-  const wasmFlags = parseWasmFlags(args);
+
   const webglOptions = parseWebglOptions(args);
-  const webglFlags = parseWebglFlags(args);
 
   // Option: --no-sandbox
   const noSandbox = !!args['no-sandbox'];
@@ -379,11 +389,9 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
     times: perf ? times : undefined,
     fileCache,
     cpuOptions,
-    cpuFlags,
     webglOptions,
-    webglFlags,
     wasmOptions,
-    wasmFlags,
+    globalEnvFlags,
     noSandbox
   };
 }

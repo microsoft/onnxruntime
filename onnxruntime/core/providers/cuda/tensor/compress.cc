@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 #include "compress.h"
-#include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/common.h"
 #include "compress_impl.h"
 
 namespace onnxruntime {
@@ -14,7 +12,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     9, 10,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     Compress);
@@ -25,7 +23,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     11,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),
     Compress);

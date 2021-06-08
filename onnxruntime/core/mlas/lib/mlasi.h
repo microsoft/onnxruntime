@@ -969,7 +969,7 @@ MlasCastToInt32x4(MLAS_FLOAT32X4 Vector)
 #elif defined(MLAS_VSX_INTRINSICS)
     return vec_cts(Vector, 0);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
-    return (MLAS_INT32X4)__builtin_convertvector((__f32x4)Vector, __u32x4);
+    return (MLAS_INT32X4)__builtin_convertvector((__f32x4)Vector, __i32x4);
 #else
     return MLAS_INT32X4{int32_t(Vector[0]), int32_t(Vector[1]), int32_t(Vector[2]), int32_t(Vector[3])};
 #endif
@@ -1229,7 +1229,7 @@ MlasBroadcastFloat32x4(const float* Value)
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_load_ps1(Value);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
-    return wasm_v32x4_load_splat(Value);
+    return wasm_v128_load32_splat(Value);
 #else
     return MLAS_FLOAT32X4{*Value, *Value, *Value, *Value};
 #endif
@@ -1390,7 +1390,7 @@ MLAS_FLOAT32X4
 MlasShuffleFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
 #if defined(MLAS_WASM_SIMD_INTRINSICS)
-    return wasm_v32x4_shuffle(Vector1, Vector2, Index0, Index1, Index2, Index3);
+    return wasm_i32x4_shuffle(Vector1, Vector2, Index0, Index1, Index2, Index3);
 #elif defined(__clang__)
     return __builtin_shufflevector(Vector1, Vector2, Index0, Index1, Index2, Index3);
 #else
@@ -1564,6 +1564,8 @@ MlasAndFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
 #if defined(MLAS_SSE2_INTRINSICS)
     return _mm_and_ps(Vector1, Vector2);
+#elif defined(MLAS_WASM_SIMD_INTRINSICS)
+    return wasm_v128_and(Vector1, Vector2);
 #else
     return MlasReinterpretAsFloat32x4(MlasAndInt32x4(MlasReinterpretAsInt32x4(Vector1), MlasReinterpretAsInt32x4(Vector2)));
 #endif
@@ -1575,6 +1577,8 @@ MlasOrFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
 #if defined(MLAS_SSE2_INTRINSICS)
     return _mm_or_ps(Vector1, Vector2);
+#elif defined(MLAS_WASM_SIMD_INTRINSICS)
+    return wasm_v128_or(Vector1, Vector2);
 #else
     return MlasReinterpretAsFloat32x4(MlasOrInt32x4(MlasReinterpretAsInt32x4(Vector1), MlasReinterpretAsInt32x4(Vector2)));
 #endif
@@ -1586,6 +1590,8 @@ MlasAndNotFloat32x4(MLAS_FLOAT32X4 VectorNot, MLAS_FLOAT32X4 Vector)
 {
 #if defined(MLAS_SSE2_INTRINSICS)
     return _mm_andnot_ps(VectorNot, Vector);
+#elif defined(MLAS_WASM_SIMD_INTRINSICS)
+    return wasm_v128_andnot(Vector, VectorNot);
 #else
     return MlasReinterpretAsFloat32x4(MlasAndNotInt32x4(MlasReinterpretAsInt32x4(VectorNot), MlasReinterpretAsInt32x4(Vector)));
 #endif
@@ -1597,6 +1603,8 @@ MlasXorFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 {
 #if defined(MLAS_SSE2_INTRINSICS)
     return _mm_xor_ps(Vector1, Vector2);
+#elif defined(MLAS_WASM_SIMD_INTRINSICS)
+    return wasm_v128_xor(Vector1, Vector2);
 #else
     return MlasReinterpretAsFloat32x4(MlasXorInt32x4(MlasReinterpretAsInt32x4(Vector1), MlasReinterpretAsInt32x4(Vector2)));
 #endif

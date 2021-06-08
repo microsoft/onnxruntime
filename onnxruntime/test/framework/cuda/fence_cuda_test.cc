@@ -14,18 +14,18 @@
 #include "core/framework/execution_provider.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
-#include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
-#include "core/framework/tensorprotoutils.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/framework/test_utils.h"
 #include "gtest/gtest.h"
 #include "core/util/protobuf_parsing_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "default_providers.h"
 #include "asserts.h"
 
 using namespace std;
@@ -121,8 +121,7 @@ TEST(CUDAFenceTests, DISABLED_PartOnCPU) {
   SessionOptions so;
   FenceCudaTestInferenceSession session(so, GetEnvironment());
   LoadInferenceSessionFromModel(session, *model);
-  CUDAExecutionProviderInfo xp_info;
-  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)));
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
   ASSERT_TRUE(session.Initialize().IsOK());
   ASSERT_TRUE(1 == CountCopyNodes(graph));
 
@@ -176,8 +175,7 @@ TEST(CUDAFenceTests, TileWithInitializer) {
   SessionOptions so;
   FenceCudaTestInferenceSession session(so, GetEnvironment());
   LoadInferenceSessionFromModel(session, *model);
-  CUDAExecutionProviderInfo xp_info;
-  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)));
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
   ASSERT_STATUS_OK(session.Initialize());
 
   vector<OrtValue> outputs;
@@ -242,8 +240,7 @@ TEST(CUDAFenceTests, TileWithComputedInput) {
   SessionOptions so;
   FenceCudaTestInferenceSession session(so, GetEnvironment());
   LoadInferenceSessionFromModel(session, *model);
-  CUDAExecutionProviderInfo xp_info;
-  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::make_unique<CUDAExecutionProvider>(xp_info)));
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
   ASSERT_TRUE(session.Initialize().IsOK());
 
   vector<OrtValue> outputs;

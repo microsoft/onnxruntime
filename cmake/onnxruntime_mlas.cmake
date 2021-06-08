@@ -25,9 +25,15 @@ set(mlas_common_srcs
 )
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
-  file(GLOB_RECURSE mlas_platform_srcs
-    "${ONNXRUNTIME_ROOT}/core/mlas/lib/wasm/*.cpp"
-  )
+  if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+    file(GLOB_RECURSE mlas_platform_srcs
+      "${ONNXRUNTIME_ROOT}/core/mlas/lib/wasm_simd/*.cpp"
+    )
+  else()
+    file(GLOB_RECURSE mlas_platform_srcs
+      "${ONNXRUNTIME_ROOT}/core/mlas/lib/wasm/*.cpp"
+    )
+  endif()
 elseif(MSVC)
   if(onnxruntime_target_platform STREQUAL "ARM64")
     set(mlas_platform_preprocess_srcs
@@ -130,6 +136,8 @@ elseif(MSVC)
   endif()
 else()
   if (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+    set(ARM64 TRUE)
+  elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64e")
     set(ARM64 TRUE)
   elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm")
     set(ARM TRUE)

@@ -2,7 +2,10 @@
 // Licensed under the MIT License.
 
 import {env} from 'onnxruntime-common';
+import * as path from 'path';
+
 import {OrtWasmModule} from './binding/ort-wasm';
+import {OrtWasmThreadedModule} from './binding/ort-wasm-threaded';
 import ortWasmFactoryThreaded from './binding/ort-wasm-threaded.js';
 import ortWasmFactory from './binding/ort-wasm.js';
 
@@ -13,15 +16,29 @@ let aborted = false;
 
 const isMultiThreadSupported = (): boolean => {
   try {
-    // Test for transferability of SABs (needed for Firefox)
+    // Test for transferability of SABs (for browsers. needed for Firefox)
     // https://groups.google.com/forum/#!msg/mozilla.dev.platform/IHkBZlHETpA/dwsMNchWEQAJ
-    new MessageChannel().port1.postMessage(new SharedArrayBuffer(1));
-    // This typed array is a WebAssembly program containing threaded
-    // instructions.
+    if (typeof MessageChannel !== 'undefined') {
+      new MessageChannel().port1.postMessage(new SharedArrayBuffer(1));
+    }
+
+    // Test for WebAssembly threads capability (for both browsers and Node.js)
+    // This typed array is a WebAssembly program containing threaded instructions.
     return WebAssembly.validate(new Uint8Array([
       0, 97, 115, 109, 1, 0,  0,  0, 1, 4, 1,  96, 0,   0,  3, 2, 1,  0, 5,
       4, 1,  3,   1,   1, 10, 11, 1, 9, 0, 65, 0,  254, 16, 2, 0, 26, 11
     ]));
+  } catch (e) {
+    return false;
+  }
+};
+
+const isSimdSupported = (): boolean => {
+  try {
+    // Test for WebAssembly SIMD capability (for both browsers and Node.js)
+    // This typed array is a WebAssembly program containing SIMD instructions.
+    return WebAssembly.validate(new Uint8Array(
+        [0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 10, 9, 1, 7, 0, 65, 0, 253, 15, 26, 11]));
   } catch (e) {
     return false;
   }
@@ -43,8 +60,10 @@ export const initializeWebAssembly = async(): Promise<void> => {
   // wasm flags are already initialized
   const timeout = env.wasm.initTimeout!;
   const numThreads = env.wasm.numThreads!;
+  const simd = env.wasm.simd!;
 
   const useThreads = numThreads > 1 && isMultiThreadSupported();
+  const useSimd = simd && isSimdSupported();
   let isTimeout = false;
 
   const tasks: Array<Promise<void>> = [];
@@ -64,10 +83,37 @@ export const initializeWebAssembly = async(): Promise<void> => {
     const factory = useThreads ? ortWasmFactoryThreaded : ortWasmFactory;
     const config: Partial<OrtWasmModule> = {};
 
-    if (useThreads) {
-      config.mainScriptUrlOrBlob = new Blob(
-          [`var ortWasmThreaded=(function(){var _scriptDir;return ${ortWasmFactoryThreaded.toString()}})();`],
-          {type: 'text/javascript'});
+    if (!useThreads) {
+      config.locateFile = (fileName: string, scriptDirectory: string) => {
+        if (useSimd && fileName === 'ort-wasm.wasm') {
+          return scriptDirectory + 'ort-wasm-simd.wasm';
+        }
+        return scriptDirectory + fileName;
+      };
+    } else {
+      if (typeof Blob === 'undefined') {
+        config.mainScriptUrlOrBlob = path.join(__dirname, 'ort-wasm-threaded.js');
+      } else {
+        const scriptSourceCode =
+            `var ortWasmThreaded=(function(){var _scriptDir;return ${ortWasmFactoryThreaded.toString()}})();`;
+        config.mainScriptUrlOrBlob = new Blob([scriptSourceCode], {type: 'text/javascript'});
+        config.locateFile = (fileName: string, scriptDirectory: string) => {
+          if (fileName.endsWith('.worker.js')) {
+            return URL.createObjectURL(new Blob(
+                [
+                  // This require() function is handled by webpack to load file content of the corresponding .worker.js
+                  // eslint-disable-next-line @typescript-eslint/no-require-imports
+                  require('./binding/ort-wasm-threaded.worker.js')
+                ],
+                {type: 'text/javascript'}));
+          }
+
+          if (useSimd && fileName === 'ort-wasm-threaded.wasm') {
+            return scriptDirectory + 'ort-wasm-simd-threaded.wasm';
+          }
+          return scriptDirectory + fileName;
+        };
+      }
     }
 
     factory(config).then(
@@ -99,4 +145,16 @@ export const getInstance = (): OrtWasmModule => {
   }
 
   throw new Error('WebAssembly is not initialized yet.');
+};
+
+export const dispose = (): void => {
+  if (initialized && !initializing && !aborted) {
+    initializing = true;
+
+    (wasm as OrtWasmThreadedModule).PThread?.terminateAllThreads();
+
+    initializing = false;
+    initialized = false;
+    aborted = true;
+  }
 };

@@ -29,7 +29,7 @@ RUN apt-get update &&\
 # Install rbuild
 RUN pip3 install https://github.com/RadeonOpenCompute/rbuild/archive/master.tar.gz
 
-ENV PATH /opt/miniconda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:${PATH}
+ENV PATH /opt/miniconda/bin:/code/cmake-3.20.3-Linux-x86_64/bin:${PATH}
 
 # Install MIGraphX from source
 RUN mkdir -p /migraphx
@@ -47,5 +47,4 @@ RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXR
     /bin/sh ./build.sh --config Release --build_wheel --update --build --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER) --use_migraphx &&\
     pip install /code/onnxruntime/build/Linux/Release/dist/*.whl &&\
     cd .. &&\
-    rm -rf onnxruntime cmake-3.14.3-Linux-x86_64
-
+    rm -rf onnxruntime cmake-3.20.3-Linux-x86_64
