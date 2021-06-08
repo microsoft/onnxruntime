@@ -12,7 +12,7 @@ stages:
 
       variables:
         PythonVersion: $(PYTHON_VERSION)
-        DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
+        DockerFile: 'Dockerfile.manylinux2014_cpu'
 
       steps:
       - checkout: self
