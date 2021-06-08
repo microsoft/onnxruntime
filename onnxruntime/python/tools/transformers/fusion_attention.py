@@ -124,6 +124,76 @@ class FusionAttention(Fusion):
 
         return num_heads, hidden_size
 
+
+    def replace_weight_node(self, qw, original_matmul: NodeProto, op_type: str, name_ext: str):
+        in_size = qw.shape[0]
+        q_matmul_new_name = self.model.create_node_name(op_type)
+        wt_q_matmul1 = helper.make_tensor(name = q_matmul_new_name + name_ext,
+                                data_type=TensorProto.FLOAT,
+                                dims=[in_size, in_size],
+                                vals=qw.flatten().tolist()[0:in_size*in_size])
+        self.model.add_initializer(wt_q_matmul1, self.this_graph_name)
+
+        wt_q_matmul1_inputs = [original_matmul.input[0], q_matmul_new_name + name_ext]
+        wt_q_matmul1_output_name = original_matmul.output[0]
+
+        wt_q_matmul1_node = helper.make_node(op_type,
+                                            inputs=wt_q_matmul1_inputs,
+                                            outputs=[wt_q_matmul1_output_name],
+                                            name=q_matmul_new_name)
+
+        self.nodes_to_add.append(wt_q_matmul1_node)
+        self.node_name_to_graph_name[q_matmul_new_name] = self.this_graph_name
+
+        self.nodes_to_remove.extend([original_matmul])
+
+    def replace_bias_node(self, qb, original_add: NodeProto, op_type: str, name_ext: str):
+        if qb.shape[0] != 1152:
+            raise Exception("Not expected")
+        target_size = 768
+        q_add_new_name = self.model.create_node_name(op_type)
+        # hard coding the following value for now
+        bias_q_matmul1 = helper.make_tensor(name = q_add_new_name + name_ext,
+                                data_type=TensorProto.FLOAT,
+                                dims=[target_size],
+                                vals=qb.flatten().tolist()[0:target_size])
+        self.model.add_initializer(bias_q_matmul1, self.this_graph_name)
+
+        bias_q_matmul1_inputs = [original_add.input[0], q_add_new_name + name_ext]
+        bias_q_matmul1_output_name = original_add.output[0]
+
+        bias_q_matmul1_node = helper.make_node(op_type,
+                                            inputs=bias_q_matmul1_inputs,
+                                            outputs=[bias_q_matmul1_output_name],
+                                            name=q_add_new_name)
+
+        self.nodes_to_add.append(bias_q_matmul1_node)
+        self.node_name_to_graph_name[q_add_new_name] = self.this_graph_name
+
+        self.nodes_to_remove.extend([original_add])
+
+    def update_attention(self, mask_index: str, q_matmul: NodeProto, k_matmul: NodeProto, v_matmul: NodeProto,
+                              q_add: NodeProto, k_add: NodeProto, v_add: NodeProto, num_heads: int, hidden_size: int,
+                              input: str, output: str):
+
+        q_weight = self.model.get_initializer(q_matmul.input[1])
+        k_weight = self.model.get_initializer(k_matmul.input[1])
+        q_bias = self.model.get_initializer(q_add.input[1]) or self.model.get_initializer(q_add.input[0])
+        k_bias = self.model.get_initializer(k_add.input[1]) or self.model.get_initializer(k_add.input[0])
+
+        qw = NumpyHelper.to_array(q_weight)
+        kw = NumpyHelper.to_array(k_weight)
+        qb = NumpyHelper.to_array(q_bias)
+        kb = NumpyHelper.to_array(k_bias)
+
+        self.replace_weight_node(qw, q_matmul, 'MatMul', 'wt_q1')
+        self.replace_bias_node(qb, q_add, 'Add', 'bias_q1')
+
+        self.replace_weight_node(kw, k_matmul, 'MatMul', 'wt_k1')
+        self.replace_bias_node(kb, k_add, 'Add', 'bias_k1')
+        self.prune_graph = True
+        return
+
     def create_attention_node(self, mask_index: str, q_matmul: NodeProto, k_matmul: NodeProto, v_matmul: NodeProto,
                               q_add: NodeProto, k_add: NodeProto, v_add: NodeProto, num_heads: int, hidden_size: int,
                               input: str, output: str) -> Union[NodeProto, None]:
@@ -362,6 +432,7 @@ class FusionAttention(Fusion):
             return
 
         #following line: matmul_v.input[0] is repeated twice
+        first_step = False
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_v.input[0] == root_input:
             mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
 
@@ -370,6 +441,12 @@ class FusionAttention(Fusion):
             num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
             if num_heads <= 0 or hidden_size <= 0 or (hidden_size % num_heads) != 0:
                 logger.debug("fuse_attention: failed to detect num_heads or hidden_size")
+                return
+
+            if first_step == True:
+                print("First step is true")
+                self.update_attention(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v,
+                                                  num_heads, hidden_size, root_input, attention_last_node.output[0])
                 return
 
             new_node = self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v,
