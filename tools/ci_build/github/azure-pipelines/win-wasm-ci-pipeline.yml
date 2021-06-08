@@ -26,22 +26,11 @@ jobs:
       'debug':
         BuildConfig: 'Debug'
         CmdParams: ''
-        WasmFileName: 'ort-wasm'
       'release':
         BuildConfig: 'Release'
         CmdParams: '--skip_tests --disable_wasm_exception_catching --disable_rtti'
-        WasmFileName: 'ort-wasm'
-      'threads debug':
-        BuildConfig: 'Debug'
-        CmdParams: '--enable_wasm_threads'
-        WasmFileName: 'ort-wasm-threaded'
-      'threads release':
-        BuildConfig: 'Release'
-        CmdParams: '--enable_wasm_threads --skip_tests --disable_wasm_exception_catching --disable_rtti'
-        WasmFileName: 'ort-wasm-threaded'
 
   variables:
-    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     EnvSetupScript: setup_env.bat
     buildArch: x64
   timeoutInMinutes: 120
@@ -87,15 +76,36 @@ jobs:
     displayName: 'Build and test'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_wasm --emsdk_version releases-upstream-77b065ace39e6ab21446e13f92897f956c80476a-64bit --cmake_generator "Visual Studio 16 2019" $(CmdParams)'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory)\wasm --skip_submodule_sync --build_wasm --emsdk_version releases-upstream-77b065ace39e6ab21446e13f92897f956c80476a-64bit --cmake_generator "Visual Studio 16 2019" $(CmdParams)'
+      workingDirectory: '$(Build.BinariesDirectory)'
+  - task: PythonScript@0
+    displayName: 'Build and test (threads)'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory)\wasm_threads --skip_submodule_sync --build_wasm --emsdk_version releases-upstream-77b065ace39e6ab21446e13f92897f956c80476a-64bit --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --cmake_generator "Visual Studio 16 2019" --enable_wasm_threads $(CmdParams)'
+      workingDirectory: '$(Build.BinariesDirectory)'
+  - task: PythonScript@0
+    displayName: 'Build and test (simd + threads)'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory)\wasm_simd_threads --skip_submodule_sync --build_wasm --emsdk_version releases-upstream-77b065ace39e6ab21446e13f92897f956c80476a-64bit --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --cmake_generator "Visual Studio 16 2019" --enable_wasm_simd --enable_wasm_threads $(CmdParams)'
+      workingDirectory: '$(Build.BinariesDirectory)'
+  - task: PythonScript@0
+    displayName: 'Build and test (simd)'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory)\wasm_simd --skip_submodule_sync --build_wasm --emsdk_version releases-upstream-77b065ace39e6ab21446e13f92897f956c80476a-64bit --path_to_protoc_exe $(Build.BinariesDirectory)\wasm\host_protoc\Release\protoc.exe --cmake_generator "Visual Studio 16 2019" --enable_wasm_simd $(CmdParams)'
       workingDirectory: '$(Build.BinariesDirectory)'
   - script: |
-      copy $(Build.BinariesDirectory)\$(BuildConfig)\$(WasmFileName)*.* $(Build.ArtifactStagingDirectory)
+      copy $(Build.BinariesDirectory)\wasm\$(BuildConfig)\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+      copy $(Build.BinariesDirectory)\wasm_threads\$(BuildConfig)\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+      copy $(Build.BinariesDirectory)\wasm_simd_threads\$(BuildConfig)\ort-wasm*.* $(Build.ArtifactStagingDirectory)
+      copy $(Build.BinariesDirectory)\wasm_simd\$(BuildConfig)\ort-wasm*.* $(Build.ArtifactStagingDirectory)
     displayName: 'Create Artifacts'
   - task: PublishPipelineArtifact@0
     displayName: 'Publish Pipeline Artifact'
     inputs:
-      artifactName: '$(BuildConfig)_$(WasmFileName)'
+      artifactName: '$(BuildConfig)_wasm'
       targetPath: '$(Build.ArtifactStagingDirectory)'
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
