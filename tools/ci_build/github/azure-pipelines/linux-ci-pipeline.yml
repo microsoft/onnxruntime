@@ -39,8 +39,7 @@ jobs:
               --build_wheel \
               --enable_onnx_tests \
               --enable_symbolic_shape_infer_tests \
-              --build_java --build_nodejs \
-              --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so
+              --build_java --build_nodejs              
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishTestResults@2

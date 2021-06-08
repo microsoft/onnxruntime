@@ -11,7 +11,7 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_training_cpu
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuild
@@ -39,8 +39,7 @@ jobs:
               --build_wheel \
               --use_openmp \
               --enable_onnx_tests \
-              --enable_pybind --build_java --build_nodejs --enable_training \
-              --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so
+              --enable_pybind --build_java --build_nodejs --enable_training
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishTestResults@2

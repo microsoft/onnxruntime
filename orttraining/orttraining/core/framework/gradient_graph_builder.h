@@ -68,7 +68,8 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"Unsqueeze", {1}},
         {"ReduceSum", {1}},
         {"Split", {1}},
-        {"Clip", {1, 2}}};
+        {"Clip", {1, 2}},
+        {"Pad", {1, 2}}};
 
 class GradientGraphBuilder {
  public:

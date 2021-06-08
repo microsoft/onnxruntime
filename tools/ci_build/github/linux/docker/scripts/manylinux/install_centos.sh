@@ -9,7 +9,7 @@ if ! rpm -q --quiet epel-release ; then
 fi
 
 echo "installing for os major version : $os_major_version"
-yum install -y which gdb redhat-lsb-core expat-devel libcurl-devel tar unzip curl zlib-devel make libunwind icu aria2 rsync bzip2 git bzip2-devel
+yum install -y which gdb redhat-lsb-core expat-devel libcurl-devel tar unzip curl zlib-devel make libunwind icu aria2 rsync bzip2 git bzip2-devel wget libffi-devel
 
 if [ "$os_major_version" == "7" ]; then
     # install dotnet core dependencies
@@ -21,7 +21,10 @@ fi
 
 yum install -y java-11-openjdk-devel
 
-#If the /opt/python folder exists, we assume this is the manylinux docker image
+# If the /opt/python folder exists, we assume this is the manylinux docker image
 if [ ! -d "/opt/python/cp37-cp37m" ]; then
   yum install -y ccache gcc gcc-c++ python3 python3-devel python3-pip
 fi
+
+# install automatic documentation generation dependencies
+yum install -y graphviz

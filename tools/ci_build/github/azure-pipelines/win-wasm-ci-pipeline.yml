@@ -87,7 +87,7 @@ jobs:
     displayName: 'Build and test'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_wasm --cmake_generator "Visual Studio 16 2019" $(CmdParams)'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_wasm --emsdk_version releases-upstream-77b065ace39e6ab21446e13f92897f956c80476a-64bit --cmake_generator "Visual Studio 16 2019" $(CmdParams)'
       workingDirectory: '$(Build.BinariesDirectory)'
   - script: |
       copy $(Build.BinariesDirectory)\$(BuildConfig)\$(WasmFileName)*.* $(Build.ArtifactStagingDirectory)
@@ -103,7 +103,7 @@ jobs:
       testResultsFiles: '**/*.results.xml'
       searchFolder: '$(Build.BinariesDirectory)'
       testRunTitle: 'Unit Test Run'
-    condition: succeededOrFailed()
+    condition: and(succeededOrFailed(), eq(variables['BuildConfig'], 'Debug'))
   - template: templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'
@@ -189,9 +189,17 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)\js'
     displayName: 'Clang-format'
   - script: |
-     node -e "a=require('child_process').execSync('git ls-files -m').toString();if(a)throw new Error('Following source files are not formatted:\n'+a)"
+     node -e "a=require('child_process').execSync('git ls-files -m').toString();if(a)throw new Error('Following source files are not formatted: (did you run \"npm run format\"?)\n'+a)"
     workingDirectory: '$(Build.SourcesDirectory)\js'
     displayName: 'Check unformatted files'
+  - script: |
+     npm run build:doc
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Generating documents'
+  - script: |
+     node -e "a=require('child_process').execSync('git ls-files -m').toString();if(a)throw new Error('Following documents are not up-to-date: (did you run \"npm run build:doc\"?)\n'+a)"
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Check out of dated documents'
   - script: |
      npm run build
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
@@ -199,7 +207,11 @@ jobs:
   - script: |
      npm test
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
-    displayName: 'Run ort-web tests'
+    displayName: 'Run ort-web tests - unpacked mode'
+  - script: |
+     npm test --  --webgl-texture-pack-mode -b=webgl
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Run ort-web tests - packed mode'
   - script: |
       npm pack
     workingDirectory: '$(Build.SourcesDirectory)\js\common'
