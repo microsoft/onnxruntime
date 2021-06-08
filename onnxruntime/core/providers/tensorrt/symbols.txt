@@ -1,5 +1,1 @@
 OrtSessionOptionsAppendExecutionProvider_Tensorrt
-OrtCreateTensorRTProviderOptions
-OrtUpdateTensorRTProviderOptions
-OrtGetTensorRTProviderOptions
-OrtReleaseTensorRTProviderOptions

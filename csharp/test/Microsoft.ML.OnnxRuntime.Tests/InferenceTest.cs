@@ -227,7 +227,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-#if USE_TENSORRT
+//#if USE_TENSORRT
         [Fact]
         private void CanRunInferenceOnAModelWithTensorRT()
         {
@@ -307,10 +307,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal(engineDecrptLibPath, value);
 
                 // test correctness of provider options
-                SessionOptions options = new SessionOptions();
+                //SessionOptions options = new SessionOptions();
+                SessionOptions options = SessionOptions.MakeSessionOptionWithTensorrtProvider(trtProviderOptions);
                 cleanUp.Add(options);
-
-                options.AppendExecutionProvider_Tensorrt(trtProviderOptions);
+                //ProviderOptionsValueHelper.StringToDict("asd=", resultProviderOptionsDict);
+                //options.AppendExecutionProvider_Tensorrt(trtProviderOptions);
 
                 var session = new InferenceSession(modelPath, options);
                 cleanUp.Add(session);
@@ -329,7 +330,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 session.Run(container);
             }
         }
-#endif
+//#endif
 
         [Theory]
         [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, true)]

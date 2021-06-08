@@ -22,6 +22,8 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/provider_options.h"
+#include "core/common/string_helper.h"
+
 
 #include "core/framework/fallback_cpu_capability.h"
 #include "core/framework/random_generator.h"
@@ -1111,15 +1113,6 @@ ProviderOptions GetProviderInfo_Tensorrt() {
 
 }  // namespace onnxruntime
 
-#ifdef USE_TENSORRT
-static char* StrDup(const std::string& str, _Inout_ OrtAllocator* allocator) {
-  char* output_string = reinterpret_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
-  memcpy(output_string, str.c_str(), str.size());
-  output_string[str.size()] = '\0';
-  return output_string;
-}
-#endif
-
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena) {
   API_IMPL_BEGIN
   auto factory = onnxruntime::CreateExecutionProviderFactory_Dnnl(use_arena);
@@ -1209,20 +1202,25 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA, _In_ Or
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptions** out) {
 #ifdef USE_TENSORRT
-ORT_API_STATUS_IMPL(OrtCreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptions** out) {
   *out = new OrtTensorRTProviderOptions();
   (*out)->trt_int8_calibration_table_name = nullptr;
   (*out)->trt_engine_cache_path = nullptr;
   (*out)->trt_engine_decryption_lib_path = nullptr;
   return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(out);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
 }
 
-ORT_API_STATUS_IMPL(OrtUpdateTensorRTProviderOptions,
+ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
                     _Inout_ OrtTensorRTProviderOptions* tensorrt_provider_options,
                     _In_reads_(num_keys) const char* const* provider_options_keys,
                     _In_reads_(num_keys) const char* const* provider_options_values,
                     size_t num_keys) {
+#ifdef USE_TENSORRT
   onnxruntime::ProviderOptions provider_options_map;
   for (size_t i = 0; i != num_keys; ++i) {
     if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
@@ -1235,10 +1233,18 @@ ORT_API_STATUS_IMPL(OrtUpdateTensorRTProviderOptions,
 
   onnxruntime::UpdateProviderInfo_Tensorrt(tensorrt_provider_options, reinterpret_cast<const onnxruntime::ProviderOptions&>(provider_options_map));
   return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(tensorrt_provider_options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
 }
 
-ORT_API_STATUS_IMPL(OrtGetTensorRTProviderOptions, _Inout_ OrtAllocator* allocator,
+ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptions, _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** ptr) {
+#ifdef USE_TENSORRT
   onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Tensorrt();
   onnxruntime::ProviderOptions::iterator it = options.begin();
   std::string options_str = "";
@@ -1252,11 +1258,16 @@ ORT_API_STATUS_IMPL(OrtGetTensorRTProviderOptions, _Inout_ OrtAllocator* allocat
     it++;
   }
 
-  *ptr = StrDup(options_str, allocator);
+  *ptr = onnxruntime::StrDup(options_str, allocator);
   return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
 }
 
-ORT_API(void, OrtReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptions* ptr) {
+ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptions* ptr) {
   if (ptr != nullptr) {
     if (ptr->trt_int8_calibration_table_name != nullptr) {
       delete ptr->trt_int8_calibration_table_name;
@@ -1273,4 +1284,3 @@ ORT_API(void, OrtReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProv
 
   delete ptr;
 }
-#endif
