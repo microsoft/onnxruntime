@@ -18,6 +18,7 @@
 #include "core/providers/cpu/tensor/padbase.h"
 #include "core/providers/cpu/tensor/gatherbase.h"
 #include "core/providers/cpu/tensor/slice.h"
+#include "core/providers/cpu/tensor/slice_helper.h"
 #include "core/providers/cpu/tensor/split.h"
 #include "core/providers/cpu/tensor/size.h"
 #include "core/providers/cpu/tensor/scatter_nd.h"
@@ -481,7 +482,7 @@ Status ATenOpBase::Compute(OpKernelContext* p_ctx) const { return g_host->ATenOp
 Status Group::Compute(OpKernelContext* context) const { return g_host->contrib__Group__Compute(this, context); }
 Status PassThrough::Compute(OpKernelContext* context) const { return g_host->contrib__PassThrough__Compute(this, context); }
 Status YieldOp::Compute(OpKernelContext* context) const { return g_host->contrib__YieldOp__Compute(this, context); }
-}
+}  // namespace contrib
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 namespace contrib {

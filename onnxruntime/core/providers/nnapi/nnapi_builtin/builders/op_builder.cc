@@ -8,6 +8,7 @@
 #include <onnx/onnx_pb.h>
 
 #include "core/providers/shared/utils/utils.h"
+// #include "core/providers/cpu/tensor/slice_helper.h"
 #include "helper.h"
 #include "model_builder.h"
 #include "op_builder.h"
@@ -1368,7 +1369,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& initializers(model_builder.GetInitializerTensors());
   NodeAttrHelper helper(node);
-  const auto input_defs = node.InputDefs();
+  const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
   bool is_qlinear_conv = (op_type == "QLinearConv");
 
@@ -2536,7 +2537,6 @@ Status MinMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 #pragma region op_elu
 
 class EluOpBuilder : public BaseOpBuilder {
- public:
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
@@ -2545,6 +2545,36 @@ Status EluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
+  const auto& input = node.InputDefs()[0]->Name();
+  const auto& output = node.OutputDefs()[0]->Name();
+  bool output_is_nhwc = model_builder.IsOperandNHWC(input);
+  ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  NodeAttrHelper helper(node);
+  const auto alpha = helper.Get("alpha", 1.0f);
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));
+  ADD_SCALAR_OPERAND(model_builder, input_indices, alpha);
+  return model_builder.AddOperation(ANEURALNETWORKS_ELU, input_indices,
+                                    {output}, {output_operand_type}, {output_is_nhwc});
+}
+
+#pragma endregion
+
+#pragma region op_slice
+
+class SliceOpBuilder : public BaseOpBuilder {
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+};
+
+Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  // const auto& initializers(model_builder.GetInitializerTensors());
+  // const auto& input_defs = node.InputDefs();
+
   const auto& input = node.InputDefs()[0]->Name();
   const auto& output = node.OutputDefs()[0]->Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
