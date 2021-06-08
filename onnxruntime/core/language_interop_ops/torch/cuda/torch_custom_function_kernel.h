@@ -5,7 +5,7 @@
 
 #pragma once
 #include "core/providers/cuda/cuda_kernel.h"
-#include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
+#include "core/language_interop_ops/torch/cpu/torch_custom_function_kernel_base.h"
 
 namespace onnxruntime {
 namespace cuda {

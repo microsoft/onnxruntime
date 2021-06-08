@@ -2,13 +2,13 @@
 // Licensed under the MIT License.
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 
-#include "core/dlpack/python_common.h"
+#include "core/language_interop_ops/python/python_common.h"
 #ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel_context_internal.h"
 #endif
 #include "core/language_interop_ops/torch/custom_function_register.h"
 #include "core/language_interop_ops/torch/torch_proxy.h"
-#include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
+#include "core/language_interop_ops/torch/cpu/torch_custom_function_kernel_base.h"
 
 using namespace onnxruntime::language_interop_ops::torch;
 

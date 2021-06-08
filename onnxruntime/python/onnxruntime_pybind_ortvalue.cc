@@ -11,7 +11,7 @@
 #include <numpy/arrayobject.h>
 
 #ifdef ENABLE_TRAINING
-#include "core/dlpack/dlpack_python.h"
+#include "core/language_interop_ops/python/dlpack_python.h"
 #endif
 
 #include "core/framework/ml_value.h"

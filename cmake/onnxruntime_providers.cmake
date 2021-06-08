@@ -135,8 +135,6 @@ if (onnxruntime_ENABLE_TRAINING_OPS)
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/tensorboard/*.h"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/aten_ops/*.cc"
     "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/aten_ops/*.h"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.h"
   )
 
   list(REMOVE_ITEM onnxruntime_providers_src ${onnxruntime_cpu_full_training_only_srcs})
@@ -163,10 +161,10 @@ if (onnxruntime_ENABLE_TRAINING)
 
   if (onnxruntime_ENABLE_PYTHON)
     file(GLOB_RECURSE onnxruntime_providers_dlpack_python_interfaces_srcs CONFIGURE_DEPENDS
-      "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.cc"
-      "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.h"
-      "${ONNXRUNTIME_ROOT}/core/dlpack/python_common.cc"
-      "${ONNXRUNTIME_ROOT}/core/dlpack/python_common.h"
+      "${ONNXRUNTIME_ROOT}/core/language_interop_ops/python/dlpack_python.cc"
+      "${ONNXRUNTIME_ROOT}/core/language_interop_ops/python/dlpack_python.h"
+      "${ONNXRUNTIME_ROOT}/core/language_interop_ops/python/python_common.cc"
+      "${ONNXRUNTIME_ROOT}/core/language_interop_ops/python/python_common.h"
     )
     list(APPEND onnxruntime_providers_dlpack_srcs ${onnxruntime_providers_dlpack_python_interfaces_srcs})
   endif()
@@ -175,7 +173,9 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_providers_src ${onnxruntime_providers_dlpack_srcs})
 
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    file(GLOB_RECURSE onnxruntime_language_interop_torch_srcs CONFIGURE_DEPENDS
+    file(GLOB onnxruntime_language_interop_torch_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/cpu/*.h"
+      "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/cpu/*.cc"
       "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/*.h"
       "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/*.cc"
     )
@@ -287,6 +287,15 @@ if (onnxruntime_USE_CUDA)
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.h"
     "${ONNXRUNTIME_ROOT}/core/providers/cuda/*.cc"
   )
+
+  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    file(GLOB_RECURSE onnxruntime_language_interop_torch_cuda_cc_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/cuda/*.h"
+      "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/cuda/*.cc"
+    )
+    list(APPEND onnxruntime_providers_cuda_cc_srcs ${onnxruntime_language_interop_torch_cuda_cc_srcs})
+  endif()
+
   # The shared_library files are in a separate list since they use precompiled headers, and the above files have them disabled.
   file(GLOB_RECURSE onnxruntime_providers_cuda_shared_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"

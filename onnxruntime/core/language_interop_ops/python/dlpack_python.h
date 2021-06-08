@@ -8,7 +8,7 @@
 #pragma once
 
 #include "core/dlpack/dlpack_converter.h"
-#include "core/dlpack/python_common.h"
+#include "core/language_interop_ops/python/python_common.h"
 
 namespace onnxruntime {
 

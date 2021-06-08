@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/dlpack/python_common.h"
+#include "core/language_interop_ops/python/python_common.h"
 
 #include "core/language_interop_ops/torch/torch_proxy.h"
 #include <mutex>
@@ -23,12 +23,12 @@ class OrtTorchFunctionPool final {
   // AutogradFunction includes ForwardCore and BackwardCore.
   // ForwardCore is the apply() function pointer.
   // BackwardCore is the backward() function pointer.
-  // RegisterTorchAutogradFunction owns the input "obj" and will release its ownership only in its destructor. 
+  // RegisterTorchAutogradFunction owns the input "obj" and will release its ownership only in its destructor.
   void RegisterTorchAutogradFunction(const std::string& key, PyObject* obj);
   // Return a borrowed reference to the stored Python function. Thus,
   //  1. The returned value doesn't own its Python function.
   //  2. Caller of GetForwardCore should not decrease the reference count of the returned object.
-  PyObject* GetForwardCore(const std::string& key);   // The "key" is the "name" attribute in PythonOp.
+  PyObject* GetForwardCore(const std::string& key);  // The "key" is the "name" attribute in PythonOp.
   // Return a borrowed reference to the stored Python function. Thus,
   //  1. The returned value doesn't own its Python function.
   //  2. Caller of GetBackwardCore should not decrease the reference count of the returned object.
@@ -60,7 +60,7 @@ class OrtTorchFunctionPool final {
   PyObject* GetBackwardRunner();
 
  private:
-  OrtTorchFunctionPool() {};
+  OrtTorchFunctionPool(){};
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtTorchFunctionPool);
 
   PythonObjectPtr forward_runner_;

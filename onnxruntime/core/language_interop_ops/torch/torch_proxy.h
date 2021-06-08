@@ -3,7 +3,7 @@
 
 #pragma once
 #include <mutex>
-#include "core/dlpack/python_common.h"
+#include "core/language_interop_ops/python/python_common.h"
 
 #ifndef SHARED_PROVIDER
 #include "core/framework/ml_value.h"

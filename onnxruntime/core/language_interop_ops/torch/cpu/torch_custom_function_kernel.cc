@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 
-#include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel.h"
+#include "core/language_interop_ops/torch/cpu/torch_custom_function_kernel.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
 #include "core/language_interop_ops/torch/refcount_tracker.h"
 
