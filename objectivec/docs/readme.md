@@ -6,7 +6,7 @@ The API should be documented with comments in the [public header files](../inclu
 
 The [jazzy](https://github.com/realm/jazzy) tool is used to generate documentation from the code.
 
-For example, from the repo root, run:
+For example, to generate documentation for a release version, from the repo root, run:
 
 ```bash
 jazzy --config objectivec/docs/jazzy_config.yaml --output <output directory> --module-version $(cat VERSION_NUMBER)
