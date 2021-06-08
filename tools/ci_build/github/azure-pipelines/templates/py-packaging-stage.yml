@@ -1183,7 +1183,7 @@ stages:
 
   - ${{ if eq(parameters.enable_mac_cpu, true) }}:
     - job: MacOS_py_Wheels
-      timeoutInMinutes: 120
+      timeoutInMinutes: 90
       workspace:
         clean: all
       pool:
