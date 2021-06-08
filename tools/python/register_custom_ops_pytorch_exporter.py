@@ -50,6 +50,36 @@ def register_custom_op(is_ortmodule=False):
 
         register_custom_op_symbolic('::embedding', embedding, _onnx_opset_version)
 
+        @parse_args('v', 'is', 'is', 'is', 'is', 'b')
+        def max_pool2d(g, self, kernel_size, stride, padding, dilation, ceil_mode):
+            custom_attributes_json = (
+                '{'
+                f'"kernel_size":{str(kernel_size)},'
+                f'"stride":{str(stride)},'
+                f'"padding":{str(padding)},'
+                f'"dilation":{str(dilation)},'
+                f'"ceil_mode":{str(ceil_mode).lower()}'
+                '}'
+            )
+            return g.op("com.microsoft::ATenOp", self, name_s='aten::max_pool2d_with_indices',
+                        custom_attributes_json_s=custom_attributes_json, outputs=2)[0]
+
+        register_custom_op_symbolic('::max_pool2d', max_pool2d, _onnx_opset_version)
+
+        @parse_args('v', 'i', 'i', 'i')
+        def unfold(g, input, dimension, size, step):
+            custom_attributes_json = (
+                '{'
+                f'"dimension":{str(dimension)},'
+                f'"size":{str(size)},'
+                f'"step":{str(step)}'
+                '}'
+            )
+            return g.op("com.microsoft::ATenOp", input, name_s='aten::unfold',
+                        custom_attributes_json_s=custom_attributes_json)
+
+        register_custom_op_symbolic('::unfold', unfold, _onnx_opset_version)
+
 
 def unregister_custom_op():
     """
