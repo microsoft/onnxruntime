@@ -2200,7 +2200,7 @@ TEST(ReductionOpTest, ArgMax_Cast) {
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.ArgMaxCastTest",
+  RunAndVerifyOutputsWithEP(model_file_name, "ReductionOpTest.ArgMax_Cast",
                             std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
                             feeds);
 }

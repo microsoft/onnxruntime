@@ -43,10 +43,6 @@ bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
     return false;
   }
 
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                         "Output data type is not float/int32, actual type: ",
-                         type);
-
   if (node.GetInputEdgesCount() > 1) {
     LOGS(logger, VERBOSE) << "Multiple nodes producing Cast's input.";
     return false;
