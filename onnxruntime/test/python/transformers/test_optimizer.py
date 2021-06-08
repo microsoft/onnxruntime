@@ -23,12 +23,12 @@ from onnxruntime.transformers.optimizer import optimize_model, optimize_by_onnxr
 from onnxruntime.transformers.onnx_model import OnnxModel
 
 BERT_TEST_MODELS = {
-    "bert_keras_0": ('bert_mrpc_tensorflow2.1_opset10', 'TFBertForSequenceClassification_1.onnx'),
-    "bert_keras_squad": ('bert_squad_tensorflow2.1_keras2onnx_opset11', 'TFBertForQuestionAnswering.onnx'),
-    "gpt2_past": ('gpt2_pytorch1.5_opset11', 'gpt2_past.onnx'),
+    "bert_keras_0": ('models', 'TFBertForSequenceClassification_1.onnx'), # bert_mrpc_tensorflow2.1_opset10
+    "bert_keras_squad": ('models', 'TFBertForQuestionAnswering.onnx'), # bert_squad_tensorflow2.1_keras2onnx_opset11
+    "gpt2_past": ('models', 'gpt2_past.onnx'), # gpt2_pytorch1.5_opset11
     "gpt2_past_mask": ('FUSION', 'gpt2_past_mask_one_layer.onnx'),
     "multiple_embed": ('FUSION', 'embed_layer_norm_multiple.onnx'),
-    "bert_tf2onnx_0": ('other_models', 'bert_tf2onnx_0.onnx')
+    "bert_tf2onnx_0": ('models', 'bert_tf2onnx_0.onnx')
 }
 
 
@@ -86,6 +86,11 @@ class TestBertOptimization(unittest.TestCase):
         self.assertEqual(fusion_result_list, expected_fusion_result_list)
 
     def _test_optimizer_on_tf_model(self, model_name, expected_fusion_result_list, inputs_count, validate_model=True):
+        # Remove cached model so that CI machine will have space
+        import shutil
+        shutil.rmtree('./cache_models', ignore_errors=True)
+        shutil.rmtree('./onnx_models', ignore_errors=True)
+
         # expect fusion result list have the following keys
         # EmbedLayerNormalization, Attention, Gelu, FastGelu, BiasGelu, LayerNormalization, SkipLayerNormalization
         model_fusion_statistics = {}

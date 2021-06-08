@@ -23,7 +23,7 @@ class TestFusion(unittest.TestCase):
         optimized_model = optimize_model(model_path)
         os.remove(model_path)
 
-        expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'fusion',
+        expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models',
                                            'pruned_attention_opt.onnx')
         expected = onnx.load(expected_model_path)
         self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
@@ -37,7 +37,7 @@ class TestFusion(unittest.TestCase):
         os.remove(model_path)
 
         # reverse add input order will get same optimized model
-        expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'fusion',
+        expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models',
                                            'pruned_attention_opt.onnx')
         expected = onnx.load(expected_model_path)
         self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
