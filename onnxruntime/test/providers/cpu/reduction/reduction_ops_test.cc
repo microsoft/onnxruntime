@@ -6,8 +6,13 @@
 #include <type_traits>
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/framework/test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/cpu/reduction/reduction_test_cases.h"
+#include "test/util/include/test_utils.h"
+#include "core/framework/framework_common.h"
+#include "core/framework/ml_value.h"
+#include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/providers/cpu/reduction/reduction_ops.h"
 
 namespace onnxruntime {
@@ -2164,6 +2169,38 @@ TEST(ReductionOpTest, ArgMax2D_dim1) {
   test.AddOutput<int64_t>("reduced", {3, 1},
                           {0, 0, 0});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+// CoreML EP currently handles a special case for supporting ArgMax op:
+// An ArgMax followed by a Cast to int32 type
+// Please see in <repo_root>/onnxruntime/core/providers/coreml/builders/impl/argmax_op_builder.cc
+// and /cast_op_builder.cc. We have the following UT test here for this special case
+TEST(ReductionOpTest, ArgMax_Cast) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/coreml_argmax_cast_test.onnx");
+
+  static constexpr uint32_t s_coreml_flags = COREML_FLAG_USE_CPU_ONLY;
+
+  std::vector<int64_t> dims_mul_x = {3, 2, 2};
+  std::vector<float> values_mul_x = {
+      1.0f, 2.0f,
+      3.0f, 4.0f,
+
+      5.0f, 6.0f,
+      7.0f, 8.0f,
+
+      9.0f, 10.0f,
+      11.0f, 12.0f};
+  OrtValue ml_value_x;
+
+  CreateMLValue<float>(TestCoreMLExecutionProvider(s_coreml_flags)->GetAllocator(0, OrtMemTypeDefault),
+                       dims_mul_x, values_mul_x, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.ArgMaxCastTest",
+                            std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
+                            feeds);
 }
 
 TEST(ReductionOpTest, ArgMin) {

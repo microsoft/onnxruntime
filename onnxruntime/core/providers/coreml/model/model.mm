@@ -247,16 +247,16 @@
     size_t output_data_byte_size = 0;
     const auto type = output_tensor.tensor_info.data_type;
     switch (type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      output_data_byte_size = num_elements * sizeof(float);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      output_data_byte_size = num_elements * sizeof(int32_t);
-      break;
-    default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "Output data type is not float/int32, actual type: ",
-                             type);
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+        output_data_byte_size = num_elements * sizeof(float);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+        output_data_byte_size = num_elements * sizeof(int32_t);
+        break;
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                              "Output data type is not float/int32, actual type: ",
+                              type);
   }
     memcpy(output_tensor.buffer, model_output_data, output_data_byte_size);
   }

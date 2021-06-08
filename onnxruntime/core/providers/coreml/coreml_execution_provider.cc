@@ -286,6 +286,9 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
             case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
               output_buffer = ort.GetTensorMutableData<float>(output_tensor);
               break;
+            case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+              output_buffer = ort.GetTensorMutableData<int32_t>(output_tensor);
+              break;
             default:
               return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                      "Unsupported type: ", output_type, " for output: ", output_name);
