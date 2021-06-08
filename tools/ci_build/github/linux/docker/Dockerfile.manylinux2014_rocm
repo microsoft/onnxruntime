@@ -14,6 +14,8 @@ ARG LD_LIBRARY_PATH_ARG
 ARG PREPEND_PATH
 LABEL maintainer="The ManyLinux project"
 
+RUN yum remove -y devtoolset\*  git\* && conda remove -y cmake
+
 ENV AUDITWHEEL_POLICY=${POLICY} AUDITWHEEL_ARCH=${PLATFORM} AUDITWHEEL_PLAT=${POLICY}_${PLATFORM}
 ENV LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 LANGUAGE=en_US.UTF-8
 ENV DEVTOOLSET_ROOTPATH=${DEVTOOLSET_ROOTPATH}
@@ -174,7 +176,7 @@ ARG INSTALL_DEPS_EXTRA_ARGS
 #Add our own dependencies
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && \
-    /tmp/scripts/install_centos.sh && \
+    /tmp/scripts/manylinux/install_centos.sh && \
     /tmp/scripts/install_os_deps.sh -d gpu $INSTALL_DEPS_EXTRA_ARGS && \
     /tmp/scripts/install_python_deps.sh -d gpu -p $PYTHON_VERSION $INSTALL_DEPS_EXTRA_ARGS && \
     rm -rf /tmp/scripts
