@@ -89,6 +89,7 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_common
     onnxruntime_mlas
     onnxruntime_flatbuffers
+    onnxruntime_interop_torch
     ${pybind11_lib}
 )
 
@@ -484,4 +485,8 @@ endif()
 endif()
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   include(onnxruntime_language_interop_ops.cmake)
+endif()
+
+if (onnxruntime_ENABLE_TRAINING)
+  include(onnxruntime_interop_torch.cmake)
 endif()

@@ -221,9 +221,8 @@ set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
 if(NOT onnxruntime_ENABLE_PYTHON)
   set(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OFF)
-else()
-  add_compile_definitions(ENABLE_PYTHON)
 endif()
+
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   add_compile_definitions(ENABLE_LANGUAGE_INTEROP_OPS)
 endif()
@@ -231,8 +230,11 @@ endif()
 if (NOT (onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING))
   set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OFF)
 endif()
+
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   add_compile_definitions(ENABLE_TRAINING_TORCH_INTEROP)
+  # disable tests because executable projects need link to python so which did not always exist for test envs.
+  set(onnxruntime_BUILD_UNIT_TESTS OFF)
 endif()
 
 # General C# properties
