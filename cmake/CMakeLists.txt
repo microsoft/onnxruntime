@@ -642,7 +642,7 @@ endif()
 #Need python to generate def file
 if(onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
   if(onnxruntime_ENABLE_PYTHON)
-    if(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OR onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    if(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
       find_package(Python 3.6 COMPONENTS Interpreter Development NumPy)
     else()
       find_package(Python 3.6 COMPONENTS Interpreter Development.Module NumPy)
