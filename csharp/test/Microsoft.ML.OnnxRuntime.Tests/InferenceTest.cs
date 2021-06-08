@@ -227,7 +227,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
-//#if USE_TENSORRT
+#if USE_TENSORRT
         [Fact]
         private void CanRunInferenceOnAModelWithTensorRT()
         {
@@ -330,7 +330,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 session.Run(container);
             }
         }
-//#endif
+#endif
 
         [Theory]
         [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, true)]
