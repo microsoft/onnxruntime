@@ -255,7 +255,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "d98bf0278d6f59a58271425963a8422ff48fe249",
+          "commitHash": "db78ac1d7716f56fc9f1b030b715f872f93964e4",
           "repositoryUrl": "https://github.com/nlohmann/json"
         },
         "comments": "git submodule at cmake/external/json"
