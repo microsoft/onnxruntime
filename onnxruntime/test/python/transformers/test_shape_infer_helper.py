@@ -24,6 +24,7 @@ class SymbolicShapeInferenceHelperTest(unittest.TestCase):
         return onnx.load_model(model_path)
 
     #TODO: use a static lightweight model for test
+    @pytest.mark.slow
     def test_bert_shape_infer_helper(self):
         model = self._load_onnx("bert-base-cased")
         shape_infer_helper = SymbolicShapeInferenceHelper(model)
