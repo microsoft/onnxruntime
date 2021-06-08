@@ -3639,7 +3639,7 @@ static void QuantizedEmbedLayerNormFusionFormat(const std::basic_string<ORTCHAR_
 }
 
 TEST_F(GraphTransformationTests, QuantizedEmbedLayerNormFusionTest) {
-  QuantizedEmbedLayerNormFusionFormat(MODEL_FOLDER "fusion/embed_layer_norm_format3.onnx", logger_.get());
+  QuantizedEmbedLayerNormFusionFormat(MODEL_FOLDER "fusion/embed_layer_norm_format3_opt.quant.onnx", logger_.get());
 }
 
 TEST_F(GraphTransformationTests, DynamicQuantizeMatMulTest) {

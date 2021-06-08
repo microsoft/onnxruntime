@@ -6,10 +6,6 @@
 
 namespace onnxruntime {
 
-//
-// TODO(kreeger): write me!
-//
-
 Status QuantizedEmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
 
@@ -20,6 +16,10 @@ Status QuantizedEmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, in
       // This node was removed as part of an earlier fusion?
       continue;
     }
+
+    //
+    // TODO(kreeger): LEFT OFF RIGHT HERE. NEED TO WRITE THIS FUNCTION!
+    //
 
     Node& layer_norm_node = *p_layer_norm;
     ORT_RETURN_IF_ERROR(Recurse(layer_norm_node, modified, graph_level, logger));
