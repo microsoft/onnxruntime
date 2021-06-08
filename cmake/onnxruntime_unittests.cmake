@@ -87,8 +87,14 @@ function(AddTest)
   set(TEST_ARGS)
   if (onnxruntime_GENERATE_TEST_REPORTS)
     # generate a report file next to the test program
-    list(APPEND TEST_ARGS
-      "--gtest_output=xml:$<SHELL_PATH:$<TARGET_FILE:${_UT_TARGET}>.$<CONFIG>.results.xml>")
+    if (onnxruntime_BUILD_WEBASSEMBLY)
+      # WebAssembly use a memory file system, so we do not use full path
+      list(APPEND TEST_ARGS
+        "--gtest_output=xml:$<TARGET_FILE_NAME:${_UT_TARGET}>.$<CONFIG>.results.xml")
+    else()
+      list(APPEND TEST_ARGS
+        "--gtest_output=xml:$<SHELL_PATH:$<TARGET_FILE:${_UT_TARGET}>.$<CONFIG>.results.xml>")
+    endif()
   endif(onnxruntime_GENERATE_TEST_REPORTS)
 
   if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
@@ -130,13 +136,23 @@ function(AddTest)
 
     xctest_add_test(xctest.${_UT_TARGET} ${_UT_TARGET}_xc)
   else()
-    if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    if (onnxruntime_BUILD_WEBASSEMBLY)
       find_program(NODE_EXECUTABLE node required)
       if (NOT NODE_EXECUTABLE)
         message(FATAL_ERROR "Node is required for unit tests")
       endif()
+
+      set(TEST_NODE_FLAGS)
+      if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+        list(APPEND TEST_NODE_FLAGS "--experimental-wasm-threads")
+        list(APPEND TEST_NODE_FLAGS "--experimental-wasm-bulk-memory")
+      endif()
+      if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+        list(APPEND TEST_NODE_FLAGS "--experimental-wasm-simd")
+      endif()
+
       add_test(NAME ${_UT_TARGET}
-        COMMAND ${NODE_EXECUTABLE} --experimental-wasm-threads --experimental-wasm-bulk-memory ${_UT_TARGET}.js ${TEST_ARGS}
+        COMMAND ${NODE_EXECUTABLE} ${TEST_NODE_FLAGS} ${_UT_TARGET}.js ${TEST_ARGS}
         WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
       )
     else()
@@ -663,10 +679,10 @@ if (onnxruntime_USE_ROCM)
   target_include_directories(onnxruntime_test_all PRIVATE  ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
 endif()
 if (onnxruntime_BUILD_WEBASSEMBLY)
+  set_target_properties(onnxruntime_test_all PROPERTIES LINK_DEPENDS ${TEST_SRC_DIR}/wasm/dump-test-result-in-nodejs.js)
+  set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 --pre-js \"${TEST_SRC_DIR}/wasm/dump-test-result-in-nodejs.js\" -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1")
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-    set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s USE_PTHREADS=1 -s PROXY_TO_PTHREAD=1 -s EXIT_RUNTIME=1")
-  else()
-    set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1")
+    set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s USE_PTHREADS=1 -s PROXY_TO_PTHREAD=1")
   endif()
 endif()
 

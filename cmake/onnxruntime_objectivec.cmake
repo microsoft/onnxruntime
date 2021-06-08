@@ -42,14 +42,8 @@ set(OBJC_ROOT "${REPO_ROOT}/objectivec")
 # onnxruntime_objc target
 
 # these headers are the public interface
-# explicitly list them here so it is easy to see what is included
-set(onnxruntime_objc_headers
-    "${OBJC_ROOT}/include/onnxruntime.h"
-    "${OBJC_ROOT}/include/ort_enums.h"
-    "${OBJC_ROOT}/include/ort_env.h"
-    "${OBJC_ROOT}/include/ort_session.h"
-    "${OBJC_ROOT}/include/ort_value.h"
-    )
+file(GLOB onnxruntime_objc_headers CONFIGURE_DEPENDS
+    "${OBJC_ROOT}/include/*.h")
 
 file(GLOB onnxruntime_objc_srcs CONFIGURE_DEPENDS
     "${OBJC_ROOT}/src/*.h"
@@ -68,8 +62,14 @@ target_include_directories(onnxruntime_objc
     PUBLIC
         "${OBJC_ROOT}/include"
     PRIVATE
-        "${ONNXRUNTIME_ROOT}/include/onnxruntime/core/session"
+        "${ONNXRUNTIME_INCLUDE_DIR}/core/session"
         "${OBJC_ROOT}")
+
+if(onnxruntime_USE_COREML)
+    target_include_directories(onnxruntime_objc
+        PRIVATE
+            "${ONNXRUNTIME_INCLUDE_DIR}/core/providers/coreml")
+endif()
 
 find_library(FOUNDATION_LIB Foundation REQUIRED)
 
