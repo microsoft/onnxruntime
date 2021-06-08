@@ -8,7 +8,6 @@ import {WebGLInferenceHandler} from '../inference-handler';
 
 export class WebGLShape extends Shape {
   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
-    const shape = inputs[0].dims.slice(0);
-    return [new Tensor([shape.length], 'int32', undefined, undefined, new Int32Array(shape))];
+    return [new Tensor([inputs[0].dims.length], 'int32', undefined, undefined, new Int32Array(inputs[0].dims))];
   }
 }

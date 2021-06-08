@@ -1,6 +1,6 @@
 [
   {
-    "name": "Reshape with '0' and '-1' in the shape tensor input",
+    "name": "Shape op test",
     "operator": "Shape",
     "attributes": [],
     "cases": [
