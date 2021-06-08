@@ -4,7 +4,7 @@
 import * as fs from 'fs-extra';
 import * as path from 'path';
 
-import {InferenceSession, Tensor} from '../lib';
+import {InferenceSession, Tensor} from 'onnxruntime-common';
 
 import {assertTensorEqual, loadTensorFromFile, shouldSkipModel} from './test-utils';
 
