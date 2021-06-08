@@ -4,7 +4,7 @@ The API should be documented with comments in the [public header files](../inclu
 
 ## Documentation Generation
 
-The [jazzy](https://github.com/realm/jazzy) tool is used to generate documentation from the code.
+The [Jazzy](https://github.com/realm/jazzy) tool is used to generate documentation from the code.
 
 For example, to generate documentation for a release version, from the repo root, run:
 
