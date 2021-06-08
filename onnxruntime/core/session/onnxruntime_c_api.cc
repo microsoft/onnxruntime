@@ -2003,7 +2003,6 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptions, _Inout_ OrtAllocator* a
 
 ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptions* ptr) {
   ORT_UNUSED_PARAMETER(ptr);
-  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
 }
 #endif
 
