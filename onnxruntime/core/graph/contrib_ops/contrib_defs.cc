@@ -2614,9 +2614,8 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           "T1",
           {"tensor(float16)",
            "tensor(float)",
-           "tensor(double)",
-           "tensor(bfloat16)"},
-           "Constrain input types to float tensors.")
+           "tensor(double)"},
+          "Constrain input types to float tensors.")
       .TypeConstraint(
           "T2",
           {"tensor(float16)",
@@ -2634,70 +2633,38 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
            "tensor(bool)"},
           "Constrain output types to all numeric tensors and bool tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          if (ctx.getAttribute("dtype") != nullptr)
-            propagateElemTypeFromAttributeToOutput(ctx, "dtype", 0);
-          else
-            propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          if (!hasNInputShapes(ctx, 1)) {
-            return;
-          }
-          propagateShapeFromInputToOutput(ctx, 0, 0);
-        })
+        if (ctx.getAttribute("dtype") != nullptr)
+          propagateElemTypeFromAttributeToOutput(ctx, "dtype", 0);
+        else
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        if (!hasNInputShapes(ctx, 1)) {
+          return;
+        }
+        propagateShapeFromInputToOutput(ctx, 0, 0);
+      })
       .SetContextDependentFunctionBodyBuilder(
           [](const FunctionBodyBuildContext& ctx,
-              const OpSchema& schema,
-              FunctionProto& functionProto) {
+             const OpSchema& schema,
+             FunctionProto& functionProto) {
             if (ctx.getInputType(0) == nullptr) {
               // we cannot create a correct function body without knowing the input type
               return false;
             }
             auto input_type = (ONNX_NAMESPACE::TensorProto_DataType)ctx.getInputType(0)->tensor_type().elem_type();
             auto dtype = ctx.getAttribute("dtype") != nullptr
-            ? static_cast<TensorProto_DataType>(ctx.getAttribute("dtype")->i())
-            : input_type;
+                             ? static_cast<TensorProto_DataType>(ctx.getAttribute("dtype")->i())
+                             : input_type;
             auto seed_attr = ctx.getAttribute("seed");
-            int seed = (seed_attr != nullptr) ? seed_attr->i() : 0;
             std::vector<FunctionBodyHelper::NodeDef> body{
-                {
-                    {"X_greater"},
-                    "Greater",
-                    {"X_random", "input"}
-                },
-                {
-                    {"output"},
-                    "Cast",
-                    {"X_greater"},
-                    {MakeAttribute("to", (int64_t)(dtype))}
-                }
-              };
-            if (seed_attr)
-              body.insert(
-                body.begin(), 
-                {
-                    {"X_random"},
-                    "RandomUniformLike",
-                    {"input"},
-                    {
-                        MakeAttribute("high", 1.0f),
-                        MakeAttribute("low", 0.f),
-                        MakeAttribute("seed", (float)seed),
-                        MakeAttribute("dtype", (int64_t)(dtype))
-                    }
-                });
-            else
-                body.insert(
-                body.begin(), 
-                {
-                    {"X_random"},
-                    "RandomUniformLike",
-                    {"input"},
-                    {
-                        MakeAttribute("high", 1.0f),
-                        MakeAttribute("low", 0.f),
-                        MakeAttribute("dtype", (int64_t)(dtype))
-                    }
-                });
+                {{"X_greater"}, "Greater", {"X_random", "input"}},
+                {{"output"}, "Cast", {"X_greater"}, {MakeAttribute("to", (int64_t)(dtype))}}};
 
+            if (seed_attr != nullptr) {
+              int seed = seed_attr->i();
+              body.insert(body.begin(), {{"X_random"}, "RandomUniformLike", {"input"}, {MakeAttribute("high", 1.0f), MakeAttribute("low", 0.f), MakeAttribute("seed", (float)seed), MakeAttribute("dtype", (int64_t)(input_type))}});
+            } else {
+              body.insert(body.begin(), {{"X_random"}, "RandomUniformLike", {"input"}, {MakeAttribute("high", 1.0f), MakeAttribute("low", 0.f), MakeAttribute("dtype", (int64_t)(input_type))}});
+            }
             OperatorSetIdProto onnx_opset_13;
             onnx_opset_13.set_domain("");
             onnx_opset_13.set_version(13);

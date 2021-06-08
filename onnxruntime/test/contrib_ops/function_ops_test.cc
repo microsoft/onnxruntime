@@ -109,13 +109,18 @@ TEST_F(ContribFunExpansionTest, FastGeluWithoutBias) {
 }
 
 template <typename T, bool RunTest = true>
-void CheckBernoulli() {
+void CheckBernoulli(bool withDtype = false) {
   FunctionTestCase testCase("Bernoulli", kMSDomain);
   std::vector<int64_t> shape{8, 12};
 
   testCase.AddInput<T, RunTest>("x", shape);
-  const int64_t seed = 42;
+  // the seed mush be specified to get the same result.
+  const int64_t seed = 0;
   testCase.AddAttribute("seed", seed);
+  if (withDtype) {
+    const int64_t dtype = 1;
+    testCase.AddAttribute("dtype", dtype);
+  }
   testCase.AddOutput("y");
 
   if (RunTest)
@@ -125,8 +130,13 @@ void CheckBernoulli() {
 }
 
 TEST_F(ContribFunExpansionTest, Bernoulli) {
-  CheckBernoulli<float>();
-  CheckBernoulli<double>();
+  CheckBernoulli<float>(false);
+  CheckBernoulli<double>(false);
+}
+
+TEST_F(ContribFunExpansionTest, BernoulliWithDtype) {
+  CheckBernoulli<float>(true);
+  CheckBernoulli<double>(true);
 }
 
 }  // namespace test
