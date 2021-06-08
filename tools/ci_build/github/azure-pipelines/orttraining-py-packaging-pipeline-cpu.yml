@@ -54,7 +54,7 @@ stages:
                   --enable_training \
                   --update \
                   --build \
-                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc  PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=/usr/lib64/librt.so ;                  
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc PYTHON_LIBRARY=/usr/lib64/librt.so ;
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
