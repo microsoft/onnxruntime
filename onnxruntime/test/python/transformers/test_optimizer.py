@@ -39,7 +39,7 @@ def _get_test_model_path(name):
     sub_dir, file = BERT_TEST_MODELS[name]
     if sub_dir == "FUSION":
         #return os.path.join('..', '..', '..', '..', 'test', 'testdata', 'transform', 'fusion', file)
-        return os.path.join('..', 'testdata', 'transform', 'fusion', file)
+        return os.path.join('testdata', 'transform', 'fusion', file)
     else:
         return os.path.join('test_data', sub_dir, file)
 
