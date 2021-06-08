@@ -1516,8 +1516,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                             'numpy==1.19.2', 'coloredlogs==15.0', 'tf2onnx==1.8.5', 'transformers==4.6.1',
                             'torch==1.8.1', 'tensorflow==2.5.0', 'onnxconverter-common==1.8.1', 'psutil'}
                         run_subprocess([sys.executable, '-m', 'pip', 'install', *required])
-                        run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'transformers'],
-                                       cwd=cwd, dll_path=dll_path)
+                        run_subprocess([sys.executable, '-m', 'pytest', 'transformers'])
 
                 if not args.disable_ml_ops:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_backend_mlops.py'],
