@@ -5,7 +5,7 @@ from onnx import TensorProto
 # CoreML EP currently handles a special case for supporting ArgMax op
 # Please see in <repo_root>/onnxruntime/core/providers/coreml/builders/impl/argmax_op_builder.cc and
 # <repo_root>/onnxruntime/core/providers/coreml/builders/impl/cast_op_builder.cc
-# We have a separated test for this special case: An ArgMax followed by a Cast to int32 type
+# We have this separated test script to generate graph for the case: An ArgMax followed by a Cast to int32 type
 
 
 def GenerateModel(model_name):
@@ -16,19 +16,15 @@ def GenerateModel(model_name):
                          "Y"], "cast", to=6),  # cast to int32 type
     ]
 
-    input = [
-        helper.make_tensor_value_info('X', TensorProto.FLOAT, [3, 2, 2]),
-    ]
-
-    output = [
-        helper.make_tensor_value_info('Y', TensorProto.INT32, [3, 1, 2]),
-    ]
-
     graph = helper.make_graph(
         nodes,
         "CoreML_ArgMax_Cast_Test",
-        input,
-        output
+        [  # input
+            helper.make_tensor_value_info('X', TensorProto.FLOAT, [3, 2, 2]),
+        ],
+        [  # output
+            helper.make_tensor_value_info('Y', TensorProto.INT32, [3, 1, 2]),
+        ]
     )
 
     model = helper.make_model(graph)

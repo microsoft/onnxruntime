@@ -2174,9 +2174,11 @@ TEST(ReductionOpTest, ArgMax2D_dim1) {
 }
 
 // CoreML EP currently handles a special case for supporting ArgMax op:
-// An ArgMax followed by a Cast to int32 type
+// An ArgMax followed by a Cast to int32 type. 
 // Please see in <repo_root>/onnxruntime/core/providers/coreml/builders/impl/argmax_op_builder.cc
 // and /cast_op_builder.cc. We have the following UT test here for this special case
+// This test case can also be shared later if we want to support similar cases in NNAPI
+#ifdef USE_COREML
 TEST(ReductionOpTest, ArgMax_Cast) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/coreml_argmax_cast_test.onnx");
 
@@ -2204,6 +2206,7 @@ TEST(ReductionOpTest, ArgMax_Cast) {
                             std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
                             feeds);
 }
+#endif
 
 TEST(ReductionOpTest, ArgMin) {
   OpTester test("ArgMin");
