@@ -44,15 +44,8 @@ set(OBJC_ARC_COMPILE_OPTIONS "-fobjc-arc" "-fobjc-arc-exceptions")
 # onnxruntime_objc target
 
 # these headers are the public interface
-# explicitly list them here so it is easy to see what is included
-set(onnxruntime_objc_headers
-    "${OBJC_ROOT}/include/onnxruntime.h"
-    "${OBJC_ROOT}/include/ort_coreml_execution_provider.h"
-    "${OBJC_ROOT}/include/ort_enums.h"
-    "${OBJC_ROOT}/include/ort_env.h"
-    "${OBJC_ROOT}/include/ort_session.h"
-    "${OBJC_ROOT}/include/ort_value.h"
-    )
+file(GLOB onnxruntime_objc_headers CONFIGURE_DEPENDS
+    "${OBJC_ROOT}/include/*.h")
 
 file(GLOB onnxruntime_objc_srcs CONFIGURE_DEPENDS
     "${OBJC_ROOT}/src/*.h"
