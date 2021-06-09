@@ -8,6 +8,10 @@
 
 using namespace ::onnxruntime::common;
 
+namespace ONNX_NAMESPACE {
+extern void TestFtoH();
+}
+
 namespace onnxruntime {
 namespace test {
 
