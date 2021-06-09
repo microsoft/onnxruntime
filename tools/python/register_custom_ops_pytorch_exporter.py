@@ -4,6 +4,7 @@
 # Register pytorch symbolic for export using ONNX Runtime contrib ops
 
 from torch.onnx import register_custom_op_symbolic
+import torch.onnx.symbolic_helper as sym_help
 from torch.onnx.symbolic_helper import parse_args, _get_tensor_dim_size, _get_tensor_sizes
 
 
@@ -54,6 +55,34 @@ def register_custom_op(is_ortmodule=False):
             return output
 
         register_custom_op_symbolic('::embedding', embedding, _onnx_opset_version)
+
+        @parse_args('v', 'v', 'v', 'i', 'v')
+        def cross_entropy_loss(g, self, target, weight, reduction, ignore_index):
+            # reduction: 0->none, 1->mean, 2->sum
+            reduction = sym_help._maybe_get_const(reduction, 'i')
+            reduction_vals = ['none', 'mean', 'sum']
+            reduction = reduction_vals[reduction]
+            output, log_prob = g.op("com.microsoft::SoftmaxCrossEntropyLossInternal",
+                                    self, target, weight, ignore_index,
+                                    reduction_s=reduction, outputs=2)
+            output.setType(self.type())
+            log_prob.setType(self.type())
+            return output
+
+        register_custom_op_symbolic('::cross_entropy_loss', cross_entropy_loss, _onnx_opset_version)
+
+        @parse_args('v', 'v', 'v', 'i', 'v')
+        def nll_loss(g, self, target, weight, reduction, ignore_index):
+            # reduction: 0->none, 1->mean, 2->sum
+            reduction = sym_help._maybe_get_const(reduction, 'i')
+            reduction_vals = ['none', 'mean', 'sum']
+            reduction = reduction_vals[reduction]
+            output = g.op("com.microsoft::NegativeLogLikelihoodLossInternal",
+                          self, target, weight, ignore_index, reduction_s=reduction)
+            output.setType(self.type())
+            return output
+
+        register_custom_op_symbolic('::nll_loss', nll_loss, _onnx_opset_version)
 
         @parse_args('v', 'is', 'is', 'is', 'is', 'b')
         def max_pool2d(g, self, kernel_size, stride, padding, dilation, ceil_mode):
