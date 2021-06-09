@@ -122,6 +122,8 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Pad", V_2020_4, {"All"}},
     {"Pow", V_2020_4, {"All"}},
     {"PRelu", V_2020_4, {"All"}},
+    {"QuantizeLinear", V_2021_4, {"CPU", "GPU"}},
+    {"DequantizeLinear", V_2021_4, {"CPU", "GPU"}},
     {"Range", V_2021_2, {"MYRIAD"}},
     {"Reciprocal", V_2020_4, {"All"}},
     {"ReduceLogSum", V_2020_4, {"CPU", "MYRIAD"}},
@@ -171,6 +173,8 @@ void DataOps::populate_types_supported() {
   supported_types_initializer_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32));
   supported_types_initializer_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64));
   supported_types_initializer_.insert(std::make_pair(V_2021_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16));
+  supported_types_initializer_.insert(std::make_pair(V_2021_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8));
+  supported_types_initializer_.insert(std::make_pair(V_2021_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8));
 
   supported_types_vpu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL));
   supported_types_vpu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
@@ -322,7 +326,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Clip", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3},
                              [this](const Node* node, const InitializedTensorSet& initializers) {
                                if (GetInputCount(node, initializers) > 1)
                                  return true;
@@ -331,10 +335,24 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Conv", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_4},
+                             [this](const Node*, const InitializedTensorSet& ) {
+                               return false;
+                             }};
+    op_list_.insert({"Conv", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3},
                              [this](const Node* node, const InitializedTensorSet& initializers) {
                                if (GetInputCount(node, initializers) > 1)
                                  return true;
+                               return false;
+                             }};
+    op_list_.insert({"ConvTranspose", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2021_4},
+                             [this](const Node* , const InitializedTensorSet& ) {
                                return false;
                              }};
     op_list_.insert({"ConvTranspose", obj});
