@@ -318,6 +318,7 @@ class InferenceSession(Session):
             disabled_optimizers = set(disabled_optimizers)
 
         # initialize the C++ InferenceSession
+        print('provider_options = {}'.format(provider_options))
         sess.initialize_session(providers, provider_options, disabled_optimizers)
 
         self._sess = sess
