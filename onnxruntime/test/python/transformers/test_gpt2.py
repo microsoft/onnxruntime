@@ -16,7 +16,7 @@ import pytest
 
 class TestGpt2(unittest.TestCase):
     def run_benchmark_gpt2(self, arguments: str):
-        from benchmark_gpt2 import parse_arguments, main
+        from onnxruntime.transformers.benchmark_gpt2 import parse_arguments, main
         args = parse_arguments(arguments.split())
         csv_filename = main(args)
         self.assertTrue(os.path.exists(csv_filename))
