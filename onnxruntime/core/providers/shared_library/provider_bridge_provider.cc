@@ -452,7 +452,7 @@ Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, 
   return g_host->AttentionBase__GetPresent(this, context, past, batch_size, head_size, sequence_length, past_sequence_length);
 }
 
-}  // namespace contrib
+}
 #endif
 
 void If::Init(const OpKernelInfo& info) { g_host->If__Init(this, info); }
