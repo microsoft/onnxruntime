@@ -53,8 +53,7 @@ jobs:
     - name: args
       value: $(runenv) -e "$(ep_list)"
     - name: extra
-      value: conda init bash && conda activate perf37 && 
-      #bin/sh /home/hcsuser/perf/conda_init.sh
+      value: eval "$(command conda 'shell.bash' 'hook' 2> /dev/null)" && conda activate perf37 &&
   timeoutInMinutes: 3000 
       
   steps:
