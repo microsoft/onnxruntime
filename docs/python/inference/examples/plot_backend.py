@@ -25,6 +25,7 @@ from onnx import load
 # GPU or CPU.
 from onnxruntime import get_device
 device = get_device()
+print('DEVICE = {}'.format(device))
 
 name = datasets.get_example("logreg_iris.onnx")
 model = load(name)
