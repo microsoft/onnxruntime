@@ -82,10 +82,6 @@ Status QuantizedEmbedLayerNormFusion::ApplyImpl(Graph& graph,
       continue;
     }
 
-    // Node edges are inputs to the operator.
-    if (edges.size() > 0) {
-    }
-
     // 2.) Find the "DequantizeLinear" Node for the position embedding:
     // 3.) Find the "DequantizeLinear" Node for the segment embedding:
     // 4.) Find the "DequantizeLinear" Node for the word embedding:
