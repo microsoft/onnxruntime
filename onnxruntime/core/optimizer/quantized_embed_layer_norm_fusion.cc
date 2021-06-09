@@ -53,34 +53,14 @@ Status QuantizedEmbedLayerNormFusion::ApplyImpl(Graph& graph,
       printf("  - input_arg: %s\n", input_arg->Name().c_str());
     }
 
+    // GetInputNode TODO - use this API.
+
     // Find and assing the 
     //Node* p_word_dequantize_node = nullptr;
     //Node* p_position_dequantize_node = nullptr;
     //Node* p_segment_dequantize_node = nullptr;
 
-    auto node_inputs_begin = node->InputNodesBegin();
-    auto node_inputs_end = node->InputNodesEnd();
-    for (auto it = node_inputs_begin; it != node_inputs_end; ++it) {
-      if (it->OpType().compare("DequantizeLinear") == 0) {
-        if (it->Index() == 2) {
-        }
-      }
-    }
-
-    std::vector<graph_utils::EdgeEndToMatch> dequantize_inputs_edges{
-        {0, 2, "DequantizeLinear", {10, 13}, ""},
-        {0, 3, "DequantizeLinear", {10, 13}, ""},
-        {0, 4, "DequantizeLinear", {10, 13}, ""},
-    };
-
-    std::vector<const Node::EdgeEnd*> edges;
-    if (!graph_utils::FindPath(*node,
-                               /*is_input_edge=*/true,
-                               dequantize_inputs_edges,
-                               edges,
-                               logger)) {
-      continue;
-    }
+    // Get the parent nodes of the dequantizelinear
 
     // 2.) Find the "DequantizeLinear" Node for the position embedding:
     // 3.) Find the "DequantizeLinear" Node for the segment embedding:

@@ -5,6 +5,10 @@ from onnx import onnx_pb as onnx_proto
 Quantize EmbedLayerNormalization
 '''
 
+#
+# TODO - consider using this class instead.
+#
+
 
 class EmbedLayerNormalizationQuant(QuantOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
