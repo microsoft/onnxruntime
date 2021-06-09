@@ -80,6 +80,10 @@ if (onnxruntime_ENABLE_TRAINING)
   target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_training)
 endif()
 
+if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_interop_torch)
+endif()
+
 target_link_libraries(onnxruntime_pybind11_state PRIVATE 
     onnxruntime_session
     ${onnxruntime_libs}
@@ -107,10 +111,6 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_language_interop onnxruntime_pyop)
-endif()
-
-if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_interop_torch)
 endif()
 
 set(onnxruntime_pybind11_state_dependencies
