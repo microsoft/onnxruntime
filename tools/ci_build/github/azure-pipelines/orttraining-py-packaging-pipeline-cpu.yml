@@ -36,7 +36,7 @@ stages:
         inputs:
           script: |
             mkdir -p $HOME/.onnx
-            docker run --rm -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
+            docker run --rm \
               --volume /data/onnx:/data/onnx:ro \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
@@ -53,8 +53,7 @@ stages:
                   --build_wheel \
                   --enable_training \
                   --update \
-                  --build \
-                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc PYTHON_INCLUDE_DIR=/opt/python/cp36-cp36m/include/python3.6m PYTHON_LIBRARY=/usr/lib64/librt.so ;
+                  --build ;
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
