@@ -627,6 +627,40 @@ def test_gradient_correctness_embedding(device, padding_idx):
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-5)
 
+@pytest.mark.parametrize("use_fp16", [False, True])
+def test_gradient_correctness_cross_entropy_loss(use_fp16):
+    class NeuralNetCrossEntropyLoss(torch.nn.Module):
+        def __init__(self, num_embeddings, embedding_dim):
+            super(NeuralNetCrossEntropyLoss, self).__init__()
+            self.embedding = torch.nn.Embedding(num_embeddings, embedding_dim, padding_idx=1)
+
+        def forward(self, input, positions):
+            output = torch.transpose(self.embedding(input), 0, 1)
+            ignored_index = output.size(1)
+            loss_fct = torch.nn.CrossEntropyLoss(ignore_index=ignored_index)
+            return loss_fct(output, positions)
+
+    device = 'cuda'
+    num_embeddings, embedding_dim = 32, 128
+    pt_model = NeuralNetCrossEntropyLoss(num_embeddings, embedding_dim).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input, positions):
+        with amp.autocast(use_fp16):
+            loss = model(input, positions)
+        loss.backward()
+        return loss
+
+    for _ in range(10):
+        N = random.randint(16, 32)
+        input = torch.randint(high=num_embeddings, size=(N,), dtype=torch.int64, device=device)
+        positions = torch.randint(high=N, size=(embedding_dim,), dtype=torch.int64, device=device)
+        pt_prediction = run_step(pt_model, input, positions)
+        ort_prediction = run_step(ort_model, input, positions)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-5)
+
 def test_gradient_correctness_maxpool2d():
     class NeuralNetMaxPool2d(torch.nn.Module):
         def __init__(self):
