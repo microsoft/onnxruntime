@@ -197,9 +197,9 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
         return false;
       }
 
-      if (params.android_sdk_ver < ANEURALNETWORKS_FEATURE_LEVEL_3) {
+      if (params.android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
         LOGS_DEFAULT(VERBOSE) << op_type << " only supports per-channel quantization on Android API 29+, "
-                              << "system API level: " << params.android_sdk_ver;
+                              << "system NNAPI feature level: " << params.android_feature_level;
         return false;
       }
 
@@ -476,9 +476,11 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name) {
 
 std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
   std::vector<std::vector<size_t>> supported_node_groups;
-  if (params.android_sdk_ver < ORT_NNAPI_MIN_API_LEVEL) {
-    LOGS_DEFAULT(WARNING) << "All ops will fallback to CPU EP, because Android API level [" << params.android_sdk_ver
-                          << "] is lower than minimal supported API level [" << ORT_NNAPI_MIN_API_LEVEL
+  if (params.android_feature_level < ORT_NNAPI_MIN_API_LEVEL) {
+    LOGS_DEFAULT(WARNING) << "All ops will fallback to CPU EP, because system NNAPI feature level ["
+                          << params.android_feature_level
+                          << "] is lower than minimal supported NNAPI API feature level ["
+                          << ORT_NNAPI_MIN_API_LEVEL
                           << "] of this build for NNAPI";
     return supported_node_groups;
   }

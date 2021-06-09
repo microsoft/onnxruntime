@@ -143,7 +143,7 @@ option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_MEMORY_PROFILE "Enable memory profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_OPS "Include training operators but no training session support." OFF)
-option(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP "Enable training kernels interop with torch." ON)
+option(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP "Enable training kernels interop with torch." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON)
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
@@ -221,9 +221,8 @@ set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
 if(NOT onnxruntime_ENABLE_PYTHON)
   set(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OFF)
-else()
-  add_compile_definitions(ENABLE_PYTHON)
 endif()
+
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   add_compile_definitions(ENABLE_LANGUAGE_INTEROP_OPS)
 endif()
@@ -231,8 +230,11 @@ endif()
 if (NOT (onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING))
   set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OFF)
 endif()
+
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   add_compile_definitions(ENABLE_TRAINING_TORCH_INTEROP)
+  # disable tests because executable projects need link to python so which did not always exist for test envs.
+  set(onnxruntime_BUILD_UNIT_TESTS OFF)
 endif()
 
 # General C# properties
@@ -622,10 +624,6 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     set_target_properties(gmock_main PROPERTIES FOLDER "External/GTest")
     set_target_properties(gtest PROPERTIES FOLDER "External/GTest")
     set_target_properties(gtest_main PROPERTIES FOLDER "External/GTest")
-    add_library(GTest::gmock ALIAS gmock)
-    add_library(GTest::gmock_main ALIAS gmock_main)
-    add_library(GTest::gtest ALIAS gtest)
-    add_library(GTest::gtest_main ALIAS gtest_main)
   endif()
 endif()
 
@@ -640,7 +638,7 @@ endif()
 #Need python to generate def file
 if(onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
   if(onnxruntime_ENABLE_PYTHON)
-    if(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OR onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    if(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
       find_package(Python 3.6 COMPONENTS Interpreter Development NumPy)
     else()
       find_package(Python 3.6 COMPONENTS Interpreter Development.Module NumPy)
@@ -909,8 +907,9 @@ else()
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers
-#The list of legacy providers that have not been converted to dynamic loading
-#But DNNL is an exception, it still needs be here.
+#ONNXRUNTIME_PROVIDER_NAMES is the list of providers that needs to export additional symbols in the global namespace. 
+#For example CUDA EP exports "OrtSessionOptionsAppendExecutionProvider_CUDA", which is a global function.
+#However, all these things are legacy and deprecated and should be replaced with functions in onnxruntime_c_api.h.
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)
 
 set(ORT_PROVIDER_FLAGS)
@@ -933,6 +932,7 @@ if (onnxruntime_USE_DNNL)
 endif()
 if (onnxruntime_USE_OPENVINO)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_OPENVINO=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES openvino)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_OPENVINO=1)
 endif()
 if (onnxruntime_USE_TENSORRT)
