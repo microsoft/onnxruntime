@@ -1807,11 +1807,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
 
   std::vector<ArgDef> output_args;
   for (int i = 0; i < GetSrcNodeInputSize(); ++i) {
-    // output_args[i] is typed to output_types[i].
-    if (output_tensor_types.at(i) == 9) {
-      output_args.push_back(ArgDef());
-    } else {
+    if (output_tensor_requires_grads[i]) {
       output_args.push_back(GI(i));
+    } else {
+      output_args.push_back(ArgDef());
     }
   }
 

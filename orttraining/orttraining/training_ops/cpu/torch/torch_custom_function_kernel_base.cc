@@ -258,11 +258,11 @@ void PythonOpGradBase::RunBackward(OpKernelContext* context,
 
 void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) const {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
-  auto outputs_count = static_cast<size_t>(ctx_internal->OutputCount());
-  // It's possible that Pytorch returns None as gradient and ORT Python side may skip them.
-  // In that case, returned_args may contain less arguments.
-  outputs_count = outputs_count > returned_ortvalues.size() ? returned_ortvalues.size() : outputs_count;
+  const auto outputs_count = static_cast<size_t>(ctx_internal->OutputCount());
   for (size_t i = 0; i < outputs_count; ++i) {
+    if (!output_tensor_requires_grads_[i]) {
+      continue;
+    }
     ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(static_cast<int>(i), returned_ortvalues.at(i)));
   }
 }
