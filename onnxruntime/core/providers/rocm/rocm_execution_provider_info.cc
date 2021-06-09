@@ -30,6 +30,7 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
   void* alloc = nullptr;
   void* free = nullptr;
 
+  printf("creating rocm ep on device id %d\n", options[kDeviceId]);
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(

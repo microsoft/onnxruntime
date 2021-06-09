@@ -18,8 +18,8 @@ export PYTHONPATH=$3/$4:$PYTHONPATH
 rm -rf $3/docs/
 
 # Inference doc
-# $1/python -m sphinx -j1 -v -T -b html -d $3/docs/inference/_doctrees/html $2/docs/python/inference $3/docs/inference/html
-# $1/python -u $2/tools/doc/rename_folders.py $3/docs/inference/html
+$1/python -m sphinx -j1 -v -T -b html -d $3/docs/inference/_doctrees/html $2/docs/python/inference $3/docs/inference/html
+$1/python -u $2/tools/doc/rename_folders.py $3/docs/inference/html
 # (cd $3/docs/inference/html && zip -r $3/docs/python_inference_doc.zip .)
 
 # Training doc
