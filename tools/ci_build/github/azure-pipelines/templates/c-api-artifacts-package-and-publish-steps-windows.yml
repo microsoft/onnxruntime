@@ -36,6 +36,8 @@ steps:
 
           echo "Directories created"            
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_shared.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_cuda.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.lib $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.SourcesDirectory)\include\onnxruntime\core\session\onnxruntime_*.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
