@@ -84,7 +84,7 @@ if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_interop_torch)
 endif()
 
-target_link_libraries(onnxruntime_pybind11_state PRIVATE 
+target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_MIGRAPHX}
@@ -234,6 +234,12 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   file(GLOB onnxruntime_python_dhp_parallel_test_srcs CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/test/python/dhp_parallel/*.py"
   )
+  file(GLOB onnxruntime_python_transformers_test_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/test/python/transformers/*.py"
+  )
+  file(GLOB onnxruntime_python_transformers_testdata_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/test/python/transformers/test_data/models/*.onnx"
+  )
 endif()
 
 file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
@@ -293,6 +299,8 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/checkpoint
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/dhp_parallel
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/quantization
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
@@ -358,7 +366,7 @@ add_custom_command(
       $<TARGET_FILE_DIR:${build_output_target}>
 )
 
-if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD 
+if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
                                   AND NOT onnxruntime_ENABLE_TRAINING
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
                                   AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
@@ -386,6 +394,12 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_dhp_parallel_test_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/dhp_parallel/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_transformers_test_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_transformers_testdata_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/
   )
 endif()
 

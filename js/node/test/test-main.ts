@@ -3,6 +3,9 @@
 
 import {NODE_TESTS_ROOT, warmup} from './test-utils';
 
+// require onnxruntime-node.
+require('..');
+
 // warmup
 //
 // for unknown reason, the first call to native InferenceSession::Run() is very slow.

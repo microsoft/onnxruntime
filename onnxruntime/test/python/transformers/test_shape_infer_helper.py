@@ -1,12 +1,14 @@
 import os
 import unittest
 import sys
+import pytest
+
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from onnx_exporter import export_onnx_model_from_pt
-from huggingface_models import MODELS
-from benchmark_helper import Precision
-from shape_infer_helper import *
+from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_pt
+from onnxruntime.transformers.huggingface_models import MODELS
+from onnxruntime.transformers.benchmark_helper import Precision
+from onnxruntime.transformers.shape_infer_helper import *
 
 
 class SymbolicShapeInferenceHelperTest(unittest.TestCase):
@@ -22,25 +24,23 @@ class SymbolicShapeInferenceHelperTest(unittest.TestCase):
         import onnx
         return onnx.load_model(model_path)
 
+    #TODO: use a static lightweight model for test
+    @pytest.mark.slow
     def test_bert_shape_infer_helper(self):
         model = self._load_onnx("bert-base-cased")
         shape_infer_helper = SymbolicShapeInferenceHelper(model)
         self.assertEqual(shape_infer_helper.infer({"batch_size": 4, "seq_len": 16}), True)
-        self.assertEqual(shape_infer_helper.get_edge_shape("802"), [4, 16, 768])
-        self.assertEqual(shape_infer_helper.get_edge_shape("804"), [4, 16, 1])
-        self.assertEqual(shape_infer_helper.get_edge_shape("1748"), [])
+        self.assertEqual(shape_infer_helper.get_edge_shape("802"), [])
+        self.assertEqual(shape_infer_helper.get_edge_shape("804"), [4, 16, 3072])
+        self.assertEqual(shape_infer_helper.get_edge_shape("1748"), [1])
         self.assertEqual(shape_infer_helper.get_edge_shape("encoder.layer.4.attention.output.LayerNorm.weight"), [768])
-        self.assertEqual(shape_infer_helper.get_edge_shape("1749"), [768, 3072])
-        self.assertEqual(shape_infer_helper.get_edge_shape("817"), [4, 16, 3072])
+        self.assertEqual(shape_infer_helper.get_edge_shape("817"), [4, 16, 1])
         self.assertEqual(shape_infer_helper.get_edge_shape("encoder.layer.4.intermediate.dense.bias"), [3072])
-        self.assertEqual(shape_infer_helper.get_edge_shape("1750"), [3072, 768])
-        self.assertEqual(shape_infer_helper.get_edge_shape("853"), [3])
-        self.assertEqual(shape_infer_helper.get_edge_shape("858"), [1])
-        self.assertEqual(shape_infer_helper.get_edge_shape("880"), [4, 16, 12, 64])
+        self.assertEqual(shape_infer_helper.get_edge_shape("880"), [4, 12, 16, 16])
 
-        self.assertEqual(shape_infer_helper.compare_shape("329", "253"), True)
-        self.assertEqual(shape_infer_helper.compare_shape("447", "371"), True)
-        self.assertEqual(shape_infer_helper.compare_shape("329", "817"), False)
+        self.assertEqual(shape_infer_helper.compare_shape("329", "253"), False)
+        self.assertEqual(shape_infer_helper.compare_shape("447", "371"), False)
+        self.assertEqual(shape_infer_helper.compare_shape("329", "817"), True)
         self.assertEqual(shape_infer_helper.compare_shape("447", "853"), False)
 
 

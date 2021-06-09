@@ -622,7 +622,18 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_DML(0));
+      int device_id = 0;
+      auto it = provider_options_map.find(type);
+      if (it != provider_options_map.end()) {
+        for (auto option : it->second) {
+          if (option.first == "device_id") {
+            if (!option.second.empty()) {
+              device_id = std::stoi(option.second);
+            }
+          }
+        }
+      }
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_DML(device_id));
 #endif
     } else if (type == kNnapiExecutionProvider) {
 #if defined(USE_NNAPI)
