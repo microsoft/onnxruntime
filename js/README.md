@@ -336,7 +336,7 @@ This project provides an ONNX Runtime React Native JavaScript library to run ONN
    2. Build ONNX Runtime library for iOS from `<ORT_ROOT>` using this command,
 
    ```sh
-   ./build.sh --config MinSizeRel --use_xcode --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target 11
+   ./build.sh --config MinSizeRel --use_xcode --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target 11 --apple_disable_bitcode
    ```
 
    Copy `<ORT_ROOT>/build/iOS/MinSizeRel/MinSizeRel-iphoneos/libonnxruntime.<version>.dylib` file into `<ORT_ROOT>/js/react_native/ios/Libraries/onnxruntime/lib/iphoneos`

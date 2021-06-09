@@ -56,7 +56,7 @@ public class TensorHelperTest {
     dims.pushInt(3);
     inputTensorMap.putArray("dims", dims);
 
-    inputTensorMap.putString("type", TensorHelper.TensorTypeFloat);
+    inputTensorMap.putString("type", TensorHelper.JsTensorTypeFloat);
 
     ByteBuffer dataByteBuffer = ByteBuffer.allocate(3 * 4).order(ByteOrder.nativeOrder());
     FloatBuffer dataFloatBuffer = dataByteBuffer.asFloatBuffer();
@@ -87,7 +87,7 @@ public class TensorHelperTest {
     dims.pushInt(3);
     inputTensorMap.putArray("dims", dims);
 
-    inputTensorMap.putString("type", TensorHelper.TensorTypeByte);
+    inputTensorMap.putString("type", TensorHelper.JsTensorTypeByte);
 
     ByteBuffer dataByteBuffer = ByteBuffer.allocate(3);
     dataByteBuffer.put(Byte.MIN_VALUE);
@@ -118,7 +118,7 @@ public class TensorHelperTest {
     dims.pushInt(3);
     inputTensorMap.putArray("dims", dims);
 
-    inputTensorMap.putString("type", TensorHelper.TensorTypeShort);
+    inputTensorMap.putString("type", TensorHelper.JsTensorTypeShort);
 
     ByteBuffer dataByteBuffer = ByteBuffer.allocate(3 * 2).order(ByteOrder.nativeOrder());
     ShortBuffer dataShortBuffer = dataByteBuffer.asShortBuffer();
@@ -150,7 +150,7 @@ public class TensorHelperTest {
     dims.pushInt(3);
     inputTensorMap.putArray("dims", dims);
 
-    inputTensorMap.putString("type", TensorHelper.TensorTypeInt);
+    inputTensorMap.putString("type", TensorHelper.JsTensorTypeInt);
 
     ByteBuffer dataByteBuffer = ByteBuffer.allocate(3 * 4).order(ByteOrder.nativeOrder());
     IntBuffer dataIntBuffer = dataByteBuffer.asIntBuffer();
@@ -182,7 +182,7 @@ public class TensorHelperTest {
     dims.pushInt(3);
     inputTensorMap.putArray("dims", dims);
 
-    inputTensorMap.putString("type", TensorHelper.TensorTypeLong);
+    inputTensorMap.putString("type", TensorHelper.JsTensorTypeLong);
 
     ByteBuffer dataByteBuffer = ByteBuffer.allocate(3 * 8).order(ByteOrder.nativeOrder());
     LongBuffer dataLongBuffer = dataByteBuffer.asLongBuffer();
@@ -213,7 +213,7 @@ public class TensorHelperTest {
     dims.pushInt(3);
     inputTensorMap.putArray("dims", dims);
 
-    inputTensorMap.putString("type", TensorHelper.TensorTypeString);
+    inputTensorMap.putString("type", TensorHelper.JsTensorTypeString);
 
     JavaOnlyArray data = new JavaOnlyArray();
     data.pushString("a");
@@ -246,7 +246,7 @@ public class TensorHelperTest {
     dims.pushInt(3);
     inputTensorMap.putArray("dims", dims);
 
-    inputTensorMap.putString("type", TensorHelper.TensorTypeDouble);
+    inputTensorMap.putString("type", TensorHelper.JsTensorTypeDouble);
 
     ByteBuffer dataByteBuffer = ByteBuffer.allocate(3 * 8).order(ByteOrder.nativeOrder());
     DoubleBuffer dataDoubleBuffer = dataByteBuffer.asDoubleBuffer();
@@ -295,7 +295,7 @@ public class TensorHelperTest {
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
-      Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeBool);
+      Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeBool);
       String dataEncoded = outputMap.getString("data");
       ByteBuffer buffer = ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT));
       for (int i = 0; i < 5; ++i) {
@@ -335,7 +335,7 @@ public class TensorHelperTest {
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
-      Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeDouble);
+      Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeDouble);
       String dataEncoded = outputMap.getString("data");
       DoubleBuffer buffer =
           ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asDoubleBuffer();
@@ -376,7 +376,7 @@ public class TensorHelperTest {
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
-      Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeFloat);
+      Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeFloat);
       String dataEncoded = outputMap.getString("data");
       FloatBuffer buffer =
           ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asFloatBuffer();
@@ -417,7 +417,7 @@ public class TensorHelperTest {
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
-      Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeByte);
+      Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeByte);
       String dataEncoded = outputMap.getString("data");
       ByteBuffer buffer = ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT));
       for (int i = 0; i < 5; ++i) {
@@ -457,7 +457,7 @@ public class TensorHelperTest {
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
-      Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeShort);
+      Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeShort);
       String dataEncoded = outputMap.getString("data");
       ShortBuffer buffer =
           ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asShortBuffer();
@@ -498,7 +498,7 @@ public class TensorHelperTest {
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
-      Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeInt);
+      Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeInt);
       String dataEncoded = outputMap.getString("data");
       IntBuffer buffer =
           ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asIntBuffer();
@@ -539,7 +539,7 @@ public class TensorHelperTest {
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
-      Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeLong);
+      Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeLong);
       String dataEncoded = outputMap.getString("data");
       LongBuffer buffer =
           ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asLongBuffer();
@@ -580,7 +580,7 @@ public class TensorHelperTest {
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
-      Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeString);
+      Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeString);
       for (int i = 0; i < 5; ++i) {
         Assert.assertEquals(outputMap.getArray("data").getString(i), inputData[i]);
       }

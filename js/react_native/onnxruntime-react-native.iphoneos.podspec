@@ -20,7 +20,7 @@ Pod::Spec.new do |s|
 
   s.subspec 'Onnxruntime' do |onnxruntime|
     onnxruntime.preserve_paths = 'ios/Libraries/onnxruntime/include/*.h'
-    onnxruntime.vendored_libraries = 'ios/Libraries/onnxruntime/lib/iphoneos/libonnxruntime.1.7.0.dylib'
+    onnxruntime.vendored_libraries = 'ios/Libraries/onnxruntime/lib/iphoneos/libonnxruntime.1.8.0.dylib'
     onnxruntime.xcconfig = { 'HEADER_SEARCH_PATHS' => "${PODS_ROOT}/#{s.name}/Libraries/onnxruntime/include/**", 'LIBRARY_SEARCH_PATHS' => "${PODS_ROOT)/#{s.name}/Libraries/onnxruntime/lib/iphoneos/**" }
   end
 

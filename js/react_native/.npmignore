@@ -6,3 +6,7 @@
 
 /tsconfig.json
 /tsconfig.build.json
+
+ios/Pods
+
+example
