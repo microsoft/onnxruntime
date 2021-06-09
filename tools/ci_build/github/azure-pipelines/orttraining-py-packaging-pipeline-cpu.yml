@@ -69,11 +69,6 @@ stages:
           ArtifactName: onnxruntime_training_cpu
 
       - script: |
-          sudo apt-get update
-          sudo apt-get install python3-pip python-dev
-        displayName: 'sudo apt-get install python3-pip python-dev'
-
-      - script: |
           python3 -m pip install azure-storage-blob==2.1.0
         displayName: 'python3 -m pip install azure-storage-blob==2.1.0'
         timeoutInMinutes: 20
