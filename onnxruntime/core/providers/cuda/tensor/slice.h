@@ -7,11 +7,6 @@
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
-
-namespace SliceOp {
-struct PrepareForComputeMetadata;
-}  // namespace SliceOp
-
 namespace cuda {
 
 namespace SliceCuda {

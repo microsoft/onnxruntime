@@ -3,7 +3,6 @@
 
 #include "orttraining/training_ops/cpu/tensor/slice_grad.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include "core/providers/cpu/tensor/slice_helper.h"
 #include "core/common/common.h"
 
 namespace onnxruntime {

@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
+// This file contains the functions compute the starts, steps (strides) and output shape
+// for Slice op, which can be called from other ops or EPs.
 #pragma once
+#include "slice_compute_metadata.h"
 
 namespace onnxruntime {
 
@@ -13,32 +17,6 @@ const T& clamp(const T& v, const T& lo, const T& hi) {
 }
 
 namespace SliceOp {
-struct PrepareForComputeMetadata {
-  PrepareForComputeMetadata() = delete;
-  PrepareForComputeMetadata(const std::vector<int64_t>& input_dimensions)
-      : input_dimensions_(input_dimensions) {
-    size_t dimension_count = input_dimensions.size();
-    starts_.resize(dimension_count, 0);
-    steps_.resize(dimension_count, 1);
-    output_dims_ = input_dimensions;
-  }
-
-  const std::vector<int64_t>& input_dimensions_;
-  std::vector<int64_t> starts_;
-  std::vector<int64_t> steps_;
-  std::vector<int64_t> output_dims_;
-  std::vector<int64_t> flattened_output_dims_;
-  std::vector<int64_t>* p_flattened_output_dims_ = &flattened_output_dims_;
-};
-
-// std::clamp doesn't exist until C++17 so create a local version
-template <typename T>
-const T& clamp(const T& v, const T& lo, const T& hi) {
-  if (v < lo) return lo;
-  if (v > hi) return hi;
-  return v;
-}
-
 // compute output_dims without steps (Slice V1-9 & DynamicSlice)
 Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
                          const std::vector<int64_t>& raw_ends,

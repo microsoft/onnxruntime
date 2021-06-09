@@ -5,7 +5,6 @@
 #include "core/providers/cuda/nn/conv.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/tensor/slice.h"
-#include "core/providers/cpu/tensor/slice_helper.h"
 
 namespace onnxruntime {
 namespace cuda {

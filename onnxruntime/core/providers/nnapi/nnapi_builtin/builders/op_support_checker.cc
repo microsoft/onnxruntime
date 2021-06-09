@@ -1645,7 +1645,7 @@ class EluOpSupportChecker : public BaseOpSupportChecker {
 
 class SliceOpSupportChecker : public BaseOpSupportChecker {
  private:
-  int32_t GetMinSupportedSdkVer(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
+  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
     return ANEURALNETWORKS_FEATURE_LEVEL_2;
   }
 
