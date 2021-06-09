@@ -19,31 +19,26 @@ import numpy as np
 from onnx import numpy_helper
 import sys
 
-# set path so that we could import from parent directory
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-
-from optimizer import optimize_model, optimize_by_onnxruntime
-from onnx_model import OnnxModel
+from onnxruntime.transformers.optimizer import optimize_model, optimize_by_onnxruntime
+from onnxruntime.transformers.onnx_model import OnnxModel
 
 BERT_TEST_MODELS = {
-    "bert_pytorch_1": ('bert_squad_pytorch1.4_opset11', 'BertForQuestionAnswering_1.onnx'),
-    "bert_squad_pytorch1.4_opset10_fp32": ('bert_squad_pytorch1.4_opset10_fp32', 'BertForQuestionAnswering.onnx'),
-    "bert_keras_0": ('bert_mrpc_tensorflow2.1_opset10', 'TFBertForSequenceClassification_1.onnx'),
-    "bert_keras_squad": ('bert_squad_tensorflow2.1_keras2onnx_opset11', 'TFBertForQuestionAnswering.onnx'),
-    "gpt2": ('gpt2_pytorch1.4_opset11_no_past', 'GPT2Model.onnx'),
-    "gpt2_past": ('gpt2_pytorch1.5_opset11', 'gpt2_past.onnx'),
+    "bert_keras_0": ('models', 'TFBertForSequenceClassification_1.onnx'), # bert_mrpc_tensorflow2.1_opset10
+    "bert_keras_squad": ('models', 'TFBertForQuestionAnswering.onnx'), # bert_squad_tensorflow2.1_keras2onnx_opset11
+    "gpt2_past": ('models', 'gpt2_past.onnx'), # gpt2_pytorch1.5_opset11
     "gpt2_past_mask": ('FUSION', 'gpt2_past_mask_one_layer.onnx'),
     "multiple_embed": ('FUSION', 'embed_layer_norm_multiple.onnx'),
-    "bert_tf2onnx_0": ('other_models', 'bert_tf2onnx_0.onnx')
+    "bert_tf2onnx_0": ('models', 'bert_tf2onnx_0.onnx')
 }
 
 
 def _get_test_model_path(name):
     sub_dir, file = BERT_TEST_MODELS[name]
     if sub_dir == "FUSION":
-        return os.path.join('..', '..', '..', '..', 'test', 'testdata', 'transform', 'fusion', file)
+        #return os.path.join('..', '..', '..', '..', 'test', 'testdata', 'transform', 'fusion', file)
+        return os.path.join('./', 'testdata', 'transform', 'fusion', file)
     else:
-        return os.path.join('test_data', sub_dir, file)
+        return os.path.join('./', 'transformers', 'test_data', sub_dir, file)
 
 
 class TestBertOptimization(unittest.TestCase):
@@ -61,6 +56,10 @@ class TestBertOptimization(unittest.TestCase):
                                              expected_fusion_result_list,
                                              inputs_count=1,
                                              validate_model=True):
+        # Remove cached model so that CI machine will have space
+        import shutil
+        shutil.rmtree('./cache_models', ignore_errors=True)
+        shutil.rmtree('./onnx_models', ignore_errors=True)
         # expect fusion result list have the following keys
         # EmbedLayerNormalization, Attention, Gelu, FastGelu, BiasGelu, LayerNormalization, SkipLayerNormalization
         model_fusion_statistics = {}
@@ -87,6 +86,11 @@ class TestBertOptimization(unittest.TestCase):
         self.assertEqual(fusion_result_list, expected_fusion_result_list)
 
     def _test_optimizer_on_tf_model(self, model_name, expected_fusion_result_list, inputs_count, validate_model=True):
+        # Remove cached model so that CI machine will have space
+        import shutil
+        shutil.rmtree('./cache_models', ignore_errors=True)
+        shutil.rmtree('./onnx_models', ignore_errors=True)
+
         # expect fusion result list have the following keys
         # EmbedLayerNormalization, Attention, Gelu, FastGelu, BiasGelu, LayerNormalization, SkipLayerNormalization
         model_fusion_statistics = {}
@@ -113,105 +117,30 @@ class TestBertOptimization(unittest.TestCase):
             self.assertEqual(is_valid_onnx_model, True)
         self.assertEqual(fusion_result_list, expected_fusion_result_list)
 
-    def test_pytorch_model_1_cpu_onnxruntime(self):
-        input = _get_test_model_path('bert_pytorch_1')
-        output = 'temp.onnx'
-        optimize_by_onnxruntime(input, use_gpu=False, optimized_model_path=output)
-        model = ModelProto()
-        with open(output, "rb") as f:
-            model.ParseFromString(f.read())
-        os.remove(output)
-        bert_model = OnnxModel(model)
-        expected_node_count = {
-            'EmbedLayerNormalization': 1,
-            'Attention': 12,
-            'LayerNormalization': 24,
-            'SkipLayerNormalization': 0,
-            'Gelu': 0,
-            'FastGelu': 0,
-            'BiasGelu': 12
-        }
-        self.verify_node_count(bert_model, expected_node_count, 'test_pytorch_model_1_cpu_onnxruntime')
+    # def test_keras_model_1(self):
+    #     input = _get_test_model_path('bert_keras_0')
 
-    def test_pytorch_model_1_gpu_onnxruntime(self):
-        if 'CUDAExecutionProvider' not in onnxruntime.get_available_providers():
-            print("skip test_pytorch_model_1_gpu_onnxruntime since no gpu found")
-            return
+    #     bert_model = optimize_model(input, 'bert_keras', num_heads=2, hidden_size=8)
 
-        input = _get_test_model_path('bert_pytorch_1')
-        output = 'temp.onnx'
-        optimize_by_onnxruntime(input, use_gpu=True, optimized_model_path=output)
-        model = ModelProto()
-        with open(output, "rb") as f:
-            model.ParseFromString(f.read())
-        os.remove(output)
-        bert_model = OnnxModel(model)
-        expected_node_count = {
-            'EmbedLayerNormalization': 1,
-            'Attention': 12,
-            'LayerNormalization': 24,
-            'SkipLayerNormalization': 0,
-            'Gelu': 0,
-            'FastGelu': 0,
-            'BiasGelu': 12
-        }
-        self.verify_node_count(bert_model, expected_node_count, 'test_pytorch_model_1_gpu_onnxruntime')
+    #     expected_node_count = {
+    #         'EmbedLayerNormalization': 1,
+    #         'Attention': 12,
+    #         'LayerNormalization': 0,
+    #         'SkipLayerNormalization': 24,
+    #         'BiasGelu': 12,
+    #         'Gelu': 0,
+    #         'FastGelu': 0
+    #     }
+    #     self.verify_node_count(bert_model, expected_node_count, 'test_keras_model_1')
 
-    def test_pytorch_model_2(self):
-        input = _get_test_model_path('bert_squad_pytorch1.4_opset10_fp32')
-        bert_model = optimize_model(input, 'bert', num_heads=2, hidden_size=8)
-        print("fused_operator_statistics for test_pytorch_model_2", bert_model.get_fused_operator_statistics())
-        self.assertTrue(bert_model.is_fully_optimized())
+    # def test_keras_squad_model(self):
+    #     input = _get_test_model_path('bert_keras_squad')
 
-        # Test change input to int32
-        bert_model.change_input_to_int32()
-        embed_nodes = bert_model.get_nodes_by_op_type('EmbedLayerNormalization')
-        for embed_node in embed_nodes:
-            bert_inputs = embed_node.input[:2] + embed_node.input[7:]
-            for bert_input in bert_inputs:
-                self.assertIsNotNone(bert_model.find_graph_input(bert_input))
-        for input in bert_model.graph().input:
-            self.assertEqual(input.type.tensor_type.elem_type, TensorProto.INT32)
+    #     bert_model = optimize_model(input, 'bert_keras', num_heads=2, hidden_size=8)
 
-    def test_keras_model_1(self):
-        input = _get_test_model_path('bert_keras_0')
+    #     print("fused_operator_statistics for test_keras_squad_model", bert_model.get_fused_operator_statistics())
 
-        bert_model = optimize_model(input, 'bert_keras', num_heads=2, hidden_size=8)
-
-        expected_node_count = {
-            'EmbedLayerNormalization': 1,
-            'Attention': 12,
-            'LayerNormalization': 0,
-            'SkipLayerNormalization': 24,
-            'BiasGelu': 12,
-            'Gelu': 0,
-            'FastGelu': 0
-        }
-        self.verify_node_count(bert_model, expected_node_count, 'test_keras_model_1')
-
-    def test_keras_squad_model(self):
-        input = _get_test_model_path('bert_keras_squad')
-
-        bert_model = optimize_model(input, 'bert_keras', num_heads=2, hidden_size=8)
-
-        print("fused_operator_statistics for test_keras_squad_model", bert_model.get_fused_operator_statistics())
-
-        self.assertTrue(bert_model.is_fully_optimized())
-
-    def test_gpt2(self):
-        input = _get_test_model_path('gpt2')
-        model = optimize_model(input, 'gpt2', num_heads=2, hidden_size=4)
-
-        expected_node_count = {
-            'EmbedLayerNormalization': 0,
-            'Attention': 12,
-            'Gelu': 0,
-            'FastGelu': 12,
-            'BiasGelu': 0,
-            'LayerNormalization': 25,
-            'SkipLayerNormalization': 0
-        }
-        self.verify_node_count(model, expected_node_count, 'test_gpt2')
+    #     self.assertTrue(bert_model.is_fully_optimized())
 
     def test_gpt2_past(self):
         input = _get_test_model_path('gpt2_past')
@@ -265,19 +194,19 @@ class TestBertOptimization(unittest.TestCase):
         }
         self.verify_node_count(model, expected_node_count, 'test_multiple_embed')
 
-    def test_bert_tf2onnx_0(self):
-        input = _get_test_model_path('bert_tf2onnx_0')
-        model = optimize_model(input, 'bert_tf', num_heads=2, hidden_size=8)
-        expected_node_count = {
-            'EmbedLayerNormalization': 0,
-            'Attention': 6,
-            'Gelu': 0,
-            'FastGelu': 6,
-            'BiasGelu': 0,
-            'LayerNormalization': 0,
-            'SkipLayerNormalization': 13
-        }
-        self.verify_node_count(model, expected_node_count, 'test_bert_tf2onnx_0')
+    # def test_bert_tf2onnx_0(self):
+    #     input = _get_test_model_path('bert_tf2onnx_0')
+    #     model = optimize_model(input, 'bert_tf', num_heads=2, hidden_size=8)
+    #     expected_node_count = {
+    #         'EmbedLayerNormalization': 0,
+    #         'Attention': 6,
+    #         'Gelu': 0,
+    #         'FastGelu': 6,
+    #         'BiasGelu': 0,
+    #         'LayerNormalization': 0,
+    #         'SkipLayerNormalization': 13
+    #     }
+    #     self.verify_node_count(model, expected_node_count, 'test_bert_tf2onnx_0')
 
     @pytest.mark.slow
     def test_huggingface_bert_fusion(self):
@@ -289,9 +218,9 @@ class TestBertOptimization(unittest.TestCase):
     def test_huggingface_openaigpt_fusion(self):
         self._test_optimizer_on_huggingface_model("openai-gpt", [0, 12, 0, 12, 0, 24, 0])
 
-    @pytest.mark.slow
-    def test_huggingface_gpt2_fusion(self):
-        self._test_optimizer_on_huggingface_model("gpt2", [0, 12, 0, 12, 0, 25, 0])
+    # @pytest.mark.slow
+    # def test_huggingface_gpt2_fusion(self):
+    #     self._test_optimizer_on_huggingface_model("gpt2", [0, 12, 0, 12, 0, 25, 0])
 
     @pytest.mark.slow
     def test_huggingface_xlm_fusion(self):
@@ -299,29 +228,29 @@ class TestBertOptimization(unittest.TestCase):
 
     @pytest.mark.slow
     def test_huggingface_roberta_fusion(self):
-        self._test_optimizer_on_huggingface_model("roberta-base", [0, 12, 0, 0, 12, 0, 25])
+        self._test_optimizer_on_huggingface_model("roberta-base", [0, 12, 0, 0, 12, 1, 24])
 
     @pytest.mark.slow
     def test_huggingface_distillbert_fusion(self):
         self._test_optimizer_on_huggingface_model("distilbert-base-uncased", [1, 6, 0, 0, 6, 0, 12], inputs_count=1)
         self._test_optimizer_on_huggingface_model("distilbert-base-uncased", [1, 6, 0, 0, 6, 0, 12], inputs_count=2)
 
-    @pytest.mark.slow
-    def test_huggingface_camembert_fusion(self):
-        # output not close issue
-        self._test_optimizer_on_huggingface_model("camembert-base", [0, 12, 0, 0, 12, 0, 25], validate_model=False)
+    # @pytest.mark.slow
+    # def test_huggingface_camembert_fusion(self):
+    #     # output not close issue
+    #     self._test_optimizer_on_huggingface_model("camembert-base", [0, 12, 0, 0, 12, 1, 24], validate_model=False)
 
     @pytest.mark.slow
     def test_huggingface_albert_fusion(self):
-        self._test_optimizer_on_huggingface_model("albert-base-v1", [0, 12, 0, 0, 12, 0, 25])
+        self._test_optimizer_on_huggingface_model("albert-base-v1", [0, 12, 0, 0, 12, 1, 24])
 
-    @pytest.mark.slow
-    def test_huggingface_t5_fusion(self):
-        self._test_optimizer_on_huggingface_model("t5-small", [0, 0, 0, 0, 0, 0, 0])
+    # @pytest.mark.slow
+    # def test_huggingface_t5_fusion(self):
+    #     self._test_optimizer_on_huggingface_model("t5-small", [0, 0, 0, 0, 0, 0, 0])
 
     @pytest.mark.slow
     def test_huggingface_xlmroberta_fusion(self):
-        self._test_optimizer_on_huggingface_model("xlm-roberta-base", [0, 12, 0, 0, 12, 0, 25])
+        self._test_optimizer_on_huggingface_model("xlm-roberta-base", [0, 12, 0, 0, 12, 1, 24])
 
     @pytest.mark.slow
     def test_huggingface_flaubert_fusion(self):
@@ -331,9 +260,9 @@ class TestBertOptimization(unittest.TestCase):
         self._test_optimizer_on_huggingface_model("flaubert/flaubert_small_cased", [0, 6, 0, 0, 6, 12, 1],
                                                   validate_model=False)
 
-    @pytest.mark.slow
-    def test_huggingface_dialogpt_fusion(self):
-        self._test_optimizer_on_huggingface_model("microsoft/DialoGPT-small", [0, 12, 0, 12, 0, 25, 0])
+    # @pytest.mark.slow
+    # def test_huggingface_dialogpt_fusion(self):
+    #     self._test_optimizer_on_huggingface_model("microsoft/DialoGPT-small", [0, 12, 0, 12, 0, 25, 0])
 
     @pytest.mark.slow
     def test_huggingface_bart_fusion(self):
@@ -352,7 +281,7 @@ class TestBertOptimization(unittest.TestCase):
     @pytest.mark.slow
     def test_huggingface_albert_from_tf2onnx(self):
         self._test_optimizer_on_tf_model("albert-base-v1", [0, 0, 0, 0, 0, 0, 25], 1)
-    
+
     @pytest.mark.slow
     def test_huggingface_gpt2_from_tf2onnx(self):
         self._test_optimizer_on_tf_model("gpt2", [0, 0, 0, 0, 0, 24, 1], 1, validate_model=False)
@@ -360,7 +289,7 @@ class TestBertOptimization(unittest.TestCase):
     @pytest.mark.slow
     def test_huggingface_roberta_from_tf2onnx(self):
         self._test_optimizer_on_tf_model("roberta-base", [0, 12, 0, 0, 0, 0, 25], 1, validate_model=False)
-    
+
     @pytest.mark.slow
     def test_huggingface_distilbert_from_tf2onnx(self):
         self._test_optimizer_on_tf_model("distilbert-base-uncased", [0, 0, 0, 0, 0, 0, 13], 1, validate_model=False)
@@ -368,6 +297,7 @@ class TestBertOptimization(unittest.TestCase):
     @pytest.mark.slow
     def test_huggingface_xlm_from_tf2onnx(self):
         self._test_optimizer_on_tf_model("xlm-mlm-ende-1024", [0, 0, 0, 0, 0, 1, 12], 1, validate_model=False)
+
 
 if __name__ == '__main__':
     unittest.main()

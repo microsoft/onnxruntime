@@ -12,8 +12,7 @@ from bert_model_generator import create_bert_attention, create_tf2onnx_attention
 
 # set path so that we could import from parent directory
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from optimizer import optimize_model
-
+from onnxruntime.transformers.optimizer import optimize_model
 
 class TestFusion(unittest.TestCase):
     def test_attention_fusion_pruned_model(self):
@@ -24,7 +23,7 @@ class TestFusion(unittest.TestCase):
         optimized_model = optimize_model(model_path)
         os.remove(model_path)
 
-        expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'fusion',
+        expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models',
                                            'pruned_attention_opt.onnx')
         expected = onnx.load(expected_model_path)
         self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
@@ -38,7 +37,7 @@ class TestFusion(unittest.TestCase):
         os.remove(model_path)
 
         # reverse add input order will get same optimized model
-        expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'fusion',
+        expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models',
                                            'pruned_attention_opt.onnx')
         expected = onnx.load(expected_model_path)
         self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
@@ -51,11 +50,10 @@ class TestFusion(unittest.TestCase):
         optimized_model = optimize_model(model_path, model_type='bert_tf', num_heads=4, hidden_size=16)
         os.remove(model_path)
 
-        expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'fusion',
+        expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models',
                                            'bert_3d_attention_opt.onnx')
         expected = onnx.load(expected_model_path)
         self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
-
 
 if __name__ == '__main__':
     unittest.main()
