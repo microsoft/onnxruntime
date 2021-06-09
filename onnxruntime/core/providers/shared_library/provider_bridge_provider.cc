@@ -484,7 +484,7 @@ Status ATenOpBase::Compute(OpKernelContext* p_ctx) const { return g_host->ATenOp
 Status Group::Compute(OpKernelContext* context) const { return g_host->contrib__Group__Compute(this, context); }
 Status PassThrough::Compute(OpKernelContext* context) const { return g_host->contrib__PassThrough__Compute(this, context); }
 Status YieldOp::Compute(OpKernelContext* context) const { return g_host->contrib__YieldOp__Compute(this, context); }
-}  // namespace contrib
+}
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 namespace contrib {
@@ -504,7 +504,7 @@ void PythonOpGradBase::RunBackward(OpKernelContext* context, std::vector<OrtValu
 void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_args) const {
   return g_host->contrib__PythonOpGradBase__SetOutputs(this, context, returned_args);
 }
-}
+}  // namespace contrib
 
 namespace language_interop_ops {
 namespace torch {
