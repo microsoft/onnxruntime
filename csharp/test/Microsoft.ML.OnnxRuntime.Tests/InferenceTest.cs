@@ -307,11 +307,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 Assert.Equal(engineDecrptLibPath, value);
 
                 // test correctness of provider options
-                //SessionOptions options = new SessionOptions();
                 SessionOptions options = SessionOptions.MakeSessionOptionWithTensorrtProvider(trtProviderOptions);
                 cleanUp.Add(options);
-                //ProviderOptionsValueHelper.StringToDict("asd=", resultProviderOptionsDict);
-                //options.AppendExecutionProvider_Tensorrt(trtProviderOptions);
 
                 var session = new InferenceSession(modelPath, options);
                 cleanUp.Add(session);

@@ -1274,7 +1274,6 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptions, _Inout_ OrtAllocator* a
 }
 
 ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptions* ptr) {
-  API_IMPL_BEGIN
 #ifdef USE_TENSORRT
   if (ptr != nullptr) {
     if (ptr->trt_int8_calibration_table_name != nullptr) {
@@ -1294,5 +1293,4 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
 #else
   ORT_UNUSED_PARAMETER(ptr);
 #endif
-  API_IMPL_END
 }
