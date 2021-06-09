@@ -3,8 +3,6 @@
 
 /// Python level interface for DLPack conversion.
 
-#ifdef ENABLE_PYTHON
-
 #pragma once
 
 #include "core/dlpack/dlpack_converter.h"
@@ -25,5 +23,3 @@ OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor);
 
 }  // namespace dlpack
 }  // namespace onnxruntime
-
-#endif
