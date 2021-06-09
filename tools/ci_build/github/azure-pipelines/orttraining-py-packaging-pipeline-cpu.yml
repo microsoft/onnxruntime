@@ -46,14 +46,15 @@ stages:
               -e BUILD_BUILDNUMBER \
               onnxruntimetrainingcpubuild \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-                  --build_dir /build \
-                  --config Release \
+                  --build_dir /build --cmake_generator Ninja \
+                  --config Debug Release \
                   --skip_submodule_sync \
+                  --build_shared_lib \
                   --parallel \
                   --build_wheel \
-                  --enable_training \
-                  --update \
-                  --build ;
+                  --use_openmp \
+                  --enable_onnx_tests \
+                  --enable_pybind --build_java --build_nodejs --enable_training
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
