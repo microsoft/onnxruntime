@@ -1587,16 +1587,6 @@ def build_python_wheel(
         args = [sys.executable, os.path.join(source_dir, 'setup.py'),
                 'bdist_wheel']
 
-        # We explicitly override the platform tag in the name of the generated build wheel
-        # so that we can install the wheel on Mac OS X versions 10.12+.
-        # Without this explicit override, we will something like this while building on MacOS 10.14 -
-        # [WARNING] MACOSX_DEPLOYMENT_TARGET is set to a lower value (10.12)
-        # than the version on which the Python interpreter was compiled (10.14) and will be ignored.
-        # Since we need to support 10.12+, we explicitly override the platform tag.
-        # See PR #3626 for more details
-        if is_macOS():
-            args += ['-p', 'macosx_10_12_x86_64']
-
         # Any combination of the following arguments can be applied
         if nightly_build:
             args.append('--nightly_build')

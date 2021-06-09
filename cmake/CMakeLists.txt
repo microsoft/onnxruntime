@@ -13,17 +13,6 @@ if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.20")
   cmake_policy(SET CMP0117 NEW)
 endif()
 
-# Support OS X versions 10.12+
-# This variable is ignored on non-Apple platforms and needs to be set prior to the first project(...) invocation
-# TODO: Make the miniumum deployment target MacOSX version configurable
-# If the CMAKE_OSX_DEPLOYMENT_TARGET was set (currently valid only for iOS build),
-# we will cache its value instead of the default "10.12"
-if (NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
-  set(CMAKE_OSX_DEPLOYMENT_TARGET "10.12" CACHE STRING "Minimum OS X deployment version for ORT" FORCE)
-else()
-  set(CMAKE_OSX_DEPLOYMENT_TARGET ${CMAKE_OSX_DEPLOYMENT_TARGET} CACHE STRING "Minimum OS X deployment version for ORT" FORCE)
-endif()
-
 # Project
 project(onnxruntime C CXX)
 # Needed for Java

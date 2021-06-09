@@ -108,6 +108,8 @@ jobs:
 - job: MacOS_C_API_Packaging_CPU_x64
   workspace:
     clean: all
+  variables:
+    MACOSX_DEPLOYMENT_TARGET: '10.14'
   pool: 
     vmImage: 'macOS-10.15'
   timeoutInMinutes:  120
@@ -698,7 +700,6 @@ jobs:
           wget https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
           wget https://oss.sonatype.org/service/local/repositories/google-releases/content/com/google/protobuf/protobuf-java/3.9.2/protobuf-java-3.9.2.jar -P ./
           sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
-          brew install libomp
           DYLD_LIBRARY_PATH=./test:${DYLD_LIBRARY_PATH}
           java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.9.2.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
         workingDirectory: '$(Build.BinariesDirectory)/final-jar'
