@@ -1,18 +1,18 @@
 :´
 
 input0
-input11S1"Sub
+input11A1"Add
 
 input0
-input12A1"Add
+input12S1"Sub
 
-1
+2
 input13_outA2"Add
 
-1
+2
 input14S2"Sub
 
-2
+1
 45_outA3"Add
  
 input1

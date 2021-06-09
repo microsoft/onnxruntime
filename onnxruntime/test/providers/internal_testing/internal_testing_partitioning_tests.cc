@@ -25,44 +25,56 @@ namespace onnxruntime {
 
 namespace test {
 
+// tests use onnx format models currently so exclude them from a minimal build.
+// it would be possible to use ORT format models but the same partitioning code would run either way
+#if !defined(ORT_MINIMAL_BUILD)
+
 // model has an unsupported node between the supported nodes after the initial topo sort.
 // the partition aware topo sort should result in the unsupported node moving to earlier in the order,
 // and allow a single partition of supported nodes to be created.
 TEST(InternalTestingEP, TestSortResultsInSinglePartition) {
-  SessionOptions so;
-  auto session = std::make_unique<InferenceSessionWrapper>(so, GetEnvironment());
+  auto run_test = [](const std::string& op) {
+    SessionOptions so;
+    auto session = std::make_unique<InferenceSessionWrapper>(so, GetEnvironment());
 
-  const std::unordered_set<std::string> supported_ops{"Add"};
+    const std::unordered_set<std::string> supported_ops{op};
 
-  ASSERT_STATUS_OK(session->RegisterExecutionProvider(
-      std::make_unique<InternalTestingExecutionProvider>(supported_ops)));
+    ASSERT_STATUS_OK(session->RegisterExecutionProvider(
+        std::make_unique<InternalTestingExecutionProvider>(supported_ops)));
 
-  const ORTCHAR_T* model_path = ORT_TSTR("testdata/ep_partitioning_test_1.onnx");
-  ASSERT_STATUS_OK(session->Load(model_path));
-  const auto& graph = session->GetGraph();
-  GraphViewer viewer{graph};
+    const ORTCHAR_T* model_path = ORT_TSTR("testdata/ep_partitioning_test_1.onnx");
+    ASSERT_STATUS_OK(session->Load(model_path));
+    const auto& graph = session->GetGraph();
+    GraphViewer viewer{graph};
 
-  ASSERT_STATUS_OK(session->Initialize());
+    ASSERT_STATUS_OK(session->Initialize());
 
-  const auto& func_mgr = session->GetSessionState().GetFuncMgr();
-  NodeComputeInfo* compute_func = nullptr;
+    const auto& func_mgr = session->GetSessionState().GetFuncMgr();
+    NodeComputeInfo* compute_func = nullptr;
 
-  int num_partitions{0}, num_other_nodes{0};
+    int num_partitions{0}, num_other_nodes{0};
 
-  for (const auto& node : graph.Nodes()) {
-    EXPECT_EQ(supported_ops.count(node.OpType()), size_t(0))
-        << "Nodes with supported op types should have been replaced. Node with type " << node.OpType() << " was not.";
-    if (node.GetExecutionProviderType() == utils::kInternalTestingExecutionProvider) {
-      EXPECT_STATUS_OK(func_mgr.GetFuncs(node.Name(), compute_func));
-      EXPECT_NE(compute_func, nullptr);
-      ++num_partitions;
-    } else {
-      ++num_other_nodes;
+    for (const auto& node : graph.Nodes()) {
+      EXPECT_EQ(supported_ops.count(node.OpType()), size_t(0))
+          << "Nodes with supported op types should have been replaced. Node with type " << node.OpType() << " was not.";
+      if (node.GetExecutionProviderType() == utils::kInternalTestingExecutionProvider) {
+        EXPECT_STATUS_OK(func_mgr.GetFuncs(node.Name(), compute_func));
+        EXPECT_NE(compute_func, nullptr);
+        ++num_partitions;
+      } else {
+        ++num_other_nodes;
+      }
     }
-  }
 
-  ASSERT_EQ(num_partitions, 1) << "Partition aware topological sort should have resulted in a single partition";
-  ASSERT_EQ(num_other_nodes, 2);
+    ASSERT_EQ(num_partitions, 1) << "Partition aware topological sort should have resulted in a single partition."
+                                 << " Op=" << op << " Partitions=" << num_partitions
+                                 << " OtherNodes=" << num_other_nodes;
+  };
+
+  // see testdata/ep_partitioning_tests.py for model description
+  // There should be only one partition, regardless of whether Add or Sub is supported by the EP.
+  run_test("Add");
+  run_test("Sub");
 }
 
 // Test that when doing the partition aware sort and selecting groups that input dependencies are correctly handled
@@ -104,10 +116,9 @@ TEST(InternalTestingEP, TestDependenciesCorrectlyHandled) {
   ASSERT_EQ(num_other_nodes, 2);
 }
 
-/***************
-Infrastructure used to check NNAPI coverage. Ideally this could read the model paths, supported ops and stop ops from 
-input files and provide info on the partitions so no code changes are required to investigate a specific scenario. 
-
+// Infrastructure that was used to check NNAPI coverage.
+// Ideally this could be updated to read the model paths, supported ops and stop ops from input files
+// and provide info on the partitions so no code changes are required to investigate different scenarios.
 static std::unordered_set<std::string> GetNnapiSupportedOps() {
   return std::unordered_set<std::string>{
       "Add",
@@ -288,12 +299,13 @@ static void TestNnapiPartitioning(const std::string& test_name, const std::strin
             << "\n";
 }
 
-TEST(InternalTestingEP, TestNnapiPartitioningMlPerfModels) {
+// DISABLED - manually update model_paths and enable to test coverage as needed
+TEST(InternalTestingEP, DISABLED_TestNnapiPartitioningMlPerfModels) {
   const auto supported_ops = GetNnapiSupportedOps();
 
   // list the models you want to test here
   std::vector<std::string> model_paths = {
-      deeplabv3_mnv2_ade20k_float.onnx",
+      "deeplabv3_mnv2_ade20k_float.onnx",
       "mobilebert.onnx",
       "mobiledet.onnx",
   };
@@ -307,19 +319,26 @@ TEST(InternalTestingEP, TestNnapiPartitioningMlPerfModels) {
       }
       std::cout << std::endl;
 
-      PartitionStats stats{}, stop_at_nms_stats{}, slice_stats{}, slice_nms_stats{}, extra_stats{};
+      const bool debug_output = false;
+      PartitionStats stats{}, stop_at_nms_stats{}, slice_stats{};
 
-      // name, model, optimize, debug_output, stop at, extra supported, stats
-      TestNnapiPartitioning("Base", model_uri, optimize, false, {}, {}, stats);
-      TestNnapiPartitioning("New+NMS", model_uri, optimize, false, {"NonMaxSuppression"}, {}, stop_at_nms_stats);
-      TestNnapiPartitioning("New+Slice", model_uri, optimize, false, {}, {"Slice"}, slice_stats);
-      TestNnapiPartitioning("New+Slice+NMS", model_uri, optimize, false, {"NonMaxSuppression"}, {"Slice"}, slice_nms_stats);
+      // arbitrary examples of running different combinations to test what partitioning results
+      TestNnapiPartitioning("Base", model_uri, optimize, debug_output,
+                            {}, {}, stats);
+
+      TestNnapiPartitioning("StopAt[NMS]", model_uri, optimize, debug_output,
+                            {"NonMaxSuppression"}, {}, stop_at_nms_stats);
+
+      TestNnapiPartitioning("ExtraOps[Slice]", model_uri, optimize, debug_output,
+                            {}, {"Slice"}, slice_stats);
     };
 
     run_tests(false);
-    // run_tests(true);  // optimized - models have already be optimized so this isn't helpful
+    // run_tests(true);  // optimized - if models have already be optimized this isn't helpful
   }
 }
-*/
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 }  // namespace test
 }  // namespace onnxruntime

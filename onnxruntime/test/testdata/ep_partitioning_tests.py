@@ -8,28 +8,49 @@ from onnx import TensorProto
 # can run using the test EP and the other cannot.
 # As the operators take 2 inputs and produce one output we can easily create edges to test different scenarios
 def create_model_1():
-    # Graph where the 3 'add' nodes should be able to be run as a single partition.
-    # Naively you get 2 partitions if the topo sort is left to right, top down and by looking at edges as the bottom
-    # right 'add' a4 is last in the topo sort so is separated from the first partition (a1 + a3 via edge, + a2 if next
-    # in topo sort and added to the group).
-    # But if you move the second 'sub' node up so it runs immediately after the first one, all the 'add' nodes can
-    # be merged as all their inputs are available at that point
+    # Assume the EP can handle either Add or Sub but not both, and we need to minimize the partitions for nodes
+    # the EP can handle (as going to/from the EP has significant performance cost).
     #
-    #        input0, input1, input2
-    #         /  \  \
-    #        s1  a1  \
-    #       / \   \   \
-    #     a2   s2  |   \
-    #           \  |    \
-    #             a3     a4
+    #   graph inputs
+    #     /   \  \
+    #    a1   s1  \
+    #    |    / \  \
+    #    |  a2  s2  \
+    #    \     /    |
+    #     \   /     |
+    #      a3      a4
+    #
+    # Assuming the initial topological sort is top down, left to right, we get a1, s1, a2, s2, a3, a4
+    #
+    # Naively creating groups based on iterating this order and whether a node is supported gives the following groups
+    # (a1), (s1), (a2), (s2), (a3, a4). This is similar to what most EPs do currently.
+    #
+    # If we also consider downstream nodes with all inputs available when adding via the topological sort we get two
+    # less groups as s2 gets added with s1.
+    # (a1), (s1, s2), (a2, a3, a4)
+    #
+    # If the EP handles Sub that's fine. If the EP handles Add that's not.
+    #
+    # Finally, if we do a partition aware sort, and prefer unhandled nodes first to maximize the inputs that would be
+    # available each time we go to the EP, we can choose either of the root nodes (a1 or s1) to start at.
+    #
+    # If the EP is handling Sub we would start with a1 and get the same groups as above - which is perfectly fine as
+    # there's a single partition with (s1, s2) run on the EP.
+    #
+    # If the EP is handling Add we would start with s1 (due to preferring unhandled nodes first) and get the following
+    # groups, which also achieves a single partition of the handled nodes.
+    # (s2, s2), (a1, a2, a3, a4)
+    #
+    # So if this model is loaded in a partitioning test, there should only be one partition running on the EP regardless
+    # of whether Add or Sub is supported by it.
     graph = helper.make_graph(
         nodes=
         [
-            helper.make_node("Sub", ['input0', 'input1'], ["1"], "S1"),
-            helper.make_node("Add", ['input0', 'input1'], ['2'], "A1"),
-            helper.make_node("Add", ['1', 'input1'], ['3_out'], "A2"),
-            helper.make_node("Sub", ['1', 'input1'], ['4'], "S2"),
-            helper.make_node("Add", ['2', '4'], ['5_out'], "A3"),
+            helper.make_node("Add", ['input0', 'input1'], ['1'], "A1"),
+            helper.make_node("Sub", ['input0', 'input1'], ["2"], "S1"),
+            helper.make_node("Add", ['2', 'input1'], ['3_out'], "A2"),
+            helper.make_node("Sub", ['2', 'input1'], ['4'], "S2"),
+            helper.make_node("Add", ['1', '4'], ['5_out'], "A3"),
             helper.make_node("Add", ['input1', 'input2'], ['6_out'], "A4"),
         ],
         name="graph",
@@ -56,7 +77,8 @@ def create_model_2():
     # Create a model where there's a node that can't be run breaking up the partition.
     # Partition aware topo sort should give us
     #  s1, [a1, a2, a3, a5], s2, [a4, a6, a7]
-    #        input0, input1, input2
+    #
+    #           graph inputs
     #               s1
     #                |
     #               a1

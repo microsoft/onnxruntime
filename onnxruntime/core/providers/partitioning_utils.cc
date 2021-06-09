@@ -124,9 +124,7 @@ std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& grap
                                                          const std::string& execution_provider_name) {
   std::unordered_set<const Node*> node_set;
   node_set.reserve(group.size());
-  for (const Node* node : group) {
-    node_set.insert(node);
-  }
+  node_set.insert(group.cbegin(), group.cend());
 
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
 
@@ -239,69 +237,71 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
     const Node* node = *cur_topo_node;
     ++cur_topo_node;
 
-    if (processed_nodes.find(node) == processed_nodes.cend()) {
-      if (check_excluded_nodes && excluded_nodes.find(node) != excluded_nodes_end) {
-        processed_nodes.insert(node);
-        continue;
-      }
+    if (processed_nodes.find(node) != processed_nodes.cend()) {
+      continue;
+    }
 
-      bool supported = supported_nodes.count(node) != 0;
-      bool in_partition = !cur_group.empty();
+    if (check_excluded_nodes && excluded_nodes.find(node) != excluded_nodes_end) {
+      processed_nodes.insert(node);
+      continue;
+    }
 
-      // check if end of a partition.
-      if (in_partition && !supported) {
+    bool supported = supported_nodes.count(node) != 0;
+    bool in_partition = !cur_group.empty();
+
+    // check if end of a partition.
+    if (in_partition && !supported) {
 #ifndef NDEBUG
-        if (debug_output) {
-          LOGS_DEFAULT(VERBOSE) << "New partition due to " << node_str(*node)
-                                << ". Nodes in old partition: " << cur_group.size() << "\n";
-          LOGS_DEFAULT(VERBOSE) << group_str(cur_group) << "\n";
-        }
+      if (debug_output) {
+        LOGS_DEFAULT(VERBOSE) << "New partition due to " << node_str(*node)
+                              << ". Nodes in old partition: " << cur_group.size() << "\n";
+        LOGS_DEFAULT(VERBOSE) << group_str(cur_group) << "\n";
+      }
 #else
-        ORT_UNUSED_PARAMETER(debug_output);
+      ORT_UNUSED_PARAMETER(debug_output);
 #endif
-        node_groups.insert({cur_group.front()->Index(), std::move(cur_group)});
-      }
+      node_groups.insert({cur_group.front()->Index(), std::move(cur_group)});
+    }
 
-      // add the node and any connected downstream nodes that we can handle if supported.
-      // if not mark as processed so we know its inputs are available
-      if (supported) {
-        nodes_to_process.push(node);
-      } else {
-        processed_nodes.insert(node);
-      }
+    // add the node and any connected downstream nodes that we can handle if supported.
+    // if not mark as processed so we know its inputs are available
+    if (supported) {
+      nodes_to_process.push(node);
+    } else {
+      processed_nodes.insert(node);
+    }
 
-      while (!nodes_to_process.empty()) {
-        node = nodes_to_process.front();
-        nodes_to_process.pop();
+    while (!nodes_to_process.empty()) {
+      node = nodes_to_process.front();
+      nodes_to_process.pop();
 
-        if (processed_nodes.find(node) == processed_nodes.cend()) {
-          // add to partition if all inputs available
-          bool inputs_available = true;
-          for (auto cur = node->InputNodesBegin(), end = node->InputNodesEnd(); cur != end; ++cur) {
-            if (processed_nodes.find(&*cur) == processed_nodes.cend()) {
-              inputs_available = false;
-              break;
-            }
-          }
-
-          if (inputs_available) {
-            cur_group.push_back(node);
-            processed_nodes.insert(node);
-
-            for (auto cur = node->OutputNodesBegin(), end = node->OutputNodesEnd(); cur != end; ++cur) {
-              const Node& downstream_node = *cur;
-
-              // nodes will get added to the queue once per input from a supported node.
-              // we need this to happen as they can't be added to the group until all inputs are known to be available.
-              if (supported_nodes.count(&downstream_node) != 0) {
-                nodes_to_process.push(&downstream_node);
-              }
-            }
-          } else {
-            // need another node providing input to be added to the group.
+      if (processed_nodes.find(node) == processed_nodes.cend()) {
+        // add to partition if all inputs available
+        bool inputs_available = true;
+        for (auto cur = node->InputNodesBegin(), end = node->InputNodesEnd(); cur != end; ++cur) {
+          if (processed_nodes.find(&*cur) == processed_nodes.cend()) {
+            inputs_available = false;
+            break;
           }
         }
-      };
+
+        if (inputs_available) {
+          cur_group.push_back(node);
+          processed_nodes.insert(node);
+
+          for (auto cur = node->OutputNodesBegin(), end = node->OutputNodesEnd(); cur != end; ++cur) {
+            const Node& downstream_node = *cur;
+
+            // nodes will get added to the queue once per input from a supported node.
+            // we need this to happen as they can't be added to the group until all inputs are known to be available.
+            if (supported_nodes.count(&downstream_node) != 0) {
+              nodes_to_process.push(&downstream_node);
+            }
+          }
+        } else {
+          // need another node providing input to be added to the group.
+        }
+      }
     }
   }
 
