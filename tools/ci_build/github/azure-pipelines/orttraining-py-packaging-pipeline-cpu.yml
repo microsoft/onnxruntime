@@ -5,7 +5,7 @@ stages:
 
   jobs:
     - job: Linux_Training_CPU_Wheels
-      timeoutInMinutes: 60
+      timeoutInMinutes: 120
       workspace:
         clean: all
       pool: Onnxruntime-Linux-GPU-NV6
