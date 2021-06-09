@@ -60,7 +60,8 @@ void RunTypedTest() {
   test4.AddOutput<T>("output", {2, 2},
                      {1, 1,
                       4, 4});
-  test4.Run();
+  // skip TensorRT because it doesn't support negative indices				  
+  test4.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 
   // indices out of bounds
   OpTester test5("GatherElements", 11);
@@ -77,9 +78,10 @@ void RunTypedTest() {
   // skip nuphar, which will not throw error message but will ensure no out-of-bound access
   // skip cuda as the cuda kernel won't throw the error message
   // skip openvino which will not throw error message but will ensure no out-of-bound access
+  // skip TensorRT because it doesn't support out of bounds indices
   test5.Run(OpTester::ExpectResult::kExpectFailure,
             "GatherElements op: Value in indices must be within bounds [-2 , 1]. Actual value is 2",
-            {kNupharExecutionProvider, kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider});
+            {kNupharExecutionProvider, kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
 
   // 3D input - axis 1
   OpTester test6("GatherElements", 11);
@@ -269,9 +271,12 @@ void RunTypedTest<std::string>() {
   test8.Run();
 }
 
+// Disable TensorRT due to missing int8 calibrator
+#if !defined(USE_TENSORRT)
 TEST(GatherElementsOpTest, int8_t) {
   RunTypedTest<int8_t>();
 }
+#endif
 
 TEST(GatherElementsOpTest, int16_t) {
   RunTypedTest<int16_t>();

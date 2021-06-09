@@ -29,6 +29,9 @@ TEST(Dropout, WithOptionalOutputOpset10) {
   test.AddInput<float>("X", dims, {1.0f, 2.0f, 3.0f, 5.0f});
   test.AddOutput<float>("Y", dims, {1.0f, 2.0f, 3.0f, 5.0f});
   test.AddOutput<bool>("mask", dims, {false, false, false, false});
+  auto p_tp_model = test.BuildGraph();//slx
+  std::cout << "Dropout:WithOptionalOutputOpset10: p_tp_model: " << p_tp_model->MainGraph().Name() << std::endl;//slx
+  onnxruntime::Model::Save(*p_tp_model, "DropoutWithOptionalOutputOpset10.onnx");
   test.Run();
 }
 
