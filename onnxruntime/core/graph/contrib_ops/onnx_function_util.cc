@@ -4,9 +4,18 @@
 
 namespace ONNX_NAMESPACE {
 
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
+
 static uint32_t float_to_bits(float f) { return *reinterpret_cast<uint32_t*>(&f); }
 
 static float bits_to_float(uint32_t bits) { return *reinterpret_cast<float*>(&bits); }
+
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 
 static uint16_t floatToHalf(float ff) {
   uint32_t floatbits = float_to_bits(ff);
