@@ -120,7 +120,7 @@ class TrainingManager(GraphExecutionManager):
                 # ORT is NOT relying on save_for_backward() to actually save the tensor, 
                 # as this tensor is also kept in ORT's PartialGraphState
                 # This call is to invoke pytorch's version check to detect the potential inplace corruption
-                for idx in self._graph_info.module_output_indice_requires_save_for_backward:
+                for idx in self._graph_info.module_output_indices_requires_save_for_backward:
                     ctx.save_for_backward(user_outputs[idx])
 
                 return user_outputs

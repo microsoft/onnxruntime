@@ -613,7 +613,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("user_output_names", &GraphInfo::user_output_names)
       .def_readwrite("output_grad_indices_non_differentiable", &GraphInfo::output_grad_indices_non_differentiable)
       .def_readwrite("output_grad_indices_require_full_shape", &GraphInfo::output_grad_indices_require_full_shape)
-      .def_readwrite("module_output_indice_requires_save_for_backward", &GraphInfo::module_output_indice_requires_save_for_backward)
+      .def_readwrite("module_output_indices_requires_save_for_backward", &GraphInfo::module_output_indices_requires_save_for_backward)
       .def_readwrite("module_output_gradient_name", &GraphInfo::module_output_gradient_name);
 
   py::class_<OrtModuleGraphBuilder> ortmodule_graph_builder(m, "OrtModuleGraphBuilder");

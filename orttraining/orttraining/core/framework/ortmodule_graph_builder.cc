@@ -361,7 +361,7 @@ void OrtModuleGraphBuilder::FindModuleOutputNeededForBackward() {
     for (const Node* n : consumer_nodes) {
       // If a module output has a consumer that is executed after the YieldOp, marked it needed for backward
       if (id_to_exec_order[n->Index()] > yield_node_order) {
-        graph_info_.module_output_indice_requires_save_for_backward.emplace_back(i);
+        graph_info_.module_output_indices_requires_save_for_backward.emplace_back(i);
         break;
       }
     }

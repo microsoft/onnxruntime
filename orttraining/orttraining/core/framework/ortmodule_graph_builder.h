@@ -57,7 +57,7 @@ struct GraphInfo {
   // Otherwise, we can use scalar-0 tensor.
   std::vector<size_t> output_grad_indices_require_full_shape{};
   // Indices of module output that are needed for backward computation
-  std::vector<size_t> module_output_indice_requires_save_for_backward{};
+  std::vector<size_t> module_output_indices_requires_save_for_backward{};
   // Names of module outputs' gradient
   std::vector<std::string> module_output_gradient_name{};
 };
