@@ -1238,6 +1238,16 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyLossGradient) {
   }
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyLossInternalGradient) {
+  std::vector<ArgDef> input_arg_def{GO(0), O(1)};
+  size_t input_size = static_cast<size_t>(GetSrcNodeInputSize());
+  for (size_t i = 1; i < input_size; i++) {
+    input_arg_def.emplace_back(I(i));
+  }
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"SoftmaxCrossEntropyLossInternalGrad", kMSDomain, 1}, input_arg_def, {GI(0)}, SrcNodeAttributes())};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
   const ArgDef X = I(0), Y = O(0), dX = GI(0), dY = GO(0);
 
