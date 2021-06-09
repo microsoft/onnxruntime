@@ -2,41 +2,24 @@ import onnx
 from onnx import helper
 from onnx import TensorProto
 from enum import Enum
-from packaging import version
-
-# TODO(kreeger): I don't know if I have to register an opset here.
-#                See embed_layer_norm_gen.py for more details.
-
+import onnxruntime
+from onnxruntime import quantization
 
 #
+# TODO(kreeger): This script should just quantize the existing models.
 #
-#
-# TODO(kreeger): LEFT OFF RIGHT HERE.
-#   -- Determine if this is just another optimziation pass after EmbedLayerNorm is called.
-#   -- Determine if this should be run after quantization is done?
-#   -- What things actually need to change in the quantization spec?
-#
-#
+MODEL_LIST = [
+    "embed_layer_norm_format3.onnx"
+]
 
-def GenerateInitializers():
-    #
-    # TODO - write me.
-    #
-    pass
+for model_name in MODEL_LIST:
+    # First, optimize the model with onnxruntime:
+    sess_options = onnxruntime.SessionOptions()
+    sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+    
+    path_prefix = model_name[:-5]  # remove .onnx suffix
+    optimized_model_path = "{}_opt.onnx".format(path_prefix)
+    sess_options.optimized_model_filepath = optimized_model_path
+    session = onnxruntime.InferenceSession(model_name, sess_options)
 
-
-def GenerateNodes(model_name, suffix=''):
-    #
-    # TODO - write me.
-    #
-    pass
-
-
-def GenerateModel(model_name):
-    #
-    # TODO - write me.
-    #
-    pass
-
-
-GenerateModel("test_model_1.onnx")
+    quantization.quantize_dynamic(optimized_model_path, "{}_opt.quant.onnx".format(path_prefix))

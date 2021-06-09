@@ -15,10 +15,18 @@ TODO(kreeger): write description here.
 */
 class QuantizedEmbedLayerNormFusion : public GraphTransformer {
  public:
-  QuantizedEmbedLayerNormFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  QuantizedEmbedLayerNormFusion(
+      const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
       : GraphTransformer("QuantizedEmbedLayerNormFusion", compatible_execution_providers) {}
 
-  Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+  Status ApplyImpl(Graph& graph, bool& modified, int graph_level,
+                   const logging::Logger& logger) const override;
+
+ private:
+  Node* FindNodeFromPath(const Node& node,
+                         Graph& graph,
+                         const char* op_type,
+                         const logging::Logger& logger) const;
 };
 
 }  // namespace onnxruntime
