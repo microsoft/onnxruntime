@@ -705,8 +705,13 @@ def test_Share_Input():
     def input_generator():
         return torch.randn(output_size, dtype=torch.float)
 
+    def input_generator_with_requires_grad():
+        return torch.randn(output_size, dtype=torch.float).requires_grad_()
+
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
     run_training_test_and_compare(model_builder, input_generator, label_input)
+
+    run_training_test_and_compare(model_builder, input_generator_with_requires_grad, label_input)
