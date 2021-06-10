@@ -491,10 +491,6 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
         external_allocator_info = info.external_allocator_info;
         RegisterExecutionProvider(sess, *cuda_provider_info->CreateExecutionProviderFactory(info));
       }
-      else
-      {
-        LOGS_DEFAULT(INFO) << "CUDA execution provider is not available.";
-      }
 #endif
     } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM

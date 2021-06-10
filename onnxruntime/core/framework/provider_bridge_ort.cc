@@ -1200,7 +1200,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
   API_IMPL_BEGIN
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->SetCurrentGpuDeviceId(device_id);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not available.");
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is either not enabled or not available.");
   API_IMPL_END
 }
 
@@ -1208,7 +1208,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
   API_IMPL_BEGIN
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->GetCurrentGpuDeviceId(device_id);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not available.");
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is either not enabled or not available.");
   API_IMPL_END
 }
 
