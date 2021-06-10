@@ -487,11 +487,15 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
     } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
       const auto it = provider_options_map.find(type);
+      if ( it != provider_options_map.end() ) {
+        printf("using ROCMExecutionProviderInfo::FromProviderOptions(it->second)\n");
+      }
       const ROCMExecutionProviderInfo info =
           it != provider_options_map.end()
               ? ROCMExecutionProviderInfo::FromProviderOptions(it->second)
               : [&]() {
                   ROCMExecutionProviderInfo info{};
+		  printf("observing cuda_device id = %d\n", cuda_device_id);
                   info.device_id = cuda_device_id;
                   info.gpu_mem_limit = gpu_mem_limit;
                   info.arena_extend_strategy = arena_extend_strategy;
