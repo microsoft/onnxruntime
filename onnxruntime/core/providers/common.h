@@ -6,8 +6,10 @@
 #include <cstdint>
 #include <functional>
 
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
+#endif
 
 namespace onnxruntime {
 

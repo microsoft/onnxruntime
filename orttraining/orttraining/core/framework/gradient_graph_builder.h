@@ -29,6 +29,8 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
     STOP_GRADIENT_EDGES = {
         {"Not", {0}},
         {"And", {0, 1}},
+        {"BatchNormalization", {3, 4}},
+        {"BatchNormInternal", {3, 4}},
         {"Or", {0, 1}},
         {"Xor", {0, 1}},
         {"Equal", {0, 1}},
@@ -51,6 +53,7 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"Slice", {1, 2, 3, 4}},
         {"SparseSoftmaxCrossEntropy", {1, 2}},
         {"SoftmaxCrossEntropyLoss", {1, 2}},
+        {"SoftmaxCrossEntropyLossInternal", {1, 2, 3}},
         {"ConstantOfShape", {0}},
         {"Scatter", {1}},
         {"ScatterElements", {1}},
@@ -65,7 +68,8 @@ static std::unordered_map<std::string, std::unordered_set<size_t>>
         {"Unsqueeze", {1}},
         {"ReduceSum", {1}},
         {"Split", {1}},
-        {"Clip", {1, 2}}};
+        {"Clip", {1, 2}},
+        {"Pad", {1, 2}}};
 
 class GradientGraphBuilder {
  public:
@@ -134,7 +138,7 @@ class GradientGraphBuilder {
   NodeSet BFSWithStopGradient(const std::unordered_set<std::string>& x_node_arg_names) const;
 
   /**
-  Perferms a ReverseBFS on the graph with STOP_GRADIENT_EDGES constrain
+  Performs a ReverseBFS on the graph with STOP_GRADIENT_EDGES constrain
   It will skip traversing over the edges defined in STOP_GRADIENT_EDGES map.
   The resulting node set contains all the nodes that are differentiable wrt the input nodes
   @param Starting nodes for ReverseBFS

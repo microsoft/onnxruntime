@@ -51,16 +51,11 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                         : target_shape_tensor.int64_data().data();
 
   const auto size = target_shape_tensor.dims()[0];
-  std::vector<int64_t> target_shape;
-  std::copy(raw_target_shape, raw_target_shape + size, std::back_inserter(target_shape));
-
+  std::vector<int64_t> target_shape{raw_target_shape, raw_target_shape + size};
   std::vector<int64_t> input_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
   ReshapeHelper helper(TensorShape(input_shape), target_shape);
-  std::copy(target_shape.cbegin(), target_shape.cend(),
-            google::protobuf::RepeatedFieldBackInserter(
-                layer->mutable_reshapestatic()->mutable_targetshape()));
-
+  *layer->mutable_reshapestatic()->mutable_targetshape() = {target_shape.cbegin(), target_shape.cend()};
   *layer->mutable_input()->Add() = input_defs[0]->Name();
   *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
 
@@ -79,7 +74,9 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializer
     return false;
   }
 
-  const auto& perm_dims = initializers.at(perm_name)->dims();
+  const auto& perm_tensor = *initializers.at(perm_name);
+  const int64_t* raw_perm = GetTensorInt64Data(perm_tensor);
+  const auto& perm_dims = perm_tensor.dims();
   if (perm_dims.empty() || perm_dims[0] == 0) {
     LOGS(logger, VERBOSE) << "New shape of reshape cannot be empty";
     return false;
@@ -94,11 +91,23 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializer
     return false;
   }
 
+  // CoreML reshape does not support 0 as dimension
+  NodeAttrHelper helper(node);
+  const bool allow_zero = helper.Get("allowzero ", 0) == 1;
+  if (allow_zero) {
+    for (int64_t i = 0; i < perm_dims[0]; i++) {
+      if (raw_perm[i] == 0) {
+        LOGS_DEFAULT(VERBOSE) << "Reshape doesn't support 0 reshape dimension when allowzero is enabled";
+        return false;
+      }
+    }
+  }
+
   return true;
 }
 
 void CreateReshapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  op_registrations.builders.push_back(onnxruntime::make_unique<ReshapeOpBuilder>());
+  op_registrations.builders.push_back(std::make_unique<ReshapeOpBuilder>());
   op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
 

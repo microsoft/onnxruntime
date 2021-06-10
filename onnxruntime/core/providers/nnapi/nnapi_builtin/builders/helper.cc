@@ -197,9 +197,9 @@ bool HasValidQuantizationScales(const InitializedTensorSet& initializers, const 
         return false;
       }
 
-      if (params.android_sdk_ver < 29) {
+      if (params.android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
         LOGS_DEFAULT(VERBOSE) << op_type << " only supports per-channel quantization on Android API 29+, "
-                              << "system API level: " << params.android_sdk_ver;
+                              << "system NNAPI feature level: " << params.android_feature_level;
         return false;
       }
 
@@ -354,36 +354,6 @@ bool GetType(const NodeArg& node_arg, int32_t& type) {
   return true;
 }
 
-bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node, float& min, float& max) {
-  min = std::numeric_limits<float>::lowest();
-  max = std::numeric_limits<float>::max();
-  if (node.SinceVersion() < 11) {  // Clip opset 1, 6 is using attributes for min/max
-    NodeAttrHelper helper(node);
-    min = helper.Get("min", std::numeric_limits<float>::lowest());
-    max = helper.Get("max", std::numeric_limits<float>::max());
-  } else {
-    if (node.InputDefs().size() > 1) {  // we have input min
-      const auto& min_name = node.InputDefs()[1]->Name();
-      if (!Contains(initializers, min_name)) {
-        LOGS_DEFAULT(VERBOSE) << "Input min of Clip must be known";
-        return false;
-      }
-      min = GetTensorFloatData(*initializers.at(min_name))[0];
-    }
-
-    if (node.InputDefs().size() > 2) {  // we have input max
-      const auto& max_name = node.InputDefs()[2]->Name();
-      if (!Contains(initializers, max_name)) {
-        LOGS_DEFAULT(VERBOSE) << "Input max of Clip must be known";
-        return false;
-      }
-      max = GetTensorFloatData(*initializers.at(max_name))[0];
-    }
-  }
-
-  return true;
-}
-
 void GetFlattenOutputShape(const Node& node, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2) {
   int32_t rank = static_cast<int>(input_shape.size());
   NodeAttrHelper helper(node);
@@ -483,13 +453,43 @@ bool IsNodeSupportedInternal(const Node& node, const GraphViewer& graph_viewer,
     return true;
 }
 
+bool IsInputSupported(const NodeArg& input, const std::string& parent_name) {
+  const auto& input_name = input.Name();
+  const auto* shape_proto = input.Shape();
+  // We do not support input with no shape
+  if (!shape_proto) {
+    LOGS_DEFAULT(VERBOSE) << "Input [" << input_name << "] of [" << parent_name
+                          << "] has not shape";
+    return false;
+  }
+
+  for (const auto& dim : shape_proto->dim()) {
+    // For now we do not support dynamic shape
+    if (!dim.has_dim_value()) {
+      LOGS_DEFAULT(WARNING) << "Dynamic shape is not supported for now, for input:" << input_name;
+      return false;
+    }
+  }
+
+  return true;
+}
+
 std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_viewer, const OpSupportCheckParams& params) {
   std::vector<std::vector<size_t>> supported_node_groups;
-  if (params.android_sdk_ver < ORT_NNAPI_MIN_API_LEVEL) {
-    LOGS_DEFAULT(WARNING) << "All ops will fallback to CPU EP, because Android API level [" << params.android_sdk_ver
-                          << "] is lower than minimal supported API level [" << ORT_NNAPI_MIN_API_LEVEL
+  if (params.android_feature_level < ORT_NNAPI_MIN_API_LEVEL) {
+    LOGS_DEFAULT(WARNING) << "All ops will fallback to CPU EP, because system NNAPI feature level ["
+                          << params.android_feature_level
+                          << "] is lower than minimal supported NNAPI API feature level ["
+                          << ORT_NNAPI_MIN_API_LEVEL
                           << "] of this build for NNAPI";
     return supported_node_groups;
+  }
+
+  // Disable NNAPI if the graph has input with dynamic shape
+  for (const auto* input : graph_viewer.GetInputs()) {
+    if (!IsInputSupported(*input, "graph")) {
+      return supported_node_groups;
+    }
   }
 
   // This holds the supported node's topological index
@@ -537,6 +537,16 @@ std::string Shape2String(const std::vector<uint32_t>& shape) {
 
   os << "]";
   return os.str();
+}
+
+bool CheckIsInitializerTensor(const InitializedTensorSet& initializers, const Node& node,
+                              size_t input_idx, const char* input_name) {
+  if (!Contains(initializers, node.InputDefs()[input_idx]->Name())) {
+    LOGS_DEFAULT(VERBOSE) << input_name << " of " << node.OpType() << " must be an initializer tensor";
+    return false;
+  }
+
+  return true;
 }
 
 }  // namespace nnapi

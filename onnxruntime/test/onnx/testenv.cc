@@ -22,7 +22,7 @@ PThreadPool TestEnv::GetDefaultThreadPool(onnxruntime::Env& env) {
     int core_num = env.GetNumCpuCores();
 
     onnxruntime::ThreadOptions t_opts;
-    default_pool = onnxruntime::make_unique<ThreadPool>(&env, t_opts, ORT_TSTR("onnx_runner_tp"), core_num, false);
+    default_pool = std::make_unique<ThreadPool>(&env, t_opts, ORT_TSTR("onnx_runner_tp"), core_num, false);
   });
   return default_pool.get();
 }

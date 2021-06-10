@@ -24,7 +24,17 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qlgavgpool.cpp
 )
 
-if(MSVC)
+if (onnxruntime_BUILD_WEBASSEMBLY)
+  if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+    file(GLOB_RECURSE mlas_platform_srcs
+      "${ONNXRUNTIME_ROOT}/core/mlas/lib/wasm_simd/*.cpp"
+    )
+  else()
+    file(GLOB_RECURSE mlas_platform_srcs
+      "${ONNXRUNTIME_ROOT}/core/mlas/lib/wasm/*.cpp"
+    )
+  endif()
+elseif(MSVC)
   if(onnxruntime_target_platform STREQUAL "ARM64")
     set(mlas_platform_preprocess_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/QgemmU8X8KernelNeon.asm
@@ -54,7 +64,7 @@ if(MSVC)
       )
       list(APPEND mlas_platform_srcs ${obj_filename})
     endforeach()
-  elseif(onnxruntime_target_platform STREQUAL "ARM")
+  elseif((onnxruntime_target_platform STREQUAL "ARM") OR (onnxruntime_target_platform STREQUAL "ARM64EC"))
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
     )
@@ -127,6 +137,8 @@ if(MSVC)
 else()
   if (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
     set(ARM64 TRUE)
+  elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64e")
+    set(ARM64 TRUE)
   elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm")
     set(ARM TRUE)
   elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "x86_64")
@@ -158,7 +170,7 @@ else()
       set(ARM TRUE)
     elseif(dumpmachine_output MATCHES "^aarch64.*")
       set(ARM64 TRUE)
-    elseif(dumpmachine_output MATCHES "^powerpc.*")
+    elseif(dumpmachine_output MATCHES "^(powerpc.*|ppc.*)")
       set(POWER TRUE)
     elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
       set(X86 TRUE)
@@ -347,7 +359,7 @@ else()
   endif()
 endif()
 
-add_library(onnxruntime_mlas STATIC ${mlas_common_srcs} ${mlas_platform_srcs})
+onnxruntime_add_static_library(onnxruntime_mlas ${mlas_common_srcs} ${mlas_platform_srcs})
 target_include_directories(onnxruntime_mlas PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}/core/mlas/lib)
 set_target_properties(onnxruntime_mlas PROPERTIES FOLDER "ONNXRuntime")
 if (WIN32)

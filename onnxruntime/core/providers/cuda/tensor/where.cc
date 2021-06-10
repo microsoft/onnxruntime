@@ -16,7 +16,7 @@ namespace cuda {
       9,                                                            \
       TName,                                                        \
       kCudaExecutionProvider,                                       \
-      KernelDefBuilder()                                            \
+      (*KernelDefBuilder::Create())                                 \
           .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()) \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),   \
       Where<T>);
@@ -203,6 +203,7 @@ SPECIALIZED_COMPUTE(uint8_t)
 SPECIALIZED_COMPUTE(int32_t)
 SPECIALIZED_COMPUTE(int64_t)
 SPECIALIZED_COMPUTE(float)
+SPECIALIZED_COMPUTE(double_t)
 SPECIALIZED_COMPUTE(MLFloat16)
 }  // namespace cuda
 }  // namespace onnxruntime

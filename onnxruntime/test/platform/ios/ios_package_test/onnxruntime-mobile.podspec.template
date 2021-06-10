@@ -1,0 +1,19 @@
+# This pod spec template is used to generate podspec file for running ios_package_test project,
+# this is not a podspec template used by onnxruntime-mobile official CocoaPods package
+Pod::Spec.new do |spec|
+  spec.name                 = "onnxruntime-mobile"
+  spec.version              = "${ORT_VERSION}"
+  spec.summary              = "ONNX Runtime C/C++ Package"
+  spec.description          = <<-DESC
+  ONNX Runtime C/C++ framework pod.
+                   DESC
+
+  spec.homepage             = "https://github.com/microsoft/onnxruntime"
+  spec.license              = { :type => 'MIT' }
+  spec.authors              = { "ONNX Runtime" => "onnxruntime@microsoft.com" }
+  spec.platform             = :ios, '13.0'
+  # if you are going to use a file as the spec.source, add 'file:' before your file path
+  spec.source               = { :http => '${ORT_BASE_FRAMEWORK_ARCHIVE}' }
+  spec.vendored_frameworks  = 'onnxruntime.framework'
+  spec.source_files         = 'onnxruntime.framework/Headers/*.h'
+end

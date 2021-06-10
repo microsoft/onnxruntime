@@ -16,17 +16,27 @@
 
 #pragma once
 
-// This is a simple translation from the old Caffe math interfaces. We aim to
-// still keep it simple, so all platforms would be able to support it fairly
-// easily.
-
-// We include the cblas header here so that we can obtain the macros from cblas.
-extern "C" {
-#include "core/framework/cblas.h"
-}
-
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/tensor.h"
+#endif
+
+#ifndef CBLAS_ENUM_DEFINED_H
+#define CBLAS_ENUM_DEFINED_H
+enum CBLAS_ORDER { CblasRowMajor = 101,
+                   CblasColMajor = 102 };
+enum CBLAS_TRANSPOSE {
+  CblasNoTrans = 111,
+  CblasTrans = 112,
+  CblasConjTrans = 113
+};
+enum CBLAS_UPLO { CblasUpper = 121,
+                  CblasLower = 122 };
+enum CBLAS_DIAG { CblasNonUnit = 131,
+                  CblasUnit = 132 };
+enum CBLAS_SIDE { CblasLeft = 141,
+                  CblasRight = 142 };
+#endif
 
 namespace onnxruntime {
 namespace concurrency {

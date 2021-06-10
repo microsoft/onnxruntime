@@ -10,7 +10,7 @@
 // This is the minimal Android API Level required by ORT NNAPI EP to run
 // ORT running on any host system with Android API level less than this will fall back to CPU EP
 #ifndef ORT_NNAPI_MIN_API_LEVEL
-#define ORT_NNAPI_MIN_API_LEVEL 27
+#define ORT_NNAPI_MIN_API_LEVEL ANEURALNETWORKS_FEATURE_LEVEL_1
 #endif
 
 // This is the maximum Android API level supported in the ort model conversion for NNAPI EP
@@ -116,12 +116,9 @@ common::Status GetQuantizationZeroPoint(const InitializedTensorSet& initializers
                                         const Node& node, size_t idx, int32_t& zero_point) ORT_MUST_USE_RESULT;
 
 // Get Shape/Type of a NodeArg
+// TODO, move to shared_utils
 bool GetShape(const NodeArg& node_arg, Shape& shape);
 bool GetType(const NodeArg& node_arg, int32_t& type);
-
-// Get the min/max value from Clip op
-// If the min/max are inputs be not initializers (value not preset), will return false
-bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node, float& min, float& max);
 
 // Get the output shape of Flatten Op
 void GetFlattenOutputShape(const Node& node, const Shape& input_shape, int32_t& dim_1, int32_t& dim_2);
@@ -134,6 +131,10 @@ std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_view
 
 // Get string representation of a Shape
 std::string Shape2String(const std::vector<uint32_t>& shape);
+
+// Check the given input is an initializer tensor
+bool CheckIsInitializerTensor(const InitializedTensorSet& initializers, const Node& node,
+                              size_t index, const char* input_name) ORT_MUST_USE_RESULT;
 
 }  // namespace nnapi
 }  // namespace onnxruntime

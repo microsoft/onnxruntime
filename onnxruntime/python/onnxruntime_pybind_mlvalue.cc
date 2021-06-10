@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "onnxruntime_pybind_mlvalue.h"
+#include "python/onnxruntime_pybind_state_common.h"
 
 #define NO_IMPORT_ARRAY
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
@@ -16,7 +17,13 @@
 #include "core/framework/data_types.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 
-using namespace std;
+#include "core/framework/data_transfer_utils.h"
+#include "core/framework/data_types_internal.h"
+#include "core/providers/get_execution_providers.h"
+#include "core/framework/kernel_registry.h"
+#include "core/framework/provider_bridge_ort.h"
+#include "core/framework/provider_options_utils.h"
+
 namespace onnxruntime {
 namespace python {
 
@@ -57,6 +64,102 @@ static TensorShape GetArrayShape(PyArrayObject* pyObject) {
 void CpuToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   memcpy(dst, src, num_bytes);
 }
+
+#ifdef USE_CUDA
+void CpuToCudaMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_CUDA()->cudaMemcpy_HostToDevice(dst, src, num_bytes);
+}
+
+void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+  GetProviderInfo_CUDA()->cudaMemcpy_DeviceToHost(dst, src, num_bytes);
+}
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
+      {OrtDevice::GPU, CudaToCpuMemCpy}};
+
+  return &map;
+}
+
+bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
+  int num_devices = GetProviderInfo_CUDA()->cudaGetDeviceCount();
+
+  if (0 == num_devices) {
+    LOGS(logger, WARNING) << "your system does not have a CUDA capable device.";
+    return false;
+  }
+
+  if (id < 0 || id >= num_devices) {
+    LOGS(logger, WARNING) << "cuda_device=" << id << " is invalid, must choose device ID between 0 and " << num_devices - 1;
+    return false;
+  }
+
+  return true;
+}
+
+AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
+  // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
+  // multi-threaded CUDA allocation work we need to maintain a per-thread CUDA allocator
+
+  static auto* id_to_allocator_map = new std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>();
+
+  if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
+    // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
+    id_to_allocator_map->insert({id, GetProviderInfo_CUDA()->CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, nullptr)});
+  }
+
+  return (*id_to_allocator_map)[id];
+}
+
+#endif
+
+#ifdef USE_ROCM
+
+bool IsRocmDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
+  int num_devices = 0;
+  HIP_CALL_THROW(hipGetDeviceCount(&num_devices));
+
+  if (0 == num_devices) {
+    LOGS(logger, WARNING) << "your system does not have a ROCM capable device.";
+    return false;
+  }
+
+  if (id < 0 || id >= num_devices) {
+    LOGS(logger, WARNING) << "rocm_device=" << id << " is invalid, must choose device ID between 0 and " << num_devices - 1;
+    return false;
+  }
+
+  return true;
+}
+
+AllocatorPtr GetRocmAllocator(OrtDevice::DeviceId id) {
+  // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
+  // multi-threaded ROCM allocation work we need to maintain a per-thread ROCM allocator
+  static std::unordered_map<OrtDevice::DeviceId, AllocatorPtr> id_to_allocator_map;
+
+  if (id_to_allocator_map.find(id) == id_to_allocator_map.end()) {
+    id_to_allocator_map.insert({id, ROCMExecutionProvider::CreateRocmAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info)});
+  }
+
+  return id_to_allocator_map[id];
+}
+
+void CpuToRocmMemCpy(void* dst, const void* src, size_t num_bytes) {
+  HIP_CALL_THROW(hipMemcpy(dst, src, num_bytes, hipMemcpyHostToDevice));
+}
+
+void RocmToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
+  HIP_CALL_THROW(hipMemcpy(dst, src, num_bytes, hipMemcpyDeviceToHost));
+}
+
+const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetRocmToHostMemCpyFunction() {
+  static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
+      {OrtDevice::GPU, RocmToCpuMemCpy}};
+
+  return &map;
+}
+
+#endif
 
 int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type) {
   static std::map<MLDataType, int> type_map{
@@ -297,15 +400,15 @@ static std::unique_ptr<Tensor> CreateTensor(const AllocatorPtr& alloc, const std
       // Use the memory of numpy array directly. The ownership belongs to the calling
       // python code. In this case, the incoming pyObject must itself be contiguous (pyObject == darray).
       // darray reference will be decremented but the original array is still alive
-      p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, PyArray_DATA(darray), alloc->Info());
+      p_tensor = std::make_unique<Tensor>(element_type, shape, PyArray_DATA(darray), alloc->Info());
     } else {
       // This is the case when a contiguous array is a copy. We still can use it directly with OrtPybindSingleUseAllocator
       // which takes ownership of the array.
       auto pybind_alloc = std::make_shared<OrtPybindSingleUseAllocator>(std::move(darray_guard), name_input, alloc->Info());
-      p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, std::move(pybind_alloc));
+      p_tensor = std::make_unique<Tensor>(element_type, shape, std::move(pybind_alloc));
     }
   } else {
-    p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
+    p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
     CopyDataToTensor(darray, npy_type, p_tensor, mem_cpy_to_device);
   }
 
@@ -357,7 +460,7 @@ static void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_
   // set the seq type
   MLDataType seq_dtype = OrtTypeInfo::ElementTypeFromProto(
       static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type_proto.sequence_type().elem_type().tensor_type().elem_type()));
-  auto p_seq_tensors = onnxruntime::make_unique<TensorSeq>(seq_dtype);
+  auto p_seq_tensors = std::make_unique<TensorSeq>(seq_dtype);
   p_seq_tensors->SetElements(std::move(tensors));
   auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
   p_mlvalue->Init(p_seq_tensors.release(),
@@ -391,10 +494,10 @@ static void CreateTensorMLValueOwned(const OrtPybindSingleUseAllocatorPtr& pybin
       npy_type != NPY_VOID && npy_type != NPY_OBJECT) {
     // We are able to reuse the memory of the contiguous python buffer and avoid
     // extra copy using OrtPybindAllocator which will take care of the memory
-    p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, pybind_alloc);
+    p_tensor = std::make_unique<Tensor>(element_type, shape, pybind_alloc);
   } else {
     // We still need to copy elements properly from the contiguous buffer
-    p_tensor = onnxruntime::make_unique<Tensor>(element_type, shape, alloc);
+    p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
     CopyDataToTensor(pybind_alloc->GetContiguous(), npy_type, p_tensor);
   }
 
@@ -460,7 +563,7 @@ static void CreateMapMLValue_Map(Py_ssize_t& pos, PyObject*& key, const std::str
                                  PyObject* item, AllocatorPtr /*alloc*/, OrtValue* p_mlvalue, KeyGetterType keyGetter,
                                  ValueGetterType valueGetter) {
   std::unique_ptr<std::map<KeyType, ValueType>> dst;
-  dst = onnxruntime::make_unique<std::map<KeyType, ValueType>>();
+  dst = std::make_unique<std::map<KeyType, ValueType>>();
   CreateMapMLValue_LoopIntoMap(pos, key, name_input, value, item, *dst, keyGetter, valueGetter);
   p_mlvalue->Init(dst.release(), DataTypeImpl::GetType<std::map<KeyType, ValueType>>(),
                   DataTypeImpl::GetType<std::map<KeyType, ValueType>>()->GetDeleteFunc());
@@ -471,7 +574,7 @@ void CreateMapMLValue_VectorMap(Py_ssize_t& pos, PyObject*& key, const std::stri
                                 PyObject* iterator, PyObject* item, AllocatorPtr /*alloc*/, OrtValue* p_mlvalue,
                                 KeyGetterType keyGetter, ValueGetterType valueGetter) {
   std::unique_ptr<std::vector<std::map<KeyType, ValueType>>> dstVector;
-  dstVector = onnxruntime::make_unique<std::vector<std::map<KeyType, ValueType>>>();
+  dstVector = std::make_unique<std::vector<std::map<KeyType, ValueType>>>();
   int index = 0;
   do {
     dstVector->push_back(std::map<KeyType, ValueType>());

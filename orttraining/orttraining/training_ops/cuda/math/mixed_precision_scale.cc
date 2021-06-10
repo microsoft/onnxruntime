@@ -9,25 +9,26 @@ namespace onnxruntime {
 namespace cuda {
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-#define ALL_IEEE_FLOAT_TENSOR_TYPES {DataTypeImpl::GetTensorType<float>(),      \
-                                     DataTypeImpl::GetTensorType<double>(),     \
-                                     DataTypeImpl::GetTensorType<MLFloat16>(),  \
-                                     DataTypeImpl::GetTensorType<BFloat16>()}
+#define ALL_IEEE_FLOAT_TENSOR_TYPES           \
+  { DataTypeImpl::GetTensorType<float>(),     \
+    DataTypeImpl::GetTensorType<double>(),    \
+    DataTypeImpl::GetTensorType<MLFloat16>(), \
+    DataTypeImpl::GetTensorType<BFloat16>() }
 #else
 #define ALL_IEEE_FLOAT_TENSOR_TYPES DataTypeImpl::AllIEEEFloatTensorTypes()
 #endif
 
-#define REGISTER_MIXEDPRECISIONSCALE_KERNEL_TYPED(SrcT)                     \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                            \
-      MixedPrecisionScale,                                                  \
-      kMSDomain,                                                            \
-      1,                                                                    \
-      SrcT,                                                                 \
-      kCudaExecutionProvider,                                               \
-      KernelDefBuilder()                                                    \
-          .TypeConstraint("SrcT", DataTypeImpl::GetTensorType<SrcT>())      \
-          .TypeConstraint("ScaleT", DataTypeImpl::GetTensorType<float>())   \
-          .TypeConstraint("DstT", ALL_IEEE_FLOAT_TENSOR_TYPES),             \
+#define REGISTER_MIXEDPRECISIONSCALE_KERNEL_TYPED(SrcT)                   \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                          \
+      MixedPrecisionScale,                                                \
+      kMSDomain,                                                          \
+      1,                                                                  \
+      SrcT,                                                               \
+      kCudaExecutionProvider,                                             \
+      (*KernelDefBuilder::Create())                                       \
+          .TypeConstraint("SrcT", DataTypeImpl::GetTensorType<SrcT>())    \
+          .TypeConstraint("ScaleT", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("DstT", ALL_IEEE_FLOAT_TENSOR_TYPES),           \
       MixedPrecisionScale<SrcT>);
 
 Status BytesPerElement(ONNX_NAMESPACE::TensorProto_DataType to, size_t& bytes_per_elem) {

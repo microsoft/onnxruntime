@@ -9,12 +9,21 @@
 
 #include <inference_engine.hpp>
 
+#ifdef OPENVINO_2021_4
+using Exception = InferenceEngine::Exception;
+using WaitMode = InferenceEngine::InferRequest::WaitMode;
+#else
+using Exception = InferenceEngine::details::InferenceEngineException;
+using WaitMode = InferenceEngine::IInferRequest::WaitMode;
+#endif
+
 #include "core/providers/shared_library/provider_api.h"
 
 #include "../contexts.h"
 #include "../backend_utils.h"
 #include "vadm_backend.h"
-#if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2)
+#if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || \
+    defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
 #include <vpu/hddl_config.hpp>
 #else
 #include <vpu/hddl_plugin_config.hpp>
@@ -53,7 +62,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   }
 #endif
 
-#if defined(OPENVINO_2020_4)
+#if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
   if (const_outputs_map_.size() == subgraph_context_.output_names.size())
     subgraph_context_.is_constant = true;
 #endif
@@ -68,14 +77,14 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   if (global_context_.is_wholly_supported_graph && subgraph_context_.enable_batching) {
     for (int j = 0; j < 8; j++) {
       InferenceEngine::ExecutableNetwork exe_network;
-#if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2)
-      config[InferenceEngine::HDDL_DEVICE_TAG] = global_context_.deviceTags[j];
-#else
+#if defined(OPENVINO_2020_3)
       config[VPU_HDDL_CONFIG_KEY(DEVICE_TAG)] = global_context_.deviceTags[j];
+#else
+      config[InferenceEngine::HDDL_DEVICE_TAG] = global_context_.deviceTags[j];
 #endif
       try {
         exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, hw_target, config);
-      } catch (const InferenceEngine::details::InferenceEngineException& e) {
+      } catch (const Exception& e) {
         ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + e.what());
       } catch (...) {
         ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_context_.subgraph_name);
@@ -86,8 +95,8 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     for (size_t j = 0; j < num_inf_reqs_; j++) {
       InferenceEngine::InferRequest::Ptr infRequest;
       try {
-        infRequest = exe_networks[j].CreateInferRequestPtr();
-      } catch (const InferenceEngine::details::InferenceEngineException& e) {
+        infRequest = std::make_shared<InferenceEngine::InferRequest>(exe_networks[j].CreateInferRequest());
+      } catch (const Exception& e) {
         ORT_THROW(log_tag + "Exception while creating InferRequest object: " + e.what());
       } catch (...) {
         ORT_THROW(log_tag + "Exception while creating InferRequest object.");
@@ -101,15 +110,15 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   else {
     i = GetFirstAvailableDevice(global_context);
     LOGS_DEFAULT(INFO) << log_tag << "Device Tag is: " << i;
-#if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2)
-    config[InferenceEngine::HDDL_DEVICE_TAG] = global_context_.deviceTags[i];
-#else
+#if defined(OPENVINO_2020_3)
     config[VPU_HDDL_CONFIG_KEY(DEVICE_TAG)] = global_context_.deviceTags[i];
+#else
+    config[InferenceEngine::HDDL_DEVICE_TAG] = global_context_.deviceTags[i];
 #endif
     InferenceEngine::ExecutableNetwork exe_network;
     try {
       exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, hw_target, config);
-    } catch (const InferenceEngine::details::InferenceEngineException& e) {
+    } catch (const Exception& e) {
       ORT_THROW(log_tag + " Exception while Loading Network for graph: " + subgraph_context_.subgraph_name + e.what());
     } catch (...) {
       ORT_THROW(log_tag + " Exception while Loading Network for graph " + subgraph_context_.subgraph_name);
@@ -117,8 +126,8 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
     InferenceEngine::InferRequest::Ptr infRequest;
     try {
-      infRequest = exe_network.CreateInferRequestPtr();
-    } catch (const InferenceEngine::details::InferenceEngineException& e) {
+      infRequest = std::make_shared<InferenceEngine::InferRequest>(exe_network.CreateInferRequest());
+    } catch (const Exception& e) {
       ORT_THROW(log_tag + "Exception while creating InferRequest object: " + e.what());
     } catch (...) {
       ORT_THROW(log_tag + "Exception while creating InferRequest object.");
@@ -143,7 +152,7 @@ void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* c
     std::string input_name = input_info_iter->first;
     try {
       graph_input_blob = infer_request->GetBlob(input_name);
-    } catch (const InferenceEngine::details::InferenceEngineException& e) {
+    } catch (const Exception& e) {
       ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_name + e.what());
     } catch (...) {
       ORT_THROW(log_tag + " Cannot access IE Blob for input: " + input_name);
@@ -155,7 +164,7 @@ void VADMBackend::StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* c
   // Start Async inference
   try {
     infer_request->StartAsync();
-  } catch (const InferenceEngine::details::InferenceEngineException& e) {
+  } catch (const Exception& e) {
     ORT_THROW(log_tag + " Couldn't start Inference: " + e.what());
   } catch (...) {
     ORT_THROW(log_tag + " Couldn't start Inference");
@@ -171,8 +180,8 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext
 
   // Wait for Async inference completion
   try {
-    infer_request->Wait(InferenceEngine::IInferRequest::WaitMode::RESULT_READY);
-  } catch (const InferenceEngine::details::InferenceEngineException& e) {
+    infer_request->Wait(WaitMode::RESULT_READY);
+  } catch (const Exception& e) {
     ORT_THROW(log_tag + " Exception with completing Inference: " + e.what());
   } catch (...) {
     ORT_THROW(log_tag + " Exception with completing Inference");
@@ -186,7 +195,7 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext
     auto output_name = output_info_iter->first;
     try {
       graph_output_blob = infer_request->GetBlob(output_name);
-    } catch (const InferenceEngine::details::InferenceEngineException& e) {
+    } catch (const Exception& e) {
       ORT_THROW(log_tag + " Cannot access IE Blob for output: " + output_name + e.what());
     } catch (...) {
       ORT_THROW(log_tag + " Cannot access IE Blob for output: " + output_name);
@@ -197,7 +206,7 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext
 
     FillOutputBlob(graph_output_blob, output_tensor, ort, precision, batch_slice_idx);
   }
-#if defined(OPENVINO_2020_4)
+#if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
   if (!const_outputs_map_.empty()) {
     for (auto item : const_outputs_map_) {
       auto out_name = item.first;
@@ -246,7 +255,7 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   size_t remainder_parallel_runs = batch_size % num_inf_reqs_;
 
   if (subgraph_context_.is_constant) {
-#if defined(OPENVINO_2020_4) || defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2)
+#if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
     for (auto item : const_outputs_map_) {
       auto out_name = item.first;
       auto node = item.second;

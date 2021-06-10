@@ -168,6 +168,15 @@ static Node* ReorderCastAndTranspose(Graph& graph, Node* cast,
   return &new_transpose;
 }
 
+// Check whether the element_type is an allowed FusedMatMul data type or not.
+static bool IsAllowedFusedMatMulDataType(ONNX_NAMESPACE::TensorProto_DataType element_type)
+{
+  return element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+         element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+         element_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE ||
+         element_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
+}
+
 /*********************************************************************************************
 
 Case I: The followin is a scenario where Transpose output feeds MatMul. The Transpose input can be either on the left or right.
@@ -277,9 +286,17 @@ Status MatmulTransposeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_
     }
 
     NodeArg* left_input = node.MutableInputDefs()[0];
+    auto left_type = left_input->TypeAsProto()->tensor_type().elem_type();
+    if (!IsAllowedFusedMatMulDataType(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(left_type))) {
+      continue;
+    }
     auto left = GetTransposeNodeFromOutput(graph, *left_input);
 
     NodeArg* right_input = node.MutableInputDefs()[1];
+    auto right_type = right_input->TypeAsProto()->tensor_type().elem_type();
+    if (!IsAllowedFusedMatMulDataType(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(right_type))) {
+      continue;
+    }
     auto right = GetTransposeNodeFromOutput(graph, *right_input);
 
     if (!left) {

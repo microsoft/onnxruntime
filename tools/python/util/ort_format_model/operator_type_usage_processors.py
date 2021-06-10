@@ -325,31 +325,32 @@ def _create_operator_type_usage_processors():
     default_processor_onnx_ops = ['Abs', 'ArgMax', 'ArgMin', 'AveragePool',
                                   'BatchNormalization', 'BitShift',
                                   'Ceil', 'Clip', 'Conv', 'CumSum',
-                                  'DequantizeLinear',
                                   'Exp', 'Expand',
                                   'Floor',
                                   'Gemm',
                                   'IsNaN',
                                   'Log', 'LogSoftmax', 'LpNormalization',
                                   'MatMul', 'Max', 'MaxPool', 'Mean', 'Min',
-                                  'Neg', 'NonZero',
+                                  'NonZero',
                                   'Pad',
                                   'Range', 'Reciprocal', 'ReduceL1', 'ReduceL2', 'ReduceLogSum', 'ReduceLogSumExp',
                                   'ReduceMax', 'ReduceMean', 'ReduceMin', 'ReduceProd', 'ReduceSum', 'ReduceSumSquare',
                                   'Relu', 'Resize', 'ReverseSequence', 'RoiAlign', 'Round',
-                                  'ScatterND', 'Shrink', 'Sigmoid', 'Sign', 'Sin', 'Softmax', 'Split',
-                                  'SplitToSequence', 'Sqrt', 'Sum',
+                                  'Scatter', 'ScatterElements', 'ScatterND', 'Shrink', 'Sigmoid', 'Sign', 'Sin',
+                                  'Softmax', 'Split', 'SplitToSequence', 'Sqrt', 'Sum',
                                   'Tanh', 'TopK', 'Transpose',
                                   'Unique',
                                   'Where']
 
-    default_processor_onnx_ops_requiring_int64_for_input_0 = ['Add',
-                                                              'Div',
-                                                              'Equal',
-                                                              'Greater',
-                                                              'Less',
-                                                              'Mul',
-                                                              'Sub']
+    # ops that are used to manipulate shapes or indices so require int32_t and int64_t to be available
+    default_processor_onnx_ops_requiring_ints_for_input_0 = ['Add',
+                                                             'Div',
+                                                             'Equal',
+                                                             'Greater',
+                                                             'Less',
+                                                             'Mul',
+                                                             'Neg',  # used in tflite TransposeConv conversion
+                                                             'Sub']
 
     internal_ops = ['QLinearAdd', 'QLinearMul']
 
@@ -365,8 +366,8 @@ def _create_operator_type_usage_processors():
     default_processor_onnxml_ops = []
 
     [add(DefaultTypeUsageProcessor('ai.onnx', op)) for op in default_processor_onnx_ops]
-    [add(DefaultTypeUsageProcessor('ai.onnx', op, required_input_types={0: {"int64_t"}}))
-        for op in default_processor_onnx_ops_requiring_int64_for_input_0]
+    [add(DefaultTypeUsageProcessor('ai.onnx', op, required_input_types={0: {"int32_t", "int64_t"}}))
+        for op in default_processor_onnx_ops_requiring_ints_for_input_0]
     [add(DefaultTypeUsageProcessor('ai.onnx.ml', op)) for op in default_processor_onnxml_ops]
     [add(DefaultTypeUsageProcessor('com.microsoft', op)) for op in internal_ops]
 
@@ -394,6 +395,12 @@ def _create_operator_type_usage_processors():
     # as that's what is used in the typed registration
     add(Output0TypedRegistrationProcessor('ai.onnx', 'QuantizeLinear'))
     add(Output0TypedRegistrationProcessor('ai.onnx', 'DynamicQuantizeLinear'))
+
+    # make sure all the dequantize types are enabled. we use int32_t for parts of GEMM and Conv so just
+    # enabling int8 and uint8 is not enough.
+    # TODO: Only apply required types to the global type list and ignore if it's model based per-op type reduction
+    add(DefaultTypeUsageProcessor('ai.onnx', 'DequantizeLinear', inputs=[0],
+                                  required_input_types={0: {'int8_t', 'uint8_t', 'int32_t'}}))
 
     # OneHot concatenates type strings into a triple in the typed registration
     #   e.g. float_int64_t_int64_t
@@ -561,3 +568,6 @@ class GloballyAllowedTypesOpTypeImplFilter(OpTypeImplFilterInterface):
     def get_cpp_entries(self):
         return ["ORT_SPECIFY_OP_KERNEL_GLOBAL_ALLOWED_TYPES({});".format(
             ", ".join(sorted(self._globally_allowed_types)))]
+
+    def global_type_list(self):
+        return self._globally_allowed_types

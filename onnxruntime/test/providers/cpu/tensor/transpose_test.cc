@@ -138,11 +138,7 @@ TEST(TransposeOpTest, TwoDim_int16) {
       2, 5,
       3, 6};
 
-#if defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M)
   TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, true, false);
-#else
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals);
-#endif
 }
 
 TEST(TransposeOpTest, TwoDim_mlfloat16) {
@@ -347,7 +343,7 @@ static void NumericNCHW2NHWC() {
       3, 7, 11,
       4, 8, 12};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false, false);
 }
 TEST(TransposeOpTest, NCHW2NHWC) {
   NumericNCHW2NHWC<int8_t>();
@@ -405,7 +401,7 @@ static void NumericNHWC2NCHW() {
       10, 12,
       14, 16};
 
-  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false);
+  TransposeTest(input_shape, input_vals, &perm, expected_shape, expected_vals, false, false);
 }
 
 TEST(TransposeOpTest, NHWC2NCHW) {
@@ -594,26 +590,34 @@ static void TestTranspose(
   test.CompareWithCPU(kGpuExecutionProvider, error_tolerance);
 }
 
-TEST(TransposeOpTest, Transpose0213) {
+TEST(TransposeOpTest, Transpose0213) {  // Will trigger Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim()
   const std::vector<int64_t> X_dims{64, 128, 16, 64};
   const std::vector<int64_t> perm{0, 2, 1, 3};
   const std::vector<int64_t> Y_dims{64, 16, 128, 64};
   TestTranspose(perm, X_dims, Y_dims);
 }
 
-TEST(TransposeOpTest, Transpose0231) {
+TEST(TransposeOpTest, Transpose0213_V2) {  // Will trigger Transpose4DParallelizeOneElementPerThread()
+  const std::vector<int64_t> X_dims{64, 128, 64, 2};
+  const std::vector<int64_t> perm{0, 2, 1, 3};
+  const std::vector<int64_t> Y_dims{64, 64, 128, 2};
+  TestTranspose(perm, X_dims, Y_dims);
+}
+
+TEST(TransposeOpTest, Transpose0231) {  // Will trigger Transpose3DImpl() because of "flattening" of dims 2 and 3 into one dim
   const std::vector<int64_t> X_dims{64, 128, 16, 64};
   const std::vector<int64_t> perm{0, 2, 3, 1};
   const std::vector<int64_t> Y_dims{64, 16, 64, 128};
   TestTranspose(perm, X_dims, Y_dims);
 }
 
-TEST(TransposeOpTest, Transpose0312) {
+TEST(TransposeOpTest, Transpose0312) {  // Will trigger Transpose3DImpl() because of "flattening" of dims 1 and 2 into one dim
   const std::vector<int64_t> X_dims{64, 16, 64, 128};
   const std::vector<int64_t> perm{0, 3, 1, 2};
   const std::vector<int64_t> Y_dims{64, 128, 16, 64};
   TestTranspose(perm, X_dims, Y_dims);
 }
+
 #endif
 
 }  // namespace test

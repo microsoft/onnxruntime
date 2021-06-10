@@ -4,9 +4,10 @@
 #--------------------------------------------------------------------------
 
 from logging import getLogger
-from onnx import helper, numpy_helper
+from onnx import helper
 from onnx_model import OnnxModel
 from fusion_base import Fusion
+from fusion_utils import NumpyHelper
 
 logger = getLogger(__name__)
 
@@ -30,6 +31,7 @@ class FusionBiasGelu(Fusion):
             return
         (add, matmul) = nodes
 
+        bias_weight = None
         # bias should be one dimension
         bias_index = -1
         for i, input in enumerate(add.input):
@@ -37,7 +39,7 @@ class FusionBiasGelu(Fusion):
             if initializer is None:
                 continue
             bias_index = i
-            bias_weight = numpy_helper.to_array(initializer)
+            bias_weight = NumpyHelper.to_array(initializer)
             break
         if bias_weight is None:
             return
@@ -57,3 +59,4 @@ class FusionBiasGelu(Fusion):
                                       name=self.model.create_node_name(fuse_op_type, gelu_op_type + "_AddBias_"))
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
+        self.node_name_to_graph_name[fused_node.name] = self.this_graph_name

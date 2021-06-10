@@ -230,7 +230,7 @@ int InternalUseCountAnalysis::NodeUseCount(const onnxruntime::Node* node) const 
 
 OrtUseCountAnalysis::OrtUseCountAnalysis(const std::shared_ptr<ShapeExprContext>& shape_inference)
     : OrtAnalysis("OrtUseCountAnalysis") {
-  internal_analysis_ = onnxruntime::make_unique<InternalUseCountAnalysis>(shape_inference);
+  internal_analysis_ = std::make_unique<InternalUseCountAnalysis>(shape_inference);
 }
 
 void OrtUseCountAnalysis::Evaluate(const onnxruntime::GraphViewer& graph) {
@@ -247,7 +247,7 @@ int OrtUseCountAnalysis::NodeUseCount(const onnxruntime::Node* node) const {
 
 NupharUseCountAnalysis::NupharUseCountAnalysis(const std::shared_ptr<ShapeExprContext>& shape_inference)
     : NupharAnalysis("NupharUseCountAnalysis") {
-  internal_analysis_ = onnxruntime::make_unique<InternalUseCountAnalysis>(shape_inference);
+  internal_analysis_ = std::make_unique<InternalUseCountAnalysis>(shape_inference);
 }
 
 void NupharUseCountAnalysis::Evaluate(const onnxruntime::nuphar::NupharSubgraphUnit& graph) {
