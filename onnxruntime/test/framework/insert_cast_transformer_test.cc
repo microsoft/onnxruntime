@@ -8,6 +8,8 @@
 #include "gtest/gtest.h"
 #include "test_utils.h"
 #include "test/test_environment.h"
+#include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/asserts.h"
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
@@ -185,7 +187,7 @@ TEST(TransformerTest, InsertCastNodeTwice) {
 
   Graph& graph = model->MainGraph();
   InsertCastTransformer transformer("Test");
-  
+
   // First insert
   bool modified = false;
   status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
@@ -200,9 +202,39 @@ TEST(TransformerTest, InsertCastNodeTwice) {
   ASSERT_TRUE(status.IsOK()) << status;
   op_to_count = CountOpsInGraph(graph);
   // Same graph without modification; The number of Cast node remains
-  EXPECT_TRUE(!modified) << "Transformer should not modify the modfied graph again";
+  EXPECT_TRUE(!modified) << "Transformer should not modify the modified graph again";
   EXPECT_TRUE(op_to_count["Cast"] == 4) << "Remain the same number of Cast node";
+}
 
+// Test that a node processing fp16 input with a subgraph does not get forced to fp32,
+// and that the subgraph is processed to insert casts
+TEST(TransformerTest, Fp16NodeWithSubgraph) {
+  auto model_uri = MODEL_FOLDER ORT_TSTR("fp16model_loop.onnx");
+
+  SessionOptions so;
+  so.session_logid = "Fp16NodeWithSubgraph";
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_uri));
+
+  const Graph& graph = session.GetGraph();
+
+  auto orig_num_nodes = graph.NumberOfNodes();
+  const auto& nodes = graph.Nodes();
+  auto node_with_subgraph_iter = std::find_if(nodes.cbegin(), nodes.cend(),
+                                              [](const Node& node) {
+                                                return node.ContainsSubgraph();
+                                              });
+
+  ASSERT_NE(node_with_subgraph_iter, nodes.cend());
+  const Graph& subgraph = *node_with_subgraph_iter->GetSubgraphs().front();
+  auto orig_num_subgraph_nodes = subgraph.NumberOfNodes();
+
+  ASSERT_STATUS_OK(session.Initialize());
+
+  orig_num_nodes -= 2;  // two unnecessary Identity nodes after the Loop get removed by IdentityElimination
+
+  EXPECT_EQ(orig_num_nodes, graph.NumberOfNodes()) << "Loop node in main graph should not have been altered.";
+  EXPECT_LT(orig_num_subgraph_nodes, subgraph.NumberOfNodes()) << "'Add' node in subgraph should have had Casts added";
 }
 
 }  // namespace test

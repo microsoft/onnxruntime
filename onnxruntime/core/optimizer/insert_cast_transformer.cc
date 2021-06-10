@@ -9,8 +9,8 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
 bool InsertCastTransformer::NeedInsertCast(const onnxruntime::Node* node, const onnxruntime::NodeArg* input) const {
-  // If the node's input is float16 and currently the node is not assigned to any XP.
-  // we need insert a cast to float, and put the node on CPU for default behavior.
+  // If the node's input is float16 and currently the node is not assigned to any EP
+  // we need to insert a cast to float, and put the node on CPU for default behavior.
   // TODO: a better check is to check does the CPU kernel with float exist or not.
   return input->Type() != nullptr &&
          DataTypeImpl::TypeFromProto(*input->TypeAsProto()) == DataTypeImpl::GetTensorType<MLFloat16>() &&
@@ -24,7 +24,7 @@ onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
                                   int64_t to_type,
                                   onnxruntime::ProviderType providerType) {
   // insert cast op to cast input
-  std::string node_name = graph.GenerateNodeName("Inserted_Cast");
+  std::string node_name = graph.GenerateNodeName("InsertedCast_" + old_arg->Name());
 
   auto* new_arg = &graph.GetOrCreateNodeArg(node_name, new_type);
 
@@ -37,30 +37,121 @@ onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
   return new_arg;
 }
 
-static bool IsInputFloat16(const onnxruntime::Node& node) {
-  for (auto input : node.InputDefs()) {
-    if (input->Type() != nullptr &&
-        DataTypeImpl::TypeFromProto(*input->TypeAsProto()) == DataTypeImpl::GetTensorType<MLFloat16>() &&
-        !node.GetExecutionProviderType().empty()) {
-      return true;
-    }
+static bool IsMLFloat16Tensor(const NodeArg& node_arg) {
+  // Type() will return nullptr if node_arg.Exists() is true so don't need an additional check for that
+  return node_arg.Type() != nullptr &&
+         DataTypeImpl::TypeFromProto(*node_arg.TypeAsProto()) == DataTypeImpl::GetTensorType<MLFloat16>();
+}
+
+// check if the node has an fp16 input but was not able to be assigned an execution provider.
+// we will need to add a casts to/from fp32 around the node for it to be executed
+static bool NodeNeedsInputCastToFp32(const onnxruntime::Node& node) {
+  bool not_assigned = node.GetExecutionProviderType().empty();
+
+  if (not_assigned) {
+    const auto& input_defs = node.InputDefs();
+    bool has_fp16_input = std::any_of(input_defs.cbegin(), input_defs.cend(),
+                                      [](const NodeArg* input_def) {
+                                        return IsMLFloat16Tensor(*input_def);
+                                      });
+    return has_fp16_input;
   }
+
   return false;
 }
 
-static bool IsSingleInputNodeFloat16Node(const onnxruntime::Node& node) {
-  if (IsInputFloat16(node) && node.GetExecutionProviderType() == kCpuExecutionProvider) {
-    for (auto it = node.InputNodesBegin(); it != node.InputNodesEnd(); ++it) {
-      if (IsInputFloat16(*it))
-        return false;
-    }
-    for (auto it = node.OutputNodesBegin(); it != node.OutputNodesEnd(); ++it) {
-      if (IsInputFloat16(*it))
-        return false;
-    }
-    return true;
+// Detect an isolated node that is able to process fp16 data but is between other nodes that have fp16 inputs
+// but will need a Cast inserted to enable them to run.
+//
+// Say we have 3 nodes in the middle of a graph that all have fp16 inputs.
+//
+// -> NodeA -> NodeB -> NodeC ->
+//
+// NodeA and NodeC have no kernel that can handle fp16 data (no execution provider assigned).
+//   e.g. 'Add' does not have an fp16 kernel
+// NodeB has a kernel that can process fp16 data (assigned to CPU EP).
+//
+// By default, we would insert Cast to/from fp32 around NodeA and NodeC as all operators have an fp32 kernel.
+//
+// i.e. -> CastToFp32 -> NodeA -> CastToFp16 -> NodeB -> CastToFp32 -> NodeC -> CastToFp16
+//
+// We can avoid the casts around NodeB if we also force that to run using fp32 data.
+//
+// Detect this scenario by checking the input and output edges of the node for fp16 values to that are coming from or
+// going to a node that will need a Cast.
+//
+// Return true if all the fp16 inputs and outputs are connected to nodes that will be cast to fp32.
+static bool IsIsolatedFp16Node(const onnxruntime::Node& node, onnxruntime::Graph& graph) {
+  bool isolated_fp16_node = false;
+
+  // if node has input coming from other nodes (only consuming graph inputs or initializers if it doesn't),
+  //    does not have a subgraph (would have to alter subgraph inputs if we cast the input to this node),
+  //    does not produce a graph output (node must produce fp16 output for the graph output),
+  //    and is assigned to the CPU EP (we have fp32 implementations of all kernels so forcing to fp32 is safe),
+  // we can check if it's an isolated fp16 node
+  if (node.GetInputEdgesCount() > 0 &&
+      !node.ContainsSubgraph() &&
+      graph.GetNodeOutputsInGraphOutputs(node).empty() &&
+      node.GetExecutionProviderType() == kCpuExecutionProvider) {
+    do {
+      // find the number of fp16 inputs as we need to make sure they're all coming from nodes that will be cast
+      const auto& input_defs = node.InputDefs();
+      size_t num_fp16_inputs = std::count_if(input_defs.cbegin(), input_defs.cend(),
+                                             [](const NodeArg* input_def) {
+                                               return IsMLFloat16Tensor(*input_def);
+                                             });
+
+      if (num_fp16_inputs == 0) {
+        break;
+      }
+
+      size_t num_fp16_input_edges = 0;
+
+      // check if all nodes providing our fp16 input need to be cast to fp32
+      for (auto input_edge = node.InputEdgesBegin(), end = node.InputEdgesEnd(); input_edge != end; ++input_edge) {
+        const NodeArg& input_def = *input_defs[input_edge->GetDstArgIndex()];
+
+        if (IsMLFloat16Tensor(input_def)) {
+          // if the node producing our fp16 input does not need its input cast to fp32 we should run in fp16
+          if (!NodeNeedsInputCastToFp32(input_edge->GetNode())) {
+            break;
+          }
+
+          ++num_fp16_input_edges;
+        }
+      }
+
+      // one or more fp16 inputs are coming from a graph input or initializer
+      if (num_fp16_inputs != num_fp16_input_edges) {
+        break;
+      }
+
+      // if we got here all nodes providing our fp16 input/s will be cast to fp32.
+      // check if the same applies to all nodes consuming our fp16 output.
+
+      bool node_has_fp16_output = false;
+
+      for (auto output_edge = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); output_edge != end; ++output_edge) {
+        const NodeArg& output_def = *node.OutputDefs()[output_edge->GetSrcArgIndex()];
+        if (IsMLFloat16Tensor(output_def)) {
+          node_has_fp16_output = true;
+
+          // if the node consuming our fp16 output does not need a cast, we should run in fp16
+          if (!NodeNeedsInputCastToFp32(output_edge->GetNode())) {
+            break;
+          }
+        }
+      }
+
+      if (node_has_fp16_output) {
+        // all nodes providing our fp16 input/s will be cast to fp32, and
+        // we produce one or more fp16 outputs, and all nodes consuming those outputs will be cast to fp32
+        isolated_fp16_node = true;
+      }
+    } while (false);
   }
-  return false;
+
+  return isolated_fp16_node;
 }
 
 Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph) {
@@ -70,7 +161,7 @@ Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph) {
   }
 
   for (auto& node : graph.Nodes()) {
-    if (node.OpType() != "Cast" && IsSingleInputNodeFloat16Node(node)) {
+    if (IsIsolatedFp16Node(node, graph)) {
       node.SetExecutionProviderType("");
     }
   }
@@ -94,7 +185,7 @@ TypeGroup GetTypeGroup(DataType type) {
       *type == "tensor(uint16)" || *type == "tensor(uint32)" || *type == "tensor(uint64)" || *type == "tensor(uint8)") {
     return Integer;
   }
-  
+
   if (*type == "tensor(bfloat16)" || *type == "tensor(double)" || *type == "tensor(float)" || *type == "tensor(float16)") {
     return Float;
   }
@@ -126,8 +217,10 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
         //     - otherwise, remove the first cast.
         // Below are some exception cases for this optimization:
         //     - it's for non-numeric type casting.
-        //     - if the casts are for (high precision -> low precision -> high precision), since there is actual loss of precision.
-        // Other cases are OK for this optimization, including below two cases, which are not actual loss of precision:
+        //     - if the casts are for (high precision -> low precision -> high precision),
+        //       since there is actual loss of precision.
+        // Other cases are OK for this optimization, including below two cases,
+        // which are not actual loss of precision:
         //     - (low precision -> high precision ->low precision)
         //     - (high precision -> low precision -> lower precision)
         // It's possible that there are more than one casts following the first cast,
@@ -228,7 +321,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
             Node& cast_node_to_keep = n;
             graph.SetNodeArgType(*cast_node_to_keep.MutableInputDefs()[0], *node.InputDefs()[0]->TypeAsProto());
           }
-          
+
           removed = graph_utils::RemoveNode(graph, node);
           modified = true;
         }
@@ -243,7 +336,8 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
   }
 };
 
-Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
+Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level,
+                                        const logging::Logger& logger) const {
   if (force_cpu_fp32_)
     ORT_RETURN_IF_ERROR(ForceSingleNodeCPUFloat16ToFloat32(graph));
 
@@ -306,32 +400,30 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
           dtype_attribute->second.set_i(TensorProto_DataType_FLOAT);
         }
       }
-    }
 
-    auto& outputs = node->MutableOutputDefs();
-    for (auto output : outputs) {
-      // TODO 1: Check if the kernel available
-      // TODO 2: There is an inherent assumption that if we cast a cpu op's input from float16 to float
-      // then this cpu op's output will be float (if it was inferred to be float16 previously).
-      // Not sure if this is always true. Handle any corner case if it does exist.
+      auto& outputs = node->MutableOutputDefs();
+      for (auto output : outputs) {
+        // TODO 1: Check if the kernel available
+        // TODO 2: There is an inherent assumption that if we cast a cpu op's input from float16 to float
+        // then this cpu op's output will be float (if it was inferred to be float16 previously).
+        // Not sure if this is always true. Handle any corner case if it does exist.
 
-      if (output->Type() &&
-          DataTypeImpl::TypeFromProto(*output->TypeAsProto()) == DataTypeImpl::GetTensorType<MLFloat16>() &&
-          casted) {
-        // insert cast op to cast output back to float16
-        auto dst_arg = output;
-        auto src_arg = AddCastNode(graph,
-                                   dst_arg,
-                                   &float_tensor_proto,
-                                   true,
-                                   static_cast<int64_t>(TensorProto_DataType_FLOAT16),
-                                   onnxruntime::kCpuExecutionProvider);
-        replacement_defs[dst_arg] = src_arg;
+        if (IsMLFloat16Tensor(*output)) {
+          // insert cast op to cast output back to float16
+          auto dst_arg = output;
+          auto src_arg = AddCastNode(graph,
+                                     dst_arg,
+                                     &float_tensor_proto,
+                                     true,
+                                     static_cast<int64_t>(TensorProto_DataType_FLOAT16),
+                                     onnxruntime::kCpuExecutionProvider);
+          replacement_defs[dst_arg] = src_arg;
+        }
       }
+
+      node->ReplaceDefs(replacement_defs);
+      modified = modified || casted;
     }
-  
-    node->ReplaceDefs(replacement_defs);
-    modified = modified || casted;
 
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
   }
@@ -345,9 +437,16 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
       ORT_RETURN_IF_ERROR(graph.Resolve());
     }
 
+    // if we had multiple nodes in a row that were converted to fp32 we will have casts around every node.
+    // Casts in between converted nodes cancel each other out and can be removed.
+    // e.g.
+    //      -> NodeA(fp16) -> NodeB(fp16) ->
+    // After converting both to fp32
+    //      -> CastToFp32 -> NodeA(fp32) -> CastToFp16 -> CastToFp32 -> NodeB(fp32) -> CastToFp16
+    // After running duplicate cast removal
+    //      -> CastToFp32 -> NodeA(fp32) -> NodeB(fp32) -> CastToFp16
+    //
     RemoveDuplicateCastTransformer remover;
-    // RemoveDuplicateCastTransformer is a special transformer required for correctness.
-    // It is provider agnostic so simply send an empty vector.
     status = remover.Apply(graph, modified, logger);
   }
 
