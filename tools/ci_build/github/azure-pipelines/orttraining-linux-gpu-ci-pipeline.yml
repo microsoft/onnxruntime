@@ -30,8 +30,6 @@ jobs:
     Strategy: 
       maxParallel: 2
       matrix:
-        Debug:
-          buildConfig: Debug
         Release:
           buildConfig: Release
 
