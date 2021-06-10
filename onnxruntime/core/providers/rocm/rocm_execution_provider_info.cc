@@ -32,7 +32,7 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
   void* alloc = nullptr;
   void* free = nullptr;
 
-  LOGS_DEFAULT(ERROR) << "creating rocm ep on device id " << (const_cast<ProviderOptions&>(options))[rocm::provider_option_names::kDeviceId];
+  LOGS_DEFAULT(ERROR) << "creating rocm ep on device id " << (const_cast<ProviderOptions&>(options))[rocm::provider_option_names::kDeviceId] << std::endl;
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(
@@ -58,9 +58,11 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
               [&info](const std::string& value_str) -> Status {
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.device_id));
                 int num_devices{};
+                LOGS_DEFAULT(ERROR) << "num_devices " << num_devices << std::endl;
+                LOGS_DEFAULT(ERROR) << "info.device_id " << info.device_id << std::endl;
                 ORT_RETURN_IF_NOT(
                     HIP_CALL(hipGetDeviceCount(&num_devices)),
-                    "cudaGetDeviceCount() failed.");
+                    "hipGetDeviceCount() failed.");
                 ORT_RETURN_IF_NOT(
                     0 <= info.device_id && info.device_id < num_devices,
                     "Invalid device ID: ", info.device_id,
