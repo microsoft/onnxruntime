@@ -153,7 +153,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_BUILD_JAVA)
   endforeach()
 endif()
 
-target_link_libraries(onnxruntime PRIVATE
+set(onnxruntime_link_targets
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_ACL}
@@ -173,11 +173,24 @@ target_link_libraries(onnxruntime PRIVATE
     onnxruntime_util
     ${onnxruntime_tvm_libs}
     onnxruntime_framework
+)
+
+if (onnxruntime_ENABLE_TRAINING)
+  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    onnxruntime_add_include_to_target(onnxruntime Python::Module)
+    list(APPEND onnxruntime_link_targets onnxruntime_interop_torch Python::Python)
+  endif()
+endif()
+
+list(APPEND onnxruntime_link_targets
     onnxruntime_graph
     onnxruntime_common
     onnxruntime_mlas
     onnxruntime_flatbuffers
-    ${onnxruntime_EXTERNAL_LIBRARIES})
+    ${onnxruntime_EXTERNAL_LIBRARIES}
+)
+
+target_link_libraries(onnxruntime PRIVATE ${onnxruntime_link_targets})
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   target_link_libraries(onnxruntime PRIVATE onnxruntime_language_interop onnxruntime_pyop)

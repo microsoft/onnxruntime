@@ -231,10 +231,16 @@ if (NOT (onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING))
   set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OFF)
 endif()
 
+set(onnxruntime_REQURE_PYTHON_EMBED_LIB OFF)
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   add_compile_definitions(ENABLE_TRAINING_TORCH_INTEROP)
   # disable tests because executable projects need link to python so which did not always exist for test envs.
   set(onnxruntime_BUILD_UNIT_TESTS OFF)
+
+  # Python::Python is required for building unit test executables or onnxruntime.so. 
+  if (onnxruntime_BUILD_UNIT_TESTS OR onnxruntime_BUILD_SHARED_LIB)
+    set(onnxruntime_REQURE_PYTHON_EMBED_LIB ON)
+  endif()
 endif()
 
 # General C# properties
@@ -638,7 +644,7 @@ endif()
 #Need python to generate def file
 if(onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
   if(onnxruntime_ENABLE_PYTHON)
-    if(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+    if(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OR onnxruntime_REQURE_PYTHON_EMBED_LIB)
       find_package(Python 3.6 COMPONENTS Interpreter Development NumPy)
     else()
       find_package(Python 3.6 COMPONENTS Interpreter Development.Module NumPy)
