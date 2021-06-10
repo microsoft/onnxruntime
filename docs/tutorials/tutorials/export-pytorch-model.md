@@ -1,7 +1,7 @@
 ---
 nav_exclude: true
 ---
-# Create and run PyTorch models with Custom Operators
+# Create and run PyTorch models with custom operators
 
 ONNX Runtime custom operators can be used to export and run a PyTorch model, when those operators
 are not already present in the set of standard ONNX operators.
