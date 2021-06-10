@@ -6,6 +6,10 @@ parameters:
   DoNodejsPack: 'false'
   DoNugetPack: 'false'
   NuPackScript: ''
+  RunInjectedPipeline: 'false'
+  InjectedPipeline: ''
+  DockerImageTag: ''
+  BuildConfig: ''
   ArtifactName: 'drop-linux'
   TimeoutInMinutes: 120
   # Controls whether unreleased onnx opsets are allowed. Default is set to 1
@@ -64,6 +68,12 @@ jobs:
         inputs:
           artifactName: ${{ parameters.ArtifactName }}
           targetPath: '$(Build.ArtifactStagingDirectory)'
+    - ${{ if eq(parameters['RunInjectedPipeline'], 'true') }}:
+      - template: |
+         ${{ parameters.InjectedPipeline }}
+        parameters:
+          DockerImageTag: ${{ parameters.DockerImageTag }}
+          BuildConfig: ${{ parameters.BuildConfig }}
     - template: component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
