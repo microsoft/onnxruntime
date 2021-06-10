@@ -1,7 +1,3 @@
----
-title: Export a PyTorch model with custom operators to ONNX format and run with ONNX Runtime
-parent: Tutorials
----
 # Create and run PyTorch models with Custom Operators
 
 ONNX Runtime custom operators can be used to export and run a PyTorch model, when those operators
@@ -47,7 +43,7 @@ model = MyModel()
 # Train the model
 # In a real use case, you would train your model here
 
-# Register the operator with the PyTorch exporter
+# Register the signature of the operator with the PyTorch exporter
 def my_inverse(g, self):
     return g.op("ai.onnx.contrib::Inverse", self)
 
@@ -76,7 +72,7 @@ so.register_custom_ops_library(onnxruntime_extensions.get_library_path())
 sess = onnxruntime.InferenceSession("mymodel.onnx", so)
 input_name = sess.get_inputs()[0].name
 
-# Run with the identity maxtrix
+# Run with the identity matrix
 output = sess.run(None, {input_name: torch.eye(3).numpy()})[0]
 print(output)
 ```
@@ -105,9 +101,6 @@ import torch
 import onnx
 import onnxruntime
 
-# Define a new operator in Python
-import numpy
-
 # Define model that uses an operator that is not present in the extensions library
 class MyModel(torch.nn.Module):
     def __init__(self):
@@ -121,7 +114,7 @@ model = MyModel()
 # Train the model
 # ...
 
-# Register the custom operator with the PyTorch exporter
+# Register the signature with the PyTorch exporter
 def my_trace(g, self):
     return g.op("ai.onnx.contrib::Trace", self)
 
