@@ -8,12 +8,17 @@
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime {
+static bool IsMLFloat16Tensor(const NodeArg& node_arg) {
+  // Type() will return nullptr if node_arg.Exists() is true so don't need an additional check for that
+  return node_arg.Type() != nullptr &&
+         DataTypeImpl::TypeFromProto(*node_arg.TypeAsProto()) == DataTypeImpl::GetTensorType<MLFloat16>();
+}
+
 bool InsertCastTransformer::NeedInsertCast(const onnxruntime::Node* node, const onnxruntime::NodeArg* input) const {
   // If the node's input is float16 and currently the node is not assigned to any EP
   // we need to insert a cast to float, and put the node on CPU for default behavior.
   // TODO: a better check is to check does the CPU kernel with float exist or not.
-  return input->Type() != nullptr &&
-         DataTypeImpl::TypeFromProto(*input->TypeAsProto()) == DataTypeImpl::GetTensorType<MLFloat16>() &&
+  return IsMLFloat16Tensor(*input) &&
          node->GetExecutionProviderType().empty();
 }
 
@@ -35,12 +40,6 @@ onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
   cast_node.AddAttribute("to", to_type);
   cast_node.SetExecutionProviderType(providerType);
   return new_arg;
-}
-
-static bool IsMLFloat16Tensor(const NodeArg& node_arg) {
-  // Type() will return nullptr if node_arg.Exists() is true so don't need an additional check for that
-  return node_arg.Type() != nullptr &&
-         DataTypeImpl::TypeFromProto(*node_arg.TypeAsProto()) == DataTypeImpl::GetTensorType<MLFloat16>();
 }
 
 // check if the node has an fp16 input but was not able to be assigned an execution provider.
