@@ -53,6 +53,11 @@ NS_ASSUME_NONNULL_BEGIN
  * Gets the tensor data.
  * This assumes that the value is a tensor.
  *
+ * This returns the value's underlying data directly, not a copy of it.
+ * The memory's lifetime may be tied to this value, i.e., if it was allocated
+ * by ORT. On the other hand, the memory's lifetime is independent of the value
+ * if the value was created with user-provided data.
+ *
  * @param error Optional error information set if an error occurs.
  * @return The tensor data, or nil if an error occurs.
  */
