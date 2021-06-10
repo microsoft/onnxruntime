@@ -5,7 +5,6 @@
 #include "core/providers/rocm/rocm_common.h"
 
 #include "core/common/make_string.h"
-#include "core/common/logging/logging.h"
 #include "core/framework/provider_options_utils.h"
 
 namespace onnxruntime {
@@ -32,7 +31,6 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
   void* alloc = nullptr;
   void* free = nullptr;
 
-  LOGS_DEFAULT(ERROR) << "creating rocm ep on device id " << (const_cast<ProviderOptions&>(options))[rocm::provider_option_names::kDeviceId] << std::endl;
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(
@@ -51,15 +49,11 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
                 free  = reinterpret_cast<void*>(address);
                 return Status::OK();
               })
-          // TODO validate info.device_id
-          // .AddAssignmentToReference(rocm::provider_option_names::kDeviceId, info.device_id)
 	  .AddValueParser(
               rocm::provider_option_names::kDeviceId,
               [&info](const std::string& value_str) -> Status {
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.device_id));
                 int num_devices{};
-                LOGS_DEFAULT(ERROR) << "num_devices " << num_devices << std::endl;
-                LOGS_DEFAULT(ERROR) << "info.device_id " << info.device_id << std::endl;
                 ORT_RETURN_IF_NOT(
                     HIP_CALL(hipGetDeviceCount(&num_devices)),
                     "hipGetDeviceCount() failed.");
