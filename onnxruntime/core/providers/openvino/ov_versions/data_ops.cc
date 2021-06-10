@@ -82,6 +82,7 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Cos", V_2020_4, {"CPU"}},
     {"Cosh", V_2020_4, {"CPU"}},
     {"DepthToSpace", V_2020_4, {"All"}},
+    {"DequantizeLinear", V_2021_4, {"CPU", "GPU"}},
     {"Div", V_2020_4, {"All"}},
     {"Dropout", V_2020_4, {"All"}},
     {"Elu", V_2020_4, {"All"}},
@@ -123,7 +124,6 @@ std::vector<SupportedOp> supported_op_mode = {
     {"Pow", V_2020_4, {"All"}},
     {"PRelu", V_2020_4, {"All"}},
     {"QuantizeLinear", V_2021_4, {"CPU", "GPU"}},
-    {"DequantizeLinear", V_2021_4, {"CPU", "GPU"}},
     {"Range", V_2021_2, {"MYRIAD"}},
     {"Reciprocal", V_2020_4, {"All"}},
     {"ReduceLogSum", V_2020_4, {"CPU", "MYRIAD"}},
@@ -192,13 +192,14 @@ void DataOps::populate_types_supported() {
   supported_types_cpu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8));
   supported_types_cpu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8));
   supported_types_cpu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64));
-  supported_types_cpu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8));
-  supported_types_cpu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64));
 
   supported_types_gpu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT));
   supported_types_gpu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32));
   supported_types_gpu_.insert(std::make_pair(V_2020_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64));
   supported_types_gpu_.insert(std::make_pair(V_2021_1, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16));
+  supported_types_gpu_.insert(std::make_pair(V_2021_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8));
+  supported_types_gpu_.insert(std::make_pair(V_2021_4, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8));
+
 }
 
 void DataOps::populate_op_mode_supported() {
