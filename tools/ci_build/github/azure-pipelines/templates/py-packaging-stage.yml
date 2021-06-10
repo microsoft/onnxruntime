@@ -456,7 +456,6 @@ stages:
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
               -e PythonManylinuxDir=$(PythonManylinuxdir) \
-              --user root \
               onnxruntimetrainingrocmbuild \
                 /onnxruntime_src/tools/ci_build/github/pai/wrap_rocm_python_doc_publisher.sh
           workingDirectory: $(Build.SourcesDirectory)
