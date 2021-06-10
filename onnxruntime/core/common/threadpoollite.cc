@@ -220,6 +220,9 @@ void ThreadPoolLite2<ThreadPerPool, PoolSize>::ParallelFor(std::ptrdiff_t total,
 
 template <int32_t ThreadPerPool, int32_t PoolSize>
 void ThreadPoolLite2<ThreadPerPool, PoolSize>::ParallelFor(std::ptrdiff_t total, const TensorOpCost& cost, const Fn& fn) {
+  if (0 == total) {
+    return;
+  }
   std::ptrdiff_t block_size = GetBlockSize(total, cost, num_sub_threads_ + 1);
   std::atomic<std::ptrdiff_t> iter{0};
   SchdFn schd_fn = [&]() {
