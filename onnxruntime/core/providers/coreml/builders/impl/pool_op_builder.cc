@@ -21,7 +21,7 @@ class PoolOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 };
 
@@ -107,7 +107,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related
-bool PoolOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool PoolOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& /* input_params */,
                                       const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
