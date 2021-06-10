@@ -131,6 +131,8 @@ ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
 ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kRocmExecutionProvider},
       info_{info} {
+  printf("observing info_.device_id = %d\n", info_.device_id);
+  fflush(stdout);
   HIP_CALL_THROW(hipSetDevice(info_.device_id));
 
   // must wait GPU idle, otherwise hipGetDeviceProperties might fail
