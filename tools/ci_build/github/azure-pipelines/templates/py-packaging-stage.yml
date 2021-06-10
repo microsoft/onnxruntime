@@ -311,8 +311,10 @@ stages:
       - script: |-
           echo "Tests will run using HIP_VISIBLES_DEVICES=$HIP_VISIBLE_DEVICES"
           video_gid=$(getent group | awk '/video/ {split($0,a,":"); print(a[3])}')
+          echo "Found video_gid=$video_gid; attempting to set as pipeline variable"
           echo "##vso[task.setvariable variable=video]$video_gid"
           render_gid=$(getent group | awk '/render/ {split($0,a,":"); print(a[3])}')
+          echo "Found render_gid=$render_gid; attempting to set as pipeline variable"
           echo "##vso[task.setvariable variable=render]$render_gid"
         displayName: 'Find video and render gid to be mapped into container'
  
