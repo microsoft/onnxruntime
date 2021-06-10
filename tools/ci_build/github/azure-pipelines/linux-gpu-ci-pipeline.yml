@@ -3,7 +3,7 @@ jobs:
   timeoutInMinutes: 180
   workspace:
     clean: all
-  pool: Linux-GPU-CUDA10
+  pool: cupti
   steps:
   - checkout: self
     clean: true
