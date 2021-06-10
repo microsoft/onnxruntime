@@ -178,7 +178,7 @@ set(onnxruntime_link_targets
 if (onnxruntime_ENABLE_TRAINING)
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     onnxruntime_add_include_to_target(onnxruntime Python::Module)
-    list(APPEND onnxruntime_link_targets onnxruntime_interop_torch Python::Python)
+    list(APPEND onnxruntime_link_targets onnxruntime_interop_torch onnxruntime_python_interface Python::Python)
   endif()
 endif()
 
