@@ -39,24 +39,24 @@ jobs:
     clean: all
   timeoutInMinutes:  120
   pool: 'Onnxruntime-Linux-GPU'
-  variables:    
-    CUDA_VERSION: '11.0'
+  variables:
+    CUDA_VERSION: '11.1'
   steps:
-    - template: templates/set-version-number-variables-step.yml 
+    - template: templates/set-version-number-variables-step.yml
     - template: templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11
         Context: tools/ci_build/github/linux/docker
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg BASEIMAGE=nvcr.io/nvidia/cuda:11.1-cudnn8-devel-centos7 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-9/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-9/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-9/root/usr/lib64:/opt/rh/devtoolset-9/root/usr/lib:/opt/rh/devtoolset-9/root/usr/lib64/dyninst:/opt/rh/devtoolset-9/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
         Repository: onnxruntimecuda11build
     - task: CmdLine@2
       inputs:
         script: |
           mkdir -p $HOME/.onnx
-          docker run --gpus all -e CC=/opt/rh/devtoolset-8/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-8/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
+          docker run --gpus all -e CC=/opt/rh/devtoolset-9/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-9/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
           --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecuda11build \
           /opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_java --build_dir /build --config Release \
-          --skip_submodule_sync  --parallel --build_shared_lib --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home=/usr/local/cuda-$(CUDA_VERSION) --cudnn_home=/usr/local/cuda-$(CUDA_VERSION) --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-8/root/usr/bin/cc
+          --skip_submodule_sync  --parallel --build_shared_lib --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home=/usr/local/cuda-$(CUDA_VERSION) --cudnn_home=/usr/local/cuda-$(CUDA_VERSION) --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-9/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
         workingDirectory: $(Build.SourcesDirectory)
 
     - template: templates/java-api-artifacts-package-and-publish-steps-posix.yml
@@ -85,7 +85,7 @@ jobs:
 - template: templates/win-ci.yml
   parameters:
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    ort_build_pool_name: 'Win-GPU-2019'
+    ort_build_pool_name: 'onnxruntime-gpu-winbuild'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime.Gpu'
@@ -94,10 +94,14 @@ jobs:
     buildArch: x64
     msbuildPlatform: x64
     packageName: gpu-x64
-    buildparameter: --use_cuda --cuda_version=11.0 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.0" --cudnn_home="C:\local\cudnn-11.0-windows-x64-v8.0.2.39\cuda" --enable_onnx_tests --enable_wcos --build_java
+    buildparameter: --use_cuda --cuda_version=11.1 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.1" --cudnn_home="C:\local\cudnn-11.1-windows-x64-v8.0.5.39\cuda" --enable_onnx_tests --enable_wcos --build_java --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
+
+- template: templates/android-java-api-aar.yml
+  parameters:
+    buildConfig: 'Release'
 
 - job: Jar_Packaging_GPU
   workspace:
@@ -110,7 +114,7 @@ jobs:
   steps:
   - checkout: self
     submodules: false
-  - template: templates/set-version-number-variables-step.yml 
+  - template: templates/set-version-number-variables-step.yml
 
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - Win x64'
@@ -155,12 +159,12 @@ jobs:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
     condition: always()
-    
+
 
 - job: Final_Jar_Testing_Windows_GPU
   workspace:
     clean: all
-  pool: 'Win-GPU-2019'
+  pool: 'onnxruntime-gpu-winbuild'
   timeoutInMinutes: 60
   variables:
   - name: runCodesignValidationInjection
@@ -168,7 +172,7 @@ jobs:
   dependsOn:
     Jar_Packaging_GPU
   steps:
-  - template: templates/set-version-number-variables-step.yml 
+  - template: templates/set-version-number-variables-step.yml
 
   - task: BatchScript@1
     displayName: 'setup env'
@@ -187,7 +191,7 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-        mkdir test 
+        mkdir test
         pushd test
         jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
         popd
@@ -216,7 +220,7 @@ jobs:
   steps:
   - checkout: self
     submodules: false
-  - template: templates/set-version-number-variables-step.yml 
+  - template: templates/set-version-number-variables-step.yml
   - task: DownloadPipelineArtifact@2
     displayName: 'Download Final Jar'
     inputs:

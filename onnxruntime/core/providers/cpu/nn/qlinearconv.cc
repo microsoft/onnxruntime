@@ -23,7 +23,14 @@ class QLinearConv : public OpKernel {
   }
 
   Status Compute(OpKernelContext* context) const override;
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
+
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   int input_idx,
+                                   /*out*/ bool& used_shared_buffers) override;
 
  private:
   static void ReorderFilter(const uint8_t* input,
@@ -83,13 +90,17 @@ ONNX_OPERATOR_KERNEL_EX(
 
 #endif
 
-Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                            /*out*/ bool& is_packed,
+                            /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
   // Support packing the weight matrix.
   if (input_idx != 3) {
     return Status::OK();
   }
+
+  is_W_signed_ = tensor.IsDataType<int8_t>();
 
   const auto& shape = tensor.Shape().GetDims();
   size_t rank = shape.size();
@@ -110,20 +121,26 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed
 
   const auto* Wdata = static_cast<const uint8_t*>(tensor.DataRaw());
   W_shape_ = shape;
-  is_W_signed_ = tensor.IsDataType<int8_t>();
-
-  auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
 
   const size_t group_count = static_cast<size_t>(conv_attrs_.group);
   const size_t group_output_channels = output_channels / group_count;
   const size_t kernel_dim = group_input_channels * kernel_size;
 
+  bool share_prepacked_weights = (prepacked_weights != nullptr);
+
   // Don't pack the filter buffer if the MlasConvDepthwise path is used.
   if (group_input_channels != 1 && group_output_channels != 1) {
-    packed_W_size_ = MlasGemmPackBSize(group_output_channels, kernel_dim, true);
+    packed_W_size_ = MlasGemmPackBSize(group_output_channels, kernel_dim, is_W_signed_);
 
     if (packed_W_size_ != 0) {
-      auto* packed_W = static_cast<uint8_t*>(alloc->Alloc(SafeInt<size_t>(group_count) * packed_W_size_));
+      size_t packed_W_data_size = SafeInt<size_t>(group_count) * packed_W_size_;
+      auto* packed_W = static_cast<uint8_t*>(alloc->Alloc(packed_W_data_size));
+
+      // Initialize memory to 0 as there could be some padding associated with pre-packed
+      // buffer memory and we don not want it uninitialized and generate different hashes
+      // if and when we try to cache this pre-packed buffer for sharing between sessions.
+      memset(packed_W, 0, packed_W_data_size);
+
       packed_W_buffer_ = BufferUniquePtr(packed_W, BufferDeleter(alloc));
 
       // Allocate a temporary buffer to hold the reordered oihw->hwio filter for
@@ -143,19 +160,66 @@ Status QLinearConv::PrePack(const Tensor& tensor, int input_idx, bool& is_packed
         Wdata += W_offset;
       }
 
+      if (share_prepacked_weights) {
+        prepacked_weights->buffers_.push_back(std::move(packed_W_buffer_));
+        prepacked_weights->buffer_sizes_.push_back(packed_W_data_size);
+      }
+
       is_W_packed_ = true;
       is_packed = true;
       return Status::OK();
+    } else {
+      if (share_prepacked_weights) {
+        prepacked_weights->buffers_.push_back(nullptr);  // packed_W_buffer_ is nullptr
+        prepacked_weights->buffer_sizes_.push_back(0);
+      }
+    }
+  } else {
+    if (share_prepacked_weights) {
+      prepacked_weights->buffers_.push_back(nullptr);  // packed_W_buffer_ is nullptr
+      prepacked_weights->buffer_sizes_.push_back(0);
     }
   }
 
-  auto* reordered_W = static_cast<uint8_t*>(alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * output_channels * group_input_channels * kernel_size));
+  size_t reordered_w_data_size = SafeInt<size_t>(sizeof(uint8_t)) * output_channels * group_input_channels * kernel_size;
+  auto* reordered_W = static_cast<uint8_t*>(alloc->Alloc(reordered_w_data_size));
+
+  // Initialize memory to 0 as there could be some padding associated with pre-packed
+  // buffer memory and we don not want it uninitialized and generate different hashes
+  // if and when we try to cache this pre-packed buffer for sharing between sessions.
+  memset(reordered_W, 0, reordered_w_data_size);
+
   reordered_W_buffer_ = BufferUniquePtr(reordered_W, BufferDeleter(alloc));
 
   ReorderFilter(Wdata, reordered_W, output_channels, group_input_channels, kernel_size);
 
+  if (share_prepacked_weights) {
+    prepacked_weights->buffers_.push_back(std::move(reordered_W_buffer_));
+    prepacked_weights->buffer_sizes_.push_back(reordered_w_data_size);
+  }
+
   is_W_packed_ = true;
   is_packed = true;
+  return Status::OK();
+}
+
+Status QLinearConv::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                              int input_idx,
+                                              /*out*/ bool& used_shared_buffers) {
+  if (input_idx != 3) {
+    return Status::OK();
+  }
+
+  used_shared_buffers = true;
+
+  if (prepacked_buffers.size() == 1) {  // This means that only packed_W_ exists
+    packed_W_buffer_ = std::move(prepacked_buffers[0]);
+  } else if (prepacked_buffers.size() == 2) {  // This means that only reordered_W_ exists
+    // Enforce that the first "placeholder" buffer is nullptr
+    ORT_ENFORCE(prepacked_buffers[0].get() == nullptr);
+    reordered_W_buffer_ = std::move(prepacked_buffers[1]);
+  }
+
   return Status::OK();
 }
 
@@ -446,14 +510,27 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
             static_cast<size_t>(kernel_size));
       } else {
         for (int64_t group_id = 0; group_id < group_count; ++group_id) {
+          MLAS_GEMM_U8X8_DATA_PARAMS gemm_params;
+          gemm_params.ZeroPointA = X_zero_point_value;
+          if (packed_W_buffer_) {
+            gemm_params.B = static_cast<const int8_t*>(packed_W_buffer_.get()) + group_id * packed_W_size_,
+            gemm_params.BIsPacked = true;
+          } else {
+            gemm_params.B = reordered_W + group_id * group_output_channels,
+            gemm_params.ldb = static_cast<size_t>(M);
+          }
+          gemm_params.ZeroPointB = &W_zero_point_value;
+          gemm_params.C = worker_gemm_output + group_id * group_output_channels;
+          gemm_params.ldc = static_cast<size_t>(M);
+
           // Prepare the im2col transformation or use the input buffer directly for
           // pointwise convolutions.
-          const uint8_t* worker_gemm_input;
+          const auto* group_input_data = input_data + group_id * group_input_channels;
           if (col_buffer) {
             auto* worker_col_buffer = static_cast<uint8_t*>(col_buffer.get()) + output_start * kernel_dim;
             if (kernel_rank == 2) {
               math::Im2col<uint8_t, StorageOrder::NHWC>()(
-                  input_data + group_id * group_input_channels,
+                  group_input_data,
                   group_input_channels,
                   C,
                   input_shape[0],
@@ -473,7 +550,7 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
                   X_zero_point_value);
             } else if (kernel_rank == 1) {
               math::Im2col<uint8_t, StorageOrder::NHWC>()(
-                  input_data + group_id * group_input_channels,
+                  group_input_data,
                   group_input_channels,
                   C,
                   1,
@@ -495,42 +572,36 @@ Status QLinearConv::Compute(OpKernelContext* context) const {
               // Use the im2col buffer prepared outside the thread, indexed by group.
               worker_col_buffer += group_id * col_buffer_size;
             }
-            worker_gemm_input = worker_col_buffer;
+            gemm_params.A = worker_col_buffer;
+            gemm_params.lda = static_cast<size_t>(kernel_dim);
           } else {
-            worker_gemm_input = input_data + output_start * kernel_dim;
+            gemm_params.A = group_input_data + output_start * C;
+            gemm_params.lda = static_cast<size_t>(C);
           }
 
-          MLAS_GEMM_U8X8_PARAMETERS gemm_params;
-          gemm_params.M = static_cast<size_t>(output_count);
-          gemm_params.N = static_cast<size_t>(group_output_channels);
-          gemm_params.K = static_cast<size_t>(kernel_dim);
-          gemm_params.A = worker_gemm_input;
-          gemm_params.lda = static_cast<size_t>(kernel_dim);
-          gemm_params.ZeroPointA = X_zero_point_value;
-          if (packed_W_buffer_) {
-            gemm_params.B = static_cast<const int8_t*>(packed_W_buffer_.get()) + group_id * packed_W_size_,
-            gemm_params.BIsPacked = true;
-          } else {
-            gemm_params.B = reordered_W + group_id * group_output_channels,
-            gemm_params.ldb = static_cast<size_t>(M);
-          }
-          gemm_params.ZeroPointB = &W_zero_point_value;
-          gemm_params.BIsSigned = is_W_signed;
-          gemm_params.C = worker_gemm_output + group_id * group_output_channels;
-          gemm_params.ldc = static_cast<size_t>(M);
-          MlasGemm(&gemm_params, nullptr);
+          MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
+          gemm_shape.M = static_cast<size_t>(output_count);
+          gemm_shape.N = static_cast<size_t>(group_output_channels);
+          gemm_shape.K = static_cast<size_t>(kernel_dim);
+          gemm_shape.BIsSigned = is_W_signed;
+
+          MlasGemm(gemm_shape, gemm_params, nullptr);
         }
       }
 
       MlasRequantizeOutput(
           worker_gemm_output,
-          worker_requantize_output,
-          Bdata,
-          static_cast<size_t>(output_count),
           static_cast<size_t>(M),
+          worker_requantize_output,
+          static_cast<size_t>(M),
+          Bdata,
           output_scales.data(),
           output_scales.size() > 1,
-          Y_zero_point_value);
+          Y_zero_point_value,
+          0,
+          0,
+          static_cast<size_t>(output_count),
+          static_cast<size_t>(M));
     };
 
     concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, thread_count, conv_worker);

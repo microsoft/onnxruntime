@@ -3,7 +3,8 @@ import torch
 
 from .optim import lr_scheduler
 from .amp import loss_scaler
-
+from . import PropagateCastOpsStrategy
+import onnxruntime as ort
 
 class ORTTrainerOptions(object):
     r"""Settings used by ONNX Runtime training backend
@@ -188,6 +189,30 @@ class ORTTrainerOptions(object):
                             'type': 'integer',
                             'min': 0,
                             'default': 0
+                        },
+                        'propagate_cast_ops_config': {
+                            'type': 'dict',
+                            'required': False,
+                            'default': {},
+                            'schema': {
+                                'propagate_cast_ops_strategy': {
+                                    'type': 'onnxruntime.training.PropagateCastOpsStrategy',
+                                    'default': PropagateCastOpsStrategy.NONE
+                                },
+                                'propagate_cast_ops_level': {
+                                    'type': 'integer',
+                                    'default': -1
+                                },
+                                'propagate_cast_ops_allow': {
+                                    'type': 'list',
+                                    'schema': {'type': 'string'},
+                                    'default': []
+                                }
+                            }
+                        },
+                        'allow_layer_norm_mod_precision': {
+                            'type': 'boolean',
+                            'default': False
                         }
                     }
                 },
@@ -277,7 +302,18 @@ class ORTTrainerOptions(object):
                             'default' : True
                         }
                     }
-                }
+                },
+                'provider_options':{
+                    'type': 'dict',
+                    'default': {},
+                    'required': False,
+                    'schema': {}
+                },
+                'session_options': {
+                    'type': 'SessionOptions',
+                    'nullable': True,
+                    'default': None
+                },
              }
 
     Keyword arguments:
@@ -333,6 +369,28 @@ class ORTTrainerOptions(object):
             can be specified by extending :py:class:`.LossScaler` class from scratch
         graph_transformer (dict):
             graph transformer related configurations
+        graph_transformer.attn_dropout_recompute(bool, default False)
+        graph_transformer.gelu_recompute(bool, default False)
+        graph_transformer.transformer_layer_recompute(bool, default False)
+        graph_transformer.number_recompute_layers(bool, default False)
+        graph_transformer.propagate_cast_ops_config (dict):
+            graph_transformer.propagate_cast_ops_config.strategy(PropagateCastOpsStrategy, default NONE)
+                Specify the choice of the cast propagation optimization strategy, either, NONE, INSERT_AND_REDUCE or FLOOD_FILL.
+                NONE strategy does not perform any cast propagation transformation on the graph, although other optimizations
+                locally change cast operations, for example, in order to fuse Transpose and MatMul nodes, the TransposeMatMulFunsion optimization could
+                interchange Transpose and Cast if the Cast node exists between Transpose and MatMul.
+                INSERT_AND_REDUCE strategy inserts and reduces cast operations around the nodes with allowed opcodes.
+                FLOOD_FILL strategy expands float16 regions in the graph using the allowed opcodes, and unlike
+                INSERT_AND_REDUCE does not touch opcodes outside expanded float16 region.
+            graph_transformer.propagate_cast_ops_config.level(integer, default -1)
+                Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
+                Use predetermined list of opcodes considered safe to move before/after cast operation
+                if propagate_cast_ops_level is positive and use propagate_cast_ops_allow otherwise.
+            graph_transformer.propagate_cast_ops_config.allow(list of str, [])
+                List of opcodes to be considered safe to move before/after cast operation if propagate_cast_ops_level is zero.
+        graph_transformer.allow_layer_norm_mod_precision(bool, default False)
+            Enable LayerNormalization/SimplifiedLayerNormalization fusion 
+            even if it requires modified compute precision
         attn_dropout_recompute (bool, default is False):
             enable recomputing attention dropout to save memory
         gelu_recompute (bool, default is False):
@@ -383,6 +441,11 @@ class ORTTrainerOptions(object):
         _internal_use.enable_onnx_contrib_ops (bool, default is True)
             enable PyTorch to export nodes as contrib ops in ONNX.
             This flag may be removed anytime in the future.
+        session_options (onnxruntime.SessionOptions):
+            The SessionOptions instance that TrainingSession will use.
+        provider_options (dict): 
+            The provider_options for customized execution providers. it is dict map from EP name to 
+            a key-value pairs, like {'EP1' : {'key1' : 'val1'}, ....}
 
     Example:
         .. code-block:: python
@@ -459,9 +522,17 @@ class ORTTrainerOptionsValidator(cerberus.Validator):
     _LOSS_SCALER = cerberus.TypeDefinition(
         'loss_scaler', (loss_scaler.LossScaler,), ())
 
+    _SESSION_OPTIONS = cerberus.TypeDefinition(
+        'session_options', (ort.SessionOptions,),())
+
+    _PROPAGATE_CAST_OPS_STRATEGY = cerberus.TypeDefinition(
+        "propagate_cast_ops_strategy", (PropagateCastOpsStrategy,),())
+
     types_mapping = cerberus.Validator.types_mapping.copy()
     types_mapping['lr_scheduler'] = _LR_SCHEDULER
     types_mapping['loss_scaler'] = _LOSS_SCALER
+    types_mapping['session_options'] = _SESSION_OPTIONS
+    types_mapping['propagate_cast_ops_strategy'] = _PROPAGATE_CAST_OPS_STRATEGY
 
 
 def _check_is_callable(field, value, error):
@@ -642,7 +713,33 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'type': 'integer',
                 'min': 0,
                 'default': 0
-            }
+            },
+            'allow_layer_norm_mod_precision': {
+                'type': 'boolean',
+                'default': False
+            },
+            'propagate_cast_ops_config': {
+                'type': 'dict',
+                'default_setter': lambda _: {},
+                'required': False,
+                'schema': {
+                    'strategy': {
+                        'type': 'propagate_cast_ops_strategy',
+                        'nullable': True,
+                        'default': PropagateCastOpsStrategy.NONE
+                    },
+                    'level': {
+                        'type': 'integer',
+                        'min': -1,
+                        'default': -1
+                    },
+                    'allow': {
+                        'type': 'list',
+                        'schema': {'type': 'string'},
+                        'default': []
+                    }
+                }
+           }
         }
     },
     'utils': {
@@ -731,5 +828,17 @@ _ORTTRAINER_OPTIONS_SCHEMA = {
                 'default': True
             }
         }
-    }
+    },
+    'provider_options':{
+        'type': 'dict',
+        'default_setter': lambda _: {},
+        'required': False,
+        'allow_unknown': True,
+        'schema': {}
+    },
+    'session_options': {
+        'type': 'session_options',
+        'nullable': True,
+        'default': None
+    },
 }

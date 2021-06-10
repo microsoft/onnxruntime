@@ -1,7 +1,7 @@
 jobs:
 - job: Android_CI
   pool:
-    vmImage: 'macOS-10.14'
+    vmImage: 'macOS-10.15'
   timeoutInMinutes: 150
   steps:
   # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
@@ -14,6 +14,9 @@ jobs:
 
   - script: brew install coreutils ninja
     displayName: Install coreutils and ninja
+
+  - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
+    displayName: Setup gradle wrapper to use gradle 6.8.3
 
   - script: |
       python3 tools/python/run_android_emulator.py \
@@ -98,6 +101,6 @@ jobs:
         --commit_hash=$(Build.SourceVersion)
         --report_url="https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"
         --report_file="$(Build.BinariesDirectory)/coverage_rpt.txt"
-        --build_config="{\"os\":\"android\", \"arch\":\"x86_64\", \"config\":\"nnapi\"}"
+        --branch $(Build.SourceBranchName) --arch $(Agent.OSArchitecture) --os "android" --build_config nnapi
     env:
       DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)

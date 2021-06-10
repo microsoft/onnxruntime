@@ -12,6 +12,7 @@
 #include "core/providers/openvino/ibackend.h"
 
 #include <vector>
+#include <iostream>
 #include <string>
 #include <condition_variable>
 #include <mutex>
@@ -37,6 +38,7 @@ class BasicBackend : public IBackend {
   SubGraphContext subgraph_context_;
   mutable std::mutex compute_lock_;
   std::shared_ptr<InferenceEngine::CNNNetwork> ie_cnn_network_;
+  InferenceEngine::ExecutableNetwork exe_network_;
   std::map<std::string, std::shared_ptr<ngraph::Node>> const_outputs_map_;
   std::unique_ptr<InferRequestsQueue> inferRequestsQueue_;
 };
@@ -46,7 +48,7 @@ class InferRequestsQueue {
   InferRequestsQueue(InferenceEngine::ExecutableNetwork& net, size_t nireq) {
     InferenceEngine::InferRequest::Ptr infer_request;
     for (size_t id = 0; id < nireq; id++) {
-      infer_request = net.CreateInferRequestPtr();
+      infer_request = std::make_shared<InferenceEngine::InferRequest>(net.CreateInferRequest());
       infer_requests_.push_back(infer_request);
     }
   }

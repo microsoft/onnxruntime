@@ -24,6 +24,10 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
          const InitializedTensorSet& initialized_tensor_set,
          const Path& model_path,
          const IExecutionProvider& execution_provider);
+    Info(const std::vector<const Node*>& nodes,
+         const std::unordered_map<std::string, OrtValue>& initialized_tensor_set,
+         const Path& model_path,
+         const IExecutionProvider& execution_provider);
     ~Info() {
       for (auto& kvp : deleter_for_initialized_tensors_) {
         kvp.second.f(kvp.second.param);
@@ -76,7 +80,8 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
   };
 
   OptimizerExecutionFrame(const Info& info,
-                          const std::vector<int>& fetch_mlvalue_idxs);
+                          const std::vector<int>& fetch_mlvalue_idxs,
+                          const std::vector<OrtValue>& fetches = {});
 
   ~OptimizerExecutionFrame() override = default;
 

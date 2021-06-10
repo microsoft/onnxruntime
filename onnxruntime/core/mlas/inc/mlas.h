@@ -35,7 +35,7 @@ Abstract:
 // Define the target architecture.
 //
 
-#if defined(_M_AMD64) || defined(__x86_64__)
+#if (defined(_M_AMD64) && !defined(_M_ARM64EC)) || defined(__x86_64__)
 #define MLAS_TARGET_AMD64
 #endif
 #if defined(_M_IX86) || defined(__i386__)
@@ -47,11 +47,19 @@ Abstract:
 #if defined(_M_ARM64) || defined(__aarch64__)
 #define MLAS_TARGET_ARM64
 #endif
-#if defined(_M_ARM) || defined(__arm__)
+#if defined(_M_ARM) || defined(_M_ARM64EC) || defined(__arm__)
 #define MLAS_TARGET_ARM
 #endif
 #if defined(__VSX__)
 #define MLAS_TARGET_POWER
+#endif
+#if defined(__wasm__)
+#define MLAS_TARGET_WASM
+#if defined(__wasm_simd128__)
+#define MLAS_TARGET_WASM_SIMD
+#else
+#define MLAS_TARGET_WASM_SCALAR
+#endif
 #endif
 
 //
@@ -139,10 +147,102 @@ MlasActivation(
 
 //
 // Matrix/matrix multiply routines.
+// C := alpha * op(A) * op(B) + beta * C
+// op(X) = X or op(X) = transpose(X) or op(X) = conjg(transpose(X))
 //
 
+/**
+ * @brief Supply matrices data information to single precision gemm functions
+ */
+struct MLAS_SGEMM_DATA_PARAMS {
+    const float* A = nullptr; /**< Supplies the address of matrix A */
+    size_t lda = 0;           /**< Supplies the first dimension of matrix A. */
+    const float* B = nullptr; /**< Supplies the address of matrix B */
+    size_t ldb = 0;           /**< Supplies the first dimension of matrix B. */
+    float* C = nullptr;       /**< Supplies the address of matrix C */
+    size_t ldc = 0;           /**< Supplies the first dimension of matrix C. */
+    float alpha = 1.0f;       /**< Supplies the scalar alpha multiplier (see SGEMM definition) */
+    float beta = 0.0f;        /**< Supplies the scalar beta multiplier (see SGEMM definition) */
+    bool BIsPacked = false;   /**< Whether B is pre-packed */
+};
+
+/**
+ * @brief  Batched single precision matrix/matrix multiply operation (SGEMM)
+ *
+ * @param TransA     Supplies the transpose operation for matrix A.
+ * @param TransB     Supplies the transpose operation for matrix B.
+ * @param M          Supplies the number of rows of matrix A and matrix C.
+ * @param N          Supplies the number of columns of matrix B and matrix C.
+ * @param K          Supplies the number of columns of matrix A and the number
+                     of rows of matrix B.
+ * @param Data       A array of matrices data parameters
+ * @param BatchSize  Supplies number of multiplications in this batch
+ * @param ThreadPool Supplies the thread pool object to use, else nullptr if the
+                     base library threading support should be used.
+ */
 void
 MLASCALL
+MlasGemmBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+/**
+ * @brief  Single precision matrix/matrix multiply operation (SGEMM)
+ *
+ * @param TransA  Supplies the transpose operation for matrix A.
+ * @param TransB  Supplies the transpose operation for matrix B.
+ * @param M       Supplies the number of rows of matrix A and matrix C.
+ * @param N       Supplies the number of columns of matrix B and matrix C.
+ * @param K       Supplies the number of columns of matrix A and the number
+                  of rows of matrix B.
+ * @param Data    Supplies the matrices data parameters
+ * @param ThreadPool  Supplies the thread pool object to use, else nullptr if the
+                      base library threading support should be used.
+ */
+inline
+void
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS& Data,
+    MLAS_THREADPOOL* ThreadPool
+    )
+{
+    MlasGemmBatch(TransA, TransB, M, N, K, &Data, 1, ThreadPool);
+}
+
+/**
+ * @brief  Single precision matrix/matrix multiply operation (SGEMM)
+ *
+ * @param TransA  Supplies the transpose operation for matrix A.
+ * @param TransB  Supplies the transpose operation for matrix B.
+ * @param M       Supplies the number of rows of matrix A and matrix C.
+ * @param N       Supplies the number of columns of matrix B and matrix C.
+ * @param K       Supplies the number of columns of matrix A and the number
+                  of rows of matrix B.
+ * @param alpha   Supplies the scalar alpha multiplier (see SGEMM definition)
+ * @param A       Supplies the address of matrix A
+ * @param lda     Supplies the first dimension of matrix A.
+ * @param B       Supplies the address of matrix B
+ * @param ldb     Supplies the first dimension of matrix B.
+ * @param beta    Supplies the scalar beta multiplier (see SGEMM definition)
+ * @param C       Supplies the address of matrix C
+ * @param ldc     Supplies the first dimension of matrix C.
+ * @param ThreadPool Supplies the thread pool object to use, else nullptr if the
+                      base library threading support should be used.
+ */
+inline
+void
 MlasGemm(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
@@ -158,10 +258,41 @@ MlasGemm(
     float* C,
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
-    );
+    )
+{
+    MLAS_SGEMM_DATA_PARAMS Data;
+    Data.alpha = alpha;
+    Data.A = A;
+    Data.lda = lda;
+    Data.B = B;
+    Data.ldb = ldb;
+    Data.beta = beta;
+    Data.C = C;
+    Data.ldc = ldc;
 
+    MlasGemm(TransA, TransB, M, N, K, Data, ThreadPool);
+}
+
+/**
+ * @brief the single precision matrix/matrix multiply operation (SGEMM) with pre-packed B
+ *
+ * @param TransA      - Supplies the transpose operation for matrix A.
+ * @param M           - Supplies the number of rows of matrix A and matrix C.
+ * @param N           - Supplies the number of columns of matrix B and matrix C.
+ * @param K           - Supplies the number of columns of matrix A and the number
+                        of rows of matrix B.
+ * @param alpha       - Supplies the scalar alpha multiplier (see SGEMM definition).
+ * @param A           - Supplies the address of matrix A.
+ * @param lda         - Supplies the first dimension of matrix A.
+ * @param PackedB     - Supplies the address of packed matrix B.
+ * @param beta        - Supplies the scalar beta multiplier (see SGEMM definition).
+ * @param C           - Supplies the address of matrix C.
+ * @param ldc         - Supplies the first dimension of matrix C.
+ * @param ThreadPool  - Supplies the thread pool object to use, else nullptr if the
+                        base library threading support should be used.
+ */
+inline
 void
-MLASCALL
 MlasGemm(
     CBLAS_TRANSPOSE TransA,
     size_t M,
@@ -175,10 +306,117 @@ MlasGemm(
     float* C,
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
-    );
+    )
+{
+    MLAS_SGEMM_DATA_PARAMS DataParams;
+    DataParams.A = A;
+    DataParams.lda = lda;
+    DataParams.B = static_cast<const float*>(PackedB);
+    DataParams.ldb = 0;
+    DataParams.C = C;
+    DataParams.ldc = ldc;
+    DataParams.alpha = alpha;
+    DataParams.beta = beta;
+    DataParams.BIsPacked = true;
 
+    MlasGemmBatch(TransA,
+                  CblasTrans,  // deos not matter when B is packed
+                  M, N, K, &DataParams, 1, ThreadPool);
+}
+
+
+/**
+ * @brief Supply matrices data information to double precision gemm functions
+ */
+struct MLAS_DGEMM_DATA_PARAMS {
+    const double* A = nullptr; /**< Supplies the address of matrix A */
+    size_t lda = 0;            /**< Supplies the first dimension of matrix A. */
+    const double* B = nullptr; /**< Supplies the address of matrix B */
+    size_t ldb = 0;            /**< Supplies the first dimension of matrix B. */
+    double* C = nullptr;       /**< Supplies the address of matrix C */
+    size_t ldc = 0;            /**< Supplies the first dimension of matrix C. */
+    double alpha = 1.0;        /**< Supplies the scalar alpha multiplier (see SGEMM definition) */
+    double beta = 0.0;         /**< Supplies the scalar beta multiplier (see SGEMM definition) */
+};
+
+/**
+ * @brief  Batched double precision matrix/matrix multiply operation (DGEMM)
+ *
+ * @param TransA     Supplies the transpose operation for matrix A.
+ * @param TransB     Supplies the transpose operation for matrix B.
+ * @param M          Supplies the number of rows of matrix A and matrix C.
+ * @param N          Supplies the number of columns of matrix B and matrix C.
+ * @param K          Supplies the number of columns of matrix A and the number
+                     of rows of matrix B.
+ * @param Data       A array of matrices data parameters
+ * @param BatchSize  Supplies number of multiplications in this batch
+ * @param ThreadPool Supplies the thread pool object to use, else nullptr if the
+                     base library threading support should be used.
+ */
 void
 MLASCALL
+MlasGemmBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_DGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+
+/**
+ * @brief  Double precision matrix/matrix multiply operation (DGEMM)
+ *
+ * @param TransA  Supplies the transpose operation for matrix A.
+ * @param TransB  Supplies the transpose operation for matrix B.
+ * @param M       Supplies the number of rows of matrix A and matrix C.
+ * @param N       Supplies the number of columns of matrix B and matrix C.
+ * @param K       Supplies the number of columns of matrix A and the number
+                  of rows of matrix B.
+ * @param Data    Supplies the matrices data parameters
+ * @param ThreadPool  Supplies the thread pool object to use, else nullptr if the
+                      base library threading support should be used.
+ */
+inline
+void
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_DGEMM_DATA_PARAMS& Data,
+    MLAS_THREADPOOL* ThreadPool
+    )
+{
+    MlasGemmBatch(TransA, TransB, M, N, K, &Data, 1, ThreadPool);
+}
+
+/**
+ * @brief  Double precision matrix/matrix multiply operation (DGEMM)
+ *
+ * @param TransA  Supplies the transpose operation for matrix A.
+ * @param TransB  Supplies the transpose operation for matrix B.
+ * @param M       Supplies the number of rows of matrix A and matrix C.
+ * @param N       Supplies the number of columns of matrix B and matrix C.
+ * @param K       Supplies the number of columns of matrix A and the number
+                  of rows of matrix B.
+ * @param alpha   Supplies the scalar alpha multiplier (see SGEMM definition)
+ * @param A       Supplies the address of matrix A
+ * @param lda     Supplies the first dimension of matrix A.
+ * @param B       Supplies the address of matrix B
+ * @param ldb     Supplies the first dimension of matrix B.
+ * @param beta    Supplies the scalar beta multiplier (see SGEMM definition)
+ * @param C       Supplies the address of matrix C
+ * @param ldc     Supplies the first dimension of matrix C.
+ * @param ThreadPool Supplies the thread pool object to use, else nullptr if the
+                      base library threading support should be used.
+ */
+inline
+void
 MlasGemm(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
@@ -194,7 +432,19 @@ MlasGemm(
     double* C,
     size_t ldc,
     MLAS_THREADPOOL* ThreadPool
-    );
+    )
+{
+    MLAS_DGEMM_DATA_PARAMS Data;
+    Data.alpha = alpha;
+    Data.A = A;
+    Data.lda = lda;
+    Data.B = B;
+    Data.ldb = ldb;
+    Data.beta = beta;
+    Data.C = C;
+    Data.ldc = ldc;
+    MlasGemmBatch(TransA, TransB, M, N, K, &Data, 1, ThreadPool);
+}
 
 enum class MLAS_QUANTIZATION_GRANULARITY {
     PerMatrix,
@@ -218,6 +468,8 @@ public:
         size_t,         // Supplies the element count per col to process
         size_t          // Supplies the leading dimension of matrix
         ) const = 0;
+
+    virtual ~MLAS_QGEMM_OUTPUT_PROCESSOR() {}
 };
 
 class MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR {
@@ -270,10 +522,14 @@ private:
     MLAS_QUANTIZATION_GRANULARITY QuantGran_;
 };
 
-struct MLAS_GEMM_U8X8_PARAMETERS {
+struct MLAS_GEMM_U8X8_SHAPE_PARAMS {
     size_t M = 0;
     size_t N = 0;
     size_t K = 0;
+    bool BIsSigned = false;
+};
+
+struct MLAS_GEMM_U8X8_DATA_PARAMS {
     const uint8_t* A = nullptr;
     size_t lda = 0;
     uint8_t ZeroPointA = 0;
@@ -281,17 +537,38 @@ struct MLAS_GEMM_U8X8_PARAMETERS {
     size_t ldb = 0;
     const uint8_t* ZeroPointB = nullptr;
     bool BIsPacked = false;
-    bool BIsSigned = false;
     bool PerColumnZeroPoints = false;
     int32_t* C = nullptr;
     size_t ldc = 0;
     const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr;
 };
 
+
 void
 MLASCALL
 MlasGemm(
-    const MLAS_GEMM_U8X8_PARAMETERS* Parameters,
+    const MLAS_GEMM_U8X8_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_U8X8_DATA_PARAMS& DataParams,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+/**
+ * @brief Batched GEMM, for multiplying multiple pairs of matrices.
+ * Note:  We only support uniform batching, so shapes and types of the
+ *        input must be same: M, N, K, BIsSigned must be the
+ *        same across all parameter blocks.
+ *
+ * @param [IN]  Shape        A single shape descriptor for all the multiplications
+ * @param [IN]  DataParams   Array of data descriptors for the matrices.
+ * @param [IN]  BatchN       Size of the parameters array, also number of multiplications to perform
+ * @param [IN]  ThreadPool   optional thread pool for parallel processing
+ */
+void
+MLASCALL
+MlasGemmBatch(
+    const MLAS_GEMM_U8X8_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_U8X8_DATA_PARAMS* DataParams,
+    const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool
     );
 
@@ -344,6 +621,9 @@ enum MLAS_CONV_ALGORITHM {
     MlasConvAlgorithmGemmDirect,
     MlasConvAlgorithmExpandThenGemm,
     MlasConvAlgorithmExpandThenGemmSegmented,
+#if defined(MLAS_TARGET_WASM_SCALAR)
+    MlasConvAlgorithmDepthwise,
+#endif
 };
 
 struct MLAS_CONV_PARAMETERS {
@@ -554,10 +834,21 @@ MlasTranspose(
 
 void
 MLASCALL
-MlasReorderInput(
-    const int64_t* InputShape,
+MlasReorderInputNchw(
     const float* S,
-    float* D
+    float* D,
+    size_t InputChannels,
+    size_t InputSize
+    );
+
+void
+MLASCALL
+MlasReorderInputNhwc(
+    const float* S,
+    float* D,
+    size_t InputChannels,
+    size_t RowCount,
+    size_t FullRowCount
     );
 
 void
@@ -638,9 +929,21 @@ MlasNchwcPool(
 
 void
 MLASCALL
-MlasNchwcUpsample(
+MlasNchwcUpsampleNearest(
     const int64_t* InputShape,
     const int64_t* Scales,
+    const float* Input,
+    float* Output
+    );
+
+void
+MLASCALL
+MlasNchwcUpsampleLinear(
+    size_t InputHeight,
+    size_t InputWidth,
+    size_t OutputWidth,
+    float InterpolationHeight,
+    const float* InterpolationWidth,
     const float* Input,
     float* Output
     );
@@ -660,18 +963,82 @@ MlasQuantizeLinear(
     OutputType ZeroPoint
     );
 
+/**
+ * @brief Requantize a block of the intermediate buffer to the output buffer,
+ *        optionally adding the supplied bias
+ * 
+ * @param Input                     Input matrix 
+ * @param InputLeadingDimension     Input matrix leading dimension
+ * @param Output                    Output matrix
+ * @param OutputLeadingDimension    Output matrix leading dimension
+ * @param Bias                      Optional bias vector, to be added
+                                    to the input before quantization
+ * @param Scale                     Quantization scale
+ * @param PerColumnScale            true if scale is per-column
+ * @param ZeroPoint                 quantization zero point value
+ * @param StartM
+ * @param StartN
+ * @param CountM
+ * @param CountN
+ * @return
+*/
 void
 MLASCALL
 MlasRequantizeOutput(
     const int32_t* Input,
+    size_t InputLeadingDimension,
     uint8_t* Output,
+    size_t OutputLeadingDimension,
     const int32_t* Bias,
-    size_t M,
-    size_t N,
     const float* Scale,
     bool PerColumnScale,
-    uint8_t ZeroPoint
+    uint8_t ZeroPoint,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN
     );
+
+class MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR
+{
+   public:
+    MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR(
+        uint8_t* Output,
+        size_t OutputLeadingDimension,
+        const int32_t* Bias,
+        const float* Scale,
+        bool PerColumnScale,
+        uint8_t ZeroPoint)
+        : Output_(Output),
+          OutputLeadingDimension_(OutputLeadingDimension),
+          Bias_(Bias),
+          Scale_(Scale),
+          PerColumnScale_(PerColumnScale),
+          ZeroPoint_(ZeroPoint)
+    {
+    }
+
+    void Process(const int32_t* C,
+                 size_t StartM,
+                 size_t StartN,
+                 size_t CountM,
+                 size_t CountN,
+                 size_t ldc) const override
+    {
+        MlasRequantizeOutput(C, ldc, Output_, OutputLeadingDimension_, Bias_, Scale_,
+                             PerColumnScale_, ZeroPoint_, StartM, StartN, CountM, CountN);
+    }
+
+
+   private:
+    uint8_t* Output_;
+    size_t OutputLeadingDimension_;
+    const int32_t* Bias_;
+    const float* Scale_;
+    bool PerColumnScale_;
+    uint8_t ZeroPoint_;
+};
+
 
 void
 MLASCALL

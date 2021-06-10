@@ -83,12 +83,6 @@ ONNX_OPERATOR_SET_SCHEMA(
     .TypeConstraint("V", OpSchema::all_tensor_types(), "All Tensor types"));
 */
 
-template <>
-struct Scan<8>::Info : public scan::detail::Info {
-  Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in, int num_scan_inputs_in)
-      : scan::detail::Info(node, subgraph_in, num_scan_inputs_in, /* is_v8 */ true) {}
-};
-
 class Scan8Impl {
  public:
   Scan8Impl(OpKernelContextInternal& context,
@@ -135,7 +129,7 @@ class Scan8Impl {
 };
 
 template <>
-Scan<8>::Scan(const OpKernelInfo& info) : IControlFlowKernel(info) {
+void Scan<8>::Init(const OpKernelInfo& info) {
   // make sure the attribute was present even though we don't need it here.
   // The GraphProto is loaded as a Graph instance by main Graph::Resolve,
   // and a SessionState instance for executing the subgraph is created by InferenceSession.
@@ -166,7 +160,7 @@ Status Scan<8>::SetupSubgraphExecutionInfo(const SessionState& session_state,
   ORT_UNUSED_PARAMETER(attribute_name);
 
   const auto& node = Node();
-  info_ = onnxruntime::make_unique<Scan<8>::Info>(node, subgraph_session_state.GetGraphViewer(),
+  info_ = std::make_unique<Scan<8>::Info>(node, subgraph_session_state.GetGraphViewer(),
                                                   static_cast<int>(num_scan_inputs_));
 
   auto status = scan::detail::CreateFeedsFetchesManager(node, *info_, session_state, subgraph_session_state,
@@ -174,10 +168,6 @@ Status Scan<8>::SetupSubgraphExecutionInfo(const SessionState& session_state,
 
   return status;
 }
-
-// we need this to be in the .cc so 'unique_ptr<Info> info_' can be handled
-template <>
-Scan<8>::~Scan() = default;
 
 template <>
 Status Scan<8>::Compute(OpKernelContext* ctx) const {

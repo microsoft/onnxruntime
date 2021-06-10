@@ -20,11 +20,11 @@ __device__ int NearestPixel_ROUND_PREFER_FLOOR(float x_original, bool) {
   if (x_original == static_cast<int>(x_original) + 0.5f) {
     return static_cast<int>(_Floor(x_original));
   }
-  return static_cast<int>(_Round(x_original));
+  return static_cast<int>(roundf(x_original));
 }
 
 __device__ int NearestPixel_ROUND_PREFER_CEIL(float x_original, bool) {
-  return static_cast<int>(_Round(x_original));
+  return static_cast<int>(roundf(x_original));
 }
 
 __device__ int NearestPixel_FLOOR(float x_original, bool) {
@@ -782,9 +782,8 @@ void ResizeImpl(
             reinterpret_cast<LinearMappingInfo*>(dims_mapping));
         return;
       }
-
+      ORT_THROW("Only bilinear/trilinear and bicubic modes are supported in Resize");
       break;
-
     case UpsampleMode::CUBIC:
       if (is_2D) {
         _ResizeCubicCoordinateMapping<T><<<blocksPerDimsMappingGrid, 32, 0, stream>>>(
@@ -804,6 +803,9 @@ void ResizeImpl(
             reinterpret_cast<CubicMappingInfo*>(dims_mapping));
         return;
       }
+      ORT_THROW("Only bilinear/trilinear and bicubic modes are supported in Resize");
+    case UpsampleMode::NN:
+      ORT_THROW("Only bilinear/trilinear and bicubic modes are supported in Resize");
   }
 }
 

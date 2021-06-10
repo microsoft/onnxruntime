@@ -9,7 +9,7 @@ from typing import Tuple, Union
 from onnx import helper, numpy_helper, TensorProto, NodeProto
 from onnx_model import OnnxModel
 from fusion_base import Fusion
-from fusion_utils import FusionUtils
+from fusion_utils import FusionUtils, NumpyHelper
 
 logger = getLogger(__name__)
 
@@ -107,7 +107,7 @@ class FusionAttention(Fusion):
             logger.debug(f"{reshape_q.input[1]} is not initializer.")
             return self.num_heads, self.hidden_size  # Fall back to user specified value
 
-        q_shape_value = numpy_helper.to_array(q_shape)
+        q_shape_value = NumpyHelper.to_array(q_shape)
         if len(q_shape_value) != 4 or (q_shape_value[2] <= 0 or q_shape_value[3] <= 0):
             logger.debug(f"q_shape_value={q_shape_value}. Expected value are like [0, 0, num_heads, head_size].")
             return self.num_heads, self.hidden_size  # Fall back to user specified value
@@ -145,37 +145,37 @@ class FusionAttention(Fusion):
         Returns:
             Union[NodeProto, None]: the node created or None if failed.
         """
-        assert num_heads > 0 or hidden_size > 0 or (hidden_size % num_heads) == 0
+        assert num_heads > 0 and hidden_size > 0 and (hidden_size % num_heads) == 0
 
         q_weight = self.model.get_initializer(q_matmul.input[1])
         k_weight = self.model.get_initializer(k_matmul.input[1])
         v_weight = self.model.get_initializer(v_matmul.input[1])
-        q_bias = self.model.get_initializer(q_add.input[1])
-        k_bias = self.model.get_initializer(k_add.input[1])
-        v_bias = self.model.get_initializer(v_add.input[1])
+        q_bias = self.model.get_initializer(q_add.input[1]) or self.model.get_initializer(q_add.input[0])
+        k_bias = self.model.get_initializer(k_add.input[1]) or self.model.get_initializer(k_add.input[0])
+        v_bias = self.model.get_initializer(v_add.input[1]) or self.model.get_initializer(v_add.input[0])
 
         if q_weight is None:
             print(f"{q_matmul.input[1]} is not initializer. Please set do_constant_folding=True in torch.onnx.export")
             return None
         if not (k_weight and v_weight and q_bias and k_bias):
             return None
-        qw = numpy_helper.to_array(q_weight)
-        kw = numpy_helper.to_array(k_weight)
-        vw = numpy_helper.to_array(v_weight)
+        qw = NumpyHelper.to_array(q_weight)
+        kw = NumpyHelper.to_array(k_weight)
+        vw = NumpyHelper.to_array(v_weight)
 
         # Check if all matrices have the same shape
         assert qw.shape == kw.shape == vw.shape
 
-        # All the matrices have the same shape. For 2d weights, the shapes would be [in_size, out_size]. 
+        # All the matrices have the same shape. For 2d weights, the shapes would be [in_size, out_size].
         # For 3d weights, shape would be [in_size, a, b] where a*b = out_size
         in_size = qw.shape[0]
         out_size = np.prod(qw.shape[1:])
 
         qkv_weight = np.stack((qw, kw, vw), axis=1)
 
-        qb = numpy_helper.to_array(q_bias)        
-        kb = numpy_helper.to_array(k_bias)
-        vb = numpy_helper.to_array(v_bias)
+        qb = NumpyHelper.to_array(q_bias)
+        kb = NumpyHelper.to_array(k_bias)
+        vb = NumpyHelper.to_array(v_bias)
 
         # 1d bias shape: [outsize,]. 2d bias shape: [a, b] where a*b = out_size
         assert qb.shape == kb.shape == vb.shape
@@ -196,16 +196,16 @@ class FusionAttention(Fusion):
 
         # Sometimes weights and bias are stored in fp16
         if q_weight.data_type == 10:
-            weight.CopyFrom(numpy_helper.from_array(numpy_helper.to_array(weight).astype(np.float16), weight.name))
-        self.model.add_initializer(weight)
+            weight.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(weight).astype(np.float16), weight.name))
+        self.model.add_initializer(weight, self.this_graph_name)
 
         bias = helper.make_tensor(name=attention_node_name + '_qkv_bias',
                                   data_type=TensorProto.FLOAT,
                                   dims=[3 * out_size],
                                   vals=qkv_bias.flatten().tolist())
         if q_bias.data_type == 10:
-            bias.CopyFrom(numpy_helper.from_array(numpy_helper.to_array(bias).astype(np.float16), bias.name))
-        self.model.add_initializer(bias)
+            bias.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(bias).astype(np.float16), bias.name))
+        self.model.add_initializer(bias, self.this_graph_name)
 
         attention_inputs = [input, attention_node_name + '_qkv_weight', attention_node_name + '_qkv_bias']
         if mask_index is not None:
@@ -233,13 +233,14 @@ class FusionAttention(Fusion):
 
         # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
         qkv_nodes = self.model.match_parent_path(start_node, ['Add', 'MatMul', 'Reshape', 'Transpose', 'MatMul'],
-                                                 [None, 0, 0, 0, 0])
+                                                 [None, None, 0, 0, 0])
         einsum_node = None
         if qkv_nodes is not None:
             (_, matmul_qkv, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes
         else:
             # Match Albert
-            qkv_nodes = self.model.match_parent_path(start_node, ['Add', 'Einsum', 'Transpose', 'MatMul'], [1, 0, 0, 0])
+            qkv_nodes = self.model.match_parent_path(start_node, ['Add', 'Einsum', 'Transpose', 'MatMul'],
+                                                     [1, None, 0, 0])
             if qkv_nodes is not None:
                 (_, einsum_node, transpose_qkv, matmul_qkv) = qkv_nodes
             else:
@@ -278,22 +279,27 @@ class FusionAttention(Fusion):
                 root_input = mul_before_layernorm.output[0]
             else:
                 return
+        elif normalize_node.op_type == 'LayerNormalization':
+            children = input_name_to_nodes[root_input]
+            for child in children:
+                if child.op_type == "LayerNormalization":
+                    root_input = child.output[0]
 
         children = input_name_to_nodes[root_input]
         children_types = [child.op_type for child in children]
         if children_types.count('MatMul') != 3:
             return
 
-        v_nodes = self.model.match_parent_path(matmul_qkv, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
+        v_nodes = self.model.match_parent_path(matmul_qkv, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, None])
         if v_nodes is None:
             logger.debug("fuse_attention: failed to match v path")
             return
         (_, _, add_v, matmul_v) = v_nodes
 
         is_distill = False
-        qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Div', 'MatMul'], [0, 0, 0, 0])
+        qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Div', 'MatMul'], [0, 0, None, 0])
         if qk_nodes is None:
-            qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Mul', 'MatMul'], [0, 0, 0, 0])
+            qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Mul', 'MatMul'], [0, 0, None, 0])
             if qk_nodes is None:
                 qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Where', 'MatMul', 'Div'], [0, 0, 2, 0])
                 is_distill = True
@@ -309,10 +315,10 @@ class FusionAttention(Fusion):
         else:
             (_, add_qk, _, matmul_qk) = qk_nodes
 
-        q_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [0, 0, 0, 0])
+        q_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [0, 0, 0, None])
         if q_nodes is None:
             q_nodes = self.model.match_parent_path(matmul_qk, ['Div', 'Transpose', 'Reshape', 'Add', 'MatMul'],
-                                                   [0, 0, 0, 0, 0])
+                                                   [0, 0, 0, 0, None])
             if q_nodes is None:
                 logger.debug("fuse_attention: failed to match q path")
                 return
@@ -320,10 +326,10 @@ class FusionAttention(Fusion):
         add_q = q_nodes[-2]
         matmul_q = q_nodes[-1]
 
-        k_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, 0])
+        k_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, None])
         if k_nodes is None:
             k_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Transpose', 'Reshape', 'Add', 'MatMul'],
-                                                   [1, 0, 0, 0, 0])
+                                                   [1, 0, 0, 0, None])
             if k_nodes is None:
                 logger.debug("fuse_attention: failed to match k path")
                 return
@@ -339,8 +345,8 @@ class FusionAttention(Fusion):
                                                              output_name_to_node)
         else:
             _, mask_nodes, _ = self.model.match_parent_paths(
-                add_qk, [(['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'], [1, 0, 1, 0, 0]),
-                         (['Mul', 'Sub', 'Unsqueeze', 'Unsqueeze'], [1, 0, 1, 0])], output_name_to_node)
+                add_qk, [(['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'], [None, 0, 1, 0, 0]),
+                         (['Mul', 'Sub', 'Unsqueeze', 'Unsqueeze'], [None, 0, 1, 0])], output_name_to_node)
         if mask_nodes is None:
             logger.debug("fuse_attention: failed to match mask path")
             return
@@ -361,6 +367,7 @@ class FusionAttention(Fusion):
                 return
 
             self.nodes_to_add.append(new_node)
+            self.node_name_to_graph_name[new_node.name] = self.this_graph_name
 
             if einsum_node is not None:
                 unique_index = einsum_node.input[0]
@@ -371,10 +378,10 @@ class FusionAttention(Fusion):
                                                   vals=np.int64([0, 0, num_heads,
                                                                  int(hidden_size / num_heads)]).tobytes(),
                                                   raw=True)
-                self.model.add_initializer(shape_tensor)
+                self.model.add_initializer(shape_tensor, self.this_graph_name)
                 self.model.add_node(
                     helper.make_node("Reshape", [attention_last_node.output[0], shape_tensor.name], [new_edge],
-                                     "reshape_modified_" + unique_index))
+                                     "reshape_modified_" + unique_index), self.this_graph_name)
                 einsum_node.input[0] = new_edge
 
             self.nodes_to_remove.extend([attention_last_node, transpose_qkv, matmul_qkv])

@@ -1,0 +1,254 @@
+[
+    [
+        "Affine ai.onnx CPUExecutionProvider",
+        7811918192248490408
+    ],
+    [
+        "Crop ai.onnx CPUExecutionProvider",
+        6914973556202621376
+    ],
+    [
+        "DynamicSlice ai.onnx CPUExecutionProvider",
+        5387668728763060584
+    ],
+    [
+        "ImageScaler ai.onnx CPUExecutionProvider",
+        2013093418027264536
+    ],
+    [
+        "LayerNormalization ai.onnx CPUExecutionProvider",
+        4058615579523172864
+    ],
+    [
+        "LayerNormalization ai.onnx CPUExecutionProvider",
+        8466416990072218056
+    ],
+    [
+        "MeanVarianceNormalization ai.onnx CPUExecutionProvider",
+        13114085849278607104
+    ],
+    [
+        "ParametricSoftplus ai.onnx CPUExecutionProvider",
+        17971715260566574960
+    ],
+    [
+        "Scale ai.onnx CPUExecutionProvider",
+        12599351089228483328
+    ],
+    [
+        "ScaledTanh ai.onnx CPUExecutionProvider",
+        15584477984618710520
+    ],
+    [
+        "SimplifiedLayerNormalization ai.onnx CPUExecutionProvider",
+        16349480652468900704
+    ],
+    [
+        "SimplifiedLayerNormalization ai.onnx CPUExecutionProvider",
+        418129161279605176
+    ],
+    [
+        "ThresholdedRelu ai.onnx CPUExecutionProvider",
+        17820769706565099200
+    ],
+    [
+        "Attention com.microsoft CPUExecutionProvider",
+        16464502426529915864
+    ],
+    [
+        "AttnLSTM com.microsoft CPUExecutionProvider",
+        15421184737689665128
+    ],
+    [
+        "BiasGelu com.microsoft CPUExecutionProvider",
+        12457646955212583504
+    ],
+    [
+        "CDist com.microsoft CPUExecutionProvider",
+        889036143745127232
+    ],
+    [
+        "CDist com.microsoft CPUExecutionProvider",
+        6280134801002897280
+    ],
+    [
+        "ConvTransposeWithDynamicPads com.microsoft CPUExecutionProvider",
+        1596732273609633752
+    ],
+    [
+        "CropAndResize com.microsoft CPUExecutionProvider",
+        7642430665819070720
+    ],
+    [
+        "DequantizeLinear com.microsoft CPUExecutionProvider",
+        9034670407031092344
+    ],
+    [
+        "DequantizeLinear com.microsoft CPUExecutionProvider",
+        12760451019866331016
+    ],
+    [
+        "DynamicQuantizeLSTM com.microsoft CPUExecutionProvider",
+        640700714499684624
+    ],
+    [
+        "DynamicQuantizeMatMul com.microsoft CPUExecutionProvider",
+        9591826880179639184
+    ],
+    [
+        "EmbedLayerNormalization com.microsoft CPUExecutionProvider",
+        14614049725238705256
+    ],
+    [
+        "ExpandDims com.microsoft CPUExecutionProvider",
+        5671892069881567792
+    ],
+    [
+        "FastGelu com.microsoft CPUExecutionProvider",
+        18210983793195477200
+    ],
+    [
+        "FusedConv com.microsoft CPUExecutionProvider",
+        11366858116389652832
+    ],
+    [
+        "FusedGemm com.microsoft CPUExecutionProvider",
+        1341171831223136792
+    ],
+    [
+        "FusedMatMul com.microsoft CPUExecutionProvider",
+        665364151288353496
+    ],
+    [
+        "GatherND com.microsoft CPUExecutionProvider",
+        8466578404783779600
+    ],
+    [
+        "Gelu com.microsoft CPUExecutionProvider",
+        4658746266161736328
+    ],
+    [
+        "Inverse com.microsoft CPUExecutionProvider",
+        1037755270231788608
+    ],
+    [
+        "MatMulInteger16 com.microsoft CPUExecutionProvider",
+        5265636774129358144
+    ],
+    [
+        "MatMulIntegerToFloat com.microsoft CPUExecutionProvider",
+        7172777464471435800
+    ],
+    [
+        "MaxpoolWithMask com.microsoft CPUExecutionProvider",
+        3144686615632467360
+    ],
+    [
+        "MurmurHash3 com.microsoft CPUExecutionProvider",
+        2533733396673225096
+    ],
+    [
+        "NhwcMaxPool com.microsoft CPUExecutionProvider",
+        8512357837341844248
+    ],
+    [
+        "Pad com.microsoft CPUExecutionProvider",
+        15076596470814458544
+    ],
+    [
+        "QAttention com.microsoft CPUExecutionProvider",
+        9844377440996919912
+    ],
+    [
+        "QLinearAdd com.microsoft CPUExecutionProvider",
+        9958112514164905192
+    ],
+    [
+        "QLinearAdd com.microsoft CPUExecutionProvider",
+        16322459350118343880
+    ],
+    [
+        "QLinearAveragePool com.microsoft CPUExecutionProvider",
+        9152647959212466896
+    ],
+    [
+        "QLinearConv com.microsoft CPUExecutionProvider",
+        16835965565578160400
+    ],
+    [
+        "QLinearGlobalAveragePool com.microsoft CPUExecutionProvider",
+        8729391959357542728
+    ],
+    [
+        "QLinearLeakyRelu com.microsoft CPUExecutionProvider",
+        3677670974923917280
+    ],
+    [
+        "QLinearLeakyRelu com.microsoft CPUExecutionProvider",
+        17073324515720209136
+    ],
+    [
+        "QLinearMul com.microsoft CPUExecutionProvider",
+        2406593953080780408
+    ],
+    [
+        "QLinearMul com.microsoft CPUExecutionProvider",
+        17403503869116794888
+    ],
+    [
+        "QLinearSigmoid com.microsoft CPUExecutionProvider",
+        17020165931626188400
+    ],
+    [
+        "QLinearSigmoid com.microsoft CPUExecutionProvider",
+        17315947486917903320
+    ],
+    [
+        "QuantizeLinear com.microsoft CPUExecutionProvider",
+        616915237400456368
+    ],
+    [
+        "QuantizeLinear com.microsoft CPUExecutionProvider",
+        13556449850953958792
+    ],
+    [
+        "Range com.microsoft CPUExecutionProvider",
+        9333951582187402912
+    ],
+    [
+        "SampleOp com.microsoft CPUExecutionProvider",
+        11028204786545834016
+    ],
+    [
+        "SkipLayerNormalization com.microsoft CPUExecutionProvider",
+        1829676129267529920
+    ],
+    [
+        "SkipLayerNormalization com.microsoft CPUExecutionProvider",
+        15124962608939318760
+    ],
+    [
+        "Tokenizer com.microsoft CPUExecutionProvider",
+        12821105347567077024
+    ],
+    [
+        "TransposeMatMul com.microsoft CPUExecutionProvider",
+        3696625852111461496
+    ],
+    [
+        "Trilu com.microsoft CPUExecutionProvider",
+        1828108687906670152
+    ],
+    [
+        "Unique com.microsoft CPUExecutionProvider",
+        17512097873619224240
+    ],
+    [
+        "WordConvEmbedding com.microsoft CPUExecutionProvider",
+        7416606351345164776
+    ],
+    [
+        "QLinearConcat com.microsoft CPUExecutionProvider",
+        1734858160766311432
+    ]
+]

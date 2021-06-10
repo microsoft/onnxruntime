@@ -104,7 +104,7 @@ IAllocatorUniquePtr<T> GetOffsetsFromCounts(
 
 // adapted from here:
 // https://github.com/pytorch/pytorch/blob/b186831c08e0e4e447eedb8a5cfab582995d37f9/aten/src/ATen/native/cuda/Embedding.cu#L121
-template <typename T, typename TIndex>
+template <typename T, typename TIndex, int NumElementsPerThread>
 __global__ void DirectSumKernel(
     const TIndex* dX_indices_sorted,
     const TIndex* dY_indices_sorted,
@@ -116,21 +116,23 @@ __global__ void DirectSumKernel(
     int64_t num_batches) {
   GatheredIndexIndex_t idx = blockIdx.x * 4 + threadIdx.y;
 
-  const int SZ = 4;
   if (idx < num_gathered_indices && (idx == 0 || dX_indices_sorted[idx] != dX_indices_sorted[idx - 1])) {
     do {
+      // All index values are expected to be within bounds [-s, s-1] along axis of size s.
+      auto target_row = dX_indices_sorted[idx];
+      if (target_row < 0) target_row += gather_dimension_size;
       for (int64_t batch_idx = 0; batch_idx < num_batches; ++batch_idx) {
-        const auto gathered_element_idx_start = threadIdx.x + blockIdx.y * blockDim.x * SZ;
+        const auto gathered_element_idx_start = threadIdx.x + blockIdx.y * blockDim.x * NumElementsPerThread;
         const auto dX_row_offset =
-            (batch_idx * gather_dimension_size + dX_indices_sorted[idx]) * num_gathered_per_index;
+            (batch_idx * gather_dimension_size + target_row) * num_gathered_per_index;
         const auto dY_row_offset =
             (batch_idx * num_gathered_indices + dY_indices_sorted[idx]) * num_gathered_per_index;
 
-        AccumulationType_t<T> dY_value[SZ];
-        AccumulationType_t<T> dX_value[SZ];
+        AccumulationType_t<T> dY_value[NumElementsPerThread];
+        AccumulationType_t<T> dX_value[NumElementsPerThread];
 
 #pragma unroll
-        for (int ii = 0; ii < SZ; ii++) {
+        for (int ii = 0; ii < NumElementsPerThread; ii++) {
           const auto gathered_element_idx = gathered_element_idx_start + ii * GPU_WARP_SIZE;
           if (gathered_element_idx < num_gathered_per_index) {
             dY_value[ii] = static_cast<AccumulationType_t<T>>(dY_data[dY_row_offset + gathered_element_idx]);
@@ -139,12 +141,12 @@ __global__ void DirectSumKernel(
         }
 
 #pragma unroll
-        for (int ii = 0; ii < SZ; ii++) {
+        for (int ii = 0; ii < NumElementsPerThread; ii++) {
           dX_value[ii] += dY_value[ii];
         }
 
 #pragma unroll
-        for (int ii = 0; ii < SZ; ii++) {
+        for (int ii = 0; ii < NumElementsPerThread; ii++) {
           const auto gathered_element_idx = gathered_element_idx_start + ii * GPU_WARP_SIZE;
           if (gathered_element_idx < num_gathered_per_index) {
             dX_data[dX_row_offset + gathered_element_idx] = static_cast<T>(dX_value[ii]);
@@ -169,9 +171,9 @@ void DirectSumImpl(
     int64_t gather_dimension_size,
     int64_t num_batches) {
   dim3 block(GPU_WARP_SIZE, 4);
-  dim3 grid(CeilDiv(num_gathered_indices, 4), CeilDiv(num_gathered_per_index, 128));
+  dim3 grid(CeilDiv(num_gathered_indices, 4), CeilDiv(num_gathered_per_index, GridDim::maxElementsPerThread * GPU_WARP_SIZE));
 
-  DirectSumKernel<<<grid, block, 0, stream>>>(
+  DirectSumKernel<T, TIndex, GridDim::maxElementsPerThread><<<grid, block, 0, stream>>>(
       dX_indices_sorted,
       dY_indices_sorted,
       dY_data,
@@ -291,7 +293,9 @@ __global__ void ComputeSegmentSumsAndScatterKernel(
                              gathered_element_id];
   }
 
-  const auto target_row = dX_indices_sorted[segment_offsets[segment_id]];
+  auto target_row = dX_indices_sorted[segment_offsets[segment_id]];
+  // All index values are expected to be within bounds [-s, s-1] along axis of size s.
+  if (target_row < 0) target_row += gather_dimension_size;
   dX_data[batch_id * gather_dimension_size * num_gathered_per_index +
           target_row * num_gathered_per_index +
           gathered_element_id] =
@@ -509,9 +513,9 @@ void Impl_Simplified(
       dX_indices_sorted, dY_indices_sorted);
 
   dim3 block(GPU_WARP_SIZE, 4);
-  dim3 grid(CeilDiv(num_gathered_indices, 4), CeilDiv(num_gathered_per_index, 128));
+  dim3 grid(CeilDiv(num_gathered_indices, 4), CeilDiv(num_gathered_per_index, GridDim::maxElementsPerThread * GPU_WARP_SIZE));
 
-  DirectSumKernel<<<grid, block, 0, stream>>>(
+  DirectSumKernel<T, TIndex, GridDim::maxElementsPerThread><<<grid, block, 0, stream>>>(
       dX_indices_sorted.get(),
       dY_indices_sorted.get(),
       dY_data,

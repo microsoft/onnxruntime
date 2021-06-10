@@ -15,7 +15,7 @@ jobs:
     clean: all
   timeoutInMinutes:  120
   pool:
-    vmImage: 'macOS-10.14'
+    vmImage: 'macOS-10.15'
   variables:
     BuildCommand: ${{ parameters.BuildCommand }}
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
@@ -45,7 +45,7 @@ jobs:
         export ONNX_ML=1
         export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
         sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-        sudo xcode-select --switch /Applications/Xcode_10.app/Contents/Developer
+        sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
         ${{ parameters.BuildCommand }}
       displayName: 'Build and Test OnnxRuntime lib for MacOS'
     - task: PublishTestResults@2
@@ -72,16 +72,16 @@ jobs:
       #
       # - template: mac-esrp-dll.yml
       #   parameters:
-      #     FolderPath: '$(Build.SourcesDirectory)/nodejs/bin/napi-v3/darwin/x64'
+      #     FolderPath: '$(Build.SourcesDirectory)/js/node/bin/napi-v3/darwin/x64'
       #     DisplayName: 'ESRP - Sign Node.js binding binaries'
       #     DoEsrp: ${{ parameters.DoEsrp }}
       #     Pattern: '*.dylib,*.node'
 
       - script: |
          npm pack
-         cp $(Build.SourcesDirectory)/nodejs/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
-         cp -R $(Build.SourcesDirectory)/nodejs/prebuilds $(Build.ArtifactStagingDirectory)/prebuilds
-        workingDirectory: '$(Build.SourcesDirectory)/nodejs'
+         cp $(Build.SourcesDirectory)/js/node/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
+         cp -R $(Build.SourcesDirectory)/js/node/prebuilds $(Build.ArtifactStagingDirectory)/prebuilds
+        workingDirectory: '$(Build.SourcesDirectory)/js/node'
         displayName: 'Create NPM Package'
 
       - task: PublishPipelineArtifact@0

@@ -40,7 +40,7 @@ class CPUExecutionProvider : public IExecutionProvider {
     create_arena = false;
 #endif
 
-    AllocatorCreationInfo device_info{[](int) { return onnxruntime::make_unique<TAllocator>(); },
+    AllocatorCreationInfo device_info{[](int) { return std::make_unique<TAllocator>(); },
                                       0, create_arena};
 
     InsertAllocator(CreateAllocator(device_info));
@@ -52,4 +52,8 @@ class CPUExecutionProvider : public IExecutionProvider {
  private:
   std::vector<FuseRuleFn> fuse_rules_;
 };
+
+// Registers all available CPU kernels
+Status RegisterCPUKernels(KernelRegistry& kernel_registry);
+
 }  // namespace onnxruntime

@@ -1,4 +1,4 @@
-<h1><span style="color:red">Note: ONNX Runtime Server is still in beta state and may not be ready for production environments.</span></h1>
+<h1><span style="color:red">Note: ONNX Runtime Server has been deprecated.</span></h1>
 
 # How to Use build ONNX Runtime Server for Prediction
 ONNX Runtime Server provides an easy way to start an inferencing server for prediction with both HTTP and GRPC endpoints.

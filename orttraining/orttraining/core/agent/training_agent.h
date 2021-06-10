@@ -9,35 +9,47 @@
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/framework_common.h"
-#include "core/session/IOBinding.h"
 #include "core/session/inference_session.h"
-#include "orttraining/training_ops/cpu/controlflow/ort_tasks.h"
-
+#include "core/framework/partial_graph_execution_state.h"
 
 namespace onnxruntime {
 namespace training {
-class IOBinding;
 
 class TrainingAgent {
+ public:
+  explicit TrainingAgent(InferenceSession& session,
+                         const std::vector<std::string>& fw_feed_names,
+                         const std::vector<OrtDevice>& fw_outputs_device_info,
+                         const std::vector<std::string>& bw_fetches_names,
+                         const std::vector<OrtDevice>& bw_outputs_device_info);
+  ~TrainingAgent();
+  // For ORTModule.forward()
+  common::Status RunForward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                            PartialGraphExecutionState& state) ORT_MUST_USE_RESULT;
+  ;
+  // For ORTModule.backward()
+  common::Status RunBackward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                             PartialGraphExecutionState& state) ORT_MUST_USE_RESULT;
+  ;
 
-  public:
-    explicit TrainingAgent(InferenceSession* session);
-    virtual ~TrainingAgent();
-    // For ORTModule.forward()
-    virtual common::Status RunForward(const RunOptions& run_options, onnxruntime::IOBinding& io_binding,
-                                               std::vector<OrtValue>& user_outputs,
-                                               int64_t& run_id) ORT_MUST_USE_RESULT;
-    // For ORTModule.backward()
-    common::Status RunBackward(int64_t run_id, const std::vector<OrtValue>& backward_output_grads) ORT_MUST_USE_RESULT;
-    void CancelPendingBackwardRun(int64_t run_id);
+  common::Status RunCore(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+                         PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager)
+      ORT_MUST_USE_RESULT;
+  ;
 
-  private:
-    // mutex for accessing bg_threads_
-    std::mutex bg_threads_mutex_;
-    // background threads for RunInBackgroundAndWaitForYield and ContinueRunInBackground
-    std::unordered_map<int64_t, std::thread> bg_threads_;
-    // TrainingAgent runs on a InferenceSession under the hood
-    InferenceSession* inference_session_;
+  void CreateAndInitializeFeedsFetchesManager(const SessionState& session_state,
+                                              const std::vector<std::string>& feed_names,
+                                              const std::vector<std::string>& fetches_names,
+                                              const std::vector<OrtDevice>& outputs_device_info,
+                                              std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager);
+
+ private:
+  // TrainingAgent runs on a InferenceSession under the hood
+  InferenceSession& inference_session_;
+  std::unique_ptr<FeedsFetchesManager> fw_feeds_fetches_manager_;
+  std::unique_ptr<FeedsFetchesManager> bw_feeds_fetches_manager_;
+  size_t fw_program_counter_end_;
+  size_t bw_program_counter_end_;
 };
 
 }  // namespace training

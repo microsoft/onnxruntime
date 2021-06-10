@@ -112,9 +112,9 @@ class DnnlReluGrad : public DnnlKernel {
       ort_source_desc_ = dnnl::memory::desc(
           {xgrad_dims}, DnnnType<T>(), ort_source_format_);
       source_desc_ = ort_source_desc_;
-      diff_dst_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+      diff_dst_md_ = std::make_unique<dnnl::memory::desc>(
           dnnl::memory::desc({xgrad_dims}, DnnnType<T>(), ort_source_format_));
-      diff_dst_mem_ = onnxruntime::make_unique<dnnl::memory>(
+      diff_dst_mem_ = std::make_unique<dnnl::memory>(
           dnnl::memory({{xgrad_dims}, DnnnType<T>(), ort_source_format_}, cpu_engine, nullptr));
 
       // convert the onnx Tensor to dnnl::memory and dnnl::memory::desc
@@ -143,16 +143,16 @@ class DnnlReluGrad : public DnnlKernel {
 
       ort_source_desc_ = dnnl::memory::desc({src_dims}, DnnnType<T>(), ort_source_format_);
       source_desc_ = ort_source_desc_;
-      src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+      src_md_ = std::make_unique<dnnl::memory::desc>(
           dnnl::memory::desc({src_dims}, DnnnType<T>(), ort_source_format_));
-      src_mem_ = onnxruntime::make_unique<dnnl::memory>(
+      src_mem_ = std::make_unique<dnnl::memory>(
           dnnl::memory({{src_dims}, DnnnType<T>(), ort_source_format_}, cpu_engine, nullptr));
       if (gpu_available_) {
-        src_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(*src_md_, gpu_engine);
+        src_mem_gpu_ = std::make_unique<dnnl::memory>(*src_md_, gpu_engine);
         net.push_back(mkldnn::reorder(*src_mem_, *src_mem_gpu_));
         net_args.push_back({{MKLDNN_ARG_SRC, *src_mem_},
                             {MKLDNN_ARG_DST, *src_mem_gpu_}});
-        diff_dst_mem_gpu_ = onnxruntime::make_unique<dnnl::memory>(*diff_dst_md_, gpu_engine);
+        diff_dst_mem_gpu_ = std::make_unique<dnnl::memory>(*diff_dst_md_, gpu_engine);
         net.push_back(mkldnn::reorder(*diff_dst_mem_, *diff_dst_mem_gpu_));
         net_args.push_back({{MKLDNN_ARG_SRC, *diff_dst_mem_},
                             {MKLDNN_ARG_DST, *diff_dst_mem_gpu_}});
@@ -162,9 +162,9 @@ class DnnlReluGrad : public DnnlKernel {
       ort_source_desc_ = parents_[0].get()->ort_source_desc_;
       source_desc_ = parents_[0].get()->primitive_dst_desc_;
 
-      diff_dst_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+      diff_dst_md_ = std::make_unique<dnnl::memory::desc>(
           dnnl::memory::desc(parents_[0].get()->primitive_dst_desc_));
-      src_md_ = onnxruntime::make_unique<dnnl::memory::desc>(
+      src_md_ = std::make_unique<dnnl::memory::desc>(
           dnnl::memory::desc(parents_[1].get()->primitive_dst_desc_));
 
       if (!gpu_available_) {
@@ -184,9 +184,9 @@ class DnnlReluGrad : public DnnlKernel {
     dnnl::memory::dims dst_dims_mkl(primitive_dst_shape_.GetDims().begin(), primitive_dst_shape_.GetDims().end());
     dnnl::algorithm algo = dnnl::algorithm::eltwise_relu;
 
-    relu_bwd_desc_ = onnxruntime::make_unique<dnnl::eltwise_backward::desc>(
+    relu_bwd_desc_ = std::make_unique<dnnl::eltwise_backward::desc>(
         dnnl::eltwise_backward::desc(algo, *diff_dst_md_, *src_md_, 0.0, 0.0));
-    relu_bwd_pd_ = onnxruntime::make_unique<dnnl::eltwise_backward::primitive_desc>(
+    relu_bwd_pd_ = std::make_unique<dnnl::eltwise_backward::primitive_desc>(
         dnnl::eltwise_backward::primitive_desc(*relu_bwd_desc_, engine_to_use, *(relu_fwd_->GetPrimitiveDesc())));
 
     primitive_src_desc_ = relu_bwd_pd_.get()->src_desc();

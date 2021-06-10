@@ -58,13 +58,13 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
   feeds.insert(std::make_pair("Y", ml_value_y));
 
   RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.ReshapeFlattenTest",
-                            onnxruntime::make_unique<NnapiExecutionProvider>(0),
+                            std::make_unique<NnapiExecutionProvider>(0),
                             feeds);
 #else
   // test load only
   SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(onnxruntime::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
   ASSERT_STATUS_OK(session_object.Initialize());
   ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
@@ -91,13 +91,13 @@ TEST(NnapiExecutionProviderTest, InternalUint8SupportTest) {
   feeds.insert(std::make_pair("X", ml_value_x));
 
   RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.InternalUint8SupportTest",
-                            onnxruntime::make_unique<NnapiExecutionProvider>(0),
+                            std::make_unique<NnapiExecutionProvider>(0),
                             feeds);
 #else
   // test load only
   SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(onnxruntime::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
   ASSERT_STATUS_OK(session_object.Initialize());
   ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
@@ -175,13 +175,13 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
   feeds.insert(std::make_pair("Z", ml_value_z));
 
   RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.FunctionTest",
-                            onnxruntime::make_unique<NnapiExecutionProvider>(0),
+                            std::make_unique<NnapiExecutionProvider>(0),
                             feeds);
 #else
   // test load only
   SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(onnxruntime::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
   ASSERT_STATUS_OK(session_object.Initialize());
   ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
@@ -228,7 +228,7 @@ TEST(NnapiExecutionProviderTest, TestNoShapeInputModel) {
   // verify the entire graph will not be assigned to NNAPI EP
   SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(onnxruntime::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
   ASSERT_STATUS_OK(session_object.Initialize());
   ASSERT_EQ(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)
@@ -264,13 +264,13 @@ TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
   feeds.insert(std::make_pair("Input3", ml_value));
 
   RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.TestOrtFormatModel",
-                            onnxruntime::make_unique<NnapiExecutionProvider>(0),
+                            std::make_unique<NnapiExecutionProvider>(0),
                             feeds);
 #else
   // test load only
   SessionOptions so;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(onnxruntime::make_unique<NnapiExecutionProvider>(0)));
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<NnapiExecutionProvider>(0)));
   ASSERT_STATUS_OK(session_object.Load(model_file_name));
   ASSERT_STATUS_OK(session_object.Initialize());
   ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kNnapiExecutionProvider), 0)

@@ -6,12 +6,11 @@ jobs:
   workspace:
     clean: all
   pool:
-    vmImage: 'macOS-10.14'
+    vmImage: 'macOS-10.15'
   dependsOn:
   - NuGet_Packaging
   condition: succeeded()
   variables:
-  - group: ORT_TEST_DATA_SAS
   - name: OnnxRuntimeBuildDirectory
     value: '$(Build.BinariesDirectory)'
   steps:

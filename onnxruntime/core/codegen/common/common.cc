@@ -119,7 +119,7 @@ const onnxruntime::Node* GetInputNode(const Node& node, const NodeArg* def) {
 std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& graph,
                                               int fused_count,
                                               std::unique_ptr<IndexedSubGraph>& subgraph) {
-  auto meta_def = onnxruntime::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
+  auto meta_def = std::make_unique<::onnxruntime::IndexedSubGraph::MetaDef>();
   meta_def->name = "Fuse" + std::to_string(fused_count);
   meta_def->domain = "Fuse";
 
@@ -232,7 +232,7 @@ std::unique_ptr<ComputeCapability> ToCapacity(const onnxruntime::GraphViewer& gr
   meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
   std::unique_ptr<IndexedSubGraph> finished_subgraph(subgraph.release());
   finished_subgraph->SetMetaDef(std::move(meta_def));
-  return onnxruntime::make_unique<ComputeCapability>(std::move(finished_subgraph));
+  return std::make_unique<ComputeCapability>(std::move(finished_subgraph));
 }
 
 int64_t ShapeRank(const NodeArg* def) {
