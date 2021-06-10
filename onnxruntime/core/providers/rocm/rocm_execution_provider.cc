@@ -13,6 +13,9 @@
 #include "core/providers/rocm/rocm_fwd.h"
 #include "core/providers/rocm/rocm_allocator.h"
 
+#include <unistd.h>
+#include <sys/types.h>
+
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/rocm/rocm_contrib_kernels.h"
 #endif
@@ -132,6 +135,11 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
     : IExecutionProvider{onnxruntime::kRocmExecutionProvider},
       info_{info} {
   printf("observing info_.device_id = %d\n", info_.device_id);
+  printf("observing in ORT HIP_VISIBLE_DEVICES=%s\n", getenv("HIP_VISIBLE_DEVICES"));
+  int gid,uid;
+  uid=geteuid();
+  gid=getgid();
+  printf("observing in ORT uid=%d gid=%d\n", uid, gid);
   fflush(stdout);
   HIP_CALL_THROW(hipSetDevice(info_.device_id));
 
