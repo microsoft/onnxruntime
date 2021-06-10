@@ -150,11 +150,6 @@ if (onnxruntime_ENABLE_TRAINING)
     "${ORTTRAINING_SOURCE_DIR}/core/framework/communication/*"
   )
 
-  list(REMOVE_ITEM onnxruntime_cpu_training_ops_srcs 
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.cc"
-    "${ORTTRAINING_SOURCE_DIR}/training_ops/cpu/torch/*.h"
-  )
-
   source_group(TREE ${ORTTRAINING_ROOT}/ FILES ${onnxruntime_cpu_training_ops_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
 
@@ -204,14 +199,15 @@ target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${e
 add_dependencies(onnxruntime_providers onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
-  target_include_directories(onnxruntime_providers PRIVATE ${ORTTRAINING_ROOT})
+  target_include_directories(onnxruntime_providers PUBLIC ${ORTTRAINING_ROOT})
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
   add_dependencies(onnxruntime_providers tensorboard)
   onnxruntime_add_include_to_target(onnxruntime_providers tensorboard)
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    onnxruntime_add_include_to_target(onnxruntime_providers Python::Module)
+    add_dependencies(onnxruntime_providers onnxruntime_interop_torch)
+    onnxruntime_add_include_to_target(onnxruntime_providers onnxruntime_interop_torch Python::Module)
   endif()
 
   if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)

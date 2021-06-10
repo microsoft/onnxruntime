@@ -50,24 +50,6 @@ if (onnxruntime_USE_NCCL)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${NCCL_INCLUDE_DIRS})
 endif()
 
-if (onnxruntime_ENABLE_TRAINING)
-  # DLPack is a header-only dependency
-  set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
-  target_include_directories(onnxruntime_pybind11_state PRIVATE ${ORTTRAINING_ROOT} ${DLPACK_INCLUDE_DIR})
-
-  file(GLOB onnxruntime_python_interface_cc_srcs
-    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.cc"
-    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.h"
-    "${ONNXRUNTIME_ROOT}/core/dlpack/python_common.h"
-  )
-
-  onnxruntime_add_static_library(onnxruntime_python_interface ${onnxruntime_python_interface_cc_srcs})
-  add_dependencies(onnxruntime_python_interface onnx  ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  target_include_directories(onnxruntime_python_interface PRIVATE ${DLPACK_INCLUDE_DIR})
-  onnxruntime_add_include_to_target(onnxruntime_python_interface onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers Python::Module)
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_python_interface)
-endif()
-
 if(APPLE)
   set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
 elseif(UNIX)
@@ -76,15 +58,7 @@ else()
   set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${ONNXRUNTIME_ROOT}/python/pybind.def")
 endif()
 
-if (onnxruntime_ENABLE_TRAINING)
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_training)
-endif()
-
-if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_interop_torch)
-endif()
-
-target_link_libraries(onnxruntime_pybind11_state PRIVATE
+set(onnxruntime_pybind11_state_link_targets
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_MIGRAPHX}
@@ -101,6 +75,20 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_util
     ${onnxruntime_tvm_libs}
     onnxruntime_framework
+)
+
+if (onnxruntime_ENABLE_TRAINING)
+  list(APPEND onnxruntime_pybind11_state_link_targets onnxruntime_training)
+  if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    include(onnxruntime_python_interface.cmake)
+  else()
+    list(APPEND onnxruntime_pybind11_state_link_targets onnxruntime_interop_torch)
+  endif()
+
+  list(APPEND onnxruntime_pybind11_state_link_targets onnxruntime_python_interface)
+endif()
+
+list(APPEND onnxruntime_pybind11_state_link_targets
     onnxruntime_util
     onnxruntime_graph
     onnxruntime_common
@@ -108,6 +96,8 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_flatbuffers
     ${pybind11_lib}
 )
+
+target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_link_targets})
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_language_interop onnxruntime_pyop)
@@ -515,6 +505,3 @@ if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   include(onnxruntime_language_interop_ops.cmake)
 endif()
 
-if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-  include(onnxruntime_interop_torch.cmake)
-endif()
