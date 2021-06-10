@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # This script must be executed from this folder.
 
 # $1 python path

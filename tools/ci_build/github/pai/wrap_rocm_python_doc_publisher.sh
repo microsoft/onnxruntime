@@ -1,3 +1,5 @@
+#!/bin/bash
+
 echo "HIP_VISIBLE_DEVICES=$HIP_VISIBLE_DEVICES" 
 echo "PythonManylinuxDir=$PythonManylinuxDir"
 
