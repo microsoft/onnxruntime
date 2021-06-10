@@ -102,8 +102,6 @@ TEST(CoreMLExecutionProviderTest, FunctionTest) {
 TEST(CoreMLExecutionProviderTest, ArgMaxCastTest) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/coreml_argmax_cast_test.onnx");
 
-  static constexpr uint32_t s_coreml_flags = COREML_FLAG_USE_CPU_ONLY;
-
   std::vector<int64_t> dims_mul_x = {3, 2, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
   OrtValue ml_value_x;
