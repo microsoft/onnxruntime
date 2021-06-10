@@ -234,8 +234,6 @@ endif()
 set(onnxruntime_REQURE_PYTHON_EMBED_LIB OFF)
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   add_compile_definitions(ENABLE_TRAINING_TORCH_INTEROP)
-  # disable tests because executable projects need link to python so which did not always exist for test envs.
-  set(onnxruntime_BUILD_UNIT_TESTS OFF)
 
   # Python::Python is required for building unit test executables or onnxruntime.so. 
   if (onnxruntime_BUILD_UNIT_TESTS OR onnxruntime_BUILD_SHARED_LIB)
