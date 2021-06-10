@@ -165,158 +165,158 @@ print(output)
 
 1. Install the ONNX Runtime C++ libraries
 
-```bash
-wget https://github.com/microsoft/onnxruntime/releases/download/v1.8.0/onnxruntime-linux-x64-1.8.0.tgz
-tar xvzf onnxruntime-linux-x64-1.8.0.tgz
-sudo cp onnxruntime-linux-x64-1.8.0/include/* /usr/local/include
-sudo cp cp onnxruntime-linux-x64-1.8.0/lib/* /usr/local/lib
-sudo ldconfig
-```
+    ```bash
+    wget https://github.com/microsoft/onnxruntime/releases/download/v1.8.0/onnxruntime-linux-x64-1.8.0.tgz
+    tar xvzf onnxruntime-linux-x64-1.8.0.tgz
+    sudo cp onnxruntime-linux-x64-1.8.0/include/* /usr/local/include
+    sudo cp cp onnxruntime-linux-x64-1.8.0/lib/* /usr/local/lib
+    sudo ldconfig
+    ```
 
 2. Build and install the extensions library C++ library
 
-To run the model using the C++ API you need to build the extensions library from source.
-Note that the build requires 8GB of RAM to execute.
+    To run the model using the C++ API you need to build the extensions library from source.
+    Note that the build requires 8GB of RAM to execute.
 
-```bash
-git clone https://github.com/microsoft/onnxruntime-extensions
-cd onnxruntime-extensions
-./build.sh
-cp out/Linux/libortcustomops.so /usr/local/lib/   
-sudo ldconfig
-```
+    ```bash
+    git clone https://github.com/microsoft/onnxruntime-extensions
+    cd onnxruntime-extensions
+    ./build.sh
+    cp out/Linux/libortcustomops.so /usr/local/lib/   
+    sudo ldconfig
+    ```
 
 3. Write your application
 
-This C++ code is identical to the basic C++ sample, with the addition of code to
-load the extensions library at the top.
+    This C++ code is identical to the basic C++ sample, with the addition of code to
+    load the extensions library at the top.
 
-```cpp
-#include <assert.h>
-#include <vector>
-#include <onnxruntime_cxx_api.h>
+    ```cpp
+    #include <assert.h>
+    #include <vector>
+    #include <onnxruntime_cxx_api.h>
 
-// main() is where program execution begins.
-int main()
-{
-
-    Ort::SessionOptions session_options;
-    const char *custom_op_library_filename = "/usr/local/lib/libortcustomops.so";
-    void *handle = nullptr;
-
-    // The line loads the customop library into ONNXRuntime engine to load the ONNX model with the custom op
-    Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions *)session_options, custom_op_library_filename, &handle));
-
-    //*************************************************************************
-    // initialize  enviroment...one enviroment per process
-    // enviroment maintains thread pools and other state info
-    Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
-
-    // initialize session options if needed
-    session_options.SetIntraOpNumThreads(1);
-    session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
-
-    const char *model_path = "mymodel.onnx";
-
-    printf("Using ONNX Runtime C++ API\n");
-    Ort::Session session(env, model_path, session_options);
-
-    //*************************************************************************
-    // print model input layer (node names, types, shape etc.)
-    Ort::AllocatorWithDefaultOptions allocator;
-
-    // print number of model input nodes
-    size_t num_input_nodes = session.GetInputCount();
-    std::vector<const char *> input_node_names(num_input_nodes);
-    std::vector<int64_t> input_node_dims;
-
-    printf("Number of inputs = %zu\n", num_input_nodes);
-
-    // iterate over all input nodes
-    for (int i = 0; i < num_input_nodes; i++)
+    // main() is where program execution  begins.
+    int main()
     {
-        // print input node names
-        char *input_name = session.GetInputName(i, allocator);
-        printf("Input %d : name=%s\n", i, input_name);
-        input_node_names[i] = input_name;
 
-        // print input node types
-        Ort::TypeInfo type_info = session.GetInputTypeInfo(i);
-        auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+        Ort::SessionOptions session_options;
+        const char *custom_op_library_filename = "/usr/local/lib/libortcustomops.so";
+        void *handle = nullptr;
 
-        ONNXTensorElementDataType type = tensor_info.GetElementType();
-        printf("Input %d : type=%d\n", i, type);
+        // The line loads the customop library into ONNXRuntime engine to load the ONNX model with the custom op
+        Ort::ThrowOnError(Ort::GetApi().RegisterCustomOpsLibrary((OrtSessionOptions *)session_options, custom_op_library_filename, &handle));
 
-        // print input shapes/dims
-        input_node_dims = tensor_info.GetShape();
-        printf("Input %d : num_dims=%zu\n", i, input_node_dims.size());
-        for (int j = 0; j < input_node_dims.size(); j++)
-            printf("Input %d : dim %d=%jd\n", i, j, input_node_dims[j]);
-    }
+        //*************************************************************************
+        // initialize  enviroment...one enviroment per process
+        // enviroment maintains thread pools and other state info
+        Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
 
-    // Results should be...
-    // Number of inputs = 1
-    // Input 0 : name = data_0
-    // Input 0 : type = 1
-    // Input 0 : num_dims = 2
-    // Input 0 : dim 0 = 3
-    // Input 0 : dim 1 = 3
+        // initialize session options if needed
+        session_options.SetIntraOpNumThreads(1);
+        session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
 
-    //*************************************************************************
-    // Similar operations to get output node information.
-    // Use OrtSessionGetOutputCount(), OrtSessionGetOutputName()
-    // OrtSessionGetOutputTypeInfo() as shown above.
+        const char *model_path = "mymodel.onnx";
 
-    //*************************************************************************
-    // Run the model using sample data, and inspect values
+        printf("Using ONNX Runtime C++ API\n");
+        Ort::Session session(env, model_path, session_options);
 
-    size_t input_tensor_size = 3 * 3;
+        //*************************************************************************
+        // print model input layer (node names, types, shape etc.)
+        Ort::AllocatorWithDefaultOptions allocator;
 
-    std::vector<float> input_tensor_values(input_tensor_size);
-    std::vector<const char *> output_node_names = {"2"};
+        // print number of model input nodes
+        size_t num_input_nodes = session.GetInputCount();
+        std::vector<const char *> input_node_names(num_input_nodes);
+        std::vector<int64_t> input_node_dims;
 
-    // Run with the identity matrix 
-    input_tensor_values[0] = 1;
-    input_tensor_values[1] = 0;
-    input_tensor_values[2] = 0;
-    input_tensor_values[3] = 0;
-    input_tensor_values[4] = 1;
-    input_tensor_values[5] = 0;
-    input_tensor_values[6] = 0;
-    input_tensor_values[7] = 0;
-    input_tensor_values[8] = 1;
+        printf("Number of inputs = %zu\n", num_input_nodes);
 
-    // Create input tensor object from data values
-    auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-    Ort::Value input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_tensor_values.data(), input_tensor_size, input_node_dims.data(), 2);
-    assert(input_tensor.IsTensor());
+        // iterate over all input nodes
+        for (int i = 0; i < num_input_nodes; i++)
+        {
+            // print input node names
+            char *input_name = session.GetInputName(i, allocator);
+            printf("Input %d : name=%s\n", i, input_name);
+            input_node_names[i] = input_name;
 
-    // Run model & input tensor, get back output tensor
-    auto output_tensors = session.Run(Ort::RunOptions{nullptr}, input_node_names.data(), &input_tensor, 1, output_node_names.data(), 1);
-    assert(output_tensors.size() == 1 && output_tensors.front().IsTensor());
+            // print input node types
+            Ort::TypeInfo type_info = session.GetInputTypeInfo(i);
+            auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
 
-    // Get pointer to output tensor float values
-    float *floatarr = output_tensors.front().GetTensorMutableData<float>();
+            ONNXTensorElementDataType type = tensor_info.GetElementType();
+            printf("Input %d : type=%d\n", i, type);
 
-    // Run the model, and print the output
-    for (int i = 0; i < 9; i++)
-        printf("Value [%d] =  %f\n", i, floatarr[i]);
+            // print input shapes/dims
+            input_node_dims = tensor_info.GetShape();
+            printf("Input %d : num_dims=%zu\n", i, input_node_dims.size());
+            for (int j = 0; j < input_node_dims.size(); j++)
+                printf("Input %d : dim %d=%jd\n", i, j, input_node_dims[j]);
+        }
 
-    printf("Done!\n");
-    return 0;
-```
+        // Results should be...
+        // Number of inputs = 1
+        // Input 0 : name = data_0
+        // Input 0 : type = 1
+        // Input 0 : num_dims = 2
+        // Input 0 : dim 0 = 3
+        // Input 0 : dim 1 = 3
+
+        //*************************************************************************
+        // Similar operations to get output node information.
+        // Use OrtSessionGetOutputCount(), OrtSessionGetOutputName()
+        // OrtSessionGetOutputTypeInfo() as shown above.
+
+        //*************************************************************************
+        // Run the model using sample data, and inspect values
+
+        size_t input_tensor_size = 3 * 3;
+
+        std::vector<float> input_tensor_values(input_tensor_size);
+        std::vector<const char *> output_node_names = {"2"};
+
+        // Run with the identity matrix 
+        input_tensor_values[0] = 1;
+        input_tensor_values[1] = 0;
+        input_tensor_values[2] = 0;
+        input_tensor_values[3] = 0;
+        input_tensor_values[4] = 1;
+        input_tensor_values[5] = 0;
+        input_tensor_values[6] = 0;
+        input_tensor_values[7] = 0;
+        input_tensor_values[8] = 1;
+
+        // Create input tensor object from data values
+        auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+        Ort::Value input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_tensor_values.data(), input_tensor_size, input_node_dims.data(), 2);
+        assert(input_tensor.IsTensor());
+
+        // Run model & input tensor, get back output tensor
+        auto output_tensors = session.Run(Ort::RunOptions{nullptr}, input_node_names.data(), &input_tensor, 1, output_node_names.data(), 1);
+        assert(output_tensors.size() == 1 && output_tensors.front().IsTensor());
+
+        // Get pointer to output tensor float values
+        float *floatarr = output_tensors.front().GetTensorMutableData<float>();
+
+        // Run the model, and print the output
+        for (int i = 0; i < 9; i++)
+            printf("Value [%d] =  %f\n", i, floatarr[i]);
+
+        printf("Done!\n");
+        return 0;
+    ```
 
 4. Build and run your application
 
-```bash
-g++ Sample.cpp -lonnxruntime -o sample
-./sample
-```
+    ```bash
+    g++ Sample.cpp -lonnxruntime -o sample
+    ./sample
+    ```
 
-You should see the following output from the model
+    You should see the following output from the model
 
-```bash
-tensor([[2., 0., 0.],
-        [0., 2., 0.],
-        [0., 0., 2.]])
-```
+    ```bash
+    tensor([[2., 0., 0.],
+            [0., 2., 0.],
+            [0., 0., 2.]])
+    ```
