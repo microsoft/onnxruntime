@@ -4,6 +4,8 @@
 # --------------------------------------------------------------------------
 
 from setuptools import setup, Extension
+from torch.utils.cpp_extension import BuildExtension, CppExtension
+from setuptools.command.install import install
 from distutils import log as logger
 from distutils.command.build_ext import build_ext as _build_ext
 from glob import glob
@@ -100,6 +102,24 @@ manylinux_tags = [
 is_manylinux = environ.get('AUDITWHEEL_PLAT', None) in manylinux_tags
 
 
+def build_torch_cpp_extensions():
+    # Run this from build dir (e.g. (...)/build/Linux/RelWithDebInfo/)
+    print('@'*4096)
+    subprocess.call(
+        "python torch_cpp_extensions/torch_gpu_allocator/setup.py build", shell=True
+    )
+    subprocess.call(
+        "python torch_cpp_extensions/aten_op_executor/setup.py build", shell=True
+    )
+    # Copy Torch CPP extensions to the official onnxruntime package
+    torch_cpp_exts = glob('./build/lib.*/*.so')
+    torch_cpp_exts.extend(glob('./build/lib.*/*.dll'))
+    torch_cpp_exts.extens(glob('./build/lib.*/*.dylib'))
+    for ext in torch_cpp_exts:
+        dest_ext = path.join('onnxruntime/training/ortmodule/torch_cpp_extensions', path.basename(ext))
+        logger.info('///////////////////////////////// copying %s -> %s', ext, dest_ext)
+        copyfile(ext, dest_ext)
+
 class build_ext(_build_ext):
     def build_extension(self, ext):
         dest_file = self.get_ext_fullpath(ext.name)
@@ -164,6 +184,9 @@ try:
                     if len(args) > 3:
                         subprocess.run(args, check=True, stdout=subprocess.PIPE)
                     self._rewrite_ld_preload(to_preload)
+            # Build Torch CPP extensions for ORTModule
+            if enable_training:
+                build_torch_cpp_extensions()
             _bdist_wheel.run(self)
             if is_manylinux:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
@@ -297,6 +320,21 @@ if enable_training:
             local_version = '+rocm' + rocm_version
 
 
+# Build Torch CPP extensions for ORTModule
+if enable_training:
+    print('_'*1024)
+    build_torch_cpp_extensions()
+    # Copy Torch CPP extensions to the official onnxruntime package
+    torch_cpp_exts = glob('onnxruntime/training/ortmodule/torch_cpp_extensions/*.so')
+    torch_cpp_exts += glob('onnxruntime/training/ortmodule/torch_cpp_extensions/*.dll')
+    torch_cpp_exts += glob('onnxruntime/training/ortmodule/torch_cpp_extensions/*.dylib')
+    for ext in torch_cpp_exts:
+        dest_ext = path.join('training/ortmodule/torch_cpp_extensions', path.basename(ext))
+        logger.info('/////////////////////////////////copying %s -> %s', ext, dest_ext)
+        data.append(ext)
+
+print('#'*1024)
+print(data)
 package_data = {}
 data_files = []
 
