@@ -34,11 +34,10 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options, ThreadPoolType tpo
     return onnxruntime::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
                                                 options.allow_spinning);
   } else {
-    return onnxruntime::make_unique<typename ThreadPoolLite2<2, 8> >(env, to, options.name, options.thread_pool_size,
-                                                                     options.allow_spinning);
-                                                                     /*
-    return onnxruntime::make_unique<typename ThreadPoolLite3<16> >(env, to, options.name, options.thread_pool_size,
-                                                                   options.allow_spinning);*/
+    using TPL = ThreadPoolLite2<2,8>;
+    return onnxruntime::make_unique<TPL>(env, to, options.name,
+                                         options.thread_pool_size,
+                                         options.allow_spinning);
   }
 }
 

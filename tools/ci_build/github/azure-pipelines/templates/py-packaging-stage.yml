@@ -52,14 +52,10 @@ stages:
       pool: Linux-CPU
       strategy:
         matrix:
-          Python36:
-            PythonVersion: '3.6'
           Python37:
             PythonVersion: '3.7'
           Python38:
             PythonVersion: '3.8'
-          Python39:
-            PythonVersion: '3.9'
       steps:
       - checkout: self
         clean: true

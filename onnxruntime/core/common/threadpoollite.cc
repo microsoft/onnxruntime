@@ -5,6 +5,7 @@ namespace onnxruntime {
 
 namespace concurrency {
 
+/*
 ThreadPoolLite::ThreadPoolLite(Env*,
                                const ThreadOptions&,
                                const NAME_CHAR_TYPE*,
@@ -140,7 +141,7 @@ void ThreadPoolLite::MainLoop(int idx) {
     }
   }
 }
-
+*/
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template <int32_t ThreadPerPool, int32_t PoolSize>
@@ -154,12 +155,23 @@ ThreadPoolLite2<ThreadPerPool, PoolSize>::ThreadPoolLite2(Env*,
   num_slots_ = num_pools_ * PoolSize;
   slots_.reset(new Slot[num_slots_]);
   set_denormal_as_zero_ = options.set_denormal_as_zero;
+#ifdef _WIN32
   size_t affinity_mask = 3;
   for (int i = 0; i < num_sub_threads_; ++i) {
     sub_threads_.emplace_back(&ThreadPoolLite2::MainLoop, this, i);
     SetThreadAffinityMask(sub_threads_.back().native_handle(), affinity_mask);
     affinity_mask <<= 2;
   }
+#else
+  for (int i = 0; i < num_sub_threads_; ++i) {
+    sub_threads_.emplace_back(&ThreadPoolLite2::MainLoop, this, i);
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(i, &cpuset);
+    ORT_ENFORCE(0 == pthread_setaffinity_np(sub_threads_.back().native_handle(), sizeof(cpu_set_t), &cpuset),
+                "Failed to set thread affinity in posix system."); 
+  }
+#endif
 }
 
 template <int32_t ThreadPerPool, int32_t PoolSize>
@@ -277,10 +289,10 @@ void ThreadPoolLite2<ThreadPerPool, PoolSize>::MainLoop(int idx) {
   }
 }
 
-template ThreadPoolLite2<2, 8>;
+template class ThreadPoolLite2<2, 8>;
 
 ////////////////////////////////////////////////////////////////////////////////////////////
-
+/*
 template <int32_t PoolSize>
 ThreadPoolLite3<PoolSize>::ThreadPoolLite3(Env*,
                                            const ThreadOptions&,
@@ -399,6 +411,6 @@ void ThreadPoolLite3<PoolSize>::MainLoop(int idx) {
 }
 
 template ThreadPoolLite3<16>;
-
+*/
 }  // namespace concurrency
 }  // namespace onnxruntime

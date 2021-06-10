@@ -14,6 +14,7 @@ using Fn = std::function<void(std::ptrdiff_t, std::ptrdiff_t)>;
 using SimpleFn = std::function<void(std::ptrdiff_t)>;
 using SchdFn = std::function<void()>;
 
+/*
 class ThreadPoolLite final : public ThreadPool {
  public:
   ThreadPoolLite(Env*,
@@ -26,10 +27,11 @@ class ThreadPoolLite final : public ThreadPool {
  private:
 
   struct Task {
-    std::ptrdiff_t fn_ = 0;
-    std::int16_t progress_ = 0;
-    std::int16_t step_ = 0;
-    std::int16_t done_ = 0;
+    Task() {}
+    std::ptrdiff_t fn_{0};
+    std::int16_t progress_{0};
+    std::int16_t step_{0};
+    std::int16_t done_{0};
   };
 
   int num_tasks = 0;
@@ -47,7 +49,7 @@ class ThreadPoolLite final : public ThreadPool {
   bool exit_ = false;
   ThreadPoolProfiler profiler_;
 };
-
+*/
 template<int32_t ThreadPerPool, int32_t PoolSize>
 class ThreadPoolLite2 final : public ThreadPool {
  public:
@@ -84,6 +86,7 @@ class ThreadPoolLite2 final : public ThreadPool {
   bool set_denormal_as_zero_{false};
 };
 
+/*
 template <int32_t PoolSize = 16>
 class ThreadPoolLite3 final : public ThreadPool {
  public:
@@ -123,5 +126,7 @@ class ThreadPoolLite3 final : public ThreadPool {
   ThreadPoolProfiler profiler_;
   int num_sub_threads_{0};
 };
+*/
+
 }  // namespace concurrency
 }  // namespace onnxruntime
