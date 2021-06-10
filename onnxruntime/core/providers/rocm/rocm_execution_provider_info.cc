@@ -5,6 +5,7 @@
 #include "core/providers/rocm/rocm_common.h"
 
 #include "core/common/make_string.h"
+#include "core/common/logging/logging.h"
 #include "core/framework/provider_options_utils.h"
 
 namespace onnxruntime {
@@ -31,7 +32,7 @@ ROCMExecutionProviderInfo ROCMExecutionProviderInfo::FromProviderOptions(const P
   void* alloc = nullptr;
   void* free = nullptr;
 
-  printf("creating rocm ep on device id %s\n", (const_cast<ProviderOptions&>(options))[rocm::provider_option_names::kDeviceId]);
+  LOGS_DEFAULT(ERROR) << "creating rocm ep on device id " << (const_cast<ProviderOptions&>(options))[rocm::provider_option_names::kDeviceId];
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(
