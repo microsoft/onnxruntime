@@ -17,29 +17,29 @@ from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_
 class TestOpEmbedLayerNormalization(unittest.TestCase):
 
     def construct_model(self):
-        # Inputs:
-        # 0: input_ids
-        # 1: segment_ids
+        # Inputs (weights and constants) in EmbedLayerNormaliziation:
         # 2: word_embed
         # 3: pos_embed
         # 4: seg_embed
         # 5: layer_norm_weight
         # 6: layer_norm_bias
 
-        #         (segment_ids)    (input_ids)
-        #            (Cast)             (Cast)
-        #       
-        #            (EmbedLayerNormalization) 
+        #         <segment_ids>    <input_ids>
+        #                   \        /
+        #            (EmbedLayerNormalization)
+        #                    /       \
+        #      <layernorm_output>  <mask_index_output>
 
         batch = 1  # XXX is this the right value?
 
-        ### Inputs to the EmbedLayerNorm subgraph
+        # Inputs to EmbedLayerNormalizationNode
         input_ids_shape = [batch, 3]
         input_ids_tensor = helper.make_tensor_value_info('input_ids', TensorProto.INT32, input_ids_shape)
 
         segment_ids_shape = [batch, 3]
         segment_ids_tensor = helper.make_tensor_value_info('segment_ids', TensorProto.INT32, segment_ids_shape)
 
+        # EmbedLayerNormalization Node Constants and Weights:
         word_embed_shape = [2, 4]
         word_embed_weights = np.random.random_sample(word_embed_shape)
         word_embed_tensor = helper.make_tensor_value_info('word_embed', TensorProto.FLOAT, word_embed_shape)
@@ -60,21 +60,27 @@ class TestOpEmbedLayerNormalization(unittest.TestCase):
         layer_norm_bias_weights = np.random.random_sample(layer_norm_bias_shape)
         layer_norm_bias_tensor = helper.make_tensor_value_info('layer_norm_bias', TensorProto.FLOAT, layer_norm_bias_shape)
 
-        # TODO - implement these right here.
-        layernorm_output_shape = []
-        layernorm_output_tensor = {}
+        # EmbedLayerNormalization Outputs:
+        layernorm_out_shape = []
+        layernorm_out_tensor = {}
 
-        mask_index_output_shape = []
-        mask_index_output_tensor = {}
+        mask_index_out_shape = []
+        mask_index_out_tensor = {}
 
+        # EmbedLayerNormalization Node:
+        embed_layer_norm_inputs = ['input_ids', 'segment_ids', 'word_embed', 'pos_embed', 'seg_embed', 'layer_norm_weight', 'layer_norm_bias']
+        embed_layer_norm_outputs = ['layernorm_out', 'mask_index_out']
+        embed_layer_norm_node = helper.make_node('EmbedLayerNormalization', embed_layer_norm_inputs, embed_layer_norm_outputs)
+
+        # Construct the Graph and Model:
+        nodes = [embed_layer_norm_node]
+        graph_name = 'embed_layernorm_graph'
         inputs = ['input_ids', 'segment_ids']
+        outputs = ['layernorm_out', 'mask_index_out']
+        initializer = None
 
-
-        #
-        #
-        # TODO(kreeger): LEFT OFF RIGHT HERE. WRITE THE REST OF THIS TEST
-        #
-        #
+        graph = helper.make_graph(nodes, graph_name, inputs, outputs, initializer)
+        model = helper.make_model(graph)
 
 
     def test_quantize(self):
