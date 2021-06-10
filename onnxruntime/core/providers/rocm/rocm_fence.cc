@@ -43,8 +43,24 @@ void ROCMFence::BeforeUsingAsOutput(onnxruntime::ProviderType provider_type, int
 }
 
 bool ROCMFence::CanRelease() {
-  return hipEventQuery(read_event_) == hipSuccess &&
-         hipEventQuery(write_event_) == hipSuccess;
+  hipError_t status;
+  status = hipEventQuery(read_event);
+  if (status == hipErrorNotReady) {
+      // ignore and clear the error if not ready
+      hipGetLastError();
+      return false;
+  } else if (status != hipSuccess) {
+      RocmCall<hipError_t, true>(status, "hipEventQuery(read_event)", "HIP", hipSuccess);
+  }
+  status = hipEventQuery(write_event);
+  if (status == hipErrorNotReady) {
+      // ignore and clear the error if not ready
+      hipGetLastError();
+      return false;
+  } else if (status != hipSuccess) {
+      RocmCall<hipError_t, true>(status, "hipEventQuery(write_event)", "HIP", hipSuccess);
+  }
+  return true;
 }
 
 void ROCMFence::AfterUsedAsInput(int queue_id) {
