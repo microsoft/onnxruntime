@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InferenceSession} from 'onnxruntime-common';
+import {InferenceSession, Tensor} from 'onnxruntime-common';
 import * as path from 'path';
 
-import {Tensor} from '../../lib';
 import {SQUEEZENET_INPUT0_DATA, SQUEEZENET_OUTPUT0_DATA, TEST_DATA_ROOT} from '../test-utils';
 import {assertTensorEqual} from '../test-utils';
 

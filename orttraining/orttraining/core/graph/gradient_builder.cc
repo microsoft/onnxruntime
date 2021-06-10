@@ -822,6 +822,30 @@ IMPLEMENT_GRADIENT_BUILDER(GetAddSubGradient) {
 
   const ArgDef a = I(0), b = I(1);
   std::vector<NodeDef> output;
+  if (a.name.compare(b.name) == 0) {
+    if (IsGradientRequiredForSrcNodeInput(0)) {
+        output.push_back(
+            NodeDef("Identity",
+                    {GO(0)},
+                    {GI(0)}));
+    }
+
+    if (IsGradientRequiredForSrcNodeInput(1)) {
+        if (is_sub) {
+          output.push_back(
+              NodeDef("Neg",
+                      {GO(0)},
+                      {GI(1)}));
+        } else /*is_add*/ {
+          output.push_back(
+              NodeDef("Identity",
+                      {GO(0)},
+                      {GI(1)}));
+        }
+    }
+    return output;
+  }
+
   std::vector<Dimension> a_shape, b_shape;
   if (GetShape(a, a_shape).IsOK() && GetShape(b, b_shape).IsOK()) {
     std::vector<int64_t> a_axes, b_axes;
@@ -893,6 +917,23 @@ IMPLEMENT_GRADIENT_BUILDER(GetMulGradient) {
   const ArgDef a = I(0), b = I(1);
 
   std::vector<NodeDef> output;
+  if (a.name.compare(b.name) == 0) {
+    if(IsGradientRequiredForSrcNodeInput(0)) {
+      output.push_back(
+          NodeDef("Mul",
+                  {GO(0), I(1)},
+                  {GI(0)}));
+    }
+
+    if(IsGradientRequiredForSrcNodeInput(1)) {
+      output.push_back(
+          NodeDef("Mul",
+                  {GO(0), I(0)},
+                  {GI(1)}));
+    }
+    return output;
+  }
+
   std::vector<Dimension> a_shape, b_shape;
   if (GetShape(a, a_shape).IsOK() && GetShape(b, b_shape).IsOK()) {
     std::vector<int64_t> a_axes, b_axes;
@@ -969,6 +1010,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetDivGradient) {
     // Y = A / B, dA = dY / B
     const ArgDef a = I(0), b = I(1);
     std::vector<NodeDef> output;
+    if (a.name.compare(b.name) == 0) {
+      output.push_back(NodeDef("Div", {GO(0), I(1)}, {GI(0)}));
+      return output;
+    }
+
     std::vector<Dimension> a_shape, b_shape;
     if (GetShape(a, a_shape).IsOK() && GetShape(b, b_shape).IsOK()) {
       std::vector<int64_t> a_axes, b_axes;
@@ -1190,6 +1236,16 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyLossGradient) {
   } else {
     ORT_THROW(false, "the number of input arguments must be 2 or 3");
   }
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyLossInternalGradient) {
+  std::vector<ArgDef> input_arg_def{GO(0), O(1)};
+  size_t input_size = static_cast<size_t>(GetSrcNodeInputSize());
+  for (size_t i = 1; i < input_size; i++) {
+    input_arg_def.emplace_back(I(i));
+  }
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"SoftmaxCrossEntropyLossInternalGrad", kMSDomain, 1}, input_arg_def, {GI(0)}, SrcNodeAttributes())};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
@@ -1530,7 +1586,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
   std::vector<Dimension> orig_shape, repeat_shape;
   bool orig_has_shape = GetShape(I(0), orig_shape).IsOK();
   bool repeat_has_shape = GetShape(I(1), repeat_shape).IsOK();
-  
+
   if (orig_has_shape || repeat_has_shape) {
     int64_t limit = orig_has_shape ? orig_shape.size() : repeat_shape[0].dim_value();
     limit = 2 * limit;
@@ -1540,7 +1596,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetTileGradient) {
     for (int64_t i = 0; i < limit; i = i + 2) {
       even_indices.push_back(i);
     }
-   
+
     AddReduceSumNode(IA("reshape_tile_grad_op"), GI(0), even_indices, false, result);
 
   } else {
@@ -1586,6 +1642,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
   if (IsGradientRequiredForSrcNodeInput(0)) {
     result.push_back(NodeDef("Not", {IA("Mask_1")}, {IA("Mask_0")}));
   }
+  const ArgDef a = I(0), b = I(1);
   for (int i = 0; i < num_src_node_inputs; i++) {
     if (IsGradientRequiredForSrcNodeInput(i)) {
       const ArgDef x = I(i);
@@ -1596,6 +1653,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
                                {mask_cast_i_def},
                                {MakeAttribute("to", int64_t(IElemType(0)))}));
       result.push_back(NodeDef("Mul", {mask_cast_i_def, GO(0)}, {pre_reduce_grad_i_def}));
+      if (a.name.compare(b.name) == 0) {
+        result.push_back(NodeDef("Identity", {pre_reduce_grad_i_def}, {GI(i)}));
+        continue;
+      }
+
       std::vector<Dimension> x_shape;
       if (get_y_shape_ok && GetShape(x, x_shape).IsOK()) {
         std::vector<int64_t> x_axes;
@@ -1628,7 +1690,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
     attrs.emplace_back(MakeAttribute("custom_attributes_json", src_attrs.at("custom_attributes_json").s()));
   }
 
-  const auto* op_config_ptr = contrib::aten_ops::GetATenOperatorConfig(name);
+  const auto* op_config_ptr = contrib::aten_ops::ATenOperatorConfigs::Instance().GetConfig(name);
   ORT_ENFORCE(op_config_ptr, "ATen Op config for ", name, " is not found.");
   const auto& op_config = *op_config_ptr;
 
@@ -1636,9 +1698,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
   std::vector<ArgDef> input_args;
   std::vector<ArgDef> output_args;
 
-  for (size_t i = 0; i < op_config.backward_input_source_configs.size(); i++) {
-    size_t index = static_cast<size_t>(std::get<1>(op_config.backward_input_source_configs[i]));
-    switch (std::get<0>(op_config.backward_input_source_configs[i])) {
+  for (const auto& config : op_config.backward_input_source_configs) {
+    size_t index = config.second;
+    switch (config.first) {
       case contrib::aten_ops::GRAD_OUTPUT:
         input_args.emplace_back(GO(index));
         break;
@@ -1651,8 +1713,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
     }
   }
 
-  for (size_t i = 0; i < op_config.gradient_input_indices.size(); i++) {
-    size_t index = static_cast<size_t>(op_config.gradient_input_indices[i]);
+  for (size_t index : op_config.gradient_input_indices) {
     if (IsGradientRequiredForSrcNodeInput(index)) {
       output_args.emplace_back(GI(index));
     } else {
@@ -1664,6 +1725,116 @@ IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
 
   attrs.emplace_back(MakeAttribute("output_types", grad_output_types));
   return std::vector<NodeDef>{NodeDef(OpDef{"ATenOpGrad", kMSDomain, 1}, input_args, output_args, attrs)};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
+  std::vector<NodeDef> result;
+  auto src_attrs = SrcNodeAttributes();
+  std::vector<AttributeProto> attrs;
+  ORT_ENFORCE(utils::HasString(src_attrs.at("name")));
+  attrs.push_back(MakeAttribute("name", src_attrs.at("name").s()));
+  attrs.push_back(MakeAttribute("inplace", src_attrs.at("inplace").i()));
+
+  // input_tensor_types[i] store the type of autograd.Function.apply's ith output.
+  // Note that PythonOpGrad's 0-th input is the Python context generated by PythonOp.
+  std::vector<int64_t> input_tensor_types;
+  for (const auto input_tensor_type : src_attrs["output_tensor_types"].ints()) {
+    input_tensor_types.push_back(input_tensor_type);
+  }
+  attrs.push_back(MakeAttribute("input_tensor_types", input_tensor_types));
+
+  // input_tensor_ranks[i] is the rank of the i-th input tensor of autograd.Function.bacwkard.
+  // Note that the left side is the gradient of the right side:
+  //  i-th input tensor of autograd.Function.bacwkard <---> i-th output tensor of autograd.Function.apply
+  std::vector<int64_t> input_tensor_ranks;
+  for (const auto input_tensor_rank : src_attrs["output_tensor_ranks"].ints()) {
+    input_tensor_ranks.push_back(input_tensor_rank);
+  }
+  attrs.push_back(MakeAttribute("input_tensor_ranks", input_tensor_ranks));
+
+  std::vector<int64_t> input_tensor_requires_grads;
+  // Context doesn't need gradient.
+  input_tensor_requires_grads.push_back(0);
+  // Set up gradients from outputs of autograd.Function.backward(...).
+  // The relation between forward and backward can be described by
+  // x -> forward -> y
+  // dy -> backward -> dx
+  // Here, if y (output of PythonOp) requires gradient, dy has requires_gradient=True.
+  for (const auto requires_grad : src_attrs["output_tensor_requires_grads"].ints()) {
+    input_tensor_requires_grads.push_back(requires_grad);
+  }
+  attrs.push_back(MakeAttribute("input_tensor_requires_grads", input_tensor_requires_grads));
+
+  // output_tensor_types[i] stores the type of autograd.Function.apply's i-th input.
+  // We assume a tensor and its gradient have the same type.
+  std::vector<int64_t> output_tensor_types;
+  for (const auto output_tensor_type : src_attrs["input_tensor_types"].ints()) {
+    output_tensor_types.push_back(output_tensor_type);
+  }
+  attrs.push_back(MakeAttribute("output_tensor_types", output_tensor_types));
+
+  // output_tensor_ranks[i] stores the rank of autograd.Function.apply's i-th input.
+  // A tensor and its gradient have the same rank.
+  std::vector<int64_t> output_tensor_ranks;
+  for (const auto output_tensor_rank : src_attrs["input_tensor_ranks"].ints()) {
+    output_tensor_ranks.push_back(output_tensor_rank);
+  }
+  attrs.push_back(MakeAttribute("output_tensor_ranks", output_tensor_ranks));
+
+  std::vector<int64_t> output_tensor_requires_grads;
+  for (const auto requires_grad : src_attrs["input_tensor_requires_grads"].ints()) {
+    output_tensor_requires_grads.push_back(requires_grad);
+  }
+  attrs.push_back(MakeAttribute("output_tensor_requires_grads", output_tensor_requires_grads));
+
+  std::vector<ArgDef> input_args;
+  // Put Python context generated by PythonOp.
+  input_args.push_back(O(0));
+  // Put other outputs.
+  for (int i = 1; i < GetSrcNodeOutputSize(); ++i) {
+    if (input_tensor_requires_grads.at(i)) {
+      // Only add FW outputs which
+      //  1. are tensors,
+      //  2. needs gradients (requires_grad=True in Pytorch).
+      input_args.push_back(GO(i));
+    }
+  }
+
+  // Also connect forward outputs to PythonOpGrad for random segement fault issues.
+  for (int i = 1; i < GetSrcNodeOutputSize(); ++i) {
+    input_args.push_back(O(i));
+  }
+
+  std::vector<ArgDef> output_args;
+  for (int i = 0; i < GetSrcNodeInputSize(); ++i) {
+    // output_args[i] is typed to output_types[i].
+    if (output_tensor_types.at(i) == 9) {
+      output_args.push_back(ArgDef());
+    } else {
+      output_args.push_back(GI(i));
+    }
+  }
+
+  result.push_back(NodeDef(OpDef{"PythonOpGrad", kMSDomain, 1},
+                           input_args,
+                           output_args, attrs));
+
+  return result;
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetPadGradient) {
+  const auto& attributes = SrcNodeAttributes();
+  std::string mode = "constant";
+  if (attributes.find("mode") != attributes.end() && utils::HasString(attributes.at("mode"))) {
+    mode = attributes.at("mode").s();
+  }
+
+  if (mode != "constant") {
+    ORT_THROW("Pad gradient currently supports constant mode only.");
+  }
+
+  return std::vector<NodeDef>{NodeDef("Neg", {I(1)}, {IA("Neg_pads")}),
+                              NodeDef("Pad", {GO(0), IA("Neg_pads")}, {GI(0)})};
 }
 
 }  // namespace training

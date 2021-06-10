@@ -29,7 +29,7 @@ RUN apt-get update &&\
 # Install yapf
 RUN pip3 install yapf==0.28.0
 
-ENV PATH /opt/miniconda/bin:/code/cmake-3.14.3-Linux-x86_64/bin:${PATH}
+ENV PATH /opt/miniconda/bin:/code/cmake-3.20.3-Linux-x86_64/bin:${PATH}
 
 # Install dependencies
 COPY ./scripts/install_rocm_deps.sh /
@@ -45,5 +45,5 @@ RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXR
     ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER) --use_rocm --rocm_home=/opt/rocm &&\
     pip install /code/onnxruntime/build/Linux/Release/dist/*.whl &&\
     cd .. &&\
-    rm -rf onnxruntime cmake-3.14.3-Linux-x86_64
+    rm -rf onnxruntime cmake-3.20.3-Linux-x86_64
 
