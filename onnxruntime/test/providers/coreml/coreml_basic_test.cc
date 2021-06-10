@@ -95,7 +95,7 @@ TEST(CoreMLExecutionProviderTest, FunctionTest) {
 }
 
 // CoreML EP currently handles a special case for supporting ArgMax op:
-// An ArgMax followed by a Cast to int32 type. 
+// An ArgMax followed by a Cast to int32 type.
 // Please see in <repo_root>/onnxruntime/core/providers/coreml/builders/impl/argmax_op_builder.cc
 // and /cast_op_builder.cc. We have the following UT test here for this special case
 // This test case can also be shared later if we want to support similar cases in NNAPI
@@ -106,7 +106,7 @@ TEST(CoreMLExecutionProviderTest, ArgMax_Cast) {
   Status st;
   ASSERT_TRUE((st = session_object.Load("testdata/coreml_argmax_cast_test.onnx")).IsOK()) << st;
   ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
-  
+
   // prepare inputs
   std::vector<int64_t> dims_mul_x = {3, 2, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
@@ -135,13 +135,13 @@ TEST(CoreMLExecutionProviderTest, ArgMax_Cast) {
   }
   ASSERT_TRUE(st.IsOK());
   ASSERT_EQ(1u, fetches.size());
-  
+
   auto& y_out = fetches.front().Get<Tensor>();
   TensorShape expected_shape(expected_dims_mul_y);
   //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
   ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape), *reinterpret_cast<const std::vector<int64_t>*>(&y_out.Shape()));
   const std::vector<int32_t> found(y_out.template Data<int32_t>(),
-                             y_out.template Data<int32_t>() + expected_values_mul_y.size());
+                                   y_out.template Data<int32_t>() + expected_values_mul_y.size());
   ASSERT_EQ(expected_values_mul_y, found);
 }
 
