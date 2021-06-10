@@ -8,7 +8,7 @@ stages:
       timeoutInMinutes: 120
       workspace:
         clean: all
-      pool: Onnxruntime-Linux-GPU-NV6
+      pool: Linux-CPU
 
       variables:
         PythonVersion: $(PYTHON_VERSION)
