@@ -19,3 +19,11 @@ class EmbedLayerNormalizationQuant(QuantOperatorBase):
 
         super().quantize()
         self.quantizer.new_nodes += nodes
+
+
+#
+#
+# TODO - write a unit test for this file first!
+#
+#
+
