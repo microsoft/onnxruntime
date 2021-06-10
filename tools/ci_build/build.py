@@ -1524,7 +1524,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                         run_subprocess([sys.executable, '-m', 'pip', 'install', *required])
                         run_subprocess([sys.executable, '-m', 'pytest', 'transformers'], cwd=cwd)
                         # Restore initial environment
-                        run_subprocess([sys.executable, '-m', 'pip', 'uninstall', *required])
+                        run_subprocess([sys.executable, '-m', 'pip', 'uninstall', *required, '-y'])
                         # Restore initial numpy version in case other tests use it
                         run_subprocess([sys.executable, '-m', 'pip', 'install', 'numpy==' + numpy_init_version])
 
