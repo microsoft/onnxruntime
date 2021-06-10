@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 #--------------------------------------------------------------------------
 
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 import logging
 import os
 import sys
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class OnnxModel:
     def __init__(self, model):
         self.model = model
-        self.node_name_counter = {}
+        self._node_name_suffix: Dict[str, int] = {}  # key is node name prefix, value is the last suffix generated
         self.shape_infer_helper = None
         self.all_graphs = None
 
@@ -553,25 +553,39 @@ class OnnxModel:
                 cast_node.attribute.extend([helper.make_attribute("to", int(TensorProto.FLOAT))])
                 self.add_node(cast_node)
 
-    # create a new name for node
     def create_node_name(self, op_type, name_prefix=None):
-        if op_type in self.node_name_counter:
-            self.node_name_counter[op_type] += 1
+        """Create a unique node name that starts with a prefix (default is operator type).
+           The name will not be duplicated with any name that generated or existed in current graphs.
+        Args:
+            op_type (str): operator type
+            name_prefix (str, optional): prefix of node name. Defaults to None.
+
+        Returns:
+            str: node name
+        """
+
+        if name_prefix:
+            prefix = name_prefix if name_prefix.endswith("_") else (name_prefix + "_")
         else:
-            self.node_name_counter[op_type] = 1
+            prefix = op_type + "_"
 
-        if name_prefix is not None:
-            full_name = name_prefix + str(self.node_name_counter[op_type])
+        suffix: int = 0
+        if prefix in self._node_name_suffix:
+            suffix = self._node_name_suffix[prefix] + 1
         else:
-            full_name = op_type + "_" + str(self.node_name_counter[op_type])
+            # Check existed node name only once for a prefix as we assume create_node_name is called for every new node in fusion.
+            for node in self.nodes():
+                if node.name and node.name.startswith(prefix):
+                    try:
+                        index = int(node.name[len(prefix):])
+                        suffix = max(index + 1, suffix)
+                    except ValueError:
+                        continue
 
-        # Check whether the name is taken:
-        nodes = self.get_nodes_by_op_type(op_type)
-        for node in nodes:
-            if node.name == full_name:
-                raise Exception("Node name already taken:", full_name)
+        # Record the generated suffix so that we can avoid generating duplicated name.
+        self._node_name_suffix[prefix] = suffix
 
-        return full_name
+        return prefix + str(suffix)
 
     def find_graph_input(self, input_name):
         for input in self.model.graph.input:
@@ -767,7 +781,67 @@ class OnnxModel:
                             return False
         return True
 
+    @staticmethod
+    def graph_topological_sort(graph):
+        deps_count = [0]*len(graph.node) # dependency count of each node
+        deps_to_nodes = {} # input to node indice
+        sorted_nodes = []  # initialize sorted_nodes
+        for node_idx, node in enumerate(graph.node):
+            # CANNOT use len(node.input) directly because input can be optional
+            deps_count[node_idx] = sum(1 for _ in node.input if _ )
+            if deps_count[node_idx] == 0: # Constant doesn't depend on any inputs
+                sorted_nodes.append(graph.node[node_idx])
+                continue
+
+            for input_name in node.input:
+                if input_name not in deps_to_nodes:
+                    deps_to_nodes[input_name] = [node_idx]
+                else:
+                    deps_to_nodes[input_name].append(node_idx)
+
+        initializer_names = [init.name for init in graph.initializer]
+        graph_input_names = [input.name for input in graph.input]
+        input_names = initializer_names + graph_input_names
+        input_names.sort()
+        prev_input_name = None
+        for input_name in input_names:
+            if prev_input_name == input_name:
+                continue
+
+            prev_input_name = input_name
+            if input_name in deps_to_nodes:
+                for node_idx in deps_to_nodes[input_name]:
+                    deps_count[node_idx] = deps_count[node_idx] - 1
+                    if deps_count[node_idx] == 0:
+                        sorted_nodes.append(graph.node[node_idx])
+
+        start = 0
+        end = len(sorted_nodes)
+
+        while start < end:
+            for output in sorted_nodes[start].output:
+                if output in deps_to_nodes:
+                    for node_idx in deps_to_nodes[output]:
+                        deps_count[node_idx] = deps_count[node_idx] - 1
+                        if deps_count[node_idx] == 0:
+                            sorted_nodes.append(graph.node[node_idx])
+                            end = end + 1
+            start = start + 1
+
+        assert(end == len(graph.node)), "Graph is not a DAG"
+        graph.ClearField('node')
+        graph.node.extend(sorted_nodes)
+
+    def topological_sort(self):
+        #TODO: support graph_topological_sort() in subgraphs
+        #for graph in self.graphs():
+        #    self.graph_topological_sort(graph)
+        OnnxModel.graph_topological_sort(self.model.graph)
+
     def save_model_to_file(self, output_path, use_external_data_format=False):
+        logger.info(f"Sort graphs in topological order")
+        self.topological_sort()
+
         logger.info(f"Output model to {output_path}")
 
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
