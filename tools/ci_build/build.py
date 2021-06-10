@@ -5,7 +5,6 @@
 import argparse
 import contextlib
 import glob
-import json
 import os
 import re
 import shutil
@@ -346,12 +345,17 @@ def parse_arguments():
     parser.add_argument(
         "--enable_wasm_debug_info", action='store_true',
         help="Build WebAssembly with DWARF format debug info")
+    parser.add_argument(
+        "--wasm_malloc", default="dlmalloc", help="Specify memory allocator for WebAssembly")
+    parser.add_argument(
+        "--emsdk_version", default="2.0.23", help="Specify version of emsdk")
 
     # Arguments needed by CI
     parser.add_argument(
         "--cmake_path", default="cmake", help="Path to the CMake program.")
     parser.add_argument(
-        "--ctest_path", default="ctest", help="Path to the CTest program.")
+        "--ctest_path", default="ctest", help="Path to the CTest program. It can be an empty string. If it is empty, "
+        "we will use this script driving the test programs directly.")
     parser.add_argument(
         "--skip_submodule_sync", action='store_true', help="Don't do a "
         "'git submodule update'. Makes the Update phase faster.")
@@ -426,7 +430,7 @@ def parse_arguments():
     parser.add_argument(
         "--cmake_generator",
         choices=['Visual Studio 15 2017', 'Visual Studio 16 2019', 'Ninja'],
-        default='Visual Studio 15 2017' if is_windows() else None,
+        default='Visual Studio 16 2019' if is_windows() else None,
         help="Specify the generator that CMake invokes. "
         "This is only supported on Windows")
     parser.add_argument(
@@ -451,6 +455,9 @@ def parse_arguments():
     parser.add_argument(
         "--enable_lto", action='store_true',
         help="Enable Link Time Optimization")
+    parser.add_argument(
+        "--enable_transformers_tool_test", action='store_true',
+        help="Enable transformers tool test")
     parser.add_argument(
         "--use_acl", nargs="?", const="ACL_1905",
         choices=["ACL_1902", "ACL_1905", "ACL_1908", "ACL_2002"],
@@ -530,11 +537,14 @@ def is_reduced_ops_build(args):
 
 def resolve_executable_path(command_or_path):
     """Returns the absolute path of an executable."""
-    executable_path = shutil.which(command_or_path)
-    if executable_path is None:
-        raise BuildError("Failed to resolve executable path for "
-                         "'{}'.".format(command_or_path))
-    return os.path.abspath(executable_path)
+    if command_or_path and command_or_path.strip():
+        executable_path = shutil.which(command_or_path)
+        if executable_path is None:
+            raise BuildError("Failed to resolve executable path for "
+                             "'{}'.".format(command_or_path))
+        return os.path.abspath(executable_path)
+    else:
+        return None
 
 
 def get_linux_distro():
@@ -652,6 +662,11 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_WINML_TESTS=" + ("OFF" if args.skip_winml_tests else "ON"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
         "-Donnxruntime_DEV_MODE=" + use_dev_mode(args),
+        # There are two ways of locating python C API header file. "find_package(PythonLibs 3.5 REQUIRED)"
+        # and "find_package(Python 3.5 COMPONENTS Development.Module)". The first one is deprecated and it
+        # depends on the "PYTHON_EXECUTABLE" variable. The second needs "Python_EXECUTABLE". Here we set both
+        # of them to get the best compatibility.
+        "-DPython_EXECUTABLE=" + sys.executable,
         "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
         "-Donnxruntime_CUDA_VERSION=" + (args.cuda_version if args.use_cuda else ""),
@@ -706,7 +721,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_MINIMAL_BUILD_CUSTOM_OPS=" + ("ON" if args.minimal_build and 'custom_ops' in args.minimal_build
                                                      else "OFF"),
         "-Donnxruntime_REDUCED_OPS_BUILD=" + ("ON" if is_reduced_ops_build(args) else "OFF"),
-        "-Donnxruntime_MSVC_STATIC_RUNTIME=" + ("ON" if args.enable_msvc_static_runtime else "OFF"),
         # enable pyop if it is nightly build
         "-Donnxruntime_ENABLE_LANGUAGE_INTEROP_OPS=" + ("ON" if args.enable_language_interop_ops else "OFF"),
         "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
@@ -714,6 +728,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_MS_EXPERIMENTAL_OPS=" + ("ON" if args.ms_experimental else "OFF"),
         "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
+        "-Donnxruntime_ENABLE_TRANSFORMERS_TOOL_TEST=" + ("ON" if args.enable_transformers_tool_test else "OFF"),
         "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),
         "-Donnxruntime_USE_ACL_1902=" + ("ON" if args.use_acl == "ACL_1902" else "OFF"),
         "-Donnxruntime_USE_ACL_1905=" + ("ON" if args.use_acl == "ACL_1905" else "OFF"),
@@ -742,8 +757,20 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                                                                   else "ON"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
+        "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
     ]
+
+    if args.enable_msvc_static_runtime:
+        cmake_args += ["-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>",
+                       "-DONNX_USE_MSVC_STATIC_RUNTIME=ON",
+                       "-Dprotobuf_MSVC_STATIC_RUNTIME=ON",
+                       "-Dgtest_force_shared_crt=OFF"]
+    else:
+        cmake_args += ["-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>DLL",
+                       "-DONNX_USE_MSVC_STATIC_RUNTIME=OFF",
+                       "-Dprotobuf_MSVC_STATIC_RUNTIME=OFF",
+                       "-Dgtest_force_shared_crt=ON"]
 
     if acl_home and os.path.exists(acl_home):
         cmake_args += ["-Donnxruntime_ACL_HOME=" + acl_home]
@@ -1405,27 +1432,38 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
         if len(dll_path_list) > 0:
             dll_path = os.pathsep.join(dll_path_list)
 
-        if ctest_path is None:
-            # Get the "Google Test Adapter" for vstest.
-            if not os.path.exists(os.path.join(cwd,
-                                               'googletestadapter.0.17.1')):
+        if not ctest_path:
+            if is_windows():
+                # Get the "Google Test Adapter" for vstest.
+                if not os.path.exists(os.path.join(cwd,
+                                                   'googletestadapter.0.17.1')):
+                    run_subprocess(
+                        ['nuget.exe', 'restore',
+                         os.path.join(source_dir, 'packages.config'),
+                         '-ConfigFile', os.path.join(source_dir, 'NuGet.config'),
+                         '-PackagesDirectory', cwd])
+                cwd2 = os.path.join(cwd, config)
+                executables = ['onnxruntime_test_all.exe']
+                if args.build_shared_lib:
+                    executables.append('onnxruntime_shared_lib_test.exe')
+                    executables.append('onnxruntime_global_thread_pools_test.exe')
+                    executables.append('onnxruntime_api_tests_without_env.exe')
                 run_subprocess(
-                    ['nuget.exe', 'restore',
-                     os.path.join(source_dir, 'packages.config'),
-                     '-ConfigFile', os.path.join(source_dir, 'NuGet.config'),
-                     '-PackagesDirectory', cwd])
-            cwd2 = os.path.join(cwd, config)
-            executables = ['onnxruntime_test_all.exe']
-            if args.build_shared_lib:
-                executables.append('onnxruntime_shared_lib_test.exe')
-                executables.append('onnxruntime_global_thread_pools_test.exe')
-            run_subprocess(
-                ['vstest.console.exe', '--parallel',
-                 '--TestAdapterPath:..\\googletestadapter.0.17.1\\build\\_common',  # noqa
-                 '/Logger:trx', '/Enablecodecoverage', '/Platform:x64',
-                 "/Settings:%s" % os.path.join(
-                     source_dir, 'cmake\\codeconv.runsettings')] + executables,
-                cwd=cwd2, dll_path=dll_path)
+                    ['vstest.console.exe', '--parallel',
+                     '--TestAdapterPath:..\\googletestadapter.0.17.1\\build\\_common',  # noqa
+                     '/Logger:trx', '/Enablecodecoverage', '/Platform:x64',
+                     "/Settings:%s" % os.path.join(
+                         source_dir, 'cmake\\codeconv.runsettings')] + executables,
+                    cwd=cwd2, dll_path=dll_path)
+            else:
+                executables = ['onnxruntime_test_all']
+                if args.build_shared_lib:
+                    executables.append('onnxruntime_shared_lib_test')
+                    executables.append('onnxruntime_global_thread_pools_test')
+                    executables.append('onnxruntime_api_tests_without_env')
+                for exe in executables:
+                    run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
+
         else:
             ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", "7200"]
             run_subprocess(ctest_cmd, cwd=cwd, dll_path=dll_path)
@@ -1477,6 +1515,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 if not args.disable_contrib_ops:
                     run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'quantization'],
                                    cwd=cwd, dll_path=dll_path)
+                    if args.enable_transformers_tool_test:
+                        required = {
+                            'numpy==1.19.2', 'coloredlogs==15.0', 'tf2onnx==1.8.5', 'transformers==4.6.1',
+                            'torch==1.8.1', 'tensorflow==2.5.0', 'onnxconverter-common==1.8.1', 'psutil'}
+                        run_subprocess([sys.executable, '-m', 'pip', 'install', *required])
+                        run_subprocess([sys.executable, '-m', 'pytest', 'transformers'], cwd=cwd)
 
                 if not args.disable_ml_ops:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_backend_mlops.py'],
@@ -1518,11 +1562,6 @@ def nuphar_run_python_tests(build_dir, configs):
         if is_windows():
             cwd = os.path.join(cwd, config)
         dll_path = os.path.join(build_dir, config, "external", "tvm", config)
-        # install onnx for shape inference in testing Nuphar scripts
-        # this needs to happen after onnx_test_data preparation which
-        # uses onnx 1.3.0
-        run_subprocess(
-            [sys.executable, '-m', 'pip', 'install', '--user', 'onnx==1.5.0'])
         run_subprocess(
             [sys.executable, 'onnxruntime_test_python_nuphar.py'],
             cwd=cwd, dll_path=dll_path)
@@ -1850,6 +1889,9 @@ def main():
     if args.build_nuget and cross_compiling:
         raise BuildError('Currently nuget package creation is not supported while cross-compiling')
 
+    if args.enable_pybind and args.disable_rtti:
+        raise BuildError("Python bindings use typeid so you can't disable RTTI")
+
     if args.enable_pybind and args.disable_exceptions:
         raise BuildError('Python bindings require exceptions to be enabled.')
 
@@ -1888,6 +1930,8 @@ def main():
     configs = set(args.config)
 
     # setup paths and directories
+    # cmake_path and ctest_path can be None. For example, if a person only wants to run the tests, he/she doesn't need
+    # to have cmake/ctest.
     cmake_path = resolve_executable_path(args.cmake_path)
     ctest_path = None if args.use_vstest else resolve_executable_path(
         args.ctest_path)
@@ -1999,38 +2043,36 @@ def main():
                     args.test = False
 
         if args.build_wasm:
-            # install emscripten if not exist.
-            # since emscripten doesn't support file packaging required for unit tests,
-            # need to apply patch with the specific version of emscripten.
-            # once patch is committed to emsdk repository, this must be replaced with 'latest'.
-            emsdk_version = "2.0.13"
-
+            emsdk_version = args.emsdk_version
             emsdk_dir = os.path.join(source_dir, "cmake", "external", "emsdk")
             emsdk_file = os.path.join(emsdk_dir, "emsdk.bat") if is_windows() else os.path.join(emsdk_dir, "emsdk")
-            emsdk_version_file = os.path.join(emsdk_dir, "upstream", "emscripten", "emscripten-version.txt")
-            emscripten_cmake_toolchain_file = os.path.join(emsdk_dir, "upstream", "emscripten", "cmake", "Modules",
-                                                           "Platform", "Emscripten.cmake")
 
-            if os.path.exists(emsdk_version_file):
-                with open(emsdk_version_file) as f:
-                    emsdk_version_data = json.load(f)
-                emsdk_version_match = isinstance(emsdk_version_data, str) and emsdk_version_data == emsdk_version
-            if not os.path.exists(emscripten_cmake_toolchain_file) or not emsdk_version_match:
-                print("Installing emsdk...")
-                run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
-            print("Activating emsdk...")
+            # apply patch to emsdk/emsdk.py
+            #
+            # Note: this patch fixes bug in emsdk to install a single emscripten tool.
+            #
+            #       should remove patch file and remove "ignore = dirty" in .gitmodules once the following PR get
+            #       merged and included in a new release:
+            #         https://github.com/emscripten-core/emsdk/pull/834
+            shutil.copy(
+                os.path.join(SCRIPT_DIR, "wasm", "emsdk.py.patch"),
+                os.path.join(emsdk_dir, "emsdk.py"))
+
+            log.info("Installing emsdk...")
+            run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
+            log.info("Activating emsdk...")
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
 
-            if args.test:
-                # if wasm test is enabled, apply emsdk file_packager.py patch to enable file I/O from node.js
-                #
-                # Note: this patch enables file_packager.py to generate JavaScript code to support preload files in
-                #       Node.js
-                #       should be removed once the following PR get merged:
-                #       https://github.com/emscripten-core/emscripten/pull/11785
-                shutil.copy(
-                    os.path.join(SCRIPT_DIR, "wasm", "file_packager.py.patch"),
-                    os.path.join(emsdk_dir, "upstream", "emscripten", "tools", "file_packager.py"))
+            # apply patch to file_packager.py
+            #
+            # Note: this patch enables file_packager.py to generate JavaScript code to support preload files in Node.js
+            #
+            #       should remove patch file once the following PR get merged and included in a new release:
+            #         https://github.com/emscripten-core/emscripten/pull/11785   (merged, not release yet)
+            #         https://github.com/emscripten-core/emscripten/pull/14372   (merged, not release yet)
+            shutil.copy(
+                os.path.join(SCRIPT_DIR, "wasm", "file_packager.py.patch"),
+                os.path.join(emsdk_dir, "upstream", "emscripten", "tools", "file_packager.py"))
 
         if (args.android or args.ios or args.enable_windows_store or args.build_wasm
                 or is_cross_compiling_on_apple(args)) and args.path_to_protoc_exe is None:

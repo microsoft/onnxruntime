@@ -15,5 +15,5 @@ graph = helper.make_graph(
         helper.make_tensor_value_info('C', TensorProto.FLOAT, [1]),
     ])
 
-model = helper.make_model(graph)
+model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 12)])
 onnx.save(model, r'single_add.onnx')
