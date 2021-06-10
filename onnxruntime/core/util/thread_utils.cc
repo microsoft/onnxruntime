@@ -34,9 +34,9 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options, ThreadPoolType tpo
                                                 options.allow_spinning);
   } else {
     using TPL = ThreadPoolLite2<2,8>;
-    return onnxruntime::make_unique<TPL>(env, to, options.name,
-                                         options.thread_pool_size,
-                                         options.allow_spinning);
+    return std::make_unique<TPL>(env, to, options.name,
+                                 options.thread_pool_size,
+                                 options.allow_spinning);
   }
 }
 
