@@ -99,14 +99,11 @@ TEST(CoreMLExecutionProviderTest, FunctionTest) {
 // Please see in <repo_root>/onnxruntime/core/providers/coreml/builders/impl/argmax_op_builder.cc
 // and /cast_op_builder.cc. We have the following UT test here for this special case
 // This test case can also be shared later if we want to support similar cases in NNAPI
-TEST(CoreMLExecutionProviderTest, ArgMax_Cast) {
-  SessionOptions so;
-  InferenceSession session_object{so, GetEnvironment()};
-  Status st;
-  ASSERT_TRUE((st = session_object.Load("testdata/coreml_argmax_cast_test.onnx")).IsOK()) << st;
-  ASSERT_TRUE((st = session_object.Initialize()).IsOK()) << st;
+TEST(CoreMLExecutionProviderTest, ArgMaxCastTest) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/coreml_argmax_cast_test.onnx");
 
-  // prepare inputs
+  static constexpr uint32_t s_coreml_flags = COREML_FLAG_USE_CPU_ONLY;
+
   std::vector<int64_t> dims_mul_x = {3, 2, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
   OrtValue ml_value_x;
@@ -117,31 +114,9 @@ TEST(CoreMLExecutionProviderTest, ArgMax_Cast) {
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
 
-  // prepare outputs
-  std::vector<std::string> output_names;
-  output_names.push_back("Y");
-  std::vector<OrtValue> fetches;
-
-  // prepare expected outputs
-  std::vector<int64_t> expected_dims_mul_y = {3, 1, 2};
-  std::vector<int32_t> expected_values_mul_y = {1, 1, 1, 1, 1, 1};
-
-  // Now run
-  onnxruntime::RunOptions run_options;
-  st = session_object.Run(run_options, feeds, output_names, &fetches);
-  if (!st.IsOK()) {
-    std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
-  }
-  ASSERT_TRUE(st.IsOK());
-  ASSERT_EQ(1u, fetches.size());
-
-  auto& y_out = fetches.front().Get<Tensor>();
-  TensorShape expected_shape(expected_dims_mul_y);
-  //Use reinterpret_cast to bypass a gcc bug: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51213
-  ASSERT_EQ(*reinterpret_cast<const std::vector<int64_t>*>(&expected_shape), *reinterpret_cast<const std::vector<int64_t>*>(&y_out.Shape()));
-  const std::vector<int32_t> found(y_out.template Data<int32_t>(),
-                                   y_out.template Data<int32_t>() + expected_values_mul_y.size());
-  ASSERT_EQ(expected_values_mul_y, found);
+  RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.ArgMaxCastTest",
+                            std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
+                            feeds);
 }
 
 #endif  // !(ORT_MINIMAL_BUILD)
