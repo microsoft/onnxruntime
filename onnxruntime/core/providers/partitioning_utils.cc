@@ -299,7 +299,19 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
             }
           }
         } else {
-          // need another node providing input to be added to the group.
+          // we need all other nodes providing input to this node to have been processed
+          // before it can be added to cur_group.
+          //
+          // e.g. given A   B  with a topological order of A, B, C.
+          //             \  /
+          //              C
+          //
+          // When we process A we add C via the output edge to nodes_to_process. After we finish with A we look at C
+          // as the next node in nodes_to_process, but the input from B is missing.
+          // There are no more entries in nodes_to_process so we move to the next node in the topological order and
+          // process B. Again C is added to nodes_to_process via the output edge. After we finish with B we look at C
+          // again as the next node in nodes_to_process.
+          // Now all the inputs are available and C is added to the current group.
         }
       }
     }
