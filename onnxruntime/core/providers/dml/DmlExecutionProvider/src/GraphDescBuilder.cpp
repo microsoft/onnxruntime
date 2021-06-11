@@ -248,6 +248,7 @@ namespace Dml::GraphDescBuilder
             const onnxruntime::NodeArg* graphOutput = graph.GetNodeArg(
                 GraphKernelHelper::GetFusedNodeArgNameMatchingGraph(fusedNodeOutputDefs[outputIndex]->Name()));
 
+            THROW_HR_IF_NULL_MSG(E_POINTER, graphOutput, "FusedNode's nodeArgList does not contain one of the nodeArg");
             const auto& outputNodeAndIndex = nameToNodeAndIndexMap.at(graphOutput->Name());
 
             DML_OUTPUT_GRAPH_EDGE_DESC edge = {};
