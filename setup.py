@@ -123,7 +123,7 @@ def build_torch_cpp_extensions():
     ############################################################################
     # Pytorch CPP Extensions that DO NOT require CUDA/ROCM
     ############################################################################
-    subprocess.call(
+    ret_code = subprocess.call(
         "python torch_cpp_extensions/aten_op_executor/setup.py build", shell=True
     )
     if ret_code != 0:
