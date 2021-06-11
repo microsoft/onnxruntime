@@ -1519,11 +1519,11 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                         import numpy
                         numpy_init_version = numpy.__version__
                         run_subprocess([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'],
-                                        cwd=SCRIPT_DIR)
+                                       cwd=SCRIPT_DIR)
                         run_subprocess([sys.executable, '-m', 'pytest', 'transformers'], cwd=cwd)
                         # Restore initial environment
                         run_subprocess([sys.executable, '-m', 'pip', 'uninstall', '-r', 'requirements.txt', '-y'],
-                                        cwd=SCRIPT_DIR)
+                                       cwd=SCRIPT_DIR)
                         # Restore initial numpy version in case other tests use it
                         run_subprocess([sys.executable, '-m', 'pip', 'install', 'numpy==' + numpy_init_version])
 
