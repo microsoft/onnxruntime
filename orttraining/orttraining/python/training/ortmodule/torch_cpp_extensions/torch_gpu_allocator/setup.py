@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import fileinput
 from setuptools import setup, Extension
 import sys
 from torch.utils import cpp_extension
@@ -20,27 +21,10 @@ use_rocm = True if parse_arg_remove_boolean(sys.argv, '--use_rocm') else False
 gpu_identifier = "hip" if use_rocm else "cuda"
 gpu_allocator_header = "HIPCachingAllocator" if use_rocm else "CUDACachingAllocator"
 
-torch_gpu_allocator_addresses_cpp_source = f'''
-#include <torch/extension.h>
-#include <c10/{gpu_identifier}/{gpu_allocator_header}.h>
-
-size_t gpu_caching_allocator_raw_alloc_address() {{
-    return reinterpret_cast<size_t>(&c10::{gpu_identifier}::{gpu_allocator_header}::raw_alloc);
-}}
-
-size_t gpu_caching_allocator_raw_delete_address() {{
-    return reinterpret_cast<size_t>(&c10::{gpu_identifier}::{gpu_allocator_header}::raw_delete);
-}}
-
-PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {{
-    m.def("gpu_caching_allocator_raw_alloc_address", &gpu_caching_allocator_raw_alloc_address, "Address of PyTorch GPU allocator");
-    m.def("gpu_caching_allocator_raw_delete_address", &gpu_caching_allocator_raw_delete_address, "Address of PyTorch GPU deallocator");
-}}
-
-'''
-
-with open('torch_gpu_allocator.cpp', 'w') as f:
-    f.write(f"{torch_gpu_allocator_addresses_cpp_source}\n")
+with fileinput.FileInput('torch_gpu_allocator.cpp.template', inplace=True, backup='.bak') as file:
+    for line in file:
+        print(line.replace('___gpu_identifier___', gpu_identifier), end='')
+        print(line.replace('___gpu_allocator_header___', gpu_allocator_header), end='')
 
 setup(name='torch_gpu_allocator',
       ext_modules=[cpp_extension.CUDAExtension('torch_gpu_allocator', ['torch_gpu_allocator.cpp'])],

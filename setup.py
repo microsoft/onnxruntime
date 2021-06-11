@@ -323,7 +323,7 @@ if enable_training:
 
 
 # Build Torch CPP extensions for ORTModule
-if enable_training:
+if enable_training and (cuda_version or rocm_version):
     # Add Torch CPP extensions to the official onnxruntime package
     build_torch_cpp_extensions()
     torch_cpp_exts = glob('onnxruntime/training/ortmodule/torch_cpp_extensions/*.so')

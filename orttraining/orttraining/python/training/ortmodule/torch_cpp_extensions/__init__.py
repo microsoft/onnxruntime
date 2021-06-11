@@ -39,6 +39,9 @@ def _load_aten_op_executor_cpp_extension(verbosity):
     C.register_aten_op_executor(str(aten_op_executor.execute_aten_operator_address()))
 
 def _load_aten_op_executor_cpp_extension_if_needed(onnx_model, verbosity):
+    if not torch.cuda.is_available():
+        return
+
     for node in onnx_model.graph.node:
         if node.op_type == 'ATenOp' and node.domain == 'com.microsoft':
             _load_aten_op_executor_cpp_extension(verbosity)
