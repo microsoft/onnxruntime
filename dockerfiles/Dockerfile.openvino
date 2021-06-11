@@ -50,6 +50,9 @@ RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-4.5.11-Linux-x86
     /bin/bash ~/miniconda.sh -b -p ${WORKDIR_PATH}/miniconda && \
     rm ~/miniconda.sh && \
     ${WORKDIR_PATH}/miniconda/bin/conda clean -ya
+USER root
+RUN apt remove -y wget
+USER ${BUILD_USER}
 ENV PATH=${WORKDIR_PATH}/miniconda/bin:${WORKDIR_PATH}/cmake-dir/bin:$PATH
 COPY --from=builder /home/openvino/onnxruntime/build/Linux/Release/dist/*.whl ./
 RUN python3 -m pip install ./*.whl
