@@ -323,21 +323,31 @@ if enable_training:
 
 
 # Build Torch CPP extensions for ORTModule
-if enable_training and (cuda_version or rocm_version):
-    print('*'*1024)
-    # Add Torch CPP extensions to the official onnxruntime package
-    build_torch_cpp_extensions()
-    torch_cpp_exts = glob('onnxruntime/training/ortmodule/torch_cpp_extensions/*.so')
-    torch_cpp_exts.extend(glob('onnxruntime/training/ortmodule/torch_cpp_extensions/*.dll'))
-    torch_cpp_exts.extend(glob('onnxruntime/training/ortmodule/torch_cpp_extensions/*.dylib'))
-    for ext in torch_cpp_exts:
-        dest_ext = path.join('training/ortmodule/torch_cpp_extensions', path.basename(ext))
-        data.append(dest_ext)
-else:
+if enable_training:
+    # Detecting presence of a valid PyTorch device
+    is_gpu_available = False
+    try:
+        import torch
+        is_gpu_available = torch.cuda.is_available()
+    except ImportError:
+        ...
+
+    if is_gpu_available:
+        print('*'*1024)
+        # Add Torch CPP extensions to the official onnxruntime package
+        build_torch_cpp_extensions()
+        torch_cpp_exts = glob('onnxruntime/training/ortmodule/torch_cpp_extensions/*.so')
+        torch_cpp_exts.extend(glob('onnxruntime/training/ortmodule/torch_cpp_extensions/*.dll'))
+        torch_cpp_exts.extend(glob('onnxruntime/training/ortmodule/torch_cpp_extensions/*.dylib'))
+        for ext in torch_cpp_exts:
+            dest_ext = path.join('training/ortmodule/torch_cpp_extensions', path.basename(ext))
+            data.append(dest_ext)
+    else:
         print('@'*1024)
-print(enable_training)
-print(cuda_version)
-print(rocm_version)
+    print('-'*1024)
+    print(enable_training)
+    print(is_gpu_available)
+
 package_data = {}
 data_files = []
 
