@@ -2686,35 +2686,50 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
   ORT_RETURN_IF_ERROR(AddOperand("starts", param_dimen, compute_metadata.starts_));  //nnapi_begin
 
-  // ** The special treatment of ends **
-  // The nnapi_end need some special handling, based on the current undocumented design of
-  // ANEURALNETWORKS_STRIDED_SLICE
-  // For ORT, for a single axis, after SliceOp::PrepareForCompute, and the step is negative,
-  // and the last element for slice is at the beginning of the axis (we are slicing backwards)
-  // The end for this axis will be -1
-  // For NNAPI, it is not documented that end can be negative,
-  // see https://developer.android.com/ndk/reference/group/neural-networks#group___neural_networks_1ggaabbe492c60331b13038e39d4207940e0a89695302f8b1e7ae7ce8f4d8c0b8a752
-  // However, the actual NNAPI StridedSlice has some odd implementations,
-  // See https://android.googlesource.com/platform/frameworks/ml/+/5b525d4d9100819d87447bd2c2a0bcfdd62899ee/nn/common/operations/StridedSlice.cpp#177
-  // and, https://android.googlesource.com/platform/frameworks/ml/+/5b525d4d9100819d87447bd2c2a0bcfdd62899ee/nn/common/include/OperationsUtils.h#262
-  // If a negative end is no less than -dim (dimension of the axis), it will be treated as an index counting from
-  // the end, for example, dim = 5, and end = -1, the end will be normalized to 4, which will cause
-  // incorrect result, so here we have to make the end = -dim - 1 such that it will not be treated as
-  // an index counting from the end.
-  std::vector<int64_t> ends = compute_metadata.ends_;
-  for (size_t i = 0; i < ends.size(); ++i) {
-    if (ends[i] == -1) {
-      ends[i] = -static_cast<int32_t>(input_shape[i] + 1);
+  // NNAPI has 2 slice operations
+  // - ANEURALNETWORKS_SLICE
+  //    Simpler and faster version of slice without steps, available from ANEURALNETWORKS_FEATURE_LEVEL_3
+  //    Use this one if no step other than 1 is used in ONNX slice
+  // - ANEURALNETWORKS_STRIDED_SLICE
+  //    More comprehensice version, available from ANEURALNETWORKS_FEATURE_LEVEL_2
+  int op_code = ANEURALNETWORKS_STRIDED_SLICE;
+  if (std::all_of(compute_metadata.steps_.cbegin(),
+                  compute_metadata.steps_.cend(),
+                  [](int64_t i) { return i == 1; }) &&
+      model_builder.GetNNAPIFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_2) {
+    op_code = ANEURALNETWORKS_SLICE;
+    // the nnapi size of the slice in this case is the output shape
+    ORT_RETURN_IF_ERROR(AddOperand("sizes", param_dimen, compute_metadata.output_dims_));  //nnapi_sizes
+  } else {
+    // ** The special treatment of ends **
+    // The nnapi_end need some special handling, based on the current undocumented design of
+    // ANEURALNETWORKS_STRIDED_SLICE
+    // For ORT, for a single axis, after SliceOp::PrepareForCompute, and the step is negative,
+    // and the last element for slice is at the beginning of the axis (we are slicing backwards)
+    // The end for this axis will be -1
+    // For NNAPI, it is not documented that end can be negative,
+    // see https://developer.android.com/ndk/reference/group/neural-networks#group___neural_networks_1ggaabbe492c60331b13038e39d4207940e0a89695302f8b1e7ae7ce8f4d8c0b8a752
+    // However, the actual NNAPI StridedSlice has some odd implementations,
+    // See https://android.googlesource.com/platform/frameworks/ml/+/5b525d4d9100819d87447bd2c2a0bcfdd62899ee/nn/common/operations/StridedSlice.cpp#177
+    // and, https://android.googlesource.com/platform/frameworks/ml/+/5b525d4d9100819d87447bd2c2a0bcfdd62899ee/nn/common/include/OperationsUtils.h#262
+    // If a negative end is no less than -dim (dimension of the axis), it will be treated as an index counting from
+    // the end, for example, dim = 5, and end = -1, the end will be normalized to 4, which will cause
+    // incorrect result, so here we have to make the end = -dim - 1 such that it will not be treated as
+    // an index counting from the end.
+    std::vector<int64_t> ends = compute_metadata.ends_;
+    for (size_t i = 0; i < ends.size(); ++i) {
+      if (ends[i] == -1) {
+        ends[i] = -static_cast<int32_t>(input_shape[i] + 1);
+      }
     }
+    ORT_RETURN_IF_ERROR(AddOperand("ends", param_dimen, ends));                      //nnapi_end
+    ORT_RETURN_IF_ERROR(AddOperand("steps", param_dimen, compute_metadata.steps_));  //nnapi_strides
+    // We do not use the following inputs in ANEURALNETWORKS_STRIDED_SLICE, set them all to 0
+    ADD_SCALAR_OPERAND(model_builder, input_indices, 0);  // begin_mask
+    ADD_SCALAR_OPERAND(model_builder, input_indices, 0);  // end_mask
+    ADD_SCALAR_OPERAND(model_builder, input_indices, 0);  // shrink_axis_mask
   }
-  ORT_RETURN_IF_ERROR(AddOperand("ends", param_dimen, ends));                      //nnapi_end
-  ORT_RETURN_IF_ERROR(AddOperand("steps", param_dimen, compute_metadata.steps_));  //nnapi_strides
-  // We do not use the following inputs in ANEURALNETWORKS_STRIDED_SLICE, set them all to 0
-  ADD_SCALAR_OPERAND(model_builder, input_indices, 0);  // begin_mask
-  ADD_SCALAR_OPERAND(model_builder, input_indices, 0);  // end_mask
-  ADD_SCALAR_OPERAND(model_builder, input_indices, 0);  // shrink_axis_mask
-  return model_builder.AddOperation(ANEURALNETWORKS_STRIDED_SLICE, input_indices,
-                                    {output}, {output_operand_type}, {output_is_nhwc});
+  return model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
 }
 
 #pragma endregion
