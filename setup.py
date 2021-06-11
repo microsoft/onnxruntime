@@ -324,6 +324,7 @@ if enable_training:
 
 # Build Torch CPP extensions for ORTModule
 if enable_training and (cuda_version or rocm_version):
+    print('*'*1024)
     # Add Torch CPP extensions to the official onnxruntime package
     build_torch_cpp_extensions()
     torch_cpp_exts = glob('onnxruntime/training/ortmodule/torch_cpp_extensions/*.so')
@@ -332,7 +333,11 @@ if enable_training and (cuda_version or rocm_version):
     for ext in torch_cpp_exts:
         dest_ext = path.join('training/ortmodule/torch_cpp_extensions', path.basename(ext))
         data.append(dest_ext)
-
+else:
+        print('@'*1024)
+print(enable_training)
+print(cuda_version)
+print(rocm_version)
 package_data = {}
 data_files = []
 
