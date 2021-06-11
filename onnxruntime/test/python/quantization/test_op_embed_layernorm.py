@@ -10,8 +10,8 @@ import unittest
 import onnx
 import numpy as np
 from onnx import helper, TensorProto
-from onnxruntime.quantization import quantize_dynamic, QuantFormat
-from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_op_nodes
+from onnxruntime.quantization import quantize_dynamic
+from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count
 
 
 class TestOpEmbedLayerNormalization(unittest.TestCase):
