@@ -34,7 +34,9 @@ class AttentionBase {
 
     is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
 
-    info.GetAttrOrDefault<int64_t>("qkv_hidden_sizes", qkv_hidden_sizes_, static_cast<int64_t>(-1));
+    if (!info.GetAttrs<int64_t>("qkv_hidden_sizes", qkv_hidden_sizes_).IsOK() || qkv_hidden_sizes_.empty()) {
+      qkv_hidden_sizes_.resize(0);
+    }
   }
 
   Status CheckInputs(const TensorShape& input_shape,
@@ -45,7 +47,7 @@ class AttentionBase {
 
   int num_heads_;           // number of attention heads
   bool is_unidirectional_;  // whether every token can only attend to previous tokens.
-  int64_t qkv_hidden_sizes_[3];
+  std::vector<int64_t> qkv_hidden_sizes_;   // Q, K, V path hidden layer sizes
 };
 
 }  // namespace contrib

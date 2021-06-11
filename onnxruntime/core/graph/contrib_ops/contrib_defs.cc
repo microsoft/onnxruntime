@@ -353,6 +353,10 @@ and present state are optional. Present state could appear in output even when p
             "Whether every token can only attend to previous tokens. Default value is 0.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
+      .Attr("qkv_hidden_sizes",
+            "Hidden layer sizes of Q, K, V paths in Attention",
+            AttributeProto::INTS,
+            OPTIONAL_VALUE)
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, input_hidden_size)", "T")
       .Input(1, "weight", "2D input tensor with shape (input_hidden_size, 3 * hidden_size), where hidden_size = num_heads * head_size", "T")
       .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
