@@ -184,7 +184,7 @@ static void TestNnapiPartitioning(const std::string& test_name, const std::strin
 
   // we disable NCHWc in mobile scenarios as it's not relevant to ARM
   if (optimize) {
-    session->FilterEnabledOptimizers({"NchwcTransformer"});
+    ASSERT_STATUS_OK(session->FilterEnabledOptimizers({"NchwcTransformer"}));
   }
 
   auto ops = GetNnapiSupportedOps();
