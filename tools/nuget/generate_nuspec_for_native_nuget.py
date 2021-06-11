@@ -231,6 +231,9 @@ def generate_files(list, args):
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path,
                                                         'include\\onnxruntime\\core\\session\\onnxruntime_*.h') +
                       '" target="build\\native\\include" />')
+    files_list.append('<file src=' + '"' + os.path.join(args.sources_path,
+                                                        'include\\onnxruntime\\core\\framework\\provider_options.h') +
+                      '" target="build\\native\\include" />')
     files_list.append('<file src=' + '"' +
                       os.path.join(args.sources_path,
                                    'include\\onnxruntime\\core\\providers\\cpu\\cpu_provider_factory.h') +

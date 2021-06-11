@@ -10,7 +10,7 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * Gets whether the CoreML execution provider is available.
  */
-BOOL ORTIsCoreMLExecutionProviderAvailable();
+BOOL ORTIsCoreMLExecutionProviderAvailable(void);
 
 /**
  * Options for configuring the CoreML execution provider.

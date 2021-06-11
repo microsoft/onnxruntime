@@ -30,6 +30,11 @@
 
 #ifdef ENABLE_TRAINING
 #include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
+
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+#include "core/language_interop_ops/torch/custom_function_register.h"
+#endif
+
 #endif
 
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
@@ -601,9 +606,9 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
         }
       }
       RegisterExecutionProvider(
-        sess, *onnxruntime::CreateExecutionProviderFactory_VITISAI(target.c_str(), 0,
-                                                                   export_runtime_module.c_str(),
-                                                                   load_runtime_module.c_str()));
+          sess, *onnxruntime::CreateExecutionProviderFactory_VITISAI(target.c_str(), 0,
+                                                                     export_runtime_module.c_str(),
+                                                                     load_runtime_module.c_str()));
 #endif
     } else if (type == kAclExecutionProvider) {
 #ifdef USE_ACL
@@ -617,7 +622,18 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_DML(0));
+      int device_id = 0;
+      auto it = provider_options_map.find(type);
+      if (it != provider_options_map.end()) {
+        for (auto option : it->second) {
+          if (option.first == "device_id") {
+            if (!option.second.empty()) {
+              device_id = std::stoi(option.second);
+            }
+          }
+        }
+      }
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_DML(device_id));
 #endif
     } else if (type == kNnapiExecutionProvider) {
 #if defined(USE_NNAPI)
@@ -801,6 +817,31 @@ void addGlobalMethods(py::module& m, Environment& env) {
         void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
         contrib::aten_ops::ATenOperatorExecutor::Initialize(p_aten_op_executor);
       });
+  m.def("register_forward_runner", [](py::object obj) -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterForwardRunner(obj.ptr());
+#else
+        ORT_UNUSED_PARAMETER(obj);
+#endif
+  });
+  m.def("register_backward_runner", [](py::object obj) -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterBackwardRunner(obj.ptr());
+#else
+        ORT_UNUSED_PARAMETER(obj);
+#endif
+  });
+  m.def("register_torch_autograd_function", [](std::string key, py::object obj) -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterTorchAutogradFunction(key, obj.ptr());
+#else
+        ORT_UNUSED_PARAMETER(key);
+        ORT_UNUSED_PARAMETER(obj);
+#endif
+  });
 #endif
 
 #ifdef USE_NUPHAR

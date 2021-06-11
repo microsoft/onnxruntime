@@ -25,7 +25,7 @@ class ResizeOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 
   // Resize opset 10- is very different than Resize opset 11+, with many key attributes missing
@@ -120,9 +120,10 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related
 
-bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                         const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
+  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
 
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger))
