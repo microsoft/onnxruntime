@@ -28,11 +28,11 @@ class BaseOpBuilder : public IOpBuilder {
 
   // Operator support related
  public:
-  bool IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupported(const Node& node, const OpBuilderInputParams& input_params,
                      const logging::Logger& logger) const override;
 
  protected:
-  virtual bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& /* node */,
+  virtual bool IsOpSupportedImpl(const Node& /* node */, const OpBuilderInputParams& /* input_params */,
                                  const logging::Logger& /* logger */) const {
     return true;
   }
