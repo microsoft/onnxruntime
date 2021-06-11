@@ -1,0 +1,52 @@
+Pod::Spec.new do |s|
+  s.name             = 'onnxruntime-mobile-objc'
+  s.version          = '@VERSION@'
+  s.summary          = 'ONNX Runtime Objective-C Pod'
+
+  s.description      = <<-DESC
+    Preview pod for the ONNX Runtime Objective-C API.
+                       DESC
+
+  s.homepage         = 'https://github.com/microsoft/onnxruntime'
+  s.license          = { :type => 'MIT', :file => @LICENSE_FILE@ }
+  s.author           = { "ONNX Runtime" => "onnxruntime@microsoft.com" }
+  s.source           = { :http => "@SOURCE_HTTP@" }
+  s.ios.deployment_target = '11.0'
+  s.preserve_paths = [ @LICENSE_FILE@ ]
+  s.default_subspec = "Core"
+
+  s.subspec "Core" do |core|
+    core.dependency "onnxruntime-mobile-c", "#{s.version}"
+    core.requires_arc = true
+    core.compiler_flags = "-std=c++17", "-fobjc-arc-exceptions", "-Wall", "-Wextra", "-Werror"
+
+    include_dirs = [
+      @INCLUDE_DIR_LIST@
+    ].map { |relative_include_dir|
+      '"${PODS_TARGET_SRCROOT}/' + relative_include_dir + '"'
+    }
+
+    core.pod_target_xcconfig = {
+      "HEADER_SEARCH_PATHS" => include_dirs.join(" "),
+      "EXCLUDED_ARCHS[sdk=iphonesimulator*]": "arm64",
+    }
+
+    core.public_header_files = [
+      @PUBLIC_HEADER_FILE_LIST@
+    ]
+
+    core.source_files = [
+      @SOURCE_FILE_LIST@
+    ]
+
+    core.test_spec "Tests" do |test|
+      test.source_files = [
+        @TEST_SOURCE_FILE_LIST@
+      ]
+
+      test.resources = [
+        @TEST_RESOURCE_FILE_LIST@
+      ]
+    end
+  end
+end

@@ -64,7 +64,14 @@ Status LongformerAttentionBase__CheckInputs(const LongformerAttentionBase* p, co
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
 #include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
 #include "orttraining/training_ops/cpu/tensor/split.h"
+
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+#include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
+#include "core/language_interop_ops/torch/refcount_tracker.h"
 #endif
+
+#endif
+
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "orttraining/core/framework/distributed_run_context.h"
@@ -488,6 +495,7 @@ struct ProviderHostImpl : ProviderHost {
   // DataTypeImpl (wrapped)
   MLDataType DataTypeImpl__GetType_Tensor() override { return DataTypeImpl::GetType<Tensor>(); }
   MLDataType DataTypeImpl__GetType_TensorSeq () override { return DataTypeImpl::GetType<TensorSeq>(); }
+  MLDataType DataTypeImpl__GetTypeFromOnnxType (int onnx_type) override { return DataTypeImpl::TensorTypeFromONNXEnum(onnx_type)->GetElementType(); }
   MLDataType DataTypeImpl__GetType_bool() override { return DataTypeImpl::GetType<bool>(); }
   MLDataType DataTypeImpl__GetType_int8() override { return DataTypeImpl::GetType<int8_t>(); }
   MLDataType DataTypeImpl__GetType_uint8() override { return DataTypeImpl::GetType<uint8_t>(); }
@@ -501,6 +509,7 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetType_double() override { return DataTypeImpl::GetType<double>(); }
   MLDataType DataTypeImpl__GetType_BFloat16() override { return DataTypeImpl::GetType<BFloat16>(); }
   MLDataType DataTypeImpl__GetType_MLFloat16() override { return DataTypeImpl::GetType<MLFloat16>(); }
+  MLDataType DataTypeImpl__GetType_string() override { return DataTypeImpl::GetType<std::string>(); }
   MLDataType DataTypeImpl__GetTensorType_bool() override { return DataTypeImpl::GetTensorType<bool>(); }
   MLDataType DataTypeImpl__GetTensorType_int8() override { return DataTypeImpl::GetTensorType<int8_t>(); }
   MLDataType DataTypeImpl__GetTensorType_uint8() override { return DataTypeImpl::GetTensorType<uint8_t>(); }
@@ -514,7 +523,6 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType DataTypeImpl__GetTensorType_double() override { return DataTypeImpl::GetTensorType<double>(); }
   MLDataType DataTypeImpl__GetTensorType_BFloat16() override { return DataTypeImpl::GetTensorType<BFloat16>(); }
   MLDataType DataTypeImpl__GetTensorType_MLFloat16() override { return DataTypeImpl::GetTensorType<MLFloat16>(); }
-
   const char* DataTypeImpl__ToString(MLDataType type) override { return DataTypeImpl::ToString(type); }
   bool DataTypeImpl__IsTensorType(const DataTypeImpl* p) override { return p->IsTensorType(); }
   bool DataTypeImpl__IsTensorSequenceType(const DataTypeImpl* p) override { return p->IsTensorSequenceType(); }
@@ -524,6 +532,9 @@ struct ProviderHostImpl : ProviderHost {
   const std::vector<MLDataType>& DataTypeImpl__AllTensorTypes() override { return DataTypeImpl::AllTensorTypes(); }
   const std::vector<MLDataType>& DataTypeImpl__AllIEEEFloatTensorTypes() override { return DataTypeImpl::AllIEEEFloatTensorTypes(); }
   const std::vector<MLDataType>& DataTypeImpl__AllTensorAndSequenceTensorTypes() override { return DataTypeImpl::AllTensorAndSequenceTensorTypes(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorAndSequenceTensorTypes() override { return DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllSequenceTensorTypes() override { return DataTypeImpl::AllSequenceTensorTypes(); }
+  const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeSequenceTensorTypes() override { return DataTypeImpl::AllFixedSizeSequenceTensorTypes(); }
   size_t DataTypeImpl__Size(const DataTypeImpl* p) override { return p->Size(); }
   const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) override { return p->AsPrimitiveDataType(); }
 
@@ -898,6 +909,28 @@ struct ProviderHostImpl : ProviderHost {
 
 #if defined(ORT_USE_NCCL)
   training::DistributedRunContext& GetDistributedRunContextInstance() override { return training::DistributedRunContext::GetInstance(); }
+#endif
+
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+  void contrib__PythonOpBase__Init(contrib::PythonOpBase* p, const OpKernelInfo& info) override { p->PythonOpBase::Init(info); }
+  void contrib__PythonOpBase__Clear(contrib::PythonOpBase* p) override { p->PythonOpBase::Clear(); }
+  void contrib__PythonOpBase__SetOutputs(const contrib::PythonOpBase* p, OpKernelContext* context, void* diff_ctx, std::vector<OrtValue>& returned_args) override {
+    return p->PythonOpBase::SetOutputs(context, diff_ctx, returned_args);
+  }
+  void contrib__PythonOpBase__RunForward(const contrib::PythonOpBase* p, OpKernelContext* context, void** diff_ctx, std::vector<OrtValue>& returned_ortvalues) override {
+    return p->PythonOpBase::RunForward(context, diff_ctx, returned_ortvalues);
+  }
+
+  void contrib__PythonOpGradBase__Init(contrib::PythonOpGradBase* p, const OpKernelInfo& info) override { return p->PythonOpGradBase::Init(info); }
+  void contrib__PythonOpGradBase__RunBackward(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) {
+    return p->PythonOpGradBase::RunBackward(context, returned_ortvalues);
+  }
+  void contrib__PythonOpGradBase__SetOutputs(const contrib::PythonOpGradBase* p, OpKernelContext* context, std::vector<OrtValue>& returned_args) override { p->PythonOpGradBase::SetOutputs(context, returned_args); }
+
+  language_interop_ops::torch::RefCountTracker& GetRefCountTrackerInstance() override { return language_interop_ops::torch::RefCountTracker::GetInstance(); }
+  void RefCountTracker__DumpDetails(const language_interop_ops::torch::RefCountTracker* p, const std::string& phase_name) override {
+    return p->language_interop_ops::torch::RefCountTracker::DumpDetails(phase_name);
+  }
 #endif
 #endif
 #endif

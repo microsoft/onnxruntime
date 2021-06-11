@@ -5,7 +5,6 @@
 import argparse
 import contextlib
 import glob
-import json
 import os
 import re
 import shutil
@@ -348,6 +347,8 @@ def parse_arguments():
         help="Build WebAssembly with DWARF format debug info")
     parser.add_argument(
         "--wasm_malloc", default="dlmalloc", help="Specify memory allocator for WebAssembly")
+    parser.add_argument(
+        "--emsdk_version", default="2.0.23", help="Specify version of emsdk")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -454,6 +455,9 @@ def parse_arguments():
     parser.add_argument(
         "--enable_lto", action='store_true',
         help="Enable Link Time Optimization")
+    parser.add_argument(
+        "--enable_transformers_tool_test", action='store_true',
+        help="Enable transformers tool test")
     parser.add_argument(
         "--use_acl", nargs="?", const="ACL_1905",
         choices=["ACL_1902", "ACL_1905", "ACL_1908", "ACL_2002"],
@@ -724,6 +728,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_BUILD_MS_EXPERIMENTAL_OPS=" + ("ON" if args.ms_experimental else "OFF"),
         "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
         "-Donnxruntime_ENABLE_LTO=" + ("ON" if args.enable_lto else "OFF"),
+        "-Donnxruntime_ENABLE_TRANSFORMERS_TOOL_TEST=" + ("ON" if args.enable_transformers_tool_test else "OFF"),
         "-Donnxruntime_USE_ACL=" + ("ON" if args.use_acl else "OFF"),
         "-Donnxruntime_USE_ACL_1902=" + ("ON" if args.use_acl == "ACL_1902" else "OFF"),
         "-Donnxruntime_USE_ACL_1905=" + ("ON" if args.use_acl == "ACL_1905" else "OFF"),
@@ -1510,6 +1515,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 if not args.disable_contrib_ops:
                     run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'quantization'],
                                    cwd=cwd, dll_path=dll_path)
+                    if args.enable_transformers_tool_test:
+                        required = {
+                            'numpy==1.19.2', 'coloredlogs==15.0', 'tf2onnx==1.8.5', 'transformers==4.6.1',
+                            'torch==1.8.1', 'tensorflow==2.5.0', 'onnxconverter-common==1.8.1', 'psutil'}
+                        run_subprocess([sys.executable, '-m', 'pip', 'install', *required])
+                        run_subprocess([sys.executable, '-m', 'pytest', 'transformers'], cwd=cwd)
 
                 if not args.disable_ml_ops:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_backend_mlops.py'],
@@ -2032,38 +2043,36 @@ def main():
                     args.test = False
 
         if args.build_wasm:
-            # install emscripten if not exist.
-            # since emscripten doesn't support file packaging required for unit tests,
-            # need to apply patch with the specific version of emscripten.
-            # once patch is committed to emsdk repository, this must be replaced with 'latest'.
-            emsdk_version = "2.0.23"
-
+            emsdk_version = args.emsdk_version
             emsdk_dir = os.path.join(source_dir, "cmake", "external", "emsdk")
             emsdk_file = os.path.join(emsdk_dir, "emsdk.bat") if is_windows() else os.path.join(emsdk_dir, "emsdk")
-            emsdk_version_file = os.path.join(emsdk_dir, "upstream", "emscripten", "emscripten-version.txt")
-            emscripten_cmake_toolchain_file = os.path.join(emsdk_dir, "upstream", "emscripten", "cmake", "Modules",
-                                                           "Platform", "Emscripten.cmake")
 
-            if os.path.exists(emsdk_version_file):
-                with open(emsdk_version_file) as f:
-                    emsdk_version_data = json.load(f)
-                emsdk_version_match = isinstance(emsdk_version_data, str) and emsdk_version_data == emsdk_version
-            if not os.path.exists(emscripten_cmake_toolchain_file) or not emsdk_version_match:
-                print("Installing emsdk...")
-                run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
-            print("Activating emsdk...")
+            # apply patch to emsdk/emsdk.py
+            #
+            # Note: this patch fixes bug in emsdk to install a single emscripten tool.
+            #
+            #       should remove patch file and remove "ignore = dirty" in .gitmodules once the following PR get
+            #       merged and included in a new release:
+            #         https://github.com/emscripten-core/emsdk/pull/834
+            shutil.copy(
+                os.path.join(SCRIPT_DIR, "wasm", "emsdk.py.patch"),
+                os.path.join(emsdk_dir, "emsdk.py"))
+
+            log.info("Installing emsdk...")
+            run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
+            log.info("Activating emsdk...")
             run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
 
-            if args.test:
-                # if wasm test is enabled, apply emsdk file_packager.py patch to enable file I/O from node.js
-                #
-                # Note: this patch enables file_packager.py to generate JavaScript code to support preload files in
-                #       Node.js
-                #       should be removed once the following PR get merged:
-                #       https://github.com/emscripten-core/emscripten/pull/11785
-                shutil.copy(
-                    os.path.join(SCRIPT_DIR, "wasm", "file_packager.py.patch"),
-                    os.path.join(emsdk_dir, "upstream", "emscripten", "tools", "file_packager.py"))
+            # apply patch to file_packager.py
+            #
+            # Note: this patch enables file_packager.py to generate JavaScript code to support preload files in Node.js
+            #
+            #       should remove patch file once the following PR get merged and included in a new release:
+            #         https://github.com/emscripten-core/emscripten/pull/11785   (merged, not release yet)
+            #         https://github.com/emscripten-core/emscripten/pull/14372   (merged, not release yet)
+            shutil.copy(
+                os.path.join(SCRIPT_DIR, "wasm", "file_packager.py.patch"),
+                os.path.join(emsdk_dir, "upstream", "emscripten", "tools", "file_packager.py"))
 
         if (args.android or args.ios or args.enable_windows_store or args.build_wasm
                 or is_cross_compiling_on_apple(args)) and args.path_to_protoc_exe is None:

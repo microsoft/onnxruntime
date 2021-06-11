@@ -3,10 +3,19 @@
 
 #pragma once
 
+#include "core/graph/graph_viewer.h"
+
 namespace onnxruntime {
 namespace coreml {
 
 class ModelBuilder;
+
+struct OpBuilderInputParams {
+  OpBuilderInputParams(const GraphViewer& graph_viewer)
+      : graph_viewer(graph_viewer) {}
+
+  const GraphViewer& graph_viewer;
+};
 
 class IOpBuilder {
  public:
@@ -25,7 +34,7 @@ class IOpBuilder {
   // Operator support related
  public:
   // Check if an operator is supported
-  virtual bool IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
+  virtual bool IsOpSupported(const Node& node, const OpBuilderInputParams& input_params,
                              const logging::Logger& logger) const = 0;
 };
 
