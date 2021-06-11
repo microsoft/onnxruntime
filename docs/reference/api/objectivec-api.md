@@ -35,6 +35,4 @@ Refer to the installation instructions [here](../../how-to/mobile/initial-setup.
 
 ## Samples
 
-**TODO fix link once https://github.com/microsoft/onnxruntime-inference-examples/pull/7 is merged**
-
-[Basic Usage](https://github.com/microsoft/onnxruntime-inference-examples/tree/edgchen1/objc_basic_example/mobile/examples/basic_usage/ios)
+[Basic Usage](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile/examples/basic_usage/ios)
