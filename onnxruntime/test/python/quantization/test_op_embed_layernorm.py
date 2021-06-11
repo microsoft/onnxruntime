@@ -21,7 +21,6 @@ class TestOpEmbedLayerNormalization(unittest.TestCase):
             inputs = {}
             for name, shape in name2shape.items():
                 inputs.update({name: np.ones(shape).astype(np.int32)})
-                # inputs.update({name: np.random.randint(1, 2, shape).astype(np.int32)})
             input_data_list.extend([inputs])
 
         dr = TestDataFeeds(input_data_list)
