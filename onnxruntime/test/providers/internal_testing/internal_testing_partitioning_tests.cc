@@ -310,7 +310,7 @@ TEST(InternalTestingEP, DISABLED_TestNnapiPartitioningMlPerfModels) {
       "mobiledet.onnx",
   };
 
-  for (const auto model_uri : model_paths) {
+  for (const auto& model_uri : model_paths) {
     auto run_tests = [&](bool optimize) {
       std::cout << "\n================================\n";
       std::cout << "Model: " << model_uri;
