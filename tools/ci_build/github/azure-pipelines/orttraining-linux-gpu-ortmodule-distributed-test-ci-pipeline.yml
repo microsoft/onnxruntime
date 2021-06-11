@@ -20,7 +20,7 @@ jobs:
           --config RelWithDebInfo \
           --enable_training \
           --update --build \
-          --build_wheel \
+          --build_wheel onnxruntime_ENABLE_TRAINING_TORCH_INTEROP=ON \
           " \
         -m \
         -u \

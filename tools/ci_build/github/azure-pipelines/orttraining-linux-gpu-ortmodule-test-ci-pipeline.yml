@@ -20,7 +20,7 @@ jobs:
           --config RelWithDebInfo \
           --enable_training \
           --update --build \
-          --build_wheel --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=70 \
+          --build_wheel --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=70 onnxruntime_ENABLE_TRAINING_TORCH_INTEROP=ON \
           " \
         -u \
         -e

@@ -13,7 +13,7 @@ jobs:
       --config $(buildConfig)
       --build_wheel
       --enable_nvtx_profile
-      --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=70
+      --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=70 onnxruntime_ENABLE_TRAINING_TORCH_INTEROP=ON
       "
     DoNugetPack: 'false'
     ArtifactName: 'drop-linux'
