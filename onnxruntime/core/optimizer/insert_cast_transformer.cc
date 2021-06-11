@@ -47,7 +47,7 @@ onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
 }
 
 // check if the node has an fp16 input but was not able to be assigned an execution provider.
-// we will need to add a casts to/from fp32 around the node for it to be executed
+// we will need to add casts to/from fp32 around the node for it to be executed using the CPU EP.
 static bool NodeNeedsInputCastToFp32(const onnxruntime::Node& node) {
   bool not_assigned = node.GetExecutionProviderType().empty();
 
