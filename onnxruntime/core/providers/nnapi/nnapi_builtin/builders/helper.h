@@ -10,7 +10,7 @@
 // This is the minimal Android API Level required by ORT NNAPI EP to run
 // ORT running on any host system with Android API level less than this will fall back to CPU EP
 #ifndef ORT_NNAPI_MIN_API_LEVEL
-#define ORT_NNAPI_MIN_API_LEVEL 27
+#define ORT_NNAPI_MIN_API_LEVEL ANEURALNETWORKS_FEATURE_LEVEL_1
 #endif
 
 // This is the maximum Android API level supported in the ort model conversion for NNAPI EP
@@ -131,6 +131,10 @@ std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_view
 
 // Get string representation of a Shape
 std::string Shape2String(const std::vector<uint32_t>& shape);
+
+// Check the given input is an initializer tensor
+bool CheckIsInitializerTensor(const InitializedTensorSet& initializers, const Node& node,
+                              size_t index, const char* input_name) ORT_MUST_USE_RESULT;
 
 }  // namespace nnapi
 }  // namespace onnxruntime
