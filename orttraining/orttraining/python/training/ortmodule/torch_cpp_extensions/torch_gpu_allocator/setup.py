@@ -1,10 +1,20 @@
 from setuptools import setup, Extension
+import sys
 from torch.utils import cpp_extension
 
-is_rocm_pytorch=None
 
-gpu_identifier = "hip" if is_rocm_pytorch else "cuda"
-gpu_allocator_header = "HIPCachingAllocator" if is_rocm_pytorch else "CUDACachingAllocator"
+def parse_arg_remove_boolean(argv, arg_name):
+    arg_value = False
+    if arg_name in sys.argv:
+        arg_value = True
+        argv.remove(arg_name)
+
+    return arg_value
+
+use_rocm = True if parse_arg_remove_boolean(sys.argv, '--use_rocm') else False
+gpu_identifier = "hip" if use_rocm else "cuda"
+gpu_allocator_header = "HIPCachingAllocator" if use_rocm else "CUDACachingAllocator"
+
 torch_gpu_allocator_addresses_cpp_source = f'''
 #include <torch/extension.h>
 #include <c10/{gpu_identifier}/{gpu_allocator_header}.h>
