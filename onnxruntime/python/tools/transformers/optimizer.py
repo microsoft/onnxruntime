@@ -43,6 +43,7 @@ MODEL_CLASSES = {
     "gpt2_tf": (Gpt2OnnxModel, 'tf2onnx', False) # might add a class for GPT2OnnxModel for TF later. 
 }
 
+
 def optimize_by_onnxruntime(onnx_model_path: str,
                             use_gpu: bool = False,
                             optimized_model_path: str = None,

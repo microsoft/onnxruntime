@@ -33,6 +33,8 @@ class AttentionBase {
     num_heads_ = static_cast<int>(num_heads);
 
     is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
+
+    info.GetAttrOrDefault<int64_t>("qkv_hidden_sizes", qkv_hidden_sizes_, static_cast<int64_t>(-1));
   }
 
   Status CheckInputs(const TensorShape& input_shape,
@@ -43,6 +45,7 @@ class AttentionBase {
 
   int num_heads_;           // number of attention heads
   bool is_unidirectional_;  // whether every token can only attend to previous tokens.
+  int64_t qkv_hidden_sizes_[3];
 };
 
 }  // namespace contrib
