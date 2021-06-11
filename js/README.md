@@ -7,7 +7,7 @@ This directory contains multiple NPM projects:
 - [onnxruntime-web](#onnxruntime-web)
 - [onnxruntime-react-native](#onnxruntime-react-native)
 
-### Development
+## Development
 
 This folder contains a `.vscode` folder for Visual Studio Code workspace configs. Using VSCode to open this folder
 will allow code-formatting and linting features on typescript and C/C++ source code inside this folder. Following files
@@ -19,20 +19,45 @@ are used for code-formatting and linting features for developers:
 - .eslintrc.js
 - .clang-format
 
-#### Using VSCode:
+Please follow the steps described below to setup development environment.
 
-1. in `<ORT_ROOT>/js`, run:
-   > npm ci
-2. use VSCode to open folder `<ORT_ROOT>/js`
-3. install VSCode extension if not installed yet:
-   - Clang-Format
-   - ESLint
+### Prerequisites
 
-To populate typescript type declarations, in each projects, run `npm ci`.
+- Node.js (14.0+): https://nodejs.org/ - (Optional) Use nvm ([Windows](https://github.com/coreybutler/nvm-windows) / [Mac/Linux](https://github.com/creationix/nvm)) to install Node.js
 
-#### Run code formatter and linter manually
+- Python (2.7 or 3.6+): https://www.python.org/downloads/
 
-in `<ORT_ROOT>/js`, use `npm run lint` to run ESLint , and use `npm run format` to run clang-format.
+  - python should be added to the PATH environment variable
+
+- Visual Studio Code: https://code.visualstudio.com/
+
+  - **required** extension: [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint)
+  - **required** extension: [Clang-Format](https://marketplace.visualstudio.com/items?itemName=xaver.clang-format)
+  - **required** extension: [Debugger for Chrome](https://marketplace.visualstudio.com/items?itemName=msjsdiag.debugger-for-chrome)
+
+- Chrome or Edge Browser
+
+### Setup TypeScript development environment
+
+In `<ORT_ROOT>/js`, run:
+
+```
+npm ci
+```
+
+This will install Clang-format and ESLint for code-formatting and linting features. This is a one-time setup unless a `git clean` is performed or folder `<ORT_ROOT>/js/node_modules` is removed manually.
+
+### Using VSCode:
+
+Use VSCode to open folder `<ORT_ROOT>/js`.
+
+Make sure to open the correct folder to allow VSCode to load workspace configuration. Otherwise typescript and code formatter may not work as expected.
+
+To populate typescript type declarations, in each project folder, run `npm ci`.
+
+### Run code formatter and linter manually
+
+In `<ORT_ROOT>/js`, use `npm run lint` to run ESLint , and use `npm run format` to run clang-format.
 
 ## onnxruntime-common
 
@@ -112,10 +137,6 @@ It should be able to consumed by from projects that uses NPM packages (through a
 
 This project is a library for running ONNX models on browsers. It is the successor of [ONNX.js](https://github.com/Microsoft/onnxjs).
 
-### Requirements
-
-Node.js v12+ (recommended v14+)
-
 ### Build
 
 1. Install NPM packages
@@ -124,41 +145,144 @@ Node.js v12+ (recommended v14+)
    2. in `<ORT_ROOT>/js/common/`, run `npm ci`.
    3. in `<ORT_ROOT>/js/web/`, run `npm ci`.
 
-2. ~~Follow [instructions](https://www.onnxruntime.ai/docs/how-to/build.html#apis-and-language-bindings) for building ONNX Runtime WebAssembly. (TODO: document is not ready. we are working on it.)~~
+2. Prepare ONNX Runtime WebAssembly artifacts.
 
-   in `<ORT_ROOT>/`, run either of the following commands to build WebAssembly:
+   You can either use the prebuilt artifacts or build it by yourself.
 
-   ```sh
-   # In windows, use 'build' to replace './build.sh'
+   - Setup by script.
 
-   # The following command build debug.
-   ./build.sh --build_wasm
+     In `<ORT_ROOT>/js/web/`, run `npm run pull:wasm` to pull WebAssembly artifacts for latest master branch from CI pipeline.
 
-   # The following command build release.
-   ./build.sh --config Release --build_wasm --skip_tests --disable_wasm_exception_catching --disable_rtti
-   ```
+   - Download artifacts from pipeline manually.
 
-   To build with multi-thread support, append flag ` --enable_wasm_threads` to the command. Make sure to build both single-thread and multi-thread before next step.
+     you can download prebuilt WebAssembly artifacts from [Windows WebAssembly CI Pipeline](https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=161&_a=summary). Select a build, download artifacts "Release_ort-wasm" and "Release_ort-wasm-threaded" and unzip. See instructions below to put files into destination folders.
 
-3. Copy following files from build output folder to `<ORT_ROOT>/js/web/dist/`:
+   - Build WebAssembly artifacts.
 
-   - ort-wasm.wasm
-   - ort-wasm-threaded.wasm (build with flag '--enable_wasm_threads')
+     1. Build ONNX Runtime WebAssembly
 
-4. Copy following files from build output folder to `<ORT_ROOT>/js/web/lib/wasm/binding/`:
+        ~~Follow [instructions](https://www.onnxruntime.ai/docs/how-to/build.html#apis-and-language-bindings) for building ONNX Runtime WebAssembly. (TODO: document is not ready. we are working on it. Please see steps described as below.)~~
 
-   - ort-wasm.js
-   - ort-wasm-threaded.js (build with flag '--enable_wasm_threads')
-   - ort-wasm-threaded.worker.js (build with flag '--enable_wasm_threads')
+        in `<ORT_ROOT>/`, run one of the following commands to build WebAssembly:
 
-5. Use following command in folder `<ORT_ROOT>/js/web` to build:
+        ```sh
+        # In windows, use 'build' to replace './build.sh'
+
+        # The following command build debug.
+        ./build.sh --build_wasm
+
+        # The following command build debug with debug info.
+        ./build.sh --build_wasm --skip_tests --enable_wasm_debug_info
+
+        # The following command build release.
+        ./build.sh --config Release --build_wasm --skip_tests --disable_wasm_exception_catching --disable_rtti
+        ```
+
+        To build with multi-thread support, append flag `--enable_wasm_threads` to the command. To build with SIMD support, append flag `--enable_wasm_simd` to the command. Make sure to build both single-thread and multi-thread with and without SIMD before next step.
+
+     2. Copy following files from build output folder to `<ORT_ROOT>/js/web/dist/`:
+
+        - ort-wasm.wasm
+        - ort-wasm-threaded.wasm (build with flag '--enable_wasm_threads')
+        - ort-wasm-simd.wasm (build with flag '--enable_wasm_simd')
+        - ort-wasm-simd-threaded.wasm (build with flags '--enable_wasm_threads --enable_wasm_simd')
+
+     3. Copy following files from build output folder to `<ORT_ROOT>/js/web/lib/wasm/binding/`:
+
+        - ort-wasm.js
+        - ort-wasm-threaded.js (build with flag '--enable_wasm_threads')
+        - ort-wasm-threaded.worker.js (build with flag '--enable_wasm_threads')
+
+3. Use following command in folder `<ORT_ROOT>/js/web` to build:
    ```
    npm run build
    ```
 
+### Test
+
+We use command `npm test` (test runner) and `npm run test:e2e` (E2E test) for tests in ONNXRuntime Web.
+
+#### test runner
+
+In folder `<ORT_ROOT>/js/web`,
+
+- Run `npm test -- --help` for a full CLI instruction.
+- Run `npm test -- <your-args> --debug` to run one or more test cases.
+
+There are multiple levels of tests for ONNXRuntime Web:
+
+- unit test: tests for individual components written in TypeScript. Launch unit test by:
+  ```
+  npm test -- unittest
+  ```
+- model test: run a single model. The model folder should contains one .onnx model file and one or more folders for test cases, each folder contains several input*\*.pb and output*\*.pb as test data. Launch model test by:
+  ```
+  npm test -- model <model_folder>
+  ```
+- op test: test a single operator. An op test is described in a `.jsonc` file which specify the operator type, its attributes and one or more test case(s), each includes a list of expected input tensor(s) and output tensor(s). The `.jsonc` file is located at `<ORT_ROOT>/js/web/test/data/ops`. Launch op test by:
+
+  ```
+  npm test -- op <file_name>
+  ```
+
+- suite test: suite test includes unit test, a list of model tests and op tests. Launch suite test by:
+  ```
+  npm test
+  ```
+
+#### E2E test
+
+E2E test is for testing end-to-end package consuming. In this test, NPM packages for `onnxruntime-common` and `onnxruntime-web` are generated and a clean folder is used for installing packages. Then a simple mocha test is performed to make sure package can be consumed correctly.
+
+To launch E2E test:
+
+```
+npm run test:e2e
+```
+
+### Debugging
+
+#### Debugging TypeScript on Desktop/Chrome
+
+To debug the code from test-runner on Chrome:
+
+- Launch `npm test -- <your_args> --debug`. It opens an instance of Chrome browser.
+- In the open Chrome browser, click the `DEBUG` button on the top-right of the page.
+- In VSCode, click [side bar]->Run and Debug->select [Attach to Chrome]->click [Start Debugging] to attach.
+- put breakpoints in source code, and Refresh the page to reload.
+
+#### Debugging TypeScript on iOS/Safari
+
+To debug on an Apple iOS device, please refer to the following steps:
+
+- install [
+  RemoteDebug iOS WebKit Adapter](https://github.com/RemoteDebug/remotedebug-ios-webkit-adapter) by following its instructions.
+- launch the adapter in commandline: `remotedebug_ios_webkit_adapter --port=9000`.
+- in VSCode, select debug configuration `Remote Browser via Webkit Adaptor`.
+- follow the steps above to debug.
+
+#### Debugging TypeScript on Android/Chrome
+
+To debug on an Android device, please refer to the following steps:
+
+- Install [Android SDK Platform Tools](https://developer.android.com/studio/releases/platform-tools) and make sure `adb` is ready to use.
+- Follow instructions in [Remote Debugging on Android](https://developer.chrome.com/devtools/docs/remote-debugging-legacy) to launch `adb`. Make sure to use port 9000 so that the existing debug configuration works.
+- in VSCode, select debug configuration `Remote Browser via Webkit Adaptor`.
+- follow the steps above to debug.
+
+#### Debugging C/C++ for ONNX Runtime WebAssembly
+
+To debug C/C++ code for ONNX Runtime WebAssembly, you need to build ONNX Runtime with debug info (see [Build](#Build-2)).
+
+Currently debugging C/C++ code in WebAssembly is not supported in VSCode yet. Please follow [this instruction](https://developer.chrome.com/blog/wasm-debugging-2020/) to debug in browser devtool using extension [C/C++ DevTools Support (DWARF)](https://chrome.google.com/webstore/detail/cc%20%20-devtools-support-dwa/pdcpmagijalfljmkmjngeonclgbbannb).
+
+### Generating Document
+
+Use command `npm run build:doc` to generate the latest documents.
+
 ### Distribution
 
-It should be able to consumed by both from projects that uses NPM packages (through a Node.js folder structure of `node_modules` folder that generated by `npm install onnxruntime-web`) and from a CDN service that serves a `.min.js` file and one or multiple `.wasm` file(s).
+It should be able to consumed by both from projects that uses NPM packages (through a Node.js folder structure of `node_modules` folder that generated by `npm install onnxruntime-web`) and from a CDN service that serves a `ort.min.js` file and one or multiple `.wasm` file(s).
 
 ## onnxruntime-react-native
 
@@ -192,6 +316,7 @@ This project provides an ONNX Runtime React Native JavaScript library to run ONN
    1. Set up an Android build environment referring to [instruction](https://www.onnxruntime.ai/docs/how-to/build.html#android)
 
    2. In `<ORT_ROOT>`, run this python script to build ONNX Runtime Android archive file. In windows, this requires admin account to build. If an app uses a fixed set of models, refer to [instruction](https://www.onnxruntime.ai/docs/how-to/build.html#android) and build a mobile version package
+
    ```python
    python tools/ci_build/github/android/build_aar_package.py js/react_native/scripts/aar_build_settings.json --config MinSizeRel --android_sdk_path <ANDROID_SDK_PATH> --android_ndk_path <ANDROID_NDK_PATH> --build_dir <BUILD_DIRECTORY>
    ```
@@ -199,6 +324,7 @@ This project provides an ONNX Runtime React Native JavaScript library to run ONN
    3. This generates `onnxruntime-mobile-<version>.aar` in `<BUILD_DIRECTORY>/aar_out/MinSizeRel/com/microsoft/onnxruntime/onnxruntime-mobile/<version>`. Copy `aar` file into `<ORT_ROOT>/js/react_native/android/libs` and rename it as `onnxruntime.aar`
 
    4. To verify, open Android Emulator and run this command from `<ORT_ROOT>/js/react_native/android`
+
    ```sh
    adb shell am instrument -w ai.onnxruntime.react_native.test/androidx.test.runner.AndroidJUnitRunner
    ```
@@ -206,40 +332,45 @@ This project provides an ONNX Runtime React Native JavaScript library to run ONN
 3. Build iOS ONNX Runtime package
 
    1. Set up iOS build environment referring to [instruction](https://www.onnxruntime.ai/docs/how-to/build.html#ios).
-   
+
    2. Build ONNX Runtime library for iOS from `<ORT_ROOT>` using this command,
+
    ```sh
    ./build.sh --config MinSizeRel --use_xcode --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target 11
    ```
+
    Copy `<ORT_ROOT>/build/iOS/MinSizeRel/MinSizeRel-iphoneos/libonnxruntime.<version>.dylib` file into `<ORT_ROOT>/js/react_native/ios/Libraries/onnxruntime/lib/iphoneos`
 
    3. Clean up the previous build and build ONNX Runtime library for iOS Simulator from `<ORT_ROOT>`
+
    ```sh
    ./build.sh --config MinSizeRel --use_xcode --ios --ios_sysroot iphonesimulator --osx_arch x86_64 --apple_deploy_target 11
    ```
+
    Copy `<ORT_ROOT>/build/iOS/MinSizeRel/MinSizeRel-iphonesimulator/libonnxruntime.<version>.dylib` file into `<ORT_ROOT>/js/react_native/ios/Libraries/onnxruntime/lib/iphonesimulator`
-   
+
    4. Edit `onnxruntime-react-native.iphoneos.podspec` and `onnxruntime-react-native.iphonesimulator.podsepc` in `<ORT_ROOT>/js/react_native` to change a version of ONNX Runtime library.
 
    5. Copy ONNX Runtime header files
+
    ```sh
    cp <ORT_ROOT>/include/onnxruntime/core/session/*.h <ORT_ROOT>/js/react_native/ios/Libraries/onnxruntime/include
    ```
 
    6. To verify, open iOS Simulator and run this command from `<ORT_ROOT>/js/react_native/ios`. Change a destination to specify a running iOS Simulator.
-       ```sh
-       pod install
-       export ONNXRUNTIME_VERSION=<version>; xcodebuild test -workspace OnnxruntimeModule.xcworkspace -scheme OnnxruntimeModuleTest -destination 'platform=iOS Simulator,name=iPhone 11,OS=14.5'
-       ```
+      ```sh
+      pod install
+      export ONNXRUNTIME_VERSION=<version>; xcodebuild test -workspace OnnxruntimeModule.xcworkspace -scheme OnnxruntimeModuleTest -destination 'platform=iOS Simulator,name=iPhone 11,OS=14.5'
+      ```
 
 4. Update a version in `package.json` to align with ONNX Runtime version.
 
 5. Test an example for Android and iOS. In Windows, open Android Emulator first. From `<ORT_ROOT>/js/react_native`
-    ```sh
-    yarn bootstrap
-    yarn example ios
-    yarn example android
-    ```
+   ```sh
+   yarn bootstrap
+   yarn example ios
+   yarn example android
+   ```
 
 ### NPM Packaging
 
@@ -251,7 +382,7 @@ This project provides an ONNX Runtime React Native JavaScript library to run ONN
 
 4. Run `npm publish <tgz> --dry-run` to see how it's going to be published
 
-5. Run `npm publish <tgz>` to publish to npmjs
+5. Run `npm publish <tgz>` to publish to npmjs. If it's for a dev, add flag `--tag dev`.
 
 ### Distribution
 

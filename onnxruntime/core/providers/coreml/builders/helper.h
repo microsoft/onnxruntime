@@ -10,6 +10,7 @@ namespace onnxruntime {
 
 class GraphViewer;
 class NodeArg;
+class Node;
 
 namespace logging {
 class Logger;
@@ -20,6 +21,8 @@ namespace coreml {
 bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const logging::Logger& logger);
 
 bool IsInputSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger);
+
+bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const logging::Logger& logger);
 
 // Get a list of groups of supported nodes, each group represents a subgraph supported by CoreML EP
 std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer,

@@ -1,7 +1,11 @@
 #!/bin/bash
 set -e -x
 
-#Download a file from internet
+# Development tools and libraries
+yum -y install \
+    graphviz
+
+# Download a file from internet
 function GetFile {
   local uri=$1
   local path=$2
@@ -35,7 +39,11 @@ function GetFile {
   return $?
 }
 
-PYTHON_EXES=("/opt/python/cp36-cp36m/bin/python3.6" "/opt/python/cp37-cp37m/bin/python3.7" "/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9")
+if [ ! -d "/opt/conda/bin" ]; then
+    PYTHON_EXES=("/opt/python/cp36-cp36m/bin/python3.6" "/opt/python/cp37-cp37m/bin/python3.7" "/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9")
+else
+    PYTHON_EXES=("/opt/conda/bin/python")
+fi
 
 os_major_version=$(cat /etc/redhat-release | tr -dc '0-9.'|cut -d \. -f1)
 
