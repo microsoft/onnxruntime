@@ -74,7 +74,6 @@ set(onnxruntime_pybind11_state_link_targets
     onnxruntime_util
     ${onnxruntime_tvm_libs}
     onnxruntime_framework
-    onnxruntime_optimizer
 )
 
 if (onnxruntime_ENABLE_TRAINING)
@@ -89,6 +88,7 @@ if (onnxruntime_ENABLE_TRAINING)
 endif()
 
 list(APPEND onnxruntime_pybind11_state_link_targets
+    onnxruntime_optimizer
     onnxruntime_util
     onnxruntime_graph
     onnxruntime_common
