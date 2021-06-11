@@ -43,5 +43,5 @@ with open('torch_gpu_allocator.cpp', 'w') as f:
     f.write(f"{torch_gpu_allocator_addresses_cpp_source}\n")
 
 setup(name='torch_gpu_allocator',
-      ext_modules=[cpp_extension.CppExtension('torch_gpu_allocator', ['torch_gpu_allocator.cpp'])],
+      ext_modules=[cpp_extension.CUDAExtension('torch_gpu_allocator', ['torch_gpu_allocator.cpp'])],
       cmdclass={'build_ext': cpp_extension.BuildExtension})
