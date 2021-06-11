@@ -139,7 +139,11 @@ namespace Dml
         }
     };
 
-    bool NodeArgSupportedInGraph(const onnxruntime::NodeArg* arg, uint32_t supportedDeviceDataTypeMask)
+    bool NodeArgSupportedInGraph(
+        const onnxruntime::NodeArg* arg,
+        bool supports64BitTensorsViaEmulation,
+        uint32_t supportedDeviceDataTypeMask
+        )
     {            
         if (arg->Exists())
         {
@@ -154,8 +158,11 @@ namespace Dml
 
                     MLOperatorTensorDataType mlDataType = ToMLTensorDataType(static_cast<onnx::TensorProto_DataType>(tensorType.elem_type()));
 
-                    if (mlDataType == MLOperatorTensorDataType::UInt64 ||
-                        mlDataType == MLOperatorTensorDataType::Int64)
+                    // Do not include operators in the graph if tensor types are unsupported,
+                    // except cases that are always supported via emulation.
+                    if ((mlDataType == MLOperatorTensorDataType::UInt64 ||
+                         mlDataType == MLOperatorTensorDataType::Int64) &&
+                        !supports64BitTensorsViaEmulation)
                     {
                         constexpr uint32_t deviceDataTypeMask64bit = (1 << DML_TENSOR_DATA_TYPE_UINT64) | (1 << DML_TENSOR_DATA_TYPE_INT64);
                         if ((supportedDeviceDataTypeMask & deviceDataTypeMask64bit) != deviceDataTypeMask64bit)
@@ -181,6 +188,7 @@ namespace Dml
             if (!isConstantCpuInput &&
                 !NodeArgSupportedInGraph(
                     node.InputDefs()[i],
+                    registration.support64BitTensorsViaEmulation,
                     supportedDeviceDataTypeMask
                 ))
             {
@@ -192,6 +200,7 @@ namespace Dml
         {
             if (!NodeArgSupportedInGraph(
                     arg,
+                    registration.support64BitTensorsViaEmulation,
                     supportedDeviceDataTypeMask
                 ))
             {
@@ -234,6 +243,7 @@ namespace Dml
         THROW_HR_IF(E_INVALIDARG, allow64BitInputThroughStrides && !nodeNameToPartitionMap);
 
         bool prefer64BitTensorsDirectly = false;
+        bool support64BitTensorsViaEmulation = false;
         bool supportedWith64BitTensorsVia32BitStrides = false;
         bool supportedWith64BitTensorsVia32BitStridesFromAnyEp = false;
         std::vector<onnxruntime::NodeArg const*> constantCpuInputs;
@@ -244,9 +254,10 @@ namespace Dml
             // to 32-bit tensors via strides. If the caller passes allow64BitInputThroughStrides = false
             // in this particular call, then the operator-specific flags do not matter as the caller has
             // disabled 64-bit support.
+            prefer64BitTensorsDirectly = regInfo->prefer64BitTensorsDirectly;
+            support64BitTensorsViaEmulation = regInfo->support64BitTensorsViaEmulation;
             if (allow64BitInputThroughStrides)
             {
-                prefer64BitTensorsDirectly = regInfo->prefer64BitTensorsDirectly;
                 supportedWith64BitTensorsVia32BitStridesFromAnyEp = regInfo->supportedWith64BitTensorsVia32BitStridesFromAnyEp;
                 supportedWith64BitTensorsVia32BitStrides = regInfo->supportedWith64BitTensorsVia32BitStrides | supportedWith64BitTensorsVia32BitStridesFromAnyEp;
             }
@@ -320,31 +331,44 @@ namespace Dml
             // operator, graph input or initializer, it's not safe to assume the input
             // can be represented with 32 bits.
             //
+            bool isDataTypeSupported = (1 << dmlElementType) & supportedDeviceDataTypeMask;
             bool is64BitIntType = (dmlElementType == DML_TENSOR_DATA_TYPE_UINT64 || dmlElementType == DML_TENSOR_DATA_TYPE_INT64);
-            bool needsFallbackTo32Bit = !prefer64BitTensorsDirectly || !((1 << dmlElementType) & supportedDeviceDataTypeMask);
-            if (is64BitIntType && supportedWith64BitTensorsVia32BitStrides && needsFallbackTo32Bit)
+            if (is64BitIntType)
             {
-                dmlElementType = Remap64bitDmlDataTypeTo32bit(dmlElementType);
-
-                if (isInput && !supportedWith64BitTensorsVia32BitStridesFromAnyEp)
+                if (support64BitTensorsViaEmulation)
                 {
-                    // Look up the input partition.  If it's a graph input or initializer it will be missing
-                    // from the partition map.
-                    const std::string& argName = nodeArg.Name(); 
+                    // Consider it supported regardless of hardware support.
+                    isDataTypeSupported = true;
+                }
+                else if (prefer64BitTensorsDirectly && isDataTypeSupported)
+                {
+                    // Operator supports native int64/uint64 tensors.
+                }
+                else if (supportedWith64BitTensorsVia32BitStrides || supportedWith64BitTensorsVia32BitStridesFromAnyEp)
+                {
+                    dmlElementType = Remap64bitDmlDataTypeTo32bit(dmlElementType);
+                    isDataTypeSupported = (1 << dmlElementType) & supportedDeviceDataTypeMask;
 
-                    // If input tensor's data comes from the output of a different execution provider,
-                    // consider it unsafe to apply fallback to.
-                    auto partitionIter = nodeNameToPartitionMap->find(argName);
-                    if (partitionIter == nodeNameToPartitionMap->end() || !partitionIter->second->IsDmlPartition())
+                    if (isInput && !supportedWith64BitTensorsVia32BitStridesFromAnyEp)
                     {
-                        nodeContainsSupportedDataTypes = false;
-                        return;
+                        // Look up the input partition.  If it's a graph input or initializer it will be missing
+                        // from the partition map.
+                        const std::string& argName = nodeArg.Name();
+
+                        // If input tensor's data comes from the output of a different execution provider,
+                        // consider it unsafe to apply fallback to.
+                        auto partitionIter = nodeNameToPartitionMap->find(argName);
+                        if (partitionIter == nodeNameToPartitionMap->end() || !partitionIter->second->IsDmlPartition())
+                        {
+                            nodeContainsSupportedDataTypes = false;
+                            return;
+                        }
                     }
                 }
             }
 
             // Reject node if the data type is unsupported by the device.
-            if (!((1 << dmlElementType) & supportedDeviceDataTypeMask))
+            if (!isDataTypeSupported)
             {
                 nodeContainsSupportedDataTypes = false;
                 return;
