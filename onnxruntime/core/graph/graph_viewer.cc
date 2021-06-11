@@ -18,13 +18,11 @@ bool NodeCompare::operator()(const Node* n1, const Node* n2) const {
 #if !defined(ORT_MINIMAL_BUILD)
 struct PriorityNodeCompare {
   inline bool IsHighPri(const Node* n) const {
-    const auto& op_type = n->OpType();
-    const auto op_type_len = op_type.size();
-
     // local statics so we can compare std::strings in the checks
     static const std::string shape_op("Shape");
     static const std::string size_op("Size");
 
+    const auto& op_type = n->OpType();
     return op_type == shape_op || op_type == size_op;
   }
 
