@@ -17,9 +17,12 @@ static bool IsMLFloat16Tensor(const NodeArg& node_arg) {
 bool InsertCastTransformer::NeedInsertCast(const onnxruntime::Node* node, const onnxruntime::NodeArg* input) const {
   // If the node's input is float16 and currently the node is not assigned to any EP
   // we need to insert a cast to float, and put the node on CPU for default behavior.
+  // We don't cast a node with a subgraph as we'd need to do a lot more checking of the subgraph inputs
+  // (both explicit and implicit) and contents to determine if it was safe to do so.
   // TODO: a better check is to check does the CPU kernel with float exist or not.
-  return IsMLFloat16Tensor(*input) &&
-         node->GetExecutionProviderType().empty();
+  return node->GetExecutionProviderType().empty() &&
+         !node->ContainsSubgraph() &&
+         IsMLFloat16Tensor(*input);
 }
 
 onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
@@ -36,7 +39,8 @@ onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
   std::vector<onnxruntime::NodeArg*> input_defs = {new_on_input ? new_arg : old_arg};
   std::vector<onnxruntime::NodeArg*> output_defs = {new_on_input ? old_arg : new_arg};
 
-  auto& cast_node = graph.AddNode(node_name, "Cast", "cast node to cast from float16 to float32 on cpu", input_defs, output_defs);
+  auto& cast_node = graph.AddNode(node_name, "Cast", "cast node to cast from float16 to float32 on cpu",
+                                  input_defs, output_defs);
   cast_node.AddAttribute("to", to_type);
   cast_node.SetExecutionProviderType(providerType);
   return new_arg;
@@ -80,14 +84,14 @@ static bool NodeNeedsInputCastToFp32(const onnxruntime::Node& node) {
 // going to a node that will need a Cast.
 //
 // Return true if all the fp16 inputs and outputs are connected to nodes that will be cast to fp32.
-static bool IsIsolatedFp16Node(const onnxruntime::Node& node, onnxruntime::Graph& graph) {
+static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::Graph& graph) {
   bool isolated_fp16_node = false;
 
+  // we can check if it's an isolated fp16 node
   // if node has input coming from other nodes (only consuming graph inputs or initializers if it doesn't),
   //    does not have a subgraph (would have to alter subgraph inputs if we cast the input to this node),
   //    does not produce a graph output (node must produce fp16 output for the graph output),
-  //    and is assigned to the CPU EP (we have fp32 implementations of all kernels so forcing to fp32 is safe),
-  // we can check if it's an isolated fp16 node
+  //    and is assigned to the CPU EP (we have fp32 implementations of all kernels so forcing to fp32 is safe)
   if (node.GetInputEdgesCount() > 0 &&
       !node.ContainsSubgraph() &&
       graph.GetNodeOutputsInGraphOutputs(node).empty() &&
@@ -154,13 +158,9 @@ static bool IsIsolatedFp16Node(const onnxruntime::Node& node, onnxruntime::Graph
 }
 
 Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph) {
-  // if graph only contain 1 compute node, don't force to float32
-  if (graph.NumberOfNodes() <= 1) {
-    return Status::OK();
-  }
-
   for (auto& node : graph.Nodes()) {
-    if (IsIsolatedFp16Node(node, graph)) {
+    if (IsIsolatedFp16NodeOnCpu(node, graph)) {
+      // unassign the node so that NeedInsertCast will return true for it, forcing it to fp32
       node.SetExecutionProviderType("");
     }
   }
