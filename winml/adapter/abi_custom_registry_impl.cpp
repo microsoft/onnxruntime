@@ -58,6 +58,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorKernel(
     bool supportedWith64BitTensorsVia32BitStrides,
     bool supportedWith64BitTensorsVia32BitStridesFromAnyEp,
     bool prefer64BitTensorsDirectly,
+    bool support64BitTensorsViaEmulation,
     _In_reads_(constantCpuInputCount) const uint32_t* requiredConstantCpuInputs,
     uint32_t constantCpuInputCount) const noexcept try {
 #ifdef LAYERING_DONE
@@ -83,6 +84,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistryImpl::RegisterOperatorKernel(
       supportedWith64BitTensorsVia32BitStrides,
       supportedWith64BitTensorsVia32BitStridesFromAnyEp,
       prefer64BitTensorsDirectly,
+      support64BitTensorsViaEmulation,
       requiredConstantCpuInputs,
       constantCpuInputCount);
 }

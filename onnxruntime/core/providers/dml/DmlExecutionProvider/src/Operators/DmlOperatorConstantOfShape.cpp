@@ -22,6 +22,13 @@ public:
         std::vector<std::optional<uint32_t>> outputIndices = { 0 };
         Initialize(kernelCreationContext, inputIndices, outputIndices);
 
+        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+
+        DML_FILL_VALUE_CONSTANT_OPERATOR_DESC operatorDesc = {};
+        operatorDesc.OutputTensor = outputDescs.data();
+        operatorDesc.ValueDataType = this->m_outputTensorDescs.front().GetDmlDataType();
+        // operatorDesc.Value already zeroed.
+
         // Read the tensor attribute for the output fill pattern.
         if (kernelCreationContext.HasAttribute(AttrName::Value, MLOperatorAttributeTypeTensor))
         {
@@ -40,15 +47,13 @@ public:
             ML_CHECK_VALID_ARGUMENT(elementCount == 1); // Expect exactly one element.
             const size_t rawDataByteSize = GetByteSizeFromMlDataType(wrappedValueTensor.GetTensorDataType());
             const std::byte* rawData = static_cast<const std::byte*>(valueTensor->GetData());
-            valueBytes.assign(rawData, rawData + rawDataByteSize);
+
+            memcpy(operatorDesc.Value.Bytes, rawData, std::min(rawDataByteSize, sizeof(operatorDesc.Value.Bytes)));
         }
         // Else valueBytes is empty, and the default fill pattern is 0.
-    }
 
-    void Compute(const MLOperatorKernelContext& kernelContext) override
-    {
-        std::vector<IMLOperatorTensor*> outputTensors = GetOutputTensorsForExecute(kernelContext);
-        THROW_IF_FAILED(m_executionProvider->FillTensorWithPattern(outputTensors.front(), valueBytes));
+        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_FILL_VALUE_CONSTANT, &operatorDesc };
+        SetDmlOperatorDesc(opDesc, kernelCreationContext);
     }
 
 private:

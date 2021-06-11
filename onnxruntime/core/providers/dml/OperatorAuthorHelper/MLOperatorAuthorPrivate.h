@@ -115,6 +115,7 @@ IMLOperatorRegistryPrivate : public IUnknown
         bool supportedWith64BitTensorsVia32BitStrides = false,
         bool supportedWith64BitTensorsVia32BitStridesFromAnyEp = false,
         bool prefer64BitTensorsDirectly = false,
+        bool support64BitTensorsViaEmulation = false,
         _In_reads_(constantCpuInputCount) const uint32_t* constantCpuInputs = nullptr,
         uint32_t constantCpuInputCount = 0
         ) const noexcept PURE;
