@@ -5,10 +5,8 @@ import assert from 'assert';
 import * as fs from 'fs-extra';
 import {jsonc} from 'jsonc';
 import * as onnx_proto from 'onnx-proto';
-import {Tensor} from 'onnxruntime-common';
+import {InferenceSession, Tensor} from 'onnxruntime-common';
 import * as path from 'path';
-
-import {binding} from '../lib/binding';
 
 export const TEST_ROOT = __dirname;
 export const TEST_DATA_ROOT = path.join(TEST_ROOT, 'testdata');
@@ -72,13 +70,16 @@ export function createTestTensor(type: Tensor.Type, lengthOrDims?: number|number
 
 // call the addon directly to make sure DLL is loaded
 export function warmup(): void {
-  // we have test cases to verify correctness in other place, so do no check here.
-  try {
-    const session = new binding.InferenceSession();
-    session.loadModel(path.join(TEST_DATA_ROOT, 'test_types_INT32.pb'), {});
-    session.run({input: new Tensor(new Float32Array(5), [1, 5])}, {output: null}, {});
-  } catch (e) {
-  }
+  describe('Warmup', async function() {
+    // eslint-disable-next-line no-invalid-this
+    this.timeout(0);
+    // we have test cases to verify correctness in other place, so do no check here.
+    try {
+      const session = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_INT32.pb'));
+      await session.run({input: new Tensor(new Float32Array(5), [1, 5])}, {output: null}, {});
+    } catch (e) {
+    }
+  });
 }
 
 export function assertFloatEqual(

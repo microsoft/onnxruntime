@@ -139,7 +139,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [SequenceErase](https://github.com/onnx/onnx/blob/master/docs/Operators.md#SequenceErase) |  |
 | [SequenceInsert](https://github.com/onnx/onnx/blob/master/docs/Operators.md#SequenceInsert) |  |
 | [SequenceLength](https://github.com/onnx/onnx/blob/master/docs/Operators.md#SequenceLength) |  |
-| [Shape](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Shape) |  |
+| [Shape](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Shape) | [1-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Shape-1), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Shape-13) |
 | [Shrink](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Shrink) |  |
 | [Sigmoid](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Sigmoid) | [6-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Sigmoid-6), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Sigmoid-13) |
 | [Sign](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Sign) |  |

@@ -40,7 +40,7 @@ jobs:
       --volume /bert_data/bert_models:/build/bert_models:ro
       --volume /bert_data:/build/bert_data:ro
       -e NIGHTLY_BUILD onnxruntime_perf_test_image
-      /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/run_bert_perf_test.py
+      /usr/bin/python3 /onnxruntime_src/orttraining/tools/ci_test/run_bert_perf_test.py
       --binary_dir /build/RelWithDebInfo
       --training_data_root /build/bert_data
       --model_root /build/bert_models
@@ -55,7 +55,7 @@ jobs:
       --volume /gpt2_data/gpt2_models:/build/gpt2_models:ro
       --volume /gpt2_data:/build/gpt2_data:ro
       -e NIGHTLY_BUILD onnxruntime_perf_test_image
-      /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/run_gpt2_perf_test.py
+      /usr/bin/python3 /onnxruntime_src/orttraining/tools/ci_test/run_gpt2_perf_test.py
       --binary_dir /build/RelWithDebInfo
       --training_data_root /build/gpt2_data
       --model_root /build/gpt2_models
