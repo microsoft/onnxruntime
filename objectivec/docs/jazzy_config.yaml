@@ -6,7 +6,6 @@ github_url: https://github.com/microsoft/onnxruntime
 objc: true
 umbrella_header: ../include/onnxruntime.h
 framework_root: ..
-include: ../include/*.h
 
 readme: ./docs.readme.md
 
