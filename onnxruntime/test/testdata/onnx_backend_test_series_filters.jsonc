@@ -61,8 +61,10 @@
         "^test_mul_uint8_cpu",
         "^test_add_uint8_cpu",
         "^test_div_uint8_cpu",
-        "^test_batchnorm_*",
         //GPU failures
+        "^test_batchnorm_epsilon_training_mode_cuda",
+        "^test_batchnorm_example_training_mode_cuda",
+        "^test_convtranspose_autopad_same_cpu",
         "^test_sub_uint8_cuda",
         "^test_simple_rnn_batchwise_cuda",
         "^test_mul_uint8_cuda",
