@@ -102,12 +102,27 @@ is_manylinux = environ.get('AUDITWHEEL_PLAT', None) in manylinux_tags
 
 def build_torch_cpp_extensions():
     # Run this from build dir (e.g. (...)/build/Linux/RelWithDebInfo/)
-    ret_code = subprocess.call(
-        f"python torch_cpp_extensions/torch_gpu_allocator/setup.py build {'--use_rocm' if rocm_version else ''}", shell=True
-    )
-    if ret_code != 0:
-        print('There was an error compiling a PyTorch CPP extension called "torch_gpu_allocator"')
-        sys.exit(ret_code)
+    is_gpu_available = False
+    try:
+        import torch
+        is_gpu_available = torch.cuda.is_available()
+    except ImportError:
+        ...
+
+    ############################################################################
+    # Pytorch CPP Extensions that DO require CUDA/ROCM
+    ############################################################################
+    if is_gpu_available:
+        ret_code = subprocess.call(
+            f"python torch_cpp_extensions/torch_gpu_allocator/setup.py build {'--use_rocm' if rocm_version else ''}", shell=True
+        )
+        if ret_code != 0:
+            print('There was an error compiling a PyTorch CPP extension called "torch_gpu_allocator"')
+            sys.exit(ret_code)
+
+    ############################################################################
+    # Pytorch CPP Extensions that DO NOT require CUDA/ROCM
+    ############################################################################
     subprocess.call(
         "python torch_cpp_extensions/aten_op_executor/setup.py build", shell=True
     )
@@ -115,7 +130,9 @@ def build_torch_cpp_extensions():
         print('There was an error compiling a PyTorch CPP extension called "aten_op_executor"')
         sys.exit(ret_code)
 
-    # Copy Torch CPP extensions to the local onnxruntime package folder
+    ############################################################################
+    # Copy Pytorch CPP Extenions to the local onnxruntime package folder
+    ############################################################################
     torch_cpp_exts = glob('./build/lib.*/*.so')
     torch_cpp_exts.extend(glob('./build/lib.*/*.dll'))
     torch_cpp_exts.extend(glob('./build/lib.*/*.dylib'))
@@ -324,29 +341,14 @@ if enable_training:
 
 # Build Torch CPP extensions for ORTModule
 if enable_training:
-    # Detecting presence of a valid PyTorch device
-    is_gpu_available = False
-    try:
-        import torch
-        is_gpu_available = torch.cuda.is_available()
-    except ImportError:
-        ...
-
-    if is_gpu_available:
-        print('*'*1024)
-        # Add Torch CPP extensions to the official onnxruntime package
-        build_torch_cpp_extensions()
-        torch_cpp_exts = glob('onnxruntime/training/ortmodule/torch_cpp_extensions/*.so')
-        torch_cpp_exts.extend(glob('onnxruntime/training/ortmodule/torch_cpp_extensions/*.dll'))
-        torch_cpp_exts.extend(glob('onnxruntime/training/ortmodule/torch_cpp_extensions/*.dylib'))
-        for ext in torch_cpp_exts:
-            dest_ext = path.join('training/ortmodule/torch_cpp_extensions', path.basename(ext))
-            data.append(dest_ext)
-    else:
-        print('@'*1024)
-    print('-'*1024)
-    print(enable_training)
-    print(is_gpu_available)
+    # Add Torch CPP extensions to the official onnxruntime package
+    build_torch_cpp_extensions()
+    torch_cpp_exts = glob('onnxruntime/training/ortmodule/torch_cpp_extensions/*.so')
+    torch_cpp_exts.extend(glob('onnxruntime/training/ortmodule/torch_cpp_extensions/*.dll'))
+    torch_cpp_exts.extend(glob('onnxruntime/training/ortmodule/torch_cpp_extensions/*.dylib'))
+    for ext in torch_cpp_exts:
+        dest_ext = path.join('training/ortmodule/torch_cpp_extensions', path.basename(ext))
+        data.append(dest_ext)
 
 package_data = {}
 data_files = []
