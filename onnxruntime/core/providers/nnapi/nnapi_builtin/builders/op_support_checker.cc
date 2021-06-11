@@ -1658,7 +1658,23 @@ class SliceOpSupportChecker : public BaseOpSupportChecker {
 
 bool SliceOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                                               const OpSupportCheckParams& /* params */) const {
-  if (!CheckIsInitializerTensor(initializers, node, 1, "name")) {
+  Shape input_shape;
+  if (!GetShape(*node.InputDefs()[0], input_shape))
+    return false;
+
+  if (input_shape.size() > 4) {
+    LOGS_DEFAULT(VERBOSE) << "Slice only supports 1-4d shape, input is "
+                          << input_shape.size() << "d shape";
+    return false;
+  }
+
+  // TODO, replace with std::find when we switch to c++17
+  if (std::any_of(input_shape.cbegin(), input_shape.cend(), [](int32_t i) { return i == 0; })) {
+    LOGS_DEFAULT(VERBOSE) << "Slice doesn't dynamic input shape";
+    return false;
+  }
+
+  if (!CheckIsInitializerTensor(initializers, node, 1, "starts")) {
     return false;
   }
   if (!CheckIsInitializerTensor(initializers, node, 2, "end")) {

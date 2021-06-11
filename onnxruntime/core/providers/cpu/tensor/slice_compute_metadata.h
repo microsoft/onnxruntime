@@ -13,7 +13,7 @@ struct PrepareForComputeMetadata {
       : input_dimensions_(input_dimensions) {
     size_t dimension_count = input_dimensions.size();
     starts_.resize(dimension_count, 0);
-    ends_.resize(dimension_count, 0);
+    ends_ = input_dimensions;
     steps_.resize(dimension_count, 1);
     output_dims_ = input_dimensions;
   }

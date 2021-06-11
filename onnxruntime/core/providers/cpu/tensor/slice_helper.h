@@ -113,16 +113,16 @@ inline Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
     if (end == std::numeric_limits<int32_t>::max() ||
         end == std::numeric_limits<int64_t>::max()) {
       end = step < 0 ? -1 : compute_metadata.input_dimensions_[axis];
-    }
-
-    else {
+    } else {
       if (end < 0)
         end += compute_metadata.input_dimensions_[axis];
       if (step < 0)
-        compute_metadata.ends_[axis] = clamp(end, int64_t{-1}, compute_metadata.input_dimensions_[axis]);
+        end = clamp(end, int64_t{-1}, compute_metadata.input_dimensions_[axis]);
       else
-        compute_metadata.ends_[axis] = clamp(end, int64_t{0}, compute_metadata.input_dimensions_[axis]);
+        end = clamp(end, int64_t{0}, compute_metadata.input_dimensions_[axis]);
     }
+
+    compute_metadata.ends_[axis] = end;
 
     // find output dim value for this axis
     auto temp = static_cast<int64_t>(ceil(1.0 * (compute_metadata.ends_[axis] - compute_metadata.starts_[axis]) / step));

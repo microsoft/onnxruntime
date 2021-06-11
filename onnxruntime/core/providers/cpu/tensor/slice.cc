@@ -122,9 +122,11 @@ static void FlattenOutputDims(const std::vector<int64_t>& input_dimensions,
     // the value of starts and steps for all the dims being combined are 0 and 1 respectively,
     // so we can just shrink via resize so the number of entries matches flattened_output_dims
     starts.resize(num_dims);
+    steps.resize(num_dims);
+
+    // update ends as well
     ends.resize(num_dims);
     ends.back() = dim_value;
-    steps.resize(num_dims);
   } else {
     flattened_output_dims = nullptr;
   }
@@ -135,7 +137,10 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                     const std::vector<int64_t>& raw_ends,
                                     const std::vector<int64_t>& raw_axes,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
-  return SliceOp::PrepareForCompute(raw_starts, raw_ends, raw_axes, compute_metadata);
+  ORT_RETURN_IF_ERROR(SliceOp::PrepareForCompute(raw_starts, raw_ends, raw_axes, compute_metadata));
+  FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
+                    compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_output_dims_);
+  return Status::OK();
 }
 
 // DynamicSlice & Slice V10
