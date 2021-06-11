@@ -70,11 +70,11 @@ set(onnxruntime_pybind11_state_link_targets
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_ROCM}
-    onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
     ${onnxruntime_tvm_libs}
     onnxruntime_framework
+    onnxruntime_optimizer
 )
 
 if (onnxruntime_ENABLE_TRAINING)
