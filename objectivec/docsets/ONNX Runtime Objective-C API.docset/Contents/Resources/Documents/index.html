@@ -16,7 +16,7 @@
     <a title="ONNX Runtime Objective-C API  Reference"></a>
     <header>
       <div class="content-wrapper">
-        <p><a href="index.html">ONNX Runtime Objective-C API 1.8.0-preview Docs</a></p>
+        <p><a href="index.html">ONNX Runtime Objective-C API 1.8.0-preview-test Docs</a></p>
         <p class="header-right"><a href="https://github.com/microsoft/onnxruntime"><img src="img/gh.png"/>View on GitHub</a></p>
         <p class="header-right">
           <form role="search" action="search.json">
@@ -97,84 +97,14 @@
             
             <h1 id='onnx-runtime-objective-c-api' class='heading'>ONNX Runtime Objective-C API</h1>
 
-<p>ONNX Runtime provides an Objective-C API.
-It can be used from Swift with a bridging header.</p>
+<p>ONNX Runtime provides an Objective-C API.</p>
 
-<p>The public headers are located <a href="https://github.com/microsoft/onnxruntime/tree/master/objectivec/include">here</a>.
-One can import them individually, or import the entire API with <a href="https://github.com/microsoft/onnxruntime/blob/master/objectivec/include/onnxruntime.h">onnxruntime.h</a>.</p>
-<h2 id='example-usage-in-objective-c' class='heading'>Example Usage in Objective-C++</h2>
-<pre class="highlight objective_c"><code><span class="cp">#import &lt;Foundation/Foundation.h&gt;
-</span>
-<span class="cp">#import &lt;onnxruntime.h&gt;
-</span>
-<span class="c1">// Adds two numbers using ONNX Runtime.</span>
-<span class="kt">float</span> <span class="nf">add</span><span class="p">(</span><span class="kt">float</span> <span class="n">a</span><span class="p">,</span> <span class="kt">float</span> <span class="n">b</span><span class="p">)</span> <span class="p">{</span>
-  <span class="c1">// We will run a simple model which adds two floats.</span>
-  <span class="c1">// The inputs are named `A` and `B` and the output is named `C` (A + B = C).</span>
-  <span class="c1">// All inputs and outputs are float tensors with shape [1].</span>
-  <span class="n">NSString</span><span class="o">*</span> <span class="k">const</span> <span class="n">kAddModelPath</span> <span class="o">=</span> <span class="s">@"/path/to/add.ort"</span><span class="p">;</span>
-
-  <span class="c1">// ORT APIs take an optional NSError** parameter that will be set if an error occurs.</span>
-  <span class="c1">// Here, we will omit error handling (i.e., checking results and the NSError object) for brevity.</span>
-  <span class="n">NSError</span><span class="o">*</span> <span class="n">err</span> <span class="o">=</span> <span class="nb">nil</span><span class="p">;</span>
-
-  <span class="c1">// First, we create the ORT environment.</span>
-  <span class="c1">// The environment is required in order to create an ORT session.</span>
-  <span class="c1">// ORTLoggingLevelWarning should show us only important messages.</span>
-  <span class="n">ORTEnv</span><span class="o">*</span> <span class="n">ortEnv</span> <span class="o">=</span> <span class="p">[[</span><span class="n">ORTEnv</span> <span class="nf">alloc</span><span class="p">]</span> <span class="nf">initWithLoggingLevel</span><span class="p">:</span><span class="n">ORTLoggingLevelWarning</span>
-                                                  <span class="nl">error:</span><span class="o">&amp;</span><span class="n">err</span><span class="p">];</span>
-
-  <span class="c1">// Next, we will create some ORT values for our input tensors. We have two floats, `a` and `b`.</span>
-  <span class="k">auto</span> <span class="n">createOrtValue</span> <span class="o">=</span> <span class="p">[</span><span class="o">&amp;</span><span class="p">](</span><span class="kt">float</span><span class="o">*</span> <span class="n">fp</span><span class="p">)</span> <span class="p">{</span>
-    <span class="c1">// `data` will hold the memory of the input ORT value. We set it to refer to the memory of the given float (*fp).</span>
-    <span class="n">NSMutableData</span><span class="o">*</span> <span class="n">data</span> <span class="o">=</span> <span class="p">[[</span><span class="n">NSMutableData</span> <span class="nf">alloc</span><span class="p">]</span> <span class="nf">initWithBytes</span><span class="p">:</span><span class="n">fp</span> <span class="nf">length</span><span class="p">:</span><span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">)];</span>
-    <span class="c1">// This will create a value with a tensor with the given float's data, of type float, and with shape [1].</span>
-    <span class="n">ORTValue</span><span class="o">*</span> <span class="n">ortValue</span> <span class="o">=</span> <span class="p">[[</span><span class="n">ORTValue</span> <span class="nf">alloc</span><span class="p">]</span> <span class="nf">initWithTensorData</span><span class="p">:</span><span class="n">data</span>
-                                                  <span class="nl">elementType:</span><span class="n">ORTTensorElementDataTypeFloat</span>
-                                                        <span class="nl">shape:</span><span class="p">@[</span> <span class="mi">@1</span> <span class="p">]</span>
-                                                        <span class="nl">error:</span><span class="o">&amp;</span><span class="n">err</span><span class="p">];</span>
-    <span class="k">return</span> <span class="n">ortValue</span><span class="p">;</span>
-  <span class="p">};</span>
-
-  <span class="n">ORTValue</span><span class="o">*</span> <span class="n">aInputValue</span> <span class="o">=</span> <span class="n">createOrtValue</span><span class="p">(</span><span class="o">&amp;</span><span class="n">a</span><span class="p">);</span>
-  <span class="n">ORTValue</span><span class="o">*</span> <span class="n">bInputValue</span> <span class="o">=</span> <span class="n">createOrtValue</span><span class="p">(</span><span class="o">&amp;</span><span class="n">b</span><span class="p">);</span>
-
-  <span class="c1">// Now, we will create an ORT session to run our model.</span>
-  <span class="c1">// One can configure session options with a session options object (ORTSessionOptions).</span>
-  <span class="c1">// We use the default options with sessionOptions:nil.</span>
-  <span class="n">ORTSession</span><span class="o">*</span> <span class="n">session</span> <span class="o">=</span> <span class="p">[[</span><span class="n">ORTSession</span> <span class="nf">alloc</span><span class="p">]</span> <span class="nf">initWithEnv</span><span class="p">:</span><span class="n">ortEnv</span>
-                                              <span class="nl">modelPath:</span><span class="n">kAddModelPath</span>
-                                         <span class="nl">sessionOptions:</span><span class="nb">nil</span>
-                                                  <span class="nl">error:</span><span class="o">&amp;</span><span class="n">err</span><span class="p">];</span>
-
-  <span class="c1">// With a session and input values, we have what we need to run the model.</span>
-  <span class="c1">// We provide a dictionary mapping from input name to value and a set of output names.</span>
-  <span class="c1">// This run method will run the model, allocating the output(s), and return them in a dictionary mapping from output name to value.</span>
-  <span class="c1">// As with session creation, it is possible to configure run options with a run options object (ORTRunOptions).</span>
-  <span class="c1">// We use the default options with runOptions:nil.</span>
-  <span class="n">NSDictionary</span><span class="o">&lt;</span><span class="n">NSString</span><span class="o">*</span><span class="p">,</span> <span class="n">ORTValue</span><span class="o">*&gt;*</span> <span class="n">outputs</span> <span class="o">=</span>
-      <span class="p">[</span><span class="n">session</span> <span class="nf">runWithInputs</span><span class="p">:@{</span><span class="s">@"A"</span> <span class="o">:</span> <span class="n">aInputValue</span><span class="p">,</span> <span class="s">@"B"</span> <span class="o">:</span> <span class="n">bInputValue</span><span class="p">}</span>
-                 <span class="nl">outputNames:</span><span class="p">[</span><span class="n">NSSet</span> <span class="nf">setWithArray</span><span class="p">:@[</span> <span class="s">@"C"</span> <span class="p">]]</span>
-                  <span class="nl">runOptions:</span><span class="nb">nil</span>
-                       <span class="nl">error:</span><span class="o">&amp;</span><span class="n">err</span><span class="p">];</span>
-
-  <span class="c1">// After running the model, we can get the output.</span>
-  <span class="n">ORTValue</span><span class="o">*</span> <span class="n">cOutput</span> <span class="o">=</span> <span class="n">outputs</span><span class="p">[</span><span class="s">@"C"</span><span class="p">];</span>
-
-  <span class="c1">// We know the output value is a float tensor with shape [1]. We will just access it directly.</span>
-  <span class="c1">// It is also possible to query the type information of a value.</span>
-  <span class="n">NSData</span><span class="o">*</span> <span class="n">cData</span> <span class="o">=</span> <span class="p">[</span><span class="n">cOutput</span> <span class="nf">tensorDataWithError</span><span class="p">:</span><span class="o">&amp;</span><span class="n">err</span><span class="p">];</span>
-  <span class="kt">float</span> <span class="n">c</span><span class="p">;</span>
-  <span class="n">memcpy</span><span class="p">(</span><span class="o">&amp;</span><span class="n">c</span><span class="p">,</span> <span class="n">cData</span><span class="p">.</span><span class="n">bytes</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">));</span>
-
-  <span class="k">return</span> <span class="n">c</span><span class="p">;</span>
-<span class="p">}</span>
-</code></pre>
+<p>It can be used from Objective-C/C++ or Swift with a bridging header.</p>
 
           </section>
         </section>
         <section id="footer">
-          <p>&copy; 2021 <a class="link" href="https://www.onnxruntime.ai" target="_blank" rel="external">ONNX Runtime Authors</a>. All rights reserved. (Last updated: 2021-06-08)</p>
+          <p>&copy; 2021 <a class="link" href="https://www.onnxruntime.ai" target="_blank" rel="external">ONNX Runtime Authors</a>. All rights reserved. (Last updated: 2021-06-11)</p>
           <p>Generated by <a class="link" href="https://github.com/realm/jazzy" target="_blank" rel="external">jazzy ♪♫ v0.13.7</a>, a <a class="link" href="https://realm.io" target="_blank" rel="external">Realm</a> project.</p>
         </section>
       </article>
