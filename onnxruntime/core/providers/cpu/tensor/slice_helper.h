@@ -18,10 +18,10 @@ const T& clamp(const T& v, const T& lo, const T& hi) {
 
 namespace SliceOp {
 // compute output_dims without steps (Slice V1-9 & DynamicSlice)
-Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
-                         const std::vector<int64_t>& raw_ends,
-                         const std::vector<int64_t>& raw_axes,
-                         SliceOp::PrepareForComputeMetadata& compute_metadata) {
+inline Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
+                                const std::vector<int64_t>& raw_ends,
+                                const std::vector<int64_t>& raw_axes,
+                                SliceOp::PrepareForComputeMetadata& compute_metadata) {
   // Initialize axes to the provided axes attribute or to the default sequence
   std::vector<int64_t> axes(raw_axes);
   if (axes.empty()) {
@@ -51,9 +51,10 @@ Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
     auto end = raw_ends[axis_index];
     if (end < 0)
       end += compute_metadata.input_dimensions_[axis];
+    compute_metadata.ends_[axis] = clamp(end, int64_t{0}, compute_metadata.input_dimensions_[axis]);
 
     // find output dim value for this axis
-    auto temp = clamp(end, int64_t{0}, compute_metadata.input_dimensions_[axis]) - compute_metadata.starts_[axis];
+    auto temp = compute_metadata.ends_[axis] - compute_metadata.starts_[axis];
     if (temp < 0)
       compute_metadata.output_dims_[axis] = 0;
     else
@@ -64,11 +65,11 @@ Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
 }
 
 // compute output_dims with steps (Slice V10)
-Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
-                         const std::vector<int64_t>& raw_ends,
-                         const std::vector<int64_t>& raw_axes,
-                         const std::vector<int64_t>& raw_steps,
-                         SliceOp::PrepareForComputeMetadata& compute_metadata) {
+inline Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
+                                const std::vector<int64_t>& raw_ends,
+                                const std::vector<int64_t>& raw_axes,
+                                const std::vector<int64_t>& raw_steps,
+                                SliceOp::PrepareForComputeMetadata& compute_metadata) {
   // Initialize axes to the provided axes attribute or to the default sequence
   std::vector<int64_t> axes(raw_axes);
 
@@ -118,74 +119,17 @@ Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
       if (end < 0)
         end += compute_metadata.input_dimensions_[axis];
       if (step < 0)
-        end = clamp(end, int64_t{-1}, compute_metadata.input_dimensions_[axis]);
+        compute_metadata.ends_[axis] = clamp(end, int64_t{-1}, compute_metadata.input_dimensions_[axis]);
       else
-        end = clamp(end, int64_t{0}, compute_metadata.input_dimensions_[axis]);
+        compute_metadata.ends_[axis] = clamp(end, int64_t{0}, compute_metadata.input_dimensions_[axis]);
     }
 
     // find output dim value for this axis
-    auto temp = static_cast<int64_t>(ceil(1.0 * (end - compute_metadata.starts_[axis]) / step));
+    auto temp = static_cast<int64_t>(ceil(1.0 * (compute_metadata.ends_[axis] - compute_metadata.starts_[axis]) / step));
     if (temp < 0)
       compute_metadata.output_dims_[axis] = 0;
     else
       compute_metadata.output_dims_[axis] = temp;
-  }
-
-  return Status::OK();
-}
-
-// Slice V10 & DynamicSlice
-Status FillVectorsFromInput(const Tensor& start_tensor,
-                            const Tensor& ends_tensor,
-                            const Tensor* axes_tensor,
-                            const Tensor* steps_tensor,
-                            std::vector<int64_t>& input_starts,
-                            std::vector<int64_t>& input_ends,
-                            std::vector<int64_t>& input_axes,
-                            std::vector<int64_t>& input_steps,
-                            bool int32_enabled,
-                            bool int64_enabled) {
-  ORT_RETURN_IF_NOT(start_tensor.Shape().NumDimensions() == 1, "Starts must be a 1-D array");
-  ORT_RETURN_IF_NOT(ends_tensor.Shape().NumDimensions() == 1, "Ends must be a 1-D array");
-  ORT_RETURN_IF_NOT(start_tensor.Shape() == ends_tensor.Shape(), "Starts and ends shape mismatch");
-  ORT_RETURN_IF_NOT(nullptr == axes_tensor || start_tensor.Shape() == axes_tensor->Shape(),
-                    "Starts and axes shape mismatch");
-  ORT_RETURN_IF_NOT(nullptr == steps_tensor || start_tensor.Shape() == steps_tensor->Shape(),
-                    "Starts and steps shape mismatch");
-
-  const auto& size = start_tensor.Shape().Size();
-  input_starts.resize(size);
-  input_ends.resize(size);
-  if (nullptr != axes_tensor)
-    input_axes.resize(size);
-  // Slice V10
-  if (nullptr != steps_tensor)
-    input_steps.resize(size);
-
-  if (int32_enabled && start_tensor.IsDataType<int32_t>()) {
-    std::copy(start_tensor.Data<int32_t>(), start_tensor.Data<int32_t>() + size, input_starts.begin());
-    std::copy(ends_tensor.Data<int32_t>(), ends_tensor.Data<int32_t>() + size, input_ends.begin());
-    if (nullptr != axes_tensor)
-      std::copy(axes_tensor->Data<int32_t>(), axes_tensor->Data<int32_t>() + size, input_axes.begin());
-    // Slice V10
-    if (nullptr != steps_tensor)
-      std::copy(steps_tensor->Data<int32_t>(), steps_tensor->Data<int32_t>() + size, input_steps.begin());
-  }
-
-  else if (int64_enabled && start_tensor.IsDataType<int64_t>()) {
-    std::copy(start_tensor.Data<int64_t>(), start_tensor.Data<int64_t>() + size, input_starts.begin());
-    std::copy(ends_tensor.Data<int64_t>(), ends_tensor.Data<int64_t>() + size, input_ends.begin());
-    if (nullptr != axes_tensor)
-      std::copy(axes_tensor->Data<int64_t>(), axes_tensor->Data<int64_t>() + size, input_axes.begin());
-    // Slice V10
-    if (nullptr != steps_tensor)
-      std::copy(steps_tensor->Data<int64_t>(), steps_tensor->Data<int64_t>() + size, input_steps.begin());
-  }
-
-  else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Data type for starts and ends inputs' is not supported in this build. Got ",
-                           start_tensor.DataType());
   }
 
   return Status::OK();

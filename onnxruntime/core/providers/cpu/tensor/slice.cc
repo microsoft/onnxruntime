@@ -95,6 +95,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 static void FlattenOutputDims(const std::vector<int64_t>& input_dimensions,
                               const std::vector<int64_t>& output_dims,
                               std::vector<int64_t>& starts,
+                              std::vector<int64_t>& ends,
                               std::vector<int64_t>& steps,
                               std::vector<int64_t>*& flattened_output_dims) {
   int num_to_combine = 0;
@@ -121,6 +122,8 @@ static void FlattenOutputDims(const std::vector<int64_t>& input_dimensions,
     // the value of starts and steps for all the dims being combined are 0 and 1 respectively,
     // so we can just shrink via resize so the number of entries matches flattened_output_dims
     starts.resize(num_dims);
+    ends.resize(num_dims);
+    ends.back() = dim_value;
     steps.resize(num_dims);
   } else {
     flattened_output_dims = nullptr;
@@ -143,7 +146,7 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
   ORT_RETURN_IF_ERROR(SliceOp::PrepareForCompute(raw_starts, raw_ends, raw_axes, raw_steps, compute_metadata));
   FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
-                    compute_metadata.steps_, compute_metadata.p_flattened_output_dims_);
+                    compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_output_dims_);
 
   return Status::OK();
 }
@@ -157,12 +160,54 @@ Status SliceBase::FillVectorsFromInput(const Tensor& start_tensor,
                                        std::vector<int64_t>& input_ends,
                                        std::vector<int64_t>& input_axes,
                                        std::vector<int64_t>& input_steps) {
+  ORT_RETURN_IF_NOT(start_tensor.Shape().NumDimensions() == 1, "Starts must be a 1-D array");
+  ORT_RETURN_IF_NOT(ends_tensor.Shape().NumDimensions() == 1, "Ends must be a 1-D array");
+  ORT_RETURN_IF_NOT(start_tensor.Shape() == ends_tensor.Shape(), "Starts and ends shape mismatch");
+  ORT_RETURN_IF_NOT(nullptr == axes_tensor || start_tensor.Shape() == axes_tensor->Shape(),
+                    "Starts and axes shape mismatch");
+  ORT_RETURN_IF_NOT(nullptr == steps_tensor || start_tensor.Shape() == steps_tensor->Shape(),
+                    "Starts and steps shape mismatch");
+
+  const auto& size = start_tensor.Shape().Size();
+  input_starts.resize(size);
+  input_ends.resize(size);
+  if (nullptr != axes_tensor)
+    input_axes.resize(size);
+  // Slice V10
+  if (nullptr != steps_tensor)
+    input_steps.resize(size);
+
   // check for type reduction of supported indices types
   constexpr bool int32_enabled = utils::HasType<EnabledIndicesTypes, int32_t>();
   constexpr bool int64_enabled = utils::HasType<EnabledIndicesTypes, int64_t>();
-  return SliceOp::FillVectorsFromInput(start_tensor, ends_tensor, axes_tensor, steps_tensor,
-                                       input_starts, input_ends, input_axes, input_steps,
-                                       int32_enabled, int64_enabled);
+
+  if (int32_enabled && start_tensor.IsDataType<int32_t>()) {
+    std::copy(start_tensor.Data<int32_t>(), start_tensor.Data<int32_t>() + size, input_starts.begin());
+    std::copy(ends_tensor.Data<int32_t>(), ends_tensor.Data<int32_t>() + size, input_ends.begin());
+    if (nullptr != axes_tensor)
+      std::copy(axes_tensor->Data<int32_t>(), axes_tensor->Data<int32_t>() + size, input_axes.begin());
+    // Slice V10
+    if (nullptr != steps_tensor)
+      std::copy(steps_tensor->Data<int32_t>(), steps_tensor->Data<int32_t>() + size, input_steps.begin());
+  }
+
+  else if (int64_enabled && start_tensor.IsDataType<int64_t>()) {
+    std::copy(start_tensor.Data<int64_t>(), start_tensor.Data<int64_t>() + size, input_starts.begin());
+    std::copy(ends_tensor.Data<int64_t>(), ends_tensor.Data<int64_t>() + size, input_ends.begin());
+    if (nullptr != axes_tensor)
+      std::copy(axes_tensor->Data<int64_t>(), axes_tensor->Data<int64_t>() + size, input_axes.begin());
+    // Slice V10
+    if (nullptr != steps_tensor)
+      std::copy(steps_tensor->Data<int64_t>(), steps_tensor->Data<int64_t>() + size, input_steps.begin());
+  }
+
+  else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Data type for starts and ends inputs' is not supported in this build. Got ",
+                           start_tensor.DataType());
+  }
+
+  return Status::OK();
 }
 
 template <typename T>
