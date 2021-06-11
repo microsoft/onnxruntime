@@ -1,0 +1,8 @@
+# packages used by transformers tool test
+
+numpy==1.19.2
+coloredlogs==15.0
+transformers==4.6.1
+torch==1.8.1
+onnxconverter-common==1.8.1
+psutil
