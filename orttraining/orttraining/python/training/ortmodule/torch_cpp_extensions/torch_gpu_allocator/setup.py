@@ -1,3 +1,8 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------------------
+
 from setuptools import setup, Extension
 import sys
 from torch.utils import cpp_extension
@@ -28,8 +33,8 @@ size_t gpu_caching_allocator_raw_delete_address() {{
 }}
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {{
-    m.def("gpu_caching_allocator_raw_alloc_address", &gpu_caching_allocator_raw_alloc_address, "LLTM forward");
-    m.def("gpu_caching_allocator_raw_delete_address", &gpu_caching_allocator_raw_delete_address, "LLTM backward");
+    m.def("gpu_caching_allocator_raw_alloc_address", &gpu_caching_allocator_raw_alloc_address, "Address of PyTorch GPU allocator");
+    m.def("gpu_caching_allocator_raw_delete_address", &gpu_caching_allocator_raw_delete_address, "Address of PyTorch GPU deallocator");
 }}
 
 '''

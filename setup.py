@@ -4,8 +4,6 @@
 # --------------------------------------------------------------------------
 
 from setuptools import setup, Extension
-from torch.utils.cpp_extension import BuildExtension, CppExtension
-from setuptools.command.install import install
 from distutils import log as logger
 from distutils.command.build_ext import build_ext as _build_ext
 from glob import glob
@@ -105,7 +103,7 @@ is_manylinux = environ.get('AUDITWHEEL_PLAT', None) in manylinux_tags
 def build_torch_cpp_extensions():
     # Run this from build dir (e.g. (...)/build/Linux/RelWithDebInfo/)
     ret_code = subprocess.call(
-        f"python torch_cpp_extensions/torch_gpu_allocator/setup.py build {'--use_rocm' if not rocm_version else ''}", shell=True
+        f"python torch_cpp_extensions/torch_gpu_allocator/setup.py build {'--use_rocm' if rocm_version else ''}", shell=True
     )
     if ret_code != 0:
         print('There was an error compiling a PyTorch CPP extension called "torch_gpu_allocator"')
@@ -123,7 +121,7 @@ def build_torch_cpp_extensions():
     torch_cpp_exts.extend(glob('./build/lib.*/*.dylib'))
     for ext in torch_cpp_exts:
         dest_ext = path.join('onnxruntime/training/ortmodule/torch_cpp_extensions', path.basename(ext))
-        logger.info('///////////////////////////////// copying %s -> %s', ext, dest_ext)
+        logger.info('copying %s -> %s', ext, dest_ext)
         copyfile(ext, dest_ext)
 
 class build_ext(_build_ext):

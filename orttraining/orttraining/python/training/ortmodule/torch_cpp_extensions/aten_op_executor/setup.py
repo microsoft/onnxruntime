@@ -1,3 +1,8 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------------------
+
 from setuptools import setup, Extension
 from torch.utils import cpp_extension
 
@@ -143,6 +148,10 @@ std::vector<DLManagedTensor*> ExecuteATenOperator(
   return result;
 }
 size_t execute_aten_operator_address() { return reinterpret_cast<size_t>(&ExecuteATenOperator); }
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {{
+    m.def("execute_aten_operator_address", &execute_aten_operator_address, "Address of Aten operator executor");
+}}
 """
 
 with open('aten_op_executor.cpp', 'w') as f:
