@@ -17,15 +17,12 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Gather, Input, 1, int32_t, int64_t);
 }  // namespace op_kernel_type_control
 
-namespace {
 using IndexTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                   Gather, Input, 1);
 using EnabledIndexTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                          Gather, Input, 1);
-
-const auto index_type_constraints = BuildKernelDefConstraintsFromTypeList<IndexTypes>();
-const auto enabled_index_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>();
-}  // namespace
+#define index_type_constraints (BuildKernelDefConstraintsFromTypeList<IndexTypes>())
+#define enabled_index_type_constraints (BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>())
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Gather,

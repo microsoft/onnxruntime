@@ -26,8 +26,8 @@ using DataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionPr
 using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                         Transpose, Input, 0);
 
-const auto type_constraints = BuildKernelDefConstraintsFromTypeList<DataTypes>();
-const auto enabled_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>();
+#define type_constraints (BuildKernelDefConstraintsFromTypeList<DataTypes>())
+#define enabled_type_constraints (BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
 }  // namespace
 
 /* A permutation [a,b,c,...] indicates that

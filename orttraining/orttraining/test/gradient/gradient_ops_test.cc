@@ -507,7 +507,6 @@ void RunGemmGradTests(const OpDef& op_def) {
   GradientChecker<float, float, float> gradient_checker;
   const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
 
-
   // Single Batch no third input
   {
     gradient_checker.ComputeGradientError(op_def, {{1, 4}, {4, 3}}, {{1, 3}}, &max_error, attributes, true, true);
@@ -708,6 +707,7 @@ TEST(GradientCheckerTest, SplitGrad) {
 template <typename T>
 static std::vector<std::vector<T>> GetRandomValuesForMaxPool(const std::vector<TensorInfo>& infos) {
   std::vector<std::vector<T>> datas(infos.size());
+  std::random_device rd;
   for (size_t i = 0; i < infos.size(); i++) {
     const TensorInfo& info = infos[i];
 
@@ -720,7 +720,7 @@ static std::vector<std::vector<T>> GetRandomValuesForMaxPool(const std::vector<T
     }
 
     // Next, shuffle the sequence.
-    std::random_shuffle(datas[i].begin(), datas[i].end());
+    std::shuffle(datas[i].begin(), datas[i].end(), rd);
   }
 
   return datas;

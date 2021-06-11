@@ -64,11 +64,11 @@ inline MemoryAllocation::~MemoryAllocation() {
   }
 }
 
-inline MemoryAllocation::MemoryAllocation(MemoryAllocation&& o) : allocator_(nullptr), p_(nullptr), size_(0) {
+inline MemoryAllocation::MemoryAllocation(MemoryAllocation&& o) noexcept : allocator_(nullptr), p_(nullptr), size_(0) {
   *this = std::move(o);
 }
 
-inline MemoryAllocation& MemoryAllocation::operator=(MemoryAllocation&& o) {
+inline MemoryAllocation& MemoryAllocation::operator=(MemoryAllocation&& o) noexcept {
   OrtAllocator* alloc = nullptr;
   void* p = nullptr;
   size_t sz = 0;

@@ -39,7 +39,7 @@ Status RemoveFileSpec(PWSTR pszPath, size_t cchPath) {
   assert(pszPath != nullptr && pszPath[0] != L'\0');
 #if WINVER < _WIN32_WINNT_WIN8 && !defined(USE_PATHCCH_LIB)
   (void)cchPath;
-  for (PWSTR t = L"\0"; *t == L'\0'; t = PathRemoveBackslashW(pszPath))
+  for (PCWSTR t = L"\0"; *t == L'\0'; t = PathRemoveBackslashW(pszPath))
     ;
   PWSTR pszLast = PathSkipRootW(pszPath);
   if (pszLast == nullptr) pszLast = pszPath;
@@ -60,7 +60,7 @@ Status RemoveFileSpec(PWSTR pszPath, size_t cchPath) {
     pszPath[0] = L'.';
     pszPath[1] = L'\0';
   } else
-    for (PWSTR t = L"\0"; *t == L'\0'; t = PathRemoveBackslashW(pszPath))
+    for (PCWSTR t = L"\0"; *t == L'\0'; t = PathRemoveBackslashW(pszPath))
       ;
   return Status::OK();
 #else

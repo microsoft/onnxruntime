@@ -13,17 +13,6 @@ if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.20")
   cmake_policy(SET CMP0117 NEW)
 endif()
 
-# Support OS X versions 10.12+
-# This variable is ignored on non-Apple platforms and needs to be set prior to the first project(...) invocation
-# TODO: Make the miniumum deployment target MacOSX version configurable
-# If the CMAKE_OSX_DEPLOYMENT_TARGET was set (currently valid only for iOS build),
-# we will cache its value instead of the default "10.12"
-if (NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
-  set(CMAKE_OSX_DEPLOYMENT_TARGET "10.12" CACHE STRING "Minimum OS X deployment version for ORT" FORCE)
-else()
-  set(CMAKE_OSX_DEPLOYMENT_TARGET ${CMAKE_OSX_DEPLOYMENT_TARGET} CACHE STRING "Minimum OS X deployment version for ORT" FORCE)
-endif()
-
 # Project
 project(onnxruntime C CXX)
 # Needed for Java
@@ -33,7 +22,7 @@ include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 include(CMakeDependentOption)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 # NOTE: POSITION INDEPENDENT CODE hurts performance, and it only make sense on POSIX systems
@@ -728,6 +717,10 @@ if(UNIX AND onnxruntime_ENABLE_LTO AND NOT onnxruntime_PREFER_SYSTEM_LIB)
   target_link_options(protoc PRIVATE "-Wl,--no-as-needed")
 endif()
 
+if(MSVC)
+  target_compile_options(${PROTOBUF_LIB} PRIVATE "/wd5054")
+endif()
+
 include(protobuf_function.cmake)
 #protobuf end
 
@@ -778,7 +771,6 @@ endif()
 if(NOT TARGET re2::re2)
   add_subdirectory(external/re2 EXCLUDE_FROM_ALL)
   set_target_properties(re2 PROPERTIES FOLDER "External/re2")
-  add_library(re2::re2 ALIAS re2)
   set(RE2_INCLUDE_DIR ${REPO_ROOT}/cmake/external/re2)
 endif()
 
@@ -822,10 +814,6 @@ FILE(TO_NATIVE_PATH ${PROJECT_SOURCE_DIR}  ORT_SOURCE_DIR)
 
 set(ORT_WARNING_FLAGS)
 if (WIN32)
-    add_definitions(-DPLATFORM_WINDOWS -DNOGDI -DNOMINMAX -D_USE_MATH_DEFINES)
-    if(onnxruntime_ENABLE_MEMLEAK_CHECKER)
-      add_definitions(-DONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
-    endif()
     # parallel build
     # These compiler opitions cannot be forwarded to NVCC, so cannot use add_compiler_options
     string(APPEND CMAKE_CXX_FLAGS " /MP")
@@ -839,7 +827,7 @@ if (WIN32)
     if(onnxruntime_USE_OPENMP)
       list(APPEND ORT_WARNING_FLAGS "/wd6993") # Code analysis ignores OpenMP constructs
     endif()
-
+    list(APPEND ORT_WARNING_FLAGS "/wd5054")
     # Treat warning as error if onnxruntime_DEV_MODE is ON
     # For cross-compiled ARM64 binaries, there are too many warnings to fix, hence ignore warnings for now
     if (onnxruntime_DEV_MODE AND NOT CMAKE_CROSSCOMPILING)
@@ -892,6 +880,9 @@ else()
   check_cxx_compiler_flag(-Wmaybe-uninitialized HAS_MAYBE_UNINITIALIZED)
   check_cxx_compiler_flag(-Wstrict-aliasing HAS_STRICT_ALIASING)
   check_nvcc_compiler_flag(-Wstrict-aliasing NVCC_HAS_STRICT_ALIASING)
+  check_cxx_compiler_flag(-Wambiguous-reversed-operator HAS_AMBIGUOUS_REVERSED_OPERATOR)
+  check_cxx_compiler_flag(-Wdeprecated-anon-enum-enum-conversion HAS_DEPRECATED_ANON_ENUM_ENUM_CONVERSION)
+  check_cxx_compiler_flag(-Wundefined-var-template HAS_UNDEFINED_VAR_TEMPLATE)
 
   if(HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
@@ -904,6 +895,16 @@ else()
   if(HAS_PARENTHESES)
     list(APPEND ORT_WARNING_FLAGS -Wno-parentheses)
   endif()
+  if(HAS_AMBIGUOUS_REVERSED_OPERATOR)
+    list(APPEND ORT_WARNING_FLAGS -Wno-ambiguous-reversed-operator)
+  endif()
+  if(HAS_DEPRECATED_ANON_ENUM_ENUM_CONVERSION)
+    list(APPEND ORT_WARNING_FLAGS -Wno-deprecated-anon-enum-enum-conversion)
+  endif()
+  if(HAS_UNDEFINED_VAR_TEMPLATE)
+    list(APPEND ORT_WARNING_FLAGS -Wno-undefined-var-template)
+  endif()
+  list(APPEND ORT_WARNING_FLAGS -Wno-deprecated)
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers
@@ -994,6 +995,10 @@ if (onnxruntime_USE_COREML)
 endif()
 function(onnxruntime_set_compile_flags target_name)
     if (MSVC)
+      target_compile_definitions(${target_name} PUBLIC -DPLATFORM_WINDOWS -DNOGDI -DNOMINMAX -D_USE_MATH_DEFINES -D_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS)
+      if(onnxruntime_ENABLE_MEMLEAK_CHECKER)
+        target_compile_definitions(${target_name} PUBLIC -DONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+      endif()
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /sdl>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/sdl>")
       set_target_properties(${target_name}
@@ -1005,12 +1010,14 @@ function(onnxruntime_set_compile_flags target_name)
       # Enable warning
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wall>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wall>")
       target_compile_options(${target_name} PRIVATE "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wextra>")
-
       if(onnxruntime_DEV_MODE)
           target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Werror>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Werror>")
       endif()
 
       target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
+      if(APPLE)
+        target_compile_definitions(${target_name} PRIVATE -Doptional_CONFIG_SELECT_OPTIONAL=1)
+      endif()
       target_include_directories(${target_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
     endif()
     foreach(ORT_FLAG ${ORT_PROVIDER_FLAGS})
@@ -1366,17 +1373,7 @@ endif()
 configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_config.h)
 
 if (onnxruntime_USE_CUDA)
-  #The following 6 lines are copied from https://gitlab.kitware.com/cmake/cmake/issues/17559
-  set( CMAKE_CUDA_FLAGS "" CACHE STRING "" )
-  if ( CMAKE_CUDA_FLAGS )
-    list(REMOVE_ITEM CMAKE_CUDA_FLAGS "-cudart static")
-  endif()
-  if (${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.17.0")
-    # cmake 3.17.0 introduces CMAKE_CUDA_RUNTIME which must be used instead of explicit -cudart shared flag
-    set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
-  else()
-    string(APPEND CMAKE_CUDA_FLAGS "-cudart shared")
-  endif()
+  set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
   enable_language(CUDA)
   message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
   if (WIN32)

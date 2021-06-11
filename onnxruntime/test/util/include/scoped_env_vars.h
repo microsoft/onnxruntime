@@ -2,9 +2,9 @@
 // Licensed under the MIT License.
 
 #include <unordered_map>
+#include "core/common/optional.h"
 
 #include "core/common/common.h"
-#include "core/common/optional.h"
 
 namespace onnxruntime {
 namespace test {

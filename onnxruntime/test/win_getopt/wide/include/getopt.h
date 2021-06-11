@@ -37,6 +37,6 @@ extern int opterr,      /* if error message should be printed */
     optind,             /* index into parent argv vector */
     optopt,             /* character checked for validity */
     optreset;           /* reset getopt */
-extern wchar_t* optarg; /* argument associated with option */
+extern const wchar_t* optarg; /* argument associated with option */
 
 int getopt(int nargc, wchar_t* const nargv[], const wchar_t* ostr);

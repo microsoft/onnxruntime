@@ -39,7 +39,7 @@ int opterr = 1,  /* if error message should be printed */
     optind = 1,  /* index into parent argv vector */
     optopt,      /* character checked for validity */
     optreset;    /* reset getopt */
-wchar_t* optarg; /* argument associated with option */
+const wchar_t* optarg; /* argument associated with option */
 
 #define BADCH (int)L'?'
 #define BADARG (int)L':'
@@ -50,7 +50,7 @@ wchar_t* optarg; /* argument associated with option */
  *	Parse argc/argv argument vector.
  */
 int getopt(int nargc, wchar_t* const nargv[], const wchar_t* ostr) {
-  static wchar_t* place = EMSG; /* option letter processing */
+  static const wchar_t* place = EMSG; /* option letter processing */
   wchar_t* oli;                 /* option letter list index */
 
   if (optreset || *place == 0) { /* update scanning pointer */

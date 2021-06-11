@@ -75,7 +75,7 @@ ThreadPoolProfiler::MainThreadStat& ThreadPoolProfiler::GetMainThreadStat() {
 
 std::string ThreadPoolProfiler::Stop() {
   ORT_ENFORCE(enabled_, "Profiler not started yet");
-  std::stringstream ss;
+  std::ostringstream ss;
   ss << "{\"main_thread\": {"
      << "\"thread_pool_name\": \""
      << thread_pool_name_ << "\", "

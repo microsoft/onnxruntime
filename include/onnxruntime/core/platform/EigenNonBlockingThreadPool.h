@@ -1261,12 +1261,11 @@ void RunInParallel(std::function<void(unsigned idx)> fn, unsigned n, std::ptrdif
   profiler_.LogEnd(ThreadPoolProfiler::WAIT);
 }
 
-
-int NumThreads() const EIGEN_FINAL {
+int NumThreads() const final {
   return num_threads_;
 }
 
-int CurrentThreadId() const EIGEN_FINAL {
+int CurrentThreadId() const final {
   const PerThread* pt = const_cast<ThreadPoolTempl*>(this)->GetPerThread();
   if (pt->pool == this) {
     return pt->thread_id;

@@ -265,8 +265,8 @@ TEST(ReductionFunctionsTest, GetApplicableMatrixReduction) {
       [](cudnnReduceTensorOp_t cudnn_op,
          const std::vector<int64_t>& dims, const std::vector<int64_t>& axes,
          ApplicableMatrixReduction expected_reduction,
-         const optional<int>& expected_m = nullopt,
-         const optional<int>& expected_n = nullopt) {
+         const optional<int>& expected_m = std::nullopt,
+         const optional<int>& expected_n = std::nullopt) {
         SCOPED_TRACE(MakeString(
             "cudnn_op: ", cudnn_op,
             ", dims: ", TensorShape::ReinterpretBaseType(dims),

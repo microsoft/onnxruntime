@@ -318,10 +318,10 @@ Status Cast::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-const auto src_type_constraints = BuildKernelDefConstraintsFromTypeList<SrcTypes>();
-const auto dst_type_constraints = BuildKernelDefConstraintsFromTypeList<DstTypes>();
-const auto enabled_src_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>();
-const auto enabled_dst_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>();
+#define src_type_constraints (BuildKernelDefConstraintsFromTypeList<SrcTypes>())
+#define dst_type_constraints (BuildKernelDefConstraintsFromTypeList<DstTypes>())
+#define enabled_src_type_constraints (BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>())
+#define enabled_dst_type_constraints (BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>())
 
 }  // namespace
 

@@ -1,6 +1,8 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#if ((__cplusplus >= 201703L) || (defined(_MSVC_LANG) && (_MSVC_LANG >= 201703L)))
+//TODO: handle the u8string.
+#else
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -10,7 +12,7 @@ namespace test {
 namespace tokenizer_test {
 const std::string start_mark{0x2};
 const std::string end_mark{0x3};
-const std::string padval(u8"0xdeadbeaf");
+const std::u8string padval(u8"0xdeadbeaf");
 
 constexpr const char* domain = onnxruntime::kMSDomain;
 const int opset_ver = 1;
@@ -866,3 +868,4 @@ TEST(ContribOpTest, Tokenizer_EmptyInput) {
 }
 }  // namespace test
 }  // namespace onnxruntime
+#endif

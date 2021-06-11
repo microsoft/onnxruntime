@@ -4,7 +4,7 @@
 #include "orttraining/models/runner/training_util.h"
 
 #include <sstream>
-
+#include <random>
 #include "constant.h"
 #include "core/framework/data_types.h"
 #include "core/framework/tensorprotoutils.h"
@@ -129,7 +129,7 @@ std::vector<OrtValue> DataSet::GetKthBatch(size_t batch_size, size_t k_th, Alloc
 }
 
 void DataSet::RandomShuffle() {
-  random_shuffle(data_.begin(), data_.end());
+  std::shuffle(data_.begin(), data_.end(), std::mt19937(std::random_device()()));
 }
 
 std::vector<OrtValue> RandomDataSet::GetKthBatch(size_t /*batch_size*/, size_t /*k_th*/, AllocatorPtr allocator) const {

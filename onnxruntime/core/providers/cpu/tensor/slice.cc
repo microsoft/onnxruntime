@@ -13,7 +13,6 @@
 #include "core/providers/op_kernel_type_control_utils.h"
 
 using namespace ::onnxruntime::common;
-using namespace std;
 
 namespace onnxruntime {
 namespace op_kernel_type_control {
@@ -40,10 +39,10 @@ using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExec
 using EnabledIndicesTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                            Slice, Input, 1);
 
-const auto data_type_constraints = BuildKernelDefConstraintsFromTypeList<DataTypes>();
-const auto indices_type_constraints = BuildKernelDefConstraintsFromTypeList<IndicesTypes>();
-const auto enabled_data_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>();
-const auto enabled_indices_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>();
+#define data_type_constraints (BuildKernelDefConstraintsFromTypeList<DataTypes>())
+#define indices_type_constraints (BuildKernelDefConstraintsFromTypeList<IndicesTypes>())
+#define enabled_data_type_constraints (BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
+#define enabled_indices_type_constraints (BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>())
 
 // std::clamp doesn't exist until C++17 so create a local version
 template <typename T>
@@ -322,14 +321,14 @@ static Status SliceImpl(OpKernelContext* ctx,
   T* output = reinterpret_cast<T*>(output_tensor.MutableDataRaw());
   const auto* output_end = output + output_tensor.Shape().Size();
 
-  auto create_output = [&output, &output_end](SliceIterator<T>& input_iterator) {
-    if (input_iterator.SolitaryInnerStep()) {
+  auto create_output = [&output, &output_end](SliceIterator<T>& slice_input_iterator) {
+    if (slice_input_iterator.SolitaryInnerStep()) {
       while (output < output_end) {
-        output = input_iterator.CopyInnermostAxisSolitaryInnerStep(output);
+        output = slice_input_iterator.CopyInnermostAxisSolitaryInnerStep(output);
       }
     } else {
       while (output < output_end) {
-        output = input_iterator.CopyInnermostAxisNonSolitaryInnerStep(output);
+        output = slice_input_iterator.CopyInnermostAxisNonSolitaryInnerStep(output);
       }
     }
 
@@ -344,13 +343,13 @@ static Status SliceImpl(OpKernelContext* ctx,
     flattened_input_dims.back() = compute_metadata.p_flattened_output_dims_->back();
     TensorShape input_shape(std::move(flattened_input_dims));
 
-    auto input_iterator = SliceIterator<T>(input_tensor, input_shape, compute_metadata.starts_,
-                                           *compute_metadata.p_flattened_output_dims_, compute_metadata.steps_);
-    create_output(input_iterator);
+    auto input_iterator2 = SliceIterator<T>(input_tensor, input_shape, compute_metadata.starts_,
+                                            *compute_metadata.p_flattened_output_dims_, compute_metadata.steps_);
+    create_output(input_iterator2);
   } else {
-    auto input_iterator = SliceIterator<T>(input_tensor, compute_metadata.starts_, compute_metadata.output_dims_,
-                                           compute_metadata.steps_);
-    create_output(input_iterator);
+    auto input_iterator2 = SliceIterator<T>(input_tensor, compute_metadata.starts_, compute_metadata.output_dims_,
+                                            compute_metadata.steps_);
+    create_output(input_iterator2);
   }
 
   return Status::OK();
