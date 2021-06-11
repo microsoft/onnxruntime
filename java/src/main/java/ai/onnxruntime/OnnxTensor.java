@@ -316,8 +316,7 @@ public class OnnxTensor implements OnnxValue {
 
   /**
    * Create a Tensor from a Java primitive, String, primitive multidimensional array or String
-   * multidimensional array. The shape is inferred from the object using reflection. The default
-   * allocator is used.
+   * multidimensional array. The shape is inferred from the object using reflection.
    *
    * @param env The current OrtEnvironment.
    * @param allocator The allocator to use.
@@ -350,7 +349,7 @@ public class OnnxTensor implements OnnxValue {
           data = OrtUtil.convertBoxedPrimitiveToArray(info.type, data);
           if (data == null) {
             throw new OrtException(
-                "Failed to convert a boxed primitive to an array, this is an error with ORT itself, please report it. JavaType = "
+                "Failed to convert a boxed primitive to an array, this is an error with the ORT Java API, please report this message & stack trace. JavaType = "
                     + info.type
                     + ", object = "
                     + data);
