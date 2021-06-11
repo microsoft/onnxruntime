@@ -229,13 +229,12 @@ OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
       dlpack->dl_tensor.data, info);
 
   OrtValue ort_value;
-  auto tensor_type = DataTypeImpl::GetType<Tensor>();
-  std::function<void(void*)> deleter = [dlpack, tensor_type](void* p) {
-    dlpack->deleter((dlpack));
-    tensor_type->GetDeleteFunc()(p);
+  std::function<void(void*)> deleter = [dlpack](void* p) {
+    dlpack->deleter(dlpack);
+    DataTypeImpl::GetType<Tensor>()->GetDeleteFunc()(p);
   };
 
-  ort_value.Init(p_tensor.release(), tensor_type, deleter);
+  ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), deleter);
   return ort_value;
 }
 
