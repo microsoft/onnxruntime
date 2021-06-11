@@ -2572,7 +2572,7 @@ class SliceOpBuilder : public BaseOpBuilder {
 };
 
 void SliceOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
-  // skip everything except input0 for Slice
+  // Skip everything except input0 for Slice
   const auto input_defs = node.InputDefs();
   model_builder.AddInitializerToSkip(input_defs[1]->Name());  // starts
   model_builder.AddInitializerToSkip(input_defs[2]->Name());  // ends
@@ -2588,13 +2588,16 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
-  // const auto& initializers(model_builder.GetInitializerTensors());
   const auto input_defs = node.InputDefs();
   const auto& input_shape = shaper[input_defs[0]->Name()];
   std::vector<int64_t> input_shape_64(input_shape.cbegin(), input_shape.cend());
   SliceOp::PrepareForComputeMetadata compute_metadata(input_shape_64);
 
   {
+    // We need to copy the data from the starts/ends/axes/steps initializers to int64 vectors
+    // to be used in shared PrepareForCompute function to calculate the output shape
+    // and normalize inputs, for example, input can be starts/ends/steps for certain axes,
+    // PrepareForCompute can generate standard starts/ends/steps/axes for each axes
     std::vector<int64_t> input_starts;
     std::vector<int64_t> input_ends;
     std::vector<int64_t> input_axes;
@@ -2639,10 +2642,11 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     ORT_RETURN_IF_ERROR(CopyInputData(2, input_ends));
     ORT_RETURN_IF_ERROR(CopyInputData(3, input_axes));
     ORT_RETURN_IF_ERROR(CopyInputData(4, input_steps));
-    ORT_RETURN_IF_ERROR(PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
+    ORT_RETURN_IF_ERROR(
+        SliceOp::PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
   }
 
-  // output shape is of type uint32_t
+  // output shape is of type uint32_t, convert from int64 compute_metadata.output_dims_
   Shape nnapi_output_shape;
   nnapi_output_shape.reserve(compute_metadata.output_dims_.size());
   std::transform(compute_metadata.output_dims_.cbegin(), compute_metadata.output_dims_.cend(),
@@ -2661,7 +2665,10 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
 
+  // begin/end/strides of ANEURALNETWORKS_STRIDED_SLICE have the same shape
   Shape param_dimen = {static_cast<uint32_t>(input_shape.size())};
+
+  // helper function to add begin/end/strides of ANEURALNETWORKS_STRIDED_SLICE
   const auto AddOperand = [&model_builder, &node, &input_indices, &operand_indices](
                               const char* name, const Shape& shape, const std::vector<int64_t>& param_raw_data) {
     std::vector<int32_t> param_data;
@@ -2671,12 +2678,29 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
                    [](int64_t i) { return SafeInt<int32_t>(i); });
     std::string param_name = model_builder.GetUniqueName(node.Name() + name);
     OperandType param_operand_type(Type::TENSOR_INT32, shape);
-    ORT_RETURN_IF_ERROR(model_builder.AddOperandFromPersistMemoryBuffer(param_name, param_data.data(), param_operand_type));
+    ORT_RETURN_IF_ERROR(
+        model_builder.AddOperandFromPersistMemoryBuffer(param_name, param_data.data(), param_operand_type));
     input_indices.push_back(operand_indices.at(param_name));
     return Status::OK();
   };
 
   ORT_RETURN_IF_ERROR(AddOperand("starts", param_dimen, compute_metadata.starts_));  //nnapi_begin
+
+  // ** The special treatment of ends **
+  // The nnapi_end need some special handling, based on the current undocumented design of
+  // ANEURALNETWORKS_STRIDED_SLICE
+  // For ORT, for a single axis, after SliceOp::PrepareForCompute, and the step is negative,
+  // and the last element for slice is at the beginning of the axis (we are slicing backwards)
+  // The end for this axis will be -1
+  // For NNAPI, it is not documented that end can be negative,
+  // see https://developer.android.com/ndk/reference/group/neural-networks#group___neural_networks_1ggaabbe492c60331b13038e39d4207940e0a89695302f8b1e7ae7ce8f4d8c0b8a752
+  // However, the actual NNAPI StridedSlice has some odd implementations,
+  // See https://android.googlesource.com/platform/frameworks/ml/+/5b525d4d9100819d87447bd2c2a0bcfdd62899ee/nn/common/operations/StridedSlice.cpp#177
+  // and, https://android.googlesource.com/platform/frameworks/ml/+/5b525d4d9100819d87447bd2c2a0bcfdd62899ee/nn/common/include/OperationsUtils.h#262
+  // If a negative end is no less than -dim (dimension of the axis), it will be treated as an index counting from
+  // the end, for example, dim = 5, and end = -1, the end will be normalized to 4, which will cause
+  // incorrect result, so here we have to make the end = -dim - 1 such that it will not be treated as
+  // an index counting from the end.
   std::vector<int64_t> ends = compute_metadata.ends_;
   for (size_t i = 0; i < ends.size(); ++i) {
     if (ends[i] == -1) {

@@ -1674,19 +1674,19 @@ bool SliceOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initia
     return false;
   }
 
-  if (!CheckIsInitializerTensor(initializers, node, 1, "starts")) {
+  if (!CheckIsInitializer(initializers, node, 1, "starts")) {
     return false;
   }
-  if (!CheckIsInitializerTensor(initializers, node, 2, "end")) {
+  if (!CheckIsInitializer(initializers, node, 2, "ends")) {
     return false;
   }
   const auto& input_defs = node.InputDefs();
   if (input_defs.size() > 3) {
-    if (!CheckIsInitializerTensor(initializers, node, 3, "axes")) {
+    if (!CheckIsInitializer(initializers, node, 3, "axes")) {
       return false;
     }
     if (input_defs.size() > 4) {
-      if (!CheckIsInitializerTensor(initializers, node, 4, "steps")) {
+      if (!CheckIsInitializer(initializers, node, 4, "steps")) {
         return false;
       }
     }
