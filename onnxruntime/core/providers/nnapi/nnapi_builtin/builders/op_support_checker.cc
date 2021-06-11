@@ -76,7 +76,8 @@ class BaseOpSupportChecker : public IOpSupportChecker {
     return true;
   }
 
-  virtual int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */, const OpSupportCheckParams& /* params */) const {
+  virtual int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
+                                                   const OpSupportCheckParams& /* params */) const {
     // ANEURALNETWORKS_FEATURE_LEVEL_1 is the baseline version of NNAPI,
     // There is no NNAPI support for Android API level 26-
     return ANEURALNETWORKS_FEATURE_LEVEL_1;
@@ -319,7 +320,8 @@ class TransposeOpSupportChecker : public BaseOpSupportChecker {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
 
-  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
+  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
+                                           const OpSupportCheckParams& /* params */) const override {
     return ANEURALNETWORKS_FEATURE_LEVEL_2;
   }
 
@@ -490,7 +492,8 @@ class PoolOpSupportChecker : public BaseOpSupportChecker {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
 
-  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */, const OpSupportCheckParams& params) const override {
+  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
+                                           const OpSupportCheckParams& params) const override {
     return params.use_nchw ? ANEURALNETWORKS_FEATURE_LEVEL_3 : ANEURALNETWORKS_FEATURE_LEVEL_2;
   }
 
@@ -667,7 +670,8 @@ class ConvOpSupportChecker : public BaseOpSupportChecker {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
 
-  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */, const OpSupportCheckParams& params) const override {
+  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
+                                           const OpSupportCheckParams& params) const override {
     return params.use_nchw ? ANEURALNETWORKS_FEATURE_LEVEL_3 : ANEURALNETWORKS_FEATURE_LEVEL_2;
   }
 
@@ -775,7 +779,8 @@ class CastOpSupportChecker : public BaseOpSupportChecker {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
 
-  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
+  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
+                                           const OpSupportCheckParams& /* params */) const override {
     return ANEURALNETWORKS_FEATURE_LEVEL_3;
   }
 
@@ -805,7 +810,8 @@ class SoftMaxOpSupportChecker : public BaseOpSupportChecker {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
 
-  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
+  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
+                                           const OpSupportCheckParams& /* params */) const override {
     return ANEURALNETWORKS_FEATURE_LEVEL_2;
   }
 };
@@ -1043,7 +1049,8 @@ class UnaryOpSupportChecker : public BaseOpSupportChecker {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
 
-  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& node, const OpSupportCheckParams& params) const override;
+  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& node,
+                                           const OpSupportCheckParams& params) const override;
 
   bool HasSupportedInputsImpl(const Node& node) const override;
 
@@ -1079,8 +1086,8 @@ bool UnaryOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initia
     return true;
 }
 
-int32_t UnaryOpSupportChecker::GetMinSupportedNNAPIFeatureLevel(
-    const Node& node, const OpSupportCheckParams& /* params */) const {
+int32_t UnaryOpSupportChecker::GetMinSupportedNNAPIFeatureLevel(const Node& node,
+                                                                const OpSupportCheckParams& /* params */) const {
   const auto& op(node.OpType());
   if (op == "Abs" ||
       op == "Exp" ||
@@ -1216,7 +1223,8 @@ class SqueezeOpSupportChecker : public BaseOpSupportChecker {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
 
-  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
+  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
+                                           const OpSupportCheckParams& /* params */) const override {
     return ANEURALNETWORKS_FEATURE_LEVEL_2;
   }
 };
@@ -1255,7 +1263,8 @@ class QuantizeLinearOpSupportChecker : public BaseOpSupportChecker {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
 
-  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
+  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
+                                           const OpSupportCheckParams& /* params */) const override {
     return ANEURALNETWORKS_FEATURE_LEVEL_3;
   }
 };
@@ -1296,7 +1305,8 @@ class DequantizeLinearOpSupportChecker : public BaseOpSupportChecker {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
 
-  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
+  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
+                                           const OpSupportCheckParams& /* params */) const override {
     return ANEURALNETWORKS_FEATURE_LEVEL_1;
   }
   bool HasSupportedInputsImpl(const Node& node) const override;
@@ -1340,7 +1350,8 @@ class LRNOpSupportChecker : public BaseOpSupportChecker {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
 
-  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
+  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
+                                           const OpSupportCheckParams& /* params */) const override {
     return ANEURALNETWORKS_FEATURE_LEVEL_2;
   }
 };
@@ -1397,7 +1408,8 @@ class ResizeOpSupportChecker : public BaseOpSupportChecker {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const OpSupportCheckParams& params) const override;
 
-  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */, const OpSupportCheckParams& /* params */) const override;
+  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
+                                           const OpSupportCheckParams& /* params */) const override;
 
   // Resize opset 10- is very different than Resize opset 11+, with many key attributes missing
   // We only support Resize opset 11+ here
@@ -1516,7 +1528,8 @@ bool ResizeOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initi
   return true;
 }
 
-int32_t ResizeOpSupportChecker::GetMinSupportedNNAPIFeatureLevel(const Node& node, const OpSupportCheckParams& /* params */) const {
+int32_t ResizeOpSupportChecker::GetMinSupportedNNAPIFeatureLevel(const Node& node,
+                                                                 const OpSupportCheckParams& /* params */) const {
   int32_t input_type;
 
   // This should not happen, but if it happens make sure this will require an impossible version
@@ -1590,7 +1603,8 @@ class MinMaxOpSupportChecker : public BaseOpSupportChecker {
       const std::string& op_type, OpSupportCheckerRegistrations& op_registrations);
 
  private:
-  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
+  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
+                                           const OpSupportCheckParams& /* params */) const override {
     return ANEURALNETWORKS_FEATURE_LEVEL_3;
   }
 
@@ -1629,13 +1643,70 @@ bool MinMaxOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& /* in
 
 class EluOpSupportChecker : public BaseOpSupportChecker {
  private:
-  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
+  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */,
+                                           const OpSupportCheckParams& /* params */) const override {
     return ANEURALNETWORKS_FEATURE_LEVEL_4;
   }
 
   // Elu opset 5- uses consumed_inputs attribute which is not supported for now
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 6; }
 };
+
+#pragma endregion
+
+#pragma region op_slice
+
+class SliceOpSupportChecker : public BaseOpSupportChecker {
+ private:
+  int32_t GetMinSupportedNNAPIFeatureLevel(const Node& /* node */, const OpSupportCheckParams& /* params */) const override {
+    return ANEURALNETWORKS_FEATURE_LEVEL_2;
+  }
+
+  // We only support slice from opset 10
+  int GetMinSupportedOpSet(const Node& /* node */) const override { return 10; }
+
+  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+                         const OpSupportCheckParams& params) const override;
+};
+
+bool SliceOpSupportChecker::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+                                              const OpSupportCheckParams& /* params */) const {
+  Shape input_shape;
+  if (!GetShape(*node.InputDefs()[0], input_shape))
+    return false;
+
+  if (input_shape.size() > 4) {
+    LOGS_DEFAULT(VERBOSE) << "Slice only supports 1-4d shape, input is "
+                          << input_shape.size() << "d shape";
+    return false;
+  }
+
+  // TODO, replace with std::find when we switch to c++17
+  if (std::any_of(input_shape.cbegin(), input_shape.cend(), [](int32_t i) { return i == 0; })) {
+    LOGS_DEFAULT(VERBOSE) << "Slice doesn't dynamic input shape";
+    return false;
+  }
+
+  if (!CheckIsInitializer(initializers, node, 1, "starts")) {
+    return false;
+  }
+  if (!CheckIsInitializer(initializers, node, 2, "ends")) {
+    return false;
+  }
+  const auto& input_defs = node.InputDefs();
+  if (input_defs.size() > 3) {
+    if (!CheckIsInitializer(initializers, node, 3, "axes")) {
+      return false;
+    }
+    if (input_defs.size() > 4) {
+      if (!CheckIsInitializer(initializers, node, 4, "steps")) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
 
 #pragma endregion
 
@@ -1726,6 +1797,7 @@ static OpSupportCheckerRegistrations CreateOpSupportCheckerRegistrations() {
   }
 
   NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Elu", EluOpSupportChecker);
+  NNAPI_EP_ADD_SINGLE_OP_SUPPORT_CHECKER("Slice", SliceOpSupportChecker);
 
   return op_registrations;
 }

@@ -12,6 +12,8 @@
 #include "core/providers/op_kernel_type_control.h"
 #include "core/providers/op_kernel_type_control_utils.h"
 
+#include "slice_helper.h"
+
 using namespace ::onnxruntime::common;
 using namespace std;
 
@@ -93,6 +95,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 static void FlattenOutputDims(const std::vector<int64_t>& input_dimensions,
                               const std::vector<int64_t>& output_dims,
                               std::vector<int64_t>& starts,
+                              std::vector<int64_t>& ends,
                               std::vector<int64_t>& steps,
                               std::vector<int64_t>*& flattened_output_dims) {
   int num_to_combine = 0;
@@ -120,6 +123,10 @@ static void FlattenOutputDims(const std::vector<int64_t>& input_dimensions,
     // so we can just shrink via resize so the number of entries matches flattened_output_dims
     starts.resize(num_dims);
     steps.resize(num_dims);
+
+    // update ends as well
+    ends.resize(num_dims);
+    ends.back() = dim_value;
   } else {
     flattened_output_dims = nullptr;
   }
@@ -130,47 +137,9 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                     const std::vector<int64_t>& raw_ends,
                                     const std::vector<int64_t>& raw_axes,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
-  // Initialize axes to the provided axes attribute or to the default sequence
-  std::vector<int64_t> axes(raw_axes);
-  if (axes.empty()) {
-    //axes are omitted, they are set to[0, ..., ndim - 1]
-    axes.resize(compute_metadata.starts_.size());
-    std::iota(axes.begin(), axes.end(), 0);
-  }
-
-  // Iterate through the provided axes and override the start/end ranges
-  std::unordered_set<int64_t> unique_axes;
-  const auto& dimension_count = compute_metadata.input_dimensions_.size();
-  for (size_t axis_index = 0, axes_count = axes.size(); axis_index < axes_count; ++axis_index) {
-    auto axis = HandleNegativeAxis(axes[axis_index], dimension_count);  // handle negative and enforce axis is valid
-    if (axis >= static_cast<int64_t>(dimension_count) || axis < 0)
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an axis outside of the tensor dimension count");
-    if (unique_axes.find(axis) != unique_axes.end())
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has duplicates");
-    unique_axes.insert(axis);
-
-    // process start
-    auto start = raw_starts[axis_index];
-    if (start < 0)
-      start += compute_metadata.input_dimensions_[axis];
-    compute_metadata.starts_[axis] = clamp(start, int64_t{0}, compute_metadata.input_dimensions_[axis]);
-
-    // process end
-    auto end = raw_ends[axis_index];
-    if (end < 0)
-      end += compute_metadata.input_dimensions_[axis];
-
-    // find output dim value for this axis
-    auto temp = clamp(end, int64_t{0}, compute_metadata.input_dimensions_[axis]) - compute_metadata.starts_[axis];
-    if (temp < 0)
-      compute_metadata.output_dims_[axis] = 0;
-    else
-      compute_metadata.output_dims_[axis] = temp;
-  }
-
+  ORT_RETURN_IF_ERROR(SliceOp::PrepareForCompute(raw_starts, raw_ends, raw_axes, compute_metadata));
   FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
-                    compute_metadata.steps_, compute_metadata.p_flattened_output_dims_);
-
+                    compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_output_dims_);
   return Status::OK();
 }
 
@@ -180,70 +149,9 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                     const std::vector<int64_t>& raw_axes,
                                     const std::vector<int64_t>& raw_steps,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
-  // Initialize axes to the provided axes attribute or to the default sequence
-  std::vector<int64_t> axes(raw_axes);
-
-  if (axes.empty()) {
-    // axes are omitted, they are set to[0, ..., ndim - 1]
-    axes.resize(compute_metadata.starts_.size());
-    std::iota(axes.begin(), axes.end(), 0);
-  }
-
-  // Iterate through the provided axes and override the start/end/steps ranges
-  std::unordered_set<int64_t> unique_axes;
-  const auto& dimension_count = compute_metadata.input_dimensions_.size();
-  for (size_t axis_index = 0, axes_count = axes.size(); axis_index < axes_count; ++axis_index) {
-    auto axis = axes[axis_index] < 0 ? axes[axis_index] + static_cast<int64_t>(dimension_count) : axes[axis_index];
-    if (axis >= static_cast<int64_t>(dimension_count) || axis < 0)
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an axis outside of the tensor dimension count");
-    if (unique_axes.find(axis) != unique_axes.end())
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has duplicates");
-    unique_axes.insert(axis);
-
-    // process step
-    auto step = axis_index < raw_steps.size() ? raw_steps[axis_index] : 1;
-    if (step == 0)
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'step' value cannot be 0");
-    compute_metadata.steps_[axis] = step;
-
-    // process start
-    auto start = raw_starts[axis_index];
-    if (start < 0)
-      start += compute_metadata.input_dimensions_[axis];
-    if (step < 0)
-      compute_metadata.starts_[axis] = clamp(start, int64_t{0}, compute_metadata.input_dimensions_[axis] - 1);
-    else
-      compute_metadata.starts_[axis] = clamp(start, int64_t{0}, compute_metadata.input_dimensions_[axis]);
-
-    // process end
-    auto end = raw_ends[axis_index];
-    // INT_MAX has a special meaning for end according to spec
-    // equivalent to 'None' in numpy
-    // it represent slicing to the end of the dimension
-    if (end == std::numeric_limits<int32_t>::max() ||
-        end == std::numeric_limits<int64_t>::max()) {
-      end = step < 0 ? -1 : compute_metadata.input_dimensions_[axis];
-    }
-
-    else {
-      if (end < 0)
-        end += compute_metadata.input_dimensions_[axis];
-      if (step < 0)
-        end = clamp(end, int64_t{-1}, compute_metadata.input_dimensions_[axis]);
-      else
-        end = clamp(end, int64_t{0}, compute_metadata.input_dimensions_[axis]);
-    }
-
-    // find output dim value for this axis
-    auto temp = static_cast<int64_t>(ceil(1.0 * (end - compute_metadata.starts_[axis]) / step));
-    if (temp < 0)
-      compute_metadata.output_dims_[axis] = 0;
-    else
-      compute_metadata.output_dims_[axis] = temp;
-  }
-
+  ORT_RETURN_IF_ERROR(SliceOp::PrepareForCompute(raw_starts, raw_ends, raw_axes, raw_steps, compute_metadata));
   FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
-                    compute_metadata.steps_, compute_metadata.p_flattened_output_dims_);
+                    compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_output_dims_);
 
   return Status::OK();
 }
