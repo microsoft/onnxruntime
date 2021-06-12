@@ -1,12 +1,16 @@
 require_relative '../node_modules/react-native/scripts/react_native_pods'
 require_relative '../node_modules/@react-native-community/cli-platform-ios/native_modules'
 
-platform :ios, '10.0'
+platform :ios, '13.0'
 
 target 'OnnxruntimeModuleExample' do
   config = use_native_modules!
 
   use_react_native!(:path => config["reactNativePath"])
 
-  pod 'onnxruntime-react-native.iphonesimulator', :path => '../..'
+  use_frameworks!
+  pod 'onnxruntime-mobile', :podspec => '../../onnxruntime-mobile.podspec'
+  pod 'onnxruntime-react-native', :path => '../..'
+
+  inherit! :search_paths
 end

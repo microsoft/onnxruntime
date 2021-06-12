@@ -1,16 +1,25 @@
 require_relative '../node_modules/react-native/scripts/react_native_pods'
 require_relative '../node_modules/@react-native-community/cli-platform-ios/native_modules'
 
-platform :ios, '10.0'
+platform :ios, '13.0'
 
-target 'OnnxruntimeModule' do
+def shared
   config = use_native_modules!
 
   use_react_native!(:path => config["reactNativePath"])
+
+  # Comment the next line if you don't want to use dynamic frameworks
+  use_frameworks!
+
+  pod 'onnxruntime-mobile', :podspec  => '../onnxruntime-mobile.podspec'
+
+  inherit! :search_paths
+end
+
+target 'OnnxruntimeModule' do
+  shared
 end
 
 target 'OnnxruntimeModuleTest' do
-  config = use_native_modules!
-
-  use_react_native!(:path => config["reactNativePath"])
+  shared
 end
