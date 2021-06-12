@@ -73,11 +73,15 @@ set(onnxruntime_pybind11_state_link_targets
     onnxruntime_providers
     onnxruntime_util
     ${onnxruntime_tvm_libs}
-    onnxruntime_framework
 )
 
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_pybind11_state_link_targets onnxruntime_training)
+endif()
+
+list(APPEND onnxruntime_pybind11_state_link_targets onnxruntime_framework)
+
+if (onnxruntime_ENABLE_TRAINING)
   if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     include(onnxruntime_python_interface.cmake)
   else()
