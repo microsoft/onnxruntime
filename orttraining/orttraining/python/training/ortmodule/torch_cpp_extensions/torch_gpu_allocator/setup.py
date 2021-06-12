@@ -28,7 +28,7 @@ with fileinput.FileInput(filename, inplace=True) as file:
             line = line.replace('___gpu_identifier___', gpu_identifier)
         if '___gpu_allocator_header___' in line:
             line = line.replace('___gpu_allocator_header___', gpu_allocator_header)
-        print(line, end='')
+        sys.stdout.write(line)
 
 setup(name='torch_gpu_allocator',
       ext_modules=[cpp_extension.CUDAExtension('torch_gpu_allocator', [filename])],
