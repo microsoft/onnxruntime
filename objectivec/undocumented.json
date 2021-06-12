@@ -1,13 +1,6 @@
 {
   "warnings": [
     {
-      "file": "/Users/edch/source/onnxruntime_2/objectivec/include/ort_coreml_execution_provider.h",
-      "line": 38,
-      "symbol": "ORTSessionOptions(ORTSessionOptionsCoreMLEP)",
-      "symbol_kind": "sourcekitten.source.lang.objc.decl.category",
-      "warning": "undocumented"
-    },
-    {
       "file": "/Users/edch/source/onnxruntime_2/objectivec/include/ort_enums.h",
       "line": 12,
       "symbol": "ORTLoggingLevel.ORTLoggingLevelVerbose",

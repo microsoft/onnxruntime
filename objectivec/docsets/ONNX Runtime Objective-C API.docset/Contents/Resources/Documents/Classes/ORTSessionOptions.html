@@ -17,7 +17,7 @@
     <a title="ORTSessionOptions Class Reference"></a>
     <header>
       <div class="content-wrapper">
-        <p><a href="../index.html">ONNX Runtime Objective-C API 1.8.0-preview-test Docs</a></p>
+        <p><a href="../index.html">ONNX Runtime Objective-C API 1.8.0-preview Docs</a></p>
         <p class="header-right"><a href="https://github.com/microsoft/onnxruntime"><img src="../img/gh.png"/>View on GitHub</a></p>
         <p class="header-right">
           <form role="search" action="../search.json">
@@ -39,9 +39,6 @@
           <li class="nav-group-name">
             <a href="../Classes.html">Classes</a>
             <ul class="nav-group-tasks">
-              <li class="nav-group-task">
-                <a href="../Classes/ORTCoreMLExecutionProviderOptions.html">ORTCoreMLExecutionProviderOptions</a>
-              </li>
               <li class="nav-group-task">
                 <a href="../Classes/ORTEnv.html">ORTEnv</a>
               </li>
@@ -79,14 +76,6 @@
               </li>
               <li class="nav-group-task">
                 <a href="../Enums/ORTValueType.html">ORTValueType</a>
-              </li>
-            </ul>
-          </li>
-          <li class="nav-group-name">
-            <a href="../Functions.html">Functions</a>
-            <ul class="nav-group-tasks">
-              <li class="nav-group-task">
-                <a href="../Functions.html#/c:@F@ORTIsCoreMLExecutionProviderAvailable">ORTIsCoreMLExecutionProviderAvailable</a>
               </li>
             </ul>
           </li>
@@ -621,91 +610,6 @@
                       <div>
                         <h4>Return Value</h4>
                         <p>Whether the option was set successfully.</p>
-                      </div>
-                    </section>
-                  </div>
-                </li>
-              </ul>
-            </div>
-            <div class="task-group">
-              <div class="task-name-container">
-                <a name="/ORTSessionOptionsCoreMLEP"></a>
-                <a name="//apple_ref/objc/Section/ORTSessionOptionsCoreMLEP" class="dashAnchor"></a>
-                <div class="section-name-container">
-                  <a class="section-name-link" href="#/ORTSessionOptionsCoreMLEP"></a>
-                  <h3 class="section-name"><p>ORTSessionOptionsCoreMLEP</p>
-</h3>
-                </div>
-              </div>
-              <ul>
-                <li class="item">
-                  <div>
-                    <code>
-                    <a name="/c:objc(cs)ORTSessionOptions(im)appendCoreMLExecutionProviderWithOptions:error:"></a>
-                    <a name="//apple_ref/objc/Method/-appendCoreMLExecutionProviderWithOptions:error:" class="dashAnchor"></a>
-                    <a class="token" href="#/c:objc(cs)ORTSessionOptions(im)appendCoreMLExecutionProviderWithOptions:error:">-appendCoreMLExecutionProviderWithOptions:<wbr>error:<wbr></a>
-                    </code>
-                  </div>
-                  <div class="height-container">
-                    <div class="pointer-container"></div>
-                    <section class="section">
-                      <div class="pointer"></div>
-                      <div class="abstract">
-                        <p>Enables the CoreML execution provider in the session configuration options.
- It is appended to the execution provider list which is ordered by
- decreasing priority.</p>
-
-                      </div>
-                      <div class="declaration">
-                        <h4>Declaration</h4>
-                        <div class="language">
-                          <p class="aside-title">Objective-C</p>
-                          <pre class="highlight objective_c"><code><span class="k">-</span> <span class="p">(</span><span class="n">BOOL</span><span class="p">)</span><span class="nf">appendCoreMLExecutionProviderWithOptions</span><span class="p">:</span>
-            <span class="p">(</span><span class="n">nonnull</span> <span class="n"><a href="../Classes/ORTCoreMLExecutionProviderOptions.html">ORTCoreMLExecutionProviderOptions</a></span> <span class="o">*</span><span class="p">)</span><span class="nv">options</span>
-                                           <span class="nf">error</span><span class="p">:(</span><span class="n">NSError</span> <span class="o">*</span><span class="n">_Nullable</span> <span class="o">*</span><span class="n">_Nullable</span><span class="p">)</span>
-                                                     <span class="n">error</span><span class="p">;</span></code></pre>
-
-                        </div>
-                        <div class="language">
-                          <p class="aside-title">Swift</p>
-                          <pre class="highlight swift"><code><span class="kd">func</span> <span class="nf">appendCoreMLExecutionProvider</span><span class="p">(</span><span class="n">with</span> <span class="nv">options</span><span class="p">:</span> <span class="kt"><a href="../Classes/ORTCoreMLExecutionProviderOptions.html">ORTCoreMLExecutionProviderOptions</a></span><span class="p">)</span> <span class="k">throws</span></code></pre>
-
-                        </div>
-                      </div>
-                      <div>
-                        <h4>Parameters</h4>
-                        <table class="graybox">
-                          <tbody>
-                            <tr>
-                              <td>
-                                <code>
-                                <em>options</em>
-                                </code>
-                              </td>
-                              <td>
-                                <div>
-                                  <p>The CoreML execution provider configuration options.</p>
-                                </div>
-                              </td>
-                            </tr>
-                            <tr>
-                              <td>
-                                <code>
-                                <em>error</em>
-                                </code>
-                              </td>
-                              <td>
-                                <div>
-                                  <p>Optional error information set if an error occurs.</p>
-                                </div>
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                      <div>
-                        <h4>Return Value</h4>
-                        <p>Whether the provider was enabled successfully.</p>
                       </div>
                     </section>
                   </div>
