@@ -8,7 +8,7 @@ The [Open Neural Network Exchange](http://onnx.ai/) (ONNX) is an open standard f
 
 ### Why ONNX Runtime React Native
 
-With ONNX Runtime React Native, React Native developers can score pre-trained ONNX models directy on React Native apps by leveraging the native [ONNX Runtime](http://www.onnxruntime.ai/docs/) CPU engine, so it supports most functionalities native ONNX Runtime offers, including full ONNX operator coverage, multi-threading, [ONNX Runtime Quantization](https://www.onnxruntime.ai/docs/how-to/quantization.html) as well as [ONNX Runtime Mobile](http://www.onnxruntime.ai/docs/how-to/deploy-on-mobile.html).
+With ONNX Runtime React Native, React Native developers can score pre-trained ONNX models directy on React Native apps by leveraging [ONNX Runtime Mobile](https://www.onnxruntime.ai/docs/reference/mobile/prebuilt-package/), so it provides a light-weight inference solution for Android and iOS.
 
 ### Installation
 
@@ -32,9 +32,9 @@ Refer to [ONNX Runtime JavaScript examples](https://github.com/microsoft/onnxrun
 - Unsigned data type at Tensor
 - Model loading using ArrayBuffer
 
-### Operator
+### Operator and type support
 
-ONNX Runtime React Native currently support all operators in [ai.onnx](https://github.com/onnx/onnx/blob/master/docs/Operators.md) and [ai.onnx.ml](https://github.com/onnx/onnx/blob/master/docs/Operators-ml.md).
+ONNX Runtime React Native currently supports most operators used by popular models. Refer to [ONNX Runtime Mobile Pacakge Operator and Type](https://www.onnxruntime.ai/docs/reference/mobile/prebuilt-package/1.8%20ORTMobilePackageOperatorTypeSupport).
 
 ### License
 

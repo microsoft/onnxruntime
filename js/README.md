@@ -305,7 +305,7 @@ This project provides an ONNX Runtime React Native JavaScript library to run ONN
 
 ### Models with ORT format
 
-By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package consuming ORT format. Follow the [instruciton](https://www.onnxruntime.ai/docs/how-to/mobile/model-conversion.html#converting-onnx-models-to-ort-format) to covert ONNX model to ORT format.
+By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with ORT format. Follow the [instruciton](https://www.onnxruntime.ai/docs/how-to/mobile/model-conversion.html#converting-onnx-models-to-ort-format) to covert ONNX model to ORT format.
 
 ### Build
 
