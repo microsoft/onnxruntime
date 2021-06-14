@@ -115,7 +115,7 @@ std::vector<EventRecord> CudaProfiler::EndProfiling() {
   std::vector<EventRecord> events;
   if (enabled_.test_and_set()) {
     if (initialized_) {
-      cuptiActivityFlushAll(1);
+      // cuptiActivityFlushAll(1);
       std::unique_lock<OrtMutex> lock(mutex_);
       int64_t profiling_start = std::chrono::duration_cast<nanoseconds>(start_time_.time_since_epoch()).count();
       for (const auto& stat : stats_) {
@@ -137,6 +137,7 @@ std::vector<EventRecord> CudaProfiler::EndProfiling() {
   enabled_.clear();
   return events;
 }
+
 #endif //USE_CUDA
 
 DeviceProfiler* DeviceProfiler::GetDeviceProfiler() {
