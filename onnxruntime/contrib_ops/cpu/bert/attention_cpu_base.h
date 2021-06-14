@@ -26,7 +26,8 @@ class AttentionCPUBase : public AttentionBase {
                         Tensor* output,            // output tensor
                         int batch_size,            // batch size
                         int sequence_length,       // sequence length
-                        int head_size,             // head size
+                        //int qk_head_size,          // qk_head_size
+                        int head_size,           // v_head size
                         int hidden_size,           // hidden size
                         OpKernelContext* context) const {
     AllocatorPtr allocator;

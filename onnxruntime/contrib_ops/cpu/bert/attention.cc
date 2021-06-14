@@ -83,26 +83,53 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                            "Input 1 dimension 0 should have same length as dimension 2 of input 0");
   }
 
-  int hidden_size = static_cast<int>(weights_dims[1]) / 3;
-  if (3 * hidden_size != static_cast<int>(weights_dims[1])) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 1 dimension 1 should be 3 times of hidden dimension");
+  const auto& bias_dims = bias_shape.GetDims();
+  if (bias_dims.size() != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' is expected to have 1 dimension, got ",
+                           bias_dims.size());
+  }
+
+  int hidden_size = 0;
+
+  if (qkv_hidden_sizes_.size() == 0) {
+    hidden_size = static_cast<int>(weights_dims[1]) / 3;
+    if (3 * hidden_size != static_cast<int>(weights_dims[1])) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 1 dimension 1 should be 3 times of hidden dimension");
+    }
+
+    if (bias_dims[0] != weights_dims[1]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'bias' dimension 0 should have same length as dimension 1 of input 'weights'");
+    }
+
+    if (hidden_size % num_heads_ != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "hidden_size should be divisiable by num_heads.");
+    }
+  } else {
+    int qkv_sizes = 0;
+
+    for (int i = 0; i < qkv_hidden_sizes_.size(); i++) {
+      qkv_sizes += static_cast<int>(qkv_hidden_sizes_[i]);
+    }
+
+    int qkv_hidden_sizes_sum = static_cast<int>(weights_dims[1]);
+    if (qkv_hidden_sizes_sum != qkv_sizes) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "qkv_sizes doesn't match the wights dimension");
+    }
+
+    //TODO
+    // Do all the verifications on hidden layers here:
+    // 1. q_hidden_size == k_hidden_size for weights
+    // 2. bias sizes  same for Q, K, V paths
+    // 3. q, k, v sizes are divisible by num_heads_
   }
 
   if (hidden_size % num_heads_ != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "hidden_size should be divisiable by num_heads.");
   }
 
-  const auto& bias_dims = bias_shape.GetDims();
-  if (bias_dims.size() != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'bias' is expected to have 1 dimension, got ",
-                           bias_dims.size());
-  }
-  if (bias_dims[0] != weights_dims[1]) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'bias' dimension 0 should have same length as dimension 1 of input 'weights'");
-  }
-
+  //TODO how this changes with new params
   int past_sequence_length = 0;
   if (past != nullptr) {  // past is optional
     const auto& past_dims = past->Shape().GetDims();
@@ -297,8 +324,9 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const int sequence_length = static_cast<int>(shape[1]);
   const int input_hidden_size = static_cast<int>(shape[2]);
 
-  const auto& weights_dims = weights_shape.GetDims();
-  const int hidden_size = static_cast<int>(weights_dims[1]) / 3;
+  //const auto& weights_dims = weights_shape.GetDims();
+  //const int hidden_size = static_cast<int>(weights_dims[1]) / 3;
+  const int hidden_size = static_cast<int>(qkv_hidden_sizes_[2]);
   const int head_size = hidden_size / num_heads_;
 
   std::vector<int64_t> output_shape(3);
@@ -309,6 +337,22 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
   constexpr size_t element_size = sizeof(T);
 
+  int q_hidden_size = 0;
+  int k_hidden_size = 0;
+  int v_hidden_size = 0;
+  if (qkv_hidden_sizes_.size() == 0) {
+    q_hidden_size = hidden_size;
+    k_hidden_size = hidden_size;
+    v_hidden_size = hidden_size;
+  } else {
+    q_hidden_size = static_cast<int>(qkv_hidden_sizes_[0]);
+    k_hidden_size = static_cast<int>(qkv_hidden_sizes_[1]);
+    v_hidden_size = static_cast<int>(qkv_hidden_sizes_[2]);
+  }
+
+  int qk_head_size = q_hidden_size / num_heads_;
+  int v_head_size = v_hidden_size / num_heads_;
+
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
@@ -316,12 +360,16 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   // Compute Q, K, V
   // gemm_data(BS, 3NH) = input(BS, D) x weights(D, 3NH) + bias(3NH)
   // D (input_hidden_size) is hidden dimension of input, where D could be larger than hidden_size (NH) when model is pruned.
-  auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * 3 * hidden_size * element_size);
+  auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * (q_hidden_size + k_hidden_size + v_hidden_size) * element_size);
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
 
   auto Q = reinterpret_cast<T*>(gemm_data);
-  auto K = Q + static_cast<size_t>(batch_size) * sequence_length * hidden_size;
-  auto V = K + static_cast<size_t>(batch_size) * sequence_length * hidden_size;
+  //auto K = Q + static_cast<size_t>(batch_size) * sequence_length * hidden_size;
+  auto K = Q + static_cast<size_t>(batch_size) * sequence_length * q_hidden_size;
+
+  //auto V = K + static_cast<size_t>(batch_size) * sequence_length * hidden_size;
+  auto V = K + static_cast<size_t>(batch_size) * sequence_length * k_hidden_size;
+
   T* QKV[3] = {Q, K, V};
 
   {
@@ -330,6 +378,8 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     const auto* weights_data = weights ? weights->template Data<T>() : nullptr;
     const auto* bias_data = bias->template Data<T>();
 
+    // TODO 
+    // This cost is not exactly correct as for qk because the varied head size.
     const double cost =
         static_cast<double>(sequence_length) * static_cast<double>(head_size) * static_cast<double>(input_hidden_size);
     ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
@@ -339,17 +389,43 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         const int qkv_index = static_cast<int>(i % 3);
 
         int input_offset = batch_index * sequence_length * input_hidden_size;
-        int weights_offset = qkv_index * hidden_size + head_index * head_size;
+
+        //int weights_offset = qkv_index * hidden_size + head_index * head_size;
+        int weights_offset = 0; 
+        if (qkv_index == 1) {
+          weights_offset += q_hidden_size;
+        }
+        if (qkv_index == 2) {
+          weights_offset += q_hidden_size + k_hidden_size;
+        }
+
+        if (qkv_index == 0 || qkv_index == 1) {
+          weights_offset += head_index * qk_head_size;
+        } else {
+          weights_offset += head_index * v_head_size;
+        }
+
         T* qkv_dest = QKV[qkv_index];
-        int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
+        // int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
+        int qkv_offset = 0;
+        if (qkv_index <= 1) {
+          qkv_offset += (batch_index * num_heads_ + head_index) * (sequence_length * qk_head_size);
+        } else if (qkv_index == 2) {
+          qkv_offset += (batch_index * num_heads_ + head_index) * (sequence_length * v_head_size);
+        }
 
         // TODO!! memcpy here makes it not worthwhile to use Gemm batch. Possible to post process?
         // broadcast 3NH -> (3.B.N.S.H)
         const T* broadcast_data_src = bias_data + weights_offset;
         T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;
         for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
-          memcpy(broadcast_data_dest, broadcast_data_src, head_size * sizeof(T));
-          broadcast_data_dest += head_size;
+          if (qkv_index <= 1) {
+            memcpy(broadcast_data_dest, broadcast_data_src, qk_head_size * sizeof(T));
+            broadcast_data_dest += qk_head_size;
+          } else {
+            memcpy(broadcast_data_dest, broadcast_data_src, v_head_size * sizeof(T));
+            broadcast_data_dest += v_head_size;
+          }
         }
 
         //                   original           transposed            iteration
@@ -373,20 +449,30 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
               head_size,                  // ldc
               nullptr);                   // use single-thread
         } else {
+          int head_size_passed_in = 0;
+          if (qkv_index <= 1) {
+            head_size_passed_in = qk_head_size;
+          } else {
+            head_size_passed_in = v_head_size;
+          }
+
           math::GemmEx<float, ThreadPool>(
               CblasNoTrans,                   // TransA = no
               CblasNoTrans,                   // TransB = no
               sequence_length,                // M      = S
-              head_size,                      // N      = H
+              //head_size                     // N      = H  
+              head_size_passed_in,            // N      = H
               input_hidden_size,              // K      = D
               1.0f,                           // alpha
               input_data + input_offset,      // A
               input_hidden_size,              // lda    = D
               weights_data + weights_offset,  // B
-              3 * hidden_size,                // ldb    = 3NH
+              //3 * hidden_size,                // ldb    = 3NH
+              q_hidden_size + k_hidden_size + v_hidden_size,
               1.0f,                           // beta
               qkv_dest + qkv_offset,          // C
-              head_size,                      // ldc
+              //head_size,                    // ldc
+              head_size_passed_in,            // ldc
               nullptr                         // use single-thread
           );
         }
