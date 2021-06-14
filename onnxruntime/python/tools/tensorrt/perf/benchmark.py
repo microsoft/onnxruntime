@@ -1583,9 +1583,7 @@ def main():
     models = {}
     parse_models_helper(args, models)
 
-    if not os.path.exists("symbolic_shape_infer.py"):
-        subprocess.run(["wget", "https://raw.githubusercontent.com/microsoft/onnxruntime/master/onnxruntime/python/tools/symbolic_shape_infer.py"], check=True)
-    os.environ["SYMBOLIC_SHAPE_INFER"] = os.path.join(os.getcwd(), "symbolic_shape_infer.py")
+    os.environ["SYMBOLIC_SHAPE_INFER"] = os.path.join(os.getcwd(), "../../symbolic_shape_infer.py")
 
     perf_start_time = datetime.now()
     success_results, model_to_latency, model_to_fail_ep, model_to_metrics = run_onnxruntime(args, models)

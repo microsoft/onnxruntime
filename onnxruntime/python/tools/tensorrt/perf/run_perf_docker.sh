@@ -15,7 +15,6 @@ done
 # Variables
 DOCKER_PERF_DIR='/perf/'
 HOME_PERF_DIR='/home/hcsuser/perf/'
-PERF_SCRIPT=$DOCKER_PERF_DIR'perf.sh'
 WORKSPACE='/'
 
 # Volumes
@@ -27,25 +26,23 @@ PARTNER_VOLUME=' -v '$HOME_PERF_DIR'partner:'$DOCKER_PERF_DIR'/partner'
 # Add Remaining Variables
 if [ $OPTION == "onnx-zoo-models" ]
 then 
-    MODEL_PATH=$DOCKER_PERF_DIR'model_list.json'
     VOLUME=$VOLUME$ONNX_ZOO_VOLUME
 fi 
 
 if [ $OPTION == "many-models" ]
 then 
-    MODEL_PATH='/mount/many-models'
     VOLUME=$VOLUME$MANY_MODELS_VOLUME
 fi 
 
 if [ $OPTION == "partner-models" ]
 then 
-   MODEL_PATH=$DOCKER_PERF_DIR'partner/partner_model_list.json'
    VOLUME=$VOLUME$PARTNER_VOLUME
 fi
 
 if [ $OPTION == "selected-models" ]
 then	
-  VOLUME=$VOLUME$ONNX_ZOO_VOLUME$MANY_MODELS_VOLUME$PARTNER_VOLUME' -v '$HOME_PERF_DIR'subset_jsons/:'$DOCKER_PERF_DIR'subset_jsons'
+  VOLUME=$VOLUME$ONNX_ZOO_VOLUME$MANY_MODELS_VOLUME$PARTNER_VOLUME
 fi
 
-sudo docker run --gpus all -v $VOLUME $DOCKER_IMAGE /bin/bash $PERF_SCRIPT -d $DOCKER_PERF_DIR -o $OPTION -m $MODEL_PATH -w $WORKSPACE -e "$EP_LIST"
+MODEL_PATH=$WORKSPACE$MODEL_PATH
+sudo docker run --gpus all -v $VOLUME $DOCKER_IMAGE /bin/bash $DOCKER_PERF_DIR'perf.sh' -d $DOCKER_PERF_DIR -o $OPTION -m $MODEL_PATH -w $WORKSPACE -e "$EP_LIST"
