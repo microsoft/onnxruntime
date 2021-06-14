@@ -23,8 +23,8 @@
     "webpack-cli": "^4.7.0"
   },
   "main": "dist/ort-common.node.js",
-  "types": "./types/index.d.ts",
+  "types": "dist/lib/index.d.ts",
   "jsdelivr": "dist/ort-common.min.js",
   "unpkg": "dist/ort-common.min.js",
-  "module": "./lib/index.js"
+  "module": "dist/lib/index.js"
 }

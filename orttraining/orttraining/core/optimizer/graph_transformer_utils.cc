@@ -52,6 +52,7 @@
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
+#include "orttraining/core/optimizer/loss_rewriter.h"
 
 namespace onnxruntime {
 namespace training {
@@ -94,6 +95,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       transformers.emplace_back(std::make_unique<LayerNormFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps, config.allow_layer_norm_mod_precision));
       transformers.emplace_back(std::make_unique<FastGeluFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(compatible_eps));
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
       // We are supposed to use execution provider as indicator, but here we don't have access to the registered EP at this point

@@ -33,6 +33,17 @@ const isMultiThreadSupported = (): boolean => {
   }
 };
 
+const isSimdSupported = (): boolean => {
+  try {
+    // Test for WebAssembly SIMD capability (for both browsers and Node.js)
+    // This typed array is a WebAssembly program containing SIMD instructions.
+    return WebAssembly.validate(new Uint8Array(
+        [0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 10, 9, 1, 7, 0, 65, 0, 253, 15, 26, 11]));
+  } catch (e) {
+    return false;
+  }
+};
+
 export const initializeWebAssembly = async(): Promise<void> => {
   if (initialized) {
     return Promise.resolve();
@@ -49,8 +60,10 @@ export const initializeWebAssembly = async(): Promise<void> => {
   // wasm flags are already initialized
   const timeout = env.wasm.initTimeout!;
   const numThreads = env.wasm.numThreads!;
+  const simd = env.wasm.simd!;
 
   const useThreads = numThreads > 1 && isMultiThreadSupported();
+  const useSimd = simd && isSimdSupported();
   let isTimeout = false;
 
   const tasks: Array<Promise<void>> = [];
@@ -70,7 +83,14 @@ export const initializeWebAssembly = async(): Promise<void> => {
     const factory = useThreads ? ortWasmFactoryThreaded : ortWasmFactory;
     const config: Partial<OrtWasmModule> = {};
 
-    if (useThreads) {
+    if (!useThreads) {
+      config.locateFile = (fileName: string, scriptDirectory: string) => {
+        if (useSimd && fileName === 'ort-wasm.wasm') {
+          return scriptDirectory + 'ort-wasm-simd.wasm';
+        }
+        return scriptDirectory + fileName;
+      };
+    } else {
       if (typeof Blob === 'undefined') {
         config.mainScriptUrlOrBlob = path.join(__dirname, 'ort-wasm-threaded.js');
       } else {
@@ -86,6 +106,10 @@ export const initializeWebAssembly = async(): Promise<void> => {
                   require('./binding/ort-wasm-threaded.worker.js')
                 ],
                 {type: 'text/javascript'}));
+          }
+
+          if (useSimd && fileName === 'ort-wasm-threaded.wasm') {
+            return scriptDirectory + 'ort-wasm-simd-threaded.wasm';
           }
           return scriptDirectory + fileName;
         };

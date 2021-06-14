@@ -2,6 +2,6 @@
 
 webpack.config.js
 tsconfig.json
-tsconfig.tsbuildinfo
+**/*.tsbuildinfo
 
 *.tgz

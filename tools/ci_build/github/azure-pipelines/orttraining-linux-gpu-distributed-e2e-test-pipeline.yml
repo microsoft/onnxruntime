@@ -14,13 +14,13 @@ jobs:
   - template: templates/run-docker-build-steps.yml
     parameters:
       RunDockerBuildArgs: |
-        -o ubuntu18.04 -d gpu -r $(Build.BinariesDirectory) \
+        -o ubuntu20.04 -p 3.8 -d gpu -r $(Build.BinariesDirectory) \
         -t onnxruntime_e2e_test_image \
         -x " \
           --config RelWithDebInfo \
           --enable_training \
           --update --build \
-          --build_wheel \
+          --build_wheel --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=70 \
           " \
         -m
       DisplayName: 'Build'

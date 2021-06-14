@@ -94,6 +94,29 @@ TEST(CoreMLExecutionProviderTest, FunctionTest) {
                             feeds);
 }
 
+// CoreML EP currently handles a special case for supporting ArgMax op:
+// An ArgMax followed by a Cast to int32 type.
+// Please see in <repo_root>/onnxruntime/core/providers/coreml/builders/impl/argmax_op_builder.cc
+// and /cast_op_builder.cc. We have the following UT test here for this special case
+// This test case can also be shared later if we want to support similar cases in NNAPI
+TEST(CoreMLExecutionProviderTest, ArgMaxCastTest) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/coreml_argmax_cast_test.onnx");
+
+  std::vector<int64_t> dims_mul_x = {3, 2, 2};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
+  OrtValue ml_value_x;
+
+  CreateMLValue<float>(TestCoreMLExecutionProvider(s_coreml_flags)->GetAllocator(0, OrtMemTypeDefault),
+                       dims_mul_x, values_mul_x, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.ArgMaxCastTest",
+                            std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
+                            feeds);
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(CoreMLExecutionProviderTest, TestOrtFormatModel) {
