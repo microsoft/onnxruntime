@@ -30,11 +30,6 @@ static uint16_t floatToHalf(float ff) {
   uint32_t sign = floatbits & sign_mask;
   floatbits ^= sign;
 
-  // NOTE all the integer compares in this function can be safely
-  // compiled into signed compares since all operands are below
-  // 0x80000000. Important if you want fast straight SSE2 code
-  // (since there's no unsigned PCMPGTD).
-
   if (floatbits >= f16max) {                            // result is Inf or NaN (all exponent bits set)
     result = (floatbits > f32infty) ? 0x7e00 : 0x7c00;  // NaN->qNaN and Inf->Inf
   } else {                                        // (De)normalized number or zero
