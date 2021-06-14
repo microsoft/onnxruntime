@@ -71,6 +71,10 @@ void CUPTIAPI CudaProfiler::BufferRequested(uint8_t** buffer, size_t* size, size
   *maxNumRecords = 0;
 }
 
+void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t*, size_t, size_t) {
+}
+
+/*
 void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer, size_t, size_t validSize) {
   CUptiResult status;
   CUpti_Activity* record = NULL;
@@ -93,7 +97,7 @@ void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer
     } while (1);
   }
   free(buffer);
-}
+}*/
 
 void CudaProfiler::StartProfiling(TimePoint start_time, int pid, int tid) {
   if (!enabled_.test_and_set()) {
