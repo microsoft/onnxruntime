@@ -35,24 +35,24 @@ FROM openvino/ubuntu18_runtime:${OPENVINO_VERSION}
 ENV DEBIAN_FRONTEND noninteractive
 
 USER root
-RUN apt update && apt install -y --no-install-recommends wget
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER
 ENV WORKDIR_PATH /home/${BUILD_USER}
 WORKDIR ${WORKDIR_PATH}
 
-ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64
-ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/inference_engine/external/gna/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib:$INTEL_OPENVINO_DIR/deployment_tools/ngraph/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/omp/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}
+RUN apt update && apt install -y --no-install-recommends wget && \
+    wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-4.5.11-Linux-x86_64.sh -O ./miniconda.sh --no-check-certificate && \
+    chmod a+w ./miniconda.sh &&\
+    apt remove -y wget && \
+    apt autoremove -y
 
 USER ${BUILD_USER}
-RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-4.5.11-Linux-x86_64.sh -O ~/miniconda.sh --no-check-certificate && \
-    /bin/bash ~/miniconda.sh -b -p ${WORKDIR_PATH}/miniconda && \
+RUN /bin/bash ./miniconda.sh -b -p ${WORKDIR_PATH}/miniconda && \
     rm ~/miniconda.sh && \
     ${WORKDIR_PATH}/miniconda/bin/conda clean -ya
-USER root
-RUN apt remove -y wget
-USER ${BUILD_USER}
 ENV PATH=${WORKDIR_PATH}/miniconda/bin:${WORKDIR_PATH}/cmake-dir/bin:$PATH
+ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64
+ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/inference_engine/external/gna/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib:$INTEL_OPENVINO_DIR/deployment_tools/ngraph/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/omp/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}
 COPY --from=builder /home/openvino/onnxruntime/build/Linux/Release/dist/*.whl ./
-RUN python3 -m pip install ./*.whl
+RUN python3 -m pip install ./*.whl && rm ./*.whl
