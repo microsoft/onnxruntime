@@ -22,7 +22,7 @@ TEST(ShapeInferenceTests, optional_empty_tensor) {
   auto* tensor_type = output.mutable_type()->mutable_optional_type()->mutable_elem_type()->mutable_tensor_type();
   tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
-  TestShapeInference("OptionalEmpty", kMSDomain, 1, 6, {}, attributes, output);
+  TestShapeInference("OptionalConstruct", kMSDomain, 1, 6, {}, attributes, output);
 }
 
 TEST(ShapeInferenceTests, optional_empty_sequence) {
@@ -38,7 +38,7 @@ TEST(ShapeInferenceTests, optional_empty_sequence) {
   auto* tensor_type = sequence_type->mutable_elem_type()->mutable_tensor_type();  
   tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
-  TestShapeInference("OptionalEmpty", kMSDomain, 1, 6, {}, attributes, output);
+  TestShapeInference("OptionalConstruct", kMSDomain, 1, 6, {}, attributes, output);
 }
 
 TEST(TriluContribOpTest, optional_construct_tensor) {

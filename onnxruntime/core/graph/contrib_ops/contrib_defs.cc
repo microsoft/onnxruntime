@@ -2686,53 +2686,17 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
         updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
       });
 
-  static const char* OptionalEmpty_ver1_doc = R"DOC(
-      Construct an empty optional, with given element type.
-      )DOC";
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(OptionalEmpty)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetDoc(OptionalEmpty_ver1_doc)
-      .Attr("type", "Type of the element in the optional output", AttributeProto::TYPE_PROTO)
-      .Output(
-          0,
-          "output",
-          "An optional that contains no elements.",
-          "O")
-      .TypeConstraint(
-          "O",
-          {"optional(tensor(float))",
-           "optional(seq(tensor(float)))"},
-          "Constrains output type to all optional tensor or optional sequence types.")
-      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-        const auto* attr_proto = ctx.getAttribute("type");
-        if (attr_proto == nullptr)
-          fail_type_inference(
-                "Attribute type should be provided.");
-        if (!attr_proto->has_tp())
-          fail_type_inference(
-              "Attribute type should be of type TypeProto and specify a type.");
-        auto attr_tp = attr_proto->tp();
-        const size_t numOutputs = ctx.getNumOutputs();
-        if (numOutputs != 1) {
-          fail_type_inference("OptionalEmpty is expected to have 1 output.");
-        }
-        ctx.getOutputType(0)
-            ->mutable_optional_type()
-            ->mutable_elem_type()
-            ->CopyFrom(attr_tp);
-      });
-
   static const char* OptionalConstruct_ver1_doc = R"DOC(
-      Construct a optional type containing the 'input' element.
+      Construct an optional type containing either an empty optional of a certain type specified by the attribute, "
+      "or an optional type containing the 'input' element."
       )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(OptionalConstruct)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(OptionalConstruct_ver1_doc)
-      .Input(0, "input", "The input element.", "T")
+      .Input(0, "input", "The input element.", "T", OpSchema::Optional)
+      .Attr("type", "Type of the element in the optional output", AttributeProto::TYPE_PROTO, OPTIONAL_VALUE)
       .Output(0, "output", "The optional output enclosing the input element.", "O")
       .TypeConstraint(
           "T",
@@ -2741,30 +2705,53 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           "Constrains input type to all tensor and sequence types.")
       .TypeConstraint(
           "O",
-          {"optional(tensor(float))",
-           "optional(seq(tensor(float)))"},
+          {"optional(tensor(float))", "optional(tensor(uint8))", "optional(tensor(uint16))", 
+           "optional(tensor(uint32))", "optional(tensor(uint64))", "optional(tensor(int8))", 
+           "optional(tensor(int16))", "optional(tensor(int32))", "optional(tensor(int64))", 
+           "optional(tensor(float16))", "optional(tensor(float))", "optional(tensor(double))", 
+           "optional(tensor(string))", "optional(tensor(bool))", "optional(tensor(complex64))", 
+           "optional(tensor(complex128))",
+           "optional(seq(tensor(float)))", "optional(seq(tensor(uint8)))", "optional(seq(tensor(uint16)))", 
+           "optional(seq(tensor(uint32)))", "optional(seq(tensor(uint64)))", "optional(seq(tensor(int8)))", 
+           "optional(seq(tensor(int16)))", "optional(seq(tensor(int32)))", "optional(seq(tensor(int64)))", 
+           "optional(seq(tensor(float16)))", "optional(seq(tensor(float)))", "optional(seq(tensor(double)))", 
+           "optional(seq(tensor(string)))", "optional(seq(tensor(bool)))", "optional(seq(tensor(complex64)))", 
+           "optional(seq(tensor(complex128)))"},
           "Constrains output type to all optional tensor or optional sequence types.")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-          const size_t numInputs = ctx.getNumInputs();
-          if (numInputs != 1) {
-            fail_type_inference("OptionalConstruct is expected to have 1 input.");
-          }
-          auto input_type = ctx.getInputType(0);
-          if(input_type == nullptr){
-            fail_type_inference("Input type is null. Type info is expected.");
-          }
           const size_t numOutputs = ctx.getNumOutputs();
           if (numOutputs != 1) {
-            fail_type_inference("OptionalConstruct is expected to have 1 output.");
+            fail_type_inference("OptionalConstruct is expected to have an output.");
           }
-          ctx.getOutputType(0)
-              ->mutable_optional_type()
-              ->mutable_elem_type()
-              ->CopyFrom(*input_type);
+
+          const size_t numInputs = ctx.getNumInputs();
+          const auto* attr_proto = ctx.getAttribute("type");
+
+          if ((numInputs == 0) && (attr_proto != nullptr)) {
+            if (!attr_proto->has_tp())
+              fail_type_inference(
+                  "Attribute 'type' should be a TypeProto and it should specify a type.");
+            auto attr_tp = attr_proto->tp();
+            ctx.getOutputType(0)
+                ->mutable_optional_type()
+                ->mutable_elem_type()
+                ->CopyFrom(attr_tp);
+          } else if (numInputs == 1) {
+            auto input_type = ctx.getInputType(0);
+            if(input_type == nullptr){
+              fail_type_inference("Input type is null. Type information is expected for the input.");
+            }
+            ctx.getOutputType(0)
+                ->mutable_optional_type()
+                ->mutable_elem_type()
+                ->CopyFrom(*input_type);
+          } else {
+            fail_type_inference("OptionalConstruct is expected to have either an input or the type attribute set.");
+          }
         });
 
   static const char* OptionalHasElement_ver1_doc = R"DOC(
-      Construct a optional type containing the 'input' element.
+      Returns true if the optional-type input contains an element. If it is an empty optional-type, this op returns false.
       )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(OptionalHasElement)
@@ -2772,7 +2759,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .SinceVersion(1)
       .SetDoc(OptionalHasElement_ver1_doc)
       .Input(0, "input", "The optional input.", "O")
-      .Output(0, "output", "A boolean tensor of empty shape. If true, it indicates that optional input contains a tensor or sequence element. Otherwise, it is empty.", "B")
+      .Output(0, "output", "A scalar boolean tensor. If true, it indicates that optional-type input contains an element. Otherwise, it is empty.", "B")
       .TypeConstraint(
           "O",
           {"optional(tensor(float))",
@@ -2787,17 +2774,18 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           if (numInputs != 1) {
             fail_type_inference("OptionalHasElement is expected to have 1 input.");
           }
-          // const size_t numOutputs = ctx.getNumOutputs();
-          // if (numOutputs != 1) {
-          //   fail_type_inference("OptionalHasElement is expected to have 1 output.");
-          // }
-          // auto* output_tensor_type = ctx.getOutputType(0)->mutable_tensor_type();
-          // output_tensor_type->set_elem_type(TensorProto::BOOL);
-          // output_tensor_type->mutable_shape()->Clear();
+          const size_t numOutputs = ctx.getNumOutputs();
+          if (numOutputs != 1) {
+            fail_type_inference("OptionalHasElement is expected to have 1 output.");
+          }
+          auto* output_tensor_type = ctx.getOutputType(0)->mutable_tensor_type();
+          output_tensor_type->set_elem_type(TensorProto::BOOL);
+          output_tensor_type->mutable_shape()->Clear();
           });
 
   static const char* OptionalGetElement_ver1_doc = R"DOC(
-      Outputs a copy of the element in the optional input'.
+      Outputs the element in the optional-type input'. It is an error if the input value does not have an element "
+      "and the behavior is undefined in this case."
       )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(OptionalGetElement)
@@ -2819,11 +2807,14 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
           const size_t numInputs = ctx.getNumInputs();
           if (numInputs != 1) {
-            fail_type_inference("OptionalGetElement is expected to have 1 input element.");
+            fail_type_inference("OptionalGetElement must have an input element.");
           }
           auto input_type = ctx.getInputType(0);
-          if(input_type == nullptr){
-            fail_type_inference("Input type is null. Type info is expected.");
+          if (input_type == nullptr) {
+            fail_type_inference("Input type is null. Input must have Type information.");
+          }
+          if (!input_type->has_optional_type() || !input_type->optional_type().has_elem_type()) {
+            fail_type_inference("Input must be an optional-type value containing an element with type information.");
           }
           ctx.getOutputType(0)
               ->CopyFrom(input_type->optional_type().elem_type());
