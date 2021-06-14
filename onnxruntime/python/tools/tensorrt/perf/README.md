@@ -5,9 +5,7 @@ This script mainly focus on benchmarking ORT TensorRT EP performance compared wi
 
 ### Linux GPU TensorRT Perf CI Pipeline
 - [x] **Build ORT** Build ORT from source. Specify _branch_ variable if not master.
-- [x] **Onnx Zoo Models** Run perf script against onnx zoo models. 
-- [x] **Many Models** Run perf script against many models.
-- [x] **Partner Models** Run perf script against partner models.
+- [x] **Run Models** Run models. 
 - [x] **Post to Dashboard** Post to ONNX Runtime EP Dashboard (No Docker).
 - [ ] **Run in Docker (CUDA 11.0)** Check to run in CUDA 11.0 vs 10.2 (default). 
 - [ ] **Selected Models** Check to run against particular models. Specify _ModelsPath_ variable.
@@ -172,12 +170,12 @@ ort_build_latest.py: This script should be run before running run_perf_machine.s
 ### Running Perf Script 
 run_perf_docker.sh: Runs the perf script in docker environment. 
 - **-d, --docker_image**: Name of perf docker image.
-- **-o, --option**: Name of which models you want to run {onnx-zoo-models, many-models, partner-models, selected-models}
+- **-o, --option**: Name of which models you want to run {i.e. selected-models}
 - **-p, --perf_dir**: Path to perf directory.
 - **-m, --model_path**: If option is selected-models, include path to models either json or folder.
 
 run_perf_machine.sh: Runs the perf script in docker environment. 
-- **-o, --option**: Name of which models you want to run {onnx-zoo-models, many-models, partner-models, selected-models}
+- **-o, --option**: Name of which models you want to run {i.e. selected-models}
 - **-m, --model_path**: If option is selected-models, include path to models either json or folder.
 
 ## Dependencies
