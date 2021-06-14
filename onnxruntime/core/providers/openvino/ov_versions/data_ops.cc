@@ -28,6 +28,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
+//Ops which are supported only in models(as intermediate nodes) and not in unit tests
 std::set<std::string> ops_supported_only_in_model = {
     "Cast",
     "Concat",
@@ -51,7 +52,8 @@ std::set<std::string> ops_supported_only_in_model = {
     "Shape",
     "Split",
     "Tile",
-    "TopK"};
+    "TopK",
+    "QuantizeLinear"};
 
 std::vector<SupportedOp> supported_op_mode = {
     {"Abs", V_2020_4, {"CPU", "GPU"}},
@@ -353,7 +355,12 @@ void DataOps::populate_op_mode_supported() {
   }
   {
     UnsupportedOpMode obj = {{V_2021_4},
-                             [this](const Node* , const InitializedTensorSet& ) {
+                             [this](const Node* node, const InitializedTensorSet& ) {
+                               //tensor type does not support output_shape
+                               const auto& attributes = node->GetAttributes();
+                               auto out_shape_attr = attributes.find("output_shape");
+                               if (out_shape_attr != attributes.end())
+                                  return true;
                                return false;
                              }};
     op_list_.insert({"ConvTranspose", obj});
