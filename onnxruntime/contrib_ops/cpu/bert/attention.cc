@@ -324,9 +324,15 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const int sequence_length = static_cast<int>(shape[1]);
   const int input_hidden_size = static_cast<int>(shape[2]);
 
-  //const auto& weights_dims = weights_shape.GetDims();
-  //const int hidden_size = static_cast<int>(weights_dims[1]) / 3;
-  const int hidden_size = static_cast<int>(qkv_hidden_sizes_[2]);
+  int hidden_size;
+
+  if (qkv_hidden_sizes_.size() == 0) {
+    const auto& weights_dims = weights_shape.GetDims();
+    hidden_size = static_cast<int>(weights_dims[1]) / 3;
+  } else {
+    hidden_size = static_cast<int>(qkv_hidden_sizes_[2]);
+  }
+
   const int head_size = hidden_size / num_heads_;
 
   std::vector<int64_t> output_shape(3);
@@ -485,6 +491,5 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                         batch_size, sequence_length,
                         head_size, hidden_size, context);
 }
-
 }  // namespace contrib
 }  // namespace onnxruntime
