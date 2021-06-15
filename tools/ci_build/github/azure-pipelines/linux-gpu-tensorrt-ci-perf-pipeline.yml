@@ -41,6 +41,18 @@ parameters:
   type: boolean
   default: false
 
+- name: options
+  type: object
+  default: 
+    ${{ if eq(parameters.RunOnnxZoo, true) }}:
+    - "onnx-zoo-models"
+    ${{ if eq(parameters.RunMany, true) }}:
+    - "many-models"
+    ${{ if eq(parameters.RunPartner, true) }}:
+    - "partner-models"
+    ${{ if eq(parameters.RunSelected, true) }}:
+    - "selected-models"
+
 jobs: 
 - job: Linux_CI_GPU_TENSORRT_PERF
   pool: Linux-GPU-TensorRT-Perf 
@@ -51,17 +63,6 @@ jobs:
         value: docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf 
       ${{ if ne(parameters.RunDocker, true) }}:
         value: machine.sh
-    - name: options
-      type: object
-      default: 
-        ${{ if eq(parameters.RunOnnxZoo, true) }}:
-        - "onnx-zoo-models"
-        ${{ if eq(parameters.RunMany, true) }}:
-        - "many-models"
-        ${{ if eq(parameters.RunPartner, true) }}:
-        - "partner-models"
-        ${{ if eq(parameters.RunSelected, true) }}:
-        - "selected-models"
     - name: args
       value: $(runenv) -e "$(epList)"
     - name: run_conda
@@ -80,7 +81,7 @@ jobs:
           displayName: 'Build latest ORT'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
       
-    - ${{ each option in $(options) }}:
+    - ${{ each option in parameters.options }}:
       - script: 'echo ${{option}}'
       #- script: '$(run_conda) && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(environment) -o $(option) -m $(option)'
         displayName: '$(option) perf'
