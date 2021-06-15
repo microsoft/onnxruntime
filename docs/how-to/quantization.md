@@ -103,10 +103,11 @@ U8S8 leverage VPMADDUBSW instruction but U8U8 kernel can process 6 rows at a tim
 VPMADDUBSW has saturation issue, thus U8S8 needs to use [reduce_range](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/quantize.py) if accuracy is not good enough.
 
 #### AVX512
-U8S8 is better in general
+U8S8 is much faster, but may suffer saturation issue.
 - Performance
 U8S8 can only do twice mul/adds per instruction as much as U8U8. Typically U8S8 sequence ends up winning, can be twice as fast as u8u8.
-- Accuracy No difference
+- Accuracy
+Same as the AVX2 because of VPMADDUBSW. Needs to ure reduce_range if accuracy is not good enough.
 
 #### VNNI
 No difference.
@@ -140,6 +141,6 @@ x86-64 with VNNI, GPU with Tensor Core int8 support and ARM with dot-product ins
 Please refer to [here](#method-selection).
 
 ### When to use per-channel and reduce-range?
-Reduce-range will quantize the weight with 7-bits. It is designed for U8S8 format on AVX2 machines to mitigate the [saturation issue](#avx2). Don't use it if you are not using U8S8 on AVX2 machines.
+Reduce-range will quantize the weight with 7-bits. It is designed for U8S8 format on AVX2 and AVX512 (non VNNI) machines to mitigate the [saturation issue](#avx2). Don't need it on VNNI machine.
 
-Per-channel quantization can improve the accuracy for models whose weight ranges are large. Try it firstly if the accuracy loss is large.
+Per-channel quantization can improve the accuracy for models whose weight ranges are large. Try it firstly if the accuracy loss is large. And you need to enable reduce-range generally on AVX2 and AVX512 machines if per-channel is enabled.
