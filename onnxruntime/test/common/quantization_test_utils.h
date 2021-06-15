@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cfenv>
 #include <cmath>
 #include <vector>
@@ -16,6 +17,29 @@ namespace test {
 inline float RoundHalfToEven(float input) {
   std::fesetround(FE_TONEAREST);
   auto result = std::nearbyintf(input);
+  return result;
+}
+
+//
+// Converts a float value to a quantized value with a pre-calculated scale and zero point.
+//
+template <typename Integer, typename = typename std::enable_if<std::is_integral<Integer>::value, Integer>::type>
+inline Integer Quantize(const float value, float scale, Integer zero_point = 0) {
+  constexpr float qmax = std::numeric_limits<Integer>::max();
+  constexpr float qmin = std::numeric_limits<Integer>::min();
+  return static_cast<Integer>(RoundHalfToEven(std::max(qmin, std::min(qmax, (value / scale) + zero_point))));
+}
+
+//
+// Converts a given float vector to a quantized representation with a pre-calculated scale and zero point.
+//
+template <typename Integer, typename = typename std::enable_if<std::is_integral<Integer>::value, Integer>::type>
+inline std::vector<Integer> Quantize(const std::vector<float>& data, float scale, Integer zero_point = 0) {
+  std::vector<Integer> result;
+  result.reserve(data.size());
+  for (size_t i = 0; i < data.size(); i++) {
+    result.push_back(Quantize<Integer>(data[i], scale, zero_point));
+  }
   return result;
 }
 
@@ -47,26 +71,11 @@ inline std::vector<Integer> QuantizeLinear(const std::vector<float>& data, float
 }
 
 //
-// Converts a given float vector to a quantized representation with a pre-calculated scale and zero point.
+// Converts a quantized integer value to a floating point value with a pre-calculated scale and zero point.
 //
 template <typename Integer, typename = typename std::enable_if<std::is_integral<Integer>::value, Integer>::type>
-inline std::vector<Integer> Quantize(const std::vector<float>& data, float scale, Integer zero_point = 0) {
-  std::vector<Integer> result;
-  result.reserve(data.size());
-  for (size_t i = 0; i < data.size(); i++) {
-    result.push_back(Quantize<Integer>(data[i], scale, zero_point));
-  }
-  return result;
-}
-
-//
-// Converts a float value to a quantized value with a pre-calculated scale and zero point.
-//
-template <typename Integer, typename = typename std::enable_if<std::is_integral<Integer>::value, Integer>::type>
-inline Integer Quantize(const float value, float scale, Integer zero_point = 0) {
-  constexpr float qmax = std::numeric_limits<Integer>::max();
-  constexpr float qmin = std::numeric_limits<Integer>::min();
-  return static_cast<Integer>(RoundHalfToEven(std::max(qmin, std::min(qmax, (value / scale) + zero_point))));
+inline float Dequantize(const Integer value, float scale, Integer zero_point = 0) {
+  return (value - zero_point) * scale;
 }
 
 //
@@ -80,14 +89,6 @@ inline std::vector<float> Dequantize(const std::vector<Integer>& data, float sca
     result.push_back(Dequantize(data[i], scale, zero_point));
   }
   return result;
-}
-
-//
-// Converts a quantized integer value to a floating point value with a pre-calculated scale and zero point.
-//
-template <typename Integer, typename = typename std::enable_if<std::is_integral<Integer>::value, Integer>::type>
-inline float Dequantize(const Integer value, float scale, Integer zero_point = 0) {
-  return (value - zero_point) * scale;
 }
 
 }  // namespace test
