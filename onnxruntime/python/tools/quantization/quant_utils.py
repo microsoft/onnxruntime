@@ -337,7 +337,7 @@ def write_calibration_table(calibration_cache):
     TrtTable.TrtTableStartDictVector(builder, len(key_value_list))
     for key_value in key_value_list:
         builder.PrependUOffsetTRelative(key_value)
-    main_dict = builder.EndVector(len(key_value_list))
+    main_dict = builder.EndVector()
 
     TrtTable.TrtTableStart(builder)
     TrtTable.TrtTableAddDict(builder, main_dict)
