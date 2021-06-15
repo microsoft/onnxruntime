@@ -179,7 +179,7 @@ endif()
 
 list(APPEND onnxruntime_link_targets onnxruntime_framework)
 
-if (onnxruntime_ENABLE_TRAINING)
+if (onnxruntime_ENABLE_TRAINING AND onnxruntime_ENABLE_PYTHON)
   if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     if (NOT TARGET onnxruntime_python_interface)
       include(onnxruntime_python_interface.cmake)
