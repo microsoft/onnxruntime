@@ -453,6 +453,15 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
       }
       return true;
     }
+  } else if (optype == "ReduceSum") {
+    const auto& args = node->InputDefs();
+    if (args.size() == 2) {
+      if (can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
+      {
+        return false;
+      }
+      return true;
+    }
   } else if (optype == "Slice") {
     // MIGraphX does not properly handle the situation where any
     // value of the "starts" attribute is higher than a corresponding
@@ -496,9 +505,27 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
         return true;
       }
     }
+
+    const auto& args = node->InputDefs();
+    if (args.size() == 2) {
+      if (can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
+      {
+        return false;
+      }
+      return true;
+    }
   } else if (optype == "Tile") {
     if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
     {
+      return true;
+    }
+  } else if (optype == "Unsqueeze" or optype == "Squeeze") {
+    const auto& args = node->InputDefs();
+    if (args.size() == 2) {
+      if (can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
+      {
+        return false;
+      }
       return true;
     }
   }
