@@ -350,6 +350,5 @@ TEST(InternalTestingEP, TestOrtModelWithCompileFailure) {
     ExecuteMnist(session, true /* enable_custom_ep */);
   }
 }
-
 }  // namespace test
 }  // namespace onnxruntime

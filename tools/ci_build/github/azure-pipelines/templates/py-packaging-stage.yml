@@ -205,7 +205,7 @@ stages:
                   --build_wheel \
                   --enable_onnx_tests --use_cuda --cuda_version=11.1 --cuda_home=/usr/local/cuda-11.1 --cudnn_home=/usr/local/cuda-11.1 \
                   ${{ parameters.build_py_parameters }} \
-                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-9/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=35;37;50;52;60;61;70;75;80;86'
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-9/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
@@ -311,8 +311,10 @@ stages:
       - script: |-
           echo "Tests will run using HIP_VISIBLES_DEVICES=$HIP_VISIBLE_DEVICES"
           video_gid=$(getent group | awk '/video/ {split($0,a,":"); print(a[3])}')
+          echo "Found video_gid=$video_gid; attempting to set as pipeline variable"
           echo "##vso[task.setvariable variable=video]$video_gid"
           render_gid=$(getent group | awk '/render/ {split($0,a,":"); print(a[3])}')
+          echo "Found render_gid=$render_gid; attempting to set as pipeline variable"
           echo "##vso[task.setvariable variable=render]$render_gid"
         displayName: 'Find video and render gid to be mapped into container'
  
@@ -449,11 +451,13 @@ stages:
               --security-opt seccomp=unconfined \
               --volume $(Build.SourcesDirectory):/onnxruntime_src \
               --volume $(Build.BinariesDirectory):/build \
+              --entrypoint /bin/bash \
               -e HIP_VISIBLE_DEVICES \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
+              -e PythonManylinuxDir=$(PythonManylinuxdir) \
               onnxruntimetrainingrocmbuild \
-                bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/*.whl && /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release " ;
+                /onnxruntime_src/tools/ci_build/github/pai/wrap_rocm_python_doc_publisher.sh
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
@@ -754,7 +758,7 @@ stages:
                   --build_wheel \
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
-                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-$(GccVersion)/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=35;37;50;52;60;61;70;75;80;86' \
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-$(GccVersion)/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80' \
                   --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion)
           workingDirectory: $(Build.SourcesDirectory)
 
@@ -1079,7 +1083,7 @@ stages:
             --use_cuda --cuda_version=$(CUDA_VERSION)
             --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"
             --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.0.5.39\cuda"
-            $(TelemetryOption) --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=35;37;50;52;60;61;70;75;80;86"
+            $(TelemetryOption) --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
           workingDirectory: '$(Build.BinariesDirectory)'
 
       # Esrp signing
@@ -1183,6 +1187,7 @@ stages:
 
   - ${{ if eq(parameters.enable_mac_cpu, true) }}:
     - job: MacOS_py_Wheels
+      timeoutInMinutes: 90
       workspace:
         clean: all
       pool:
