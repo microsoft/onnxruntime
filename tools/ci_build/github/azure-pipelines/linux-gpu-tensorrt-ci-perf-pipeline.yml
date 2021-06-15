@@ -38,8 +38,8 @@ jobs:
         value: docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf 
       ${{ if ne(parameters.RunDocker, true) }}:
         value: machine.sh
-    - name: args
-      value: $(runenv) -e "$(epList)"
+    - name: with_arguments
+      value: $(environment) -e "$(epList)"
     - name: run_conda
       value: eval "$(command conda 'shell.bash' 'hook' 2> /dev/null)" && conda activate perf37 
   timeoutInMinutes: 3000 
@@ -58,8 +58,8 @@ jobs:
       
     - ${{ each option in parameters.options }}:
       - script: 'echo ${{option}} at $(${{option}})'
-      #- script: '$(run_conda) && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(environment) -o ${{option}} -m $(${{option}}))'
-        displayName: '$(option) perf'
+      #- script: '$(run_conda) && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $( ${{ option }} )'
+        displayName: '${{option}} perf'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         env:
           LD_LIBRARY_PATH : "/home/hcsuser/TensorRT-7.2.2.3/lib"
