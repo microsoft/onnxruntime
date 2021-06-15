@@ -19,26 +19,31 @@ using MemoryInfoSet = std::set<OrtMemoryInfo>;
 const int DEFAULT_CPU_ALLOCATOR_DEVICE_ID = 0;
 
 struct AllocatorCreationInfo {
-  AllocatorCreationInfo(AllocatorFactory device_alloc_factory0,
-                        OrtDevice::DeviceId device_id0 = 0,
-                        bool use_arena0 = true,
-                        OrtArenaCfg arena_cfg0 = {0, -1, -1, -1, -1})
-      : device_alloc_factory(device_alloc_factory0),
-        device_id(device_id0),
-        use_arena(use_arena0),
-        arena_cfg(arena_cfg0) {
+  AllocatorCreationInfo(AllocatorFactory device_alloc_factory,
+                        OrtDevice::DeviceId device_id = 0,
+                        bool use_arena = true,
+                        OrtArenaCfg arena_cfg = {0, -1, -1, -1, -1})
+      : device_alloc_factory_(device_alloc_factory),
+        device_id_(device_id),
+        use_arena_(use_arena),
+        arena_cfg_(arena_cfg) {
   }
 
-  AllocatorFactory device_alloc_factory;
-  OrtDevice::DeviceId device_id;
-  bool use_arena;
-  OrtArenaCfg arena_cfg;
+  AllocatorFactory device_alloc_factory_;
+  OrtDevice::DeviceId device_id_;
+  bool use_arena_;
+  OrtArenaCfg arena_cfg_;
 };
 
-// Returns an allocator based on the creation info provided.
+// Returns an allocator (an instance of IAllocator) based on the creation info provided.
 // Returns nullptr if an invalid value of info.arena_cfg.arena_extend_strategy is supplied.
 // Valid values can be found in onnxruntime_c_api.h.
 AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info);
+
+// Returns an allocator (an instance of IAllocator) from the provided OrtAllocator instance.
+// The use-case for this method is as an "adapter" to convert a custom allocator implemented by
+// an external user to be plugged into ORT internal code as an instance of an IAllocator.
+//AllocatorPtr CreateAllocator(const OrtAllocator& external_allocator);
 
 // TODO: Only used for TRT and CUDA EP currently, need to add more identifiers to use it across all EPs
 class AllocatorManager {

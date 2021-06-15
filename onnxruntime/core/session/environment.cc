@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/environment.h"
+#include "core/session/allocator_adapters.h"
 #include "core/framework/allocatormgr.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
@@ -24,7 +25,6 @@
 
 #include "core/platform/env.h"
 #include "core/util/thread_utils.h"
-#include "core/session/allocator_impl.h"
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
 #include "core/platform/tracing.h"
@@ -100,9 +100,9 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
 
     // override with values from the user supplied arena_cfg object
     if (arena_cfg) {
-      max_mem = arena_cfg->max_mem;
+      max_mem = arena_cfg->max_mem_;
 
-      arena_extend_strategy = arena_cfg->arena_extend_strategy;
+      arena_extend_strategy = arena_cfg->arena_extend_strategy_;
       // validate the value here
       if (!(arena_extend_strategy == -1 || arena_extend_strategy == 0 || arena_extend_strategy == 1)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -110,9 +110,9 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
                                " Valid values can be either 0, 1 or -1.");
       }
 
-      initial_chunk_size_bytes = arena_cfg->initial_chunk_size_bytes;
-      max_dead_bytes_per_chunk = arena_cfg->max_dead_bytes_per_chunk;
-      initial_growth_chunk_size_bytes = arena_cfg->initial_growth_chunk_size_bytes;
+      initial_chunk_size_bytes = arena_cfg->initial_chunk_size_bytes_;
+      max_dead_bytes_per_chunk = arena_cfg->max_dead_bytes_per_chunk_;
+      initial_growth_chunk_size_bytes = arena_cfg->initial_growth_chunk_size_bytes_;
     }
 
     OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk,

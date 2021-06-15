@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_c_api.h"
-#include "core/session/allocator_impl.h"
+#include "core/session/allocator_adapters.h"
 #include "core/session/inference_session_utils.h"
 #include "core/session/IOBinding.h"
 #include "core/framework/allocator.h"
@@ -156,7 +156,7 @@ ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t
   for (size_t i = 0; i != shape_len; ++i) {
     shapes[i] = shape[i];
   }
-  std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::AllocatorWrapper>(allocator);
+  std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator);
   *out = std::make_unique<Tensor>(ml_type, onnxruntime::TensorShape(shapes), alloc_ptr);
   return nullptr;
 }
@@ -173,7 +173,7 @@ ORT_STATUS_PTR CreateTensorImplForSeq(MLDataType elem_type, const int64_t* shape
   if (st) {
     return st;
   }
-  std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::AllocatorWrapper>(allocator);
+  std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator);
   out = Tensor(elem_type, onnxruntime::TensorShape(shapes), alloc_ptr);
   return nullptr;
 }
@@ -1866,10 +1866,10 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_exte
                     int max_dead_bytes_per_chunk, _Outptr_ OrtArenaCfg** out) {
   API_IMPL_BEGIN
   *out = new OrtArenaCfg();
-  (*out)->max_mem = max_mem;
-  (*out)->arena_extend_strategy = arena_extend_strategy;
-  (*out)->initial_chunk_size_bytes = initial_chunk_size_bytes;
-  (*out)->max_dead_bytes_per_chunk = max_dead_bytes_per_chunk;
+  (*out)->max_mem_ = max_mem;
+  (*out)->arena_extend_strategy_ = arena_extend_strategy;
+  (*out)->initial_chunk_size_bytes_ = initial_chunk_size_bytes;
+  (*out)->max_dead_bytes_per_chunk_ = max_dead_bytes_per_chunk;
   return nullptr;
   API_IMPL_END
 }
@@ -1881,15 +1881,15 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* 
 
   for (size_t i = 0; i < num_keys; ++i) {
     if (strcmp(arena_config_keys[i], "max_mem") == 0) {
-      cfg->max_mem = arena_config_values[i];
+      cfg->max_mem_ = arena_config_values[i];
     } else if (strcmp(arena_config_keys[i], "arena_extend_strategy") == 0) {
-      cfg->arena_extend_strategy = static_cast<int>(arena_config_values[i]);
+      cfg->arena_extend_strategy_ = static_cast<int>(arena_config_values[i]);
     } else if (strcmp(arena_config_keys[i], "initial_chunk_size_bytes") == 0) {
-      cfg->initial_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
+      cfg->initial_chunk_size_bytes_ = static_cast<int>(arena_config_values[i]);
     } else if (strcmp(arena_config_keys[i], "max_dead_bytes_per_chunk") == 0) {
-      cfg->max_dead_bytes_per_chunk = static_cast<int>(arena_config_values[i]);
+      cfg->max_dead_bytes_per_chunk_ = static_cast<int>(arena_config_values[i]);
     } else if (strcmp(arena_config_keys[i], "initial_growth_chunk_size_bytes") == 0) {
-      cfg->initial_growth_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
+      cfg->initial_growth_chunk_size_bytes_ = static_cast<int>(arena_config_values[i]);
     } else {
       std::ostringstream oss;
       oss << "Invalid key found: " << arena_config_keys[i];
@@ -2022,7 +2022,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
 	In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_8 = {
+static constexpr OrtApi ort_api_1_to_9 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -2228,6 +2228,7 @@ static constexpr OrtApi ort_api_1_to_8 = {
     // End of Version 8 - DO NOT MODIFY ABOVE (see above text for more information)
 
     // Version 9 - In development, feel free to add/remove/rearrange here
+    &OrtApis::RegisterAllocator,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
@@ -2236,7 +2237,7 @@ static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "S
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_8;
+    return &ort_api_1_to_9;
 
   fprintf(stderr, "The given version [%u] is not supported, only version 1 to %u is supported in this build.\n",
           version, ORT_API_VERSION);

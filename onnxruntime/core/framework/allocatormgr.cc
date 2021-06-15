@@ -21,21 +21,21 @@ inline int MakeKey(int id, OrtMemType mem_type) {
 }  // namespace
 
 AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
-  auto device_allocator = std::unique_ptr<IAllocator>(info.device_alloc_factory(info.device_id));
+  auto device_allocator = std::unique_ptr<IAllocator>(info.device_alloc_factory_(info.device_id_));
 
-  if (info.use_arena) {
-    size_t max_mem = info.arena_cfg.max_mem == 0 ? BFCArena::DEFAULT_MAX_MEM : info.arena_cfg.max_mem;
-    int initial_chunk_size_bytes = info.arena_cfg.initial_chunk_size_bytes == -1
+  if (info.use_arena_) {
+    size_t max_mem = info.arena_cfg_.max_mem_ == 0 ? BFCArena::DEFAULT_MAX_MEM : info.arena_cfg_.max_mem_;
+    int initial_chunk_size_bytes = info.arena_cfg_.initial_chunk_size_bytes_ == -1
                                        ? BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES
-                                       : info.arena_cfg.initial_chunk_size_bytes;
-    int max_dead_bytes_per_chunk = info.arena_cfg.max_dead_bytes_per_chunk == -1
+                                       : info.arena_cfg_.initial_chunk_size_bytes_;
+    int max_dead_bytes_per_chunk = info.arena_cfg_.max_dead_bytes_per_chunk_ == -1
                                        ? BFCArena::DEFAULT_MAX_DEAD_BYTES_PER_CHUNK
-                                       : info.arena_cfg.max_dead_bytes_per_chunk;
-    int initial_growth_chunk_size_bytes = info.arena_cfg.initial_growth_chunk_size_bytes == -1
+                                       : info.arena_cfg_.max_dead_bytes_per_chunk_;
+    int initial_growth_chunk_size_bytes = info.arena_cfg_.initial_growth_chunk_size_bytes_ == -1
                                               ? BFCArena::DEFAULT_INITIAL_GROWTH_CHUNK_SIZE_BYTES
-                                              : info.arena_cfg.initial_growth_chunk_size_bytes;
+                                              : info.arena_cfg_.initial_growth_chunk_size_bytes_;
     ArenaExtendStrategy arena_extend_str;
-    switch (info.arena_cfg.arena_extend_strategy) {
+    switch (info.arena_cfg_.arena_extend_strategy_) {
       case static_cast<int>(ArenaExtendStrategy::kSameAsRequested):
         arena_extend_str = ArenaExtendStrategy::kSameAsRequested;
         break;
@@ -44,15 +44,15 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
         arena_extend_str = ArenaExtendStrategy::kNextPowerOfTwo;
         break;
       default:
-        LOGS_DEFAULT(ERROR) << "Received invalid value of arena_extend_strategy " << info.arena_cfg.arena_extend_strategy;
+        LOGS_DEFAULT(ERROR) << "Received invalid value of arena_extend_strategy " << info.arena_cfg_.arena_extend_strategy_;
         return nullptr;
     }
 
-#ifdef USE_MIMALLOC
-    return std::shared_ptr<IArenaAllocator>(
+#ifdef USE_MIMALLOC_ARENA_ALLOCATOR
+    return std::shared_ptr<IAllocator>(
         std::make_unique<MiMallocArena>(std::move(device_allocator), max_mem));
 #else
-    return std::shared_ptr<IArenaAllocator>(
+    return std::shared_ptr<IAllocator>(
         std::make_unique<BFCArena>(std::move(device_allocator),
                                    max_mem,
                                    arena_extend_str,
