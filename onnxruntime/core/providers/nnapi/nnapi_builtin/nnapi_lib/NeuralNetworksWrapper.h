@@ -41,6 +41,7 @@ enum class Type {
   FLOAT16 = ANEURALNETWORKS_FLOAT16,
   TENSOR_QUANT8_SYMM_PER_CHANNEL = ANEURALNETWORKS_TENSOR_QUANT8_SYMM_PER_CHANNEL,
   TENSOR_QUANT16_ASYMM = ANEURALNETWORKS_TENSOR_QUANT16_ASYMM,
+  TENSOR_QUANT8_ASYMM_SIGNED = ANEURALNETWORKS_TENSOR_QUANT8_ASYMM_SIGNED,
 };
 
 enum class ExecutePreference {
@@ -87,10 +88,10 @@ inline std::string TypeToStr(const Type& type) {
     return "TENSOR_BOOL8";
   } else if (type == Type::FLOAT16) {
     return "FLOAT16";
-  } else if (type == Type::FLOAT16) {
-    return "FLOAT16";
   } else if (type == Type::TENSOR_QUANT8_SYMM_PER_CHANNEL) {
     return "TENSOR_QUANT8_SYMM_PER_CHANNEL";
+  } else if (type == Type::TENSOR_QUANT8_ASYMM_SIGNED) {
+    return "TENSOR_QUANT8_ASYMM_SIGNED";
   } else {
     return "Unknown type";
   }
