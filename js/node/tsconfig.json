@@ -2,7 +2,7 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "module": "CommonJS",
-    "declarationDir": "./types"
+    "outDir": "dist"
   },
-  "include": ["lib", "script", "test"]
+  "include": ["lib"]
 }

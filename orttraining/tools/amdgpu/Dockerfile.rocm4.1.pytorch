@@ -132,7 +132,6 @@ RUN git clone --recursive https://github.com/microsoft/onnxruntime.git \
     --enable_training \
   && test -f $ORT_DIR/build/RelWithDebInfo/onnxruntime_training_bert \
   && pip install $ORT_DIR/build/RelWithDebInfo/dist/*.whl \
-  && rm -rf $ORT_DIR/build \
   && ldconfig
 
 # ONNX Runtime Training Examples

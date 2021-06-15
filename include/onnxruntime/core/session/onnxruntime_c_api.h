@@ -1,6 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+/** @file onnxruntime_c_api.h
+
+  @brief ONNX Runtime C API.
+*/
+
 #pragma once
 #include <stdlib.h>
 #include <stdint.h>

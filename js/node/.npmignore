@@ -11,6 +11,6 @@
 
 CMakeLists.txt
 tsconfig.json
-tsconfig.tsbuildinfo
+**/*.tsbuildinfo
 
 *.tgz
