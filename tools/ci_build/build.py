@@ -1516,11 +1516,16 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'quantization'],
                                    cwd=cwd, dll_path=dll_path)
                     if args.enable_transformers_tool_test:
-                        required = {
-                            'numpy==1.19.2', 'coloredlogs==15.0', 'tf2onnx==1.8.5', 'transformers==4.6.1',
-                            'torch==1.8.1', 'tensorflow==2.5.0', 'onnxconverter-common==1.8.1', 'psutil'}
-                        run_subprocess([sys.executable, '-m', 'pip', 'install', *required])
+                        import numpy
+                        numpy_init_version = numpy.__version__
+                        run_subprocess([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'],
+                                       cwd=SCRIPT_DIR)
                         run_subprocess([sys.executable, '-m', 'pytest', 'transformers'], cwd=cwd)
+                        # Restore initial environment
+                        run_subprocess([sys.executable, '-m', 'pip', 'uninstall', '-r', 'requirements.txt', '-y'],
+                                       cwd=SCRIPT_DIR)
+                        # Restore initial numpy version in case other tests use it
+                        run_subprocess([sys.executable, '-m', 'pip', 'install', 'numpy==' + numpy_init_version])
 
                 if not args.disable_ml_ops:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_backend_mlops.py'],

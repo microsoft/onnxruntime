@@ -18,15 +18,19 @@ bool NodeCompare::operator()(const Node* n1, const Node* n2) const {
 #if !defined(ORT_MINIMAL_BUILD)
 struct PriorityNodeCompare {
   inline bool IsHighPri(const Node* n) const {
-    static const std::unordered_set<std::string> high_pri_ops = {"Shape", "Size"};
-    return high_pri_ops.find(n->OpType()) != high_pri_ops.end();
+    // local statics so we can compare std::strings in the checks
+    static const std::string shape_op("Shape");
+    static const std::string size_op("Size");
+
+    const auto& op_type = n->OpType();
+    return op_type == shape_op || op_type == size_op;
   }
 
   // Used for std::priority_queue
   // If return false, n1 will be output first
   // If return true, n2 will be output first
   bool operator()(const Node* n1, const Node* n2) const {
-    // nodes in global high priorty list will be output first
+    // nodes in global high priority list will be output first
     if (IsHighPri(n1) != IsHighPri(n2)) {
       return IsHighPri(n2);
     }
