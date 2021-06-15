@@ -47,7 +47,7 @@ function(AddTest)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})
   endif(_UT_DEPENDS)
   if(_UT_DYN)
-    target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock onnxruntime ${CMAKE_DL_LIBS}
+    target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock ${CMAKE_DL_LIBS}
             Threads::Threads)
     target_compile_definitions(${_UT_TARGET} PRIVATE -DUSE_ONNXRUNTIME_DLL)
   else()
@@ -649,7 +649,7 @@ AddTest(
   TARGET onnxruntime_test_all
   SOURCES ${all_tests} ${onnxruntime_unittest_main_src}
   LIBS
-    onnx_test_runner_common ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs} re2::re2
+    onnx_test_runner_common ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs} onnxruntime re2::re2
     onnx_test_data_proto nlohmann_json::nlohmann_json
   DEPENDS ${all_dependencies}
 )
@@ -933,11 +933,17 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
 endif()
 
 if (onnxruntime_BUILD_SHARED_LIB)
-  set(onnxruntime_perf_test_libs
-          onnx_test_runner_common onnxruntime_test_utils onnxruntime_common
-          onnxruntime onnxruntime_flatbuffers  onnx_test_data_proto
-          ${onnxruntime_EXTERNAL_LIBRARIES}
-          ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
+  set(onnxruntime_perf_test_libs onnx_test_runner_common onnxruntime_test_utils onnxruntime)
+
+  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    list(APPEND onnxruntime_perf_test_libs onnxruntime_interop_torch onnxruntime_python_interface Python::Python)
+  endif()
+
+  list(APPEND onnxruntime_perf_test_libs
+    onnxruntime_common
+    onnxruntime_flatbuffers onnx_test_data_proto
+    ${onnxruntime_EXTERNAL_LIBRARIES}
+    ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
   if(NOT WIN32)
     list(APPEND onnxruntime_perf_test_libs nsync_cpp)
   endif()
@@ -955,7 +961,7 @@ if (onnxruntime_BUILD_SHARED_LIB)
     target_compile_definitions(onnxruntime_perf_test PRIVATE HAVE_TENSORFLOW)
   endif()
 else()
-  target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
+  target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs} onnxruntime_interop_torch onnxruntime_python_interface Python::Python)
 endif()
 set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
@@ -977,7 +983,11 @@ if (onnxruntime_BUILD_SHARED_LIB)
 
   #################################################################
   # test inference using shared lib
-  set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime_common onnx_proto)
+  set(onnxruntime_shared_lib_test_LIBS onnxruntime_mocked_allocator onnxruntime_test_utils onnxruntime)
+  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_interop_torch onnxruntime_python_interface Python::Python)
+  endif()
+  list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_common onnx_proto)
   if(NOT WIN32)
     list(APPEND onnxruntime_shared_lib_test_LIBS nsync_cpp)
   endif()
@@ -1033,7 +1043,7 @@ if(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
       "${TEST_SRC_DIR}/framework/test_utils.cc"
       "${TEST_SRC_DIR}/providers/provider_test_utils.cc"
       ${onnxruntime_unittest_main_src}
-    LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
+    LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs} onnxruntime
     DEPENDS ${all_dependencies}
   )
 

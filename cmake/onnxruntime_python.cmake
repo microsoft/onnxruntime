@@ -77,6 +77,9 @@ set(onnxruntime_pybind11_state_link_targets
 
 if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_pybind11_state_link_targets onnxruntime_training)
+  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    list(APPEND onnxruntime_pybind11_state_link_targets onnxruntime_interop_torch)
+  endif()
 endif()
 
 list(APPEND onnxruntime_pybind11_state_link_targets onnxruntime_framework)
@@ -84,8 +87,6 @@ list(APPEND onnxruntime_pybind11_state_link_targets onnxruntime_framework)
 if (onnxruntime_ENABLE_TRAINING)
   if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     include(onnxruntime_python_interface.cmake)
-  else()
-    list(APPEND onnxruntime_pybind11_state_link_targets onnxruntime_interop_torch)
   endif()
 
   list(APPEND onnxruntime_pybind11_state_link_targets onnxruntime_python_interface)
