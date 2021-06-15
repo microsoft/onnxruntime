@@ -113,13 +113,28 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
     original_axes_set.insert(HandleNegativeAxis(axis, original_rank));
   }
 
+  // Remove all dims with value 1. This can help to optimize case like:
+  // dims=[2,3,1,4,1,5] and axes=[0,2,4], which is same as dims=[2,3,4,5] and axes=[0].
+  int64_t new_axis = 0;
   for (size_t i = 0; i < dims.size(); i++) {
-    int64_t axis = gsl::narrow<int64_t>(i);
-    bool is_reduce_axis = original_axes_set.find(axis) != original_axes_set.end();
-    if (dims[i] != 1 || !is_reduce_axis) {
+    bool is_reduce_axis = original_axes_set.find(gsl::narrow<int64_t>(i)) != original_axes_set.end();
+    if (dims[i] != 1) {
       new_dims.emplace_back(dims[i]);
-      if (is_reduce_axis) new_axes.emplace_back(axis);
+      if (is_reduce_axis) new_axes.emplace_back(new_axis);
+      new_axis++;
     }
+  }
+
+  // Empty axes means reduce all dimensions, which has different meaning,
+  // so add a new dim to the end if all original axes are on dims with value 1.
+  if (!original_axes.empty() && new_axes.empty()) {
+    new_dims.emplace_back(1);
+    new_axes.emplace_back(new_axis);
+  }
+
+  // If all dims are value 1, make sure it's not empty by adding a new dim.
+  if (new_dims.empty()) {
+    new_dims.emplace_back(1);
   }
 
   const auto rank = gsl::narrow<int64_t>(new_dims.size());
