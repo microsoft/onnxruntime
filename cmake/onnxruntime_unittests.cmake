@@ -480,7 +480,6 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_ROCM}
     ${PROVIDERS_COREML}
-    onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
     ${onnxruntime_tvm_libs}
@@ -490,12 +489,18 @@ if (onnxruntime_ENABLE_TRAINING)
   set(ONNXRUNTIME_TEST_LIBS onnxruntime_training_runner ${ONNXRUNTIME_TEST_LIBS})
   list(APPEND ONNXRUNTIME_TEST_LIBS onnxruntime_training)
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    list(APPEND ONNXRUNTIME_TEST_LIBS onnxruntime_interop_torch onnxruntime_python_interface Python::Python)
+    list(APPEND ONNXRUNTIME_TEST_LIBS onnxruntime_interop_torch)
   endif()
 endif()
 
+list(APPEND ONNXRUNTIME_TEST_LIBS onnxruntime_framework)
+
+if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+  list(APPEND ONNXRUNTIME_TEST_LIBS onnxruntime_python_interface Python::Python)
+endif()
+
 list(APPEND ONNXRUNTIME_TEST_LIBS
-    onnxruntime_framework
+    onnxruntime_optimizer
     onnxruntime_util
     onnxruntime_graph
     onnxruntime_common

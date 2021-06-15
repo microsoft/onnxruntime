@@ -168,20 +168,27 @@ set(onnxruntime_link_targets
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_INTERNAL_TESTING}
     ${onnxruntime_winml}
-    onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
     ${onnxruntime_tvm_libs}
-    onnxruntime_framework
 )
 
+if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+  list(APPEND onnxruntime_link_targets onnxruntime_interop_torch)
+endif()
+
+list(APPEND onnxruntime_link_targets onnxruntime_framework)
+
 if (onnxruntime_ENABLE_TRAINING)
-  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    list(APPEND onnxruntime_link_targets onnxruntime_interop_torch onnxruntime_python_interface)
+  if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    include(onnxruntime_python_interface.cmake)
   endif()
+
+  list(APPEND onnxruntime_link_targets onnxruntime_python_interface)
 endif()
 
 list(APPEND onnxruntime_link_targets
+    onnxruntime_optimizer
     onnxruntime_graph
     onnxruntime_common
     onnxruntime_mlas
