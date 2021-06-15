@@ -71,10 +71,6 @@ void CUPTIAPI CudaProfiler::BufferRequested(uint8_t** buffer, size_t* size, size
   *maxNumRecords = 0;
 }
 
-void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t*, size_t, size_t) {
-}
-
-/*
 void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer, size_t, size_t validSize) {
   CUptiResult status;
   CUpti_Activity* record = NULL;
@@ -97,7 +93,7 @@ void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer
     } while (1);
   }
   free(buffer);
-}*/
+}
 
 void CudaProfiler::StartProfiling(TimePoint start_time, int pid, int tid) {
   if (!enabled_.test_and_set()) {
@@ -115,7 +111,8 @@ std::vector<EventRecord> CudaProfiler::EndProfiling() {
   std::vector<EventRecord> events;
   if (enabled_.test_and_set()) {
     if (initialized_) {
-      // cuptiActivityFlushAll(1);
+      cuptiActivityDisable(CUPTI_ACTIVITY_KIND_KERNEL);
+      cuptiActivityFlushAll(1);
       std::unique_lock<OrtMutex> lock(mutex_);
       int64_t profiling_start = std::chrono::duration_cast<nanoseconds>(start_time_.time_since_epoch()).count();
       for (const auto& stat : stats_) {
@@ -137,7 +134,6 @@ std::vector<EventRecord> CudaProfiler::EndProfiling() {
   enabled_.clear();
   return events;
 }
-
 #endif //USE_CUDA
 
 DeviceProfiler* DeviceProfiler::GetDeviceProfiler() {
@@ -162,7 +158,7 @@ profiling::Profiler::~Profiler() {
 }
 #endif
 
-::onnxruntime::TimePoint profiling::Profiler::Now() const {
+::onnxruntime::TimePoint profiling::Profiler::StartTime() const {
   ORT_ENFORCE(enabled_);
   return std::chrono::high_resolution_clock::now();
 }
@@ -185,7 +181,7 @@ void Profiler::StartProfiling(const logging::Logger* custom_logger) {
   enabled_ = true;
   profile_with_logger_ = true;
   custom_logger_ = custom_logger;
-  profiling_start_time_ = Now();
+  profiling_start_time_ = StartTime();
   DeviceProfiler* device_profiler = DeviceProfiler::GetDeviceProfiler();
   if (device_profiler) {
     device_profiler->StartProfiling(profiling_start_time_, logging::GetProcessId(), logging::GetThreadId());
@@ -197,7 +193,7 @@ void Profiler::StartProfiling(const std::basic_string<T>& file_name) {
   enabled_ = true;
   profile_stream_.open(file_name, std::ios::out | std::ios::trunc);
   profile_stream_file_ = ToMBString(file_name);
-  profiling_start_time_ = Now();
+  profiling_start_time_ = StartTime();
   DeviceProfiler* device_profiler = DeviceProfiler::GetDeviceProfiler();
   if (device_profiler) {
     device_profiler->StartProfiling(profiling_start_time_, logging::GetProcessId(), logging::GetThreadId());
@@ -211,30 +207,14 @@ template void Profiler::StartProfiling<wchar_t>(const std::basic_string<wchar_t>
 
 void Profiler::EndTimeAndRecordEvent(EventCategory category,
                                      const std::string& event_name,
-                                     const TimePoint& start_time, const TimePoint& end_time,
-                                     const std::initializer_list<std::pair<std::string, std::string>>& event_args,
-                                     bool sync_gpu) {
-  EndTimeAndRecordEvent(category, event_name, TimeDiffMicroSeconds(start_time, end_time),
-                        TimeDiffMicroSeconds(profiling_start_time_, start_time), event_args, sync_gpu);
-}
-
-void Profiler::EndTimeAndRecordEvent(EventCategory category,
-                                     const std::string& event_name,
                                      const TimePoint& start_time,
                                      const std::initializer_list<std::pair<std::string, std::string>>& event_args,
-                                     bool sync_gpu) {
-  EndTimeAndRecordEvent(category, event_name, TimeDiffMicroSeconds(start_time),
-                        TimeDiffMicroSeconds(profiling_start_time_, start_time), event_args, sync_gpu);
-}
-
-void Profiler::EndTimeAndRecordEvent(EventCategory category,
-                                     const std::string& event_name,
-                                     long long duration,         //duration of the op
-                                     long long time_from_start,  //time difference between op start time and profiler start time
-                                     const std::initializer_list<std::pair<std::string, std::string>>& event_args,
                                      bool /*sync_gpu*/) {
+  long long dur = TimeDiffMicroSeconds(start_time);
+  long long ts = TimeDiffMicroSeconds(profiling_start_time_, start_time);
+
   EventRecord event(category, logging::GetProcessId(),
-                    logging::GetThreadId(), event_name, time_from_start, duration, {event_args.begin(), event_args.end()});
+                    logging::GetThreadId(), event_name, ts, dur, {event_args.begin(), event_args.end()});
   if (profile_with_logger_) {
     custom_logger_->SendProfileEvent(event);
   } else {
@@ -287,11 +267,7 @@ std::string Profiler::EndProfiling() {
     bool is_first_arg = true;
     for (std::pair<std::string, std::string> event_arg : rec.args) {
       if (!is_first_arg) profile_stream_ << ",";
-      if (!event_arg.second.empty() && event_arg.second[0] == '{') {
-        profile_stream_ << "\"" << event_arg.first << "\" : " << event_arg.second << "";
-      } else {
-        profile_stream_ << "\"" << event_arg.first << "\" : \"" << event_arg.second << "\"";
-      }
+      profile_stream_ << "\"" << event_arg.first << "\" : \"" << event_arg.second << "\"";
       is_first_arg = false;
     }
     profile_stream_ << "}";
