@@ -6,21 +6,6 @@ parameters:
   type: boolean
   default: true
 
-- name: RunOnnxZoo
-  displayName: Onnx Zoo Models
-  type: boolean
-  default: true
-
-- name: RunMany
-  displayName: Many Models 
-  type: boolean
-  default: true
-
-- name: RunPartner
-  displayName: Partner Models
-  type: boolean
-  default: true
-
 - name: PostToDashboard
   displayName: Post to Dashboard
   type: boolean
@@ -28,11 +13,6 @@ parameters:
   
 - name: RunDocker
   displayName: Run in Docker (CUDA 11.0)
-  type: boolean
-  default: false
-
-- name: RunSelected
-  displayName: Selected Models (set modelsPath variable)
   type: boolean
   default: false
 
@@ -47,18 +27,6 @@ parameters:
     - "onnx-zoo-models"
     - "many-models"
     - "partner-models"
-    - "selected-models"
-# - name: options
-#   type: object
-#   default: 
-#     ${{ if eq(parameters.RunOnnxZoo, true) }}:
-#     - "onnx-zoo-models"
-#     ${{ if eq(parameters.RunMany, true) }}:
-#     - "many-models"
-#     ${{ if eq(parameters.RunPartner, true) }}:
-#     - "partner-models"
-#     ${{ if eq(parameters.RunSelected, true) }}:
-#     - "selected-models"
 
 jobs: 
 - job: Linux_CI_GPU_TENSORRT_PERF
@@ -89,8 +57,8 @@ jobs:
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
       
     - ${{ each option in parameters.options }}:
-      - script: 'echo ${{option}}'
-      #- script: '$(run_conda) && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(environment) -o $(option) -m $(option)'
+      - script: 'echo ${{option}} at $(${{option}}))'
+      #- script: '$(run_conda) && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(environment) -o ${{option}} -m $(${{option}}))'
         displayName: '$(option) perf'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         env:
