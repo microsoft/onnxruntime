@@ -133,7 +133,7 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
   }
 
   // If all dims are value 1, make sure it's not empty by adding a new dim.
-  if (new_dims.empty()) {
+  if (!dims.empty() && new_dims.empty()) {
     new_dims.emplace_back(1);
   }
 
