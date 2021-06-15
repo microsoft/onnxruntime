@@ -61,8 +61,8 @@ void RunQAttention(const std::vector<float>& input_data,         // input:      
   QInput input_zero_point = quantize_parameters.input_zero_point;
   QWeight weight_zero_point = quantize_parameters.weight_zero_point;
   if (input_scale != 0.0f) {
-    tester.AddInput<QInput>("input", input_dims, ToInteger<QInput>(input_data, input_scale, input_zero_point));
-    tester.AddInput<QWeight>("weight", weights_dims, ToInteger<QWeight>(weights_data, weight_scale, weight_zero_point));
+    tester.AddInput<QInput>("input", input_dims, Quantize<QInput>(input_data, input_scale, input_zero_point));
+    tester.AddInput<QWeight>("weight", weights_dims, Quantize<QWeight>(weights_data, weight_scale, weight_zero_point));
   } else {
     tester.AddInput<QInput>("input", input_dims, QuantizeLinear<QInput, ep == EP::CUDA>(input_data, input_scale, input_zero_point));
     tester.AddInput<QWeight>("weight", weights_dims, QuantizeLinear<QWeight, ep == EP::CUDA>(weights_data, weight_scale, weight_zero_point));
@@ -847,8 +847,8 @@ TEST(QAttentionTest, SharedPrepackedWeights) {
   OpTester tester("QAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
 
-  tester.AddInput<uint8_t>("input", input_dims, ToInteger<uint8_t>(input_data, 0.1f, 128));
-  auto weight_data_converted_to_int = ToInteger<uint8_t>(weight_data, 0.1f, 128);
+  tester.AddInput<uint8_t>("input", input_dims, Quantize<uint8_t>(input_data, /*scale=*/0.1f, /*zero_point=*/128));
+  auto weight_data_converted_to_int = Quantize<uint8_t>(weight_data, /*scale=*/0.1f, /*zero_point=*/128);
   tester.AddInput<uint8_t>("weight", weights_dims, weight_data_converted_to_int, true);  // Trigger pre-packing
 
   tester.AddInput<float>("bias", bias_dims, bias_data);

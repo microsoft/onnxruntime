@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "test/common/quantization_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/providers/common.h"
 
@@ -66,18 +67,12 @@ void RunQLinearMathTestFromFloat(
   constexpr int qmin = std::numeric_limits<T>::min();
 
   OpTester test(op_name, 1, onnxruntime::kMSDomain);
-  std::vector<T> a_quantized(a.size());
-  for (size_t i = 0, sz = a.size(); i < sz; ++i) {
-    a_quantized[i] = clampi<T>(static_cast<int>(std::nearbyintf(a[i] / A_scale)) + A_zero_point, qmin, qmax);
-  }
+  std::vector<T> a_quantized = Quantize<T>(a, A_scale, A_zero_point);
   test.template AddInput<T>("A", a_shape_origin, a_quantized);
   test.AddInput<float>("A_scale", {}, {A_scale}, all_initializer_scale_zero_point);
   test.template AddInput<T>("A_zero_point", {}, {A_zero_point}, all_initializer_scale_zero_point);
 
-  std::vector<T> b_quantized(b.size());
-  for (size_t i = 0, sz = b.size(); i < sz; ++i) {
-    b_quantized[i] = clampi<T>(static_cast<int>(std::nearbyintf(b[i] / B_scale)) + B_zero_point, qmin, qmax);
-  }
+  std::vector<T> b_quantized = Quantize<T>(b, B_scale, B_zero_point);
   test.template AddInput<T>("B", b_shape_origin, b_quantized, input_b_is_initializer);
   test.AddInput<float>("B_scale", {}, {B_scale}, all_initializer_scale_zero_point);
   test.template AddInput<T>("B_zero_point", {}, {B_zero_point}, all_initializer_scale_zero_point);

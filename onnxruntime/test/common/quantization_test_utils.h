@@ -13,7 +13,7 @@ namespace test {
 //
 // Rounds a float to the nearest representable value and returns the nearest integer value as a float.
 //
-static float RoundHalfToEven(float input) {
+inline float RoundHalfToEven(float input) {
   std::fesetround(FE_TONEAREST);
   auto result = std::nearbyintf(input);
   return result;
@@ -56,11 +56,24 @@ inline std::vector<Integer> QuantizeLinear(const std::vector<float>& data, float
 // Converts a given float vector to a quantized representation with a pre-calculated scale and zero point.
 //
 template <typename Integer, typename = typename std::enable_if<std::is_integral<Integer>::value, Integer>::type>
-inline std::vector<Integer> ToInteger(const std::vector<float>& data, float scale, Integer zero_point = 0) {
+inline std::vector<Integer> Quantize(const std::vector<float>& data, float scale, Integer zero_point = 0) {
   std::vector<Integer> result;
   result.reserve(data.size());
   for (size_t i = 0; i < data.size(); i++) {
     result.push_back(static_cast<Integer>(std::round(data[i] / scale) + zero_point));
+  }
+  return result;
+}
+
+//
+// Converts a quantized integer vector to floating point value with a pre-calculated scale and zero point.
+//
+template <typename Integer, typename = typename std::enable_if<std::is_integral<Integer>::value, Integer>::type>
+inline std::vector<float> Dequantize(const std::vector<Integer>& data, float scale, Integer zero_point = 0) {
+  std::vector<float> result;
+  result.reserve(data.size());
+  for (size_t i = 0; i < data.size(); i++) {
+    result.push_back((data[i] - zero_point) * scale);
   }
   return result;
 }
