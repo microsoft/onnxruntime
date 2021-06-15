@@ -1055,7 +1055,7 @@ if(onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
       "${TEST_SRC_DIR}/framework/test_utils.cc"
       "${TEST_SRC_DIR}/providers/provider_test_utils.cc"
       ${onnxruntime_unittest_main_src}
-    LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs} onnxruntime
+    LIBS ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
     DEPENDS ${all_dependencies}
   )
 
