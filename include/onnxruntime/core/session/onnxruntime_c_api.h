@@ -1402,7 +1402,10 @@ struct OrtApi {
                  _In_ size_t num_keys);
 
   /**
-  * Get configuration of a TensorRT Execution Provider.
+  * Get serialized provider options string of a TensorRT Execution Provider.
+  * First time calling this API returns the default TensorRT EP provider options in serialized string.
+  * If you want to change some provider options, you can call UpdateTensorRTProviderOptions
+  * and then call this API to get returned string to check whether the options have been configured.
   * \param allocator - a ptr to an instance of OrtAllocator obtained with CreateAllocator() or GetAllocatorWithDefaultOptions()
   *                      the specified allocator will be used to allocate continuous buffers for output strings and lengths.
   * \param ptr - is a UTF-8 null terminated string allocated using 'allocator'. The caller is responsible for using the same allocator to free it.

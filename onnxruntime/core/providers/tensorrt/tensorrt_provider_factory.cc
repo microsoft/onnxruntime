@@ -6,6 +6,7 @@
 #include <atomic>
 #include "tensorrt_execution_provider.h"
 #include "core/framework/provider_options.h"
+#include <string.h>
 
 using namespace onnxruntime;
 
@@ -43,6 +44,7 @@ struct Tensorrt_Provider : Provider {
     TensorrtExecutionProviderInfo info;
     info.device_id = device_id;
     info.has_trt_options = false;
+    trt_options_.device_id = device_id;
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
@@ -68,6 +70,7 @@ struct Tensorrt_Provider : Provider {
     info.engine_decryption_enable = options.trt_engine_decryption_enable;
     info.engine_decryption_lib_path = options.trt_engine_decryption_lib_path == nullptr ? "" : options.trt_engine_decryption_lib_path;
     info.force_sequential_engine_build = options.trt_force_sequential_engine_build;
+    CopyToInternalProviderOptions(options);
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
@@ -112,7 +115,7 @@ struct Tensorrt_Provider : Provider {
 
     trt_options.trt_force_sequential_engine_build = internal_options.force_sequential_engine_build;
 
-    trt_options_ = trt_options;
+    CopyToInternalProviderOptions(trt_options);
   }
 
   ProviderOptions GetProviderOptions() override {
@@ -123,8 +126,61 @@ struct Tensorrt_Provider : Provider {
     Shutdown_DeleteRegistry();
   }
 
+  ~Tensorrt_Provider() {
+    FreeInternalProviderOptions();
+  }
+
   private:
-   OrtTensorRTProviderOptions trt_options_;
+   OrtTensorRTProviderOptions trt_options_{
+    0,
+    0,
+    nullptr,
+    1000,
+    1,
+    1 << 30,
+    false,
+    false,
+    nullptr,
+    false,
+    false,
+    0,
+    false,
+    false,
+    nullptr,
+    false,
+    nullptr,
+    false,
+   };
+
+  void CopyToInternalProviderOptions(OrtTensorRTProviderOptions trt_options) {
+    FreeInternalProviderOptions();
+
+    trt_options_ = trt_options;
+    if (trt_options.trt_int8_calibration_table_name != nullptr) {
+      trt_options_.trt_int8_calibration_table_name = new char[strlen(trt_options.trt_int8_calibration_table_name) + 1];
+      strcpy((char*)trt_options_.trt_int8_calibration_table_name, (char*)trt_options.trt_int8_calibration_table_name);
+    }
+    if (trt_options.trt_engine_cache_path!= nullptr) {
+      trt_options_.trt_engine_cache_path= new char[strlen(trt_options.trt_engine_cache_path) + 1];
+      strcpy((char*)trt_options_.trt_engine_cache_path, (char*)trt_options.trt_engine_cache_path);
+    }
+    if (trt_options.trt_engine_decryption_lib_path!= nullptr) {
+      trt_options_.trt_engine_decryption_lib_path= new char[strlen(trt_options.trt_engine_decryption_lib_path) + 1];
+      strcpy((char*)trt_options_.trt_engine_decryption_lib_path, (char*)trt_options.trt_engine_decryption_lib_path);
+    }
+  }
+
+  void FreeInternalProviderOptions() {
+    if (trt_options_.trt_int8_calibration_table_name != nullptr) {
+      delete trt_options_.trt_int8_calibration_table_name;
+    }
+    if (trt_options_.trt_engine_cache_path!= nullptr) {
+      delete trt_options_.trt_engine_cache_path;
+    }
+    if (trt_options_.trt_engine_decryption_lib_path!= nullptr) {
+      delete trt_options_.trt_engine_decryption_lib_path;
+    }
+  }
 
 } g_provider;
 

@@ -1502,6 +1502,8 @@ TEST(CApiTest, ConfigureCudaArenaAndDemonstrateMemoryArenaShrinkage) {
 TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
   const auto& api = Ort::GetApi();
   OrtTensorRTProviderOptions* trt_options;
+  OrtAllocator* allocator;
+  char* trt_options_str;
   ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
   std::unique_ptr<OrtTensorRTProviderOptions, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
 
@@ -1512,6 +1514,12 @@ TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
   std::vector<const char*> values{"0", "1", "0", "1", engine_cache_path};
 
   ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), 5) == nullptr);
+
+  ASSERT_TRUE(api.GetAllocatorWithDefaultOptions(&allocator) == nullptr);
+  ASSERT_TRUE(api.GetTensorRTProviderOptions(allocator, &trt_options_str) == nullptr);
+  std::string s(trt_options_str);
+  ASSERT_TRUE(s.find(engine_cache_path) != std::string::npos);
+  ASSERT_TRUE(api.AllocatorFree(allocator, (void*)trt_options_str) == nullptr);
 
   Ort::SessionOptions session_options;
   ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT(static_cast<OrtSessionOptions*>(session_options), rel_trt_options.get()) == nullptr);
