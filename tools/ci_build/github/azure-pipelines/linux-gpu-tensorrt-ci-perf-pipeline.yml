@@ -44,14 +44,21 @@ parameters:
 - name: options
   type: object
   default: 
-    ${{ if eq(parameters.RunOnnxZoo, true) }}:
     - "onnx-zoo-models"
-    ${{ if eq(parameters.RunMany, true) }}:
     - "many-models"
-    ${{ if eq(parameters.RunPartner, true) }}:
     - "partner-models"
-    ${{ if eq(parameters.RunSelected, true) }}:
     - "selected-models"
+# - name: options
+#   type: object
+#   default: 
+#     ${{ if eq(parameters.RunOnnxZoo, true) }}:
+#     - "onnx-zoo-models"
+#     ${{ if eq(parameters.RunMany, true) }}:
+#     - "many-models"
+#     ${{ if eq(parameters.RunPartner, true) }}:
+#     - "partner-models"
+#     ${{ if eq(parameters.RunSelected, true) }}:
+#     - "selected-models"
 
 jobs: 
 - job: Linux_CI_GPU_TENSORRT_PERF
