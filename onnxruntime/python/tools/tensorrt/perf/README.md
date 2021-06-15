@@ -5,16 +5,15 @@ This script mainly focus on benchmarking ORT TensorRT EP performance compared wi
 
 ### Linux GPU TensorRT Perf CI Pipeline
 - [x] **Build ORT** Build ORT from source. Specify _branch_ variable if not master.
-- [x] **Run Models** Run models. 
 - [x] **Post to Dashboard** Post to ONNX Runtime EP Dashboard (No Docker).
 - [ ] **Run in Docker (CUDA 11.0)** Check to run in CUDA 11.0 vs 10.2 (default). 
-- [ ] **Selected Models** Check to run against particular models. Specify _ModelsPath_ variable.
-- [ ] **Configure EPs** Choose which EPs to run against. Specify _ep_list_ variable.
+- [ ] **Configure EPs** Choose which EPs to run against. Specify _epList_ variable.
+- **ModelGroups**: Select which model groups to run. (i.e. selected-models, specify _selected-models_ variable)
 
 #### Variables (under Advanced Options) 
 - **branch**: (*default: master*) Specified branch to run against.
-- **ep_list**: List of EPs to run separated by spaces [from available options](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/tensorrt/perf/benchmark.py#L26) _i.e. "CPUExecutionProvider TensorrtExecutionProvider"_
-- **ModelsPath**: Specified path to model json file or model folder if "Selected Models" is checked. 
+- **epList**: List of EPs to run separated by spaces [from available options](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/tensorrt/perf/benchmark.py#L26) _i.e. "CPUExecutionProvider TensorrtExecutionProvider"_
+- **selected-models**: Specified path to model json file or model folder if selected-models in ModelGroups. 
 
 ## Usage Locally 
 You can use following command to test whether models can be run using TensorRT and run benchmark:
@@ -172,11 +171,11 @@ run_perf_docker.sh: Runs the perf script in docker environment.
 - **-d, --docker_image**: Name of perf docker image.
 - **-o, --option**: Name of which models you want to run {i.e. selected-models}
 - **-p, --perf_dir**: Path to perf directory.
-- **-m, --model_path**: If option is selected-models, include path to models either json or folder.
+- **-m, --model_path**: Model path relative to workspace (/). If option is selected-models, include path to models either json or folder.
 
-run_perf_machine.sh: Runs the perf script in docker environment. 
+run_perf_machine.sh: Runs the perf script directly. 
 - **-o, --option**: Name of which models you want to run {i.e. selected-models}
-- **-m, --model_path**: If option is selected-models, include path to models either json or folder.
+- **-m, --model_path**: Model path relative to workspace (~/). If option is selected-models, include path to models either json or folder.
 
 ## Dependencies
 - When inferencing model using CUDA float16, this script following script to convert nodes in model graph from float32 to float16. It also modifies the converting script a little bit to better cover more model graph conversion.
