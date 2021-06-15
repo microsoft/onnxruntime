@@ -236,7 +236,7 @@ if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   add_compile_definitions(ENABLE_TRAINING_TORCH_INTEROP)
 
   # Python::Python is required for building unit test executables or onnxruntime.so. 
-  if (onnxruntime_BUILD_UNIT_TESTS OR onnxruntime_BUILD_SHARED_LIB)
+  if (onnxruntime_BUILD_UNIT_TESTS)
     set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB ON)
   endif()
 endif()

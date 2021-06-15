@@ -106,7 +106,7 @@ if(UNIX)
   if (APPLE)
     set(ONNXRUNTIME_SO_LINK_FLAG " -Xlinker -dead_strip")
   else()
-    set(ONNXRUNTIME_SO_LINK_FLAG " -Xlinker --version-script=${SYMBOL_FILE} -Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    set(ONNXRUNTIME_SO_LINK_FLAG " -Xlinker --version-script=${SYMBOL_FILE} -Xlinker --gc-sections -z noexecstack")
   endif()
 else()
   set(ONNXRUNTIME_SO_LINK_FLAG " -DEF:${SYMBOL_FILE}")
@@ -177,8 +177,7 @@ set(onnxruntime_link_targets
 
 if (onnxruntime_ENABLE_TRAINING)
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    onnxruntime_add_include_to_target(onnxruntime Python::Module)
-    list(APPEND onnxruntime_link_targets onnxruntime_interop_torch onnxruntime_python_interface Python::Python)
+    list(APPEND onnxruntime_link_targets onnxruntime_interop_torch onnxruntime_python_interface)
   endif()
 endif()
 

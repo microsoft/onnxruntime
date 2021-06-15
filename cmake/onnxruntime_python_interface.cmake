@@ -8,7 +8,7 @@ file(GLOB onnxruntime_python_interface_cc_srcs
 )
 
 onnxruntime_add_static_library(onnxruntime_python_interface ${onnxruntime_python_interface_cc_srcs})
-add_dependencies(onnxruntime_python_interface onnx  ${onnxruntime_EXTERNAL_DEPENDENCIES})
+add_dependencies(onnxruntime_python_interface onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 onnxruntime_add_include_to_target(onnxruntime_python_interface onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers Python::Module)
 
 # DLPack is a header-only dependency
