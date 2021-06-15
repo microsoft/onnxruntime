@@ -484,6 +484,17 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_providers
     onnxruntime_util
     ${onnxruntime_tvm_libs}
+)
+
+if (onnxruntime_ENABLE_TRAINING)
+  set(ONNXRUNTIME_TEST_LIBS onnxruntime_training_runner ${ONNXRUNTIME_TEST_LIBS})
+  list(APPEND ONNXRUNTIME_TEST_LIBS onnxruntime_training)
+  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    list(APPEND ONNXRUNTIME_TEST_LIBS onnxruntime_interop_torch onnxruntime_python_interface Python::Python)
+  endif()
+endif()
+
+list(APPEND ONNXRUNTIME_TEST_LIBS
     onnxruntime_framework
     onnxruntime_util
     onnxruntime_graph
@@ -491,10 +502,6 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_mlas
     onnxruntime_flatbuffers
 )
-
-if (onnxruntime_ENABLE_TRAINING)
-  set(ONNXRUNTIME_TEST_LIBS onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_TEST_LIBS})
-endif()
 
 set(onnxruntime_test_providers_libs
     onnxruntime_test_utils
@@ -961,7 +968,7 @@ if (onnxruntime_BUILD_SHARED_LIB)
     target_compile_definitions(onnxruntime_perf_test PRIVATE HAVE_TENSORFLOW)
   endif()
 else()
-  target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs} onnxruntime_interop_torch onnxruntime_python_interface Python::Python)
+  target_link_libraries(onnxruntime_perf_test PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs})
 endif()
 set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
