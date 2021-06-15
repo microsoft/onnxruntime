@@ -107,14 +107,14 @@ def build_torch_cpp_extensions():
         import torch
         is_gpu_available = torch.cuda.is_available()
     except ImportError:
-        ...
+        pass
 
     ############################################################################
     # Pytorch CPP Extensions that DO require CUDA/ROCM
     ############################################################################
     if is_gpu_available:
         ret_code = subprocess.call(
-            f"python torch_cpp_extensions/torch_gpu_allocator/setup.py build {'--use_rocm' if rocm_version else ''}", shell=True
+            f"{sys.executable} torch_cpp_extensions/torch_gpu_allocator/setup.py build {'--use_rocm' if rocm_version else ''}", shell=True
         )
         if ret_code != 0:
             print('There was an error compiling a PyTorch CPP extension called "torch_gpu_allocator"')
@@ -124,7 +124,7 @@ def build_torch_cpp_extensions():
     # Pytorch CPP Extensions that DO NOT require CUDA/ROCM
     ############################################################################
     ret_code = subprocess.call(
-        "python torch_cpp_extensions/aten_op_executor/setup.py build", shell=True
+        f"{sys.executable} torch_cpp_extensions/aten_op_executor/setup.py build", shell=True
     )
     if ret_code != 0:
         print('There was an error compiling a PyTorch CPP extension called "aten_op_executor"')
