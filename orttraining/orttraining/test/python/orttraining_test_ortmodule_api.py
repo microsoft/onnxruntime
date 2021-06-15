@@ -873,7 +873,7 @@ def test_multiple_ortmodules_common_backbone_training():
         loss.backward()
         return prediction
 
-    for step in range(10):
+    for step in range(1):
         # Run task 1
         x1 = torch.randn(N, D_in, device=device)
         pt_prediction = run_step(pt_model0, pt_model1, x1)
@@ -906,7 +906,7 @@ def test_multiple_chained_ortmodules_training():
         loss.backward()
         return prediction
 
-    for step in range(10):
+    for step in range(1):
         x = torch.randn(N, D_in, device=device, requires_grad=True)
         pt_prediction = run_step(pt_model1, pt_model2, x)
         ort_prediction = run_step(ort_model1, ort_model2, x)
@@ -933,7 +933,7 @@ def test_mixed_nnmodule_ortmodules_training():
         loss.backward()
         return a1, a2, a3
 
-    for step in range(10):
+    for step in range(1):
         x1 = torch.randn(N, D_in, device=device)
         x2 = torch.randn(N, D_in, device=device)
         pt_p1, pt_p2, pt_p3 = run_step(pt_model1, pt_model2, pt_model3, x1, x2)
