@@ -180,8 +180,10 @@ endif()
 list(APPEND onnxruntime_link_targets onnxruntime_framework)
 
 if (onnxruntime_ENABLE_TRAINING)
-  if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP AND NOT TARGET onnxruntime_python_interface)
-    include(onnxruntime_python_interface.cmake)
+  if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    if (NOT TARGET onnxruntime_python_interface)
+      include(onnxruntime_python_interface.cmake)
+    endif()
   endif()
 
   list(APPEND onnxruntime_link_targets onnxruntime_python_interface)
