@@ -330,6 +330,16 @@ class OpTester {
                            CheckParams(), dim_params);
   }
 
+  void AddSparseCooInput(const char* name, const std::vector<int64_t>& dims,
+                         const std::vector<std::string>& values,
+                         const std::vector<int64_t>& indices,
+                         const std::vector<std::string>* dim_params = nullptr) {
+    AddSparseCooTensorStrings(input_data_, name, dims,
+                              gsl::make_span(values),
+                              gsl::make_span(indices),
+                              dim_params);
+  }
+
   // Useful to add boolean data
   template <typename T>
   void AddSparseCsrInput(const char* name, const std::vector<int64_t>& dims,
@@ -371,6 +381,18 @@ class OpTester {
                            gsl::make_span(inner_indices),
                            gsl::make_span(outer_indices),
                            CheckParams(), dim_params);
+  }
+
+  void AddSparseCsrInput(const char* name, const std::vector<int64_t>& dims,
+                         const std::vector<std::string>& values,
+                         const std::vector<int64_t>& inner_indices,
+                         const std::vector<int64_t>& outer_indices,
+                         const std::vector<std::string>* dim_params = nullptr) {
+    AddSparseCsrTensorStrings(input_data_, name, dims,
+                              gsl::make_span(values),
+                              gsl::make_span(inner_indices),
+                              gsl::make_span(outer_indices),
+                              dim_params);
   }
 
   // Add other registered types, possibly experimental
@@ -483,6 +505,14 @@ class OpTester {
                            check_params, nullptr /*dim_params*/);
   }
 
+  void AddSparseCooOutput(const char* name, const std::vector<int64_t>& dims,
+                          const std::vector<std::string>& expected_values,
+                          const std::vector<int64_t>& expected_indices) {
+    AddSparseCooTensorStrings(output_data_, name, dims,
+                              gsl::make_span(expected_values),
+                              gsl::make_span(expected_indices));
+  }
+
   template <typename T>
   void AddSparseCsrOutput(const char* name, const std::vector<int64_t>& dims,
                           const std::initializer_list<T>& values,
@@ -518,11 +548,21 @@ class OpTester {
                           const std::vector<int64_t>& expected_outer_indices,
                           const CheckParams& check_params = CheckParams()) {
     auto ml_type = DataTypeImpl::GetType<T>();
-    AddSparseCsrTensorData(output_data_, ml_type, name, dims, 
+    AddSparseCsrTensorData(output_data_, ml_type, name, dims,
                            expected_values_span.as_bytes(),
                            gsl::make_span(expected_inner_indices),
                            gsl::make_span(expected_outer_indices),
                            check_params, nullptr /*dim_params*/);
+  }
+
+  void AddSparseCsrOutput(const char* name, const std::vector<int64_t>& dims,
+                          const std::vector<std::string>& expected_values,
+                          const std::vector<int64_t>& expected_inner_indices,
+                          const std::vector<int64_t>& expected_outer_indices) {
+    AddSparseCsrTensorStrings(output_data_, name, dims,
+                              gsl::make_span(expected_values),
+                              gsl::make_span(expected_inner_indices),
+                              gsl::make_span(expected_outer_indices));
   }
 
   template <typename T>
@@ -818,6 +858,13 @@ class OpTester {
                               const CheckParams& check_params,
                               const std::vector<std::string>* dim_params = nullptr);
 
+  void AddSparseCooTensorStrings(std::vector<Data>& data,
+                                 const char* name,
+                                 const std::vector<int64_t>& dims,
+                                 gsl::span<const std::string> values,
+                                 gsl::span<const int64_t> indices,
+                                 const std::vector<std::string>* dim_params = nullptr);
+
   void AddSparseCsrTensorData(std::vector<Data>& data,
                               MLDataType data_type,
                               const char* name,
@@ -827,6 +874,14 @@ class OpTester {
                               gsl::span<const int64_t> outer_indices,
                               const CheckParams& check_params,
                               const std::vector<std::string>* dim_params = nullptr);
+
+  void AddSparseCsrTensorStrings(std::vector<Data>& data,
+                                 const char* name,
+                                 const std::vector<int64_t>& dims,
+                                 gsl::span<const std::string> values,
+                                 gsl::span<const int64_t> inner_indices,
+                                 gsl::span<const int64_t> outer_indices,
+                                 const std::vector<std::string>* dim_params = nullptr);
 
   void AddSparseTensorData(std::vector<Data>& data, NodeArg node_arg,
                            std::unique_ptr<SparseTensor> p_tensor,

@@ -28,6 +28,15 @@ SparseTensor::SparseTensor(MLDataType elt_type,
   ORT_ENFORCE(ml_data_type_ != nullptr, "Expecting a PrimitiveDataType as elt_type");
 }
 
+SparseTensor::SparseTensor()
+    : format_flags_(SparseFormatFlags::kUndefined),
+      dense_shape_(),
+      allocator_(),
+      location_(),
+      ml_data_type_(nullptr),
+      rep_() {
+}
+
 SparseTensor& SparseTensor::operator=(SparseTensor&& o) noexcept {
   format_flags_ = o.format_flags_;
   dense_shape_ = std::move(o.dense_shape_);
@@ -49,7 +58,7 @@ SparseRep::SparseRep(MLDataType data_type, const TensorShape& values_shape,
         if (total_buffer_size > 0) {
           ORT_ENFORCE(values_shape.Size() * static_cast<int64_t>(data_type->Size()) < total_buffer_size,
                       "Values size must be less than total buffer size");
-          auto data_ptr = IAllocator::MakeUniquePtr<void>(allocator_, total_buffer_size);
+          auto data_ptr = IAllocator::MakeUniquePtr<void>(allocator_, static_cast<size_t>(total_buffer_size));
           ORT_ENFORCE(data_ptr != nullptr, "SparseTensor Allocation failed for size: ", total_buffer_size);
           // We own the buffer, so we must properly construct strings. Neither of the Tensors
           // we construct on top of the buffer own it. We are constructing empty strings, hopefully
@@ -57,7 +66,7 @@ SparseRep::SparseRep(MLDataType data_type, const TensorShape& values_shape,
           if (utils::IsDataTypeString(data_type)) {
             const int64_t shape_size = values_shape.Size();
             auto* ptr = static_cast<std::string*>(data_ptr.get());
-            for (int64_t i = 0, n = shape_size; i < n; ++i) {
+            for (int64_t i = 0; i < shape_size; ++i) {
               new (ptr + i) std::string();
             }
           }
@@ -82,7 +91,7 @@ void SparseRep::ReleaseBuffer() {
     if (values_.IsDataTypeString()) {
       using string = std::string;
       auto* ptr = static_cast<std::string*>(p_data_);
-      int64_t len = values_.Shape().Size();
+      const int64_t len = values_.Shape().Size();
       for (int64_t i = 0; i < len; i++)
         ptr[i].~string();
     }
@@ -102,6 +111,8 @@ Status SparseTensor::Copy(const DataTransferManager& data_transfer_manager, int 
 
   ORT_RETURN_IF_NOT(format_flags_ != SparseFormatFlags::kUndefined, "This instance should not be empty");
   ORT_RETURN_IF_NOT(rep_ != nullptr, "This instance should not be empty");
+  ORT_RETURN_IF_NOT(!IsDataTypeString(), "Cross device copy of strings it not supported.");
+
   ORT_RETURN_IF_NOT(dst_tensor.FormatFlags() == SparseFormatFlags::kUndefined, "Destination should be empty");
   ORT_RETURN_IF_NOT(dst_tensor.allocator_ != nullptr, "Destination must have an allocator set");
   ORT_RETURN_IF_NOT(dst_tensor.dense_shape_.Size() >= dense_shape_.Size(), "Destination must have enough space");
@@ -123,6 +134,8 @@ Status SparseTensor::Copy(const IDataTransfer& data_transfer, SparseTensor& dst_
   }
   ORT_RETURN_IF_NOT(format_flags_ != SparseFormatFlags::kUndefined, "This instance should not be empty");
   ORT_RETURN_IF_NOT(rep_ != nullptr, "This instance should not be empty");
+  ORT_RETURN_IF_NOT(!IsDataTypeString(), "Cross device copy of strings it not supported.");
+
   ORT_RETURN_IF_NOT(dst_tensor.FormatFlags() == SparseFormatFlags::kUndefined, "Destination should be empty");
   ORT_RETURN_IF_NOT(dst_tensor.allocator_ != nullptr, "Destination must have a CPU allocator set");
   ORT_RETURN_IF_NOT(dst_tensor.dense_shape_.Size() == dense_shape_.Size(), "Must have the same shape");

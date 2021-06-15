@@ -62,6 +62,8 @@ class SparseRep {
  public:
   virtual ~SparseRep();
 
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(SparseRep);
+
   const Tensor& Values() const noexcept {
     return values_;
   }
@@ -163,7 +165,7 @@ class SparseTensor final {
       : SparseTensor(elt_type, dense_shape, allocator->Info(), std::move(allocator)) {
   }
 
-  SparseTensor() = default;
+  SparseTensor();
 
   ~SparseTensor();
 

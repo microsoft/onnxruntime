@@ -17,8 +17,6 @@
 #include "core/framework/ml_value.h"
 #include "core/session/inference_session.h"
 
-//namespace py = pybind11;
-
 namespace onnxruntime {
 namespace python {
 

@@ -124,6 +124,24 @@ void ConvertToCoo(gsl::span<const T> input_span,
   indices_out = std::move(indices);
 }
 
+/// This test must be disabled x86 build because of an apparent Eigen bug
+/// However, things work on x64 builds
+/// It manifests itself as Status Message: std::bad_alloc or Status Message: bad allocation
+/// due to this piece of code in Eigen
+/// The size is 19 but the allocated size is 18, after std::min realloc_size is -1 which causes it to throw.
+/*
+void resize(Index size, double reserveSizeFactor = 0) {
+  if (m_allocatedSize < size) {
+    Index realloc_size = (std::min<Index>)(NumTraits<StorageIndex>::highest(), size + Index(reserveSizeFactor * double(size)));
+    if (realloc_size < size)
+      internal::throw_std_bad_alloc();
+    reallocate(realloc_size);
+  }
+  m_size = size;
+}
+*/
+
+#if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__)
 TEST(SparseToDenseMatMul, TestCsr) {
   constexpr int64_t rows = 9;
   constexpr int64_t cols = 9;
@@ -245,6 +263,7 @@ TEST(SparseToDenseMatMul, TestCsr) {
     tester.Run(OpTester::ExpectResult::kExpectSuccess);
   }
 }
+#endif // x86
 
 TEST(SparseToDenseMatMul, TestCoo) {
   constexpr int64_t rows = 9;
@@ -264,7 +283,7 @@ TEST(SparseToDenseMatMul, TestCoo) {
   std::vector<float> A_values;
   std::vector<int64_t> A_indices;
   ConvertToCoo(gsl::make_span(input_data), A_shape, A_values, A_indices);
-  ASSERT_GE(A_values.size(), 0);
+  ASSERT_FALSE(A_values.empty());
   ASSERT_EQ(A_values.size() * 2, A_indices.size());
   const std::vector<int64_t> A_indicies_shape{static_cast<int64_t>(A_values.size()), 2};
 

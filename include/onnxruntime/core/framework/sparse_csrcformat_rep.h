@@ -33,11 +33,9 @@ class SparseCsrcFormatRep : public SparseRep {
         major_(order),
         inner_indices_(),
         outer_indices_() {}
-        //inner_indecies_(DataTypeImpl::GetType<int64_t>(), {static_cast<int64_t>(inner_size)}, allocator),
-        //outer_indecies_(DataTypeImpl::GetType<int64_t>(), {static_cast<int64_t>(outer_size)}, allocator) {}
 
   /// <summary>
-  /// Constructor that allocates no memory but makes data point to the user provided buffer
+  /// Constructor that allocates no memory and utilizes user provided buffer
   /// </summary>
   /// <param name="data_type"></param>
   /// <param name="values_shape"></param>
@@ -50,9 +48,6 @@ class SparseCsrcFormatRep : public SparseRep {
         major_(order),
         inner_indices_(),
         outer_indices_() {}
-
-        //inner_indecies_(DataTypeImpl::GetType<int64_t>(), {static_cast<int64_t>(inner_size)}, inner_data, info, 0),
-        //outer_indecies_(DataTypeImpl::GetType<int64_t>(), {static_cast<int64_t>(outer_size)}, outer_data, info, 0) {}
 
   ~SparseCsrcFormatRep() override;
 
@@ -97,7 +92,7 @@ class SparseCsrcFormatRep : public SparseRep {
 
  private:
   Order major_;
-  // This represents indices of nnz within a row/column
+  // This represents indices of nnz within a row/column (CSR) or column/row for (CSC)
   Tensor inner_indices_;
   // This represents indices into values and inner_indecies where each row/column data starts
   Tensor outer_indices_;

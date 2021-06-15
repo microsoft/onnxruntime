@@ -372,6 +372,7 @@ float halfToFloat(uint16_t h) { return g_host->math__halfToFloat(h); }
 }  // namespace math
 
 namespace sparse_utils {
+#if !defined(ORT_MINIMAL_BUILD)
 Status DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
                               const AllocatorPtr& dst_allocator, SparseTensor& dst) {
   return g_host->sparse_utils__DenseTensorToSparseCsr(data_manager, src, cpu_allocator, dst_allocator, dst);
@@ -382,16 +383,15 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
   return g_host->sparse_utils__SparseCsrToDenseTensor(data_manager, src, cpu_allocator, dst_allocator, dst);
 }
 
-Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
-                              const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) {
-  return g_host->sparse_utils__DenseTensorToSparseCoo(data_manager, src, cpu_allocator, dst_allocator, linear_indexs, dst);
-}
-
 Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator,
                               const AllocatorPtr& dst_allocator, Tensor& dst) {
   return g_host->sparse_utils__SparseCooToDenseTensor(data_manager, src, cpu_allocator, dst_allocator, dst);
 }
-
+#endif // ORT_MINIMAL_BUILD
+Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
+                              const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) {
+  return g_host->sparse_utils__DenseTensorToSparseCoo(data_manager, src, cpu_allocator, dst_allocator, linear_indexs, dst);
+}
 }  // namespace sparse_utils
 
 float MLFloat16::ToFloat() const {

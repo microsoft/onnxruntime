@@ -7,7 +7,7 @@
 
 namespace onnxruntime {
 /// <summary>
-/// This is a representation of Coo format that is generic.
+/// This is a representation of Coo format.
 /// </summary>
 class SparseCooFormatRep : public SparseRep {
  public:
@@ -28,7 +28,7 @@ class SparseCooFormatRep : public SparseRep {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(SparseCooFormatRep);
 
   /// <summary>
-  /// Initialize indices to an offset in the contiguous buffer
+  /// Initialize indices to an offset in the pre-allocated buffer
   /// </summary>
   /// <param name="shape"></param>
   void InitIndices(const TensorShape& shape);
@@ -37,7 +37,8 @@ class SparseCooFormatRep : public SparseRep {
   /// Initializer indices with user data ptr
   /// </summary>
   /// <param name="ind_shape">shape of the indices</param>
-  /// <param name="data">may point to either a user buffer</param>
+  /// <param name="data">may point to either a user provided
+  /// or a pre-allocated buffer</param>
   void InitIndices(const TensorShape& shape, void* data) {
     indices_ = Tensor(DataTypeImpl::GetType<int64_t>(), shape, data, Location());
   }
@@ -78,16 +79,17 @@ class SparseCooBuilder {
         rep_(&rep) {}
 
   /// <summary>
-  /// Creates an owned representation using SparseTensor allocator
+  /// Creates a COO format representation that owns the a buffer
   /// and dense shape dimensions.
   /// </summary>
   /// <param name="linearized">true if indices have 1-D linearized format and have a size of nnz() or
   /// 2-D which is a coordinate format. The latter would have a length of 2 * nnz</param>
+  /// <param name="nnz">number of non-zero values</param>
   /// <returns>Created representation</returns>
   Status Create(bool linearized, size_t nnz, SparseCooFormatRep*&);
 
   /// <summary>
-  /// Create a COO representation that would not own the data. Use for inputs/outputs
+  /// Create a COO representation that does not own the data. Use for inputs/outputs
   /// The builder is going to use the same OrtMemoryInfo as for values
   /// </summary>
   /// <param name="nnz">number of non-zero elements</param>

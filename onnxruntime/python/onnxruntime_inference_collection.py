@@ -112,22 +112,6 @@ def numpy_array_to_cpu(numpy_array_on_cuda):
     return C.numpy_array_to_cpu(numpy_array_on_cuda)
 
 
-def allocate_numpy_array_on_device(ort_device, numpy_dtype, shape, data_on_cpu=None):
-    """
-    This function allocates a numpy array backed by a memory that is allocated on a specified
-    device with a specified shape. If data_on_cpy is not None or empty, it will be copied into
-    that memory provided it fits, if data_on_cpy is shorter than the allocation
-    the rest of the memory will be left uninitialized.
-    :param OrtDevice instance that specifies the device to back the numpy array
-    :param  numpy dtype, only numeric types are supported
-    :param shape
-    :param data_on_cpy - optional
-    """
-    if data_on_cpu is None:
-        data_on_cpu = []
-    return C.allocate_numpy_array_on_device(ort_device._get_c_device(), numpy_dtype, shape, data_on_cpu)
-
-
 class Session:
     """
     This is the main class used to run a model.
@@ -702,14 +686,14 @@ class SparseTensor:
         :param values: a homogeneous, contiguous 1-D numpy array that contains non-zero elements of the tensor
          of a type.
         :param coo_indices:  contiguous numpy array(int64) that contains COO indices for the tensor. coo_indices may
-         have a 1-D shape when it contains a linear index of non-zero values and it length must be equal to
+         have a 1-D shape when it contains a linear index of non-zero values and its length must be equal to
          that of the values. It can also be of 2-D shape, in which has it contains pairs of coordinates for
          each of the nnz values and its length must be exactly twice of the values length.
         :param ort_device - describes the backing memory owned by the supplied nummpy arrays. Only CPU memory is
          suppored for non-numeric data types.
 
          For primitive types, the method will map values and coo_indices arrays into native memory and will use
-         them as backing storage. It will increment the reference count for numpy arrays and will decrement it
+         them as backing storage. It will increment the reference count for numpy arrays and it will decrement it
          on GC. The buffers may reside in any storage either CPU or GPU.
          For strings and objects, it will create a copy of the arrays in CPU memory as ORT does not support those
          on other devices and their memory can not be mapped.
@@ -733,7 +717,7 @@ class SparseTensor:
          suppored for non-numeric data types.
 
          For primitive types, the method will map values and indices arrays into native memory and will use them as
-         backing storage. It will increment the reference count and will decrement then count when it is GCed.
+         backing storage. It will increment the reference count and it will decrement then count when it is GCed.
          The buffers may reside in any storage either CPU or GPU.
          For strings and objects, it will create a copy of the arrays in CPU memory as ORT does not support those
          on other devices and their memory can not be mapped.

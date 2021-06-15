@@ -45,6 +45,7 @@ struct ComputeCtx {
   float alpha;
 };
 
+#if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__)
 template <typename T>
 inline void SparseDenseMatMulImpl(const ComputeCtx& ctx, const ConstSparseMatrixMap<T>& map_A,
                                   const ConstEigenMatrixMapRowMajor<T>& map_B, EigenMatrixMapRowMajor<T>& output_map) {
@@ -93,6 +94,8 @@ struct SparseToDenseCsr {
   }
 };
 
+#endif  //!defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__)
+
 template<typename T> inline
 T Mul(T a_value, float, T b_value) {
   return a_value * b_value;
@@ -102,7 +105,6 @@ template <> inline
 float Mul<float>(float a_value, float alpha, float b_value) {
   return a_value * alpha * b_value;
 }
-
 
 // Inspired by TensorFlow SparseTensorDenseMatmul
 template <typename T>
@@ -183,6 +185,9 @@ Status SparseToDenseMatMul::Compute(OpKernelContext* ctx) const {
     ORT_RETURN_IF_NOT(A->Values().Shape().Size() * 2 == rep->Indices().Shape().Size(), "Expecting 2xValues == indices");
     auto status = t_disp.InvokeRet<Status, SparseToDenseCoo>(compute_ctx, *A, *B, *output);
     ORT_RETURN_IF_ERROR(status);
+// Eigen has a bug in x86 where it calculates reallocation size as -1
+// and throws bad_alloc
+#if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__)
   } else if (IsSet(A->FormatFlags(), SparseFormatFlags::kCsrc)) {
     const SparseCsrcFormatRep* rep = A->GetRep<SparseCsrcFormatRep>();
     ORT_RETURN_IF_NOT(A->Values().Shape().Size() == rep->Inner().Shape().Size(),
@@ -190,8 +195,13 @@ Status SparseToDenseMatMul::Compute(OpKernelContext* ctx) const {
     ORT_RETURN_IF_NOT((A_shape.GetDims()[0] + 1) == rep->Outer().Shape().Size(), "Outer size must be M + 1");
     t_disp.Invoke<SparseToDenseCsr>(compute_ctx, *A, *B, *output);
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Currently support only COO and CSR formats");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Currently support only COO and CSR(x64) formats");
   }
+#else
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "WASM and 32-bit builds support only COO format");
+  }
+#endif
 
   return Status::OK();
 }

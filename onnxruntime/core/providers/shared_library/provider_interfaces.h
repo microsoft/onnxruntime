@@ -184,16 +184,17 @@ struct ProviderHost {
   virtual float math__halfToFloat(uint16_t h) = 0;
 
   // sparse_utils
+#if !defined(ORT_MINIMAL_BUILD)
   virtual Status sparse_utils__DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
                                                       const AllocatorPtr& dst_allocator, SparseTensor& dst) = 0;
   virtual Status sparse_utils__SparseCsrToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator,
                                                       const AllocatorPtr& dst_allocator, Tensor& dst) = 0;
 
-  virtual Status sparse_utils__DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
-                                                      const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) = 0;
-
   virtual Status sparse_utils__SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator,
                                                       const AllocatorPtr& dst_allocator, Tensor& dst) = 0;
+#endif // ORT_MINIMAL_BUILD
+  virtual Status sparse_utils__DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
+                                                      const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) = 0;
 
   // IAllocator
   virtual bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) = 0;
