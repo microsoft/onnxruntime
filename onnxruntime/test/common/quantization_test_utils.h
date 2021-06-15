@@ -13,7 +13,6 @@ namespace test {
 //
 // Rounds a float to the nearest representable value and returns the nearest integer value as a float.
 //
-// TODO(kreeger): Consider moving to a cc file.
 inline float RoundHalfToEven(float input) {
   std::fesetround(FE_TONEAREST);
   auto result = std::nearbyintf(input);
@@ -61,7 +60,7 @@ inline std::vector<Integer> Quantize(const std::vector<float>& data, float scale
 }
 
 //
-// Converts a single float value to a quantized value with a pre-calculated scale and zero point.
+// Converts a float value to a quantized value with a pre-calculated scale and zero point.
 //
 template <typename Integer, typename = typename std::enable_if<std::is_integral<Integer>::value, Integer>::type>
 inline Integer Quantize(const float value, float scale, Integer zero_point = 0) {
@@ -84,7 +83,7 @@ inline std::vector<float> Dequantize(const std::vector<Integer>& data, float sca
 }
 
 //
-// Converts a single quantized integer value to a floating point value with a pre-calculated scale and zero point.
+// Converts a quantized integer value to a floating point value with a pre-calculated scale and zero point.
 //
 template <typename Integer, typename = typename std::enable_if<std::is_integral<Integer>::value, Integer>::type>
 inline float Dequantize(const Integer value, float scale, Integer zero_point = 0) {
