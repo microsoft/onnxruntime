@@ -9,7 +9,7 @@ target 'OnnxruntimeModuleExample' do
   use_react_native!(:path => config["reactNativePath"])
 
   use_frameworks!
-  pod 'onnxruntime-mobile', :podspec => '../../onnxruntime-mobile.podspec'
+  pod 'onnxruntime-mobile-c', :podspec => '../../onnxruntime-mobile-c.podspec'
   pod 'onnxruntime-react-native', :path => '../..'
 
   inherit! :search_paths

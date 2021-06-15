@@ -339,9 +339,11 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
 
 3. Build iOS ONNX Runtime package
 
-    1. Set up iOS build environment referring to [instruction](https://www.onnxruntime.ai/docs/how-to/build/android-ios.html#ios).
+    1. To use a published c/c++ ONNX Runtime Mobile package from CocoaPods, skip all steps below.
 
-    2. Build a fat ONNX Runtime Mobile Framework for iOS and iOS simulator from `<ORT_ROOT>` using this command,
+    2. Set up iOS build environment referring to [instruction](https://www.onnxruntime.ai/docs/how-to/build/android-ios.html#ios).
+
+    3. Build a fat ONNX Runtime Mobile Framework for iOS and iOS simulator from `<ORT_ROOT>` using this command,
 
         ```sh
         python tools/ci_build/github/apple/build_ios_framework.py tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json --config MinSizeRel --include_ops_by_config tools/ci_build/github/android/mobile_package.required_operators.config
@@ -350,10 +352,10 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
         It creates `onnxruntime.framework` in `build/iOS_framework/framework_out` directory. Create an archive file of `onnxruntime.framework` directory as follows and copy to `<ORT_ROOT>/js/react_native/local_pods` directory.
 
         ```sh
-        zip -r onnxruntime-mobile.zip onnxruntime.framework
+        zip -r onnxruntime-mobile-c.zip onnxruntime.framework
         ```
 
-    3. To verify, open iOS Simulator and run this command from `<ORT_ROOT>/js/react_native/ios`. Change a destination to specify a running iOS Simulator.
+    4. To verify, open iOS Simulator and run this command from `<ORT_ROOT>/js/react_native/ios`. Change a destination to specify a running iOS Simulator.
 
         ```sh
         pod install

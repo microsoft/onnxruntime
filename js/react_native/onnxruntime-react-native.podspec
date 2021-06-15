@@ -16,5 +16,5 @@ Pod::Spec.new do |spec|
   spec.source_files         = "ios/*.{h,mm}"
 
   spec.dependency "React-Core"
-  spec.dependency "onnxruntime-mobile"
+  spec.dependency "onnxruntime-mobile-c"
 end

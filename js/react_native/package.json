@@ -11,17 +11,14 @@
     "lib",
     "dist",
     "android",
-    "ios",
-    "local_pods",
+    "ios/*.h",
+    "ios/*.mm",
     "onnxruntime-react-native.podspec",
-    "onnxruntime-mobile.podspec",
     "!dist/commonjs/*.js.map",
     "!dist/module/*.js.map",
-    "!android/build",
-    "!ios/.DS_Store",
-    "!ios/build",
-    "!ios/Pods",
-    "!ios/**/xcuserdata"
+    "!android/.gitignore",
+    "!android/.idea",
+    "!android/build"
   ],
   "scripts": {
     "test": "jest",

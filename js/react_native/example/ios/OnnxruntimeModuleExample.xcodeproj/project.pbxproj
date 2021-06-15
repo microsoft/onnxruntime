@@ -240,7 +240,7 @@
 				"${BUILT_PRODUCTS_DIR}/ReactCommon/ReactCommon.framework",
 				"${BUILT_PRODUCTS_DIR}/Yoga/yoga.framework",
 				"${BUILT_PRODUCTS_DIR}/glog/glog.framework",
-				"${PODS_ROOT}/onnxruntime-mobile/onnxruntime.framework",
+				"${PODS_ROOT}/onnxruntime-mobile-c/onnxruntime.framework",
 				"${BUILT_PRODUCTS_DIR}/onnxruntime-react-native/onnxruntime_react_native.framework",
 			);
 			name = "[CP] Embed Pods Frameworks";

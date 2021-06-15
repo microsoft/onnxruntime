@@ -11,7 +11,7 @@ def shared
   # Comment the next line if you don't want to use dynamic frameworks
   use_frameworks!
 
-  pod 'onnxruntime-mobile', :podspec  => '../onnxruntime-mobile.podspec'
+  pod 'onnxruntime-mobile-c', :podspec  => '../onnxruntime-mobile-c.podspec'
 
   inherit! :search_paths
 end
