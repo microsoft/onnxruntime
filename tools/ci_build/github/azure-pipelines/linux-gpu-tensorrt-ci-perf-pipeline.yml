@@ -32,26 +32,38 @@ parameters:
   default: false
 
 - name: RunSelected
-  displayName: Selected Models (set ModelsPath variable)
+  displayName: Selected Models (set modelsPath variable)
   type: boolean
   default: false
 
 - name: ConfigureEPs
-  displayName: Configure EPs (set ep_list variable - separate by spaces)
+  displayName: Configure EPs (set epList variable - separate by spaces)
   type: boolean
   default: false
 
 jobs: 
 - job: Linux_CI_GPU_TENSORRT_PERF
   pool: Linux-GPU-TensorRT-Perf 
+  
   variables:
-    - name: runenv
+    - name: environment
       ${{ if eq(parameters.RunDocker, true) }}:
-        value: _docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf 
+        value: docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf 
       ${{ if ne(parameters.RunDocker, true) }}:
-        value: _machine.sh
+        value: machine.sh
+    - name: options
+      type: object
+      default: 
+        ${{ if eq(parameters.RunOnnxZoo, true) }}:
+        - "onnx-zoo-models"
+        ${{ if eq(parameters.RunMany, true) }}:
+        - "many-models"
+        ${{ if eq(parameters.RunPartner, true) }}:
+        - "partner-models"
+        ${{ if eq(parameters.RunSelected, true) }}:
+        - "selected-models"
     - name: args
-      value: $(runenv) -e "$(ep_list)"
+      value: $(runenv) -e "$(epList)"
     - name: run_conda
       value: eval "$(command conda 'shell.bash' 'hook' 2> /dev/null)" && conda activate perf37 
   timeoutInMinutes: 3000 
@@ -68,34 +80,14 @@ jobs:
           displayName: 'Build latest ORT'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
       
-    - ${{ if eq(parameters.RunOnnxZoo, true) }}:
-      - script: '$(run_conda) && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf$(args) -o "onnx-zoo-models" -m $(onnxZooModels)'
-        displayName: 'Onnx Zoo Models Perf'
+    - ${{ each option in $(options) }}:
+      - script: 'echo ${{option}}'
+      #- script: '$(run_conda) && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(environment) -o $(option) -m $(option)'
+        displayName: '$(option) perf'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         env:
           LD_LIBRARY_PATH : "/home/hcsuser/TensorRT-7.2.2.3/lib"
-          
-    - ${{ if eq(parameters.RunMany, true) }}:
-      - script: '$(run_conda) && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf$(args) -o "many-models" -m $(manyModels)'
-        displayName: 'Many Models Perf'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-        env:
-          LD_LIBRARY_PATH : "/home/hcsuser/TensorRT-7.2.2.3/lib"
-
-    - ${{ if eq(parameters.RunPartner, true) }}:
-      - script: '$(run_conda) && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf$(args) -o "partner-models" -m $(partnerModels)'
-        displayName: 'Partner Models Perf'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-        env:
-          LD_LIBRARY_PATH : "/home/hcsuser/TensorRT-7.2.2.3/lib"
-
-    - ${{ if eq(parameters.RunSelected, true) }}:
-      - script: '$(run_conda) && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf$(args) -o "selected-models" -m $(modelsPath) '
-        displayName: 'Selected Models Perf'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-        env:
-          LD_LIBRARY_PATH : "/home/hcsuser/TensorRT-7.2.2.3/lib"
-    
+  
     - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
       displayName: 'Prepare Artifacts'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
