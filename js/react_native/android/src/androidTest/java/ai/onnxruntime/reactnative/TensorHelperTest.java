@@ -56,7 +56,7 @@ public class TensorHelperTest {
     dims.pushInt(3);
     inputTensorMap.putArray("dims", dims);
 
-    inputTensorMap.putString("type", TensorHelper.TensorTypeFloat);
+    inputTensorMap.putString("type", TensorHelper.JsTensorTypeFloat);
 
     ByteBuffer dataByteBuffer = ByteBuffer.allocate(3 * 4).order(ByteOrder.nativeOrder());
     FloatBuffer dataFloatBuffer = dataByteBuffer.asFloatBuffer();
@@ -87,7 +87,7 @@ public class TensorHelperTest {
     dims.pushInt(3);
     inputTensorMap.putArray("dims", dims);
 
-    inputTensorMap.putString("type", TensorHelper.TensorTypeByte);
+    inputTensorMap.putString("type", TensorHelper.JsTensorTypeByte);
 
     ByteBuffer dataByteBuffer = ByteBuffer.allocate(3);
     dataByteBuffer.put(Byte.MIN_VALUE);
@@ -108,38 +108,6 @@ public class TensorHelperTest {
   }
 
   @Test
-  public void createInputTensor_int16() throws Exception {
-    OnnxTensor outputTensor =
-        OnnxTensor.createTensor(ortEnvironment, new short[] {Short.MIN_VALUE, 2, Short.MAX_VALUE});
-
-    JavaOnlyMap inputTensorMap = new JavaOnlyMap();
-
-    JavaOnlyArray dims = new JavaOnlyArray();
-    dims.pushInt(3);
-    inputTensorMap.putArray("dims", dims);
-
-    inputTensorMap.putString("type", TensorHelper.TensorTypeShort);
-
-    ByteBuffer dataByteBuffer = ByteBuffer.allocate(3 * 2).order(ByteOrder.nativeOrder());
-    ShortBuffer dataShortBuffer = dataByteBuffer.asShortBuffer();
-    dataShortBuffer.put(Short.MIN_VALUE);
-    dataShortBuffer.put((short)2);
-    dataShortBuffer.put(Short.MAX_VALUE);
-    String dataEncoded = Base64.encodeToString(dataByteBuffer.array(), Base64.DEFAULT);
-    inputTensorMap.putString("data", dataEncoded);
-
-    OnnxTensor inputTensor = TensorHelper.createInputTensor(inputTensorMap, ortEnvironment);
-
-    Assert.assertEquals(inputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16);
-    Assert.assertEquals(outputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16);
-    Assert.assertEquals(inputTensor.toString(), outputTensor.toString());
-    Assert.assertArrayEquals(inputTensor.getShortBuffer().array(), outputTensor.getShortBuffer().array());
-
-    inputTensor.close();
-    outputTensor.close();
-  }
-
-  @Test
   public void createInputTensor_int32() throws Exception {
     OnnxTensor outputTensor =
         OnnxTensor.createTensor(ortEnvironment, new int[] {Integer.MIN_VALUE, 2, Integer.MAX_VALUE});
@@ -150,7 +118,7 @@ public class TensorHelperTest {
     dims.pushInt(3);
     inputTensorMap.putArray("dims", dims);
 
-    inputTensorMap.putString("type", TensorHelper.TensorTypeInt);
+    inputTensorMap.putString("type", TensorHelper.JsTensorTypeInt);
 
     ByteBuffer dataByteBuffer = ByteBuffer.allocate(3 * 4).order(ByteOrder.nativeOrder());
     IntBuffer dataIntBuffer = dataByteBuffer.asIntBuffer();
@@ -182,7 +150,7 @@ public class TensorHelperTest {
     dims.pushInt(3);
     inputTensorMap.putArray("dims", dims);
 
-    inputTensorMap.putString("type", TensorHelper.TensorTypeLong);
+    inputTensorMap.putString("type", TensorHelper.JsTensorTypeLong);
 
     ByteBuffer dataByteBuffer = ByteBuffer.allocate(3 * 8).order(ByteOrder.nativeOrder());
     LongBuffer dataLongBuffer = dataByteBuffer.asLongBuffer();
@@ -204,38 +172,6 @@ public class TensorHelperTest {
   }
 
   @Test
-  public void createInputTensor_string() throws Exception {
-    OnnxTensor outputTensor = OnnxTensor.createTensor(ortEnvironment, new String[] {"a", "b", "c"}, new long[] {3});
-
-    JavaOnlyMap inputTensorMap = new JavaOnlyMap();
-
-    JavaOnlyArray dims = new JavaOnlyArray();
-    dims.pushInt(3);
-    inputTensorMap.putArray("dims", dims);
-
-    inputTensorMap.putString("type", TensorHelper.TensorTypeString);
-
-    JavaOnlyArray data = new JavaOnlyArray();
-    data.pushString("a");
-    data.pushString("b");
-    data.pushString("c");
-    inputTensorMap.putArray("data", data);
-
-    OnnxTensor inputTensor = TensorHelper.createInputTensor(inputTensorMap, ortEnvironment);
-
-    Assert.assertEquals(inputTensor.getInfo().onnxType, TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
-    Assert.assertEquals(outputTensor.getInfo().onnxType,
-                        TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
-    Assert.assertEquals(inputTensor.toString(), outputTensor.toString());
-    String[] inputData = (String[])inputTensor.getValue();
-    String[] outputData = (String[])outputTensor.getValue();
-    Assert.assertArrayEquals(inputData, outputData);
-
-    inputTensor.close();
-    outputTensor.close();
-  }
-
-  @Test
   public void createInputTensor_double() throws Exception {
     OnnxTensor outputTensor =
         OnnxTensor.createTensor(ortEnvironment, new double[] {Double.MIN_VALUE, 1.8e+30, Double.MAX_VALUE});
@@ -246,7 +182,7 @@ public class TensorHelperTest {
     dims.pushInt(3);
     inputTensorMap.putArray("dims", dims);
 
-    inputTensorMap.putString("type", TensorHelper.TensorTypeDouble);
+    inputTensorMap.putString("type", TensorHelper.JsTensorTypeDouble);
 
     ByteBuffer dataByteBuffer = ByteBuffer.allocate(3 * 8).order(ByteOrder.nativeOrder());
     DoubleBuffer dataDoubleBuffer = dataByteBuffer.asDoubleBuffer();
@@ -295,7 +231,7 @@ public class TensorHelperTest {
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
-      Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeBool);
+      Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeBool);
       String dataEncoded = outputMap.getString("data");
       ByteBuffer buffer = ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT));
       for (int i = 0; i < 5; ++i) {
@@ -335,7 +271,7 @@ public class TensorHelperTest {
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
-      Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeDouble);
+      Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeDouble);
       String dataEncoded = outputMap.getString("data");
       DoubleBuffer buffer =
           ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asDoubleBuffer();
@@ -376,7 +312,7 @@ public class TensorHelperTest {
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
-      Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeFloat);
+      Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeFloat);
       String dataEncoded = outputMap.getString("data");
       FloatBuffer buffer =
           ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asFloatBuffer();
@@ -417,50 +353,9 @@ public class TensorHelperTest {
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
-      Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeByte);
+      Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeByte);
       String dataEncoded = outputMap.getString("data");
       ByteBuffer buffer = ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT));
-      for (int i = 0; i < 5; ++i) {
-        Assert.assertEquals(buffer.get(i), inputData[i]);
-      }
-
-      OnnxValue.close(container);
-    } finally {
-      mockSession.finishMocking();
-    }
-  }
-
-  @Test
-  public void createOutputTensor_int16() throws Exception {
-    MockitoSession mockSession = mockitoSession().mockStatic(Arguments.class).startMocking();
-    try {
-      when(Arguments.createMap()).thenAnswer(i -> new JavaOnlyMap());
-      when(Arguments.createArray()).thenAnswer(i -> new JavaOnlyArray());
-
-      OrtSession.SessionOptions options = new OrtSession.SessionOptions();
-      byte[] modelData = readBytesFromResourceFile(ai.onnxruntime.reactnative.test.R.raw.test_types_int16);
-      OrtSession session = ortEnvironment.createSession(modelData, options);
-
-      long[] dims = new long[] {1, 5};
-      short[] inputData = new short[] {1, 2, -3, Short.MIN_VALUE, Short.MAX_VALUE};
-
-      String inputName = session.getInputNames().iterator().next();
-      Map<String, OnnxTensor> container = new HashMap<>();
-      Object tensorInput = OrtUtil.reshape(inputData, dims);
-      OnnxTensor onnxTensor = OnnxTensor.createTensor(ortEnvironment, tensorInput);
-      container.put(inputName, onnxTensor);
-
-      OrtSession.Result result = session.run(container);
-
-      ReadableMap resultMap = TensorHelper.createOutputTensor(result);
-      ReadableMap outputMap = resultMap.getMap("output");
-      for (int i = 0; i < 2; ++i) {
-        Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
-      }
-      Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeShort);
-      String dataEncoded = outputMap.getString("data");
-      ShortBuffer buffer =
-          ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asShortBuffer();
       for (int i = 0; i < 5; ++i) {
         Assert.assertEquals(buffer.get(i), inputData[i]);
       }
@@ -498,7 +393,7 @@ public class TensorHelperTest {
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
-      Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeInt);
+      Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeInt);
       String dataEncoded = outputMap.getString("data");
       IntBuffer buffer =
           ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asIntBuffer();
@@ -539,50 +434,12 @@ public class TensorHelperTest {
       for (int i = 0; i < 2; ++i) {
         Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
       }
-      Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeLong);
+      Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeLong);
       String dataEncoded = outputMap.getString("data");
       LongBuffer buffer =
           ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT)).order(ByteOrder.nativeOrder()).asLongBuffer();
       for (int i = 0; i < 5; ++i) {
         Assert.assertEquals(buffer.get(i), inputData[i]);
-      }
-
-      OnnxValue.close(container);
-    } finally {
-      mockSession.finishMocking();
-    }
-  }
-
-  @Test
-  public void createOutputTensor_string() throws Exception {
-    MockitoSession mockSession = mockitoSession().mockStatic(Arguments.class).startMocking();
-    try {
-      when(Arguments.createMap()).thenAnswer(i -> new JavaOnlyMap());
-      when(Arguments.createArray()).thenAnswer(i -> new JavaOnlyArray());
-
-      OrtSession.SessionOptions options = new OrtSession.SessionOptions();
-      byte[] modelData = readBytesFromResourceFile(ai.onnxruntime.reactnative.test.R.raw.test_types_string);
-      OrtSession session = ortEnvironment.createSession(modelData, options);
-
-      long[] dims = new long[] {1, 5};
-      String[] inputData = new String[] {"a", "b", "c", "d", "e"};
-
-      String inputName = session.getInputNames().iterator().next();
-      Map<String, OnnxTensor> container = new HashMap<>();
-      OnnxTensor onnxTensor = OnnxTensor.createTensor(ortEnvironment, inputData, dims);
-      container.put(inputName, onnxTensor);
-
-      OrtSession.Result result = session.run(container);
-      String[] outputData = (String[])((OnnxTensor)result.get(0)).getValue();
-
-      ReadableMap resultMap = TensorHelper.createOutputTensor(result);
-      ReadableMap outputMap = resultMap.getMap("output");
-      for (int i = 0; i < 2; ++i) {
-        Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
-      }
-      Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeString);
-      for (int i = 0; i < 5; ++i) {
-        Assert.assertEquals(outputMap.getArray("data").getString(i), inputData[i]);
       }
 
       OnnxValue.close(container);
