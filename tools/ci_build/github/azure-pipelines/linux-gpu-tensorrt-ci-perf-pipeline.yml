@@ -21,7 +21,7 @@ parameters:
   type: boolean
   default: false
 
-- name: options
+- name: ModelGroups
   type: object
   default: 
     - "onnx-zoo-models"
@@ -47,24 +47,25 @@ jobs:
   steps:
 
     - ${{ if eq(parameters.BuildORT, true) }}:
+
       - ${{ if eq(parameters.RunDocker, true) }}:
         - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/Dockerfile.tensorrt-perf -b $(branch) -i ort-$(branch)'
           displayName: 'Build latest ORT Images'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+          
       - ${{ if eq(parameters.RunDocker, false) }}:
         - script: '$(run_conda) && python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/ort_build_latest.py -b $(branch) -c /usr/local/cuda -o ~/repos/onnxruntime/ -t ~/TensorRT-7.2.2.3'
           displayName: 'Build latest ORT'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
       
-    - ${{ each option in parameters.options }}:
-      - script: 'echo ${{option}} at $(${{option}})'
-      #- script: '$(run_conda) && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $( ${{ option }} )'
+    - ${{ each option in parameters.ModelGroups }}:
+      - script: '$(run_conda) && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $( ${{ option }} )'
         displayName: '${{option}} perf'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         env:
           LD_LIBRARY_PATH : "/home/hcsuser/TensorRT-7.2.2.3/lib"
   
-    - ${{ if parameters.options }}:
+    - ${{ if parameters.ModelGroups }}:
       - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
         displayName: 'Prepare Artifacts'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
