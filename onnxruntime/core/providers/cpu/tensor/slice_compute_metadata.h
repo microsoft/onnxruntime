@@ -1,21 +1,23 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// This file contains the defnition of the PrepareForComputeMetadata for Slice operator
+// This file contains the definition of the PrepareForComputeMetadata for Slice operator
 #pragma once
+
+#include <cstdint>
+#include <vector>
 
 namespace onnxruntime {
 
 namespace SliceOp {
 struct PrepareForComputeMetadata {
-  PrepareForComputeMetadata() = delete;
-  PrepareForComputeMetadata(const std::vector<int64_t>& input_dimensions)
-      : input_dimensions_(input_dimensions) {
+  explicit PrepareForComputeMetadata(const std::vector<int64_t>& input_dimensions)
+      : input_dimensions_(input_dimensions),
+        ends_(input_dimensions),
+        output_dims_(input_dimensions) {
     size_t dimension_count = input_dimensions.size();
     starts_.resize(dimension_count, 0);
-    ends_ = input_dimensions;
     steps_.resize(dimension_count, 1);
-    output_dims_ = input_dimensions;
   }
 
   const std::vector<int64_t>& input_dimensions_;

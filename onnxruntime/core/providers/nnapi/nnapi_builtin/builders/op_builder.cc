@@ -2691,7 +2691,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   //    Simpler and faster version of slice without steps, available from ANEURALNETWORKS_FEATURE_LEVEL_3
   //    Use this one if no step other than 1 is used in ONNX slice
   // - ANEURALNETWORKS_STRIDED_SLICE
-  //    More comprehensice version, available from ANEURALNETWORKS_FEATURE_LEVEL_2
+  //    More comprehensive version, available from ANEURALNETWORKS_FEATURE_LEVEL_2
   int op_code = ANEURALNETWORKS_STRIDED_SLICE;
   if (std::all_of(compute_metadata.steps_.cbegin(),
                   compute_metadata.steps_.cend(),
@@ -2752,24 +2752,39 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   OpBuilderRegistrations op_registrations;
 
+  // Builders handle a single op
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("BatchNormalization", BatchNormalizationOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Cast", CastOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Clip", ClipOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Concat", ConcatOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("DequantizeLinear", DequantizeLinearOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Elu", EluOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Flatten", FlattenOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Identity", IdentityOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("LRN", LRNOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("QuantizeLinear", QuantizeLinearOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Relu", ReluOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Reshape", ReshapeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Resize", ResizeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Slice", SliceOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Softmax", SoftMaxOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Squeeze", SqueezeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Transpose", TransposeOpBuilder);
+
+  // Builders shared among similar ops
   {
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Add", BinaryOpBuilder);
-    NNAPI_EP_ADD_SHARED_OP_BUILDER("Sub", BinaryOpBuilder);
-    NNAPI_EP_ADD_SHARED_OP_BUILDER("Mul", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Div", BinaryOpBuilder);
-    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearAdd", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Mul", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Pow", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearAdd", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Sub", BinaryOpBuilder);
   }
 
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Relu", ReluOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Transpose", TransposeOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Reshape", ReshapeOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("BatchNormalization", BatchNormalizationOpBuilder);
-
   {
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("AveragePool", PoolOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("GlobalAveragePool", PoolOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("GlobalMaxPool", PoolOpBuilder);
-    NNAPI_EP_ADD_SHARED_OP_BUILDER("AveragePool", PoolOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("MaxPool", PoolOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearAveragePool", PoolOpBuilder);
   }
@@ -2778,10 +2793,6 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Conv", ConvOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearConv", ConvOpBuilder);
   }
-
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Cast", CastOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Softmax", SoftMaxOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Identity", IdentityOpBuilder);
 
   {
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Gemm", GemmOpBuilder);
@@ -2794,30 +2805,18 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Exp", UnaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Floor", UnaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Log", UnaryOpBuilder);
-    NNAPI_EP_ADD_SHARED_OP_BUILDER("Sigmoid", UnaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Neg", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearSigmoid", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Sigmoid", UnaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Sin", UnaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Sqrt", UnaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Tanh", UnaryOpBuilder);
-    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearSigmoid", UnaryOpBuilder);
   }
-
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Concat", ConcatOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Squeeze", SqueezeOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("QuantizeLinear", QuantizeLinearOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("DequantizeLinear", DequantizeLinearOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("LRN", LRNOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Clip", ClipOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Resize", ResizeOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Flatten", FlattenOpBuilder);
 
   {
-    NNAPI_EP_ADD_SHARED_OP_BUILDER("Min", MinMaxOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Max", MinMaxOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Min", MinMaxOpBuilder);
   }
-
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Elu", EluOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Slice", SliceOpBuilder);
 
   return op_registrations;
 }
