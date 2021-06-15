@@ -111,7 +111,6 @@ std::vector<EventRecord> CudaProfiler::EndProfiling() {
   std::vector<EventRecord> events;
   if (enabled_.test_and_set()) {
     if (initialized_) {
-      cuptiActivityDisable(CUPTI_ACTIVITY_KIND_KERNEL);
       cuptiActivityFlushAll(1);
       std::unique_lock<OrtMutex> lock(mutex_);
       int64_t profiling_start = std::chrono::duration_cast<nanoseconds>(start_time_.time_since_epoch()).count();
