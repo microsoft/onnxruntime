@@ -2,10 +2,14 @@ parameters:
   AgentPool : 'Linux-CPU-2019'
   JobName : 'Linux_CI_Dev'
   SubmoduleCheckoutMode: ''
-  RunDockerBuildArgs: '-o ubuntu18.04 -d cpu -r $(Build.BinariesDirectory) -x "--build_wheel"'
+  RunDockerBuildArgs: '-o ubuntu20.04 -p 3.8 -d cpu -r $(Build.BinariesDirectory) -x "--build_wheel"'
   DoNodejsPack: 'false'
   DoNugetPack: 'false'
   NuPackScript: ''
+  RunInjectedPipeline: 'false'
+  InjectedPipeline: ''
+  DockerImageTag: ''
+  BuildConfig: ''
   ArtifactName: 'drop-linux'
   TimeoutInMinutes: 120
   # Controls whether unreleased onnx opsets are allowed. Default is set to 1
@@ -55,15 +59,21 @@ jobs:
     - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
       - script: |
          npm pack
-         cp $(Build.SourcesDirectory)/nodejs/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
-         cp -R $(Build.SourcesDirectory)/nodejs/prebuilds $(Build.ArtifactStagingDirectory)/prebuilds
-        workingDirectory: '$(Build.SourcesDirectory)/nodejs'
+         cp $(Build.SourcesDirectory)/js/node/onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
+         cp -R $(Build.SourcesDirectory)/js/node/prebuilds $(Build.ArtifactStagingDirectory)/prebuilds
+        workingDirectory: '$(Build.SourcesDirectory)/js/node'
         displayName: 'Create NPM Package'
       - task: PublishPipelineArtifact@0
         displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
         inputs:
           artifactName: ${{ parameters.ArtifactName }}
           targetPath: '$(Build.ArtifactStagingDirectory)'
+    - ${{ if eq(parameters['RunInjectedPipeline'], 'true') }}:
+      - template: |
+         ${{ parameters.InjectedPipeline }}
+        parameters:
+          DockerImageTag: ${{ parameters.DockerImageTag }}
+          BuildConfig: ${{ parameters.BuildConfig }}
     - template: component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'

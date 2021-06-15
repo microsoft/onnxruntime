@@ -6,14 +6,14 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_ALL_KERNEL_TYPED(T)                                            \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      All,                                                                      \
-      kMSDomain,                                                                \
-      1,                                                                        \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_ALL_KERNEL_TYPED(T)                                                       \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      All,                                                                                 \
+      kMSDomain,                                                                           \
+      1,                                                                                   \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       All<T>);
 
 template <typename T>
@@ -25,14 +25,11 @@ Status All<T>::ComputeInternal(OpKernelContext* ctx) const {
   ORT_ENFORCE(size <= std::numeric_limits<int>::max(), "Number of reduced elements (",
               size, ") exceeds the max allowed value (", std::numeric_limits<int>::max(), ").");
 
-  // TODO: LaunchAllKernel is implemented with thrust, which always uses default CUDA stream.
-  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(Stream()));
   LaunchAllKernel(
       Stream(),
       input.Data<T>(),
       static_cast<int>(size),
       output.MutableData<bool>());
-  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(0));
   return Status::OK();
 }
 

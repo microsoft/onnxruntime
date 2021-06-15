@@ -117,7 +117,7 @@ cudnnDataType_t CudnnTensor::GetDataType() {
   ORT_THROW("cuDNN engine currently supports only single/double/half/int8/uint8 precision data types. Got:",
     typeid(ElemType).name());
   // Not reachable but GCC complains
-  return 0;
+  return CUDNN_DATA_FLOAT;
 }
 
 template<>

@@ -270,16 +270,17 @@ class MNISTWrapper():
         args_test_batch_size = 1000
 
         kwargs = {'num_workers': 0, 'pin_memory': True}
+        # set shuffle to False to get deterministic data set among different torch version
         train_loader = torch.utils.data.DataLoader(
             datasets.MNIST(os.path.join(SCRIPT_DIR, 'data'), train=True, download=True,
                            transform=transforms.Compose([transforms.ToTensor(),
                                                          transforms.Normalize((0.1307,), (0.3081,))])),
-            batch_size=args_batch_size, shuffle=True, **kwargs)
+            batch_size=args_batch_size, shuffle=False, **kwargs)
         test_loader = torch.utils.data.DataLoader(
             datasets.MNIST(os.path.join(SCRIPT_DIR, 'data'), train=False, transform=transforms.Compose([
                            transforms.ToTensor(),
                            transforms.Normalize((0.1307,), (0.3081,))])),
-            batch_size=args_test_batch_size, shuffle=True, **kwargs)
+            batch_size=args_test_batch_size, shuffle=False, **kwargs)
 
         return train_loader, test_loader
 
@@ -323,13 +324,14 @@ class TestOrtTrainer(unittest.TestCase):
 
         learningRate = 0.01
         args_epochs = 2
-        expected_losses = [2.333008289337158, 1.0680292844772339, 0.6300537586212158, 0.5279903411865234,
-                        0.3710068166255951, 0.4044453501701355, 0.30482712388038635, 0.4595026969909668,
-                        0.42305776476860046, 0.4797358512878418, 0.23006735742092133, 0.48427966237068176,
-                        0.30716797709465027, 0.3238796889781952, 0.19543828070163727, 0.3561663031578064,
-                        0.3089643716812134, 0.37738722562789917, 0.24883587658405304, 0.30744990706443787]
-        expected_test_losses = [0.31038025817871095, 0.25183824462890625]
-        expected_test_accuracies = [0.9125, 0.9304]
+        expected_losses = [2.312044143676758, 0.8018650412559509, 0.5819257497787476, 0.47025489807128906,
+                        0.35800155997276306, 0.41124576330184937, 0.2731882333755493, 0.4201386570930481,
+                        0.39458805322647095, 0.38380366563796997, 0.2722422480583191, 0.24230478703975677,
+                        0.23505745828151703, 0.33442264795303345, 0.21140924096107483, 0.31545233726501465,
+                        0.18556523323059082, 0.3453553020954132, 0.29598352313041687, 0.3595045208930969]
+
+        expected_test_losses = [0.3145490005493164, 0.256188737487793]
+        expected_test_accuracies = [0.9075, 0.9265]
 
         actual_losses = []
         actual_test_losses, actual_accuracies = [], []
@@ -373,11 +375,12 @@ class TestOrtTrainer(unittest.TestCase):
         args_epochs = 2
         args_checkpoint_epoch = 1
         # should match those in test without checkpointing
-        expected_losses = [0.23006735742092133, 0.48427966237068176,
-                        0.30716797709465027, 0.3238796889781952, 0.19543828070163727, 0.3561663031578064,
-                        0.3089643716812134, 0.37738722562789917, 0.24883587658405304, 0.30744990706443787]
-        expected_test_losses = [0.25183824462890625]
-        expected_test_accuracies = [0.9304]
+        expected_losses = [0.26509523391723633, 0.24135658144950867, 0.2397943139076233, 0.3351520597934723,
+                        0.20998981595039368, 0.31488314270973206, 0.18481917679309845, 0.34727591276168823,
+                        0.2971782684326172, 0.3609251379966736]
+
+        expected_test_losses = [0.25632242965698243]
+        expected_test_accuracies = [0.9264]
 
         actual_losses = []
         actual_test_losses, actual_accuracies = [], []

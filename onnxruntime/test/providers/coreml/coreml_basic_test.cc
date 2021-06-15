@@ -13,7 +13,10 @@
 #include "test/util/include/test/test_environment.h"
 #include "test/util/include/test_utils.h"
 
+#if !defined(ORT_MINIMAL_BUILD)
+// if this is a full build we need the provider test utils
 #include "test/providers/provider_test_utils.h"
+#endif  // !(ORT_MINIMAL_BUILD)
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -24,6 +27,11 @@ using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
 namespace test {
+
+// We want to run UT on CPU only to get output value without losing precision to pass the verification
+static constexpr uint32_t s_coreml_flags = COREML_FLAG_USE_CPU_ONLY;
+
+#if !defined(ORT_MINIMAL_BUILD)
 
 TEST(CoreMLExecutionProviderTest, FunctionTest) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("coreml_execution_provider_test_graph.onnx");
@@ -67,25 +75,66 @@ TEST(CoreMLExecutionProviderTest, FunctionTest) {
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
 
-  // We want to run UT on CPU only to get output value without losing precision
-  uint32_t coreml_flags = 0;
-  coreml_flags |= COREML_FLAG_USE_CPU_ONLY;
-
-  CreateMLValue<float>(TestCoreMLExecutionProvider(coreml_flags)->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                       &ml_value_x);
+  CreateMLValue<float>(TestCoreMLExecutionProvider(s_coreml_flags)->GetAllocator(0, OrtMemTypeDefault),
+                       dims_mul_x, values_mul_x, &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<float>(TestCoreMLExecutionProvider(coreml_flags)->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                       &ml_value_y);
+  CreateMLValue<float>(TestCoreMLExecutionProvider(s_coreml_flags)->GetAllocator(0, OrtMemTypeDefault),
+                       dims_mul_x, values_mul_x, &ml_value_y);
   OrtValue ml_value_z;
-  CreateMLValue<float>(TestCoreMLExecutionProvider(coreml_flags)->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
-                       &ml_value_z);
+  CreateMLValue<float>(TestCoreMLExecutionProvider(s_coreml_flags)->GetAllocator(0, OrtMemTypeDefault),
+                       dims_mul_x, values_mul_x, &ml_value_z);
+
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
   feeds.insert(std::make_pair("Y", ml_value_y));
   feeds.insert(std::make_pair("Z", ml_value_z));
 
   RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.FunctionTest",
-                            onnxruntime::make_unique<CoreMLExecutionProvider>(coreml_flags),
+                            std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
+                            feeds);
+}
+
+// CoreML EP currently handles a special case for supporting ArgMax op:
+// An ArgMax followed by a Cast to int32 type.
+// Please see in <repo_root>/onnxruntime/core/providers/coreml/builders/impl/argmax_op_builder.cc
+// and /cast_op_builder.cc. We have the following UT test here for this special case
+// This test case can also be shared later if we want to support similar cases in NNAPI
+TEST(CoreMLExecutionProviderTest, ArgMaxCastTest) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/coreml_argmax_cast_test.onnx");
+
+  std::vector<int64_t> dims_mul_x = {3, 2, 2};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
+  OrtValue ml_value_x;
+
+  CreateMLValue<float>(TestCoreMLExecutionProvider(s_coreml_flags)->GetAllocator(0, OrtMemTypeDefault),
+                       dims_mul_x, values_mul_x, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.ArgMaxCastTest",
+                            std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
+                            feeds);
+}
+
+#endif  // !(ORT_MINIMAL_BUILD)
+
+TEST(CoreMLExecutionProviderTest, TestOrtFormatModel) {
+  // mnist model that has only had basic optimizations applied. nnapi should be able to take at least some of the nodes
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/mnist.level1_opt.ort");
+
+  RandomValueGenerator random{};
+  const std::vector<int64_t> dims = {1, 1, 28, 28};
+  std::vector<float> data = random.Gaussian<float>(dims, 0.0f, 1.f);
+
+  OrtValue ml_value;
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, data, &ml_value);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("Input3", ml_value));
+
+  RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.TestOrtFormatModel",
+                            std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
                             feeds);
 }
 

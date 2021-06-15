@@ -25,7 +25,7 @@ def parse_arguments():
     parser.add_argument("--is_release_build", required=False, default=None, type=str,
                         help="Flag indicating if the build is a release build. Accepted values: true/false.")
     parser.add_argument("--execution_provider", required=False, default='None', type=str,
-                        choices=['dnnl', 'openvino', 'tensorrt', 'None'],
+                        choices=['cuda', 'dnnl', 'openvino', 'tensorrt', 'None'],
                         help="The selected execution provider for this build.")
 
     return parser.parse_args()
@@ -76,7 +76,7 @@ def generate_repo_url(list, repo_url, commit_id):
 
 
 def generate_dependencies(list, package_name, version):
-    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.4.2"/>'
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.5.1"/>'
 
     if (package_name == 'Microsoft.AI.MachineLearning'):
         list.append('<dependencies>')
@@ -195,6 +195,7 @@ def generate_files(list, args):
                               'dnnl_ep_shared_lib': 'onnxruntime_providers_dnnl.dll',
                               'tensorrt_ep_shared_lib': 'onnxruntime_providers_tensorrt.dll',
                               'openvino_ep_shared_lib': 'onnxruntime_providers_openvino.dll',
+                              'cuda_ep_shared_lib': 'onnxruntime_providers_cuda.dll',
                               'onnxruntime_perf_test': 'onnxruntime_perf_test.exe',
                               'onnx_test_runner': 'onnx_test_runner.exe'}
 
@@ -210,6 +211,7 @@ def generate_files(list, args):
                               'dnnl_ep_shared_lib': 'libonnxruntime_providers_dnnl.so',
                               'tensorrt_ep_shared_lib': 'libonnxruntime_providers_tensorrt.so',
                               'openvino_ep_shared_lib': 'libonnxruntime_providers_openvino.so',
+                              'cuda_ep_shared_lib': 'libonnxruntime_providers_cuda.so',
                               'onnxruntime_perf_test': 'onnxruntime_perf_test',
                               'onnx_test_runner': 'onnx_test_runner'}
 
@@ -228,6 +230,9 @@ def generate_files(list, args):
     # Process headers
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path,
                                                         'include\\onnxruntime\\core\\session\\onnxruntime_*.h') +
+                      '" target="build\\native\\include" />')
+    files_list.append('<file src=' + '"' + os.path.join(args.sources_path,
+                                                        'include\\onnxruntime\\core\\framework\\provider_options.h') +
                       '" target="build\\native\\include" />')
     files_list.append('<file src=' + '"' +
                       os.path.join(args.sources_path,
@@ -288,11 +293,11 @@ def generate_files(list, args):
                                                             'microsoft.ai.machinelearning.experimental.winmd') +
                           '" target="winmds\\Microsoft.AI.MachineLearning.Experimental.winmd" />')
         if args.target_architecture == 'x64' and not args.is_store_build:
-            interop_dll_path = 'Microsoft.AI.MachineLearning.Interop\\net5.0-windows10.0.19041.0'
+            interop_dll_path = 'Microsoft.AI.MachineLearning.Interop\\net5.0-windows10.0.17763.0'
             interop_dll = interop_dll_path + '\\Microsoft.AI.MachineLearning.Interop.dll'
             files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, interop_dll) +
                               '" target="lib\\net5.0\\Microsoft.AI.MachineLearning.Interop.dll" />')
-            interop_pdb_path = 'Microsoft.AI.MachineLearning.Interop\\net5.0-windows10.0.19041.0'
+            interop_pdb_path = 'Microsoft.AI.MachineLearning.Interop\\net5.0-windows10.0.17763.0'
             interop_pdb = interop_pdb_path + '\\Microsoft.AI.MachineLearning.Interop.pdb'
             files_list.append('<file src=' + '"' + os.path.join(args.native_build_path, interop_pdb) +
                               '" target="lib\\net5.0\\Microsoft.AI.MachineLearning.Interop.pdb" />')
@@ -335,6 +340,9 @@ def generate_files(list, args):
                           nuget_dependencies['providers_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['cuda_ep_shared_lib']) +
+                          runtimes_target + args.target_architecture + '\\native" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['tensorrt_ep_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
 
@@ -352,6 +360,14 @@ def generate_files(list, args):
                           runtimes_target + args.target_architecture + '\\native" />')
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['openvino_ep_shared_lib']) +
+                          runtimes_target + args.target_architecture + '\\native" />')
+
+    if args.execution_provider == "cuda" or is_cuda_gpu_package:
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['providers_shared_lib']) +
+                          runtimes_target + args.target_architecture + '\\native" />')
+        files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
+                          nuget_dependencies['cuda_ep_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
 
     # process all other library dependencies
@@ -468,7 +484,7 @@ def validate_platform():
 
 def validate_execution_provider(execution_provider):
     if is_linux():
-        if not (execution_provider == 'None' or execution_provider == 'dnnl'
+        if not (execution_provider == 'None' or execution_provider == 'dnnl' or execution_provider == 'cuda'
                 or execution_provider == 'tensorrt' or execution_provider == 'openvino'):
             raise Exception('On Linux platform nuget generation is supported only '
                             'for cpu|cuda|dnnl|tensorrt|openvino execution providers.')

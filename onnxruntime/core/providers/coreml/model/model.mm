@@ -219,7 +219,6 @@
                            [[error localizedDescription] cStringUsingEncoding:NSUTF8StringEncoding]);
   }
 
-  //   NSSet<NSString*>* output_feature_names = [output_feature featureNames];
   for (auto& output : outputs) {
     NSString* output_name = [NSString stringWithCString:output.first.c_str()
                                                encoding:[NSString defaultCStringEncoding]];
@@ -245,13 +244,20 @@
                    1,
                    std::multiplies<int64_t>());
 
-    if (output_tensor.tensor_info.data_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "Input data type is not float, actual type: ",
-                             output_tensor.tensor_info.data_type);
-    }
-
-    size_t output_data_byte_size = num_elements * sizeof(float);
+    size_t output_data_byte_size = 0;
+    const auto type = output_tensor.tensor_info.data_type;
+    switch (type) {
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+        output_data_byte_size = num_elements * sizeof(float);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+        output_data_byte_size = num_elements * sizeof(int32_t);
+        break;
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Output data type is not float/int32, actual type: ",
+                               type);
+  }
     memcpy(output_tensor.buffer, model_output_data, output_data_byte_size);
   }
 
@@ -311,7 +317,7 @@ Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>&
 }
 
 Model::Model(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags)
-    : execution_(onnxruntime::make_unique<Execution>(path, logger, coreml_flags)) {
+    : execution_(std::make_unique<Execution>(path, logger, coreml_flags)) {
 }
 
 Model::~Model() {}

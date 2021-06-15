@@ -2,11 +2,14 @@
 // Licensed under the MIT License.
 
 #include "core/framework/kernel_def_builder.h"
-#include "core/framework/murmurhash3.h"
-#include "gsl/gsl"
 
+#include <algorithm>
 #include <unordered_set>
 #include <string>
+
+#include "gsl/gsl"
+
+#include "core/framework/murmurhash3.h"
 
 namespace onnxruntime {
 namespace {
@@ -53,11 +56,17 @@ void KernelDef::CalculateHash() {
   hash_str(op_domain_);
   hash_str(provider_type_);
 
-  // use the supported_type_constraints_ list for the hash so the value in an ORT format model is stable.
-  for (const auto& key_value : supported_type_constraints_) {
+  // use the hash_type_constraints_ or default_type_constraints_ list for the hash so the value in an ORT format model
+  // is stable.
+  const auto& hash_type_constraints =
+      hash_type_constraints_.has_value() ? *hash_type_constraints_ : default_type_constraints_;
+  for (const auto& key_value : hash_type_constraints) {
     hash_str(key_value.first);
-    for (const auto& data_type : key_value.second) {
-      hash_str(std::string(DataTypeImpl::ToString(data_type)));
+    auto data_type_strings = DataTypeImpl::ToString(key_value.second);
+    // sort type constraint data type strings so that order does not matter
+    std::sort(data_type_strings.begin(), data_type_strings.end());
+    for (const auto& data_type_string : data_type_strings) {
+      hash_str(data_type_string);
     }
   }
 
@@ -67,7 +76,7 @@ void KernelDef::CalculateHash() {
 
 // TODO: Tell user why it has conflicts
 // TODO: Investigate why IsConflict() was not triggered when there were duplicate Tile CUDA
-// kernels registered. Removing `InputMemoryType<OrtMemTypeCPUInput>(1)` in the kernel definition
+// kernels registered. Removing `InputMemoryType(OrtMemTypeCPUInput, 1)` in the kernel definition
 // triggered the conflict.
 bool KernelDef::IsConflict(const KernelDef& other) const {
   if (op_name_ != other.OpName() || provider_type_ != other.Provider())
@@ -88,9 +97,9 @@ bool KernelDef::IsConflict(const KernelDef& other) const {
   //only one case they don't conflict:
   //There is a type_constraint, it exists in both hands, but they don't overlap
   //check types
-  const auto& other_types = other.TypeConstraints();
+  const auto& other_types = other.default_type_constraints_;
   bool type_has_conflict = true;
-  for (const auto& it : supported_type_constraints_) {
+  for (const auto& it : default_type_constraints_) {
     auto iter = other_types.find(it.first);
     if (iter != other_types.end()) {
       if (!AreVectorsOverlap(it.second, iter->second)) {
@@ -167,46 +176,63 @@ KernelDefBuilder& KernelDefBuilder::Provider(const char* provider_type) {
 }
 
 KernelDefBuilder& KernelDefBuilder::TypeConstraintImpl(const std::string& arg_name,
-                                                       const std::vector<MLDataType>& supported_types,
+                                                       const std::vector<MLDataType>& default_types,
                                                        const std::vector<MLDataType>* enabled_types) {
   // use the enabled types list if provided
-  kernel_def_->enabled_type_constraints_[arg_name] = enabled_types ? *enabled_types : supported_types;
-  kernel_def_->supported_type_constraints_[arg_name] = supported_types;
+  kernel_def_->enabled_type_constraints_[arg_name] = enabled_types ? *enabled_types : default_types;
+  kernel_def_->default_type_constraints_[arg_name] = default_types;
   return *this;
 }
 
 KernelDefBuilder& KernelDefBuilder::TypeConstraint(const std::string& arg_name,
-                                                   const std::vector<MLDataType>& supported_types) {
-  return TypeConstraintImpl(arg_name, supported_types, nullptr);
+                                                   const std::vector<MLDataType>& default_types) {
+  return TypeConstraintImpl(arg_name, default_types, nullptr);
 }
 
 KernelDefBuilder& KernelDefBuilder::TypeConstraint(const char* arg_name,
-                                                   const std::vector<MLDataType>& supported_types) {
-  return TypeConstraintImpl(arg_name, supported_types, nullptr);
+                                                   const std::vector<MLDataType>& default_types) {
+  return TypeConstraintImpl(arg_name, default_types, nullptr);
 }
 
 KernelDefBuilder& KernelDefBuilder::TypeConstraint(const std::string& arg_name,
-                                                   const std::vector<MLDataType>& supported_types,
+                                                   const std::vector<MLDataType>& default_types,
                                                    const std::vector<MLDataType>& enabled_types) {
-  return TypeConstraintImpl(arg_name, supported_types, &enabled_types);
+  return TypeConstraintImpl(arg_name, default_types, &enabled_types);
 }
 
 KernelDefBuilder& KernelDefBuilder::TypeConstraint(const char* arg_name,
-                                                   const std::vector<MLDataType>& supported_types,
+                                                   const std::vector<MLDataType>& default_types,
                                                    const std::vector<MLDataType>& enabled_types) {
-  return TypeConstraintImpl(arg_name, supported_types, &enabled_types);
+  return TypeConstraintImpl(arg_name, default_types, &enabled_types);
 }
 
 KernelDefBuilder& KernelDefBuilder::TypeConstraint(const std::string& arg_name,
-                                                   MLDataType supported_type) {
-  kernel_def_->enabled_type_constraints_[arg_name] = std::vector<MLDataType>{supported_type};
-  kernel_def_->supported_type_constraints_[arg_name] = std::vector<MLDataType>{supported_type};
+                                                   MLDataType default_type) {
+  kernel_def_->enabled_type_constraints_[arg_name] = std::vector<MLDataType>{default_type};
+  kernel_def_->default_type_constraints_[arg_name] = std::vector<MLDataType>{default_type};
   return *this;
 }
 
 KernelDefBuilder& KernelDefBuilder::TypeConstraint(const char* arg_name,
-                                                   MLDataType supported_type) {
-  return TypeConstraint(std::string(arg_name), supported_type);
+                                                   MLDataType default_type) {
+  return TypeConstraint(std::string(arg_name), default_type);
+}
+
+KernelDefBuilder& KernelDefBuilder::FixedTypeConstraintForHash(
+    const std::string& arg_name,
+    const std::vector<MLDataType>& default_types_for_hash) {
+  auto& hash_type_constraints = kernel_def_->hash_type_constraints_;
+  if (!hash_type_constraints.has_value()) {
+    hash_type_constraints.emplace();
+  }
+  (*hash_type_constraints)[arg_name] = default_types_for_hash;
+  return *this;
+}
+
+KernelDefBuilder& KernelDefBuilder::FixedTypeConstraintForHash(
+    const char* arg_name,
+    const std::vector<MLDataType>& default_types_for_hash) {
+  return FixedTypeConstraintForHash(std::string{arg_name}, default_types_for_hash);
 }
 
 KernelDefBuilder& KernelDefBuilder::MayInplace(const std::vector<std::pair<int, int>>& inplaces) {

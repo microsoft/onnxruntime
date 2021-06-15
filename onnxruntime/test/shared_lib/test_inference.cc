@@ -13,11 +13,11 @@
 #include <gtest/gtest.h>
 
 #include "core/common/common.h"
-#include "core/common/make_unique.h"
 #include "core/graph/constants.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 #include "providers.h"
 #include "test_allocator.h"
 #include "test_fixture.h"
@@ -134,7 +134,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
   // caller wants to test running the model (not just loading the model)
   if (!test_session_creation_only) {
     // Now run
-    auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+    auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
     //without preallocated output tensor
     RunSession<OutT>(default_allocator.get(),
@@ -161,7 +161,10 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 }
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
+static constexpr PATH_TYPE MATMUL_MODEL_URI = TSTR("testdata/matmul_1.onnx");
+#ifndef ORT_NO_RTTI
 static constexpr PATH_TYPE SEQUENCE_MODEL_URI = TSTR("testdata/sequence_length.onnx");
+#endif
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/custom_op_library/custom_op_test.onnx");
 static constexpr PATH_TYPE OVERRIDABLE_INITIALIZER_MODEL_URI = TSTR("testdata/overridable_initializer.onnx");
@@ -906,7 +909,7 @@ TEST(CApiTest, io_binding_cuda) {
 TEST(CApiTest, create_tensor) {
   const char* s[] = {"abc", "kmp"};
   int64_t expected_len = 2;
-  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
   Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1,
                                                ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
@@ -927,7 +930,7 @@ TEST(CApiTest, create_tensor) {
 TEST(CApiTest, fill_string_tensor) {
   const char* s[] = {"abc", "kmp"};
   int64_t expected_len = 2;
-  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
   Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1,
                                                ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
@@ -946,7 +949,7 @@ TEST(CApiTest, get_string_tensor_element) {
   const char* s[] = {"abc", "kmp"};
   int64_t expected_len = 2;
   int64_t element_index = 0;
-  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
   Ort::Value tensor = Ort::Value::CreateTensor(default_allocator.get(), &expected_len, 1,
                                                ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
@@ -1056,7 +1059,7 @@ TEST(CApiTest, access_tensor_data_elements) {
 
 TEST(CApiTest, override_initializer) {
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
-  auto allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto allocator = std::make_unique<MockedOrtAllocator>();
   // CreateTensor which is not owning this ptr
   bool Label_input[] = {true};
   std::vector<int64_t> dims = {1, 1};
@@ -1110,7 +1113,7 @@ TEST(CApiTest, override_initializer) {
 
 TEST(CApiTest, end_profiling) {
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
-  auto allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto allocator = std::make_unique<MockedOrtAllocator>();
 
   // Create session with profiling enabled (profiling is automatically turned on)
   Ort::SessionOptions session_options_1;
@@ -1161,7 +1164,7 @@ TEST(CApiTest, get_profiling_start_time) {
 }
 
 TEST(CApiTest, model_metadata) {
-  auto allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto allocator = std::make_unique<MockedOrtAllocator>();
   // The following all tap into the c++ APIs which internally wrap over C APIs
 
   // The following section tests a model containing all metadata supported via the APIs
@@ -1302,7 +1305,7 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
   ASSERT_FALSE(status_releaser.get() == nullptr);
 
   Ort::SessionOptions session_options;
-  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
   session_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
 
   // create session 1
@@ -1326,7 +1329,7 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
                     nullptr);
 }
 
-TEST(CApiTest, TestSharingOfInitializer) {
+TEST(CApiTest, TestSharingOfInitializerAndItsPrepackedVersion) {
   // simple inference test
   // prepare inputs
   std::vector<Input> inputs(1);
@@ -1336,22 +1339,30 @@ TEST(CApiTest, TestSharingOfInitializer) {
   input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
 
   // prepare expected inputs and outputs
-  std::vector<int64_t> expected_dims_y = {3, 2};
-  std::vector<float> expected_values_y = {2.0f, 2.0f, 12.0f, 12.0f, 30.0f, 30.0f};
+  std::vector<int64_t> expected_dims_y = {3, 1};
+  std::vector<float> expected_values_y = {4.0f, 10.0f, 16.0f};
 
   Ort::SessionOptions session_options;
   Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
   // These values are different from the actual initializer values in the model
-  float data[] = {2., 1., 4., 3., 6., 5.};
+  float data[] = {2.0f, 1.0f};
   const int data_len = sizeof(data) / sizeof(data[0]);
-  const int64_t shape[] = {3, 2};
+  const int64_t shape[] = {2, 1};
   const size_t shape_len = sizeof(shape) / sizeof(shape[0]);
   Ort::Value val = Ort::Value::CreateTensor<float>(mem_info, data, data_len, shape, shape_len);
   session_options.AddInitializer("W", val);
 
-  auto default_allocator = onnxruntime::make_unique<MockedOrtAllocator>();
+  const auto& api = Ort::GetApi();
+
+  OrtPrepackedWeightsContainer* prepacked_weights_container = nullptr;
+  ASSERT_TRUE(api.CreatePrepackedWeightsContainer(&prepacked_weights_container) == nullptr);
+  std::unique_ptr<OrtPrepackedWeightsContainer, decltype(api.ReleasePrepackedWeightsContainer)>
+      rel_prepacked_weights_container(prepacked_weights_container, api.ReleasePrepackedWeightsContainer);
+
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+
   // create session 1
-  Ort::Session session1(*ort_env, MODEL_URI, session_options);
+  Ort::Session session1(*ort_env, MATMUL_MODEL_URI, session_options, prepacked_weights_container);
   RunSession<float>(default_allocator.get(),
                     session1,
                     inputs,
@@ -1361,7 +1372,7 @@ TEST(CApiTest, TestSharingOfInitializer) {
                     nullptr);
 
   // create session 2
-  Ort::Session session2(*ort_env, MODEL_URI, session_options);
+  Ort::Session session2(*ort_env, MATMUL_MODEL_URI, session_options, prepacked_weights_container);
   RunSession<float>(default_allocator.get(),
                     session2,
                     inputs,
@@ -1430,5 +1441,59 @@ TEST(CApiTest, TestIncorrectInputTypeToModel_SequenceTensors) {
   }
 
   ASSERT_TRUE(exception_thrown);
+}
+#endif
+
+TEST(CApiTest, AllocateInitializersFromNonArenaMemory) {
+  Ort::SessionOptions session_options;
+
+#ifdef USE_CUDA
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+#else
+  // arena is enabled but the sole initializer will still be allocated from non-arena memory
+  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1));
+#endif
+
+  // disable using arena for the sole initializer in the model
+  session_options.AddConfigEntry(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "1");
+
+  // This is mostly an usage example - if the logging level for the default logger is made INFO (by default it is at WARNING)
+  // when the Ort::Env instance is instantiated, logs pertaining to initializer memory being allocated from non-arena memory
+  // can be confirmed by seeing logs like "Reserving memory in BFCArena...".
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+}
+
+#ifdef USE_CUDA
+
+// Usage example showing how to use CreateArenaCfgV2() API to configure the default memory CUDA arena allocator
+TEST(CApiTest, ConfigureCudaArenaAndDemonstrateMemoryArenaShrinkage) {
+  const auto& api = Ort::GetApi();
+
+  Ort::SessionOptions session_options;
+
+  const char* keys[] = {"max_mem", "arena_extend_strategy", "initial_chunk_size_bytes", "max_dead_bytes_per_chunk", "initial_growth_chunk_size_bytes"};
+  const size_t values[] = {0 /*let ort pick default max memory*/, 0, 1024, 0, 256};
+
+  OrtArenaCfg* arena_cfg = nullptr;
+  ASSERT_TRUE(api.CreateArenaCfgV2(keys, values, 5, &arena_cfg) == nullptr);
+  std::unique_ptr<OrtArenaCfg, decltype(api.ReleaseArenaCfg)> rel_arena_cfg(arena_cfg, api.ReleaseArenaCfg);
+
+  OrtCUDAProviderOptions cuda_provider_options = CreateDefaultOrtCudaProviderOptionsWithCustomStream(nullptr);
+  cuda_provider_options.default_memory_arena_cfg = arena_cfg;
+
+  session_options.AppendExecutionProvider_CUDA(cuda_provider_options);
+
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+
+  // Use a run option like this while invoking Run() to trigger a memory arena shrinkage post Run()
+  // This will shrink memory allocations left unused at the end of Run() and cap the arena growth
+  // This does come with associated costs as there are costs to cudaFree() but the goodness it offers
+  // is that the memory held by the arena (memory pool) is kept checked.
+  Ort::RunOptions run_option;
+  run_option.AddConfigEntry(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "gpu:0");
+
+  // To also trigger a cpu memory arena shrinkage along with the gpu arena shrinkage, use the following-
+  // (Memory arena for the CPU should not have been disabled)
+  //  run_option.AddConfigEntry(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "cpu:0;gpu:0");
 }
 #endif

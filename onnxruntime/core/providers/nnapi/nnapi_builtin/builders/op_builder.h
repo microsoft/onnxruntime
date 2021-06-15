@@ -30,7 +30,7 @@ Status TransposeNHWCToNCHW(ModelBuilder& model_builder, const std::string& input
     ORT_MUST_USE_RESULT;
 
 // Get the quantized input's scale and zero point for the given input
-Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
+Status GetQuantizedInputScaleAndZeroPoint(const InitializedTensorSet& initializers,
                                           const Node& node, const std::string& input_name,
                                           float& scale, int32_t& zero_point) ORT_MUST_USE_RESULT;
 

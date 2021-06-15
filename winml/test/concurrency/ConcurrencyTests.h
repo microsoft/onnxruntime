@@ -37,13 +37,13 @@ WINML_TEST_CLASS_END()
 static constexpr uint32_t TABBY_CAT_INDEX = 281;
 static constexpr uint32_t TENCH_INDEX = 0;
 // concurrency bugs are often race conditions and hard to catch deterministically.
-//
-// there are several approachs to find them, from consistent testing to random
+
+// there are several approaches to find them, from consistent testing to random
 // style stress/fuzz testing
 //
 // the testing strategy for *this* test is:
 // - use a consistent and reasonable number of threads (10 vs. 1000)
-// - run them for a consistent and long enough period of time (60 seconds) .
+// - run them for a consistent and long enough period of time (60 seconds).
 // - the smaller number of threads is also to make sure memory pressure is not an issue
 //   on pre checkin CI test machines
 static constexpr uint32_t NUM_THREADS = 10;

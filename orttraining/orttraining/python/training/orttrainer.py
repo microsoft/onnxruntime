@@ -95,7 +95,6 @@ class ORTTrainer(object):
             Inputs to the combined PyTorch model are concatenation of the :py:attr:`model`'s input and :py:attr:`loss_fn`'s label input.
             Outputs of the combined PyTorch model are concatenation of :py:attr:`loss_fn`'s loss output and :py:attr:`model`'s outputs.
         options (ORTTrainerOptions, default is None): options for additional features.
-
     Example:
 
         .. code-block:: python
@@ -121,8 +120,9 @@ class ORTTrainer(object):
             ort_trainer = ORTTrainer(model, model_desc, optim_config, loss_fn)
     """
 
-    def __init__(self, model, model_desc, optim_config, loss_fn=None, options=None):
-        # Basic validation
+    def __init__(self, model, model_desc, optim_config, 
+                 loss_fn=None, 
+                 options=None):
         assert model is not None, "'model' is required and must be either a 'torch.nn.Module' or ONNX model"
         assert isinstance(model_desc, dict), "'model_desc' must be a 'dict'"
         assert isinstance(optim_config, optim._OptimizerConfig),\
@@ -194,13 +194,20 @@ class ORTTrainer(object):
                         break
                 assert dtype is not None, f"ONNX model with unknown output type ({o_desc.name})"
 
+        try:
+            from torch.utils.cpp_extension import ROCM_HOME
+            self.is_rocm_pytorch = (True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
+        except ImportError:
+            self.is_rocm_pytorch = False
+
         # TODO: Remove when experimental checkpoint functions are removed.
         self._state_dict = {}
 
         self._train_step_info = TrainStepInfo(self.optim_config)
         self._training_session = None
         self._load_state_dict = None
-        self._init_session()
+        self._init_session(provider_options=self.options._validated_opts['provider_options'],
+                           session_options=self.options.session_options)
 
     def eval_step(self, *args, **kwargs):
         r"""Evaluation step method
@@ -559,7 +566,10 @@ class ORTTrainer(object):
 
         return onnx_model
 
-    def _create_ort_training_session(self, optimizer_state_dict={}):
+    def _create_ort_training_session(self, 
+                                     optimizer_state_dict={}, 
+                                     session_options=None, 
+                                     provider_options=None):
         # Validating frozen_weights names
         unused_frozen_weights = [n for n in self.options.utils.frozen_weights\
             if n not in [i.name for i in self._onnx_model.graph.initializer]]
@@ -657,7 +667,7 @@ class ORTTrainer(object):
         ort_parameters.model_with_training_graph_path = self.options.debug.graph_save_paths.model_with_training_graph_path
 
         # SessionOptions
-        session_options = ort.SessionOptions()
+        session_options = ort.SessionOptions() if session_options is None else session_options
         session_options.use_deterministic_compute = self.options.debug.deterministic_compute
         if (self.options.graph_transformer.attn_dropout_recompute or
             self.options.graph_transformer.gelu_recompute or
@@ -669,30 +679,34 @@ class ORTTrainer(object):
         # old ort session may already exists and occupies GPU memory when creating new session, this may cause OOM error.
         # for example, load_state_dict will be called before returing the function, and it calls _init_session again
         del self._training_session
-
         # Set provider-specific options if needed
-        def get_providers():
+        def get_providers(provider_options):
             providers = ort.get_available_providers()
-
-            if 'cuda' in self.options.device.id.lower():
-                cuda_ep_options = {"device_id": _utils.get_device_index(self.options.device.id)}
+            if provider_options:
+                for provider_name in provider_options:
+                    if provider_name in providers:
+                        providers[providers.index(provider_name)] = (provider_name, provider_options[provider_name])
+                    else:
+                        providers.insert(0, (provider_name, provider_options[provider_name]))
+            #default: using cuda
+            elif 'cuda' in self.options.device.id.lower():
+                gpu_ep_options = {"device_id": _utils.get_device_index(self.options.device.id)}
+                gpu_ep_name = ("ROCMExecutionProvider" if self.is_rocm_pytorch else "CUDAExecutionProvider")
                 if self.options.device.mem_limit > 0:
-                    cuda_ep_options["cuda_mem_limit"] = self.options.device.mem_limit
+                    gpu_ep_options["gpu_mem_limit"] = self.options.device.mem_limit
 
-                cuda_ep_name = "CUDAExecutionProvider"
-
-                if cuda_ep_name not in providers:
+                if gpu_ep_name not in providers:
                     raise RuntimeError(
                         "ORTTrainer options specify a CUDA device but the {} provider is unavailable.".format(
                             cuda_ep_name))
 
-                providers[providers.index(cuda_ep_name)] = (cuda_ep_name, cuda_ep_options)
+                providers[providers.index(gpu_ep_name)] = (gpu_ep_name, gpu_ep_options)
 
             return providers
 
         # TrainingSession
         self._training_session = ort.TrainingSession(self._onnx_model.SerializeToString(), ort_parameters,
-                                                     session_options, get_providers())
+                                                     session_options, get_providers(provider_options))
 
         # I/O bindings
         self._train_io_binding = self._training_session.io_binding()
@@ -723,9 +737,13 @@ class ORTTrainer(object):
         if self._load_state_dict:
             optimizer_state_dict = self._load_state_dict()
 
-        self._init_session(optimizer_state_dict)
+        self._init_session(optimizer_state_dict,
+                           session_options=self.options.session_options,
+                           provider_options=self.options._validated_opts['provider_options'])
 
-    def _init_session(self, optimizer_state_dict={}):
+    def _init_session(self, optimizer_state_dict={},
+                      session_options=None,
+                      provider_options=None):
         if self._onnx_model is None:
             return
 
@@ -734,7 +752,9 @@ class ORTTrainer(object):
 
         # Create training session used by train_step
         # pass all optimizer states to the backend
-        self._create_ort_training_session(optimizer_state_dict)
+        self._create_ort_training_session(optimizer_state_dict,
+                                          session_options=session_options, 
+                                          provider_options=provider_options)
 
         # Update model description to update dtype when mixed precision is enabled
         # C++ backend modifies model's output dtype from float32 to float16 for mixed precision
@@ -859,9 +879,20 @@ class ORTTrainer(object):
                 # Keep all finite flag on CPU to match backend implementation
                 # This prevents CPU -> GPU -> CPU copies between frontend and backend
                 target_device = 'cpu'
+            # the self.options.device may be a device that pytorch does not recognize.
+            # in that case, we temporary prefer to leave the input/output on CPU and let ORT session 
+            # to move the data between device and host. 
+            # so output will be on the same device as input.
+            try:
+                test_pt_device = torch.device(target_device)
+            except:
+                #in this case, input/output must on CPU
+                assert(input.device.type == 'cpu')
+                target_device = 'cpu'
+            
             torch_tensor = torch.zeros(output_desc.shape, device=target_device,
                                        dtype=output_desc.dtype_amp if output_desc.dtype_amp else output_desc.dtype)
-            iobinding.bind_output(output_desc.name, torch_tensor.device.type, _utils.get_device_index(self.options.device.id),
+            iobinding.bind_output(output_desc.name, torch_tensor.device.type, _utils.get_device_index(target_device),
                                   _utils.dtype_torch_to_numpy(torch_tensor.dtype),
                                   list(torch_tensor.size()), torch_tensor.data_ptr())
             result[output_desc.name] = torch_tensor
@@ -1292,7 +1323,9 @@ class ORTTrainer(object):
 
         # create a new training session after loading initializer states onto the onnx graph
         # pass the populated states to the training session to populate the backend graph
-        self._init_session(optimizer_state_dict)
+        self._init_session(optimizer_state_dict,
+                           session_options=self.options.session_options,
+                           provider_options=self.options._validated_opts['provider_options'])
 
     def save_checkpoint(self, path, user_dict={}, include_optimizer_states=True):
         """Persists ORTTrainer state dictionary on disk along with user_dict.

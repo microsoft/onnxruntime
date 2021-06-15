@@ -25,7 +25,7 @@ class ReshapeOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 
   // Reshape opset 4- uses attributes for new shape which we do not support for now
@@ -51,16 +51,11 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                         : target_shape_tensor.int64_data().data();
 
   const auto size = target_shape_tensor.dims()[0];
-  std::vector<int64_t> target_shape;
-  std::copy(raw_target_shape, raw_target_shape + size, std::back_inserter(target_shape));
-
+  std::vector<int64_t> target_shape{raw_target_shape, raw_target_shape + size};
   std::vector<int64_t> input_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
   ReshapeHelper helper(TensorShape(input_shape), target_shape);
-  std::copy(target_shape.cbegin(), target_shape.cend(),
-            google::protobuf::RepeatedFieldBackInserter(
-                layer->mutable_reshapestatic()->mutable_targetshape()));
-
+  *layer->mutable_reshapestatic()->mutable_targetshape() = {target_shape.cbegin(), target_shape.cend()};
   *layer->mutable_input()->Add() = input_defs[0]->Name();
   *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
 
@@ -70,16 +65,19 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related
 
-bool ReshapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                          const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& perm_name = input_defs[1]->Name();
+  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
   if (!Contains(initializers, perm_name)) {
     LOGS(logger, VERBOSE) << "New shape of reshape must be a constant initializer";
     return false;
   }
 
-  const auto& perm_dims = initializers.at(perm_name)->dims();
+  const auto& perm_tensor = *initializers.at(perm_name);
+  const int64_t* raw_perm = GetTensorInt64Data(perm_tensor);
+  const auto& perm_dims = perm_tensor.dims();
   if (perm_dims.empty() || perm_dims[0] == 0) {
     LOGS(logger, VERBOSE) << "New shape of reshape cannot be empty";
     return false;
@@ -94,11 +92,23 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializer
     return false;
   }
 
+  // CoreML reshape does not support 0 as dimension
+  NodeAttrHelper helper(node);
+  const bool allow_zero = helper.Get("allowzero ", 0) == 1;
+  if (allow_zero) {
+    for (int64_t i = 0; i < perm_dims[0]; i++) {
+      if (raw_perm[i] == 0) {
+        LOGS_DEFAULT(VERBOSE) << "Reshape doesn't support 0 reshape dimension when allowzero is enabled";
+        return false;
+      }
+    }
+  }
+
   return true;
 }
 
 void CreateReshapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  op_registrations.builders.push_back(onnxruntime::make_unique<ReshapeOpBuilder>());
+  op_registrations.builders.push_back(std::make_unique<ReshapeOpBuilder>());
   op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
 

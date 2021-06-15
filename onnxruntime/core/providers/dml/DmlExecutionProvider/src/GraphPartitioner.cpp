@@ -139,7 +139,7 @@ namespace Dml
         }
     };
 
-    bool NodeArgSupportedInGraph(const onnxruntime::NodeArg* arg, bool requiresFloatFormats, uint32_t supportedDeviceDataTypeMask)
+    bool NodeArgSupportedInGraph(const onnxruntime::NodeArg* arg, uint32_t supportedDeviceDataTypeMask)
     {            
         if (arg->Exists())
         {
@@ -164,14 +164,6 @@ namespace Dml
                         }
                     }
 
-                    if (requiresFloatFormats)
-                    {
-                        if (mlDataType != MLOperatorTensorDataType::Float &&
-                            mlDataType != MLOperatorTensorDataType::Float16)
-                        {
-                            return false;
-                        }
-                    }
                 }
             }
         }
@@ -189,7 +181,6 @@ namespace Dml
             if (!isConstantCpuInput &&
                 !NodeArgSupportedInGraph(
                     node.InputDefs()[i],
-                    registration.graphNodeFactoryRegistration->requiresFloatFormatsExceptConstInputs,
                     supportedDeviceDataTypeMask
                 ))
             {
@@ -201,7 +192,6 @@ namespace Dml
         {
             if (!NodeArgSupportedInGraph(
                     arg,
-                    registration.graphNodeFactoryRegistration->requiresFloatFormatsExceptConstInputs,
                     supportedDeviceDataTypeMask
                 ))
             {
@@ -477,9 +467,9 @@ namespace Dml
                         std::optional<uint32_t> requiredInputCount = internalRegInfo->graphNodeFactoryRegistration->requiredInputCount;
                         if (requiredCpuInputsConstant &&
                             TryGetStaticInputShapes( node, graphNodeProperty.first->second.inputShapes) &&
-                            !ContainsEmptyDimensions(graphNodeProperty.first->second.inputShapes) &&
+                            !ContainsEmptyDimensions(graphNodeProperty.first->second.inputShapes, internalRegInfo->requiredConstantCpuInputs) &&
                             TryGetStaticOutputShapes(node, graphNodeProperty.first->second.outputShapes) &&
-                            !ContainsEmptyDimensions(graphNodeProperty.first->second.outputShapes) &&
+                            !ContainsEmptyDimensions(graphNodeProperty.first->second.outputShapes, internalRegInfo->requiredConstantCpuInputs) &&
                             (requiredInputCount == std::nullopt || *requiredInputCount == node.InputDefs().size()))
                         {
                             *isDmlGraphNode = true;

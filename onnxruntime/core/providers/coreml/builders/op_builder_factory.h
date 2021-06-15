@@ -23,10 +23,15 @@ void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations
 void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateBatchNormalizationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateReshapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateResizeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateConcatOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateClipOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
-
+void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateSqueezeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateArgMaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateCastOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 }  // namespace coreml
 }  // namespace onnxruntime

@@ -33,24 +33,12 @@ bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const loggin
   return true;
 }
 
-// TODO, move this to shared_library
-bool GetType(const NodeArg& node_arg, int32_t& type, const logging::Logger& logger) {
-  type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-  const auto* type_proto = node_arg.TypeAsProto();
-  if (!type_proto || !type_proto->has_tensor_type() || !type_proto->tensor_type().has_elem_type()) {
-    LOGS(logger, WARNING) << "NodeArg [" << node_arg.Name() << "] has no input type";
-    return false;
-  }
-
-  type = type_proto->tensor_type().elem_type();
-  return true;
-}
-
 bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const logging::Logger& logger) {
   const auto& op_builders = GetOpBuilders();
   if (Contains(op_builders, node.OpType())) {
     const auto* op_builder = op_builders.at(node.OpType());
-    return op_builder->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, logger);
+    OpBuilderInputParams input_params(graph_viewer);
+    return op_builder->IsOpSupported(node, input_params, logger);
   } else {
     return false;
   }
@@ -69,12 +57,12 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
   for (const auto& dim : shape_proto->dim()) {
     // For now we do not support dynamic shape
     if (!dim.has_dim_value()) {
-      LOGS(logger, WARNING) << "Dynamic shape is not supported yet, for input:" << input_name;
+      LOGS(logger, WARNING) << "Dynamic shape is not supported for now, for input:" << input_name;
       return false;
     }
 
-    // For some undocuemented reason, apple CoreML lib will fail loading the model if the model has
-    // dimension > 16384
+    // For some undocumented reason, Apple CoreML framework will fail loading the model if the model
+    // input has dimension > 16384
     // See this issue, https://github.com/apple/coremltools/issues/1003
     if (dim.dim_value() > 16384) {
       LOGS(logger, WARNING) << "CoreML does not support input dim > 16384, input:" << input_name
@@ -87,19 +75,19 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
 }
 
 std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer, const logging::Logger& logger) {
-  std::vector<std::vector<size_t>> supported_node_vecs;
+  std::vector<std::vector<size_t>> supported_node_groups;
   if (!util::HasRequiredBaseOS()) {
     LOGS(logger, WARNING) << "All ops will fallback to CPU EP, because we do not have supported OS";
-    return supported_node_vecs;
+    return supported_node_groups;
   }
 
   for (const auto* input : graph_viewer.GetInputs()) {
     if (!IsInputSupported(*input, "graph", logger)) {
-      return supported_node_vecs;
+      return supported_node_groups;
     }
   }
 
-  std::vector<size_t> supported_node_vec;
+  std::vector<size_t> supported_node_group;
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
   for (size_t i = 0; i < node_indices.size(); i++) {
     auto node_idx = node_indices[i];
@@ -111,20 +99,20 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
                           << "] supported: [" << supported
                           << "]";
     if (supported) {
-      supported_node_vec.push_back(node_idx);
+      supported_node_group.push_back(node_idx);
     } else {
-      if (!supported_node_vec.empty()) {
-        supported_node_vecs.push_back(supported_node_vec);
-        supported_node_vec.clear();
+      if (!supported_node_group.empty()) {
+        supported_node_groups.push_back(supported_node_group);
+        supported_node_group.clear();
       }
     }
   }
 
-  if (!supported_node_vec.empty()) {
-    supported_node_vecs.push_back(supported_node_vec);
+  if (!supported_node_group.empty()) {
+    supported_node_groups.push_back(supported_node_group);
   }
 
-  return supported_node_vecs;
+  return supported_node_groups;
 }
 
 bool HasNeuralEngine(const logging::Logger& logger) {

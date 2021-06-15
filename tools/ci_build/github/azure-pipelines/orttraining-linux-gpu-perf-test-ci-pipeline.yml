@@ -16,21 +16,21 @@ jobs:
   - template: templates/run-docker-build-steps.yml
     parameters:
       RunDockerBuildArgs: >
-        -o ubuntu18.04 -d gpu -r $(Build.BinariesDirectory)
+        -o ubuntu20.04 -p 3.8 -d gpu -r $(Build.BinariesDirectory)
         -t onnxruntime_perf_test_image
         -x "
         --config RelWithDebInfo
         --enable_training
-        --update --build
+        --update --build --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=70
         "
       DisplayName: 'Build performance tests'
 
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh $(orttrainingtestdata-storage-key)
-    displayName: 'Map bert test data'
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/bert-data" -d "/bert_data"
+    displayName: 'Mount bert-data'
     condition: succeededOrFailed() # ensure all tests are run
 
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_gpt2_test_data.sh $(orttrainingtestdata-storage-key)
-    displayName: 'Map gpt2 test data'
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/gpt2-data" -d "/gpt2_data"
+    displayName: 'Mount gpt2 test data'
     condition: succeededOrFailed() # ensure all tests are run
 
   - script: >
@@ -40,7 +40,7 @@ jobs:
       --volume /bert_data/bert_models:/build/bert_models:ro
       --volume /bert_data:/build/bert_data:ro
       -e NIGHTLY_BUILD onnxruntime_perf_test_image
-      /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/run_bert_perf_test.py
+      /usr/bin/python3 /onnxruntime_src/orttraining/tools/ci_test/run_bert_perf_test.py
       --binary_dir /build/RelWithDebInfo
       --training_data_root /build/bert_data
       --model_root /build/bert_models
@@ -55,7 +55,7 @@ jobs:
       --volume /gpt2_data/gpt2_models:/build/gpt2_models:ro
       --volume /gpt2_data:/build/gpt2_data:ro
       -e NIGHTLY_BUILD onnxruntime_perf_test_image
-      /usr/bin/python3.6 /onnxruntime_src/orttraining/tools/ci_test/run_gpt2_perf_test.py
+      /usr/bin/python3 /onnxruntime_src/orttraining/tools/ci_test/run_gpt2_perf_test.py
       --binary_dir /build/RelWithDebInfo
       --training_data_root /build/gpt2_data
       --model_root /build/gpt2_models

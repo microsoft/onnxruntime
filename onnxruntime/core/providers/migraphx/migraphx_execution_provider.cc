@@ -42,7 +42,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kMIGraphXExecutionProvider,
     KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(0)
+        .InputMemoryType(OrtMemTypeCPUInput, 0)
         .ExecQueueId(kHipStreamCopyIn)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
@@ -53,7 +53,7 @@ ONNX_OPERATOR_KERNEL_EX(
     1,
     kMIGraphXExecutionProvider,
     KernelDefBuilder()
-        .OutputMemoryType<OrtMemTypeCPUOutput>(0)
+        .OutputMemoryType(OrtMemTypeCPUOutput, 0)
         .ExecQueueId(kHipStreamCopyOut)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Memcpy);
@@ -89,12 +89,12 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   // Set GPU device to be used
   hipSetDevice(info.device_id);
   AllocatorCreationInfo default_memory_info(
-      [](int id) { return onnxruntime::make_unique<HIPAllocator>(id, MIGRAPHX); }, device_id_);
+      [](int id) { return std::make_unique<HIPAllocator>(id, MIGRAPHX); }, device_id_);
   allocator_ = CreateAllocator(default_memory_info);
   InsertAllocator(allocator_);
 
   AllocatorCreationInfo pinned_memory_info(
-      [](int) { return onnxruntime::make_unique<HIPPinnedAllocator>(0, MIGRAPHX_PINNED); },
+      [](int) { return std::make_unique<HIPPinnedAllocator>(0, MIGRAPHX_PINNED); },
       device_id_);
   InsertAllocator(CreateAllocator(pinned_memory_info));
 
@@ -127,7 +127,7 @@ AllocatorPtr MIGraphXExecutionProvider::GetAllocator(int id, OrtMemType mem_type
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> MIGraphXExecutionProvider::GetDataTransfer() const {
-  return onnxruntime::make_unique<onnxruntime::GPUDataTransfer>();
+  return std::make_unique<onnxruntime::GPUDataTransfer>();
 }
 
 static bool IsTypeSupported(const NodeArg* node_arg) {
@@ -622,7 +622,7 @@ static void AppendNodesToSubGraph(const std::vector<NodeIndex>& nodes,
                                   std::vector<std::unique_ptr<ComputeCapability>>& result) {
   static size_t op_counter = 0;
 
-  auto meta_def = onnxruntime::make_unique<IndexedSubGraph::MetaDef>();
+  auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
   meta_def->name = "MIGraphX_" + std::to_string(++op_counter);
   meta_def->domain = kMIGraphXDomain;
   meta_def->since_version = 1;
@@ -630,10 +630,10 @@ static void AppendNodesToSubGraph(const std::vector<NodeIndex>& nodes,
   meta_def->inputs = inputs;
   meta_def->outputs = outputs;
 
-  std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::make_unique<IndexedSubGraph>();
+  std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
   sub_graph->nodes = nodes;
   sub_graph->SetMetaDef(std::move(meta_def));
-  result.push_back(onnxruntime::make_unique<ComputeCapability>(std::move(sub_graph)));
+  result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
 }
 
 static std::vector<NodeIndex>
@@ -1014,7 +1014,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
     map_no_input_shape_[fused_node->Name()] = no_input_shape;
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [=](ComputeContext* context, FunctionState* state) {
-      std::unique_ptr<MIGraphXFuncState> p = onnxruntime::make_unique<MIGraphXFuncState>();
+      std::unique_ptr<MIGraphXFuncState> p = std::make_unique<MIGraphXFuncState>();
       *p = {context->allocate_func, context->release_func, context->allocator_handle, map_progs_[context->node_name],
             map_onnx_string_[context->node_name], options, t_, map_input_index_[context->node_name], &mgx_mu_,
             map_no_input_shape_[context->node_name], fp16_enable_};

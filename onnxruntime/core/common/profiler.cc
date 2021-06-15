@@ -266,7 +266,11 @@ std::string Profiler::EndProfiling() {
     bool is_first_arg = true;
     for (std::pair<std::string, std::string> event_arg : rec.args) {
       if (!is_first_arg) profile_stream_ << ",";
-      profile_stream_ << "\"" << event_arg.first << "\" : \"" << event_arg.second << "\"";
+      if (!event_arg.second.empty() && event_arg.second[0] == '{') {
+        profile_stream_ << "\"" << event_arg.first << "\" : " << event_arg.second << "";
+      } else {
+        profile_stream_ << "\"" << event_arg.first << "\" : \"" << event_arg.second << "\"";
+      }
       is_first_arg = false;
     }
     profile_stream_ << "}";

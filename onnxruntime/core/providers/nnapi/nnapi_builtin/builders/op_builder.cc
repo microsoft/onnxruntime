@@ -223,9 +223,9 @@ static Status AddSqueezeOp(ModelBuilder& model_builder,
                            const std::string& node_name,
                            const std::string& input, const std::string& output,
                            vector<int32_t> axes) {
-  if (model_builder.GetAndroidSdkVer() < 28) {
+  if (model_builder.GetNNAPIFeatureLevel() < ANEURALNETWORKS_FEATURE_LEVEL_2) {
     return ORT_MAKE_STATUS(
-        ONNXRUNTIME, FAIL, "Squeeze is not supported on API level ", model_builder.GetAndroidSdkVer());
+        ONNXRUNTIME, FAIL, "Squeeze is not supported on API level ", model_builder.GetNNAPIFeatureLevel());
   }
 
   auto& shaper(model_builder.GetShaper());
@@ -668,12 +668,7 @@ static void AddBinaryOpQuantizationScaleAndZeroPointToSkip(ModelBuilder& model_b
   model_builder.AddInitializerToSkip(input_defs[7]->Name());  // y_zero_point
 }
 
-Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
-                                          const Node& node,
-                                          const std::string& input_name,
-                                          float& scale,
-                                          int32_t& zero_point) ORT_MUST_USE_RESULT;
-Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
+Status GetQuantizedInputScaleAndZeroPoint(const InitializedTensorSet& initializers,
                                           const Node& node,
                                           const std::string& input_name,
                                           float& scale,
@@ -685,7 +680,8 @@ Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
 
   size_t scale_idx, zero_point_idx;
   if (qlinear_op_type == QLinearOpType::DequantizeLinear ||
-      qlinear_op_type == QLinearOpType::QLinearSigmoid) {
+      qlinear_op_type == QLinearOpType::QLinearSigmoid ||
+      qlinear_op_type == QLinearOpType::QLinearAveragePool) {
     scale_idx = 1;
     zero_point_idx = 2;
   } else if (IsQLinearBinaryOp(qlinear_op_type)) {
@@ -704,10 +700,10 @@ Status GetQuantizedInputScaleAndZeroPoint(const ModelBuilder& model_builder,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported op: ", op_type);
   }
 
-  scale = GetQuantizationScale(model_builder.GetInitializerTensors(), node, scale_idx);
+  scale = GetQuantizationScale(initializers, node, scale_idx);
   zero_point = 0;
-  if (node.InputDefs().size() > 2) {
-    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(model_builder.GetInitializerTensors(), node, zero_point_idx, zero_point));
+  if (node.InputDefs().size() > zero_point_idx) {
+    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, zero_point_idx, zero_point));
   }
 
   return Status::OK();
@@ -721,7 +717,7 @@ void CreateSharedOpBuilderImpl(const std::string& op_type,
   if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
     return;
 
-  op_registrations.builders.push_back(onnxruntime::make_unique<T>());
+  op_registrations.builders.push_back(std::make_unique<T>());
   for (const auto& op : op_types) {
     op_registrations.op_builder_map.emplace(op, op_registrations.builders.back().get());
   }
@@ -743,7 +739,7 @@ class BaseOpBuilder : public IOpBuilder {
 
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node) const {
   OpSupportCheckParams params{
-      model_builder.GetAndroidSdkVer(),
+      model_builder.GetNNAPIFeatureLevel(),
       model_builder.UseNCHW(),
   };
 
@@ -1180,11 +1176,28 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 
 class PoolOpBuilder : public BaseOpBuilder {
  public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
   static void CreateSharedOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
 };
+
+void PoolOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  const auto& op = node.OpType();
+  if (op != "QLinearAveragePool")
+    return;
+
+  const auto input_defs = node.InputDefs();
+
+  // skip input/output scales and zeropoints
+  model_builder.AddInitializerToSkip(input_defs[1]->Name());  // X_scale
+  model_builder.AddInitializerToSkip(input_defs[2]->Name());  // X_zero_point
+  model_builder.AddInitializerToSkip(input_defs[3]->Name());  // Y_scale
+
+  if (input_defs.size() == 5)                                   // has Y_zero_point input
+    model_builder.AddInitializerToSkip(input_defs[4]->Name());  // Y_zero_point
+}
 
 /* static */ void PoolOpBuilder::CreateSharedOpBuilder(
     const std::string& op_type, OpBuilderRegistrations& op_registrations) {
@@ -1195,6 +1208,7 @@ class PoolOpBuilder : public BaseOpBuilder {
           "GlobalMaxPool",
           "AveragePool",
           "MaxPool",
+          "QLinearAveragePool",
       });
 }
 
@@ -1222,7 +1236,8 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& op_type = node.OpType();
 
   int32_t op_code;
-  bool is_average_pool = op_type == "AveragePool";
+  bool is_qlinear_average_pool = op_type == "QLinearAveragePool";
+  bool is_average_pool = op_type == "AveragePool" || is_qlinear_average_pool;
   if (is_average_pool || op_type == "GlobalAveragePool")
     op_code = ANEURALNETWORKS_AVERAGE_POOL_2D;
   else  // (op_type == "MaxPool" || op_type == "GlobalMaxPool")
@@ -1259,6 +1274,24 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
+
+  // Get output scale and zero point if this is QLinearAveragePool
+  float y_scale = 0.0f;
+  int32_t y_zero_point = 0;
+  if (is_qlinear_average_pool) {
+    const auto& initializers = model_builder.GetInitializerTensors();
+    float x_scale = GetQuantizationScale(initializers, node, 1 /* idx */);
+    int32_t x_zero_point = 0;
+    ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 2 /* idx */, x_zero_point));
+
+    // Verify if the scale and zero point values from onnx input and nnapi input match
+    ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
+
+    y_scale = GetQuantizationScale(initializers, node, 3 /* idx */);
+    if (node.InputDefs().size() > 4)
+      ORT_RETURN_IF_ERROR(GetQuantizationZeroPoint(initializers, node, 4 /* idx */, y_zero_point));
+  }
+
   std::vector<uint32_t> input_indices;
   input_indices.push_back(operand_indices.at(input));
 
@@ -1277,7 +1310,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   ADD_SCALAR_OPERAND(model_builder, input_indices, kernel_shape[0]);
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
-  if (model_builder.GetAndroidSdkVer() > 28) {  // nchw only supported on api 29+
+  if (model_builder.GetNNAPIFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_2) {  // nchw only supported on api 29+
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
   }
 
@@ -1285,8 +1318,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
                                   onnx_pads, onnx_strides, kernel_shape,
                                   use_nchw,
                                   output));
-  OperandType output_operand_type = operand_types.at(input);
-  output_operand_type.SetDimensions(shaper[output]);
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output], y_scale, y_zero_point);
   ORT_RETURN_IF_ERROR(model_builder.AddOperation(op_code, input_indices,
                                                  {output}, {output_operand_type}, {output_is_nhwc}));
   return Status::OK();
@@ -1522,7 +1554,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
-  if (model_builder.GetAndroidSdkVer() > 28) {
+  if (model_builder.GetNNAPIFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_2) {
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
 
     // 1. NNAPI Grouped Conv does not support dilations
@@ -1612,13 +1644,13 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
-  const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
+  const auto android_feature_level = model_builder.GetNNAPIFeatureLevel();
   NodeAttrHelper helper(node);
 
   auto input = node.InputDefs()[0]->Name();
   bool input_is_nhwc = model_builder.IsOperandNHWC(input);
   bool output_is_nhwc = input_is_nhwc;
-  if (android_sdk_ver < 29) {
+  if (android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
     if (model_builder.IsOperandNHWC(input)) {
       output_is_nhwc = false;
       // We want to transpose nhwc operand back to nchw before softmax
@@ -1638,7 +1670,7 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   input_indices.push_back(operand_indices.at(input));
   ADD_SCALAR_OPERAND(model_builder, input_indices, beta);
 
-  if (android_sdk_ver > 28) {
+  if (android_feature_level > ANEURALNETWORKS_FEATURE_LEVEL_2) {
     // you can only specify axis for android api level 29+
     ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
   }
@@ -2195,12 +2227,12 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
   NodeAttrHelper helper(node);
-  const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
+  const auto android_feature_level = model_builder.GetNNAPIFeatureLevel();
 
   auto input = node.InputDefs()[0]->Name();
   const auto& output = node.OutputDefs()[0]->Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
-  if (android_sdk_ver < 29) {
+  if (android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
     // on android api level 28, we need to transpose the nchw input to nhwc
     output_is_nhwc = true;
     if (!model_builder.IsOperandNHWC(input)) {
@@ -2224,7 +2256,7 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   ADD_SCALAR_OPERAND(model_builder, input_indices, beta);
 
   // specify axis is only available on api level >= 29
-  if (android_sdk_ver > 28) {
+  if (android_feature_level > ANEURALNETWORKS_FEATURE_LEVEL_2) {
     // ONNX LRN is always performed on C dimension
     int32_t axis = output_is_nhwc
                        ? 3   // nhwc
@@ -2278,7 +2310,7 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   float min, max;
-  GetClipMinMax(model_builder.GetInitializerTensors(), node, min, max);
+  GetClipMinMax(model_builder.GetInitializerTensors(), node, min, max, logging::LoggingManager::DefaultLogger());
 
   int32_t op_code;
   if (min == 0.0f && max == 6.0f)
@@ -2309,6 +2341,9 @@ class ResizeOpBuilder : public BaseOpBuilder {
 };
 
 void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  // We don't really use ROI here, so add them to skipped list
+  model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // ROI
+
   // We will still add scales to the skipped list even sizes are present
   // since there is no use of it, we will not process it later
   model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  // scales
@@ -2324,7 +2359,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   const auto& initializers(model_builder.GetInitializerTensors());
   NodeAttrHelper helper(node);
   const auto input_defs = node.InputDefs();
-  const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
+  const auto android_feature_level = model_builder.GetNNAPIFeatureLevel();
   const auto& output = node.OutputDefs()[0]->Name();
 
   auto input = input_defs[0]->Name();
@@ -2374,7 +2409,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   ADD_SCALAR_OPERAND(model_builder, input_indices, output_w);
   ADD_SCALAR_OPERAND(model_builder, input_indices, output_h);
 
-  if (android_sdk_ver > 28) {
+  if (android_feature_level > ANEURALNETWORKS_FEATURE_LEVEL_2) {
     // using nchw is only available on API level 29
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
   }
@@ -2382,7 +2417,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   // Currently we only support align_corners and half_pixel on bilinear resize
   // TODO, investigate nearest neighbor resize difference between NNAPI(based on TF) and ONNX
   if (is_linear_resize) {
-    if (android_sdk_ver > 29 && (using_align_corners || using_half_pixel)) {
+    if (android_feature_level > ANEURALNETWORKS_FEATURE_LEVEL_3 && (using_align_corners || using_half_pixel)) {
       ADD_SCALAR_OPERAND(model_builder, input_indices, using_align_corners);
       if (using_half_pixel)
         ADD_SCALAR_OPERAND(model_builder, input_indices, using_half_pixel);
@@ -2498,6 +2533,34 @@ Status MinMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
 #pragma endregion
 
+#pragma region op_elu
+
+class EluOpBuilder : public BaseOpBuilder {
+ public:
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+};
+
+Status EluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  const auto& input = node.InputDefs()[0]->Name();
+  const auto& output = node.OutputDefs()[0]->Name();
+  bool output_is_nhwc = model_builder.IsOperandNHWC(input);
+  ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  NodeAttrHelper helper(node);
+  const auto alpha = helper.Get("alpha", 1.0f);
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));
+  ADD_SCALAR_OPERAND(model_builder, input_indices, alpha);
+  return model_builder.AddOperation(ANEURALNETWORKS_ELU, input_indices,
+                                    {output}, {output_operand_type}, {output_is_nhwc});
+}
+
+#pragma endregion
+
 #pragma region CreateGetOpBuilders
 
 // The reason we use macros to create OpBuilders is for easy exclusion in build if certain op(s) are not used
@@ -2509,7 +2572,7 @@ Status MinMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 // This is for ops with dedicated OpBuilder
 #define NNAPI_EP_ADD_SINGLE_OP_BUILDER(OP_TYPE, BUILDER_NAME)                                 \
   {                                                                                           \
-    op_registrations.builders.push_back(onnxruntime::make_unique<BUILDER_NAME>());            \
+    op_registrations.builders.push_back(std::make_unique<BUILDER_NAME>());                    \
     op_registrations.op_builder_map.emplace(OP_TYPE, op_registrations.builders.back().get()); \
   }
 
@@ -2535,6 +2598,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_BUILDER("GlobalMaxPool", PoolOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("AveragePool", PoolOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("MaxPool", PoolOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearAveragePool", PoolOpBuilder);
   }
 
   {
@@ -2578,6 +2642,8 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Min", MinMaxOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Max", MinMaxOpBuilder);
   }
+
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Elu", EluOpBuilder);
 
   return op_registrations;
 }

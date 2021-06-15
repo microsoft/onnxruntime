@@ -4,8 +4,6 @@
 #include "attention_quantization.h"
 #include "attention_quantization_impl.cuh"
 #include "contrib_ops/cuda/bert/attention_impl.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/providers/common.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/shared_inc/integer_gemm.h"
@@ -25,11 +23,11 @@ namespace cuda {
       1,                                                                 \
       T##_##TQuant,                                                      \
       kCudaExecutionProvider,                                            \
-      KernelDefBuilder()                                                 \
-          .InputMemoryType<OrtMemTypeCPUInput>(3)                        \
-          .InputMemoryType<OrtMemTypeCPUInput>(4)                        \
-          .InputMemoryType<OrtMemTypeCPUInput>(6)                        \
-          .InputMemoryType<OrtMemTypeCPUInput>(7)                        \
+      (*KernelDefBuilder::Create())                                      \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                        \
+          .InputMemoryType(OrtMemTypeCPUInput, 4)                        \
+          .InputMemoryType(OrtMemTypeCPUInput, 6)                        \
+          .InputMemoryType(OrtMemTypeCPUInput, 7)                        \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<TQuant>())   \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<TQuant>())   \
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<T>())        \
@@ -49,7 +47,8 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
                                           const Tensor* i_zp_tensor,
                                           const Tensor* w_zp_tensor,
                                           const Tensor* past_tensor) const {
-  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask_index, past_tensor));
+  auto& device_prop = GetDeviceProp();
+  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(), mask_index, past_tensor, device_prop.maxThreadsPerBlock));
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");

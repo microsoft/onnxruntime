@@ -14,13 +14,13 @@ jobs:
   - template: templates/run-docker-build-steps.yml
     parameters:
       RunDockerBuildArgs: |
-        -o ubuntu18.04 -d gpu -r $(Build.BinariesDirectory) \
+        -o ubuntu20.04 -p 3.8 -d gpu -r $(Build.BinariesDirectory) \
         -t onnxruntime_e2e_test_image \
         -x " \
           --config RelWithDebInfo \
           --enable_training \
           --update --build \
-          --build_wheel \
+          --build_wheel --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=70 \
           " \
         -m
       DisplayName: 'Build'
@@ -33,9 +33,9 @@ jobs:
       --archive_sha256_digest B01C169B6550D1A0A6F1B4E2F34AE2A8714B52DBB70AC04DA85D371F691BDFF9
     displayName: 'Download onnxruntime_training_data.zip data'
 
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh $(orttrainingtestdata-storage-key)
-    displayName: 'Map test data'
-    condition: succeededOrFailed() # ensure all tests are run
+  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/bert-data" -d "/bert_data"
+    displayName: 'Mount bert-data'
+    condition: succeededOrFailed()
 
   - script: |
       docker run \

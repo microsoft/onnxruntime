@@ -13,6 +13,10 @@
 namespace onnxruntime {
 namespace cuda {
 
+INcclService& GetINcclService() {
+  return NcclService::GetInstance();
+}
+
 bool NcclTask::Compare(const NcclTask& other) const {
   if (type != other.type) {
     return false;

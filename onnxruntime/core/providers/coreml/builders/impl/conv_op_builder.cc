@@ -24,7 +24,7 @@ class ConvOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& /* node */,
+  bool IsOpSupportedImpl(const Node& /* node */, const OpBuilderInputParams& /* input_params */,
                          const logging::Logger& /* logger */) const override;
 };
 
@@ -116,12 +116,13 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 // Operator support related
 
-bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                       const logging::Logger& logger) const {
   const auto& name = node.Name();
   const auto& input_defs = node.InputDefs();
 
   const auto& weight_name = input_defs[1]->Name();
+  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
   if (Contains(initializers, weight_name)) {
     const auto& tensor = *initializers.at(weight_name);
     if (tensor.dims().size() != 4) {
@@ -146,7 +147,7 @@ bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
 }
 
 void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  op_registrations.builders.push_back(onnxruntime::make_unique<ConvOpBuilder>());
+  op_registrations.builders.push_back(std::make_unique<ConvOpBuilder>());
   op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
 

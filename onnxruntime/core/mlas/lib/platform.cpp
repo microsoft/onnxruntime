@@ -17,7 +17,13 @@ Abstract:
 
 #include "mlasi.h"
 
-#if defined(MLAS_TARGET_ARM64) && defined(__linux__)
+#if defined(MLAS_TARGET_ARM64)
+#if defined(_WIN32)
+// N.B. Support building with downlevel versions of the Windows SDK.
+#ifndef PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE
+#define PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE 43
+#endif
+#elif defined(__linux__)
 #include <sys/auxv.h>
 #include <asm/hwcap.h>
 // N.B. Support building with older versions of asm/hwcap.h that do not define
@@ -26,6 +32,7 @@ Abstract:
 #define HWCAP_ASIMDDP (1 << 20)
 #endif
 #endif
+#endif // MLAS_TARGET_ARM64
 
 //
 // Stores the platform information.
@@ -40,12 +47,6 @@ MLAS_PLATFORM MlasPlatform;
 //
 
 MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveAvx[8], 32) = { 0, 1, 2, 3, 4, 5, 6, 7 };
-
-//
-// Stores a vector to build a conditional load/store mask for vmaskmovpd.
-//
-
-MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint64_t MlasMaskMoveAvx64[4], 32) = { 0, 1, 2, 3 };
 
 //
 // Stores a table of AVX vmaskmovps/vmaskmovpd load/store masks.
@@ -162,16 +163,28 @@ Return Value:
 
 #endif
 
-    //
-    // Check if the processor supports the AVX and OSXSAVE features.
-    //
-
     unsigned Cpuid1[4];
 #if defined(_WIN32)
     __cpuid((int*)Cpuid1, 1);
 #else
     __cpuid(1, Cpuid1[0], Cpuid1[1], Cpuid1[2], Cpuid1[3]);
 #endif
+
+#if defined(MLAS_TARGET_AMD64) && defined(_MSC_VER)
+
+    //
+    // Check if the processor supports SSE 4.1 instructions.
+    //
+
+    if ((Cpuid1[2] & 0x80000) != 0) {
+        this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchSse41;
+    }
+
+#endif
+
+    //
+    // Check if the processor supports the AVX and OSXSAVE features.
+    //
 
     if ((Cpuid1[2] & 0x18000000) == 0x18000000) {
 
@@ -229,8 +242,8 @@ Return Value:
                 this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelFma3;
                 this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelFma3;
                 this->ComputeExpF32Kernel = MlasComputeExpF32KernelFma3;
-                this->LogisticKernelRoutine = MlasLogisticKernelFma3;
-                this->TanhKernelRoutine = MlasTanhKernelFma3;
+                this->LogisticKernelRoutine = MlasComputeLogisticF32KernelFma3;
+                this->TanhKernelRoutine = MlasComputeTanhF32KernelFma3;
                 this->ErfKernelRoutine = MlasErfKernelFma3;
                 this->QLinearAddS8Kernel = MlasQLinearAddS8KernelAvx2;
                 this->QLinearAddU8Kernel = MlasQLinearAddU8KernelAvx2;
@@ -336,19 +349,25 @@ Return Value:
 
     this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
 
-#if defined(__linux__)
-
     //
     // Check if the processor supports ASIMD dot product instructions.
     //
 
-    if ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0) {
+    bool HasDotProductInstructions;
+
+#if defined(_WIN32)
+    HasDotProductInstructions = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
+#elif defined(__linux__)
+    HasDotProductInstructions = ((getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0);
+#else
+    HasDotProductInstructions = false;
+#endif
+
+    if (HasDotProductInstructions) {
         this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchUdot;
     }
 
-#endif
-
-#endif
+#endif // MLAS_TARGET_ARM64
 
 }
 

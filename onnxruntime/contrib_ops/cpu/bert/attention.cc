@@ -21,7 +21,14 @@ class Attention : public OpKernel, public AttentionCPUBase {
   explicit Attention(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
-  Status PrePack(const Tensor& tensor, int input_idx, bool& is_packed) override;
+
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
+
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   int input_idx,
+                                   /*out*/ bool& used_shared_buffers) override;
 
  private:
   BufferUniquePtr packed_weights_;
@@ -39,14 +46,6 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     Attention<float>);
-
-AttentionBase::AttentionBase(const OpKernelInfo& info) {
-  int64_t num_heads = 0;
-  ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
-  num_heads_ = static_cast<int>(num_heads);
-
-  is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
-}
 
 Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const TensorShape& weights_shape,
@@ -146,12 +145,32 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
       if (static_cast<int>(mask_dims[0]) != batch_size || mask_dims[1] != sequence_length || static_cast<int>(mask_dims[2]) != past_sequence_length + sequence_length) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' with 3D data shall have shape batch_size x sequence_length x (past_sequence_length + sequence_length)");
       }
+    } else if (mask_dims.size() == 4) {
+      if (static_cast<int>(mask_dims[0]) != batch_size || mask_dims[1] != 1 || mask_dims[2] != mask_dims[3] || mask_dims[2] < past_sequence_length + sequence_length) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' with 4D data shall have shape batch_size x 1 x max_sequence_length x max_sequence_length)");
+      }
+      if (is_unidirectional_ == true) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'mask_index' with 4D data shall have is_unidirectional_ set to false");
+      }
     } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'mask_index' is expected to have 1, 2 or 3 dimensions, got ",
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'mask_index' is expected to have 1, 2, 3 or 4 dimensions, got ",
                              mask_dims.size());
     }
   }
   return Status::OK();
+}
+
+Status AttentionBase::CheckInputs(const TensorShape& input_shape,
+                                  const TensorShape& weights_shape,
+                                  const TensorShape& bias_shape,
+                                  const Tensor*& mask_index,
+                                  const Tensor* past,
+                                  const int max_threads_per_block) const {
+  if (num_heads_ > max_threads_per_block) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
+  }
+
+  return CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past);
 }
 
 Tensor* AttentionBase::GetPresent(OpKernelContext* context,
@@ -185,7 +204,9 @@ Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPU
 }
 
 template <typename T>
-Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_packed) {
+Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr alloc,
+                             /*out*/ bool& is_packed,
+                             /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
   if (1 != input_idx) {
@@ -216,8 +237,14 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pack
   }
 
   const size_t loop_len = static_cast<size_t>(3) * num_heads_;
-  auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
+  size_t packed_weights_data_size = packed_weights_size_ * loop_len;  // The same size would be computed by AllocArray() below
   auto* packed_weights_data = static_cast<uint8_t*>(alloc->AllocArray(packed_weights_size_, loop_len));
+
+  // Initialize memory to 0 as there could be some padding associated with pre-packed
+  // buffer memory and we don not want it uninitialized and generate different hashes
+  // if and when we try to cache this pre-packed buffer for sharing between sessions.
+  memset(packed_weights_data, 0, packed_weights_data_size);
+
   packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
 
   for (size_t i = 0; i < loop_len; i++) {
@@ -226,7 +253,27 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, bool& is_pack
     weights_data += head_size;
   }
 
+  bool share_prepacked_weights = (prepacked_weights != nullptr);
+  if (share_prepacked_weights) {
+    prepacked_weights->buffers_.push_back(std::move(packed_weights_));
+    prepacked_weights->buffer_sizes_.push_back(packed_weights_data_size);
+  }
+
   is_packed = true;
+  return Status::OK();
+}
+
+template <typename T>
+Status Attention<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                               int input_idx,
+                                               /*out*/ bool& used_shared_buffers) {
+  if (1 != input_idx) {
+    return Status::OK();
+  }
+
+  used_shared_buffers = true;
+  packed_weights_ = std::move(prepacked_buffers[0]);
+
   return Status::OK();
 }
 
@@ -238,7 +285,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(4);
 
-  const TensorShape& weights_shape = (packed_weights_ ? weight_shape_ : weights->Shape());
+  const TensorShape& weights_shape = (weights ? weights->Shape() : weight_shape_);
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights_shape,
                                   bias->Shape(),
@@ -296,6 +343,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         T* qkv_dest = QKV[qkv_index];
         int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
 
+        // TODO!! memcpy here makes it not worthwhile to use Gemm batch. Possible to post process?
         // broadcast 3NH -> (3.B.N.S.H)
         const T* broadcast_data_src = bias_data + weights_offset;
         T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;
