@@ -26,17 +26,23 @@ class AttentionCPUBase : public AttentionBase {
                         Tensor* output,            // output tensor
                         int batch_size,            // batch size
                         int sequence_length,       // sequence length
-                        //int qk_head_size,          // qk_head_size
-                        int head_size,           // v_head size
+                        int qk_head_size,          // qk_head_size
+                        int v_head_size,           // v_head_size
+                        int v_hidden_size,         // v_hidden_size
+                        /*
+                        int head_size,             // v_head size
                         int hidden_size,           // hidden size
+                        */
                         OpKernelContext* context) const {
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
     auto* tp = context->GetOperatorThreadPool();
 
+    // TODO is head_size in present relavent at all?
+    // assuming v_head_size as the head till I figure that out..
     int past_sequence_length = 0;
-    Tensor* present = GetPresent(context, past, batch_size, head_size, sequence_length, past_sequence_length);
+    Tensor* present = GetPresent(context, past, batch_size, v_head_size, sequence_length, past_sequence_length);
 
     // Total sequence length including that of past state: S* = S' + S
     const int all_sequence_length = past_sequence_length + sequence_length;
@@ -64,16 +70,16 @@ class AttentionCPUBase : public AttentionBase {
 
     ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
                              mask_index_data, mask_index_dims, static_cast<T*>(mask_data),
-                             batch_size, sequence_length, past_sequence_length, head_size,
+                             batch_size, sequence_length, past_sequence_length, qk_head_size,
                              past_data, present_data, tp);
 
     // Compute the attentionScore * Value. It does: out_tmp(B, N, S, H) = attention_probs(B, N, S, S*) x V(B, N, S*, H)
     auto out_tmp_data =
-        allocator->Alloc(SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * head_size * sizeof(T));
+        allocator->Alloc(SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * v_head_size * sizeof(T));
     BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(allocator));
 
     ComputeVxAttentionScore(output->template MutableData<T>(), static_cast<T*>(out_tmp_data), static_cast<T*>(attention_probs), V,
-                            batch_size, sequence_length, past_sequence_length, head_size, hidden_size,
+                            batch_size, sequence_length, past_sequence_length, v_head_size, v_hidden_size,
                             past_data, present_data, tp);
 
     return Status::OK();

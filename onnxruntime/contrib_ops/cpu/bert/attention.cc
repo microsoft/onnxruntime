@@ -255,7 +255,22 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
   if ((hidden_size == 0) || ((hidden_size % num_heads_) != 0) || (hidden_size_x3 != 3 * hidden_size)) {
     return Status::OK();
   }
+  /*
+  size_t qk_hidden_size;
+  size_t v_hidden_size;
+  if (qkv_hidden_sizes_.size() != 0) {
+    qk_hidden_size = static_cast<size_t> qkv_hidden_sizes_[0];
+    v_hidden_size = static_cast<size_t> qkv_hidden_sizes_[2];
+  }
 
+  const size_t qk_head_size = qk_hidden_size / num_heads_;
+  const size_t v_head_size = v_hidden_size / num_heads_;
+
+  if ((hidden_size == 0) || ((qk_hidden_size % num_heads_) != 0) || ((v_hidden_size % num_heads_) != 0)) {
+      //(hidden_size_x3 != 3 * hidden_size)) {
+    return Status::OK();
+  }
+  */
   const auto* weights_data = weights.Data<T>();
 
   packed_weights_size_ = MlasGemmPackBSize(head_size, input_hidden_size);
@@ -489,7 +504,9 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q, K, V, mask_index, past, output,
                         batch_size, sequence_length,
-                        head_size, hidden_size, context);
+                        //head_size, hidden_size,
+                        qk_head_size, v_head_size, v_hidden_size,
+                        context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime
