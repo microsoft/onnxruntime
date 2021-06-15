@@ -13,7 +13,7 @@ namespace test {
 //
 // Rounds a float to the nearest representable value and returns the nearest integer value as a float.
 //
-inline float RoundHalfToEven(float input) {
+float RoundHalfToEven(float input) {
   std::fesetround(FE_TONEAREST);
   auto result = std::nearbyintf(input);
   return result;
@@ -60,9 +60,19 @@ inline std::vector<Integer> Quantize(const std::vector<float>& data, float scale
   std::vector<Integer> result;
   result.reserve(data.size());
   for (size_t i = 0; i < data.size(); i++) {
-    result.push_back(static_cast<Integer>(std::round(data[i] / scale) + zero_point));
+    //result.push_back(Quantize<Integer>(data[i], scale, zero_point));
+     result.push_back(static_cast<Integer>(std::round(data[i] / scale) + zero_point));
   }
   return result;
+}
+
+//
+// Converts a single float value to a quantized value with a pre-calculated scale and zero point.
+//
+template <typename Integer, typename = typename std::enable_if<std::is_integral<Integer>::value, Integer>::type>
+inline Integer Quantize(const float value, float scale, Integer zero_point = 0) {
+  // TODO(kreeger): use rounding?
+  return static_cast<Integer>(std::round(value / scale) + zero_point);
 }
 
 //
