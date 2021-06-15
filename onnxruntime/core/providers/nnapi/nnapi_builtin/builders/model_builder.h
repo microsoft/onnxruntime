@@ -21,15 +21,14 @@ class ModelBuilder {
   using Shape = Shaper::Shape;
 
   enum class TargetDeviceOption : int8_t {
-    ALL_DEVICES,  // use all avaliable target devices
+    ALL_DEVICES,        // use all avaliable target devices
+    CPU_DISABLED,       // use all avaliable target devices except CPU
+    CPU_ONLY,           // use CPU only
+    PREFERRED_DEVICES,  // Use one or more preferred devices (must be given)
 
     /* TODO support these options
-    PREFERRED_DEVICES,  // Use one or more preferred devices (must be given)
     EXCLUDED_DEVICES,   // Exclude one or more devices (must be given)
      */
-
-    CPU_DISABLED,  // use all avaliable target devices except CPU
-    CPU_ONLY,      // use CPU only
   };
 
   ModelBuilder(const GraphViewer& graph_viewer);

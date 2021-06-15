@@ -103,14 +103,25 @@ Status ModelBuilder::GetTargetDevices() {
                                      "Getting " + std::to_string(i) + "th device's type");
 
     bool device_is_cpu = nnapi_cpu == device_name;
-    if ((target_device_option_ == TargetDeviceOption::CPU_DISABLED && !device_is_cpu) ||
-        (target_device_option_ == TargetDeviceOption::CPU_ONLY && device_is_cpu)) {
+    // Replace this with your preferred device(s)
+    const std::unordered_set<std::string> preferred_devices;
+    bool is_target_device =
+        (target_device_option_ == TargetDeviceOption::CPU_DISABLED && !device_is_cpu) ||
+        (target_device_option_ == TargetDeviceOption::CPU_ONLY && device_is_cpu) ||
+        (target_device_option_ == TargetDeviceOption::PREFERRED_DEVICES && Contains(preferred_devices, device_name));
+
+    if (is_target_device) {
       nnapi_target_devices_.push_back(device);
       const auto device_detail = MakeString("[Name: [", device_name, "], Type [", device_type, "]], ");
       nnapi_target_devices_detail_ += device_detail;
       LOGS_DEFAULT(VERBOSE) << "Target device " << device_detail << " is added";
     }
   }
+
+  //  Will return error when device(s) are specified, but none of them can be found
+  ORT_RETURN_IF(target_device_option_ != TargetDeviceOption::ALL_DEVICES && nnapi_target_devices_.empty(),
+                "Cannot find the target device for TargetDeviceOption: ",
+                static_cast<std::underlying_type<TargetDeviceOption>::type>(target_device_option_));
 
   return Status::OK();
 }
