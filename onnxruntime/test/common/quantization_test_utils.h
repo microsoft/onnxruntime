@@ -87,8 +87,8 @@ inline std::vector<float> Dequantize(const std::vector<Integer>& data, float sca
 // Converts a single quantized integer value to a floating point value with a pre-calculated scale and zero point.
 //
 template <typename Integer, typename = typename std::enable_if<std::is_integral<Integer>::value, Integer>::type>
-inline float Dequantize(const float value, float scale, Integer zero_point = 0) {
-  return (data[i] - zero_point) * scale;
+inline float Dequantize(const Integer value, float scale, Integer zero_point = 0) {
+  return (value - zero_point) * scale;
 }
 
 }  // namespace test

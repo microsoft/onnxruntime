@@ -98,7 +98,7 @@ CalculateAvgPoolNchwU8(
             }
           }
           if (kernel_offset >= 0) {
-            y_value_sum += Quantize<uint8_t>(xbc[kernel_offset], x_scale, static_cast<uint8_t>(x_zero_point));
+            y_value_sum += Dequantize<uint8_t>(xbc[kernel_offset], x_scale, static_cast<uint8_t>(x_zero_point));
             ++count;
           } else {
             count += count_include_pad ? 1 : 0;
@@ -111,10 +111,6 @@ CalculateAvgPoolNchwU8(
     }
   }
 }
-
-//
-// TODO(kreeger): left off right here. I messed something up with the unit test in this file. The quantized values are jacked.
-//
 
 void RunQLinearAveragePoolNchwU8(
     const std::vector<int64_t> x_dims,
