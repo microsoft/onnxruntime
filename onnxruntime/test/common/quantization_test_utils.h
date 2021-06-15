@@ -65,8 +65,8 @@ inline std::vector<Integer> Quantize(const std::vector<float>& data, float scale
 //
 template <typename Integer, typename = typename std::enable_if<std::is_integral<Integer>::value, Integer>::type>
 inline Integer Quantize(const float value, float scale, Integer zero_point = 0) {
-  float qmax = std::numeric_limits<Integer>::max();
-  float qmin = std::numeric_limits<Integer>::min();
+  constexpr float qmax = std::numeric_limits<Integer>::max();
+  constexpr float qmin = std::numeric_limits<Integer>::min();
   return static_cast<Integer>(RoundHalfToEven(std::max(qmin, std::min(qmax, (value / scale) + zero_point))));
 }
 
