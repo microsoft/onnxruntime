@@ -70,7 +70,7 @@ class AttentionCPUBase : public AttentionBase {
 
     ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
                              mask_index_data, mask_index_dims, static_cast<T*>(mask_data),
-                             batch_size, sequence_length, past_sequence_length, qk_head_size,
+                             batch_size, sequence_length, past_sequence_length, qk_head_size == 0 ? v_head_size : qk_head_size,
                              past_data, present_data, tp);
 
     // Compute the attentionScore * Value. It does: out_tmp(B, N, S, H) = attention_probs(B, N, S, S*) x V(B, N, S*, H)
