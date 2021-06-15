@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_PYTHON
-
 #include "core/dlpack/dlpack_python.h"
 
 namespace onnxruntime {
@@ -37,5 +35,3 @@ OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor) {
 
 }  // namespace dlpack
 }  // namespace onnxruntime
-
-#endif
