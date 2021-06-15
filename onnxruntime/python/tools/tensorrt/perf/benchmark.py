@@ -908,11 +908,12 @@ def run_onnxruntime(args, models):
             model_path = model_info["model_path"]
             test_data_dir = model_info["test_data_path"]
 
-            fp16 = True if "fp16" in ep else False
+            fp16 = False
             os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1" if "fp16" in ep else "0"
-            logger.info("[Initialize]  model = {}, ep = {} ,FP16 = {} ...".format(name, ep, fp16))
-            
-            if "fp16" in ep: 
+            logger.info("[Initialize]  model = {}, ep = {} ...".format(name, ep))
+           
+            # use float16.py for cuda fp16 only
+            if "cuda_fp16" in ep: 
                 
                 # handle model
                 if "model_path_fp16" in model_info:
@@ -921,7 +922,7 @@ def run_onnxruntime(args, models):
                 else:
                     try:
                         model_path = convert_model_from_float_to_float16(model_path)
-
+                        fp16 = True
                     except Exception as e:
                         logger.error(e)
                         update_fail_model_map(model_to_fail_ep, name, ep, 'script error', e)
