@@ -1022,14 +1022,42 @@ stages:
         GDN_CODESIGN_TARGETDIRECTORY: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
       strategy:
         matrix:
-          Python36:
+          Python36_cuda:
             PythonVersion: '3.6'
-          Python37:
+            EpBuildFlags: --use_cuda --cuda_version=$(CUDA_VERSION)
+            --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"
+            --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.0.5.39\cuda"
+            --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+          Python37_cuda:
             PythonVersion: '3.7'
-          Python38:
+            EpBuildFlags: --use_cuda --cuda_version=$(CUDA_VERSION)
+            --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"
+            --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.0.5.39\cuda"
+            --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+          Python38_cuda:
             PythonVersion: '3.8'
-          Python39:
+            EpBuildFlags: --use_cuda --cuda_version=$(CUDA_VERSION)
+            --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"
+            --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.0.5.39\cuda"
+            --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+          Python39_cuda:
             PythonVersion: '3.9'
+            EpBuildFlags: --use_cuda --cuda_version=$(CUDA_VERSION)
+            --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"
+            --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.0.5.39\cuda"
+            --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+          Python36_dml:
+            PythonVersion: '3.6'
+            EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos  --use_winml
+          Python37_dml:
+            PythonVersion: '3.7'
+            EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos  --use_winml
+          Python38_dml:
+            PythonVersion: '3.8'
+            EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos  --use_winml
+          Python39_dml:
+            PythonVersion: '3.9'
+            EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos  --use_winml
       steps:
       - checkout: self
         clean: true
@@ -1080,10 +1108,7 @@ stages:
             --enable_onnx_tests
             ${{ parameters.build_py_parameters }}
             --parallel
-            --use_cuda --cuda_version=$(CUDA_VERSION)
-            --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"
-            --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.0.5.39\cuda"
-            $(TelemetryOption) --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+            $(TelemetryOption) $(EpBuildFlags)
           workingDirectory: '$(Build.BinariesDirectory)'
 
       # Esrp signing
@@ -1134,7 +1159,6 @@ stages:
           Contents: |
             **/*.obj
             **/*.pdb
-            **/*.dll
 
       - task: PythonScript@0
         displayName: 'Regenerate cmake config with STATIC_ANALYSIS=ON'
@@ -1150,10 +1174,7 @@ stages:
             --enable_onnx_tests
             ${{ parameters.build_py_parameters }}
             --parallel
-            --use_cuda --cuda_version=$(CUDA_VERSION)
-            --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)"
-            --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.0.5.39\cuda"
-            $(TelemetryOption)
+            $(TelemetryOption) $(EpBuildFlags)
             --update
             --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON
           workingDirectory: '$(Build.BinariesDirectory)'
@@ -1167,7 +1188,7 @@ stages:
           msBuildVersion: 16.0
           msBuildArchitecture: x64
           msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform="x64" /p:configuration="RelWithDebInfo" /p:CAExcludePath="$(Build.BinariesDirectory);$(Build.SourcesDirectory)\cmake;C:\program files (x86)" /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
-        continueOnError: true
+        continueOnError: false
 
       - task: TSAUpload@1
         condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.7')), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
