@@ -105,8 +105,25 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
     return ApplicableMatrixReduction::None;
   }
 
-  const auto rank = gsl::narrow<int64_t>(dims.size());
-  const auto min_and_max_axes = GetMinAndMaxContiguousAxes(rank, dims, original_axes);
+  std::vector<int64_t> new_dims;
+  std::vector<int64_t> new_axes;
+  const auto original_rank = gsl::narrow<int64_t>(dims.size());
+  std::set<int64_t> original_axes_set;
+  for (const auto axis : original_axes) {
+    original_axes_set.insert(HandleNegativeAxis(axis, original_rank));
+  }
+
+  for (size_t i = 0; i < dims.size(); i++) {
+    int64_t axis = gsl::narrow<int64_t>(i);
+    bool is_reduce_axis = original_axes_set.find(axis) != original_axes_set.end();
+    if (dims[i] != 1 || !is_reduce_axis) {
+      new_dims.emplace_back(dims[i]);
+      if (is_reduce_axis) new_axes.emplace_back(axis);
+    }
+  }
+
+  const auto rank = gsl::narrow<int64_t>(new_dims.size());
+  const auto min_and_max_axes = GetMinAndMaxContiguousAxes(rank, new_dims, new_axes);
   if (!min_and_max_axes.has_value()) {
     return ApplicableMatrixReduction::None;
   }
@@ -127,7 +144,7 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
   // the axis index right after the last flattened into matrix rows
   const int64_t m_end_axis = axes_from_beginning ? max_axis + 1 : min_axis;
 
-  const TensorShape& shape = TensorShape::ReinterpretBaseType(dims);
+  const TensorShape& shape = TensorShape::ReinterpretBaseType(new_dims);
 
   const auto m = shape.SizeToDimension(m_end_axis);
   const auto n = shape.SizeFromDimension(m_end_axis);
