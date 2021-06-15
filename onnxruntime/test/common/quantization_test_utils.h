@@ -13,7 +13,8 @@ namespace test {
 //
 // Rounds a float to the nearest representable value and returns the nearest integer value as a float.
 //
-float RoundHalfToEven(float input) {
+// TODO(kreeger): Consider moving to a cc file.
+inline float RoundHalfToEven(float input) {
   std::fesetround(FE_TONEAREST);
   auto result = std::nearbyintf(input);
   return result;
@@ -23,14 +24,11 @@ float RoundHalfToEven(float input) {
 // Performs linear quantization on a given float vector.
 //
 template <typename Integer, bool symmetric, typename = typename std::enable_if<std::is_integral<Integer>::value, Integer>::type>
-inline std::vector<Integer> QuantizeLinear(const std::vector<float>& data, float& scale, Integer& zp) {
-  std::vector<Integer> result;
-  result.reserve(data.size());
-
-  // find quantization range min and max
+inline std::vector<Integer> QuantizeLinear(const std::vector<float>& data, float& scale, Integer& zero_point) {
+  // Find quantization range min and max:
   float qmax = std::numeric_limits<Integer>::max();
   float qmin = std::numeric_limits<Integer>::min();
-  // Adjust the int8 range to -127 to 127 so that zero point can be 0
+  // Adjust the int8 range to -127 to 127 so that zero point can be 0:
   if (qmin == -128) {
     qmin = -127;
   }
@@ -40,16 +38,13 @@ inline std::vector<Integer> QuantizeLinear(const std::vector<float>& data, float
   float max = std::max(*minmax.second, 0.0f);
   if (symmetric) {
     scale = std::max(std::abs(max), std::abs(min)) / 127;
-    zp = 0;
+    zero_point = 0;
   } else {
     scale = (max - min) / (qmax - qmin);
-    zp = static_cast<Integer>(RoundHalfToEven(std::max(qmin, std::min(qmax, qmin - min / scale))));
+    zero_point = static_cast<Integer>(RoundHalfToEven(std::max(qmin, std::min(qmax, qmin - min / scale))));
   }
 
-  for (size_t i = 0; i < data.size(); i++) {
-    result.push_back(static_cast<Integer>(RoundHalfToEven(std::max(qmin, std::min(qmax, data[i] / scale + zp)))));
-  }
-  return result;
+  return Quantize<Integer>(data, scale, zero_point);
 }
 
 //
@@ -60,8 +55,7 @@ inline std::vector<Integer> Quantize(const std::vector<float>& data, float scale
   std::vector<Integer> result;
   result.reserve(data.size());
   for (size_t i = 0; i < data.size(); i++) {
-    //result.push_back(Quantize<Integer>(data[i], scale, zero_point));
-     result.push_back(static_cast<Integer>(std::round(data[i] / scale) + zero_point));
+    result.push_back(Quantize<Integer>(data[i], scale, zero_point));
   }
   return result;
 }
@@ -71,8 +65,9 @@ inline std::vector<Integer> Quantize(const std::vector<float>& data, float scale
 //
 template <typename Integer, typename = typename std::enable_if<std::is_integral<Integer>::value, Integer>::type>
 inline Integer Quantize(const float value, float scale, Integer zero_point = 0) {
-  // TODO(kreeger): use rounding?
-  return static_cast<Integer>(std::round(value / scale) + zero_point);
+  float qmax = std::numeric_limits<Integer>::max();
+  float qmin = std::numeric_limits<Integer>::min();
+  return static_cast<Integer>(RoundHalfToEven(std::max(qmin, std::min(qmax, (value / scale) + zero_point))));
 }
 
 //
@@ -83,9 +78,17 @@ inline std::vector<float> Dequantize(const std::vector<Integer>& data, float sca
   std::vector<float> result;
   result.reserve(data.size());
   for (size_t i = 0; i < data.size(); i++) {
-    result.push_back((data[i] - zero_point) * scale);
+    result.push_back(Dequantize(data[i], scale, zero_point));
   }
   return result;
+}
+
+//
+// Converts a single quantized integer value to a floating point value with a pre-calculated scale and zero point.
+//
+template <typename Integer, typename = typename std::enable_if<std::is_integral<Integer>::value, Integer>::type>
+inline float Dequantize(const float value, float scale, Integer zero_point = 0) {
+  return (data[i] - zero_point) * scale;
 }
 
 }  // namespace test
