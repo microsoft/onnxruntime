@@ -3,9 +3,10 @@
 
 #import "OnnxruntimeModule.h"
 #import "TensorHelper.h"
-#import "onnxruntime_cxx_api.h"
+
 #import <Foundation/Foundation.h>
 #import <React/RCTLog.h>
+#import <onnxruntime/onnxruntime_cxx_api.h>
 
 @implementation OnnxruntimeModule
 

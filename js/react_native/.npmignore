@@ -1,8 +1,0 @@
-/.vscode/
-/scripts/
-
-/dist/commonjs/*.js.map
-/dist/module/*.js.map
-
-/tsconfig.json
-/tsconfig.build.json
