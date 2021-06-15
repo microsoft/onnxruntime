@@ -30,7 +30,6 @@ limitations under the License.
 #include "core/platform/ort_mutex.h"
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/allocator.h"
-#include "core/framework/allocator_stats.h"
 
 #if defined(PLATFORM_WINDOWS)
 #include <intrin.h>
@@ -91,7 +90,7 @@ class BFCArena : public IAllocator {
     return device_allocator_->CreateFence(session_state);
   }
 
-  void GetStats(AllocatorStats* stats);
+  void GetStats(AllocatorStats* stats) override;
 
   size_t RequestedSize(const void* ptr);
 

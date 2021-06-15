@@ -5,7 +5,6 @@
 
 #include "core/common/common.h"
 #include "core/framework/allocator.h"
-#include "core/framework/allocator_stats.h"
 #include "onnxruntime_config.h"
 
 namespace onnxruntime {
@@ -19,7 +18,7 @@ class MiMallocArena : public IAllocator {
   void Free(void* p) override;
 
   // mimalloc only maintains stats when compiled under debug, or when MI_STAT >= 2
-  void GetStats(AllocatorStats* stats);
+  void GetStats(AllocatorStats* stats) override;
 
   size_t AllocatedSize(const void* ptr);
 

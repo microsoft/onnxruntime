@@ -1173,10 +1173,10 @@ void addObjectMethods(py::module& m, Environment& env) {
   ort_arena_cfg_binding.def(py::init([](size_t max_mem, int arena_extend_strategy_local,
                                         int initial_chunk_size_bytes, int max_dead_bytes_per_chunk) {
     auto ort_arena_cfg = std::make_unique<OrtArenaCfg>();
-    ort_arena_cfg->max_mem = max_mem;
-    ort_arena_cfg->arena_extend_strategy = arena_extend_strategy_local;
-    ort_arena_cfg->initial_chunk_size_bytes = initial_chunk_size_bytes;
-    ort_arena_cfg->max_dead_bytes_per_chunk = max_dead_bytes_per_chunk;
+    ort_arena_cfg->max_mem_ = max_mem;
+    ort_arena_cfg->arena_extend_strategy_ = arena_extend_strategy_local;
+    ort_arena_cfg->initial_chunk_size_bytes_ = initial_chunk_size_bytes;
+    ort_arena_cfg->max_dead_bytes_per_chunk_ = max_dead_bytes_per_chunk;
     return ort_arena_cfg;
   }));
 

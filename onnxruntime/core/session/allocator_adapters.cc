@@ -52,15 +52,9 @@ void IAllocatorImplWrappingOrtAllocator::Free(void* p) {
 
 void* IAllocatorImplWrappingOrtAllocator::Reserve(size_t size) {
   // OrtAllocator has no callback for Reserve()
-  if (ort_allocator_ != nullptr) {
-    return ort_allocator_->Alloc(ort_allocator_, size);
-  }
-
-  if (ort_allocator_v2_->Reserve != nullptr) {
-    return ort_allocator_v2_->Reserve(ort_allocator_v2_, size);
-  }
-
-  return ort_allocator_v2_->Alloc(ort_allocator_v2_, size);
+  return ort_allocator_
+             ? ort_allocator_->Alloc(ort_allocator_, size)
+             : ort_allocator_v2_->Reserve(ort_allocator_v2_, size);
 }
 
 }  // namespace onnxruntime
