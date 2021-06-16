@@ -38,90 +38,79 @@ static void TestReduceSum(const std::vector<int64_t>& X_dims,
 
 TEST(CudaKernelTest, ReduceSum_Scalar) {
   std::vector<int64_t> X_dims{1};
-  std::vector<int64_t> Y_dims{};
   std::vector<int64_t> axes{0};
-  bool keepdims = false;
-  TestReduceSum(X_dims, Y_dims, axes, keepdims);
+  TestReduceSum(X_dims, {}, axes, false);
+  TestReduceSum(X_dims, {1}, axes, true);
 }
 
 TEST(CudaKernelTest, ReduceSum_2DtoLastDim) {
   std::vector<int64_t> X_dims{16, 2};
-  std::vector<int64_t> Y_dims{2};
   std::vector<int64_t> axes{0};
-  bool keepdims = false;
-  TestReduceSum(X_dims, Y_dims, axes, keepdims);
+  TestReduceSum(X_dims, {2}, axes, false);
+  TestReduceSum(X_dims, {1, 2}, axes, true);
 }
 
 TEST(CudaKernelTest, ReduceSum_SmallTensor) {
   std::vector<int64_t> X_dims{2, 128, 128};
-  std::vector<int64_t> Y_dims{128};
   std::vector<int64_t> axes{0, 1};
-  bool keepdims = false;
-  TestReduceSum(X_dims, Y_dims, axes, keepdims);
+  TestReduceSum(X_dims, {128}, axes, false);
+  TestReduceSum(X_dims, {1, 1, 128}, axes, true);
 }
 
 TEST(CudaKernelTest, ReduceSum_MidTensor) {
   std::vector<int64_t> X_dims{2, 512, 3072};
-  std::vector<int64_t> Y_dims{3072};
   std::vector<int64_t> axes{0, 1};
-  bool keepdims = false;
-  TestReduceSum(X_dims, Y_dims, axes, keepdims);
+  TestReduceSum(X_dims, {3072}, axes, false);
+  TestReduceSum(X_dims, {1, 1, 3072}, axes, true);
 }
 
 TEST(CudaKernelTest, ReduceSum_LargeTensor) {
   std::vector<int64_t> X_dims{4, 512, 30528};
-  std::vector<int64_t> Y_dims{30528};
   std::vector<int64_t> axes{0, 1};
-  bool keepdims = false;
-  TestReduceSum(X_dims, Y_dims, axes, keepdims);
+  TestReduceSum(X_dims, {30528}, axes, false);
+  TestReduceSum(X_dims, {1, 1, 30528}, axes, true);
 }
 
 TEST(CudaKernelTest, ReduceSum_SmallTensorTrailingAxes) {
   std::vector<int64_t> X_dims{128, 2, 128};
-  std::vector<int64_t> Y_dims{128};
   std::vector<int64_t> axes{1, 2};
-  bool keepdims = false;
-  TestReduceSum(X_dims, Y_dims, axes, keepdims);
+  TestReduceSum(X_dims, {128}, axes, false);
+  TestReduceSum(X_dims, {128, 1, 1}, axes, true);
 }
 
 TEST(CudaKernelTest, ReduceSum_MidTensorTrailingAxes) {
   std::vector<int64_t> X_dims{3072, 2, 512};
-  std::vector<int64_t> Y_dims{3072};
   std::vector<int64_t> axes{1, 2};
-  bool keepdims = false;
-  TestReduceSum(X_dims, Y_dims, axes, keepdims);
+  TestReduceSum(X_dims, {3072}, axes, false);
+  TestReduceSum(X_dims, {3072, 1, 1}, axes, true);
 }
 
 TEST(CudaKernelTest, ReduceSum_LargeTensorTrailingAxes) {
   std::vector<int64_t> X_dims{30528, 4, 512};
-  std::vector<int64_t> Y_dims{30528};
   std::vector<int64_t> axes{1, 2};
-  bool keepdims = false;
-  TestReduceSum(X_dims, Y_dims, axes, keepdims);
+  TestReduceSum(X_dims, {30528}, axes, false);
+  TestReduceSum(X_dims, {30528, 1, 1}, axes, true);
 }
 
 TEST(CudaKernelTest, ReduceSum_OneDimsOptimization) {
   std::vector<int64_t> X_dims{2, 3, 1, 4, 1, 5};
-  std::vector<int64_t> Y_dims{3, 4, 5};
   std::vector<int64_t> axes{0, 2, 4};
-  bool keepdims = false;
-  TestReduceSum(X_dims, Y_dims, axes, keepdims);
+  TestReduceSum(X_dims, {3, 4, 5}, axes, false);
+  TestReduceSum(X_dims, {1, 3, 1, 4, 1, 5}, axes, true);
 }
 
 TEST(CudaKernelTest, ReduceSum_ReduceOnOneDims) {
   std::vector<int64_t> X_dims{2, 1, 1};
-  std::vector<int64_t> Y_dims{2};
   std::vector<int64_t> axes{1, 2};
-  bool keepdims = false;
-  TestReduceSum(X_dims, Y_dims, axes, keepdims);
+  TestReduceSum(X_dims, {2}, axes, false);
+  TestReduceSum(X_dims, {2, 1, 1}, axes, true);
 }
 
 TEST(CudaKernelTest, ReduceSum_AllOneDims) {
   std::vector<int64_t> X_dims{1, 1};
-  std::vector<int64_t> Y_dims{};
   std::vector<int64_t> axes{};
-  bool keepdims = false;
-  TestReduceSum(X_dims, Y_dims, axes, keepdims);
+  TestReduceSum(X_dims, {}, axes, false);
+  TestReduceSum(X_dims, {1, 1}, axes, true);
 }
 
 }  // namespace test
