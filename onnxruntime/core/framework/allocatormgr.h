@@ -40,11 +40,6 @@ struct AllocatorCreationInfo {
 // Valid values can be found in onnxruntime_c_api.h.
 AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info);
 
-// Returns an allocator (an instance of IAllocator) from the provided OrtAllocator instance.
-// The use-case for this method is as an "adapter" to convert a custom allocator implemented by
-// an external user to be plugged into ORT internal code as an instance of an IAllocator.
-//AllocatorPtr CreateAllocator(const OrtAllocator& external_allocator);
-
 // TODO: Only used for TRT and CUDA EP currently, need to add more identifiers to use it across all EPs
 class AllocatorManager {
   //
