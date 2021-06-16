@@ -9,7 +9,7 @@ CU_VER="11.1"
 TORCH_VERSION='1.9.0'
 USE_CONDA=false
 
-while getopts p:d:v:tmurc parameter_Option
+while getopts p:h:d:v:tmurc parameter_Option
 do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
