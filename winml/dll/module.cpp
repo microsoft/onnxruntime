@@ -134,3 +134,7 @@ STDAPI DllGetActivationFactory(HSTRING classId, void** factory) {
 
   return ret;
 }
+
+void* __stdcall WINRT_IMPL_LoadLibraryW(wchar_t const* name) noexcept {
+  return LoadLibraryExW(name, nullptr, 0);
+}
