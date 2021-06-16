@@ -105,6 +105,9 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
     return ApplicableMatrixReduction::None;
   }
 
+
+  // Remove all dims with value 1. This can help to optimize case like:
+  // dims=[2,3,1,4,1,5] and axes=[0,2,4], which is same as dims=[2,3,4,5] and axes=[0].
   std::vector<int64_t> new_dims;
   std::vector<int64_t> new_axes;
   const auto original_rank = gsl::narrow<int64_t>(dims.size());
@@ -113,8 +116,6 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
     original_axes_set.insert(HandleNegativeAxis(axis, original_rank));
   }
 
-  // Remove all dims with value 1. This can help to optimize case like:
-  // dims=[2,3,1,4,1,5] and axes=[0,2,4], which is same as dims=[2,3,4,5] and axes=[0].
   int64_t new_axis = 0;
   for (size_t i = 0; i < dims.size(); i++) {
     bool is_reduce_axis = original_axes_set.find(gsl::narrow<int64_t>(i)) != original_axes_set.end();

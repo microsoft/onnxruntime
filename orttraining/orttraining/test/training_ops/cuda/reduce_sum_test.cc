@@ -19,7 +19,7 @@ static void TestReduceSum(const std::vector<int64_t>& X_dims,
                           double per_sample_tolerance = 2e-4,
                           double relative_per_sample_tolerance = 2e-4) {
   CompareOpTester test("ReduceSum");
-  test.AddAttribute("axes", axes);
+  if (!axes.empty()) test.AddAttribute("axes", axes);
   test.AddAttribute("keepdims", int64_t(keepdims));
 
   // create rand inputs
@@ -96,6 +96,30 @@ TEST(CudaKernelTest, ReduceSum_LargeTensorTrailingAxes) {
   std::vector<int64_t> X_dims{30528, 4, 512};
   std::vector<int64_t> Y_dims{30528};
   std::vector<int64_t> axes{1, 2};
+  bool keepdims = false;
+  TestReduceSum(X_dims, Y_dims, axes, keepdims);
+}
+
+TEST(CudaKernelTest, ReduceSum_OneDimsOptimization) {
+  std::vector<int64_t> X_dims{2, 3, 1, 4, 1, 5};
+  std::vector<int64_t> Y_dims{3, 4, 5};
+  std::vector<int64_t> axes{0, 2, 4};
+  bool keepdims = false;
+  TestReduceSum(X_dims, Y_dims, axes, keepdims);
+}
+
+TEST(CudaKernelTest, ReduceSum_ReduceOnOneDims) {
+  std::vector<int64_t> X_dims{2, 1, 1};
+  std::vector<int64_t> Y_dims{2};
+  std::vector<int64_t> axes{1, 2};
+  bool keepdims = false;
+  TestReduceSum(X_dims, Y_dims, axes, keepdims);
+}
+
+TEST(CudaKernelTest, ReduceSum_AllOneDims) {
+  std::vector<int64_t> X_dims{1, 1};
+  std::vector<int64_t> Y_dims{};
+  std::vector<int64_t> axes{};
   bool keepdims = false;
   TestReduceSum(X_dims, Y_dims, axes, keepdims);
 }
