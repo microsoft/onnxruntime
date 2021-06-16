@@ -106,7 +106,7 @@ if(UNIX)
   if (APPLE)
     set(ONNXRUNTIME_SO_LINK_FLAG " -Xlinker -dead_strip")
   else()
-    set(ONNXRUNTIME_SO_LINK_FLAG " -Xlinker --version-script=${SYMBOL_FILE} -Xlinker --gc-sections -z noexecstack")
+    set(ONNXRUNTIME_SO_LINK_FLAG " -Xlinker --version-script=${SYMBOL_FILE} -Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
   endif()
 else()
   set(ONNXRUNTIME_SO_LINK_FLAG " -DEF:${SYMBOL_FILE}")
@@ -153,7 +153,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_BUILD_JAVA)
   endforeach()
 endif()
 
-set(onnxruntime_link_targets
+target_link_libraries(onnxruntime PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_ACL}
@@ -168,37 +168,16 @@ set(onnxruntime_link_targets
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_INTERNAL_TESTING}
     ${onnxruntime_winml}
+    onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
     ${onnxruntime_tvm_libs}
-)
-
-if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-  list(APPEND onnxruntime_link_targets onnxruntime_interop_torch)
-endif()
-
-list(APPEND onnxruntime_link_targets onnxruntime_framework)
-
-if (onnxruntime_ENABLE_TRAINING AND onnxruntime_ENABLE_PYTHON)
-  if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    if (NOT TARGET onnxruntime_python_interface)
-      include(onnxruntime_python_interface.cmake)
-    endif()
-  endif()
-
-  list(APPEND onnxruntime_link_targets onnxruntime_python_interface)
-endif()
-
-list(APPEND onnxruntime_link_targets
-    onnxruntime_optimizer
+    onnxruntime_framework
     onnxruntime_graph
     onnxruntime_common
     onnxruntime_mlas
     onnxruntime_flatbuffers
-    ${onnxruntime_EXTERNAL_LIBRARIES}
-)
-
-target_link_libraries(onnxruntime PRIVATE ${onnxruntime_link_targets})
+    ${onnxruntime_EXTERNAL_LIBRARIES})
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   target_link_libraries(onnxruntime PRIVATE onnxruntime_language_interop onnxruntime_pyop)
