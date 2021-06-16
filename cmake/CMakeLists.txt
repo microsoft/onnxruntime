@@ -143,7 +143,7 @@ option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_MEMORY_PROFILE "Enable memory profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable training functionality." OFF)
 option(onnxruntime_ENABLE_TRAINING_OPS "Include training operators but no training session support." OFF)
-option(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP "Enable training kernels interop with torch." ON)
+option(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP "Enable training kernels interop with torch." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON)
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
@@ -160,6 +160,9 @@ option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
 
 # build eager mode
 option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
+
+# build separate library of schemas of (custom) ops used by ORT (for ONNX to MLIR translation)
+option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
 
 # Single output director for all binaries
 set (RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
@@ -221,9 +224,8 @@ set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 set(ONNX_ML 1)
 if(NOT onnxruntime_ENABLE_PYTHON)
   set(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OFF)
-else()
-  add_compile_definitions(ENABLE_PYTHON)
 endif()
+
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   add_compile_definitions(ENABLE_LANGUAGE_INTEROP_OPS)
 endif()
@@ -231,8 +233,11 @@ endif()
 if (NOT (onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING))
   set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OFF)
 endif()
+
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   add_compile_definitions(ENABLE_TRAINING_TORCH_INTEROP)
+  # disable tests because executable projects need link to python so which did not always exist for test envs.
+  set(onnxruntime_BUILD_UNIT_TESTS OFF)
 endif()
 
 # General C# properties
@@ -636,7 +641,7 @@ endif()
 #Need python to generate def file
 if(onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
   if(onnxruntime_ENABLE_PYTHON)
-    if(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OR onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    if(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
       find_package(Python 3.6 COMPONENTS Interpreter Development NumPy)
     else()
       find_package(Python 3.6 COMPONENTS Interpreter Development.Module NumPy)
@@ -659,7 +664,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
     # We will not need to install benchmark since we link it statically.
     set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "Disable benchmark install to avoid overwriting vendor install.")
     add_subdirectory(${PROJECT_SOURCE_DIR}/external/googlebenchmark EXCLUDE_FROM_ALL)
-    add_library(benchmark::benchmark ALIAS benchmark)
+    #add_library(benchmark::benchmark ALIAS benchmark)
   endif()
 endif()
 
@@ -1733,4 +1738,9 @@ if(BUILD_PKGCONFIG_FILES)
     ${CMAKE_CURRENT_BINARY_DIR}/libonnxruntime.pc @ONLY)
   install( FILES  ${CMAKE_CURRENT_BINARY_DIR}/libonnxruntime.pc DESTINATION
     ${CMAKE_INSTALL_LIBDIR}/pkgconfig )
+endif()
+
+if (onnxruntime_BUILD_OPSCHEMA_LIB AND onnxruntime_ENABLE_TRAINING)
+  # opschema library requires training ops as well
+  include(onnxruntime_opschema_lib.cmake)
 endif()

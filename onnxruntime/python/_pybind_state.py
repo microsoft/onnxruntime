@@ -57,7 +57,7 @@ if platform.system() == "Windows":
             # Python 3.7 (and earlier) searches directories listed in PATH variable.
             # Make sure that the target CUDA version is at the beginning (important if multiple CUDA versions are
             # installed on the machine.)
-            os.environ["PATH"] += cuda_bin_dir + os.pathsep + os.environ["PATH"]
+            os.environ["PATH"] = cuda_bin_dir + os.pathsep + os.environ["PATH"]
 
     if version_info.vs2019 and platform.architecture()[0] == "64bit":
         if not os.path.isfile("C:\\Windows\\System32\\vcruntime140_1.dll"):

@@ -1079,6 +1079,42 @@ def test_input_requires_grad_backward_creates_input_grad_as_required0(device):
     # backward() is from y2, so grad of fc1.weight and fc1.bias will not be calculated.
     _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, none_pt_params=['fc1.weight', 'fc1.bias'])
 
+
+@pytest.mark.parametrize("device", ['cuda'])
+def test_model_output_with_inplace_update(device):
+    class NeuralNetWithGradNeedOutput(torch.nn.Module):
+        def __init__(self, input_size, hidden_size):
+            super(NeuralNetWithGradNeedOutput, self).__init__()
+            self.fc1_1 = torch.nn.Linear(input_size, hidden_size)
+            # Softmax's gradient is depending on its output
+            self.act = torch.nn.Softmax(dim=1)
+
+        def forward(self, input1):
+            out1 = self.act(self.fc1_1(input1))
+            return out1
+
+    def run_step(model, x1):
+        y1 = model(x1)
+        y1.add_(1)  # inplace update to module output
+        y1 = y1.sum()
+        y1.backward()
+        return y1
+
+    N, D_in, H = 32, 784, 500
+    pt_model = NeuralNetWithGradNeedOutput(D_in, H).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x1 = torch.randn(N, D_in, device=device, requires_grad=True)
+    ort_x1 = pt_x1.clone()
+
+    with pytest.raises(Exception) as ex_info:
+        pt_y1 = run_step(pt_model, pt_x1)
+    assert "modified by an inplace operation" in str(ex_info.value)
+    
+    with pytest.raises(Exception) as ex_info:
+        ort_y1 = run_step(ort_model, ort_x1)
+    assert "modified by an inplace operation" in str(ex_info.value)
+
 @pytest.mark.parametrize("device", ['cuda'])
 def test_loss_combines_two_outputs_with_dependency(device):
 
@@ -2512,7 +2548,7 @@ def test_primitive_inputs(bool_argument, int_argument, float_argument):
     input1 = torch.randn(N, D_in, device=device)
     pt_out = pt_model(input1, bool_argument, int_argument, float_argument)
     ort_out = ort_model(input1, bool_argument, int_argument, float_argument)
-    assert torch.equal(pt_out, ort_out)
+    _test_helpers.assert_values_are_close(pt_out, ort_out)
 
 @pytest.mark.parametrize("bool_arguments", [(True, False), (False, True)])
 def test_changing_bool_input_re_exports_model(bool_arguments):

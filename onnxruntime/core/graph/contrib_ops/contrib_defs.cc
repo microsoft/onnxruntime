@@ -2311,13 +2311,6 @@ Example 4:
         }
       });
 
-  // Register the NCHWc schemas if supported by the platform.
-  if (MlasNchwcGetBlockSize() > 1) {
-    RegisterNchwcSchemas();
-  }
-
-  RegisterNhwcSchemas();
-
   static const char* Gelu_ver1_doc =
       R"DOC(Gaussian Error Linear Unit.
 A high-performing neural network activation function.The GELU nonlinearity is
@@ -2686,10 +2679,14 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
         updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
       });
 
+#ifndef _OPSCHEMA_LIB_
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();
   }
+#endif
+
+  RegisterNhwcSchemas();
   RegisterBertSchemas();
 
 #ifdef BUILD_MS_EXPERIMENTAL_OPS
