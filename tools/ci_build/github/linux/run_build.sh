@@ -44,8 +44,7 @@ elif [ $BUILD_OS = "yocto" ]; then
 
     make -j$(nproc)
 else
-    #COMMON_BUILD_ARGS="--skip_submodule_sync --enable_onnx_tests --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
-    COMMON_BUILD_ARGS="--enable_onnx_tests --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
+    COMMON_BUILD_ARGS="--skip_submodule_sync --enable_onnx_tests --parallel --build_shared_lib --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
 
     if [ $BUILD_OS = "manylinux2010" ]; then
         # FindPython3 does not work on manylinux2010 image, define things manually
@@ -72,6 +71,8 @@ else
         fi
     elif [ $BUILD_DEVICE = "tensorrt"* ]; then
         if [ $BUILD_DEVICE = "tensorrt-v7.1" ]; then
+            git config --file=.gitmodules submodule.cmake/external/onnx-tensorrt.branch 7.1
+            git submodule update --init --remote cmake/external/onnx-tensorrt
             COMMON_BUILD_ARGS=${COMMON_BUILD_ARGS/"--skip_submodule_sync"}
         fi
         _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
