@@ -8,7 +8,7 @@
 #include "core/util/math_cpuonly.h"
 #endif
 
-#include "slice_compute_metadata.h"
+#include "core/providers/cpu/tensor/slice_compute_metadata.h"
 
 namespace onnxruntime {
 

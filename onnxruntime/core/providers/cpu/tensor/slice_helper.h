@@ -4,7 +4,7 @@
 // This file contains the functions compute the starts, steps (strides) and output shape
 // for Slice op, which can be called from other ops or EPs.
 #pragma once
-#include "slice_compute_metadata.h"
+#include "core/providers/cpu/tensor/slice_compute_metadata.h"
 
 namespace onnxruntime {
 
@@ -18,11 +18,11 @@ const T& clamp(const T& v, const T& lo, const T& hi) {
 
 namespace SliceOp {
 // compute output_dims without steps (Slice V1-9 & DynamicSlice)
-// Please not this will not Flatten the output shape
-inline Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
-                                const std::vector<int64_t>& raw_ends,
-                                const std::vector<int64_t>& raw_axes,
-                                SliceOp::PrepareForComputeMetadata& compute_metadata) {
+// Please note this will not Flatten the output shape
+inline Status PrepareForComputeHelper(const std::vector<int64_t>& raw_starts,
+                                      const std::vector<int64_t>& raw_ends,
+                                      const std::vector<int64_t>& raw_axes,
+                                      SliceOp::PrepareForComputeMetadata& compute_metadata) {
   // Initialize axes to the provided axes attribute or to the default sequence
   std::vector<int64_t> axes(raw_axes);
   if (axes.empty()) {
@@ -66,12 +66,12 @@ inline Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
 }
 
 // compute output_dims with steps (Slice V10)
-// Please not this will not Flatten the output shape
-inline Status PrepareForCompute(const std::vector<int64_t>& raw_starts,
-                                const std::vector<int64_t>& raw_ends,
-                                const std::vector<int64_t>& raw_axes,
-                                const std::vector<int64_t>& raw_steps,
-                                SliceOp::PrepareForComputeMetadata& compute_metadata) {
+// Please note this will not Flatten the output shape
+inline Status PrepareForComputeHelper(const std::vector<int64_t>& raw_starts,
+                                      const std::vector<int64_t>& raw_ends,
+                                      const std::vector<int64_t>& raw_axes,
+                                      const std::vector<int64_t>& raw_steps,
+                                      SliceOp::PrepareForComputeMetadata& compute_metadata) {
   // Initialize axes to the provided axes attribute or to the default sequence
   std::vector<int64_t> axes(raw_axes);
 

@@ -45,14 +45,6 @@ const auto data_type_constraints = BuildKernelDefConstraintsFromTypeList<DataTyp
 const auto indices_type_constraints = BuildKernelDefConstraintsFromTypeList<IndicesTypes>();
 const auto enabled_data_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>();
 const auto enabled_indices_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>();
-
-// std::clamp doesn't exist until C++17 so create a local version
-template <typename T>
-const T& clamp(const T& v, const T& lo, const T& hi) {
-  if (v < lo) return lo;
-  if (v > hi) return hi;
-  return v;
-}
 }  // namespace
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -136,7 +128,7 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                     const std::vector<int64_t>& raw_ends,
                                     const std::vector<int64_t>& raw_axes,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
-  ORT_RETURN_IF_ERROR(SliceOp::PrepareForCompute(raw_starts, raw_ends, raw_axes, compute_metadata));
+  ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, compute_metadata));
   FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
                     compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_output_dims_);
   return Status::OK();
@@ -148,7 +140,7 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                     const std::vector<int64_t>& raw_axes,
                                     const std::vector<int64_t>& raw_steps,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
-  ORT_RETURN_IF_ERROR(SliceOp::PrepareForCompute(raw_starts, raw_ends, raw_axes, raw_steps, compute_metadata));
+  ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, raw_steps, compute_metadata));
   FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
                     compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_output_dims_);
 

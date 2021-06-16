@@ -2643,7 +2643,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     ORT_RETURN_IF_ERROR(CopyInputData(3, input_axes));
     ORT_RETURN_IF_ERROR(CopyInputData(4, input_steps));
     ORT_RETURN_IF_ERROR(
-        SliceOp::PrepareForCompute(input_starts, input_ends, input_axes, input_steps, compute_metadata));
+        SliceOp::PrepareForComputeHelper(input_starts, input_ends, input_axes, input_steps, compute_metadata));
   }
 
   // output shape is of type uint32_t, convert from int64 compute_metadata.output_dims_
