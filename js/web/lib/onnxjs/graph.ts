@@ -7,7 +7,7 @@ import {Attribute} from './attribute';
 import {onnxruntime} from './ort-schema/ort-generated';
 import ortFbs = onnxruntime.experimental.fbs;
 import {Tensor} from './tensor';
-import {LongUtil, ProtoUtil} from './util';
+import {ArrayUtil, LongUtil, ProtoUtil} from './util';
 
 export declare namespace Graph {
   export interface Shape {
@@ -53,6 +53,7 @@ export declare namespace Graph {
   export interface Transformer {
     removeAllIdentityNodes(): void;
     removeAllDropoutNodes(): void;
+    applyDepthToSpaceFusion(): void;
     // TODO: add generic functions to manipulate the graph
   }
 
@@ -560,6 +561,7 @@ class GraphImpl implements Graph, Graph.Transformer {
     // apply common transform
     this.removeAllIdentityNodes();
     this.removeAllDropoutNodes();
+    this.applyDepthToSpaceFusion();
 
     // apply initializer specific transform
     if (graphInitializer) {
@@ -735,6 +737,127 @@ class GraphImpl implements Graph, Graph.Transformer {
         this.deleteNode(nodeIndex);
       }
       nodeIndex++;
+    }
+  }
+
+  applyDepthToSpaceFusion() {
+    let nodeIndex = 0;
+    const nodeIndices: number[] = [];
+    const attributeList: Attribute[] = [];
+    const fusePattern = ['Reshape', 'Transpose', 'Reshape'];
+    for (const node of this._nodes) {
+      if (node.opType === fusePattern[0]) {
+        let nodeIndexToAdd = nodeIndex;
+        attributeList.push(node.attributes);
+        nodeIndices.push(nodeIndexToAdd);
+        nodeIndexToAdd = this._allData[node.outputs[0]]._to[0];
+        let nextNode = this._nodes[this._allData[node.outputs[0]]._to[0]];
+        if (nextNode?.opType === fusePattern[1]) {
+          attributeList.push(nextNode.attributes);
+          nodeIndices.push(nodeIndexToAdd);
+          nodeIndexToAdd = this._allData[nextNode.outputs[0]]._to[0];
+          nextNode = this._nodes[this._allData[nextNode.outputs[0]]._to[0]];
+          if (nextNode?.opType === fusePattern[2]) {
+            attributeList.push(nextNode.attributes);
+            nodeIndices.push(nodeIndexToAdd);
+            this.fuseToDepthToSpace(nodeIndices, attributeList);
+          }
+        }
+        // Reset lists and continue traversing down.
+        attributeList.splice(0, attributeList.length);
+        nodeIndices.splice(0, nodeIndices.length);
+      }
+      nodeIndex++;
+    }
+  }
+
+  fuseToDepthToSpace(nodeIndices: number[], attributeList: Attribute[]) {
+    if (nodeIndices.length !== 3 || attributeList.length !== 3) {
+      return;
+    }
+    // First determine the eligibility of attributes
+
+    // Validate the transpose's perm attribute is valid for fusion
+    // it needs to be either [0, 3, 4, 1, 5, 2] or [0, 1, 4, 2, 5, 3]
+    const transposeNode = this._nodes[nodeIndices[1]];
+    const perm = transposeNode.attributes.getInts('perm', []);
+    const isCrd = ArrayUtil.arraysEqual([0, 1, 4, 2, 5, 3], perm);
+    if (this._allData[transposeNode.outputs[0]]._to.length !== 1 ||
+        (!ArrayUtil.arraysEqual([0, 3, 4, 1, 5, 2], perm) && !isCrd)) {
+      return;
+    }
+
+    const mode: string = isCrd ? 'CRD' : 'DCR';
+
+    const buf = new ArrayBuffer(mode.length);
+    const modeAsUint8Array = new Uint8Array(buf);
+    for (let i = 0, strLen = mode.length; i < strLen; i++) {
+      modeAsUint8Array[i] = mode.charCodeAt(i);
+    }
+    // Validate the first reshape node's shape tensor is a valid shape for DepthToShape.
+    // It needs to satisfy:
+    // Length is exactly 6
+    const firstReshapeNode = this._nodes[nodeIndices[0]];
+
+    const originalInput = firstReshapeNode.inputs[0];
+
+    const firstReshapeShape = firstReshapeNode.inputs[1];
+    const firstReshapeShapeData = this._allData[firstReshapeShape].tensor?.integerData;
+    const blocksize = firstReshapeShapeData?.[2] as number;
+
+    if (this._allData[firstReshapeNode.outputs[0]]._to.length !== 1 || firstReshapeShapeData?.length !== 6 ||
+        blocksize <= 0) {
+      return;
+    }
+
+    // Validate the reshape node's shape tensor is a valid shape for DepthToShape.
+    // It needs to satisfy:
+    // Length is exactly 4
+    const secondReshapeNode = this._nodes[nodeIndices[2]];
+
+    const secondReshapeNodeShape = secondReshapeNode.inputs[1];
+
+    const secondReshapeShapeData = this._allData[secondReshapeNodeShape].tensor?.integerData;
+
+    if (this._allData[secondReshapeNode.outputs[0]]._to.length > 1 || secondReshapeShapeData?.length !== 4) {
+      return;
+    }
+
+    const depthToSpaceName = `fused_depthToSpace_${nodeIndices[0]}`;
+    const depthToSpaceAttrs: onnx.IAttributeProto[] = [
+      {name: 'blocksize', type: onnx.AttributeProto.AttributeType.INT, i: blocksize},
+      {name: 'mode', type: onnx.AttributeProto.AttributeType.STRING, s: modeAsUint8Array}
+    ];
+
+    const depthToSpaceProto: onnx.INodeProto = {
+      name: depthToSpaceName,
+      opType: 'DepthToSpace',
+      domain: '',
+      attribute: depthToSpaceAttrs,
+    };
+    const depthToSpace = new Node(depthToSpaceProto);
+    depthToSpace.inputs.push(originalInput);
+    depthToSpace.outputs.push(secondReshapeNode.outputs[0]);
+
+    this._nodes.push(depthToSpace);
+
+    // delete all dangling nodes
+    // add all constants at the beginning
+    let firstReshapeShapeConstantIndex = -1;
+    let secondReshapeShapeConstantIndex = -1;
+    this._nodes.forEach((v, i) => {
+      if (this._allData[v.outputs[0]]?.to[0] === nodeIndices[0]) {
+        firstReshapeShapeConstantIndex = i;
+        nodeIndices.unshift(firstReshapeShapeConstantIndex);
+      }
+      if (this._allData[v.outputs[0]]?.to[0] === nodeIndices[2]) {
+        secondReshapeShapeConstantIndex = i;
+        nodeIndices.unshift(secondReshapeShapeConstantIndex);
+      }
+    });
+
+    for (let i = 0; i < nodeIndices.length; i++) {
+      this.deleteNode(nodeIndices[i]);
     }
   }
 
