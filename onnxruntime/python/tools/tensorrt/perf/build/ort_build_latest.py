@@ -25,7 +25,7 @@ def install_new_ort_wheel(ort_master_path):
     p1 = subprocess.run(["find", ort_wheel_path, "-name", "*.whl"], stdout=subprocess.PIPE, check=True)
     stdout = p1.stdout.decode("utf-8").strip()
     ort_wheel = stdout.split("\n")[0]
-    subprocess.run(["python", "-m", "pip", "install", "--force-reinstall", ort_wheel], check=True)
+    subprocess.run(["python3", "-m", "pip", "install", "--force-reinstall", ort_wheel], check=True)
     return ort_wheel
 
 def main():
@@ -33,7 +33,7 @@ def main():
 
     cmake_tar = "cmake-3.18.4-Linux-x86_64.tar.gz" 
     if not os.path.exists(cmake_tar):
-        p = subprocess.run(["sudo", "wget", "-c", "https://cmake.org/files/v3.18/" + cmake_tar], check=True)
+        p = subprocess.run(["wget", "-c", "https://cmake.org/files/v3.18/" + cmake_tar], check=True)
     tar = tarfile.open(cmake_tar)
     tar.extractall()
     tar.close()
@@ -47,7 +47,7 @@ def main():
 
     if args.use_archived:
         ort_wheel_file = args.use_archived
-        subprocess.run(["python", "-m", "pip", "install", "--force-reinstall", ort_wheel_file], check=True)
+        subprocess.run(["python3", "-m", "pip", "install", "--force-reinstall", ort_wheel_file], check=True)
     
     else:
         subprocess.run(["git", "fetch"], check=True)
