@@ -3,6 +3,7 @@ apply plugin: 'maven-publish'
 
 def jniLibsDir = System.properties['jniLibsDir']
 def buildDir = System.properties['buildDir']
+def headersDir = System.properties['headersDir']
 def publishDir = System.properties['publishDir']
 def minSdkVer = System.properties['minSdkVer']
 def targetSdkVer = System.properties['targetSdkVer']
@@ -161,4 +162,33 @@ publishing {
 			url "$publishDir"
 		}
 	}
+}
+
+// Add ORT C and C++ API headers to the AAR package, after task bundleDebugAar or bundleReleaseAar
+// Such that developers using ORT native API can extract libraries and headers from AAR package without building ORT
+tasks.whenTaskAdded { task ->
+  if (task.name.startsWith("bundle") && task.name.endsWith("Aar")) {
+    doLast {
+      addFolderToAar("addHeadersTo" + task.name, task.archivePath, headersDir, 'headers')
+    }
+  }
+}
+
+def addFolderToAar(taskName, aarPath, folderPath, folderPathInAar) {
+    def tmpDir = file("${buildDir}/${taskName}")
+    tmpDir.mkdir()
+    def tmpDirFolder = file("${tmpDir.path}/${folderPathInAar}")
+    tmpDirFolder.mkdir()
+    copy {
+      from zipTree(aarPath)
+      into tmpDir
+    }
+    copy {
+      from fileTree(folderPath)
+      into tmpDirFolder
+    }
+    ant.zip(destfile: aarPath) {
+      fileset(dir: tmpDir.path)
+    }
+    delete tmpDir
 }
