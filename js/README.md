@@ -178,12 +178,14 @@ This project is a library for running ONNX models on browsers. It is the success
         ./build.sh --config Release --build_wasm --skip_tests --disable_wasm_exception_catching --disable_rtti
         ```
 
-        To build with multi-thread support, append flag `--enable_wasm_threads` to the command. Make sure to build both single-thread and multi-thread before next step.
+        To build with multi-thread support, append flag `--enable_wasm_threads` to the command. To build with SIMD support, append flag `--enable_wasm_simd` to the command. Make sure to build both single-thread and multi-thread with and without SIMD before next step.
 
      2. Copy following files from build output folder to `<ORT_ROOT>/js/web/dist/`:
 
         - ort-wasm.wasm
         - ort-wasm-threaded.wasm (build with flag '--enable_wasm_threads')
+        - ort-wasm-simd.wasm (build with flag '--enable_wasm_simd')
+        - ort-wasm-simd-threaded.wasm (build with flags '--enable_wasm_threads --enable_wasm_simd')
 
      3. Copy following files from build output folder to `<ORT_ROOT>/js/web/lib/wasm/binding/`:
 

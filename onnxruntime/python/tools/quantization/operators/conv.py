@@ -1,4 +1,5 @@
 import onnx
+import numpy as np
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
 from ..quant_utils import find_by_name, get_mul_node, QuantizedValue, QuantizedValueType, attribute_to_kwarg, BiasToQuantize
@@ -9,20 +10,48 @@ class ConvInteger(QuantOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
+    def add_bias(self, nodes, scaled_output):
+        '''
+        Given a node, this function handles bias add by adding a "reshape" node on bias and an "add" node
+            parameter nodes: new nodes would be appended into nodes
+            parameter node: current node (Conv)
+            parameter scaled_output: output of quant conv without bias
+            parameter output: output of Conv
+            parameter bias_name: bias of Conv
+            return: the name of output
+        '''
+        node = self.node
+        model = self.quantizer.model
+        # Add tensors for the shape to be reshaped to
+        weight = find_by_name(node.input[1], model.initializer())
+        if weight is None:
+            raise ValueError("Expected {} to be an initializer".format(node.input[1]))
+
+        # Add reshape for correct broadcase
+        output = node.output[0]
+        reshape_input_data = node.input[2] # bias of Conv
+        reshape_input_shape = output + "_bias_reshape_shape"
+        reshape_output = output + "_bias_reshape_output"
+
+        shape = np.ones((len(weight.dims)), dtype=np.int64)
+        shape[1] = -1
+        init_shape = onnx.helper.make_tensor(reshape_input_shape, onnx_proto.TensorProto.INT64, [len(weight.dims)],
+                                             shape)
+        model.add_initializer(init_shape)
+
+        reshape_node = onnx.helper.make_node("Reshape", [reshape_input_data, reshape_input_shape], [reshape_output])
+        nodes.append(reshape_node)
+
+        # Add an Add operation for bias
+        add_node = onnx.helper.make_node("Add", [scaled_output, reshape_output], [output], output + "_bias_add")
+        nodes.append(add_node)
+
     def quantize(self):
         node = self.node
         assert (node.op_type == "Conv")
 
         (quantized_input_names, zero_point_names, scale_names, nodes) = \
             self.quantizer.quantize_inputs(node, [0, 1])
-
-        # quantize bias if exist
-        quantized_bias_name = ""
-        bias_present = False
-        if len(node.input) == 3:
-            quantized_bias_name = self.quantizer.quantize_bias_dynamic(node.input[2], node.input[0], node.input[1],
-                                                                       nodes)
-            bias_present = True
 
         conv_integer_output = node.output[0] + "_output_quantized"
         conv_integer_name = node.name + "_quant" if node.name != "" else ""
@@ -33,11 +62,6 @@ class ConvInteger(QuantOperatorBase):
         conv_integer_node = onnx.helper.make_node("ConvInteger", quantized_input_names + zero_point_names,
                                                   [conv_integer_output], conv_integer_name, **kwargs)
         nodes.append(conv_integer_node)
-
-        # Add bias add nodes
-        if bias_present:
-            conv_integer_output = self.quantizer.get_bias_add_nodes(nodes, node, conv_integer_output,
-                                                                    quantized_bias_name)
 
         # Add cast operation to cast convInteger output to float.
         cast_op_output = conv_integer_output + "_cast_output"
@@ -60,10 +84,16 @@ class ConvInteger(QuantOperatorBase):
 
         scales_mul_op_output = scales_mul_node.output[0]
 
+        has_bias = len(node.input) == 3
+        scaled_output_name = node.output[0] if not has_bias else node.output[0] + "quant_scaled_output"
+
         # Add mul operation to multiply mul_scales_op result with output of ConvInteger
         # and make the output of this node the same as output of original conv node.
         output_scale_mul_op = conv_integer_name + "_output_scale_mul" if conv_integer_name != "" else ""
-        nodes.append(get_mul_node([cast_op_output, scales_mul_op_output], node.output[0], output_scale_mul_op))
+        nodes.append(get_mul_node([cast_op_output, scales_mul_op_output], scaled_output_name, output_scale_mul_op))
+
+        if has_bias:
+            self.add_bias(nodes, scaled_output_name)
 
         self.quantizer.new_nodes += nodes
 

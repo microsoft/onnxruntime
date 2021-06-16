@@ -2,9 +2,8 @@
 // Licensed under the MIT License.
 
 import * as fs from 'fs-extra';
+import {InferenceSession, Tensor} from 'onnxruntime-common';
 import * as path from 'path';
-
-import {InferenceSession, Tensor} from '../lib';
 
 import {assertTensorEqual, loadTensorFromFile, shouldSkipModel} from './test-utils';
 

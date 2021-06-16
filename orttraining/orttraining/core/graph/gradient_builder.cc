@@ -1238,6 +1238,16 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyLossGradient) {
   }
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyLossInternalGradient) {
+  std::vector<ArgDef> input_arg_def{GO(0), O(1)};
+  size_t input_size = static_cast<size_t>(GetSrcNodeInputSize());
+  for (size_t i = 1; i < input_size; i++) {
+    input_arg_def.emplace_back(I(i));
+  }
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"SoftmaxCrossEntropyLossInternalGrad", kMSDomain, 1}, input_arg_def, {GI(0)}, SrcNodeAttributes())};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
   const ArgDef X = I(0), Y = O(0), dX = GI(0), dY = GO(0);
 
@@ -1680,7 +1690,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
     attrs.emplace_back(MakeAttribute("custom_attributes_json", src_attrs.at("custom_attributes_json").s()));
   }
 
-  const auto* op_config_ptr = contrib::aten_ops::GetATenOperatorConfig(name);
+  const auto* op_config_ptr = contrib::aten_ops::ATenOperatorConfigs::Instance().GetConfig(name);
   ORT_ENFORCE(op_config_ptr, "ATen Op config for ", name, " is not found.");
   const auto& op_config = *op_config_ptr;
 
@@ -1688,9 +1698,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
   std::vector<ArgDef> input_args;
   std::vector<ArgDef> output_args;
 
-  for (size_t i = 0; i < op_config.backward_input_source_configs.size(); i++) {
-    size_t index = static_cast<size_t>(std::get<1>(op_config.backward_input_source_configs[i]));
-    switch (std::get<0>(op_config.backward_input_source_configs[i])) {
+  for (const auto& config : op_config.backward_input_source_configs) {
+    size_t index = config.second;
+    switch (config.first) {
       case contrib::aten_ops::GRAD_OUTPUT:
         input_args.emplace_back(GO(index));
         break;
@@ -1703,8 +1713,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
     }
   }
 
-  for (size_t i = 0; i < op_config.gradient_input_indices.size(); i++) {
-    size_t index = static_cast<size_t>(op_config.gradient_input_indices[i]);
+  for (size_t index : op_config.gradient_input_indices) {
     if (IsGradientRequiredForSrcNodeInput(index)) {
       output_args.emplace_back(GI(index));
     } else {

@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Shape op test",
+    "operator": "Shape",
+    "attributes": [],
+    "cases": [
+      {
+        "name": "T[0]",
+        "inputs": [
+          {
+            "data": [1, 1, 1, 1],
+            "dims": [2, 2],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [2, 2],
+            "dims": [2],
+            "type": "int32"
+          }
+        ]
+      }
+    ]
+  }
+]
