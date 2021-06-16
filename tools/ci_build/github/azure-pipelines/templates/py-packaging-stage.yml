@@ -202,7 +202,7 @@ stages:
                   --config Release \
                   --skip_submodule_sync \
                   --parallel \
-                  --build_wheel \
+                  --build_wheel --wheel_name_suffix=gpu\
                   --enable_onnx_tests --use_cuda --cuda_version=11.1 --cuda_home=/usr/local/cuda-11.1 --cudnn_home=/usr/local/cuda-11.1 \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-9/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
@@ -983,11 +983,6 @@ stages:
           Contents: '*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-      - script: |
-          rename *.whl *.zip
-        workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
-        displayName: 'Rename file extension for codesign validation'
-
       - task: PublishTestResults@2
         displayName: 'Publish unit test results'
         inputs:
@@ -1000,6 +995,65 @@ stages:
         displayName: 'Publish Artifact: ONNXRuntime python wheel'
         inputs:
           ArtifactName: onnxruntime
+
+      - task: DeleteFiles@1
+        displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
+        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+          Contents: |
+            **/*.obj
+            **/*.pdb
+
+      - task: PythonScript@0
+        displayName: 'Regenerate cmake config with STATIC_ANALYSIS=ON'
+        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+          arguments: >
+            --config RelWithDebInfo
+            --enable_lto
+            --build_dir $(Build.BinariesDirectory)
+            --skip_submodule_sync
+            --cmake_generator "Visual Studio 16 2019"
+            --enable_pybind
+            --enable_onnx_tests
+            ${{ parameters.build_py_parameters }}
+            --parallel
+            $(TelemetryOption)
+            --update
+            --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON
+          workingDirectory: '$(Build.BinariesDirectory)'
+
+      #Manually set msBuildCommandline so that we can also set CAExcludePath
+      - task: SDLNativeRules@2
+        displayName: 'Run the PREfast SDL Native Rules for MSBuild'
+        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
+        inputs:
+          userProvideBuildInfo: msBuildInfo
+          msBuildVersion: 16.0
+          msBuildArchitecture: x64
+          msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform="x64" /p:configuration="RelWithDebInfo" /p:CAExcludePath="$(Build.BinariesDirectory);$(Build.SourcesDirectory)\cmake;C:\program files (x86)" /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
+        continueOnError: false
+
+      - script: |
+          rename *.whl *.zip
+        workingDirectory: '$(Build.ArtifactStagingDirectory)'
+        displayName: 'Rename file extension for codesign validation'
+
+      - task: securedevelopmentteam.vss-secure-development-tools.build-task-publishsecurityanalysislogs.PublishSecurityAnalysisLogs@2
+        displayName: 'Publish Security Analysis Logs'
+        inputs:
+          ArtifactName: CodeAnalysisLogs_windows_gpu_$(EP_NAME)_$(PythonVersion)
+        continueOnError: true
+
+      - task: TSAUpload@1
+        condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.7')), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+        displayName: 'TSA Upload'
+        inputs:
+          tsaVersion: TsaV2
+          codeBaseName: 'onnxruntime_master'
+        continueOnError: true
 
       - template: component-governance-component-detection-steps.yml
         parameters:
@@ -1018,42 +1072,48 @@ stages:
       variables:
         CUDA_VERSION: '11.1'
         buildArch: x64
-        EnvSetupScript: setup_env_cuda_11.bat
-        GDN_CODESIGN_TARGETDIRECTORY: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
       strategy:
         matrix:
           Python36_cuda:
             PythonVersion: '3.6'
             EpBuildFlags: --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.0.5.39\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
-            PACKAGING_CMD:
+            EnvSetupScript: setup_env_cuda_11.bat
+            EP_NAME: gpu
           Python37_cuda:
             PythonVersion: '3.7'
             EpBuildFlags: --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.0.5.39\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
-            PACKAGING_CMD:
+            EnvSetupScript: setup_env_cuda_11.bat
+            EP_NAME: gpu
           Python38_cuda:
             PythonVersion: '3.8'
             EpBuildFlags: --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.0.5.39\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
-            PACKAGING_CMD:
+            EnvSetupScript: setup_env_cuda_11.bat
+            EP_NAME: gpu
           Python39_cuda:
             PythonVersion: '3.9'
             EpBuildFlags: --use_cuda --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cudnn_home="C:\local\cudnn-$(CUDA_VERSION)-windows-x64-v8.0.5.39\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
-            PACKAGING_CMD:
+            EnvSetupScript: setup_env_cuda_11.bat
+            EP_NAME: gpu
           Python36_dml:
             PythonVersion: '3.6'
             EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-            PACKAGING_CMD: --wheel_name_suffix=dml
+            EP_NAME: dml
+            EnvSetupScript: setup_env.bat
           Python37_dml:
             PythonVersion: '3.7'
             EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-            PACKAGING_CMD: --wheel_name_suffix=dml
+            EP_NAME: dml
+            EnvSetupScript: setup_env.bat
           Python38_dml:
             PythonVersion: '3.8'
             EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-            PACKAGING_CMD: --wheel_name_suffix=dml
+            EP_NAME: dml
+            EnvSetupScript: setup_env.bat
           Python39_dml:
             PythonVersion: '3.9'
             EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-            PACKAGING_CMD: --wheel_name_suffix=dml
+            EP_NAME: dml
+            EnvSetupScript: setup_env.bat
       steps:
       - checkout: self
         clean: true
@@ -1119,7 +1179,7 @@ stages:
         displayName: 'Build wheel'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\setup.py'
-          arguments: 'bdist_wheel --use_cuda ${{ parameters.build_py_parameters }} $(NightlyBuildOption) $(PACKAGING_CMD)'
+          arguments: 'bdist_wheel --use_cuda ${{ parameters.build_py_parameters }} $(NightlyBuildOption) --wheel_name_suffix=$(EP_NAME)'
           workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
 
       - task: CopyFiles@2
@@ -1128,11 +1188,6 @@ stages:
           SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
           Contents: '*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-      - script: |
-          rename *.whl *.zip
-        workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
-        displayName: 'Rename file extension for codesign validation'
 
       - task: PublishTestResults@2
         displayName: 'Publish unit test results'
@@ -1185,6 +1240,17 @@ stages:
           msBuildArchitecture: x64
           msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform="x64" /p:configuration="RelWithDebInfo" /p:CAExcludePath="$(Build.BinariesDirectory);$(Build.SourcesDirectory)\cmake;C:\program files (x86)" /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
         continueOnError: false
+
+      - script: |
+          rename *.whl *.zip
+        workingDirectory: '$(Build.ArtifactStagingDirectory)'
+        displayName: 'Rename file extension for codesign validation'
+
+      - task: securedevelopmentteam.vss-secure-development-tools.build-task-publishsecurityanalysislogs.PublishSecurityAnalysisLogs@2
+        displayName: 'Publish Security Analysis Logs'
+        inputs:
+          ArtifactName: CodeAnalysisLogs_windows_gpu_$(EP_NAME)_$(PythonVersion)
+        continueOnError: true
 
       - task: TSAUpload@1
         condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.7')), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
