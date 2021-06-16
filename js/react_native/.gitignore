@@ -35,7 +35,8 @@ android.iml
 
 # Cocoapods
 #
-example/ios/Pods
+ios/Pods/
+example/ios/Pods/
 
 # node.js
 #
@@ -57,6 +58,4 @@ dist/
 android/libs/*.aar
 
 # iOS
-iOS/Libraries/onnxruntime/include/*.h
-iOS/Libraries/onnxruntime/lib/iphoneos/*.dylib
-iOS/Libraries/onnxruntime/lib/iphonesimulator/*.dylib
+local_pods/
