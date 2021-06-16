@@ -70,7 +70,10 @@ else
                 --cuda_home /usr/local/cuda \
                 --cudnn_home /usr/local/cudnn-$_CUDNN_VERSION/cuda $BUILD_EXTR_PAR
         fi
-    elif [ $BUILD_DEVICE = "tensorrt" ]; then
+    elif [ $BUILD_DEVICE = "tensorrt"* ]; then
+        if [ $BUILD_DEVICE = "tensorrt-v7.1" ]; then
+            COMMON_BUILD_ARGS=${COMMON_BUILD_ARGS/"--skip_submodule_sync"}
+        fi
         _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
             --config Release $COMMON_BUILD_ARGS \

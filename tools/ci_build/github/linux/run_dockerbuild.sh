@@ -90,10 +90,16 @@ else
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
             --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA}" \
             --dockerfile Dockerfile.ubuntu_gpu_training --context .
-    elif [ $BUILD_DEVICE = "tensorrt" ]; then
-        # TensorRT container release 20.07
-        IMAGE="$BUILD_OS-cuda11.0-cudnn8.0-tensorrt7.1"
-        DOCKER_FILE=Dockerfile.ubuntu_tensorrt
+    elif [ $BUILD_DEVICE = "tensorrt"* ]; then
+        if [ $BUILD_DEVICE = "tensorrt-v7.1" ]; then
+            # TensorRT container release 20.07
+            IMAGE="$BUILD_OS-cuda11.0-cudnn8.0-tensorrt7.1"
+            DOCKER_FILE=Dockerfile.ubuntu_tensorrt7_1
+        else
+            # TensorRT container release 20.12
+            IMAGE="$BUILD_OS-cuda11.1-cudnn8.0-tensorrt7.2"
+            DOCKER_FILE=Dockerfile.ubuntu_tensorrt
+        fi
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
             --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
             --dockerfile $DOCKER_FILE --context .
