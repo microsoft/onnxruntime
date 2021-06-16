@@ -6,12 +6,14 @@ INSTALL_DEPS_DISTRIBUTED_SETUP=false
 ORTMODULE_BUILD=false
 TARGET_ROCM=false
 CU_VER="11.1"
+TORCH_VERSION='1.9.0'
 USE_CONDA=false
 
 while getopts p:d:v:tmurc parameter_Option
 do case "${parameter_Option}"
 in
 p) PYTHON_VER=${OPTARG};;
+h) TORCH_VERSION=${OPTARG};;
 d) DEVICE_TYPE=${OPTARG};;
 v) CU_VER=${OPTARG};;
 t) INSTALL_DEPS_TRAINING=true;;
@@ -53,14 +55,14 @@ if [ $DEVICE_TYPE = "gpu" ]; then
       ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/requirements.txt}
     else
       if [[ $TARGET_ROCM = false ]]; then
-        ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements_torch_cu${CU_VER}.txt}
+        ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements_torch${TORCH_VERSION}_cu${CU_VER}.txt}
         # Due to a [bug on DeepSpeed](https://github.com/microsoft/DeepSpeed/issues/663), we install it separately through ortmodule/stage2/requirements.txt
         ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage2\/requirements.txt}
       else
         ${PYTHON_EXE} -m pip install \
           --pre -f https://download.pytorch.org/whl/nightly/rocm4.2/torch_nightly.html \
           torch torchvision torchtext
-        ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements-rocm.txt}
+        ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements-torch${TORCH_VERSION}_rocm.txt}
         ${PYTHON_EXE} -m pip install fairscale
 	      # remove triton requirement from getting triggered in requirements-sparse_attn.txt
         git clone https://github.com/ROCmSoftwarePlatform/DeepSpeed

@@ -493,6 +493,7 @@ stages:
 
 
   - ${{ if eq(parameters.enable_linux_gpu_training_cu102, true) }}:
+    # TODO: CudaVersion is not needed, CU_VER of docker file is used. remove CudaVersion
     - job: Linux_py_Cuda102_Wheels
       timeoutInMinutes: 180
       workspace:
@@ -500,24 +501,52 @@ stages:
       pool: Onnxruntime-Linux-GPU-NV6
       strategy:
         matrix:
-          Python36 Cuda10.2:
+          Python36 Torch181 Cuda10.2:
             PythonVersion: '3.6'
+            TorchVersion: '1.8.1'
             CudaVersion: '10.2'
             DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
             GccVersion: 8
-          Python37 Cuda10.2:
+          Python37 Torch181 Cuda10.2:
+            PythonVersion: '3.7'
+            TorchVersion: '1.8.1'
+            CudaVersion: '10.2'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
+            GccVersion: 8
+          Python38 Torch181 Cuda10.2:
+            PythonVersion: '3.8'
+            TorchVersion: '1.8.1'
+            CudaVersion: '10.2'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
+            GccVersion: 8
+          Python39 Torch181 Cuda10.2:
+            PythonVersion: '3.9'
+            TorchVersion: '1.8.1'
+            CudaVersion: '10.2'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
+            GccVersion: 8
+          Python36 Torch190 Cuda10.2:
+            PythonVersion: '3.6'
+            TorchVersion: '1.9.0'
+            CudaVersion: '10.2'
+            DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
+            GccVersion: 8
+          Python37 Torch190 Cuda10.2:
             PythonVersion: '3.7'
             CudaVersion: '10.2'
+            TorchVersion: '1.9.0'
             DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
             GccVersion: 8
-          Python38 Cuda10.2:
+          Python38 Torch190 Cuda10.2:
             PythonVersion: '3.8'
             CudaVersion: '10.2'
+            TorchVersion: '1.9.0'
             DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
             GccVersion: 8
-          Python39 Cuda10.2:
+          Python39 Torch190 Cuda10.2:
             PythonVersion: '3.9'
             CudaVersion: '10.2'
+            TorchVersion: '1.9.0'
             DockerFile: 'Dockerfile.manylinux2014_training_cuda10_2'
             GccVersion: 8
       steps:
@@ -533,6 +562,7 @@ stages:
           Dockerfile: tools/ci_build/github/linux/docker/$(DockerFile)
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
+            --build-arg TORCH_VERSION=$(TorchVersion)
             --build-arg PYTHON_VERSION=$(PythonVersion)
             --build-arg CUDA_VERSION=$(CudaVersion)
             --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
