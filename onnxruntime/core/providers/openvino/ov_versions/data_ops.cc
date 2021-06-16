@@ -767,6 +767,20 @@ void DataOps::populate_op_mode_supported() {
                                //Negative axis is not supported
                                if (axis_attr->second().i() < 0)
                                  return true;
+                               if (device_id_.find("MYRIAD") != std::string::npos) {
+                                 const auto& input_arg = node->InputDefs()[2];
+                                 auto updates_shape = input_arg->Shape();
+                                 const auto& output_arg = node->OutputDefs()[0];
+                                 auto out_shape = output_arg->Shape();
+                                 if(node->InputDefs()[2]->Name() == "updates")
+                                 {
+                                  size_t updates_size = updates_shape->dim_size();
+                                  if(updates_size == 2) {
+                                    if(updates_shape->dim(1).dim_value() > out_shape->dim(1).dim_value())
+                                      return true;
+                                  }
+                                  }
+                               }
                                return false;
                              }};
     op_list_.insert({"Scatter", obj});
