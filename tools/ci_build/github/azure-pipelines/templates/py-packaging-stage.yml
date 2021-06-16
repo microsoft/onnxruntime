@@ -1043,6 +1043,7 @@ stages:
 
       - task: securedevelopmentteam.vss-secure-development-tools.build-task-publishsecurityanalysislogs.PublishSecurityAnalysisLogs@2
         displayName: 'Publish Security Analysis Logs'
+        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
         inputs:
           ArtifactName: CodeAnalysisLogs_windows_gpu_$(EP_NAME)_$(PythonVersion)
         continueOnError: true
@@ -1248,6 +1249,7 @@ stages:
 
       - task: securedevelopmentteam.vss-secure-development-tools.build-task-publishsecurityanalysislogs.PublishSecurityAnalysisLogs@2
         displayName: 'Publish Security Analysis Logs'
+        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
         inputs:
           ArtifactName: CodeAnalysisLogs_windows_gpu_$(EP_NAME)_$(PythonVersion)
         continueOnError: true

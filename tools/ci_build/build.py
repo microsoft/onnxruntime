@@ -1618,7 +1618,7 @@ def build_python_wheel(
         if use_tensorrt:
             args.append('--use_tensorrt')
         elif use_cuda:
-            #The following line assumes no other EP is enabled
+            # The following line assumes no other EP is enabled
             args.append('--wheel_name_suffix=gpu')
             if cuda_version:
                 args.append('--cuda_version={}'.format(cuda_version))
