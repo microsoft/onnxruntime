@@ -7,33 +7,33 @@ parameters:
 
 - name: torch_version
   displayName: >
-    Job name.
+    torch_version.
   type: string
-  default: 'the torch version to build with'
 
 - name: cuda_version
   displayName: >
-    Job name.
+    cuda_version.
   type: string
-  default: 'version of Cuda'
 
 - name: cmake_cuda_architectures
   displayName: >
-    Job name.
+    cmake_cuda_architectures
   type: string
-  default: 'version of Cuda'
 
+- name: gcc_version
+  displayName: >
+    gcc_version.
+  type: int
+  
 - name: docker_file
   displayName: >
-    Job name.
+    docker_file.
   type: string
-  default: 'docker file'
 
 - name: agent_pool
   displayName: >
-    Job name.
+    agent_pool.
   type: string
-  default: 'the agent pool to run the pipeline'
 
 stages:
 - stage: Python_Packaging
@@ -51,25 +51,25 @@ stages:
             TorchVersion: ${{ parameters.torch_version }}
             CudaVersion: ${{ parameters.cuda_version }}
             DockerFile: ${{ parameters.docker_file }}
-            GccVersion: 8
+            GccVersion: ${{ parameters.gcc_version }}
           Python37:
             PythonVersion: '3.7'
             TorchVersion: ${{ parameters.torch_version }}
             CudaVersion: ${{ parameters.cuda_version }}
             DockerFile: ${{ parameters.docker_file }}
-            GccVersion: 8
+            GccVersion: ${{ parameters.gcc_version }}
           Python38:
             PythonVersion: '3.8'
             TorchVersion: ${{ parameters.torch_version }}
             CudaVersion: ${{ parameters.cuda_version }}
             DockerFile: ${{ parameters.docker_file }}
-            GccVersion: 8
+            GccVersion: ${{ parameters.gcc_version }}
           Python39:
             PythonVersion: '3.9'
             TorchVersion: ${{ parameters.torch_version }}
             CudaVersion: ${{ parameters.cuda_version }}
             DockerFile: ${{ parameters.docker_file }}
-            GccVersion: 8
+            GccVersion: ${{ parameters.gcc_version }}
       steps:
       - checkout: self
         clean: true
