@@ -17,6 +17,12 @@ parameters:
   type: string
   default: 'version of Cuda'
 
+- name: cmake_cuda_architectures
+  displayName: >
+    Job name.
+  type: string
+  default: 'version of Cuda'
+
 - name: docker_file
   displayName: >
     Job name.
@@ -33,7 +39,7 @@ stages:
 - stage: Python_Packaging
 
   jobs:
-    - job: Linux_py_Cuda_Wheels
+    - job: Linux_py_Training_Cuda_Wheels
       timeoutInMinutes: 180
       workspace:
         clean: all
@@ -43,21 +49,25 @@ stages:
           Python36:
             PythonVersion: '3.6'
             TorchVersion: ${{ parameters.torch_version }}
+            CudaVersion: ${{ parameters.cuda_version }}
             DockerFile: ${{ parameters.docker_file }}
             GccVersion: 8
           Python37:
             PythonVersion: '3.7'
             TorchVersion: ${{ parameters.torch_version }}
+            CudaVersion: ${{ parameters.cuda_version }}
             DockerFile: ${{ parameters.docker_file }}
             GccVersion: 8
           Python38:
             PythonVersion: '3.8'
             TorchVersion: ${{ parameters.torch_version }}
+            CudaVersion: ${{ parameters.cuda_version }}
             DockerFile: ${{ parameters.docker_file }}
             GccVersion: 8
           Python39:
             PythonVersion: '3.9'
             TorchVersion: ${{ parameters.torch_version }}
+            CudaVersion: ${{ parameters.cuda_version }}
             DockerFile: ${{ parameters.docker_file }}
             GccVersion: 8
       steps:
@@ -118,8 +128,8 @@ stages:
                   --build_wheel \
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
-                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-$(GccVersion)/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=35;37;50;52;60;61;70' \
-                  --use_cuda --cuda_version=${{ parameters.cuda_version }} --cuda_home=/usr/local/cuda-${{ parameters.cuda_version }} --cudnn_home=/usr/local/cuda-${{ parameters.cuda_version }} ;
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-$(GccVersion)/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_cuda_architectures }}' \
+                  --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion) ;
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CmdLine@2
