@@ -101,6 +101,8 @@ is_manylinux = environ.get('AUDITWHEEL_PLAT', None) in manylinux_tags
 
 
 def build_torch_cpp_extensions():
+    '''Builds PyTorch CPP extensions and returns its build dirs'''
+
     # Run this from build dir (e.g. (...)/build/Linux/RelWithDebInfo/)
     is_gpu_available = False
     try:
@@ -136,11 +138,13 @@ def build_torch_cpp_extensions():
     torch_cpp_exts = glob('./build/lib.*/*.so')
     torch_cpp_exts.extend(glob('./build/lib.*/*.dll'))
     torch_cpp_exts.extend(glob('./build/lib.*/*.dylib'))
+    original_build_dir = path.dirname(torch_cpp_exts[0]) if torch_cpp_exts else None
+    dest_build_dir = 'onnxruntime/training/ortmodule/torch_cpp_extensions' if torch_cpp_exts else None
     for ext in torch_cpp_exts:
-        dest_ext = path.join('onnxruntime/training/ortmodule/torch_cpp_extensions', path.basename(ext))
+        dest_ext = path.join(dest_build_dir, path.basename(ext))
         logger.info('copying %s -> %s', ext, dest_ext)
         copyfile(ext, dest_ext)
-
+    return original_build_dir, dest_build_dir
 class build_ext(_build_ext):
     def build_extension(self, ext):
         dest_file = self.get_ext_fullpath(ext.name)
@@ -204,7 +208,36 @@ try:
                     args.append(dest)
                     if len(args) > 3:
                         subprocess.run(args, check=True, stdout=subprocess.PIPE)
-                    self._rewrite_ld_preload(to_preload)
+                if enable_training:
+                    # Remove PyTorch dependencies from all PyTorch CPP extensions
+                    torch_cpp_exts = glob(f'{torch_cpp_build_dir}/*.so')
+                    torch_cpp_exts.extend(glob(f'{torch_cpp_build_dir}/*.dll'))
+                    torch_cpp_exts.extend(glob(f'{torch_cpp_build_dir}/*.dylib'))
+                    torch_dependencies = ['libc10', 'libtorch']
+                    for ext in torch_cpp_exts:
+                        args = ['patchelf', '--debug']
+                        if path.isfile(ext):
+                            result = subprocess.run(['patchelf', '--print-needed', ext],
+                                                    check=True,
+                                                    stdout=subprocess.PIPE,
+                                                    universal_newlines=True)
+                            for line in result.stdout.split('\n'):
+                                for dependency in torch_dependencies:
+                                    if dependency in line:
+                                        if not dependency in to_preload:
+                                            to_preload.append(line)
+                                        args.extend(['--remove-needed', line])
+                            args.append(ext)
+                            if len(args) > 3:
+                                subprocess.run(args, check=True, stdout=subprocess.PIPE)
+                                torch_cpp_exts = glob(f'{torch_cpp_orig_build_dir}/*.so')
+                                torch_cpp_exts.extend(glob(f'{torch_cpp_orig_build_dir}/*.dll'))
+                                torch_cpp_exts.extend(glob(f'{torch_cpp_orig_build_dir}/*.dylib'))
+                                dest = path.join(torch_cpp_orig_build_dir, path.basename(ext))
+                                # Overwrite torch cpp extension with the one without pytorch dependencies
+                                copyfile(ext, dest)
+
+                self._rewrite_ld_preload(to_preload)
             _bdist_wheel.run(self)
             if is_manylinux:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
@@ -342,12 +375,12 @@ if enable_training:
 # Build Torch CPP extensions for ORTModule
 if enable_training:
     # Add Torch CPP extensions to the official onnxruntime package
-    build_torch_cpp_extensions()
-    torch_cpp_exts = glob('onnxruntime/training/ortmodule/torch_cpp_extensions/*.so')
-    torch_cpp_exts.extend(glob('onnxruntime/training/ortmodule/torch_cpp_extensions/*.dll'))
-    torch_cpp_exts.extend(glob('onnxruntime/training/ortmodule/torch_cpp_extensions/*.dylib'))
+    torch_cpp_orig_build_dir, torch_cpp_build_dir = build_torch_cpp_extensions()
+    torch_cpp_exts = glob(f'{torch_cpp_build_dir}/*.so')
+    torch_cpp_exts.extend(glob(f'{torch_cpp_build_dir}/*.dll'))
+    torch_cpp_exts.extend(glob(f'{torch_cpp_build_dir}/*.dylib'))
     for ext in torch_cpp_exts:
-        dest_ext = path.join('training/ortmodule/torch_cpp_extensions', path.basename(ext))
+        dest_ext = path.join(f'{path.join(*torch_cpp_build_dir.split(path.sep)[1:])}', path.basename(ext))
         data.append(dest_ext)
 
 package_data = {}
