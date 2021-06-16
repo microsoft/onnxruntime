@@ -1179,7 +1179,7 @@ stages:
         displayName: 'Build wheel'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\setup.py'
-          arguments: 'bdist_wheel --use_cuda ${{ parameters.build_py_parameters }} $(NightlyBuildOption) --wheel_name_suffix=$(EP_NAME)'
+          arguments: 'bdist_wheel ${{ parameters.build_py_parameters }} $(NightlyBuildOption) --wheel_name_suffix=$(EP_NAME)'
           workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
 
       - task: CopyFiles@2
