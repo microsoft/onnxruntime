@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 
 #include <algorithm>
@@ -10,7 +11,6 @@
 
 #include "core/common/optional.h"
 #include "core/framework/tensor_shape.h"
-#include "core/providers/common.h"
 
 namespace onnxruntime {
 namespace cuda {

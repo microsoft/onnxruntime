@@ -41,6 +41,8 @@ class ONNXQuantizer:
         self.static = static  # use static quantization for inputs.
         self.fuse_dynamic_quant = False
         self.extra_options = extra_options if extra_options is not None else {}
+        self.q_matmul_const_b_only = 'MatMulConstBOnly' in self.extra_options and self.extra_options['MatMulConstBOnly']
+        self.is_weight_symmetric = 'WeightSymmetric' not in self.extra_options or self.extra_options['WeightSymmetric']
 
         self.input_qType = onnx_proto.TensorProto.INT8 if input_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
         self.weight_qType = onnx_proto.TensorProto.INT8 if weight_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
@@ -185,6 +187,11 @@ class ONNXQuantizer:
 
         if self.nodes_to_exclude is not None and node.name in self.nodes_to_exclude:
             return False
+
+        # do not quantize non-constant B matrices for matmul
+        if self.q_matmul_const_b_only:
+            if node.op_type == "MatMul" and find_by_name(node.input[1], self.model.initializer()) is None:
+                return False
 
         return True
 
@@ -454,81 +461,6 @@ class ONNXQuantizer:
         self.quantized_value_map[input_name] = QuantizedValue(input_name, output_name, scale_name, zp_name, qType)
         return nodes + [qlinear_node]
 
-    def get_bias_add_nodes(self, nodes, node, last_output, quantized_bias_name):
-        '''
-        Given a node, this function handles bias add by adding a "reshape" node on bias and an "add" node
-            parameter nodes: new nodes would be appended into nodes
-            parameter node: current node (Conv)
-            parameter last_output: output of previous node (input to bias add)
-            return: the name of output
-        '''
-        # Add tensors for the shape to be reshaped to
-        weight = find_by_name(node.input[1], self.model.initializer())
-        if weight is None:
-            raise ValueError("Expected {} to be an initializer".format(node.input[1]))
-
-        # Add reshape for correct broadcase
-        reshape_input_data = quantized_bias_name
-        reshape_input_shape = quantized_bias_name + "_reshape_shape"
-        reshape_input = [reshape_input_data, reshape_input_shape]
-
-        reshape_shape = np.ones((len(weight.dims)), dtype=np.int64)
-        reshape_shape[1] = -1
-        init_shape = onnx.helper.make_tensor(reshape_input_shape, onnx_proto.TensorProto.INT64, [len(weight.dims)],
-                                             reshape_shape)
-        self.model.add_initializer(init_shape)
-
-        reshape_op_output = node.output[0] + "_reshape"
-        reshape_node = onnx.helper.make_node("Reshape", reshape_input, [reshape_op_output],
-                                             quantized_bias_name + "reshape")
-        nodes.append(reshape_node)
-
-        # Add an Add operation for bias
-        bias_add_input = [last_output]
-        bias_add_input.append(reshape_op_output)
-        add_node_output = node.output[0] + "_bias_add"
-        add_node = onnx.helper.make_node("Add", bias_add_input, [add_node_output], quantized_bias_name + "bias_add")
-        nodes.append(add_node)
-        return add_node_output
-
-    def quantize_bias_dynamic(self, bias_name, input_name, weight_name, new_node_list):
-        '''
-        Quantized the bias. Zero Point == 0 and Scale == Input_Scale * Weight_Scale
-        '''
-
-        # get scale for weight
-        weight_scale_name = self.quantized_value_map[weight_name].scale_name
-        weight_initializer = find_by_name(weight_scale_name, self.model.initializer())
-        weight_scale = self.tensor_proto_to_array(weight_initializer)
-
-        # get bias
-        bias_initializer = find_by_name(bias_name, self.model.initializer())
-        bias_data = self.tensor_proto_to_array(bias_initializer)
-        quantized_bias_name = bias_name + "_quantized"
-
-        qType = onnx_proto.TensorProto.INT32
-
-        input_scale_name = input_name + "_scale"
-        bias_scale_node = onnx.helper.make_node("Mul", [input_scale_name, weight_scale_name], [bias_name + "_scale"],
-                                                bias_name + "_scale_node")
-        new_node_list.append(bias_scale_node)
-
-        quantize_bias_node = onnx.helper.make_node("Div", [bias_name, bias_scale_node.output[0]],
-                                                   [bias_name + "_tmp_quant:0"], bias_name + "_tmp_qaunt")
-        new_node_list.append(quantize_bias_node)
-
-        bias_rounded_node = onnx.helper.make_node("Floor", quantize_bias_node.output, [bias_name + "_quant_rounded:0"],
-                                                  bias_name + "_quant_rounded")
-        new_node_list.append(bias_rounded_node)
-
-        bias_cast_node = onnx.helper.make_node("Cast",
-                                               bias_rounded_node.output, [quantized_bias_name],
-                                               quantized_bias_name + "_node",
-                                               to=qType)
-        new_node_list.append(bias_cast_node)
-
-        return quantized_bias_name
-
     def quantize_bias_static(self, bias_name, input_name, weight_name):
         '''
         Quantized the bias. Zero Point == 0 and Scale == Input_Scale * Weight_Scale
@@ -590,7 +522,7 @@ class ONNXQuantizer:
 
         return quantized_bias_name
 
-    def quantize_inputs(self, node, indices, initializer_use_weight_qType=True):
+    def quantize_inputs(self, node, indices, initializer_use_weight_qType=True, reduce_range=False, op_level_per_channel=False, axis=-1):
         '''
         Given a node, this function quantizes the inputs as follows:
             - If input is an initializer, quantize the initializer data, replace old initializer
@@ -623,8 +555,14 @@ class ONNXQuantizer:
             # Quantize the input
             initializer = find_by_name(node_input, self.model.initializer())
             if initializer is not None:
-                q_weight_name, zp_name, scale_name = self.quantize_weight(
-                    initializer, self.weight_qType if initializer_use_weight_qType else self.input_qType)
+                if self.per_channel and op_level_per_channel:
+                    q_weight_name, zp_name, scale_name = self.quantize_weight_per_channel(
+                        initializer.name, self.weight_qType if initializer_use_weight_qType else self.input_qType,
+                        axis, reduce_range)
+                else:
+                    q_weight_name, zp_name, scale_name = self.quantize_weight(
+                        initializer, self.weight_qType if initializer_use_weight_qType else self.input_qType,
+                        reduce_range)
 
                 quantized_input_names.append(q_weight_name)
                 zero_point_names.append(zp_name)
@@ -649,7 +587,7 @@ class ONNXQuantizer:
 
         return (quantized_input_names, zero_point_names, scale_names, nodes)
 
-    def quantize_weight(self, weight, qType):
+    def quantize_weight(self, weight, qType, reduce_range=False):
         '''
             :param weight: TensorProto initializer
             :param qType: type to quantize to
@@ -667,7 +605,8 @@ class ONNXQuantizer:
         # Update packed weight, zero point, and scale initializers
         weight_data = self.tensor_proto_to_array(weight)
         _, _, zero_point, scale, q_weight_data = quantize_data(weight_data.flatten().tolist(),
-                                                               get_qrange_for_qType(qType, self.reduce_range), qType)
+                                                               get_qrange_for_qType(qType, self.reduce_range and reduce_range),
+                                                               qType, self.is_weight_symmetric)
         q_weight_data = np.asarray(q_weight_data, dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[qType]).reshape(weight.dims)
         q_weight_initializer = onnx.numpy_helper.from_array(q_weight_data, q_weight_name)
 
@@ -682,7 +621,7 @@ class ONNXQuantizer:
 
         return q_weight_name, zp_name, scale_name
 
-    def quantize_weight_per_channel(self, weight_name, weight_qType, channel_axis):
+    def quantize_weight_per_channel(self, weight_name, weight_qType, channel_axis, reduce_range=True):
         # Find if this input is already quantized
         if weight_name in self.quantized_value_map:
             quantized_value = self.quantized_value_map[weight_name]
@@ -702,8 +641,9 @@ class ONNXQuantizer:
         for i in range(channel_count):
             per_channel_data = weights.take(i, channel_axis)
             rmin, rmax, zero_point, scale, quantized_per_channel_data = quantize_data(
-                per_channel_data.flatten().tolist(), get_qrange_for_qType(weight_qType, self.reduce_range),
-                weight_qType)
+                per_channel_data.flatten().tolist(),
+                get_qrange_for_qType(weight_qType, self.reduce_range and reduce_range),
+                weight_qType, self.is_weight_symmetric)
             rmin_list.append(rmin)
             rmax_list.append(rmax)
             zero_point_list.append(zero_point)
@@ -802,7 +742,8 @@ class ONNXQuantizer:
             rmax = max(rmax, 0)
 
             quantization_params[tensor_name] = compute_scale_zp(rmin, rmax, self.input_qType,
-                                                                get_qrange_for_qType(self.input_qType))
+                                                                get_qrange_for_qType(self.input_qType),
+                                                                self.is_weight_symmetric)
 
         return quantization_params
 

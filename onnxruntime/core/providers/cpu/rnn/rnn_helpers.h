@@ -20,9 +20,6 @@
 #include "gsl/gsl"
 
 namespace onnxruntime {
-class Tensor;
-class OpKernelContext;
-
 namespace rnn {
 namespace detail {
 
@@ -230,7 +227,8 @@ void ComputeGemm(const int M,
                  float* C,
                  float* C_end,
                  const int ldc,
-                 AllocatorPtr /*allocator*/,
+                 uint8_t* /* quantized_A_buffer */,
+                 int32_t* /* quantize_agg_C_buffer */,
                  concurrency::ThreadPool* thread_pool);
 
 void ComputeGemm(const int M,
@@ -244,7 +242,8 @@ void ComputeGemm(const int M,
                  float* C,
                  float* C_end,
                  const int ldc,
-                 AllocatorPtr allocator,
+                 uint8_t* quantized_A_buffer,
+                 int32_t* quantize_agg_C_buffer,
                  concurrency::ThreadPool* thread_pool);
 
 // helper to convert a span to a raw pointer

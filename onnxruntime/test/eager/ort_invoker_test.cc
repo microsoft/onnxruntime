@@ -11,9 +11,9 @@ namespace onnxruntime {
 namespace test {
 
 TEST(InvokerTest, Basic) {
-  std::unique_ptr<IExecutionProvider> cpu_execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
+  std::unique_ptr<IExecutionProvider> cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
   const std::string logger_id{"InvokerTest"};
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
       logging::Severity::kVERBOSE, false,
       logging::LoggingManager::InstanceType::Default,
@@ -44,9 +44,9 @@ TEST(InvokerTest, Basic) {
 }
 
 TEST(InvokerTest, Inplace) {
-  std::unique_ptr<IExecutionProvider> cpu_execution_provider = onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
+  std::unique_ptr<IExecutionProvider> cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
   const std::string logger_id{"InvokerTest"};
-  auto logging_manager = onnxruntime::make_unique<logging::LoggingManager>(
+  auto logging_manager = std::make_unique<logging::LoggingManager>(
       std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
       logging::Severity::kVERBOSE, false,
       logging::LoggingManager::InstanceType::Default,

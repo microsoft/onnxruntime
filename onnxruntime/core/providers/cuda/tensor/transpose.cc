@@ -14,7 +14,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     1, 12,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Transpose);
 
@@ -23,7 +23,7 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     13,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
     Transpose);
 
@@ -90,9 +90,9 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
     return Status::OK();
 
   auto element_type = input.GetElementType();
-  if (element_type == utils::GetONNXTensorElementDataType<float>() ||
-      element_type == utils::GetONNXTensorElementDataType<double>() ||
-      element_type == utils::GetONNXTensorElementDataType<MLFloat16>()) {
+  if (element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
+      element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE ||
+      element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
     auto mn = TryTransposeWithCublas(permutations, input_shape_override ? *input_shape_override : input.Shape());
     int M = std::get<0>(mn);
     int N = std::get<1>(mn);
@@ -128,25 +128,25 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
           new_permutations[j] -= 1;
         }
       }
-      for (auto j = i+1; j < new_rank; j++) {
-        new_permutations[j-1] = new_permutations[j];
+      for (auto j = i + 1; j < new_rank; j++) {
+        new_permutations[j - 1] = new_permutations[j];
       }
 
       // update input dims
       new_input_dims[prev] *= new_input_dims[curr];
       new_input_dims[curr] = 1;
-      for (auto j = static_cast<int32_t>(curr+1); j < new_rank; j++) {
-        new_input_dims[j-1] = new_input_dims[j];
+      for (auto j = static_cast<int32_t>(curr + 1); j < new_rank; j++) {
+        new_input_dims[j - 1] = new_input_dims[j];
       }
-      new_input_dims[new_rank-1] = 1;
+      new_input_dims[new_rank - 1] = 1;
 
       // update output dims
-      new_output_dims[i-1] *= new_output_dims[i];
+      new_output_dims[i - 1] *= new_output_dims[i];
       new_output_dims[i] = 1;
-      for (auto j = i+1; j < new_rank; j++) {
-        new_output_dims[j-1] = new_output_dims[j];
+      for (auto j = i + 1; j < new_rank; j++) {
+        new_output_dims[j - 1] = new_output_dims[j];
       }
-      new_output_dims[new_rank-1] = 1;
+      new_output_dims[new_rank - 1] = 1;
 
       new_rank--;
     }
@@ -166,13 +166,26 @@ Status Transpose::DoTranspose(const cudaDeviceProp& prop,
   if (CanDoTranspose3D(new_rank, new_input_dims, new_permutations)) {
     return Transpose3DImpl(stream, element_size, input_shape, tmp_input_strides,
                            input.DataRaw(), output.MutableDataRaw(), output.Shape().Size());
-  } else if (CanDoTranspose4D(prop, element_size, new_rank, new_input_dims, new_permutations)) {
+  } else if (CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(
+                 prop, element_size, new_rank, new_input_dims, new_permutations)) {
     TArray<int64_t> tmp_output_strides(new_rank);
     for (auto i = 0; i < new_rank; i++) {
       tmp_output_strides[i] = new_output_strides[new_permutations[i]];
     }
-    return Transpose4DImpl(stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
-                           tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()));
+    return Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(
+        stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
+        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()));
+  } else if (CanDoTranspose4DParallelizeOneElementPerThread(
+                 prop, element_size, new_rank, new_input_dims, new_permutations)) {
+    // Trying to see if we can still do (best effort) more optimized transposing
+    // for the 4-D case before falling back to the generic case
+    TArray<int64_t> tmp_output_strides(new_rank);
+    for (auto i = 0; i < new_rank; i++) {
+      tmp_output_strides[i] = new_output_strides[new_permutations[i]];
+    }
+    return Transpose4DParallelizeOneElementPerThread(
+        stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
+        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()));
   }
 
   // General cases

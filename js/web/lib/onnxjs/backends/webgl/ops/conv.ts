@@ -299,6 +299,7 @@ export class WebGLUnpackedConv extends Conv {
       }
       `;
     return {
+      name: 'Im2Col',
       inputLayouts: [inferenceHandler.createTextureLayoutFromShape(xshape)],
       outputLayout,
       samplers: ['X'],
@@ -361,6 +362,7 @@ export class WebGLUnpackedConv extends Conv {
       return value;
     }`;
     return {
+      name: 'dotProduct',
       inputLayouts: inputs.length === 3 ? [im2colLayout, kLayout, bLayout!] : [im2colLayout, kLayout],
       outputLayout,
       shaderSource,

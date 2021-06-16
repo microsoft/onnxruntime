@@ -3,7 +3,6 @@ set -e -o -x
 id
 SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
 SOURCE_ROOT=$(realpath $SCRIPT_DIR/../../../../)
-CUDA_VER=cuda10.1-cudnn7.6
 YOCTO_VERSION="4.19"
 INSTALL_DEPS_DISTRIBUTED_SETUP=false
 ORTMODULE_BUILD=false
@@ -23,8 +22,6 @@ r) BUILD_DIR=${OPTARG};;
 p) PYTHON_VER=${OPTARG};;
 # "--build_wheel --use_openblas"
 x) BUILD_EXTR_PAR=${OPTARG};;
-# "cuda10.0-cudnn7.3, cuda9.1-cudnn7.1"
-c) CUDA_VER=${OPTARG};;
 # x86 or other, only for ubuntu16.04 os
 a) BUILD_ARCH=${OPTARG};;
 # openvino version tag: 2020.3 (OpenVINO EP 2.0 supports version starting 2020.3)
@@ -62,12 +59,6 @@ if [ $BUILD_OS = "android" ]; then
     $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
         --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
         --dockerfile $DOCKER_FILE --context .
-elif [ $BUILD_OS = "centos7" ]; then
-    IMAGE="centos7"
-    DOCKER_FILE=Dockerfile.centos
-    $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-        --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
-        --dockerfile $DOCKER_FILE --context .
 elif [ $BUILD_OS = "yocto" ]; then
     IMAGE="arm-yocto-$YOCTO_VERSION"
     DOCKER_FILE=Dockerfile.ubuntu_for_arm
@@ -79,14 +70,10 @@ elif [ $BUILD_OS = "yocto" ]; then
     $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
         --docker-build-args="--build-arg TOOL_CHAIN=$TOOL_CHAIN_SCRIPT --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
         --dockerfile $DOCKER_FILE --context .
-else
-    if [ $BUILD_DEVICE = "gpu" ]; then
-        IMAGE="$BUILD_OS-$CUDA_VER"
-        DOCKER_FILE=Dockerfile.ubuntu_gpu
-        if [[ $BUILD_EXTR_PAR = *--enable_training* ]]; then
-            INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -t"
-            DOCKER_FILE=Dockerfile.ubuntu_gpu_training
-        fi
+elif [ $BUILD_DEVICE = "gpu" ]; then
+        #This code path is only for training. Inferecing pipeline uses CentOS
+        IMAGE="$BUILD_OS-gpu_training"
+        INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -t"
         if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -m"
         fi
@@ -94,27 +81,37 @@ else
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -u"
         fi
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-            --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA}" \
-            --dockerfile $DOCKER_FILE --context .
-    elif [ $BUILD_DEVICE = "tensorrt" ]; then
+            --docker-build-args="--build-arg BASEIMAGE=nvcr.io/nvidia/cuda:11.1.1-cudnn8-devel-${BUILD_OS} --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA} --network=host" \
+            --dockerfile Dockerfile.ubuntu_gpu_training --context .
+elif [ $BUILD_DEVICE = "tensorrt" ]; then
         # TensorRT container release 20.12
         IMAGE="$BUILD_OS-cuda11.1-cudnn8.0-tensorrt7.2"
         DOCKER_FILE=Dockerfile.ubuntu_tensorrt
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-            --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
+            --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64  --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-9/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-9/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-9/root/usr/lib64:/opt/rh/devtoolset-9/root/usr/lib:/opt/rh/devtoolset-9/root/usr/lib64/dyninst:/opt/rh/devtoolset-9/root/usr/lib/dyninst:/usr/local/lib64" \
             --dockerfile $DOCKER_FILE --context .
-    elif [ $BUILD_DEVICE = "openvino" ]; then
+elif [ $BUILD_DEVICE = "openvino" ]; then
         IMAGE="$BUILD_OS-openvino"
         DOCKER_FILE=Dockerfile.ubuntu_openvino
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
             --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OPENVINO_VERSION=${OPENVINO_VERSION}" \
             --dockerfile $DOCKER_FILE --context .
-    else
+else
         IMAGE="$BUILD_OS"
+		IMAGE_OS_VERSION=""
+		if [ $BUILD_OS = "ubuntu18.04" ]; then
+		   IMAGE_OS_VERSION="18.04"
+		   PYTHON_VER="3.6"
+		elif [ $BUILD_OS = "ubuntu20.04" ]; then
+		   IMAGE_OS_VERSION="20.04"
+		   PYTHON_VER="3.8"
+		else
+		   exit 1
+	    fi
+		
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-                --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
+                --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OS_VERSION=${IMAGE_OS_VERSION}" \
                 --dockerfile Dockerfile.ubuntu --context .
-    fi
 fi
 
 if [ -v EXTRA_IMAGE_TAG ]; then

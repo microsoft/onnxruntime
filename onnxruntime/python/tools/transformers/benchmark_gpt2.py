@@ -18,7 +18,7 @@ import torch
 import onnx
 from packaging import version
 from transformers import AutoConfig
-from gpt2_helper import DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
+from gpt2_helper import Gpt2Helper, DEFAULT_TOLERANCE, PRETRAINED_GPT2_MODELS
 from gpt2_beamsearch_helper import Gpt2HelperFactory, MODEL_CLASSES
 from quantize_helper import QuantizeHelper
 from benchmark_helper import create_onnxruntime_session, setup_logger, prepare_environment, Precision

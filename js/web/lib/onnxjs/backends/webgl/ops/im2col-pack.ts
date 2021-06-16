@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import {Tensor} from '../../../tensor';
+import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, WebGLOperator} from '../types';
 import {unpackFromChannel} from './packing-utils';
@@ -38,6 +39,7 @@ export class WebGLIm2ColPacked implements WebGLOperator {
     const im2colShape = [wshape[1] * wshape[2] * wshape[3], this.convOutputShape[2] * this.convOutputShape[3]];
     const kernelSize = wshape[2] * wshape[3];
     const unpackChannel = unpackFromChannel();
+    const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
     let unrolled = '';
 
     for (let row = 0; row <= 1; row++) {
@@ -47,13 +49,12 @@ export class WebGLIm2ColPacked implements WebGLOperator {
           pos = rc.y + ${row};
 
           if(blockIndex < ${im2colShape[1]} && pos < ${im2colShape[0]}) {
-            offsetY = int(blockIndex / (${this.convOutputShape[rank - 1]})) * ${this.strides[0]} - ${this.pads[1]};
-            d0 = offsetY + ${this.dilations[0]} * (int(mod(float(pos), ${kernelSize}.)) / ${wshape[2]} );
+            offsetY = int(blockIndex / (${this.convOutputShape[rank - 1]})) * ${this.strides[0]} - ${this.pads[0]};
+            d0 = offsetY + ${this.dilations[0]} * (imod(pos, ${kernelSize}) / ${wshape[2]});
 
             if(d0 < ${xshape[rowDim]} && d0 >= 0) {
-              offsetX = int(mod(float(blockIndex), ${this.convOutputShape[rank - 1]}.) * ${this.strides[1]}. - ${
-            this.pads[0]}.);
-              d1 = offsetX + ${this.dilations[1]} * (int(mod(mod(float(pos), ${kernelSize}.), ${wshape[2]}.)));
+              offsetX = imod(blockIndex, ${this.convOutputShape[rank - 1]}) * ${this.strides[1]} - ${this.pads[1]};
+              d1 = offsetX + ${this.dilations[1]} * imod(imod(pos, ${kernelSize}), ${wshape[2]});
 
               if(d1 < ${xshape[colDim]} && d1 >= 0) {
 
@@ -79,10 +80,11 @@ export class WebGLIm2ColPacked implements WebGLOperator {
         int blockIndex, pos, offsetY, d0, offsetX, d1, ch;
         vec2 innerDims;
         ${unrolled}
-        outputColor = result;
+        ${glsl.output} = result;
     }
           `;
     return {
+      name: 'WebGLIm2ColPacked',
       inputLayouts: [inferenceHandler.getOrCreateTextureLayout(inputs[0], 4, true, xshape, true)],
       outputLayout:
           inferenceHandler.createTextureLayoutFromShape(im2colShape, 4, im2colShape, {isPacked: true, reverseWH: true}),
