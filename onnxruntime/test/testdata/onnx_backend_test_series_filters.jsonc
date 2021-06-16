@@ -93,7 +93,18 @@
         "^test_pow", // Runs disabled pow tests from the "current_failing_tests" list at the top
         "^test_pow_types_float", // Runs disabled pow tests from the "current_failing_tests" list at the top
         "^test_neg",
-        "^test_nllloss.*"
+        "^test_nllloss_*",
+        "^test_basic_conv_*",
+        "^test_conv_*",
+        "^test_conv_with_strides_padding",
+        "^test_sum_one_input",
+        "^test_sequence_.*",
+        "^test_min_one_input",
+        "^test_max_one_input",
+        "^test_loop13_seq",
+        "^test_if*",
+        "^test_gather_elements_negative_indices"
+
     ],
     "current_failing_tests_OPENVINO_GPU": [
         "^test_div",

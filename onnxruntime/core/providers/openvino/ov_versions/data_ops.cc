@@ -354,6 +354,17 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"Conv", obj});
   }
   {
+    UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               auto& attributes = node->GetAttributes();
+                               if (attributes.count("auto_pad") == 0 || attributes.at("auto_pad").s() == "") {
+                                 return true;
+                               }
+                               return false;
+                             }};
+    op_list_.insert({"Conv", obj});
+  }
+  {
     UnsupportedOpMode obj = {{V_2020_4, V_2021_1, V_2021_2, V_2021_3},
                              [this](const Node* node, const InitializedTensorSet& initializers) {
                                if (GetInputCount(node, initializers) > 1)
@@ -384,17 +395,6 @@ void DataOps::populate_op_mode_supported() {
                                return false;
                              }};
     op_list_.insert({"ConvTranspose", obj});
-  }
-  {
-    UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3, V_2021_4},
-                             [this](const Node* node, const InitializedTensorSet&) {
-                               auto& attributes = node->GetAttributes();
-                               if (attributes.count("auto_pad") == 0 || attributes.at("auto_pad").s() == "") {
-                                 return true;
-                               }
-                               return false;
-                             }};
-    op_list_.insert({"Conv", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3, V_2021_4},
