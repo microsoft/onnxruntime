@@ -71,8 +71,8 @@ else
         fi
     elif [[ $BUILD_DEVICE = "tensorrt"* ]]; then
         if [ $BUILD_DEVICE = "tensorrt-v7.1" ]; then
-            git config --file=.gitmodules submodule.cmake/external/onnx-tensorrt.branch 7.1
-            git submodule update --init --remote cmake/external/onnx-tensorrt
+            sudo git config --file=.gitmodules submodule.cmake/external/onnx-tensorrt.branch 7.1
+            sudo git submodule update --init --remote cmake/external/onnx-tensorrt
             COMMON_BUILD_ARGS=${COMMON_BUILD_ARGS/"--skip_submodule_sync"}
         fi
         _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
