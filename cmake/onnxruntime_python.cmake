@@ -58,7 +58,13 @@ else()
   set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${ONNXRUNTIME_ROOT}/python/pybind.def")
 endif()
 
-set(onnxruntime_pybind11_state_link_targets
+set(onnxruntime_pybind11_state_link_targets)
+
+if (onnxruntime_ENABLE_TRAINING)
+  list(APPEND onnxruntime_pybind11_state_link_targets onnxruntime_training)
+endif()
+
+list(APPEND onnxruntime_pybind11_state_link_targets
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_MIGRAPHX}
@@ -70,13 +76,13 @@ set(onnxruntime_pybind11_state_link_targets
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_ROCM}
+    onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
     ${onnxruntime_tvm_libs}
 )
 
 if (onnxruntime_ENABLE_TRAINING)
-  list(APPEND onnxruntime_pybind11_state_link_targets onnxruntime_training)
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     list(APPEND onnxruntime_pybind11_state_link_targets onnxruntime_interop_torch)
   endif()
@@ -95,7 +101,6 @@ if (onnxruntime_ENABLE_TRAINING)
 endif()
 
 list(APPEND onnxruntime_pybind11_state_link_targets
-    onnxruntime_optimizer
     onnxruntime_util
     onnxruntime_graph
     onnxruntime_common
