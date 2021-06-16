@@ -4,6 +4,7 @@
 #include "dnnl_subgraph_primitive.h"
 #include "dnnl_matmul.h"
 #include "dnnl_matmul_integer.h"
+#include "dnnl_relu.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -155,6 +156,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlMatMul().CreatePrimitive(*this, node);
     } else if (node.OpType() == "MatMulInteger") {
       DnnlMatMulInteger().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Relu") {
+      DnnlRelu().CreatePrimitive(*this, node);
     } else {
       throw std::invalid_argument("not supported");
     }
