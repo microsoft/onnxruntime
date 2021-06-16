@@ -118,10 +118,11 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
 
   int64_t new_axis = 0;
   for (size_t i = 0; i < dims.size(); i++) {
-    bool is_reduce_axis = original_axes_set.find(gsl::narrow<int64_t>(i)) != original_axes_set.end();
     if (dims[i] != 1) {
       new_dims.emplace_back(dims[i]);
-      if (is_reduce_axis) new_axes.emplace_back(new_axis);
+      if (original_axes_set.find(gsl::narrow<int64_t>(i)) != original_axes_set.end()) {
+        new_axes.emplace_back(new_axis);
+      }
       new_axis++;
     }
   }
