@@ -119,7 +119,7 @@ stages:
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-$(GccVersion)/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=35;37;50;52;60;61;70' \
-                  --use_cuda --cuda_version=${{ parameter.cuda_version }} --cuda_home=/usr/local/cuda-${{ parameter.cuda_version }} --cudnn_home=/usr/local/cuda-${{ parameter.cuda_version }} ;
+                  --use_cuda --cuda_version=${{ parameters.cuda_version }} --cuda_home=/usr/local/cuda-${{ parameters.cuda_version }} --cudnn_home=/usr/local/cuda-${{ parameters.cuda_version }} ;
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CmdLine@2
