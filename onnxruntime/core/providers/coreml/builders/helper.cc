@@ -37,7 +37,8 @@ bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const lo
   const auto& op_builders = GetOpBuilders();
   if (Contains(op_builders, node.OpType())) {
     const auto* op_builder = op_builders.at(node.OpType());
-    return op_builder->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, logger);
+    OpBuilderInputParams input_params(graph_viewer);
+    return op_builder->IsOpSupported(node, input_params, logger);
   } else {
     return false;
   }

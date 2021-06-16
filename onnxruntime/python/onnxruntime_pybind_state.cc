@@ -30,6 +30,11 @@
 
 #ifdef ENABLE_TRAINING
 #include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
+
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+#include "core/language_interop_ops/torch/custom_function_register.h"
+#endif
+
 #endif
 
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
@@ -47,7 +52,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(c
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id,
+                                                                                  const char* export_runtime_module,
+                                                                                  const char* load_runtime_module);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
@@ -574,7 +581,34 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kVitisAIExecutionProvider) {
 #if USE_VITISAI
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_VITISAI("dpuv1", 0));
+      // Retrieve Vitis AI provider options
+      // `target`: The name of the DPU target (default is DPUCADX8G for backward compatibility).
+      // `export_runtime_module`: export a Vitis AI PyXIR runtime module to the specified file.
+      //    This can be used for cross compilation or saving state.
+      // `load_runtime_module`: Load an exported runtime module from disk.
+      std::string target = "DPUCADX8G";
+      std::string export_runtime_module = "";
+      std::string load_runtime_module = "";
+      auto it = provider_options_map.find(type);
+      if (it != provider_options_map.end()) {
+        auto vitis_ai_provider_options = it->second;
+        auto vai_options_it = vitis_ai_provider_options.find("target");
+        if (vai_options_it != vitis_ai_provider_options.end()) {
+          target = vai_options_it->second;
+        }
+        vai_options_it = vitis_ai_provider_options.find("export_runtime_module");
+        if (vai_options_it != vitis_ai_provider_options.end()) {
+          export_runtime_module = vai_options_it->second;
+        }
+        vai_options_it = vitis_ai_provider_options.find("load_runtime_module");
+        if (vai_options_it != vitis_ai_provider_options.end()) {
+          load_runtime_module = vai_options_it->second;
+        }
+      }
+      RegisterExecutionProvider(
+          sess, *onnxruntime::CreateExecutionProviderFactory_VITISAI(target.c_str(), 0,
+                                                                     export_runtime_module.c_str(),
+                                                                     load_runtime_module.c_str()));
 #endif
     } else if (type == kAclExecutionProvider) {
 #ifdef USE_ACL
@@ -588,7 +622,18 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_DML(0));
+      int device_id = 0;
+      auto it = provider_options_map.find(type);
+      if (it != provider_options_map.end()) {
+        for (auto option : it->second) {
+          if (option.first == "device_id") {
+            if (!option.second.empty()) {
+              device_id = std::stoi(option.second);
+            }
+          }
+        }
+      }
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_DML(device_id));
 #endif
     } else if (type == kNnapiExecutionProvider) {
 #if defined(USE_NNAPI)
@@ -772,6 +817,31 @@ void addGlobalMethods(py::module& m, Environment& env) {
         void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
         contrib::aten_ops::ATenOperatorExecutor::Initialize(p_aten_op_executor);
       });
+  m.def("register_forward_runner", [](py::object obj) -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterForwardRunner(obj.ptr());
+#else
+        ORT_UNUSED_PARAMETER(obj);
+#endif
+  });
+  m.def("register_backward_runner", [](py::object obj) -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterBackwardRunner(obj.ptr());
+#else
+        ORT_UNUSED_PARAMETER(obj);
+#endif
+  });
+  m.def("register_torch_autograd_function", [](std::string key, py::object obj) -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.RegisterTorchAutogradFunction(key, obj.ptr());
+#else
+        ORT_UNUSED_PARAMETER(key);
+        ORT_UNUSED_PARAMETER(obj);
+#endif
+  });
 #endif
 
 #ifdef USE_NUPHAR
@@ -828,17 +898,10 @@ void addGlobalMethods(py::module& m, Environment& env) {
         std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> factories = {
             onnxruntime::CreateExecutionProviderFactory_CPU(0),
 #ifdef USE_CUDA
-            onnxruntime::CreateExecutionProviderFactory_CUDA(
-                [&]() {
-                  CUDAExecutionProviderInfo info{};
-                  info.device_id = cuda_device_id;
-                  info.gpu_mem_limit = gpu_mem_limit;
-                  info.arena_extend_strategy = arena_extend_strategy;
-                  info.cudnn_conv_algo_search = cudnn_conv_algo_search;
-                  info.do_copy_in_default_stream = do_copy_in_default_stream;
-                  info.external_allocator_info = external_allocator_info;
-                  return info;
-                }()),
+            []() {
+              OrtCUDAProviderOptions provider_options{};
+              return CreateExecutionProviderFactory_Cuda(&provider_options);
+            }(),
 #endif
 #ifdef USE_ROCM
             onnxruntime::CreateExecutionProviderFactory_ROCM(
@@ -868,7 +931,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
             onnxruntime::CreateExecutionProviderFactory_MIGraphX(0),
 #endif
 #ifdef USE_VITISAI
-            onnxruntime::CreateExecutionProviderFactory_VitisAI("DPU", 0),
+            onnxruntime::CreateExecutionProviderFactory_VITISAI("DPUCADX8G", 0, "", ""),
 #endif
 #ifdef USE_ACL
             onnxruntime::CreateExecutionProviderFactory_ACL(0),
@@ -1547,7 +1610,7 @@ static struct {
 void addObjectMethodsForTraining(py::module& m);
 #endif
 
-PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
+void CreatePybindStateModule(py::module& m){
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
 

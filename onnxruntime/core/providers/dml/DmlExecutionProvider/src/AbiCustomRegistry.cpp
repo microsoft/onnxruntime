@@ -333,7 +333,6 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     bool canAliasFirstInput,
     bool supportsGraph,
     const uint32_t* requiredInputCountForGraph,
-    bool requiresFloatFormatsForGraph,
     bool supportedWith64BitTensorsVia32BitStrides,
     bool supportedWith64BitTensorsVia32BitStridesFromAnyEp,
     bool prefer64BitTensorsDirectly,
@@ -387,11 +386,11 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     std::string_view name(opKernel->name);
     if (name == "MemcpyToHost")
     {
-        builder.OutputMemoryType<::OrtMemType::OrtMemTypeCPUOutput>(0);
+        builder.OutputMemoryType(::OrtMemType::OrtMemTypeCPUOutput, 0);
     }
     else if (name == "MemcpyFromHost")
     {
-        builder.InputMemoryType<::OrtMemType::OrtMemTypeCPUInput>(0);
+        builder.InputMemoryType(::OrtMemType::OrtMemTypeCPUInput, 0);
     }
         
     std::vector<uint32_t> constantCpuInputCapture;
@@ -399,7 +398,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
 
     for (uint32_t inputIndex : constantCpuInputCapture)
     {
-        builder.InputMemoryType<::OrtMemType::OrtMemTypeCPUInput>(inputIndex);
+        builder.InputMemoryType(::OrtMemType::OrtMemTypeCPUInput, inputIndex);
     }
 
     if (canAliasFirstInput)
@@ -503,7 +502,6 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                 graphReg.requiredInputCount = *requiredInputCountForGraph;
             }
 
-            graphReg.requiresFloatFormatsExceptConstInputs = requiresFloatFormatsForGraph;
             regInfo->graphNodeFactoryRegistration = graphReg;
         }
 
@@ -536,7 +534,6 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
         if (canAliasFirstInput ||
             supportsGraph ||
             requiredInputCountForGraph ||
-            requiresFloatFormatsForGraph ||
             requiredConstantCpuInputs ||
             supportedWith64BitTensorsVia32BitStrides ||
             supportedWith64BitTensorsVia32BitStridesFromAnyEp ||

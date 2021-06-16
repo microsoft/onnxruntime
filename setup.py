@@ -1,13 +1,13 @@
-#-------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-#--------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
-from setuptools import setup, find_packages, Extension
+from setuptools import setup, Extension
 from distutils import log as logger
 from distutils.command.build_ext import build_ext as _build_ext
 from glob import glob
-from os import path, getcwd, environ, remove, walk, makedirs, listdir
+from os import path, getcwd, environ, remove, listdir
 from shutil import copyfile, copytree, rmtree
 import platform
 import subprocess
@@ -19,6 +19,7 @@ featurizers_build = False
 package_name = 'onnxruntime'
 wheel_name_suffix = None
 
+
 def parse_arg_remove_boolean(argv, arg_name):
     arg_value = False
     if arg_name in sys.argv:
@@ -26,6 +27,7 @@ def parse_arg_remove_boolean(argv, arg_name):
         argv.remove(arg_name)
 
     return arg_value
+
 
 def parse_arg_remove_string(argv, arg_name_equal):
     arg_value = None
@@ -36,6 +38,7 @@ def parse_arg_remove_string(argv, arg_name_equal):
             break
 
     return arg_value
+
 
 # Any combination of the following arguments can be applied
 featurizers_build = parse_arg_remove_boolean(sys.argv, '--use_featurizers')
@@ -107,6 +110,7 @@ class build_ext(_build_ext):
 
 try:
     from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
+
     class bdist_wheel(_bdist_wheel):
         def finalize_options(self):
             _bdist_wheel.finalize_options(self)
@@ -391,6 +395,15 @@ if not path.exists(requirements_path):
     raise FileNotFoundError("Unable to find " + requirements_file)
 with open(requirements_path) as f:
     install_requires = f.read().splitlines()
+
+
+if is_manylinux:
+    AUDITWHEEL_PLAT = environ.get('AUDITWHEEL_PLAT', None)
+    if AUDITWHEEL_PLAT == 'manylinux2014_aarch64':
+        for i in range(len(install_requires)):
+            req = install_requires[i]
+            if req.startswith("numpy"):
+                install_requires[i] = "numpy >= 1.19.5"
 
 if enable_training:
     def save_build_and_package_info(package_name, version_number, cuda_version):
