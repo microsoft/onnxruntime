@@ -75,6 +75,7 @@ class IOBinding {
     * This simply collects the outputs obtained after calling Run() inside the @param outputs.
     */
   const std::vector<std::string>& GetOutputNames() const;
+  const std::vector<OrtValue>& GetOutputs() const;
   std::vector<OrtValue>& GetOutputs();
 
   const std::vector<std::string>& GetInputNames() const;

@@ -1,12 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/cuda/reduction/reduction_ops.h"
-
-#include "core/framework/data_types_internal.h"
-#include "core/framework/op_kernel_context_internal.h"
-#include "core/providers/common.h"
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cpu/tensor/utils.h"
+#include "core/providers/cuda/reduction/reduction_ops.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cuda/math/binary_elementwise_ops_impl.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
@@ -17,113 +14,113 @@ namespace onnxruntime {
 namespace cuda {
 
 // opset 11 explicitly added support for negative axis. implementation already allowed it.
-#define REGISTER_KERNEL_TYPED(name, T)                                          \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      1, 10,                                                                    \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                 \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      11, 12,                                                                   \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      13,                                                                       \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED(name, T)                                                     \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      1, 10,                                                                               \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      11, 12,                                                                              \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      13,                                                                                  \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
 // Register those with changes in OpSet12.
-#define REGISTER_KERNEL_TYPED_12(name, T)                                       \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      1, 10,                                                                    \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                 \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      11, 11,                                                                   \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                 \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      12, 12,                                                                   \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      13,                                                                       \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED_12(name, T)                                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      1, 10,                                                                               \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      11, 11,                                                                              \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      12, 12,                                                                              \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      13,                                                                                  \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
 // CUDA ArgMax/ArgMin doesn't have OpSet12 implementation (with select_last_index attr), keep it in OpSet11 for now.
-#define REGISTER_KERNEL_TYPED_11(name, T)                                       \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      1, 10,                                                                    \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      11,                                                                       \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_KERNEL_TYPED_11(name, T)                                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      1, 10,                                                                               \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      11,                                                                                  \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
 // Register with the latest version 13
-#define REGISTER_KERNEL_TYPED_13(name, T)                                       \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      1, 10,                                                                    \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                 \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      11, 12,                                                                   \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                 \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      name,                                                                     \
-      kOnnxDomain,                                                              \
-      13,                                                                       \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder()                                                        \
-          .InputMemoryType<OrtMemTypeCPUInput>(1)                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),               \
+#define REGISTER_KERNEL_TYPED_13(name, T)                                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      1, 10,                                                                               \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      11, 12,                                                                              \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);                                                                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      13,                                                                                  \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create())                                                        \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),                          \
       name<T>);
 
 // TODO ReduceKernel::ReduceKernelShared() is still used by some other training classes though it's not used here - this should be refactored.
@@ -615,7 +612,7 @@ Status ReduceComputeCore(CUDAExecutionProvider& cuda_ep, const Tensor& input, Pr
     // cudnnReduceTensor has issue if input and output has same size, which will happen if the axis to be reduced has dim value of 1.
     // the output is zeros of the output size
     if (input_count == output_count) {
-      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output.template MutableData<int64_t>(), static_cast<int64_t>(0), output_count * sizeof(int64_t)));
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output.template MutableData<int64_t>(), static_cast<int64_t>(0), output_count * sizeof(int64_t), stream));
     } else {
       if (temp_X) {
         auto temp_output = cuda_ep.GetScratchBuffer<float>(output_count);
@@ -686,69 +683,69 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
                                                    calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction);
 }
 
-#define SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(T)                                                                      \
-  template <>                                                                                                        \
-  template <>                                                                                                        \
-  Status ReduceKernel<true>::ComputeImpl<T, CUDNN_REDUCE_TENSOR_NO_INDICES>(                                         \
-      OpKernelContext * ctx, cudnnReduceTensorOp_t cudnn_reduce_op) const {                                          \
-    typedef typename ToCudaType<T>::MappedType CudaT;                                                                \
-    const Tensor* X = ctx->Input<Tensor>(0);                                                                         \
-    std::vector<int64_t> axes;                                                                                       \
-    size_t num_inputs = ctx->InputCount();                                                                           \
-    if (num_inputs == 2) {                                                                                           \
-      const Tensor* axes_tensor = ctx->Input<Tensor>(1);                                                             \
-      ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");                                                     \
-      ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");             \
-      auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);                                                     \
-      const auto* data = axes_tensor->template Data<int64_t>();                                                      \
-      axes.assign(data, data + nDims);                                                                               \
-    } else {                                                                                                         \
-      axes.assign(axes_.begin(), axes_.end());                                                                       \
-    }                                                                                                                \
-                                                                                                                     \
-    if (axes.empty() && noop_with_empty_axes_) {                                                                     \
-      auto* Y = ctx->Output(0, X->Shape());                                                                          \
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), X->SizeInBytes(),    \
-                                           cudaMemcpyDeviceToDevice, Stream()));                                     \
-      return Status::OK();                                                                                           \
-    }                                                                                                                \
-                                                                                                                     \
-    PrepareReduceMetadata prepare_reduce_metadata;                                                                   \
-    ORT_RETURN_IF_ERROR(PrepareForReduce(X, keepdims_, axes, prepare_reduce_metadata));                              \
-                                                                                                                     \
-    Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);                                        \
-                                                                                                                     \
-    int64_t input_count = prepare_reduce_metadata.input_count;                                                       \
-    int64_t output_count = prepare_reduce_metadata.output_count;                                                     \
-    std::vector<int64_t>& input_dims_cudnn = prepare_reduce_metadata.input_dims_cudnn;                               \
-    std::vector<int64_t>& output_dims_cudnn = prepare_reduce_metadata.output_dims_cudnn;                             \
-                                                                                                                     \
-    if (input_count == 0) {                                                                                          \
-      assert(Y->Shape().Size() == 0);                                                                                \
-      return Status::OK();                                                                                           \
-    }                                                                                                                \
-                                                                                                                     \
-    if (input_count == output_count) {                                                                               \
-      if (Y->template MutableData<T>() != X->template Data<T>()) {                                                   \
-        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(),                    \
-                                             input_count * sizeof(T), cudaMemcpyDeviceToDevice, Stream()));          \
-      }                                                                                                              \
-      return Status::OK();                                                                                           \
-    }                                                                                                                \
-                                                                                                                     \
-    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(Y->MutableDataRaw(), 0, Y->SizeInBytes(), Stream()));                       \
-                                                                                                                     \
-    size_t indices_bytes = 0;                                                                                        \
-    size_t workspace_bytes = 0;                                                                                      \
-    CudnnTensor input_tensor;                                                                                        \
-    CudnnTensor output_tensor;                                                                                       \
-    CudnnReduceDescriptor reduce_desc;                                                                               \
-                                                                                                                     \
-    cudnnDataType_t cudnn_type_X = CUDNN_DATA_FLOAT;                                                                 \
-    IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count);                                        \
+#define SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(T)                                                                                \
+  template <>                                                                                                                  \
+  template <>                                                                                                                  \
+  Status ReduceKernel<true>::ComputeImpl<T, CUDNN_REDUCE_TENSOR_NO_INDICES>(                                                   \
+      OpKernelContext * ctx, cudnnReduceTensorOp_t cudnn_reduce_op) const {                                                    \
+    typedef typename ToCudaType<T>::MappedType CudaT;                                                                          \
+    const Tensor* X = ctx->Input<Tensor>(0);                                                                                   \
+    std::vector<int64_t> axes;                                                                                                 \
+    size_t num_inputs = ctx->InputCount();                                                                                     \
+    if (num_inputs == 2) {                                                                                                     \
+      const Tensor* axes_tensor = ctx->Input<Tensor>(1);                                                                       \
+      ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");                                                               \
+      ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1, "An axes tensor must be a vector tensor.");                       \
+      auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);                                                               \
+      const auto* data = axes_tensor->template Data<int64_t>();                                                                \
+      axes.assign(data, data + nDims);                                                                                         \
+    } else {                                                                                                                   \
+      axes.assign(axes_.begin(), axes_.end());                                                                                 \
+    }                                                                                                                          \
+                                                                                                                               \
+    if (axes.empty() && noop_with_empty_axes_) {                                                                               \
+      auto* Y = ctx->Output(0, X->Shape());                                                                                    \
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(), X->SizeInBytes(),              \
+                                           cudaMemcpyDeviceToDevice, Stream()));                                               \
+      return Status::OK();                                                                                                     \
+    }                                                                                                                          \
+                                                                                                                               \
+    PrepareReduceMetadata prepare_reduce_metadata;                                                                             \
+    ORT_RETURN_IF_ERROR(PrepareForReduce(X, keepdims_, axes, prepare_reduce_metadata));                                        \
+                                                                                                                               \
+    Tensor* Y = ctx->Output(0, prepare_reduce_metadata.squeezed_output_dims);                                                  \
+                                                                                                                               \
+    int64_t input_count = prepare_reduce_metadata.input_count;                                                                 \
+    int64_t output_count = prepare_reduce_metadata.output_count;                                                               \
+    std::vector<int64_t>& input_dims_cudnn = prepare_reduce_metadata.input_dims_cudnn;                                         \
+    std::vector<int64_t>& output_dims_cudnn = prepare_reduce_metadata.output_dims_cudnn;                                       \
+                                                                                                                               \
+    if (input_count == 0) {                                                                                                    \
+      assert(Y->Shape().Size() == 0);                                                                                          \
+      return Status::OK();                                                                                                     \
+    }                                                                                                                          \
+                                                                                                                               \
+    if (input_count == output_count) {                                                                                         \
+      if (Y->template MutableData<T>() != X->template Data<T>()) {                                                             \
+        CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->template MutableData<T>(), X->template Data<T>(),                              \
+                                             input_count * sizeof(T), cudaMemcpyDeviceToDevice, Stream()));                    \
+      }                                                                                                                        \
+      return Status::OK();                                                                                                     \
+    }                                                                                                                          \
+                                                                                                                               \
+    CUDA_RETURN_IF_ERROR(cudaMemsetAsync(Y->MutableDataRaw(), 0, Y->SizeInBytes(), Stream()));                                 \
+                                                                                                                               \
+    size_t indices_bytes = 0;                                                                                                  \
+    size_t workspace_bytes = 0;                                                                                                \
+    CudnnTensor input_tensor;                                                                                                  \
+    CudnnTensor output_tensor;                                                                                                 \
+    CudnnReduceDescriptor reduce_desc;                                                                                         \
+                                                                                                                               \
+    cudnnDataType_t cudnn_type_X = CUDNN_DATA_FLOAT;                                                                           \
+    IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count);                                                  \
     Impl_Cast<CudaT, float>(Stream(), reinterpret_cast<const CudaT*>(X->template Data<T>()), temp_X.get(), X->Shape().Size()); \
                                                                                                                      \
-    ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnn_reduce_op, cudnn_type_X, CUDNN_REDUCE_TENSOR_FLATTENED_INDICES));      \
+    ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnn_reduce_op, cudnn_type_X, CUDNN_REDUCE_TENSOR_NO_INDICES));             \
     ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_cudnn, cudnn_type_X));                                           \
     ORT_RETURN_IF_ERROR(output_tensor.Set(output_dims_cudnn, cudnn_type_X));                                         \
     CUDNN_RETURN_IF_ERROR(                                                                                           \
@@ -766,8 +763,8 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
                                             &zero, output_tensor, temp_Y.get()));                                    \
                                                                                                                      \
     Impl_Cast<float, CudaT>(Stream(), temp_Y.get(), reinterpret_cast<CudaT*>(Y->template MutableData<T>()), output_count);     \
-                                                                                                                     \
-    return Status::OK();                                                                                             \
+                                                                                                                               \
+    return Status::OK();                                                                                                       \
   }
 
 SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(int32_t)
@@ -859,7 +856,7 @@ Status ReduceKernel<true>::ComputeImpl<BFloat16, CUDNN_REDUCE_TENSOR_NO_INDICES>
   Impl_Cast<CudaT, float>(Stream(), reinterpret_cast<const CudaT*>(X->template Data<BFloat16>()), temp_X.get(),
                           X->Shape().Size());
 
-  ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnn_reduce_op, cudnn_type_X, CUDNN_REDUCE_TENSOR_FLATTENED_INDICES));
+  ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnn_reduce_op, cudnn_type_X, CUDNN_REDUCE_TENSOR_NO_INDICES));
   ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_cudnn, cudnn_type_X));
   ORT_RETURN_IF_ERROR(output_tensor.Set(output_dims_cudnn, cudnn_type_X));
   CUDNN_RETURN_IF_ERROR(
@@ -885,10 +882,10 @@ Status ReduceKernel<true>::ComputeImpl<BFloat16, CUDNN_REDUCE_TENSOR_NO_INDICES>
 namespace ReductionOps {
 
 template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
-Tensor ReduceCompute(CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op, AllocatorPtr allocator,
-                     const Tensor& input, const std::vector<int64_t>& axes,
-                     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-                     bool fast_reduction, const TensorShape* input_shape_override) {
+std::unique_ptr<Tensor> ReduceCompute(CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op, AllocatorPtr allocator,
+                                      const Tensor& input, const std::vector<int64_t>& axes,
+                                      bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
+                                      bool fast_reduction, const TensorShape* input_shape_override) {
   PrepareReduceMetadata prepare_reduce_metadata;
   auto status = PrepareForReduce(&input,
                                  keep_dims,
@@ -900,9 +897,9 @@ Tensor ReduceCompute(CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn
     ORT_THROW(ONNXRUNTIME, FAIL, "Failed to perform reduce op: ", status.ErrorMessage());
   }
 
-  Tensor output(input.DataType(), prepare_reduce_metadata.squeezed_output_dims, allocator);
+  auto output = Tensor::Create(input.DataType(), prepare_reduce_metadata.squeezed_output_dims, allocator);
 
-  status = ReduceComputeCore<T, ReduceTensorIndices>(cuda_ep, input, prepare_reduce_metadata, output, cudnn_reduce_op, axes,
+  status = ReduceComputeCore<T, ReduceTensorIndices>(cuda_ep, input, prepare_reduce_metadata, *output, cudnn_reduce_op, axes,
                                                      calculate_log, calculate_sqt, log_sum_exp, fast_reduction, input_shape_override);
 
   if (!status.IsOK()) {
@@ -914,21 +911,21 @@ Tensor ReduceCompute(CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn
 
 // Explicit template instantiation (needed to be used in einsum_auxiliary_ops.cc)
 
-template Tensor ReduceCompute<float, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+template std::unique_ptr<Tensor> ReduceCompute<float, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op,
     AllocatorPtr allocator,
     const Tensor& input, const std::vector<int64_t>& axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
     bool fast_reduction, const TensorShape* input_shape_override);
 
-template Tensor ReduceCompute<double, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+template std::unique_ptr<Tensor> ReduceCompute<double, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op,
     AllocatorPtr allocator,
     const Tensor& input, const std::vector<int64_t>& axes,
     bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
     bool fast_reduction, const TensorShape* input_shape_override);
 
-template Tensor ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO_INDICES>(
+template std::unique_ptr<Tensor> ReduceCompute<MLFloat16, CUDNN_REDUCE_TENSOR_NO_INDICES>(
     CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op,
     AllocatorPtr allocator,
     const Tensor& input, const std::vector<int64_t>& axes,

@@ -22,26 +22,32 @@ const options = ORT_WEB_TEST_CONFIG.options;
 if (options.debug !== undefined) {
   ort.env.debug = options.debug;
 }
-if (ort.env.webgl && options.webglFlags && options.webglFlags.contextId !== undefined) {
-  ort.env.webgl.contextId = options.webglFlags.contextId;
-}
-if (ort.env.webgl && options.webglFlags && options.webglFlags.matmulMaxBatchSize !== undefined) {
-  ort.env.webgl.matmulMaxBatchSize = options.webglFlags.matmulMaxBatchSize;
-}
-if (ort.env.webgl && options.webglFlags && options.webglFlags.textureCacheMode !== undefined) {
-  ort.env.webgl.textureCacheMode = options.webglFlags.textureCacheMode;
-}
-if (ort.env.webgl && options.webglFlags && options.webglFlags.pack !== undefined) {
-  ort.env.webgl.pack = options.webglFlags.pack;
-}
-if (ort.env.wasm && options.wasmFlags && options.wasmFlags.numThreads !== undefined) {
-  ort.env.wasm.numThreads = options.wasmFlags.numThreads;
-}
-if (ort.env.wasm && options.wasmFlags && options.wasmFlags.loggingLevel !== undefined) {
-  ort.env.wasm.loggingLevel = options.wasmFlags.loggingLevel;
-}
-if (ort.env.wasm && options.wasmFlags && options.wasmFlags.initTimeout !== undefined) {
-  ort.env.wasm.initTimeout = options.wasmFlags.initTimeout;
+if (options.globalEnvFlags) {
+  const flags = options.globalEnvFlags;
+  if (flags.logLevel !== undefined) {
+    ort.env.logLevel = flags.logLevel;
+  }
+  if (flags.webgl?.contextId !== undefined) {
+    ort.env.webgl.contextId = flags.webgl.contextId;
+  }
+  if (flags.webgl?.matmulMaxBatchSize !== undefined) {
+    ort.env.webgl.matmulMaxBatchSize = flags.webgl.matmulMaxBatchSize;
+  }
+  if (flags.webgl?.textureCacheMode !== undefined) {
+    ort.env.webgl.textureCacheMode = flags.webgl.textureCacheMode;
+  }
+  if (flags.webgl?.pack !== undefined) {
+    ort.env.webgl.pack = flags.webgl.pack;
+  }
+  if (flags.wasm?.numThreads !== undefined) {
+    ort.env.wasm.numThreads = flags.wasm.numThreads;
+  }
+  if (flags.wasm?.simd !== undefined) {
+    ort.env.wasm.simd = flags.wasm.simd;
+  }
+  if (flags.wasm?.initTimeout !== undefined) {
+    ort.env.wasm.initTimeout = flags.wasm.initTimeout;
+  }
 }
 
 // Set logging configuration

@@ -1,6 +1,6 @@
 {
   "name": "onnxruntime-react-native",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Onnxruntime bridge for react native",
   "main": "dist/commonjs/index",
   "module": "dist/module/index",
@@ -11,17 +11,14 @@
     "lib",
     "dist",
     "android",
-    "ios",
-    "onnxruntime-react-native.iphoneos.podspec",
-    "onnxruntime-react-native.iphonesimulator.podspec",
-    "!dist/typescript/example",
-    "!android/build",
-    "!ios/build",
-    "!**/__tests__",
-    "!**/__fixtures__",
-    "!**/__mocks__",
-    "!.gitignore",
-    "!.placeholder"
+    "ios/*.h",
+    "ios/*.mm",
+    "onnxruntime-react-native.podspec",
+    "!dist/commonjs/*.js.map",
+    "!dist/module/*.js.map",
+    "!android/.gitignore",
+    "!android/.idea",
+    "!android/build"
   ],
   "scripts": {
     "test": "jest",
@@ -42,7 +39,7 @@
     "ONNX Runtime"
   ],
   "repository": "https://github.com/Microsoft/onnxruntime.git",
-  "author": "hanbitmyths",
+  "author": "ONNX Runtime",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/Microsoft/onnxruntime/issues"

@@ -20,15 +20,13 @@ export const initializeFlags = (): void => {
     env.wasm.initTimeout = 0;
   }
 
-  if (typeof env.wasm.numThreads !== 'number' || !Number.isInteger(env.wasm.numThreads) || env.wasm.numThreads < 0) {
-    const numCpuLogicalCores = typeof navigator === 'undefined' ? cpus().length : navigator.hardwareConcurrency;
-    env.wasm.numThreads = Math.ceil((numCpuLogicalCores || 1) / 2);
+  if (typeof env.wasm.simd !== 'boolean') {
+    env.wasm.simd = true;
   }
-  env.wasm.numThreads = Math.min(4, env.wasm.numThreads);
 
-  if (typeof env.wasm.loggingLevel !== 'string' ||
-      ['verbose', 'info', 'warning', 'error', 'fatal'].indexOf(env.wasm.loggingLevel) === -1) {
-    env.wasm.loggingLevel = 'warning';
+  if (typeof env.wasm.numThreads !== 'number' || !Number.isInteger(env.wasm.numThreads) || env.wasm.numThreads <= 0) {
+    const numCpuLogicalCores = typeof navigator === 'undefined' ? cpus().length : navigator.hardwareConcurrency;
+    env.wasm.numThreads = Math.min(4, Math.ceil((numCpuLogicalCores || 1) / 2));
   }
 };
 

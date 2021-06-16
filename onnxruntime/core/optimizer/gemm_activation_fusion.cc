@@ -24,7 +24,7 @@ bool IsFusableActivation(const Node& node) {
   return IsSupportedOptypeVersionAndDomain(node, "Elu", {6}, kOnnxDomain) ||
          IsSupportedOptypeVersionAndDomain(node, "HardSigmoid", {6}, kOnnxDomain) ||
          IsSupportedOptypeVersionAndDomain(node, "LeakyRelu", {6}, kOnnxDomain) ||
-         IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13}, kOnnxDomain) ||
+         IsSupportedOptypeVersionAndDomain(node, "Relu", {6, 13, 14}, kOnnxDomain) ||
          IsSupportedOptypeVersionAndDomain(node, "Selu", {6}, kOnnxDomain) ||
          IsSupportedOptypeVersionAndDomain(node, "Sigmoid", {6, 13}, kOnnxDomain) ||
          IsSupportedOptypeVersionAndDomain(node, "Softplus", {1}, kOnnxDomain) ||

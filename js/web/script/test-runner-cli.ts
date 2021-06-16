@@ -144,9 +144,7 @@ run({
     cpuOptions: args.cpuOptions,
     webglOptions: args.webglOptions,
     wasmOptions: args.wasmOptions,
-    cpuFlags: args.cpuFlags,
-    webglFlags: args.webglFlags,
-    wasmFlags: args.wasmFlags,
+    globalEnvFlags: args.globalEnvFlags
   }
 });
 npmlog.info('TestRunnerCli', 'Tests completed successfully');

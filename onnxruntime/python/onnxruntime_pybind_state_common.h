@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma once
+
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/cerr_sink.h"
 #include "core/framework/allocator.h"
@@ -8,8 +10,197 @@
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
 
+#ifdef ENABLE_TRAINING
+#include "core/dlpack/dlpack_converter.h"
+#endif
+
+// execution provider factory creator headers
+struct OrtStatus {
+  OrtErrorCode code;
+  char msg[1];  // a null-terminated string
+};
+
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_NUPHAR BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML
+#include "core/session/onnxruntime_cxx_api.h"
+#include "core/providers/providers.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/providers/cpu/cpu_provider_factory_creator.h"
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+#define BACKEND_PROC "GPU"
+#else
+#define BACKEND_PROC "CPU"
+#endif
+
+#if _OPENMP
+#define BACKEND_OPENMP "-OPENMP"
+#else
+#define BACKEND_OPENMP ""
+#endif
+
+#if USE_DNNL
+#define BACKEND_DNNL "-DNNL"
+#else
+#define BACKEND_DNNL ""
+#endif
+
+#if USE_MIGRAPHX
+#define BACKEND_MIGRAPHX "-MIGRAPHX"
+#else
+#define BACKEND_MIGRAPHX ""
+#endif
+
+#ifdef USE_OPENVINO
+#if OPENVINO_CONFIG_CPU_FP32
+#define BACKEND_OPENVINO "-OPENVINO_CPU_FP32"
+
+#elif OPENVINO_CONFIG_GPU_FP32
+#define BACKEND_OPENVINO "-OPENVINO_GPU_FP32"
+
+#elif OPENVINO_CONFIG_GPU_FP16
+#define BACKEND_OPENVINO "-OPENVINO_GPU_FP16"
+
+#elif OPENVINO_CONFIG_MYRIAD
+#define BACKEND_OPENVINO "-OPENVINO_MYRIAD"
+
+#elif OPENVINO_CONFIG_VAD_M
+#define BACKEND_OPENVINO "-OPENVINO_VAD_M"
+
+#elif OPENVINO_CONFIG_VAD_F
+#define BACKEND_OPENVINO "-OPENVINO_VAD_F"
+
+#elif OPENVINO_CONFIG_MULTI
+#define BACKEND_OPENVINO "-OPENVINO_MULTI"
+
+#elif OPENVINO_CONFIG_HETERO
+#define BACKEND_OPENVINO "-OPENVINO_HETERO"
+#endif
+#else
+#define BACKEND_OPENVINO ""
+#endif
+
+#ifdef USE_NUPHAR
+#define BACKEND_NUPHAR "-NUPHAR"
+#else
+#define BACKEND_NUPHAR ""
+#endif
+
+#if USE_VITISAI
+#define BACKEND_VITISAI "-VITISAI"
+#include "core/providers/vitisai/vitisai_execution_provider.h"
+#else
+#define BACKEND_VITISAI ""
+#endif
+
+#if USE_OPENBLAS
+#define BACKEND_OPENBLAS "-OPENBLAS"
+#else
+#define BACKEND_OPENBLAS ""
+#endif
+
+#if USE_ACL
+#define BACKEND_ACL "-ACL"
+#else
+#define BACKEND_ACL ""
+#endif
+
+#if USE_ARMNN
+#define BACKEND_ARMNN "-ARMNN"
+#else
+#define BACKEND_ARMNN ""
+#endif
+
+#if USE_DML
+#define BACKEND_DML "-DML"
+#else
+#define BACKEND_DML ""
+#endif
+
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_factory.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
+#endif
+#ifdef USE_TENSORRT
+#include "core/providers/tensorrt/tensorrt_provider_factory.h"
+#endif
+#ifdef USE_MIGRAPHX
+#include "core/providers/migraphx/migraphx_provider_factory.h"
+#endif
+#ifdef USE_OPENVINO
+#include "core/providers/openvino/openvino_provider_factory.h"
+// TODO remove deprecated global config
+namespace onnxruntime {
+ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
+namespace python {
+extern std::string openvino_device_type;
+}
+}  // namespace onnxruntime
+#endif
+#ifdef USE_NUPHAR
+#include "core/providers/nuphar/nuphar_provider_factory.h"
+// TODO remove deprecated global config
 namespace onnxruntime {
 namespace python {
+extern std::string nuphar_settings;
+}
+}  // namespace onnxruntime
+#endif
+#ifdef USE_VITISAI
+#include "core/providers/vitisai/vitisai_provider_factory.h"
+#endif
+#ifdef USE_ACL
+#include "core/providers/acl/acl_provider_factory.h"
+#endif
+#ifdef USE_ARMNN
+#include "core/providers/armnn/armnn_provider_factory.h"
+#endif
+#ifdef USE_DML
+#include "core/providers/dml/dml_provider_factory.h"
+#endif
+
+#if defined(USE_CUDA) || defined(USE_ROCM)
+#ifdef USE_CUDA
+namespace onnxruntime {
+ProviderInfo_CUDA* GetProviderInfo_CUDA();
+namespace python {
+// TODO remove deprecated global config
+extern OrtCudnnConvAlgoSearch cudnn_conv_algo_search;
+// TODO remove deprecated global config
+extern bool do_copy_in_default_stream;
+extern onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info;
+}  // namespace python
+}  // namespace onnxruntime
+#endif
+
+#ifdef USE_ROCM
+#include "core/providers/rocm/rocm_execution_provider.h"
+#include "core/providers/rocm/rocm_allocator.h"
+#include "core/providers/rocm/rocm_provider_factory_creator.h"
+namespace onnxruntime {
+namespace python {
+extern onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info;
+}
+}  // namespace onnxruntime
+#endif
+
+// TODO remove deprecated global config
+namespace onnxruntime {
+namespace python {
+extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
+}
+}  // namespace onnxruntime
+#endif
+
+#include "core/providers/dnnl/dnnl_provider_factory.h"
+#include "core/providers/shared_library/provider_host_api.h"
+
+namespace onnxruntime {
+namespace python {
+
+// TODO remove deprecated global config
+extern OrtDevice::DeviceId cuda_device_id;
+// TODO remove deprecated global config
+extern size_t gpu_mem_limit;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 struct CustomOpLibrary {
@@ -134,6 +325,20 @@ void InitializeSession(InferenceSession* sess,
 
 // Checks if PyErrOccured, fetches status and throws.
 void ThrowIfPyErrOccured();
+
+void addOrtValueMethods(pybind11::module& m);
+
+void addIoBindingMethods(pybind11::module& m);
+
+const char* GetDeviceName(const OrtDevice& device);
+
+bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int id);
+
+AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id);
+
+bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
+                   const std::string& name,
+                   /*out*/ ONNX_NAMESPACE::TypeProto& type_proto);
 
 }  // namespace python
 }  // namespace onnxruntime

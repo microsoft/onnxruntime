@@ -162,7 +162,9 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
 static constexpr PATH_TYPE MATMUL_MODEL_URI = TSTR("testdata/matmul_1.onnx");
+#ifndef ORT_NO_RTTI
 static constexpr PATH_TYPE SEQUENCE_MODEL_URI = TSTR("testdata/sequence_length.onnx");
+#endif
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/custom_op_library/custom_op_test.onnx");
 static constexpr PATH_TYPE OVERRIDABLE_INITIALIZER_MODEL_URI = TSTR("testdata/overridable_initializer.onnx");
@@ -1327,7 +1329,7 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
                     nullptr);
 }
 
-TEST(CApiTest, TestSharingOfInitializerWithPrepackedWeightsCaching) {
+TEST(CApiTest, TestSharingOfInitializerAndItsPrepackedVersion) {
   // simple inference test
   // prepare inputs
   std::vector<Input> inputs(1);
@@ -1442,7 +1444,7 @@ TEST(CApiTest, TestIncorrectInputTypeToModel_SequenceTensors) {
 }
 #endif
 
-TEST(CApiTest, allocate_initializers_from_non_arena_memory) {
+TEST(CApiTest, AllocateInitializersFromNonArenaMemory) {
   Ort::SessionOptions session_options;
 
 #ifdef USE_CUDA
@@ -1464,12 +1466,12 @@ TEST(CApiTest, allocate_initializers_from_non_arena_memory) {
 #ifdef USE_CUDA
 
 // Usage example showing how to use CreateArenaCfgV2() API to configure the default memory CUDA arena allocator
-TEST(CApiTest, configure_cuda_arena_and_demonstrate_memory_arena_shrinkage) {
+TEST(CApiTest, ConfigureCudaArenaAndDemonstrateMemoryArenaShrinkage) {
   const auto& api = Ort::GetApi();
 
   Ort::SessionOptions session_options;
 
-  const char* keys[] = {"max_mem", "arena_extend_strategy", "initial_chunk_size_bytes", "max_dead_bytes_per_chunk", "initial_regrowth_chunk_size_bytes"};
+  const char* keys[] = {"max_mem", "arena_extend_strategy", "initial_chunk_size_bytes", "max_dead_bytes_per_chunk", "initial_growth_chunk_size_bytes"};
   const size_t values[] = {0 /*let ort pick default max memory*/, 0, 1024, 0, 256};
 
   OrtArenaCfg* arena_cfg = nullptr;

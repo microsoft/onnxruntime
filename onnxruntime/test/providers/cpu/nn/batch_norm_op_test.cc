@@ -46,10 +46,10 @@ void TestBatchNorm(const unordered_map<string, vector<T>>& input_data_map,
     excluded_eps.insert(kOpenVINOExecutionProvider);
   }
 
-  // OpenVINO: Disabled due to software limitations
-  #if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M) || defined(OPENVINO_CONFIG_CPU_FP32)
-    excluded_eps.insert(kOpenVINOExecutionProvider);
-  #endif
+// OpenVINO: Disabled due to software limitations
+#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_MYRIAD) || defined(OPENVINO_CONFIG_VAD_M) || defined(OPENVINO_CONFIG_CPU_FP32)
+  excluded_eps.insert(kOpenVINOExecutionProvider);
+#endif
   test.Run(expect_result, err_str, excluded_eps);
 }
 
@@ -736,6 +736,7 @@ TEST(BatchNormTest, BatchNorm2d_fp16) {
 #endif
 
 // TODO fix flaky test for CUDA
+#if defined(ENABLE_TRAINING)
 TEST(BatchNormTest, ForwardTrainingTestWithSavedOutputsOpset9) {
   OpTester test("BatchNormalization", 9);
   float epsilon = 1e-05f;
@@ -789,6 +790,7 @@ TEST(BatchNormTest, ForwardTrainingTestOpset14) {
   // exclude TRT and OpenVINO for same reasons as seen in TestBatchNorm()
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -7,20 +7,27 @@ parameters:
 jobs:
 - job: 'build'
   pool: 'Win-GPU-2019'
+  strategy:
+    matrix:
+      cuda:
+        additionalBuildFlags: --build_java --build_nodejs --use_cuda --cuda_version=11.1 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.1" --cudnn_home="C:\local\cudnn-11.1-windows-x64-v8.0.5.39\cuda" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=52 --gen_doc validate
+        EnvSetupScript: setup_env_cuda_11.bat
+      dml:
+        additionalBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos  --use_winml
+        EnvSetupScript: setup_env.bat
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime.Gpu'
     MsbuildArguments: '-maxcpucount'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-    EnvSetupScript: setup_env_cuda_11.bat
     setVcvars: true
     BuildConfig: 'RelWithDebInfo'
     UseOmp: ''
     buildArch: x64
-    additionalBuildFlags: --build_java --build_nodejs --use_dml --use_cuda --cuda_version=11.0 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.0" --cudnn_home="C:\local\cudnn-11.0-windows-x64-v8.0.2.39\cuda" --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0
     msbuildPlatform: x64
     isX86: false
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '0'
+    DocUpdateNeeded: false
   timeoutInMinutes: 180
   workspace:
     clean: all
@@ -94,7 +101,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) $(UseOmp) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_rtti --use_winml  --build_shared_lib --enable_onnx_tests --enable_wcos $(additionalBuildFlags)'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) $(UseOmp) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --enable_onnx_tests $(additionalBuildFlags)'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - task: VSBuild@1
@@ -147,39 +154,26 @@ jobs:
 
   - powershell: |
      Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) $(UseOmp) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_rtti --use_winml  --build_shared_lib --enable_onnx_tests --enable_wcos $(additionalBuildFlags)
-   
+     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) $(UseOmp) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_wheel --enable_onnx_tests $(additionalBuildFlags)
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     condition: and(succeeded(), eq('${{ parameters.RunOnnxRuntimeTests}}', true))
     displayName: 'Run tests'
 
-  - task: PythonScript@0
-    displayName: 'Regenerate cmake config with STATIC_ANALYSIS=ON '
-    condition: and(succeeded(), eq(variables['BuildConfig'], 'RelWithDebInfo'))
+  # if the validation from --gen_doc failed it sets a variable so we can publish the latest version of the docs
+  # as an artifact, allowing a developer to download this and replace the current version instead of having to build
+  # and generate the docs locally themselves. handle each of the two md files separately - simpler than copying
+  # them to another location and publishing from there in a single task.
+  - task: PublishBuildArtifacts@1
+    condition: and(failed(), eq(variables['DocUpdateNeeded'], 'true'))
     inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_rtti --build_shared_lib --enable_onnx_tests $(additionalBuildFlags) --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
-      workingDirectory: '$(Build.BinariesDirectory)'
+      pathtoPublish: '$(Build.SourcesDirectory)/docs/OperatorKernels.md'
+      artifactName: 'OperatorKernels.md'
 
-  - task: DeleteFiles@1
-    displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
-    condition: and(succeeded(), eq(variables['BuildConfig'], 'RelWithDebInfo'))
+  - task: PublishBuildArtifacts@1
+    condition: and(failed(), eq(variables['DocUpdateNeeded'], 'true'))
     inputs:
-      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-      Contents: |
-       **/*.obj
-       **/*.pdb
-       **/*.dll
-
-  #Manually set msBuildCommandline so that we can also set CAExcludePath
-  - task: SDLNativeRules@2
-    displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-    condition: and(succeeded(), eq(variables['BuildConfig'], 'RelWithDebInfo'))
-    inputs:
-      userProvideBuildInfo: msBuildInfo
-      msBuildVersion: 16.0
-      msBuildArchitecture: $(msbuildPlatform)
-      msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform=$(msbuildPlatform) /p:configuration="RelWithDebInfo" /p:CAExcludePath="$(Build.BinariesDirectory);$(Build.SourcesDirectory)\cmake;C:\program files (x86)" /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
+      pathtoPublish: '$(Build.SourcesDirectory)/docs/ContribOperators.md'
+      artifactName: 'ContribOperators.md'
 
 
   - task: PublishSecurityAnalysisLogs@3

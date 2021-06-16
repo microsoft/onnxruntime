@@ -1880,6 +1880,22 @@ TEST(GradientCheckerTest, GatherGrad) {
                                           {MakeAttribute("axis", int64_t(0))});
     EXPECT_IS_TINY(max_error);
   }
+
+  // negative indices
+  {
+    TensorInfo x_info_2({4, 2});
+    TensorInfo indices_info({3}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {-1, 0, -2}};
+
+    TensorShape y_shape{x_info_2.shape};
+
+    int64_t axis = 0;
+    y_shape[axis] = 3;
+
+    gradient_checker.ComputeGradientError(op_def, {x_info_2, indices_info}, {y_shape}, &max_error, x_datas,
+                                          {MakeAttribute("axis", axis)});
+    EXPECT_IS_TINY(max_error);
+  }
 }
 
 void TestDropoutOp(float ratio, TensorShape& x_shape, bool default_ratio = true) {
@@ -2563,6 +2579,77 @@ TEST(GradientCheckerTest, TileGrad) {
     EXPECT_IS_TINY(max_error);
   }
 }
+
+#ifdef USE_CUDA
+TEST(GradientCheckerTest, PadGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"Pad", kOnnxDomain, 11};
+
+  {
+    TensorInfo x_info({2, 4}, true);
+    TensorInfo pads_info({4}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {0, 2, 2, 0}};
+
+    TensorInfo y_info({4, 6}, true);
+
+    gradient_checker.ComputeGradientError(op_def, {x_info, pads_info}, {y_info}, &max_error, x_datas);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {
+    TensorInfo x_info({2, 4}, true);
+    TensorInfo pads_info({4}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {0, -2, 2, 0}};
+
+    TensorInfo y_info({4, 2}, true);
+
+    gradient_checker.ComputeGradientError(op_def, {x_info, pads_info}, {y_info}, &max_error, x_datas,
+                                          {MakeAttribute("mode", "constant")});
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {
+    TensorInfo x_info({2, 4}, true);
+    TensorInfo pads_info({4}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {0, 2, 2, 0}};
+
+    TensorInfo y_info({4, 6}, true);
+
+    bool has_error = false;
+    try {
+      gradient_checker.ComputeGradientError(op_def, {x_info, pads_info}, {y_info}, &max_error, x_datas,
+                                            {MakeAttribute("mode", "reflect")});
+    } catch (const std::exception& ex) {
+      auto ret = std::string(ex.what()).find("Pad gradient currently supports constant mode only.");
+      ASSERT_TRUE(ret != std::string::npos);
+      has_error = true;
+    }
+
+    ASSERT_TRUE(has_error);
+  }
+
+  {
+    TensorInfo x_info({2, 4}, true);
+    TensorInfo pads_info({4}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    std::vector<std::vector<float>> x_datas = {{1, 2, 3, 4, 5, 6, 7, 8}, {0, 2, 2, 0}};
+
+    TensorInfo y_info({4, 6}, true);
+
+    bool has_error = false;
+    try {
+      gradient_checker.ComputeGradientError(op_def, {x_info, pads_info}, {y_info}, &max_error, x_datas,
+                                            {MakeAttribute("mode", "edge")});
+    } catch (const std::exception& ex) {
+      auto ret = std::string(ex.what()).find("Pad gradient currently supports constant mode only.");
+      ASSERT_TRUE(ret != std::string::npos);
+      has_error = true;
+    }
+
+    ASSERT_TRUE(has_error);
+  }
+}
+#endif  // USE_CUDA
 
 }  // namespace test
 }  // namespace onnxruntime
