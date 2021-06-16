@@ -1045,7 +1045,7 @@ stages:
         displayName: 'Publish Security Analysis Logs'
         condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
         inputs:
-          ArtifactName: CodeAnalysisLogs_windows_gpu_$(EP_NAME)_$(PythonVersion)
+          ArtifactName: CodeAnalysisLogs_windows_cpu
         continueOnError: true
 
       - task: TSAUpload@1
