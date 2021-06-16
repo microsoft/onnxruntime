@@ -235,12 +235,25 @@ stages:
       # pool: Onnxruntime-Linux-GPU
       strategy:
         matrix:
-          Python36:
+          Python36 Torch181:
             PythonVersion: '3.6'
-          Python37:
+            TorchVersion: '1.8.1'
+          Python37 Torch181:
             PythonVersion: '3.7'
-          Python38:
+            TorchVersion: '1.8.1'
+          Python38 Torch181:
             PythonVersion: '3.8'
+            TorchVersion: '1.8.1'
+          Python36 Torch190:
+            PythonVersion: '3.6'
+            TorchVersion: '1.9.0'
+          Python37 Torch190:
+            PythonVersion: '3.7'
+            TorchVersion: '1.9.0'
+          Python38 Torch190:
+            PythonVersion: '3.8'
+            TorchVersion: '1.9.0'
+            
           # dependency PyTorch does not support Python 3.9 yet
           # Python39:
           #   PythonVersion: '3.9'
@@ -257,6 +270,7 @@ stages:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_rocm
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
+            --build-arg TORCH_VERSION=$(TorchVersion)
             --build-arg PYTHON_VERSION=$(PythonVersion)
             --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
             --build-arg BUILD_UID=$(id -u)
