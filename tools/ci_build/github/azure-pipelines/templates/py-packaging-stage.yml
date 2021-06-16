@@ -901,8 +901,7 @@ stages:
         EnvSetupScript: setup_env.bat
         buildArch: x64
         setVcvars: true
-        BuildConfig: 'Release'
-        GDN_CODESIGN_TARGETDIRECTORY: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
+        BuildConfig: 'Release'        
       timeoutInMinutes: 120
       workspace:
         clean: all
