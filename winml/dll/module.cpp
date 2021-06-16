@@ -135,6 +135,7 @@ STDAPI DllGetActivationFactory(HSTRING classId, void** factory) {
   return ret;
 }
 
+// LoadLibraryW isn't support on Windows 8.1. This is a workaround so that CppWinRT calls this function for loading libraries
 void* __stdcall WINRT_IMPL_LoadLibraryW(wchar_t const* name) noexcept {
   return LoadLibraryExW(name, nullptr, 0);
 }
