@@ -54,7 +54,7 @@ jobs:
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
           
       - ${{ if eq(parameters.RunDocker, false) }}:
-        - script: '$(run_conda) && python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/ort_build_latest.py -b $(branch) -c /usr/local/cuda -o ~/repos/onnxruntime/ -t ~/TensorRT-7.2.2.3'
+        - script: '$(run_conda) && python $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/ort_build_latest.py -b $(branch) -c /usr/local/cuda -o ~/repos/onnxruntime/ -t ~/TensorRT-7.2.2.3'
           displayName: 'Build latest ORT'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
       
@@ -65,7 +65,7 @@ jobs:
         env:
           LD_LIBRARY_PATH : "/home/hcsuser/TensorRT-7.2.2.3/lib"
   
-    - ${{ if parameters.ModelGroups }}:
+    - ${{ if not(eq(length(parameters.ModelGroups), 0)) }}:
       - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
         displayName: 'Prepare Artifacts'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
@@ -75,7 +75,7 @@ jobs:
           artifactName: 'result'
     
     - ${{ if eq(parameters.PostToDashboard, true) }}:
-      - script: '$(run_conda) && python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" ' 
+      - script: '$(run_conda) && python $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/post.py -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" ' 
         displayName: 'Post to Dashboard'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         env:
