@@ -23,7 +23,7 @@ parameters:
 - name: gcc_version
   displayName: >
     gcc_version.
-  type: int
+  type: number
   
 - name: docker_file
   displayName: >
