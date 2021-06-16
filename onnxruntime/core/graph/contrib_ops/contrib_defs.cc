@@ -610,6 +610,27 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
       .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+
+  static const char* NGramRepeatBlock_ver1_doc = R"DOC()DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NGramRepeatBlock)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(NGramRepeatBlock_ver1_doc)
+      .Attr("ngram_size", "The NGram size.", AttributeProto::INT)
+      .Input(0, "input_ids", "input_ids tensor", "Tid")
+      .Input(1, "scores", "input scores tensor", "T")
+      .Output(0, "scores_out", "output scores tensor", "T")
+      .TypeConstraint("Tid", {"tensor(int64)"}, "Constrain indices to integer types")
+      .TypeConstraint("T", {"tensor(float)"}, "Constrain scores input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        if (!hasInputShape(ctx, 1)) {
+          return;
+        }
+        propagateShapeFromInputToOutput(ctx, 1, 0);
+      });
 }
 
 void RegisterContribSchemas() {
