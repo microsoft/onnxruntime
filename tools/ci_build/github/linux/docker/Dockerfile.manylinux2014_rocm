@@ -14,6 +14,8 @@ ARG LD_LIBRARY_PATH_ARG
 ARG PREPEND_PATH
 LABEL maintainer="The ManyLinux project"
 
+RUN yum remove -y devtoolset\*  git\* && conda remove -y cmake
+
 ENV AUDITWHEEL_POLICY=${POLICY} AUDITWHEEL_ARCH=${PLATFORM} AUDITWHEEL_PLAT=${POLICY}_${PLATFORM}
 ENV LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 LANGUAGE=en_US.UTF-8
 ENV DEVTOOLSET_ROOTPATH=${DEVTOOLSET_ROOTPATH}
@@ -138,10 +140,10 @@ COPY build_scripts/ambv-pubkey.txt /build_scripts/cpython-pubkeys.txt
 RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.9.5
 
 
-FROM build_cpython AS build_cpython310
-COPY build_scripts/cpython-pubkey-310-311.txt /build_scripts/cpython-pubkeys.txt
+# FROM build_cpython AS build_cpython310
+# COPY build_scripts/cpython-pubkey-310-311.txt /build_scripts/cpython-pubkeys.txt
 
-RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.10.0b1
+# RUN manylinux-entrypoint /build_scripts/build-cpython.sh 3.10.0b1
 
 
 FROM build_cpython AS all_cpython
@@ -149,7 +151,7 @@ COPY --from=build_cpython36 /opt/_internal /opt/_internal/
 COPY --from=build_cpython37 /opt/_internal /opt/_internal/
 COPY --from=build_cpython38 /opt/_internal /opt/_internal/
 COPY --from=build_cpython39 /opt/_internal /opt/_internal/
-COPY --from=build_cpython310 /opt/_internal /opt/_internal/
+# COPY --from=build_cpython310 /opt/_internal /opt/_internal/
 RUN hardlink -cv /opt/_internal
 
 
@@ -174,7 +176,7 @@ ARG INSTALL_DEPS_EXTRA_ARGS
 #Add our own dependencies
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && \
-    /tmp/scripts/install_centos.sh && \
+    /tmp/scripts/manylinux/install_centos.sh && \
     /tmp/scripts/install_os_deps.sh -d gpu $INSTALL_DEPS_EXTRA_ARGS && \
     /tmp/scripts/install_python_deps.sh -d gpu -p $PYTHON_VERSION $INSTALL_DEPS_EXTRA_ARGS && \
     rm -rf /tmp/scripts

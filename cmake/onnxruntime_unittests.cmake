@@ -136,13 +136,23 @@ function(AddTest)
 
     xctest_add_test(xctest.${_UT_TARGET} ${_UT_TARGET}_xc)
   else()
-    if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    if (onnxruntime_BUILD_WEBASSEMBLY)
       find_program(NODE_EXECUTABLE node required)
       if (NOT NODE_EXECUTABLE)
         message(FATAL_ERROR "Node is required for unit tests")
       endif()
+
+      set(TEST_NODE_FLAGS)
+      if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+        list(APPEND TEST_NODE_FLAGS "--experimental-wasm-threads")
+        list(APPEND TEST_NODE_FLAGS "--experimental-wasm-bulk-memory")
+      endif()
+      if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+        list(APPEND TEST_NODE_FLAGS "--experimental-wasm-simd")
+      endif()
+
       add_test(NAME ${_UT_TARGET}
-        COMMAND ${NODE_EXECUTABLE} --experimental-wasm-threads --experimental-wasm-bulk-memory ${_UT_TARGET}.js ${TEST_ARGS}
+        COMMAND ${NODE_EXECUTABLE} ${TEST_NODE_FLAGS} ${_UT_TARGET}.js ${TEST_ARGS}
         WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
       )
     else()
