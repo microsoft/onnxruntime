@@ -50,7 +50,6 @@ def test_GeLU():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -93,7 +92,6 @@ def test_MegatronF():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -189,7 +187,6 @@ def test_InplaceUpdateInputAsOutputNotRequireGrad():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -238,7 +235,6 @@ def test_InplaceUpdateInputNotAsOutputNotRequireGrad():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -293,7 +289,6 @@ def test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -340,7 +335,6 @@ def test_InplaceUpdateInputAsOutputRequireGrad():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -396,7 +390,6 @@ def test_InplaceUpdateInputNotAsOutputRequireGrad():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -454,7 +447,6 @@ def test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -501,7 +493,6 @@ def test_EvalTest():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -566,7 +557,6 @@ def test_TwoOutputFunction():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -632,7 +622,6 @@ def test_InnerModuleCall():
             self.use_ort = use_ort
             self.bias = Parameter(torch.FloatTensor([1.0] * dim).to(device))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -688,7 +677,6 @@ def test_Share_Input():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
