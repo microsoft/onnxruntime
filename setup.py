@@ -54,7 +54,7 @@ rocm_version = None
 # The following arguments are mutually exclusive
 if parse_arg_remove_boolean(sys.argv, '--use_tensorrt'):
     package_name = 'onnxruntime-gpu-tensorrt' if not nightly_build else 'ort-trt-nightly'
-elif wheel_name_suffix == 'gpu'
+elif wheel_name_suffix == 'gpu':
     #TODO: how to support multiple CUDA versions?
     cuda_version = parse_arg_remove_string(sys.argv, '--cuda_version=')
 elif parse_arg_remove_boolean(sys.argv, '--use_rocm'):
