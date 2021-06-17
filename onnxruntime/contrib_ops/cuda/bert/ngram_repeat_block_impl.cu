@@ -17,7 +17,7 @@ namespace cuda {
 using namespace onnxruntime::cuda;
 
 // Ban repeated ngrams of length = 'no_repeat_ngram_size'
-__global__ void banRepeatedTokens(const long* __restrict__ tokens,
+__global__ void banRepeatedTokens(const int64_t* __restrict__ tokens,
                                   float* __restrict__ lprobs,
                                   int max_predict_len, int vocab_size,
                                   int no_repeat_ngram_size) {
@@ -30,7 +30,7 @@ __global__ void banRepeatedTokens(const long* __restrict__ tokens,
   auto check_start_pos = blockDim.x;
   auto lprob_start = row * vocab_size;
   bool is_banned = true;
-  extern __shared__ long tokens_shm[];
+  extern __shared__ int64_t tokens_shm[];
   tokens_shm[col] = tokens[start];
   if (col == blockDim.x - 1) {
     for (int i=1; i<no_repeat_ngram_size; i++){
@@ -57,7 +57,7 @@ __global__ void banRepeatedTokens(const long* __restrict__ tokens,
 // kernel
 void NGramRepeatBlockImpl(
     cudaStream_t stream,
-    const long* tokens_ptr,
+    const int64_t* tokens_ptr,
     float* scores_ptr,
     int bsz,
     int step,
@@ -68,7 +68,7 @@ void NGramRepeatBlockImpl(
   int threads = step - no_repeat_ngram_size + 2;
   if (threads <= 0) return;
   int blocks = bsz * beam_size;
-  int shared_mem_size = (step + 1) * sizeof(long);
+  int shared_mem_size = (step + 1) * sizeof(int64_t);
 
   // Launching N blocks where N is number of samples in a batch (beams*bsz)
   // Launching T threads where T is number of previous ngrams in a sample
