@@ -42,6 +42,8 @@ There are 3 ways of quantizing a model: dynamic, static and quantize-aware train
 * **Quantize-Aware training quantization**: The quantization parameter of activation are calculated while training, and the training process can control activation to a certain range.
 
 ### Method selection
+{: .no_toc }
+
 The main difference between dynamic quantization and static quantization is how scale and zero point of activation is calculated. For static quantization, they are calculated offline with calibration data set. All the activations have same scale and zero point. While for dynamic quantization, they are calculated on flight and will be specific for each activation, thus they are more accurate but introduce extra computation overhead.
 
 In general, it is recommended to use dynamic quantization for RNN and transformer-based models, and static quantization for CNN models.
@@ -77,6 +79,8 @@ Quantization has 3 main APIs, which corresponds to the 3 quantization methods:
 Please refer to [quantize.py](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/quantize.py) for quantization options for each method.
 
 ### Example
+{: .no_toc }
+
 - Dynamic quantization
 ```python
 import onnx
@@ -109,6 +113,7 @@ Let's use U8U8 as as shorthand for (activation:uint8, weight:uint8), and U8S8 fo
 Currently, OnnxRuntime CPU only supports activation with type uint8, i.e., U8X8 only.
 
 ### x86-64
+{: .no_toc }
 #### AVX2
 Try U8U8 first, and then U8S8.
 - Performance
@@ -127,6 +132,8 @@ Same as the AVX2 because of VPMADDUBSW. Needs to use reduce_range if accuracy is
 No difference.
 
 ### ARM64
+{: .no_toc }
+
 U8S8 can be faster than U8U8 for low end ARM64 and no difference on accuracy. There is no difference for high end ARM64.
 
 ## Transformer-based models
@@ -147,14 +154,20 @@ We have 2 E2E examples [Yolo V3](https://github.com/microsoft/onnxruntime/tree/m
 
 ## FAQ
 ### Why performance is not better or even worse?
+{: .no_toc }
+
 Performance improvement depends on your model and hardware. Quantization performance gain comes in 2 part: instruction and cache. Old hardware doesn't have or has few instrction support for byte computation. And quantization has overhead (quantize and dequantize), so it is not rare to get worse performance on old devices.
 
 x86-64 with VNNI, GPU with Tensor Core int8 support and ARM with dot-product instructions can get better performance in general.
 
 ### Which method should I choose?
+{: .no_toc }
+
 Please refer to [here](#method-selection).
 
 ### When to use per-channel and reduce-range?
+{: .no_toc }
+
 Reduce-range will quantize the weight with 7-bits. It is designed for U8S8 format on AVX2 and AVX512 (non VNNI) machines to mitigate the [saturation issue](#avx2). Don't need it on VNNI machine.
 
 Per-channel quantization can improve the accuracy for models whose weight ranges are large. Try it firstly if the accuracy loss is large. And you need to enable reduce-range generally on AVX2 and AVX512 machines if per-channel is enabled.
