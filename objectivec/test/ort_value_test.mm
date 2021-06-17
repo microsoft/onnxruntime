@@ -3,9 +3,11 @@
 
 #import <XCTest/XCTest.h>
 
-#import "onnxruntime/ort_value.h"
+#import "ort_value.h"
 
 #include <vector>
+
+#import "test/assertion_utils.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -26,32 +28,32 @@ NS_ASSUME_NONNULL_BEGIN
                                                       length:sizeof(int32_t)];
   NSArray<NSNumber*>* shape = @[ @1 ];
 
+  const ORTTensorElementDataType elementType = ORTTensorElementDataTypeInt32;
+
   NSError* err = nil;
-  ORTValue* ortValue = [[ORTValue alloc] initTensorWithData:data
-                                                elementType:ORTTensorElementDataTypeInt32
+  ORTValue* ortValue = [[ORTValue alloc] initWithTensorData:data
+                                                elementType:elementType
                                                       shape:shape
                                                       error:&err];
-  XCTAssertNotNil(ortValue);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(ortValue, err);
 
-  ORTValueType actualValueType;
-  XCTAssertTrue([ortValue valueType:&actualValueType error:&err]);
-  XCTAssertNil(err);
-  XCTAssertEqual(actualValueType, ORTValueTypeTensor);
+  auto checkTensorInfo = [&](ORTTensorTypeAndShapeInfo* tensorInfo) {
+    XCTAssertEqual(tensorInfo.elementType, elementType);
+    XCTAssertEqualObjects(tensorInfo.shape, shape);
+  };
 
-  ORTTensorElementDataType actualElementType;
-  XCTAssertTrue([ortValue tensorElementType:&actualElementType error:&err]);
-  XCTAssertNil(err);
-  XCTAssertEqual(actualElementType, ORTTensorElementDataTypeInt32);
+  ORTValueTypeInfo* typeInfo = [ortValue typeInfoWithError:&err];
+  ORTAssertNullableResultSuccessful(typeInfo, err);
+  XCTAssertEqual(typeInfo.type, ORTValueTypeTensor);
+  XCTAssertNotNil(typeInfo.tensorTypeAndShapeInfo);
+  checkTensorInfo(typeInfo.tensorTypeAndShapeInfo);
 
-  NSArray<NSNumber*>* actualShape = [ortValue tensorShapeWithError:&err];
-  XCTAssertNotNil(actualShape);
-  XCTAssertNil(err);
-  XCTAssertEqualObjects(shape, actualShape);
+  ORTTensorTypeAndShapeInfo* tensorInfo = [ortValue tensorTypeAndShapeInfoWithError:&err];
+  ORTAssertNullableResultSuccessful(tensorInfo, err);
+  checkTensorInfo(tensorInfo);
 
   NSData* actualData = [ortValue tensorDataWithError:&err];
-  XCTAssertNotNil(actualData);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(actualData, err);
   XCTAssertEqual(actualData.length, sizeof(int32_t));
   int32_t actualValue;
   memcpy(&actualValue, actualData.bytes, sizeof(int32_t));
@@ -65,12 +67,11 @@ NS_ASSUME_NONNULL_BEGIN
   NSArray<NSNumber*>* shape = @[ @2, @3 ];  // too large
 
   NSError* err = nil;
-  ORTValue* ort_value = [[ORTValue alloc] initTensorWithData:data
-                                                 elementType:ORTTensorElementDataTypeInt32
-                                                       shape:shape
-                                                       error:&err];
-  XCTAssertNil(ort_value);
-  XCTAssertNotNil(err);
+  ORTValue* ortValue = [[ORTValue alloc] initWithTensorData:data
+                                                elementType:ORTTensorElementDataTypeInt32
+                                                      shape:shape
+                                                      error:&err];
+  ORTAssertNullableResultUnsuccessful(ortValue, err);
 }
 
 @end

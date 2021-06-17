@@ -130,13 +130,13 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
   const bool is_profiler_enabled = session_state.Profiler().IsEnabled();
   TimePoint tp;
   TimePoint sync_time_begin;
-  TimePoint kernel_begin_time, kernel_end_time;
+  TimePoint kernel_begin_time;
   size_t input_activation_sizes = 0;
   size_t input_parameter_sizes = 0;
   size_t total_output_sizes = 0;
 
   if (is_profiler_enabled) {
-    tp = session_state.Profiler().Now();
+    tp = session_state.Profiler().StartTime();
   }
 
   ExecutionFrame frame{feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches, fetch_allocators, session_state};
@@ -235,7 +235,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger, terminate_flag_);
     // TODO: log kernel outputs?
     if (is_profiler_enabled) {
-      sync_time_begin = session_state.Profiler().Now();
+      sync_time_begin = session_state.Profiler().StartTime();
     }
 
     // sync before compute
@@ -289,10 +289,11 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       // call compute on the kernel
       VLOGS(logger, 1) << "Computing kernel: " << node_name_for_profiling;
 
+      kernel_begin_time = session_state.Profiler().StartTime();
+
       // Calculate total input sizes for this operation.
       CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
                                input_activation_sizes, input_parameter_sizes, node_name_for_profiling);
-      kernel_begin_time = session_state.Profiler().Now();
     }
 
     Status compute_status;
@@ -340,7 +341,6 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
     if (is_profiler_enabled) {
-      kernel_end_time = session_state.Profiler().Now();
       // Calculate total output sizes for this operation.
       CalculateTotalOutputSizes(&op_kernel_context, total_output_sizes, node_name_for_profiling);
 
@@ -356,9 +356,10 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                 << " Output_Size=" << total_output_sizes
                 << "\n";
 #endif
+
       session_state.Profiler().EndTimeAndRecordEvent(profiling::NODE_EVENT,
                                                      node_name_for_profiling + "_kernel_time",
-                                                     kernel_begin_time, kernel_end_time,
+                                                     kernel_begin_time,
                                                      // Log additional operation args / info.
                                                      {
                                                          {"op_name", p_op_kernel->KernelDef().OpName()},
@@ -370,7 +371,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
                                                          {"output_size", std::to_string(total_output_sizes)},
                                                          {"thread_scheduling_stats", concurrency::ThreadPool::StopProfiling(session_state.GetThreadPool())},
                                                      });
-      sync_time_begin = session_state.Profiler().Now();
+      sync_time_begin = session_state.Profiler().StartTime();
     }
 
     // sync after compute for outputs

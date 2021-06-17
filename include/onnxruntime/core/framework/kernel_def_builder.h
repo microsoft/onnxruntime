@@ -180,6 +180,8 @@ class KernelDef {
 
 class KernelDefBuilder {
  public:
+  static std::unique_ptr<KernelDefBuilder> Create() { return std::make_unique<KernelDefBuilder>(); }
+
   explicit KernelDefBuilder()
       : kernel_def_(new KernelDef()) {}
 
@@ -300,12 +302,6 @@ class KernelDefBuilder {
      Specify that this kernel requires an input arg
      in certain memory type (instead of the default, device memory).
   */
-  template <OrtMemType T>
-  KernelDefBuilder& InputMemoryType(int input_index) {
-    kernel_def_->input_memory_type_args_.insert(std::make_pair(input_index, T));
-    return *this;
-  }
-
   KernelDefBuilder& InputMemoryType(OrtMemType type, int input_index) {
     kernel_def_->input_memory_type_args_.insert(std::make_pair(input_index, type));
     return *this;
@@ -315,10 +311,9 @@ class KernelDefBuilder {
      Specify that this kernel requires input arguments
      in certain memory type (instead of the default, device memory).
   */
-  template <OrtMemType T>
-  KernelDefBuilder& InputMemoryType(const std::vector<int>& input_indexes) {
+  KernelDefBuilder& InputMemoryType(OrtMemType type, const std::vector<int>& input_indexes) {
     for (auto input_index : input_indexes) {
-      kernel_def_->input_memory_type_args_.insert(std::make_pair(input_index, T));
+      kernel_def_->input_memory_type_args_.insert(std::make_pair(input_index, type));
     }
     return *this;
   }
@@ -327,12 +322,6 @@ class KernelDefBuilder {
      Specify that this kernel provides an output arg
      in certain memory type (instead of the default, device memory).
   */
-  template <OrtMemType T>
-  KernelDefBuilder& OutputMemoryType(int output_index) {
-    kernel_def_->output_memory_type_args_.insert(std::make_pair(output_index, T));
-    return *this;
-  }
-
   KernelDefBuilder& OutputMemoryType(OrtMemType type, int output_index) {
     kernel_def_->output_memory_type_args_.insert(std::make_pair(output_index, type));
     return *this;
@@ -342,10 +331,9 @@ class KernelDefBuilder {
      Specify that this kernel provides an output arguments
      in certain memory type (instead of the default, device memory).
   */
-  template <OrtMemType T>
-  KernelDefBuilder& OutputMemoryType(const std::vector<int>& output_indexes) {
+  KernelDefBuilder& OutputMemoryType(OrtMemType type, const std::vector<int>& output_indexes) {
     for (auto output_index : output_indexes) {
-      kernel_def_->output_memory_type_args_.insert(std::make_pair(output_index, T));
+      kernel_def_->output_memory_type_args_.insert(std::make_pair(output_index, type));
     }
     return *this;
   }

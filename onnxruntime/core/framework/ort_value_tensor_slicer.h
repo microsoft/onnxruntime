@@ -7,9 +7,11 @@
 #include <limits>
 #include <type_traits>
 
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/tensor.h"
+#endif
 
 namespace onnxruntime {
 

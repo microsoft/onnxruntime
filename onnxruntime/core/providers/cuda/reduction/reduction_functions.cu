@@ -343,6 +343,7 @@ Status reduce_mean(
 
 #define INSTANTIATE_REDUCE_SUM(TIn, TOut) \
   template Status reduce_sum<TIn, TOut>(cudaStream_t stream, const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size)
+INSTANTIATE_REDUCE_SUM(half, half);
 INSTANTIATE_REDUCE_SUM(half, float);
 INSTANTIATE_REDUCE_SUM(float, float);
 INSTANTIATE_REDUCE_SUM(double, double);

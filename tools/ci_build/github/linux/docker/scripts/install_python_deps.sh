@@ -58,7 +58,7 @@ if [ $DEVICE_TYPE = "gpu" ]; then
         ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage2\/requirements.txt}
       else
         ${PYTHON_EXE} -m pip install \
-          --pre -f https://download.pytorch.org/whl/nightly/rocm4.1/torch_nightly.html \
+          --pre -f https://download.pytorch.org/whl/nightly/rocm4.2/torch_nightly.html \
           torch torchvision torchtext
         ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements-rocm.txt}
         ${PYTHON_EXE} -m pip install fairscale

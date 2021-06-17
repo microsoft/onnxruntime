@@ -45,7 +45,8 @@ export class WebGLPackedConcat extends Concat implements WebGLOperator {
     const unpackChannel = unpackFromChannel();
 
     const shapes = inputs.map(i => i.dims);
-    const channels = ['x', 'y', 'z', 'w', 'u', 'v'].slice(0, rank);
+    const allGlChannels = ['x', 'y', 'z', 'w', 'u', 'v'];
+    const channels = allGlChannels.slice(0, rank);
     const offsets: number[] = new Array(shapes.length - 1);
     const samplers = inputs.map((v, i) => `X${i}`);
 
@@ -88,6 +89,10 @@ export class WebGLPackedConcat extends Concat implements WebGLOperator {
 
         void main() {
           ${dtype} coords = getOutputCoords();
+          int lastDim = coords.${allGlChannels[rank - 1]};
+          coords.${allGlChannels[rank - 1]} = coords.${allGlChannels[rank - 2]};
+          coords.${allGlChannels[rank - 2]} = lastDim;
+
           vec4 result = vec4(getValue(${coords}), 0., 0., 0.);
 
           ${coords[rank - 1]} = ${coords[rank - 1]} + 1;
@@ -110,8 +115,9 @@ export class WebGLPackedConcat extends Concat implements WebGLOperator {
       `;
 
     return {
-      inputLayouts: inputs.map(t => handler.getOrCreateTextureLayout(t)),
-      outputLayout: handler.createTextureLayoutFromShape(outputShape),
+      inputLayouts: inputs.map(t => handler.getOrCreateTextureLayout(t, 4, true, t.dims, true)),
+      outputLayout:
+          handler.createTextureLayoutFromShape(outputShape, 4, outputShape, {isPacked: true, reverseWH: true}),
       samplers,
       shaderSource,
       hasMain: true,
@@ -120,7 +126,7 @@ export class WebGLPackedConcat extends Concat implements WebGLOperator {
     };
   }
   createRunData(handler: WebGLInferenceHandler, programInfo: ProgramInfo, inputs: Tensor[]): RunData {
-    const inputTDs = inputs.map((t, i) => handler.getOrCreateTextureData(t, programInfo.inputLayouts[i]));
+    const inputTDs = inputs.map((t, i) => handler.getOrCreateTextureData(t, programInfo.inputLayouts[i], true));
     return {
       inputTextureDatas: inputTDs,
       outputTextureData: handler.createTextureDataFromLayout(programInfo.outputLayout, inputTDs[0].tensor.type),

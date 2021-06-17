@@ -45,7 +45,7 @@ add_custom_target(nodejs_binding_wrapper ALL
     COMMAND ${NPM_CLI} run build -- --onnxruntime-build-dir=${CMAKE_CURRENT_BINARY_DIR} --config=${CMAKE_BUILD_TYPE}
     WORKING_DIRECTORY ${JS_NODE_ROOT}
     COMMENT "Using cmake-js to build OnnxRuntime Node.js binding")
-add_dependencies(nodejs_binding_wrapper js_npm_ci)
+add_dependencies(js_common_npm_ci js_npm_ci)
 add_dependencies(nodejs_binding_wrapper js_common_npm_ci)
 add_dependencies(nodejs_binding_wrapper onnxruntime)
 endif()

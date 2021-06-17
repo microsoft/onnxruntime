@@ -3,7 +3,9 @@
 
 #import <XCTest/XCTest.h>
 
-#import "onnxruntime/ort_env.h"
+#import "ort_env.h"
+
+#import "test/assertion_utils.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -14,9 +16,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)testInitOk {
   NSError* err = nil;
-  ORTEnv* env = [[ORTEnv alloc] initWithError:&err];
-  XCTAssertNotNil(env);
-  XCTAssertNil(err);
+  ORTEnv* env = [[ORTEnv alloc] initWithLoggingLevel:ORTLoggingLevelWarning
+                                               error:&err];
+  ORTAssertNullableResultSuccessful(env, err);
 }
 
 @end

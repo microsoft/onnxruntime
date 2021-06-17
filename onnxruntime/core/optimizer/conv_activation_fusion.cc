@@ -105,7 +105,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
           ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
         continue;
       }
-      if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Relu", {6, 13})) {
+      if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Relu", {6, 13, 14})) {
         Node& conv_node = *node;
         Node& act_node = *graph.GetNode(next_node.Index());
         auto node_name = graph.GenerateNodeName(conv_node.Name() + "_" + act_node.Name());
@@ -120,12 +120,12 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         fused_conv.AddAttribute("activation", "Relu");
         graph_utils::FinalizeNodeFusion(graph, {conv_node, act_node}, fused_conv);
         modified = true;
-      } else if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", {6, 7, 13})) {
+      } else if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", {6, 7, 13, 14})) {
         const auto& last_node = *(next_node.OutputNodesBegin());
         if (last_node.GetExecutionProviderType() != node->GetExecutionProviderType()) {
           continue;
         }
-        if (graph_utils::IsSupportedOptypeVersionAndDomain(last_node, "Relu", {6, 13}) && 
+        if (graph_utils::IsSupportedOptypeVersionAndDomain(last_node, "Relu", {6, 13, 14}) && 
             next_node.GetOutputEdgesCount() == 1) {
           Node& conv_node = *node;
           Node& add_node = *graph.GetNode(next_node.Index());
@@ -158,7 +158,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       // Test if this is an activation that can be fused and also extract the
       // activation's parameters.
       std::vector<float> activation_params;
-      if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Relu", {6, 13}) &&
+      if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Relu", {6, 13, 14}) &&
           !graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Sigmoid", {6, 13}) &&
           !graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Tanh", {6, 13})) {
         if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "LeakyRelu", {6})) {

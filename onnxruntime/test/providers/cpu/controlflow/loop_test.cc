@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <future>
+#include <thread>
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 

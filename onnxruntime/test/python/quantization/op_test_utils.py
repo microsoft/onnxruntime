@@ -6,7 +6,6 @@ import onnxruntime
 from pathlib import Path
 from onnxruntime.quantization import CalibrationDataReader
 
-
 class TestDataFeeds(CalibrationDataReader):
     def __init__(self, data_feeds):
         '''

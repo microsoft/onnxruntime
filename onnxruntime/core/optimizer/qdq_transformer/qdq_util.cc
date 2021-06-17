@@ -50,7 +50,8 @@ bool IsQDQPairSupported(const Graph& graph, const Node& q_node, const Node& dq_n
   Initializer dq_zp(*dq_zp_tensor_proto, graph.ModelPath());
   Initializer dq_scale(*dq_scale_tensor_proto, graph.ModelPath());
 
-  return *q_zp.data<int8_t>() == *dq_zp.data<int8_t>() &&
+  return q_zp.data_type() == dq_zp.data_type() &&
+         *q_zp.data<int8_t>() == *dq_zp.data<int8_t>() &&
          *q_scale.data<float>() == *dq_scale.data<float>();
 }
 

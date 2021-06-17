@@ -14,8 +14,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(1)  // 'GatherElements' data shape needs to be on CPU
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)  // 'GatherElements' data shape needs to be on CPU
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
@@ -108,7 +108,9 @@ Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
   }
 
   for (size_t i = 0; i < output_dims.size(); ++i) {
-    if (output_dims[i] < indices_dims[i]) {
+    // For all axes except the axis of interest, make sure that the corresponding 'indices' shape
+    // value is within bounds of the corresponding 'data' shape.
+    if (static_cast<int64_t>(i) != axis_ && output_dims[i] < indices_dims[i]) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Indices dim=", indices_dims[i], " at pos=", i,
                              " is greater than Output dim=", output_dims[i]);
     }

@@ -59,3 +59,4 @@ class FusionBiasGelu(Fusion):
                                       name=self.model.create_node_name(fuse_op_type, gelu_op_type + "_AddBias_"))
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
+        self.node_name_to_graph_name[fused_node.name] = self.this_graph_name

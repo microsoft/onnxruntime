@@ -112,16 +112,12 @@ std::unique_ptr<const OpKernel> OptimizerExecutionFrame::Info::CreateKernel(cons
 
 // For optimizer, probably no need to pass feed_mlvalue_idxs, feeds to initialize IExecutionFrame.
 // If needed, the parameters of OptimizerExecutionFrame ctor can be changed later.
-OptimizerExecutionFrame::OptimizerExecutionFrame(const Info& info, 
+OptimizerExecutionFrame::OptimizerExecutionFrame(const Info& info,
                                                  const std::vector<int>& fetch_mlvalue_idxs,
                                                  const std::vector<OrtValue>& fetches)
     : IExecutionFrame(info.GetMLValueNameIdxMap(), info.GetNodeIndexInfo(), fetch_mlvalue_idxs),
       info_(info) {
   Init(std::vector<int>(), std::vector<OrtValue>(), info.GetInitializers(), fetches);
-}
-
-const logging::Logger* OptimizerExecutionFrame::GetLogger() {
-  return nullptr;
 }
 
 AllocatorPtr OptimizerExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {
@@ -168,8 +164,8 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
   auto element_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
   AllocatorPtr allocator_ptr = info_.GetAllocator();
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(element_type,
-                                                                      *shape,
-                                                                      allocator_ptr);
+                                                              *shape,
+                                                              allocator_ptr);
 
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());

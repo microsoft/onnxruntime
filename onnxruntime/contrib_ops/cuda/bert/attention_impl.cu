@@ -117,7 +117,7 @@ bool QkvToContext(
   // For raw attention mask, the scalar if 1/sqrt(H) is moved to softmax computation.
   // TODO: move scalar to softmax computation since converting 1/Sqrt(H) to half might have loss in precision.
   T alpha = use_raw_attention_mask ? one : (T)(rsqrt_head_size);
-  
+
   if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
           cublas, CUBLAS_OP_T, CUBLAS_OP_N, all_sequence_length, sequence_length, head_size, &alpha, k, head_size, present_size_per_batch,
           q, head_size, size_per_batch, &zero, scratch1, all_sequence_length, temp_matrix_size, batches, prop))) {
@@ -125,8 +125,11 @@ bool QkvToContext(
   }
 
   // apply softmax and store result P to scratch2: BxNxSxS*
-  if (use_raw_attention_mask) {  // 2d or 3d attention mask
-    if (!ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, scratch1, scratch2, is_unidirectional, rsqrt_head_size, static_cast<int>(mask_index_dims->size()))) {
+  if (use_raw_attention_mask) {  // 2d, 3d or 4d attention mask
+    const int mask_dimension = static_cast<int>(mask_index_dims->size());
+    const int64_t max_sequence_length = mask_dimension == 4 ? mask_index_dims->at(3) : 0;
+    if (!ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, scratch1, scratch2, is_unidirectional,
+                                      rsqrt_head_size, mask_dimension, static_cast<int>(max_sequence_length))) {
       return false;
     }
   } else if (nullptr != mask_index) {  // 1d mask index

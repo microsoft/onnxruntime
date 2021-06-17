@@ -32,6 +32,7 @@
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/nchwc_transformer.h"
 #include "core/optimizer/nhwc_transformer.h"
+#include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
@@ -69,6 +70,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<EliminateDropout>());
       rules.push_back(std::make_unique<ExpandElimination>());
       rules.push_back(std::make_unique<CastElimination>());
+      rules.push_back(std::make_unique<NoopElimination>());
       rules.push_back(std::make_unique<DivMulFusion>());
       rules.push_back(std::make_unique<FuseReluClip>());
       rules.push_back(std::make_unique<GemmTransposeFusion>());
@@ -118,7 +120,7 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(
 
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer =
       std::make_unique<RuleBasedGraphTransformer>(GenerateRuleBasedTransformerName(level),
-                                                          compatible_execution_providers);
+                                                  compatible_execution_providers);
   for (auto& entry : rewrite_rules_to_register) {
     rule_transformer->Register(std::move(entry));
   }
@@ -133,9 +135,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     const std::unordered_set<std::string>& rules_and_transformers_to_disable) {
   std::vector<std::unique_ptr<GraphTransformer>> transformers;
   std::unique_ptr<RuleBasedGraphTransformer> rule_transformer = nullptr;
-  bool disable_quant_qdq = session_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
+  bool disable_quant_qdq = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
 #ifndef DISABLE_CONTRIB_OPS
-  bool enable_gelu_approximation = session_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
+  bool enable_gelu_approximation = session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableGeluApproximation, "0") == "1";
 #endif
 
   switch (level) {

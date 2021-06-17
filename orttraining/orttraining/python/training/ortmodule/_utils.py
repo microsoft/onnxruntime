@@ -8,7 +8,6 @@ from onnxruntime.capi import _pybind_state as C
 
 import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
-from torch.utils.cpp_extension import load_inline
 
 
 def _ortvalue_to_torch_tensor(ortvalue):
@@ -18,32 +17,14 @@ def _ortvalue_to_torch_tensor(ortvalue):
     torch_tensor = from_dlpack(ortvalue.to_dlpack())
     return torch_tensor.to(torch.bool) if ortvalue.data_type() == 'tensor(bool)' else torch_tensor
 
+
 def _ortvalue_from_torch_tensor(torch_tensor):
     return C.OrtValue.from_dlpack(to_dlpack(torch_tensor), torch_tensor.dtype == torch.bool)
 
-def _load_torch_gpu_allocator_cpp_extension(verbosity, is_rocm_pytorch):
-    gpu_identifier = "hip" if is_rocm_pytorch else "cuda"
-    gpu_allocator_header = "HIPCachingAllocator" if is_rocm_pytorch else "CUDACachingAllocator"
-    torch_gpu_allocator_addresses_cpp_source = f'''
-        #include <torch/extension.h>
-        #include <c10/{gpu_identifier}/{gpu_allocator_header}.h>
 
-        size_t gpu_caching_allocator_raw_alloc_address() {{
-            return reinterpret_cast<size_t>(&c10::{gpu_identifier}::{gpu_allocator_header}::raw_alloc);
-        }}
-
-        size_t gpu_caching_allocator_raw_delete_address() {{
-            return reinterpret_cast<size_t>(&c10::{gpu_identifier}::{gpu_allocator_header}::raw_delete);
-        }}
-    '''
-
-    return load_inline(name='inline_extension',
-                       cpp_sources=[torch_gpu_allocator_addresses_cpp_source],
-                       extra_cflags=['-D__HIP_PLATFORM_HCC__=1' if is_rocm_pytorch else ''],
-                       functions=['gpu_caching_allocator_raw_alloc_address',
-                                  'gpu_caching_allocator_raw_delete_address'],
-                       verbose=verbosity,
-                       with_cuda=True)
+def _torch_tensor_from_dl_pack(dlpack, ortvalue):
+    torch_tensor = from_dlpack(dlpack)
+    return torch_tensor.to(torch.bool) if ortvalue.data_type() == 'tensor(bool)' else torch_tensor
 
 
 def _check_same_device(device, argument_str, *args):
@@ -97,6 +78,18 @@ def get_device_from_module(module):
         pass
     return device
 
+
+def get_device_from_inputs(args, kwargs):
+    '''Returns device from first PyTorch Tensor within args or kwargs'''
+
+    device = None
+    if args:
+        device = torch.device(args[0].device)
+    elif kwargs:
+        device = torch.device(next(iter(kwargs.values())).device)
+    return device
+
+
 def _create_iobinding(io_binding, inputs, model, device):
     '''Creates IO binding for a `model` inputs and output'''
     for idx, value_info in enumerate(model.graph.input):
@@ -104,3 +97,10 @@ def _create_iobinding(io_binding, inputs, model, device):
 
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type, device_id=get_device_index(device))
+
+class _PytorchModuleMetadata():
+    """Encapsulates modules and allows easy access as required"""
+
+    def __init__(self, original_module, flattened_module):
+        self.original_module = original_module
+        self.flattened_module = flattened_module

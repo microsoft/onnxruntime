@@ -27,6 +27,61 @@ GET_TENSOR_DATA(Int64Data, int64_t, int64_data)
 
 #undef GET_TENSOR_DATA
 
+bool GetType(const NodeArg& node_arg, int32_t& type, const logging::Logger& logger) {
+  type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  const auto* type_proto = node_arg.TypeAsProto();
+  if (!type_proto || !type_proto->has_tensor_type() || !type_proto->tensor_type().has_elem_type()) {
+    LOGS(logger, WARNING) << "NodeArg [" << node_arg.Name() << "] has no input type";
+    return false;
+  }
+
+  type = type_proto->tensor_type().elem_type();
+  return true;
+}
+
+bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node,
+                   float& min, float& max, const logging::Logger& logger) {
+  const auto& node_name = node.Name();
+  int32_t input_type;
+  if (!GetType(*node.InputDefs()[0], input_type, logger))
+    return false;
+
+  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    LOGS(logger, VERBOSE) << "GetClipMinMax() only support Clip node with float inputs for now. "
+                          << "The node [" << node_name << "] has input 0 type: " << input_type;
+    return false;
+  }
+
+  min = std::numeric_limits<float>::lowest();
+  max = std::numeric_limits<float>::max();
+
+  if (node.SinceVersion() < 11) {  // Clip opset 1, 6 is using attributes for min/max
+    NodeAttrHelper helper(node);
+    min = helper.Get("min", std::numeric_limits<float>::lowest());
+    max = helper.Get("max", std::numeric_limits<float>::max());
+  } else {
+    if (node.InputDefs().size() > 1) {  // we have input min
+      const auto& min_name = node.InputDefs()[1]->Name();
+      if (!Contains(initializers, min_name)) {
+        LOGS(logger, VERBOSE) << "Input min of Clip must be known";
+        return false;
+      }
+      min = GetTensorFloatData(*initializers.at(min_name))[0];
+    }
+
+    if (node.InputDefs().size() > 2) {  // we have input max
+      const auto& max_name = node.InputDefs()[2]->Name();
+      if (!Contains(initializers, max_name)) {
+        LOGS(logger, VERBOSE) << "Input max of Clip must be known";
+        return false;
+      }
+      max = GetTensorFloatData(*initializers.at(max_name))[0];
+    }
+  }
+
+  return true;
+}
+
 NodeAttrHelper::NodeAttrHelper(const onnxruntime::Node& node)
     : node_attributes_(node.GetAttributes()) {}
 

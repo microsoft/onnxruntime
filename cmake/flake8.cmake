@@ -11,14 +11,14 @@ if(flake8_BIN)
 else()
     # see if we can run the python module instead if there's no executable
     set(FLAKE8_NOT_FOUND false)
-    exec_program("${PYTHON_EXECUTABLE}"
+    exec_program("${Python_EXECUTABLE}"
                  ARGS "-m flake8 --version"
                  OUTPUT_VARIABLE FLAKE8_VERSION
                  RETURN_VALUE FLAKE8_NOT_FOUND)
     if(${FLAKE8_NOT_FOUND})
         message(WARNING "Could not find 'flake8' to check python scripts. Please install flake8 using pip.")
     else()
-        set(flake8_BIN ${PYTHON_EXECUTABLE} "-m" "flake8")
+        set(flake8_BIN ${Python_EXECUTABLE} "-m" "flake8")
     endif(${FLAKE8_NOT_FOUND})
 endif()
 

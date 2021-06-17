@@ -10,17 +10,12 @@ namespace training {
 
 TrainingAgent::TrainingAgent(InferenceSession& session,
                              const std::vector<std::string>& fw_feed_names,
-                             const std::vector<std::string>& fw_fetches_names,
                              const std::vector<OrtDevice>& fw_outputs_device_info,
-                             const std::vector<std::string>& bw_feed_names,
                              const std::vector<std::string>& bw_fetches_names,
                              const std::vector<OrtDevice>& bw_outputs_device_info) : inference_session_(session) {
   auto& session_state = session.GetSessionState();
-  CreateAndInitializeFeedsFetchesManager(session_state, fw_feed_names, fw_fetches_names, fw_outputs_device_info,
-                                         fw_feeds_fetches_manager_);
-
-  CreateAndInitializeFeedsFetchesManager(session_state, bw_feed_names, bw_fetches_names, bw_outputs_device_info,
-                                         bw_feeds_fetches_manager_);
+  std::vector<std::string> fw_fetches_names;
+  std::vector<std::string> bw_feed_names;
 
   size_t break_point = 0;
   const SequentialExecutionPlan& seq_exec_plan = *(session_state.GetExecutionPlan());
@@ -29,6 +24,14 @@ TrainingAgent::TrainingAgent(InferenceSession& session,
     const auto& node_exec_plan = exec_plan_vec[program_counter];
     auto node_index = node_exec_plan.node_index;
     if (session_state.GetKernel(node_index)->KernelDef().OpName() == "YieldOp") {
+      auto& node = *(session_state.GetGraphViewer().GetGraph().GetNode(node_index));
+      for (const auto& node_arg : node.InputDefs()) {
+        fw_fetches_names.emplace_back(node_arg->Name());
+      }
+
+      for (const auto& node_arg : node.OutputDefs()) {
+        bw_feed_names.emplace_back(node_arg->Name());
+      }
       break;
     }
     break_point += 1;
@@ -36,6 +39,12 @@ TrainingAgent::TrainingAgent(InferenceSession& session,
 
   fw_program_counter_end_ = break_point;
   bw_program_counter_end_ = exec_plan_vec.size();
+
+  CreateAndInitializeFeedsFetchesManager(session_state, fw_feed_names, fw_fetches_names, fw_outputs_device_info,
+                                         fw_feeds_fetches_manager_);
+
+  CreateAndInitializeFeedsFetchesManager(session_state, bw_feed_names, bw_fetches_names, bw_outputs_device_info,
+                                         bw_feeds_fetches_manager_);
 }
 
 TrainingAgent::~TrainingAgent() = default;

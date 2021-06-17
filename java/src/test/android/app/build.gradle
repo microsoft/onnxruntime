@@ -3,13 +3,15 @@ plugins {
 	id 'kotlin-android'
 }
 
+def minSdkVer = System.properties.get("minSdkVer")?:24
+
 android {
 	compileSdkVersion 30
 	buildToolsVersion "30.0.3"
 
 	defaultConfig {
 		applicationId "ai.onnxruntime.example.javavalidator"
-		minSdkVersion 24
+		minSdkVersion minSdkVer
 		targetSdkVersion 30
 		versionCode 1
 		versionName "1.0"

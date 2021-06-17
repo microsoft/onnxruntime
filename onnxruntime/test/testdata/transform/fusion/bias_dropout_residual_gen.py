@@ -97,3 +97,39 @@ graph = helper.make_graph(
 
 model = helper.make_model(graph, producer_name='onnx-example', **kwargs)
 onnx.save(model, 'bias_dropout_residual_fusion_mismatch.onnx')
+
+# If the Dropout output 0 is also a graph output, the residual Add shouldn't be fused.
+# Create the model (ModelProto)
+bias = helper.make_node("Add", ["B", "A"], ["add0_out"], "add0")
+dropout_12 = helper.make_node("Dropout", ["add0_out", "ratio_const", "training_mode"], ["dropout_out", "mask"], "dropout0")
+residual = helper.make_node("Add", ["R", "dropout_out"], ["C"], "add1")
+
+D = helper.make_tensor_value_info('dropout_out', TensorProto.FLOAT, ['unk_1', 'unk_2', 3072])
+
+graph = helper.make_graph(
+    [bias, dropout_12, residual],
+    "Bias_Dropout_Fusion",  #name
+    [A, B, R],
+    [C, D],
+    [ratio, training_mode])
+
+model = helper.make_model(graph, producer_name='onnx-example', **kwargs)
+onnx.save(model, 'bias_dropout_residual_fusion_multiple_consumers1.onnx')
+
+# If the Dropout has multiple consumers of output 0, the residual Add shouldn't be fused.
+# Create the model (ModelProto)
+D = helper.make_tensor_value_info('D', TensorProto.FLOAT, ['unk_1', 'unk_2', 3072])
+bias = helper.make_node("Add", ["B", "A"], ["add0_out"], "add0")
+dropout_12 = helper.make_node("Dropout", ["add0_out", "ratio_const", "training_mode"], ["dropout_out", "mask"], "dropout0")
+residual = helper.make_node("Add", ["R", "dropout_out"], ["C"], "add1")
+identity = helper.make_node("Identity", ["dropout_out"], ["D"], "identity")
+
+graph = helper.make_graph(
+    [bias, dropout_12, residual, identity],
+    "Bias_Dropout_Fusion",  #name
+    [A, B, R],
+    [C, D],
+    [ratio, training_mode])
+
+model = helper.make_model(graph, producer_name='onnx-example', **kwargs)
+onnx.save(model, 'bias_dropout_residual_fusion_multiple_consumers2.onnx')

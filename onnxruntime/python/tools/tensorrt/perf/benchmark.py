@@ -45,8 +45,8 @@ ep_to_provider_list = {
 # latency gain headers 
 trt_cuda_gain = 'TRT_CUDA_gain(%)'
 trt_cuda_fp16_gain = 'TRT_CUDA_fp16_gain(%)'
-trt_native_gain = 'EP_Native_TRT_gain(%)'
-trt_native_fp16_gain = 'EP_Native_TRT_fp16_gain(%)'
+trt_native_gain = 'TRT_Standalone_gain(%)'
+trt_native_fp16_gain = 'TRT_Standalone_fp16_gain(%)'
 
 # metadata
 FAIL_MODEL_FILE = ".fail_model_map"
@@ -55,7 +55,7 @@ METRICS_FILE = ".metrics_map"
 MEMORY_FILE = './temp_memory.csv'
 
 def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
-    logger.info("running native trt")
+    logger.info("running standalone trt")
     model_path = "--onnx=" + model_path
     input_shape = []
 
@@ -1019,17 +1019,18 @@ def run_onnxruntime(args, models):
                     "sequence_length": 1,
                     "datetime": str(datetime.now()),}
                     
-                # get standalone TensorRT perf
                 if trt in ep and args.trtexec:
                     
+                    # get standalone TensorRT perf
                     try: 
+                        ep = standalone_trt_fp16 if fp16 else standalone_trt
+                        
                         if args.track_memory: 
-                                ep = standalone_trt_fp16 if fp16 else standalone_trt
-                                p = start_memory_tracking()            
-                                result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
-                                mem_usage = end_memory_tracking(p, True)
-                                if result and mem_usage: 
-                                    result["memory"] = mem_usage
+                            p = start_memory_tracking()            
+                            result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
+                            mem_usage = end_memory_tracking(p, True)
+                            if result and mem_usage: 
+                                result["memory"] = mem_usage
 
                         else: 
                             result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
@@ -1247,7 +1248,7 @@ def output_status(results, csv_filename):
                         standalone_trt + " fp32",
                         cuda + " fp16",
                         trt + " fp16",
-                        standalone_trt + "fp16"
+                        standalone_trt + " fp16"
                         ]
 
         csv_writer = csv.writer(csv_file)
@@ -1300,30 +1301,30 @@ def output_latency(results, csv_filename):
 
     with open(csv_filename, mode="a", newline='') as csv_file:
         column_names = ["Model",
-                        "CPU \nmean (ms)",
-                        "CPU \n 90th percentile (ms)",
+                        "CPU fp32 \nmean (ms)",
+                        "CPU fp32 \n 90th percentile (ms)",
                         "CUDA fp32 \nmean (ms)",
                         "CUDA fp32 \n90th percentile (ms)",
-                        "CUDA EP fp32 \nmemory usage (MiB)",
+                        "CUDA EP fp32 \npeak memory usage (MiB)",
                         "TRT EP fp32 \nmean (ms)",
                         "TRT EP fp32 \n90th percentile (ms)",
-                        "TRT EP fp32 \nmemory usage (MiB)",
+                        "TRT EP fp32 \npeak memory usage (MiB)",
                         "Standalone TRT fp32 \nmean (ms)",
                         "Standalone TRT fp32 \n90th percentile (ms)",
-                        "Standalone TRT fp32 \nmemory usage (MiB)",
+                        "Standalone TRT fp32 \npeak memory usage (MiB)",
                         "TRT v CUDA EP fp32 \ngain (mean) (%)",
-                        "EP v Native TRT fp32 \ngain (mean) (%)",
+                        "EP v Standalone TRT fp32 \ngain (mean) (%)",
                         "CUDA fp16 \nmean (ms)",
                         "CUDA fp16 \n90th percentile (ms)",
-                        "CUDA EP fp16 \nmemory usage (MiB)",
+                        "CUDA EP fp16 \npeak memory usage (MiB)",
                         "TRT EP fp16 \nmean (ms)",
-                        "TRT EP fp16 \n90 percentile (ms)",
-                        "TRT EP fp16 \nmemory usage (MiB)",
+                        "TRT EP fp16 \n90th percentile (ms)",
+                        "TRT EP fp16 \npeak memory usage (MiB)",
                         "Standalone TRT fp16 \nmean (ms)",
                         "Standalone TRT fp16 \n90th percentile (ms)",
-                        "Standalone TRT fp16 \nmemory usage (MiB)",
+                        "Standalone TRT fp16 \npeak memory usage (MiB)",
                         "TRT v CUDA EP fp16 \ngain (mean) (%)", 
-                        "EP v Native TRT fp16 \ngain (mean) (%)"]
+                        "EP v Standalone TRT fp16 \ngain (mean) (%)"]
         csv_writer = csv.writer(csv_file)
 
         if need_write_header:

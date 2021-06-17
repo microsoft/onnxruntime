@@ -3,7 +3,10 @@
 
 #pragma once
 #include "gsl/gsl"
+
+#ifndef SHARED_PROVIDER
 #include "core/framework/utils.h"
+#endif
 #include "core/common/safeint.h"
 namespace onnxruntime {
 

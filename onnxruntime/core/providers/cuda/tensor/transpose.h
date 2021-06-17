@@ -3,8 +3,8 @@
 
 #pragma once
 
+#include "core/providers/shared_library/provider_api.h"
 #include "gsl/gsl"
-#include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cpu/tensor/transpose.h"
 

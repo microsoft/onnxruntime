@@ -136,3 +136,4 @@ class FusionReshape(Fusion):
         self.nodes_to_remove.extend(path2)
         self.nodes_to_remove.extend(path3)
         self.nodes_to_add.append(new_node)
+        self.node_name_to_graph_name[new_node.name] = self.this_graph_name

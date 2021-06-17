@@ -144,7 +144,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
   size_t total_output_sizes = 0;
 
   if (is_profiler_enabled) {
-    tp = session_state.Profiler().Now();
+    tp = session_state.Profiler().StartTime();
   }
 
   ExecutionFrame& frame = state_.GetExecutionFrame(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
@@ -235,7 +235,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
     OpKernelContextInternal op_kernel_context(session_state, frame, *p_op_kernel, logger, false);
     // TODO: log kernel outputs?
     if (is_profiler_enabled) {
-      sync_time_begin = session_state.Profiler().Now();
+      sync_time_begin = session_state.Profiler().StartTime();
     }
 
     // sync before compute
@@ -289,7 +289,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
       // call compute on the kernel
       VLOGS(logger, 1) << "Computing kernel: " << node_name_for_profiling;
 
-      kernel_begin_time = session_state.Profiler().Now();
+      kernel_begin_time = session_state.Profiler().StartTime();
 
       // Calculate total input sizes for this operation.
       CalculateTotalInputSizes(&op_kernel_context, p_op_kernel,
@@ -373,7 +373,7 @@ Status PartialExecutor::Execute(const SessionState& session_state, const std::ve
                                                           concurrency::ThreadPool::StopProfiling(
                                                               session_state.GetThreadPool())},
                                                      });
-      sync_time_begin = session_state.Profiler().Now();
+      sync_time_begin = session_state.Profiler().StartTime();
     }
 
     // sync after compute for outputs

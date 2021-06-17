@@ -3,9 +3,12 @@
 
 #import <XCTest/XCTest.h>
 
-#import "onnxruntime/ort_env.h"
-#import "onnxruntime/ort_session.h"
-#import "onnxruntime/ort_value.h"
+#import "ort_coreml_execution_provider.h"
+#import "ort_env.h"
+#import "ort_session.h"
+#import "ort_value.h"
+
+#import "test/assertion_utils.h"
 
 #include <vector>
 
@@ -24,8 +27,10 @@ NS_ASSUME_NONNULL_BEGIN
 
   self.continueAfterFailure = NO;
 
-  _ortEnv = [[ORTEnv alloc] initWithError:nil];
-  XCTAssertNotNil(_ortEnv);
+  NSError* err = nil;
+  _ortEnv = [[ORTEnv alloc] initWithLoggingLevel:ORTLoggingLevelWarning
+                                           error:&err];
+  ORTAssertNullableResultSuccessful(_ortEnv, err);
 }
 
 - (void)tearDown {
@@ -34,17 +39,14 @@ NS_ASSUME_NONNULL_BEGIN
   [super tearDown];
 }
 
-+ (NSString*)getTestDataWithRelativePath:(NSString*)relativePath {
-  NSString* testDataDir = [NSString stringWithFormat:@"%@/Contents/Resources/testdata",
-                                                     [[NSBundle bundleForClass:[ORTSessionTest class]] bundlePath]];
-  return [testDataDir stringByAppendingString:relativePath];
-}
-
 // model with an Add op
 // inputs: A, B
 // output: C = A + B
 + (NSString*)getAddModelPath {
-  return [ORTSessionTest getTestDataWithRelativePath:@"/single_add.onnx"];
+  NSBundle* bundle = [NSBundle bundleForClass:[ORTSessionTest class]];
+  NSString* path = [bundle pathForResource:@"single_add.basic"
+                                    ofType:@"ort"];
+  return path;
 }
 
 + (NSMutableData*)dataWithScalarFloat:(float)value {
@@ -55,106 +57,162 @@ NS_ASSUME_NONNULL_BEGIN
 + (ORTValue*)ortValueWithScalarFloatData:(NSMutableData*)data {
   NSArray<NSNumber*>* shape = @[ @1 ];
   NSError* err = nil;
-  ORTValue* ort_value = [[ORTValue alloc] initTensorWithData:data
-                                                 elementType:ORTTensorElementDataTypeFloat
-                                                       shape:shape
-                                                       error:&err];
-  XCTAssertNotNil(ort_value);
-  XCTAssertNil(err);
-  return ort_value;
+  ORTValue* ortValue = [[ORTValue alloc] initWithTensorData:data
+                                                elementType:ORTTensorElementDataTypeFloat
+                                                      shape:shape
+                                                      error:&err];
+  ORTAssertNullableResultSuccessful(ortValue, err);
+  return ortValue;
+}
+
++ (ORTSessionOptions*)makeSessionOptions {
+  NSError* err = nil;
+  ORTSessionOptions* sessionOptions = [[ORTSessionOptions alloc] initWithError:&err];
+  ORTAssertNullableResultSuccessful(sessionOptions, err);
+  return sessionOptions;
+}
+
++ (ORTRunOptions*)makeRunOptions {
+  NSError* err = nil;
+  ORTRunOptions* runOptions = [[ORTRunOptions alloc] initWithError:&err];
+  ORTAssertNullableResultSuccessful(runOptions, err);
+  return runOptions;
 }
 
 - (void)testInitAndRunWithPreallocatedOutputOk {
-  NSMutableData* a_data = [ORTSessionTest dataWithScalarFloat:1.0f];
-  NSMutableData* b_data = [ORTSessionTest dataWithScalarFloat:2.0f];
-  NSMutableData* c_data = [ORTSessionTest dataWithScalarFloat:0.0f];
+  NSMutableData* aData = [ORTSessionTest dataWithScalarFloat:1.0f];
+  NSMutableData* bData = [ORTSessionTest dataWithScalarFloat:2.0f];
+  NSMutableData* cData = [ORTSessionTest dataWithScalarFloat:0.0f];
 
-  ORTValue* a = [ORTSessionTest ortValueWithScalarFloatData:a_data];
-  ORTValue* b = [ORTSessionTest ortValueWithScalarFloatData:b_data];
-  ORTValue* c = [ORTSessionTest ortValueWithScalarFloatData:c_data];
+  ORTValue* a = [ORTSessionTest ortValueWithScalarFloatData:aData];
+  ORTValue* b = [ORTSessionTest ortValueWithScalarFloatData:bData];
+  ORTValue* c = [ORTSessionTest ortValueWithScalarFloatData:cData];
 
   NSError* err = nil;
   ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
                                               modelPath:[ORTSessionTest getAddModelPath]
+                                         sessionOptions:[ORTSessionTest makeSessionOptions]
                                                   error:&err];
-  XCTAssertNotNil(session);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(session, err);
 
-  BOOL run_result = [session runWithInputs:@{@"A" : a, @"B" : b}
-                                   outputs:@{@"C" : c}
-                                     error:&err];
-  XCTAssertTrue(run_result);
-  XCTAssertNil(err);
+  BOOL runResult = [session runWithInputs:@{@"A" : a, @"B" : b}
+                                  outputs:@{@"C" : c}
+                               runOptions:[ORTSessionTest makeRunOptions]
+                                    error:&err];
+  ORTAssertBoolResultSuccessful(runResult, err);
 
-  const float c_expected = 3.0f;
-  float c_actual;
-  memcpy(&c_actual, c_data.bytes, sizeof(float));
-  XCTAssertEqual(c_actual, c_expected);
+  const float cExpected = 3.0f;
+  float cActual;
+  memcpy(&cActual, cData.bytes, sizeof(float));
+  XCTAssertEqual(cActual, cExpected);
 }
 
 - (void)testInitAndRunOk {
-  NSMutableData* a_data = [ORTSessionTest dataWithScalarFloat:1.0f];
-  NSMutableData* b_data = [ORTSessionTest dataWithScalarFloat:2.0f];
+  NSMutableData* aData = [ORTSessionTest dataWithScalarFloat:1.0f];
+  NSMutableData* bData = [ORTSessionTest dataWithScalarFloat:2.0f];
 
-  ORTValue* a = [ORTSessionTest ortValueWithScalarFloatData:a_data];
-  ORTValue* b = [ORTSessionTest ortValueWithScalarFloatData:b_data];
+  ORTValue* a = [ORTSessionTest ortValueWithScalarFloatData:aData];
+  ORTValue* b = [ORTSessionTest ortValueWithScalarFloatData:bData];
 
   NSError* err = nil;
   ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
                                               modelPath:[ORTSessionTest getAddModelPath]
+                                         sessionOptions:[ORTSessionTest makeSessionOptions]
                                                   error:&err];
-  XCTAssertNotNil(session);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(session, err);
 
   NSDictionary<NSString*, ORTValue*>* outputs =
       [session runWithInputs:@{@"A" : a, @"B" : b}
                  outputNames:[NSSet setWithArray:@[ @"C" ]]
+                  runOptions:[ORTSessionTest makeRunOptions]
                        error:&err];
-  XCTAssertNotNil(outputs);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(outputs, err);
 
-  ORTValue* c_output = outputs[@"C"];
-  XCTAssertNotNil(c_output);
+  ORTValue* cOutput = outputs[@"C"];
+  XCTAssertNotNil(cOutput);
 
-  NSData* c_data = [c_output tensorDataWithError:&err];
-  XCTAssertNotNil(c_data);
-  XCTAssertNil(err);
+  NSData* cData = [cOutput tensorDataWithError:&err];
+  ORTAssertNullableResultSuccessful(cData, err);
 
-  const float c_expected = 3.0f;
-  float c_actual;
-  memcpy(&c_actual, c_data.bytes, sizeof(float));
-  XCTAssertEqual(c_actual, c_expected);
+  const float cExpected = 3.0f;
+  float cActual;
+  memcpy(&cActual, cData.bytes, sizeof(float));
+  XCTAssertEqual(cActual, cExpected);
+}
+
+- (void)testGetNamesOk {
+  NSError* err = nil;
+  ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
+                                              modelPath:[ORTSessionTest getAddModelPath]
+                                         sessionOptions:[ORTSessionTest makeSessionOptions]
+                                                  error:&err];
+  ORTAssertNullableResultSuccessful(session, err);
+
+  NSArray<NSString*>* inputNames = [session inputNamesWithError:&err];
+  ORTAssertNullableResultSuccessful(inputNames, err);
+  XCTAssertEqualObjects(inputNames, (@[ @"A", @"B" ]));
+
+  NSArray<NSString*>* overridableInitializerNames = [session overridableInitializerNamesWithError:&err];
+  ORTAssertNullableResultSuccessful(overridableInitializerNames, err);
+  XCTAssertEqualObjects(overridableInitializerNames, (@[]));
+
+  NSArray<NSString*>* outputNames = [session outputNamesWithError:&err];
+  ORTAssertNullableResultSuccessful(outputNames, err);
+  XCTAssertEqualObjects(outputNames, (@[ @"C" ]));
 }
 
 - (void)testInitFailsWithInvalidPath {
-  NSString* invalid_model_path = [ORTSessionTest getTestDataWithRelativePath:@"/invalid/path/to/model.onnx"];
+  NSString* invalidModelPath = @"invalid/path/to/model.ort";
   NSError* err = nil;
   ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
-                                              modelPath:invalid_model_path
+                                              modelPath:invalidModelPath
+                                         sessionOptions:[ORTSessionTest makeSessionOptions]
                                                   error:&err];
-  XCTAssertNil(session);
-  XCTAssertNotNil(err);
+  ORTAssertNullableResultUnsuccessful(session, err);
 }
 
 - (void)testRunFailsWithInvalidInput {
-  NSMutableData* d_data = [ORTSessionTest dataWithScalarFloat:1.0f];
-  NSMutableData* c_data = [ORTSessionTest dataWithScalarFloat:0.0f];
+  NSMutableData* dData = [ORTSessionTest dataWithScalarFloat:1.0f];
+  NSMutableData* cData = [ORTSessionTest dataWithScalarFloat:0.0f];
 
-  ORTValue* d = [ORTSessionTest ortValueWithScalarFloatData:d_data];
-  ORTValue* c = [ORTSessionTest ortValueWithScalarFloatData:c_data];
+  ORTValue* d = [ORTSessionTest ortValueWithScalarFloatData:dData];
+  ORTValue* c = [ORTSessionTest ortValueWithScalarFloatData:cData];
 
   NSError* err = nil;
   ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
                                               modelPath:[ORTSessionTest getAddModelPath]
+                                         sessionOptions:[ORTSessionTest makeSessionOptions]
                                                   error:&err];
-  XCTAssertNotNil(session);
-  XCTAssertNil(err);
+  ORTAssertNullableResultSuccessful(session, err);
 
-  BOOL run_result = [session runWithInputs:@{@"D" : d}
-                                   outputs:@{@"C" : c}
-                                     error:&err];
-  XCTAssertFalse(run_result);
-  XCTAssertNotNil(err);
+  BOOL runResult = [session runWithInputs:@{@"D" : d}
+                                  outputs:@{@"C" : c}
+                               runOptions:[ORTSessionTest makeRunOptions]
+                                    error:&err];
+  ORTAssertBoolResultUnsuccessful(runResult, err);
+}
+
+- (void)testAppendCoreMLEP {
+  NSError* err = nil;
+  ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
+  ORTCoreMLExecutionProviderOptions* coreMLOptions = [[ORTCoreMLExecutionProviderOptions alloc] init];
+  coreMLOptions.enableOnSubgraphs = YES;  // set an arbitrary option
+
+  BOOL appendResult = [sessionOptions appendCoreMLExecutionProviderWithOptions:coreMLOptions
+                                                                         error:&err];
+
+  if (!ORTIsCoreMLExecutionProviderAvailable()) {
+    ORTAssertBoolResultUnsuccessful(appendResult, err);
+    return;
+  }
+
+  ORTAssertBoolResultSuccessful(appendResult, err);
+
+  ORTSession* session = [[ORTSession alloc] initWithEnv:self.ortEnv
+                                              modelPath:[ORTSessionTest getAddModelPath]
+                                         sessionOptions:sessionOptions
+                                                  error:&err];
+  ORTAssertNullableResultSuccessful(session, err);
 }
 
 @end

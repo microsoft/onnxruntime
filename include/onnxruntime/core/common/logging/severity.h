@@ -13,7 +13,7 @@ enum class Severity {
   kINFO = 1,
   kWARNING = 2,
   kERROR = 3,
-  kFATAL = 4,
+  kFATAL = 4
 };
 
 constexpr const char* SEVERITY_PREFIX = "VIWEF";

@@ -3,21 +3,20 @@
 
 #include "orttraining/training_ops/cuda/reduction/reduction_all.h"
 
-#include "core/framework/op_kernel_context_internal.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 #include "core/providers/cuda/shared_inc/accumulation_type.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_REDUCE_ALL_KERNEL_TYPED(Name, TIn, TOut)                                                                                       \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                                \
-      Name,                                                                                                                                     \
-      kMSDomain,                                                                                                                                \
-      1,                                                                                                                                        \
-      TIn##_##TOut,                                                                                                                             \
-      kCudaExecutionProvider,                                                                                                                   \
-      KernelDefBuilder().TypeConstraint("TIn", DataTypeImpl::GetTensorType<TIn>()).TypeConstraint("TOut", DataTypeImpl::GetTensorType<TOut>()), \
+#define REGISTER_REDUCE_ALL_KERNEL_TYPED(Name, TIn, TOut)                                                                                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                                           \
+      Name,                                                                                                                                                \
+      kMSDomain,                                                                                                                                           \
+      1,                                                                                                                                                   \
+      TIn##_##TOut,                                                                                                                                        \
+      kCudaExecutionProvider,                                                                                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("TIn", DataTypeImpl::GetTensorType<TIn>()).TypeConstraint("TOut", DataTypeImpl::GetTensorType<TOut>()), \
       Name<TIn, TOut>);
 
 template <typename TIn, typename TOut>
@@ -55,7 +54,7 @@ Status ReduceAllL2<TIn, TOut>::ComputeInternal(OpKernelContext* ctx) const {
     // Check if all values are finite and write true to deviceOutput.
     // Otherwise, false will be written.
     launch_multi_tensor_functor<1, TFunctor>(Stream(),
-        2048 * 32, tensor_sizes, grouped_tensor_pointers, functor, p_output);
+                                             2048 * 32, tensor_sizes, grouped_tensor_pointers, functor, p_output);
 
     // *p_output is the squared sum of all elements.
     // Let's take a sqrt to get the actual L2-norm.

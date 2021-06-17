@@ -172,10 +172,11 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
   // If the graph is partitioned in multiple subgraphs, and this may impact performance,
   // we want to give users a summary message at warning level.
-  if (num_of_partitions > 1)
-    LOGS_DEFAULT(WARNING) << summary_msg;
-  else
-    LOGS_DEFAULT(INFO) << summary_msg;
+  if (num_of_partitions > 1) {
+    LOGS(logger, WARNING) << summary_msg;
+  } else {
+    LOGS(logger, INFO) << summary_msg;
+  }
 
   return result;
 }
@@ -284,6 +285,9 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
           switch (output_type) {
             case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
               output_buffer = ort.GetTensorMutableData<float>(output_tensor);
+              break;
+            case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+              output_buffer = ort.GetTensorMutableData<int32_t>(output_tensor);
               break;
             default:
               return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,

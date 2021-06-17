@@ -146,7 +146,8 @@ def quantize_static(model_input,
                     nodes_to_exclude=[],
                     optimize_model=True,
                     use_external_data_format=False,
-                    calibrate_method=CalibrationMethod.MinMax):
+                    calibrate_method=CalibrationMethod.MinMax,
+                    extra_options = {}):
 
     '''
         Given an onnx model and calibration data reader, create a quantized onnx model and save it into a file
@@ -178,6 +179,9 @@ def quantize_static(model_input,
     :param calibrate_method: 
         Current calibration methods supported are MinMax and Entropy. 
         Please use CalibrationMethod.MinMax or CalibrationMethod.Entropy as options.
+    :param extra_options:
+        key value pair dictionary for various options in different case. Current used:
+            extra.Sigmoid.nnapi = True  (Default is False)
     '''
 
     if activation_type != QuantType.QUInt8:
@@ -206,7 +210,8 @@ def quantize_static(model_input,
             tensors_range,
             nodes_to_quantize,
             nodes_to_exclude,
-            op_types_to_quantize)
+            op_types_to_quantize,
+            extra_options)
     else:
         quantizer = QDQQuantizer(
             model,
@@ -219,7 +224,8 @@ def quantize_static(model_input,
             tensors_range,
             nodes_to_quantize,
             nodes_to_exclude,
-            op_types_to_quantize)
+            op_types_to_quantize,
+            extra_options)
 
     quantizer.quantize_model()
     quantizer.model.save_model_to_file(model_output, use_external_data_format)
@@ -235,7 +241,8 @@ def quantize_dynamic(model_input: Path,
                      nodes_to_quantize=[],
                      nodes_to_exclude=[],
                      optimize_model=True,
-                     use_external_data_format=False):
+                     use_external_data_format=False,
+                     extra_options = { }):
     '''
         Given an onnx model, create a quantized onnx model and save it into a file
     :param model_input: file path of model to quantize
@@ -277,7 +284,8 @@ def quantize_dynamic(model_input: Path,
         None,
         nodes_to_quantize,
         nodes_to_exclude,
-        op_types_to_quantize)
+        op_types_to_quantize,
+        extra_options)
 
     quantizer.quantize_model()
     quantizer.model.save_model_to_file(model_output, use_external_data_format)

@@ -3,6 +3,7 @@
 
 const bundleMode = require('minimist')(process.argv)['bundle-mode'] || 'dev';  // 'dev'|'perf'|undefined;
 const karmaPlugins = require('minimist')(process.argv)['karma-plugins'] || undefined;
+const timeoutMocha = require('minimist')(process.argv)['timeout-mocha'] || 60000;
 const commonFile = bundleMode === 'dev' ? '../common/dist/ort-common.js' : '../common/dist/ort-common.min.js'
 const mainFile = bundleMode === 'dev' ? 'test/ort.dev.js' : 'test/ort.perf.js';
 
@@ -44,22 +45,24 @@ module.exports = function (config) {
     frameworks: ['mocha'],
     files: [
       { pattern: commonFile },
-      { pattern: 'test/testdata-config.js' },
       { pattern: mainFile },
       { pattern: 'test/testdata-file-cache-*.json', included: false },
-      //{ pattern: 'test/onnx-worker.js', included: false },
       { pattern: 'test/data/**/*', included: false, nocache: true },
       { pattern: 'dist/ort-wasm.wasm', included: false },
       { pattern: 'dist/ort-wasm-threaded.wasm', included: false },
+      { pattern: 'dist/ort-wasm-simd.wasm', included: false },
+      { pattern: 'dist/ort-wasm-simd-threaded.wasm', included: false },
       { pattern: 'dist/ort-wasm-threaded.worker.js', included: false },
     ],
     proxies: {
       '/base/test/ort-wasm.wasm': '/base/dist/ort-wasm.wasm',
       '/base/test/ort-wasm-threaded.wasm': '/base/dist/ort-wasm-threaded.wasm',
+      '/base/test/ort-wasm-simd.wasm': '/base/dist/ort-wasm-simd.wasm',
+      '/base/test/ort-wasm-simd-threaded.wasm': '/base/dist/ort-wasm-simd-threaded.wasm',
       '/base/test/ort-wasm-threaded.worker.js': '/base/dist/ort-wasm-threaded.worker.js',
     },
     plugins: karmaPlugins,
-    client: { captureConsole: true, mocha: { expose: ['body'], timeout: 60000 } },
+    client: { captureConsole: true, mocha: { expose: ['body'], timeout: timeoutMocha } },
     preprocessors: { mainFile: ['sourcemap'] },
     reporters: ['mocha', 'BrowserStack'],
     browsers: [],

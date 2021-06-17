@@ -1,10 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InferenceSession, Tensor} from 'onnxruntime-common';
+import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
 
-import {WebGLFlags} from '../lib/backend-onnxjs';
-import {WebAssemblyFlags} from '../lib/backend-wasm';
 import {Attribute} from '../lib/onnxjs/attribute';
 import {Logger} from '../lib/onnxjs/instrument';
 
@@ -102,7 +100,7 @@ export declare namespace Test {
   }
 
   /**
-   * Represent ONNX.js global options
+   * Represent ONNX Runtime Web global options
    */
   export interface Options {
     debug?: boolean;
@@ -111,9 +109,8 @@ export declare namespace Test {
     cudaOptions?: InferenceSession.CudaExecutionProviderOption;
     cudaFlags?: Record<string, unknown>;
     wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
-    wasmFlags?: WebAssemblyFlags;
     webglOptions?: InferenceSession.WebGLExecutionProviderOption;
-    webglFlags?: WebGLFlags;
+    globalEnvFlags?: Env;
   }
 
   /**

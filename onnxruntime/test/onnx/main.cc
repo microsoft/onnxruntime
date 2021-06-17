@@ -309,28 +309,17 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     if (enable_tensorrt) {
 #ifdef USE_TENSORRT
-      OrtTensorRTProviderOptions tensorrt_options{
-          0,
-          0,
-          nullptr,
-          0,
-          1 << 30,
-          0,
-          0,
-          nullptr,
-          0,
-          0};
-
       OrtCUDAProviderOptions cuda_options{
-          0,
+          device_id,
           OrtCudnnConvAlgoSearch::EXHAUSTIVE,
           std::numeric_limits<size_t>::max(),
           0,
           true,
           0,
-          nullptr};
+          nullptr,
+          nullptr};  // TODO: Support arena configuration for users of test runner
 
-      sf.AppendExecutionProvider_TensorRT(tensorrt_options);
+      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(sf, device_id));
       sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
       fprintf(stderr, "TensorRT is not supported in this build");
@@ -356,7 +345,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           0,
           true,
           0,
-          nullptr};
+          nullptr,
+          nullptr};  // TODO: Support arena configuration for users of test runner
       sf.AppendExecutionProvider_CUDA(cuda_options);
 #else
       fprintf(stderr, "CUDA is not supported in this build");

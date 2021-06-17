@@ -14,7 +14,6 @@ function createTestGraphNode(name: string, opType: string): Graph.Node {
 }
 
 function dummyOpConstructor(): Operator {
-  // tslint:disable-next-line:no-any
   return {} as any as Operator;
 }
 

@@ -48,6 +48,7 @@ export class WebGLUnpack implements WebGLOperator {
   `;
 
     return {
+      name: 'WebGLUnpack',
       inputLayouts: [handler.getOrCreateTextureLayout(inputs[0], 4, true, inputs[0].dims, true)],
       outputLayout,
       samplers: ['A'],

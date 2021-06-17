@@ -3,6 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from onnxruntime.capi._pybind_state import Severity
 from contextlib import contextmanager
 from enum import IntEnum
 import io
@@ -17,7 +18,7 @@ class LogLevel(IntEnum):
     FATAL = 4
 
 
-@contextmanager 
+@contextmanager
 def suppress_os_stream_output(suppress_stdout=True, suppress_stderr=True, log_level=LogLevel.WARNING):
     """Supress output from being printed to stdout and stderr if log_level is WARNING or higher.
 
@@ -48,4 +49,11 @@ def suppress_os_stream_output(suppress_stdout=True, suppress_stderr=True, log_le
             # If anything was captured in fo, raise a single user warning letting users know that there was
             # some warning or error that was raised
             warnings.warn("There were one or more warnings or errors raised while exporting the PyTorch "
-            "model. Please enable INFO level logging to view all warnings and errors.", UserWarning)
+                          "model. Please enable INFO level logging to view all warnings and errors.", UserWarning)
+
+def ortmodule_loglevel_to_onnxruntime_c_loglevel(loglevel):
+    return {LogLevel.VERBOSE: Severity.VERBOSE,
+            LogLevel.INFO: Severity.INFO,
+            LogLevel.WARNING: Severity.WARNING,
+            LogLevel.ERROR: Severity.ERROR,
+            LogLevel.FATAL: Severity.FATAL}.get(loglevel, Severity.WARNING)

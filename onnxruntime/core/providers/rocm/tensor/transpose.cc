@@ -62,16 +62,16 @@ Status TransposeWithRocblas(hipStream_t stream, rocblas_handle rocblas_handle, c
   HipT* output_data = reinterpret_cast<HipT*>(output.MutableData<T>());
   ROCBLAS_RETURN_IF_ERROR(
       rocblasTransposeHelper(stream,
-                            rocblas_handle,
-                            rocblas_operation_transpose, rocblas_operation_transpose, M, N,
-                            &one,
-                            input_data,
-                            N,
-                            &zero,
-                            input_data,
-                            N,
-                            output_data,
-                            M));
+                             rocblas_handle,
+                             rocblas_operation_transpose, rocblas_operation_transpose, M, N,
+                             &one,
+                             input_data,
+                             N,
+                             &zero,
+                             input_data,
+                             N,
+                             output_data,
+                             M));
   return Status::OK();
 }
 
@@ -128,25 +128,25 @@ Status Transpose::DoTranspose(const hipDeviceProp_t& prop,
           new_permutations[j] -= 1;
         }
       }
-      for (auto j = i+1; j < new_rank; j++) {
-        new_permutations[j-1] = new_permutations[j];
+      for (auto j = i + 1; j < new_rank; j++) {
+        new_permutations[j - 1] = new_permutations[j];
       }
 
       // update input dims
       new_input_dims[prev] *= new_input_dims[curr];
       new_input_dims[curr] = 1;
-      for (auto j = static_cast<int32_t>(curr+1); j < new_rank; j++) {
-        new_input_dims[j-1] = new_input_dims[j];
+      for (auto j = static_cast<int32_t>(curr + 1); j < new_rank; j++) {
+        new_input_dims[j - 1] = new_input_dims[j];
       }
-      new_input_dims[new_rank-1] = 1;
+      new_input_dims[new_rank - 1] = 1;
 
       // update output dims
-      new_output_dims[i-1] *= new_output_dims[i];
+      new_output_dims[i - 1] *= new_output_dims[i];
       new_output_dims[i] = 1;
-      for (auto j = i+1; j < new_rank; j++) {
-        new_output_dims[j-1] = new_output_dims[j];
+      for (auto j = i + 1; j < new_rank; j++) {
+        new_output_dims[j - 1] = new_output_dims[j];
       }
-      new_output_dims[new_rank-1] = 1;
+      new_output_dims[new_rank - 1] = 1;
 
       new_rank--;
     }
@@ -166,13 +166,26 @@ Status Transpose::DoTranspose(const hipDeviceProp_t& prop,
   if (CanDoTranspose3D(new_rank, new_input_dims, new_permutations)) {
     return Transpose3DImpl(stream, element_size, input_shape, tmp_input_strides,
                            input.DataRaw(), output.MutableDataRaw(), output.Shape().Size());
-  } else if (CanDoTranspose4D(prop, element_size, new_rank, new_input_dims, new_permutations)) {
+  } else if (CanDoTranspose4DParallelizeMultipleElementsPerThreadInInnermostDim(
+                 prop, element_size, new_rank, new_input_dims, new_permutations)) {
     TArray<int64_t> tmp_output_strides(new_rank);
     for (auto i = 0; i < new_rank; i++) {
       tmp_output_strides[i] = new_output_strides[new_permutations[i]];
     }
-    return Transpose4DImpl(stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
-                           tmp_output_strides, output.MutableDataRaw(), output.Shape().Size());
+    return Transpose4DParallelizeMultipleElementsPerThreadInInnermostDim(
+        stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
+        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()));
+  } else if (CanDoTranspose4DParallelizeOneElementPerThread(
+                 prop, element_size, new_rank, new_input_dims, new_permutations)) {
+    // Trying to see if we can still do (best effort) more optimized transposing
+    // for the 4-D case before falling back to the generic case
+    TArray<int64_t> tmp_output_strides(new_rank);
+    for (auto i = 0; i < new_rank; i++) {
+      tmp_output_strides[i] = new_output_strides[new_permutations[i]];
+    }
+    return Transpose4DParallelizeOneElementPerThread(
+        stream, element_size, input_shape, tmp_input_strides, input.DataRaw(),
+        tmp_output_strides, output.MutableDataRaw(), gsl::narrow<int>(output.Shape().Size()));
   }
 
   // General cases

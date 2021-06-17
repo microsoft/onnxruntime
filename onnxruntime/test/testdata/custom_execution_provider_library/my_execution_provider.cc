@@ -15,12 +15,11 @@ MyExecutionProvider::GetKernelRegistry() const {
 
 MyExecutionProvider::MyExecutionProvider(const MyProviderInfo& info)
     : IExecutionProvider{onnxruntime::kMyProvider}, device_id_(info.device_id) {
-  
   AllocatorCreationInfo device_info{
       [](OrtDevice::DeviceId device_id) { return std::make_unique<MyEPAllocator>(device_id); },
       device_id_,
       true,
-      {0, 1, -1, -1}};
+      {0, 1, -1, -1, -1}};
   InsertAllocator(CreateAllocator(device_info));
 }
 

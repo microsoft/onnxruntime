@@ -17,8 +17,8 @@ ONNX_OPERATOR_KERNEL_EX(
     kMSDomain,
     1,
     kCudaExecutionProvider,
-    KernelDefBuilder()
-        .InputMemoryType<OrtMemTypeCPUInput>(0)   /* Keep EventIdentifier in CPU */
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0) /* Keep EventIdentifier in CPU */
         .TypeConstraint("TInt64", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
         .VariadicAlias(1, 0),  // outputs and inputs are mapped one to one, with input offset by 1
@@ -32,7 +32,7 @@ Status RecordEvent::ComputeInternal(OpKernelContext* ctx) const {
   auto& profile_context = profile::Context::GetInstance();
   const auto tag = profile_context.GetThreadTagOrDefault(std::this_thread::get_id());
   profile::NvtxRangeCreator range(
-    "Batch-" + tag + " Record-" + std::to_string(event_id), profile::Color::Magenta);
+      "Batch-" + tag + " Record-" + std::to_string(event_id), profile::Color::Magenta);
   range.Begin();
 #endif
 

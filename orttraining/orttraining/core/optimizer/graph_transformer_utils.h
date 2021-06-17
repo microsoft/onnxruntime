@@ -6,6 +6,7 @@
 #include <gsl/gsl>
 
 #include "core/optimizer/graph_transformer.h"
+#include "orttraining/core/optimizer/graph_transformer_config.h"
 #include "orttraining/core/session/training_session.h"
 
 namespace onnxruntime {
@@ -18,7 +19,7 @@ namespace transformer_utils {
 std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     TransformerLevel level,
     const std::unordered_set<std::string>& weights_to_train,
-    const TrainingSession::TrainingConfiguration::GraphTransformerConfiguration& config,
+    const TrainingGraphTransformerConfiguration& config,
     const IExecutionProvider& execution_provider,  // required for constant folding
     const std::unordered_set<std::string>& rules_and_transformers_to_disable = {});
 

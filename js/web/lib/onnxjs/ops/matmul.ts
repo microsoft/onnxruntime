@@ -9,7 +9,9 @@ import {Tensor} from '../tensor';
 export abstract class MatMul implements Operator {
   abstract run(inferenceHandler: InferenceHandler, inputs: Tensor[]): Tensor[]|Promise<Tensor[]>;
 
-  initialize(_attributes: Attribute): void {}
+  initialize(attributes: Attribute): void {
+    this.activation = attributes.getString('__internal_activation', '');
+  }
 
   checkInputs(inputs: Tensor[]): boolean {
     if (!inputs || inputs.length !== 2) {
@@ -38,4 +40,5 @@ export abstract class MatMul implements Operator {
 
     return true;
   }
+  protected activation: string;
 }

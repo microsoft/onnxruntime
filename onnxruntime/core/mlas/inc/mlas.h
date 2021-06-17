@@ -168,7 +168,7 @@ struct MLAS_SGEMM_DATA_PARAMS {
 
 /**
  * @brief  Batched single precision matrix/matrix multiply operation (SGEMM)
- * 
+ *
  * @param TransA     Supplies the transpose operation for matrix A.
  * @param TransB     Supplies the transpose operation for matrix B.
  * @param M          Supplies the number of rows of matrix A and matrix C.
@@ -195,7 +195,7 @@ MlasGemmBatch(
 
 /**
  * @brief  Single precision matrix/matrix multiply operation (SGEMM)
- * 
+ *
  * @param TransA  Supplies the transpose operation for matrix A.
  * @param TransB  Supplies the transpose operation for matrix B.
  * @param M       Supplies the number of rows of matrix A and matrix C.
@@ -223,7 +223,7 @@ MlasGemm(
 
 /**
  * @brief  Single precision matrix/matrix multiply operation (SGEMM)
- * 
+ *
  * @param TransA  Supplies the transpose operation for matrix A.
  * @param TransB  Supplies the transpose operation for matrix B.
  * @param M       Supplies the number of rows of matrix A and matrix C.
@@ -231,7 +231,7 @@ MlasGemm(
  * @param K       Supplies the number of columns of matrix A and the number
                   of rows of matrix B.
  * @param alpha   Supplies the scalar alpha multiplier (see SGEMM definition)
- * @param A       Supplies the address of matrix A 
+ * @param A       Supplies the address of matrix A
  * @param lda     Supplies the first dimension of matrix A.
  * @param B       Supplies the address of matrix B
  * @param ldb     Supplies the first dimension of matrix B.
@@ -341,7 +341,7 @@ struct MLAS_DGEMM_DATA_PARAMS {
 
 /**
  * @brief  Batched double precision matrix/matrix multiply operation (DGEMM)
- * 
+ *
  * @param TransA     Supplies the transpose operation for matrix A.
  * @param TransB     Supplies the transpose operation for matrix B.
  * @param M          Supplies the number of rows of matrix A and matrix C.
@@ -369,7 +369,7 @@ MlasGemmBatch(
 
 /**
  * @brief  Double precision matrix/matrix multiply operation (DGEMM)
- * 
+ *
  * @param TransA  Supplies the transpose operation for matrix A.
  * @param TransB  Supplies the transpose operation for matrix B.
  * @param M       Supplies the number of rows of matrix A and matrix C.
@@ -397,7 +397,7 @@ MlasGemm(
 
 /**
  * @brief  Double precision matrix/matrix multiply operation (DGEMM)
- * 
+ *
  * @param TransA  Supplies the transpose operation for matrix A.
  * @param TransB  Supplies the transpose operation for matrix B.
  * @param M       Supplies the number of rows of matrix A and matrix C.
@@ -405,7 +405,7 @@ MlasGemm(
  * @param K       Supplies the number of columns of matrix A and the number
                   of rows of matrix B.
  * @param alpha   Supplies the scalar alpha multiplier (see SGEMM definition)
- * @param A       Supplies the address of matrix A 
+ * @param A       Supplies the address of matrix A
  * @param lda     Supplies the first dimension of matrix A.
  * @param B       Supplies the address of matrix B
  * @param ldb     Supplies the first dimension of matrix B.
@@ -621,7 +621,7 @@ enum MLAS_CONV_ALGORITHM {
     MlasConvAlgorithmGemmDirect,
     MlasConvAlgorithmExpandThenGemm,
     MlasConvAlgorithmExpandThenGemmSegmented,
-#if defined(MLAS_TARGET_WASM)
+#if defined(MLAS_TARGET_WASM_SCALAR)
     MlasConvAlgorithmDepthwise,
 #endif
 };
@@ -929,9 +929,21 @@ MlasNchwcPool(
 
 void
 MLASCALL
-MlasNchwcUpsample(
+MlasNchwcUpsampleNearest(
     const int64_t* InputShape,
     const int64_t* Scales,
+    const float* Input,
+    float* Output
+    );
+
+void
+MLASCALL
+MlasNchwcUpsampleLinear(
+    size_t InputHeight,
+    size_t InputWidth,
+    size_t OutputWidth,
+    float InterpolationHeight,
+    const float* InterpolationWidth,
     const float* Input,
     float* Output
     );
@@ -951,18 +963,82 @@ MlasQuantizeLinear(
     OutputType ZeroPoint
     );
 
+/**
+ * @brief Requantize a block of the intermediate buffer to the output buffer,
+ *        optionally adding the supplied bias
+ * 
+ * @param Input                     Input matrix 
+ * @param InputLeadingDimension     Input matrix leading dimension
+ * @param Output                    Output matrix
+ * @param OutputLeadingDimension    Output matrix leading dimension
+ * @param Bias                      Optional bias vector, to be added
+                                    to the input before quantization
+ * @param Scale                     Quantization scale
+ * @param PerColumnScale            true if scale is per-column
+ * @param ZeroPoint                 quantization zero point value
+ * @param StartM
+ * @param StartN
+ * @param CountM
+ * @param CountN
+ * @return
+*/
 void
 MLASCALL
 MlasRequantizeOutput(
     const int32_t* Input,
+    size_t InputLeadingDimension,
     uint8_t* Output,
+    size_t OutputLeadingDimension,
     const int32_t* Bias,
-    size_t M,
-    size_t N,
     const float* Scale,
     bool PerColumnScale,
-    uint8_t ZeroPoint
+    uint8_t ZeroPoint,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN
     );
+
+class MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR : public MLAS_QGEMM_OUTPUT_PROCESSOR
+{
+   public:
+    MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR(
+        uint8_t* Output,
+        size_t OutputLeadingDimension,
+        const int32_t* Bias,
+        const float* Scale,
+        bool PerColumnScale,
+        uint8_t ZeroPoint)
+        : Output_(Output),
+          OutputLeadingDimension_(OutputLeadingDimension),
+          Bias_(Bias),
+          Scale_(Scale),
+          PerColumnScale_(PerColumnScale),
+          ZeroPoint_(ZeroPoint)
+    {
+    }
+
+    void Process(const int32_t* C,
+                 size_t StartM,
+                 size_t StartN,
+                 size_t CountM,
+                 size_t CountN,
+                 size_t ldc) const override
+    {
+        MlasRequantizeOutput(C, ldc, Output_, OutputLeadingDimension_, Bias_, Scale_,
+                             PerColumnScale_, ZeroPoint_, StartM, StartN, CountM, CountN);
+    }
+
+
+   private:
+    uint8_t* Output_;
+    size_t OutputLeadingDimension_;
+    const int32_t* Bias_;
+    const float* Scale_;
+    bool PerColumnScale_;
+    uint8_t ZeroPoint_;
+};
+
 
 void
 MLASCALL

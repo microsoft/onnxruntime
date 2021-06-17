@@ -68,6 +68,12 @@ Models from MLPerf Mobile
   - ssd_mobilenet_v2_300-qdq.onnx
 
 Other
-  Mobilenet v2 from pytortch
+  Mobilenet v2 from pytorch
   - pytorch.mobilenet_v2_float.onnx
   - pytorch.mobilenet_v2_uint8.onnx
+  Other assorted pytorch models
+  - Huggingface mobilebert-uncased (https://huggingface.co/transformers/serialization.html, https://huggingface.co/google/mobilebert-uncased)
+  - SuperResolution (https://pytorch.org/tutorials/advanced/super_resolution_with_onnxruntime.html)
+  - DeepLabV3 (https://pytorch.org/tutorials/beginner/deeplabv3_on_android.html)
+  - EfficientNet (https://github.com/lukemelas/EfficientNet-PyTorch)
+  - SSD Mobilenet V1 and V2 (https://github.com/qfgaohao/pytorch-ssd)
