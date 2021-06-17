@@ -4,7 +4,7 @@
 #import <UIKit/UIKit.h>
 
 static void set_test_rootdir(const char* image_path){
-    size_t n = strnlen(image_path, 65535);
+    size_t n = strnlen(image_path, std::numeric_limits<size_t>::max());
     for (; n >=0; n--) {
         if (image_path[n] == '/') {
             break;
