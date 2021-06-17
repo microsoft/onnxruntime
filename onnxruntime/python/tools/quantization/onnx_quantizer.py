@@ -83,7 +83,7 @@ class ONNXQuantizer:
         self.quantized_value_map = {}
         # some output from nodes will be quantized, yet itself should be treat as existing so
         # no dequantized will be applied when needed later
-        self.generated_value_names = {}
+        self.generated_value_names = self.model.get_non_initializer_inputs()
 
     def check_opset_version(self):
         ai_onnx_domain = [
