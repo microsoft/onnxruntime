@@ -136,6 +136,11 @@ Status GatherND::Compute(OpKernelContext* context) const {
   const auto& input_shape = input_tensor->Shape();
   const auto& indices_shape = indices_tensor->Shape();
 
+  if (Node().Name() == "StatefulPartitionedCall/mask_rcnn/roi_align_mask/GatherNd_3") {
+    double d = 2.34;
+    ORT_IGNORE_RETURN_VALUE(d);
+  }
+
   int64_t last_indices_dimension = batch_dims_ + indices_shape[indices_shape.NumDimensions() - 1];
   if (last_indices_dimension > static_cast<int64_t>(input_shape.NumDimensions())) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -147,6 +152,11 @@ Status GatherND::Compute(OpKernelContext* context) const {
                input_shape.GetDims().end());
 
   auto* output_tensor = context->Output(0, TensorShape(std::move(shape)));
+
+  // Bail out early in case the output is going to be empty
+  if (output_tensor->Shape().Size() == 0) {
+    return Status::OK();
+  }
 
   Prepare p;
   concurrency::ThreadPool* tp = context->GetOperatorThreadPool();

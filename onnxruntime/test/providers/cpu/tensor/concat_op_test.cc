@@ -111,9 +111,49 @@ TEST(ConcatOpTest, Concat2D_3) {
             kNnapiExecutionProvider});   // NNAPI: concat does not support 0 size input
 }
 
+// Context GH issue: 8020
+// Test looser validation of the check proposed in the Concat ONNX spec
+// that says all dim values of axes not concatenated on MUST be equal.
+// In some family of models, Loops feed into Concat and some Loops have
+// iteration counts of 0s, which means the dims of the some inputs getting
+// concatenated are all zeros: [0, ..., 0].
+// The Concat implementation we have is permissive to these "mis-matches" alone.
+// This test is currently not enabled because shape inference "catches" the mis-match
+// in dim values along axis = 0. Enable the test if we the test infrastructure allows us
+// to ignore shape inference failures.
+
+/*
+TEST(ConcatOpTest, Concat2D_4) {
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{1});
+
+  test.AddInput<float>("input1", {1, 0}, {});
+  // axis '0' has a value of 0 which doesn't match 1 seen in the other inputs
+  test.AddInput<float>("input2", {0, 0}, {});
+  test.AddInput<float>("input3", {1, 0}, {});
+  test.AddOutput<float>("concat_result", {1, 0}, {});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider,  //TensorRT: no support for dynamic shape tensor
+            kNnapiExecutionProvider});   // NNAPI: concat does not support 0 size input
+}
+*/
+TEST(ConcatOpTest, Concat2D_5) {
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{1});
+
+  // Check concatenating inputs with all 0 dims
+  test.AddInput<float>("input1", {0, 0}, {});
+  test.AddInput<float>("input2", {0, 0}, {});
+  test.AddInput<float>("input3", {0, 0}, {});
+  test.AddOutput<float>("concat_result", {0, 0}, {});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider,  //TensorRT: no support for dynamic shape tensor
+            kNnapiExecutionProvider});   // NNAPI: concat does not support 0 size input
+}
+
 // Test Concat of tensors when one of them has dynamic shape
 // This is useful for testing EP's own shape inferencing, such as NNAPI EP
-TEST(ConcatOpTest, Concat2D_4) {
+TEST(ConcatOpTest, Concat2D_6) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{1});
 
