@@ -115,6 +115,14 @@ class TrainingManager(GraphExecutionManager):
                 # converted to a tensor filled with zeros prior to calling backward.
                 # Save shape, device and type info to ctx for materializing tensor in backward if output grad is None.
                 ctx.set_materialize_grads(False)
+
+                # Mark the outputs tensors needed in backward computation
+                # ORT is NOT relying on save_for_backward() to actually save the tensor, 
+                # as this tensor is also kept in ORT's PartialGraphState
+                # This call is to invoke pytorch's version check to detect the potential inplace corruption
+                for idx in self._graph_info.module_output_indices_requires_save_for_backward:
+                    ctx.save_for_backward(user_outputs[idx])
+
                 return user_outputs
 
             @staticmethod
@@ -123,6 +131,9 @@ class TrainingManager(GraphExecutionManager):
 
                 assert ctx.run_info is not None, 'forward() or __call__() methods must be called before backward()'
                 _utils._check_same_device(self._device, "Input argument to backward", *grad_outputs)
+
+                # Unpack saved_tensor to trigger version detection that catches inplace corruption
+                _ = ctx.saved_tensors
 
                 # Use IO binding
                 # Push user output grads to ONNX backend.

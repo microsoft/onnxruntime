@@ -245,7 +245,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "703bd9caab50b139428cea1aaff9974ebee5742e",
+          "commitHash": "53495a2a7d6ba7e0691a7f3602e9a5324bba6e45",
           "repositoryUrl": "https://github.com/google/googletest.git"
         },
         "comments": "git submodule at cmake/external/googletest"

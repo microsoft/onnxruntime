@@ -38,8 +38,9 @@ jobs:
               --parallel \
               --build_wheel \
               --enable_onnx_tests \
+              --enable_transformers_tool_test \
               --enable_symbolic_shape_infer_tests \
-              --build_java --build_nodejs              
+              --build_java --build_nodejs
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishTestResults@2

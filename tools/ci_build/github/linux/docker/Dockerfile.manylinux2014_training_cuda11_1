@@ -178,7 +178,7 @@ ARG INSTALL_DEPS_EXTRA_ARGS
 #Add our own dependencies
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && \
-    /tmp/scripts/install_centos.sh && \
+    /tmp/scripts/manylinux/install_centos.sh && \
     /tmp/scripts/install_os_deps.sh -d gpu $INSTALL_DEPS_EXTRA_ARGS && \
     /tmp/scripts/install_ninja.sh && \
     /tmp/scripts/install_python_deps.sh -d gpu -v 11.1 -p $PYTHON_VERSION $INSTALL_DEPS_EXTRA_ARGS && \

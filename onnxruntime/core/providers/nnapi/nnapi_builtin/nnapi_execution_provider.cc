@@ -63,16 +63,16 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   // If we are actually running on Android system, we can get the API level by querying the system
   // However, since we also allow the NNAPI EP run GetCapability for model conversion on a non-Android system,
   // since we cannot get the runtime system API level, we have to specify it using complie definition.
-  int32_t android_sdk_ver;
+  int32_t android_feature_level;
 #ifdef __ANDROID__
   const auto* _nnapi = NnApiImplementation();
-  android_sdk_ver = _nnapi->android_sdk_version;
+  android_feature_level = _nnapi->nnapi_runtime_feature_level;
 #else
-  android_sdk_ver = ORT_NNAPI_MAX_SUPPORTED_API_LEVEL;
+  android_feature_level = ORT_NNAPI_MAX_SUPPORTED_API_LEVEL;
 #endif
 
   nnapi::OpSupportCheckParams params{
-      android_sdk_ver,
+      android_feature_level,
       !!(nnapi_flags_ & NNAPI_FLAG_USE_NCHW),
   };
   const auto supported_nodes_vector = GetSupportedNodes(graph_view, params);

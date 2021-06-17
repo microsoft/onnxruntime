@@ -1238,6 +1238,16 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyLossGradient) {
   }
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyLossInternalGradient) {
+  std::vector<ArgDef> input_arg_def{GO(0), O(1)};
+  size_t input_size = static_cast<size_t>(GetSrcNodeInputSize());
+  for (size_t i = 1; i < input_size; i++) {
+    input_arg_def.emplace_back(I(i));
+  }
+  return std::vector<NodeDef>{
+      NodeDef(OpDef{"SoftmaxCrossEntropyLossInternalGrad", kMSDomain, 1}, input_arg_def, {GI(0)}, SrcNodeAttributes())};
+}
+
 IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
   const ArgDef X = I(0), Y = O(0), dX = GI(0), dY = GO(0);
 
@@ -1797,11 +1807,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
 
   std::vector<ArgDef> output_args;
   for (int i = 0; i < GetSrcNodeInputSize(); ++i) {
-    // output_args[i] is typed to output_types[i].
-    if (output_tensor_types.at(i) == 9) {
-      output_args.push_back(ArgDef());
-    } else {
+    if (output_tensor_requires_grads[i]) {
       output_args.push_back(GI(i));
+    } else {
+      output_args.push_back(ArgDef());
     }
   }
 
