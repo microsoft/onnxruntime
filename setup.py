@@ -51,6 +51,7 @@ wheel_name_suffix = parse_arg_remove_string(sys.argv, '--wheel_name_suffix=')
 
 cuda_version = None
 rocm_version = None
+pytorch_version = None
 # The following arguments are mutually exclusive
 if parse_arg_remove_boolean(sys.argv, '--use_tensorrt'):
     package_name = 'onnxruntime-gpu-tensorrt' if not nightly_build else 'ort-trt-nightly'
@@ -101,12 +102,14 @@ is_manylinux = environ.get('AUDITWHEEL_PLAT', None) in manylinux_tags
 
 
 def build_torch_cpp_extensions():
-    '''Builds PyTorch CPP extensions and returns its build dirs'''
+    '''Builds PyTorch CPP extensions and returns metadata'''
 
     # Run this from build dir (e.g. (...)/build/Linux/RelWithDebInfo/)
+    pytorch_version = None
     is_gpu_available = False
     try:
         import torch
+        pytorch_version = torch.__version__
         is_gpu_available = torch.cuda.is_available()
     except ImportError:
         pass
@@ -144,7 +147,7 @@ def build_torch_cpp_extensions():
         dest_ext = path.join(dest_build_dir, path.basename(ext))
         logger.info('copying %s -> %s', ext, dest_ext)
         copyfile(ext, dest_ext)
-    return original_build_dir, dest_build_dir
+    return original_build_dir, dest_build_dir, pytorch_version
 class build_ext(_build_ext):
     def build_extension(self, ext):
         dest_file = self.get_ext_fullpath(ext.name)
@@ -375,7 +378,7 @@ if enable_training:
 # Build Torch CPP extensions for ORTModule
 if enable_training:
     # Add Torch CPP extensions to the official onnxruntime package
-    torch_cpp_orig_build_dir, torch_cpp_build_dir = build_torch_cpp_extensions()
+    torch_cpp_orig_build_dir, torch_cpp_build_dir, pytorch_version = build_torch_cpp_extensions()
     torch_cpp_exts = glob(f'{torch_cpp_build_dir}/*.so')
     torch_cpp_exts.extend(glob(f'{torch_cpp_build_dir}/*.dll'))
     torch_cpp_exts.extend(glob(f'{torch_cpp_build_dir}/*.dylib'))
@@ -483,8 +486,7 @@ with open(requirements_path) as f:
 
 
 if enable_training:
-    def save_build_and_package_info(package_name, version_number, cuda_version):
-
+    def save_build_and_package_info(package_name, version_number, cuda_version, pytorch_version):
         sys.path.append(path.join(path.dirname(__file__), 'onnxruntime', 'python'))
         from onnxruntime_collect_build_info import find_cudart_versions
 
@@ -509,8 +511,10 @@ if enable_training:
             else:
                 # TODO: rocm
                 pass
+            if pytorch_version:
+                f.write("pytorch_version = '{}'\n".format(pytorch_version))
 
-    save_build_and_package_info(package_name, version_number, cuda_version)
+    save_build_and_package_info(package_name, version_number, cuda_version, pytorch_version)
 
 # Setup
 setup(

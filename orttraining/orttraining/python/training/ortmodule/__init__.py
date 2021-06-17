@@ -5,25 +5,38 @@
 
 import os
 from packaging import version
+from onnxruntime.capi.build_and_package_info import pytorch_version
+
 
 ################################################################################
 # All global constant goes here, before ORTModule is imported ##################
 ################################################################################
 ONNX_OPSET_VERSION = 12
-MINIMUM_TORCH_VERSION_STR = '1.8.1'
+MINIMUM_RUNTIME_PYTORCH_VERSION_STR = '1.8.1'
 
-# Verify proper PyTorch is installed before proceding to ONNX Runtime initialization
+# Verify minimum PyTorch version is installed before proceding to ONNX Runtime initialization
 try:
     import torch
-    torch_version = version.parse(torch.__version__.split('+')[0])
-    minimum_torch_version = version.parse(MINIMUM_TORCH_VERSION_STR)
-    if torch_version < minimum_torch_version:
+    runtime_pytorch_full_version = version.parse(torch.__version__)
+    runtime_pytorch_version = version.parse(torch.__version__.split('+')[0])
+    minimum_runtime_pytorch_version = version.parse(MINIMUM_RUNTIME_PYTORCH_VERSION_STR)
+    if runtime_pytorch_version < minimum_runtime_pytorch_version:
         raise RuntimeError(
-            f'ONNX Runtime ORTModule frontend requires PyTorch version greater or equal to {MINIMUM_TORCH_VERSION_STR}, '
+            f'ONNX Runtime ORTModule frontend requires PyTorch version greater or equal to {MINIMUM_RUNTIME_PYTORCH_VERSION_STR}, '
             f'but version {torch.__version__} was found instead.')
 except:
-    raise(f'PyTorch {MINIMUM_TORCH_VERSION_STR} must be installed in order to run ONNX Runtime ORTModule frontend!')
+    raise(f'PyTorch {MINIMUM_RUNTIME_PYTORCH_VERSION_STR} must be installed in order to run ONNX Runtime ORTModule frontend!')
 
+# Verify PyTorch installed on the system is compatible with the version used during ONNX Runtime build
+if not pytorch_version:
+    raise RuntimeError('ONNX Runtime was compiled without PyTorch support!')
+
+if runtime_pytorch_full_version != version.parse(pytorch_version):
+    raise RuntimeError(f'ONNX Runtime was compiled using PyTorch {pytorch_version}'
+                       f', but PyTorch {runtime_pytorch_full_version} is installed on your system!')
+
+
+# PyTorch custom Autograd function support
 from ._custom_autograd_function import enable_custom_autograd_support
 enable_custom_autograd_support()
 
