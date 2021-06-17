@@ -1,0 +1,17 @@
+.site-nav, .site-header, .site-footer {
+    width: 100%;
+  }
+  
+  .side-bar {
+    @include mq(lg) {
+      width: $nav-width;
+    }
+  }
+  
+  .main {
+    @include mq(lg) {
+      margin-left: $nav-width;
+    }
+    
+  }
+
