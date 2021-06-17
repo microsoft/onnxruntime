@@ -84,7 +84,7 @@ function getA(allGlChannels: string[], rank: number): string {
     res += `rc.${allGlChannels[i]}, `;
   }
   res += `rc.${allGlChannels[rank - 2]}, ` +
-      'i<<1';
+      'i*2';
   return res;
 }
 
@@ -93,7 +93,7 @@ function getB(allGlChannels: string[], rank: number): string {
   for (let i = 0; i < rank - 2; i++) {
     res += `rc.${allGlChannels[i]}, `;
   }
-  res += 'i<<1, ' +
+  res += 'i*2, ' +
       `rc.${allGlChannels[rank - 1]}`;
   return res;
 }

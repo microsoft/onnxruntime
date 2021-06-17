@@ -5,7 +5,7 @@
 #include "onnxruntime_c_api.h"
 
 // COREMLFlags are bool options we want to set for CoreML EP
-// This enum is defined as bit flats, and cannot have negative value
+// This enum is defined as bit flags, and cannot have negative value
 // To generate an uint32_t coreml_flags for using with OrtSessionOptionsAppendExecutionProvider_CoreML below,
 //   uint32_t coreml_flags = 0;
 //   coreml_flags |= COREML_FLAG_USE_CPU_ONLY;

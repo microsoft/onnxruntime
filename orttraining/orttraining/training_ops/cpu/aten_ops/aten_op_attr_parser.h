@@ -14,7 +14,7 @@ class AttributesJsonParser {
   AttributesJsonParser(const std::string& json_str) { parsed_json_ = nlohmann::json::parse(json_str); }
 
   template <typename T>
-  bool TryGetValue(const std::string& name, T& value) {
+  bool TryGetValue(const std::string& name, T& value) const {
     if (!parsed_json_.contains(name)) {
       return false;
     }
@@ -36,7 +36,7 @@ class AttributesJsonParser {
   }
 
   template <typename T>
-  bool TryGetListValue(const std::string& name, std::vector<T>& value) {
+  bool TryGetArrayValue(const std::string& name, std::vector<T>& value) const {
     if (!parsed_json_.contains(name)) {
       return false;
     }
@@ -49,11 +49,11 @@ class AttributesJsonParser {
     for (const auto& elem : attr) {
       bool is_type_matched = false;
       if (std::is_same<T, int>::value)
-        is_type_matched = attr.is_number_integer();
+        is_type_matched = elem.is_number_integer();
       else if (std::is_same<T, float>::value)
-        is_type_matched = attr.is_number_float();
+        is_type_matched = elem.is_number_float();
       else if (std::is_same<T, bool>::value)
-        is_type_matched = attr.is_boolean();
+        is_type_matched = elem.is_boolean();
       if (!is_type_matched) {
         return false;
       }

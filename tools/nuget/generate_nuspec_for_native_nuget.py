@@ -25,7 +25,7 @@ def parse_arguments():
     parser.add_argument("--is_release_build", required=False, default=None, type=str,
                         help="Flag indicating if the build is a release build. Accepted values: true/false.")
     parser.add_argument("--execution_provider", required=False, default='None', type=str,
-                        choices=['dnnl', 'openvino', 'tensorrt', 'None'],
+                        choices=['cuda', 'dnnl', 'openvino', 'tensorrt', 'None'],
                         help="The selected execution provider for this build.")
 
     return parser.parse_args()
@@ -231,6 +231,9 @@ def generate_files(list, args):
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path,
                                                         'include\\onnxruntime\\core\\session\\onnxruntime_*.h') +
                       '" target="build\\native\\include" />')
+    files_list.append('<file src=' + '"' + os.path.join(args.sources_path,
+                                                        'include\\onnxruntime\\core\\framework\\provider_options.h') +
+                      '" target="build\\native\\include" />')
     files_list.append('<file src=' + '"' +
                       os.path.join(args.sources_path,
                                    'include\\onnxruntime\\core\\providers\\cpu\\cpu_provider_factory.h') +
@@ -359,7 +362,7 @@ def generate_files(list, args):
                           nuget_dependencies['openvino_ep_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
 
-    if args.execution_provider == "cuda":
+    if args.execution_provider == "cuda" or is_cuda_gpu_package:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['providers_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#import "ort_session_internal.h"
+#import "src/ort_session_internal.h"
 
 #include <optional>
 #include <vector>

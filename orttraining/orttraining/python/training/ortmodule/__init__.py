@@ -39,8 +39,8 @@ elif not os.access(python_package_dir, os.X_OK | os.W_OK):
 if not os.path.exists(TORCH_CPP_BUILD_DIR):
     os.makedirs(TORCH_CPP_BUILD_DIR, exist_ok = True)
 elif os.path.exists(os.path.join(TORCH_CPP_BUILD_DIR,'lock')):
-    print("WARNING: ORTModule detected PyTorch CPP extension's lock file during initialization, "
-          "which can cause unexpected hangs. "
+    print("WARNING: ORTModule detected PyTorch's CPP extension lock file during initialization, "
+          "which can cause the script to stop responding. "
           f"Delete {os.path.join(TORCH_CPP_BUILD_DIR,'lock')} if a hang occurs.")
 
 # Verify proper PyTorch is installed before proceding to ONNX Runtime initialization
@@ -54,6 +54,9 @@ try:
             f'but version {torch.__version__} was found instead.')
 except:
     raise(f'PyTorch {MINIMUM_TORCH_VERSION_STR} must be installed in order to run ONNX Runtime ORTModule frontend!')
+
+from ._custom_autograd_function import enable_custom_autograd_support
+enable_custom_autograd_support()
 
 # ORTModule must be loaded only after all validation passes
 from .ortmodule import ORTModule

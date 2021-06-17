@@ -17,13 +17,13 @@ jobs:
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.ubuntu_server
         Context: tools/ci_build/github/linux/docker
-        DockerBuildArgs: "--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=18.04 --build-arg PYTHON_VERSION=3.6"
-        Repository: onnxruntime-server-ubuntu18.04
+        DockerBuildArgs: "--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=20.04 --build-arg PYTHON_VERSION=3.6"
+        Repository: onnxruntime-server-ubuntu20.04
 
     - task: CmdLine@2
       displayName: 'Run docker image'
       inputs:
-        script: docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory)/server:/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro onnxruntime-server-ubuntu18.04 /bin/bash /onnxruntime_src/ci/run.sh
+        script: docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory)/server:/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro onnxruntime-server-ubuntu20.04 /bin/bash /onnxruntime_src/ci/run.sh
         workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
     - template: templates/component-governance-component-detection-steps.yml

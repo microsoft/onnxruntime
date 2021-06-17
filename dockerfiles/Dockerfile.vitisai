@@ -4,25 +4,32 @@
 # --------------------------------------------------------------
 # Dockerfile to run ONNXRuntime with Vitis-AI integration
 
-FROM xilinx/vitis-ai:latest
+FROM xilinx/vitis-ai-cpu:1.3.598
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=master
 
 ARG PYXIR_REPO=https://github.com/Xilinx/pyxir
-ARG PYXIR_BRANCH=master
+ARG PYXIR_BRANCH=v0.2.0
+ARG PYXIR_FLAG="--use_vai_rt"
 
-RUN apt-get update &&\
-    apt-get install -y sudo git bash
+RUN apt-get update && \
+    apt-get install -y \
+    sudo \
+    git \
+    bash \
+    gcc-aarch64-linux-gnu && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-ENV PATH /code/cmake-3.14.3-Linux-x86_64/bin:$PATH
+ENV PATH /code/cmake-3.20.3-Linux-x86_64/bin:$PATH
 ENV LD_LIBRARY_PATH /opt/xilinx/xrt/lib:$LD_LIBRARY_PATH
 
 WORKDIR /code
 RUN . $VAI_ROOT/conda/etc/profile.d/conda.sh &&\
     conda activate vitis-ai-tensorflow &&\
     git clone --single-branch --branch ${PYXIR_BRANCH} --recursive ${PYXIR_REPO} pyxir &&\
-    cd pyxir && python3 setup.py install --use_vai_rt
+    cd pyxir && python3 setup.py install ${PYXIR_FLAG}
 RUN . $VAI_ROOT/conda/etc/profile.d/conda.sh &&\
     conda activate vitis-ai-tensorflow &&\
     git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
@@ -34,4 +41,4 @@ RUN . $VAI_ROOT/conda/etc/profile.d/conda.sh &&\
     /bin/sh ./build.sh --use_openmp --config RelWithDebInfo --enable_pybind --build_wheel --use_vitisai --parallel --update --build --build_shared_lib &&\
     pip install /code/onnxruntime/build/Linux/RelWithDebInfo/dist/*-linux_x86_64.whl &&\
     cd .. &&\
-    rm -rf onnxruntime cmake-3.14.3-Linux-x86_64
+    rm -rf onnxruntime cmake-3.20.3-Linux-x86_64

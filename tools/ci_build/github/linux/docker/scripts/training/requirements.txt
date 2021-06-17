@@ -2,10 +2,10 @@
 -f https://download.pytorch.org/whl/torch_stable.html
 # transformers requires sklearn
 sklearn
-numpy==1.16.6
+numpy==1.19.5
 transformers==v2.10.0
 torch==1.8.1+cu102
 torchvision==0.9.1+cu102
 torchtext==0.9.1
-tensorboard==v2.0.0
+tensorboard>=2.2.0,<2.5.0
 h5py

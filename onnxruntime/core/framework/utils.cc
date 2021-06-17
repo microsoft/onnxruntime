@@ -174,8 +174,8 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
     return Status::OK();
   }
 
+  auto allocator = session_state.GetAllocator(copy_info.target_device);
   if (!target_mlvalue.IsAllocated()) {
-    auto allocator = session_state.GetAllocator(copy_info.target_device);
     ORT_ENFORCE(allocator != nullptr, "Failed to find allocator for device ", copy_info.target_device.ToString());
     ORT_RETURN_IF_ERROR(utils::AllocateHelper(allocator, source_mlvalue, target_mlvalue));
   }
@@ -190,9 +190,16 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
     }
   } else if (source_mlvalue.IsTensorSequence()) {
     const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
-    const TensorSeq& target_tensor_seq = target_mlvalue.Get<TensorSeq>();
-    ORT_ENFORCE(source_tensor_seq.Size() == target_tensor_seq.Size(),
-      "source and target tensor sequence have different number of elements.");
+    TensorSeq& target_tensor_seq = const_cast<TensorSeq&>(target_mlvalue.Get<TensorSeq>());
+    size_t size = 0;
+    while ((size = target_tensor_seq.Size()) < source_tensor_seq.Size()) {
+      if (0 == size) {
+        target_tensor_seq.SetType(source_tensor_seq.DataType());
+      }
+      const Tensor& source_tensor = source_tensor_seq.Get(size);
+      std::unique_ptr<Tensor> target_tensor = std::make_unique<Tensor>(source_tensor.DataType(), source_tensor.Shape(), allocator);
+      target_tensor_seq.Add(std::move(*target_tensor));
+    }
     auto source_iter = source_tensor_seq.begin();
     auto target_iter = target_tensor_seq.begin();
     while (source_iter != source_tensor_seq.end() &&

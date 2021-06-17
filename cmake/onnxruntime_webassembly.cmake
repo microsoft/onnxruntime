@@ -24,7 +24,7 @@ target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
 
 target_link_libraries(onnxruntime_webassembly PRIVATE
   nsync_cpp
-  protobuf::libprotobuf-lite
+  ${PROTOBUF_LIB}
   onnx
   onnx_proto
   onnxruntime_common
@@ -51,6 +51,7 @@ set_target_properties(onnxruntime_webassembly PROPERTIES LINK_FLAGS "           
                       -s LLD_REPORT_UNDEFINED                                                 \
                       -s VERBOSE=0                                                            \
                       -s NO_FILESYSTEM=1                                                      \
+                      -s MALLOC=${onnxruntime_WEBASSEMBLY_MALLOC}                             \
                       --no-entry")
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")

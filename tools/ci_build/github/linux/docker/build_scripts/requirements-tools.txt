@@ -1,0 +1,34 @@
+# pip requirements for tools
+# NOTE: certifi has GPG signatures; could download and verify independently.
+certifi==2020.12.5 \
+    --hash=sha256:719a74fb9e33b9bd44cc7f3a8d94bc35e4049deebe19ba7d8e108280cfd59830 \
+    --hash=sha256:1a4995114262bffbc2413b159f2a1a480c969de6e6eb13ee966d470af86af59c
+auditwheel==4.0.0 \
+    --hash=sha256:96927695ddf27b4edb67291e326908d64ffe272b8a42b9504f283e7ae5ebbc14 \
+    --hash=sha256:03a079fe273f42336acdb5953ff5ce7578f93ca6a832b16c835fe337a1e2bd4a
+pipx==0.16.2.1 \
+    --hash=sha256:0ac30d7c1bbcd565130caa8faa08a486aed292882b12b047b80cd8abacaaa843 \
+    --hash=sha256:805319eab100c0c36e349b76103bbe903445229a60ebb0010d7cf7590ff5ba20
+# this package is required for auditwheel
+pyelftools==0.27 \
+    --hash=sha256:5609aa6da1123fccfae2e8431a67b4146aa7fad5b3889f808df12b110f230937 \
+    --hash=sha256:cde854e662774c5457d688ca41615f6594187ba7067af101232df889a6b7a66b
+# those packages are required for pipx
+argcomplete==1.12.3 \
+    --hash=sha256:291f0beca7fd49ce285d2f10e4c1c77e9460cf823eef2de54df0c0fec88b0d81 \
+    --hash=sha256:2c7dbffd8c045ea534921e63b0be6fe65e88599990d8dc408ac8c542b72a5445
+click==8.0.0 \
+    --hash=sha256:7d8c289ee437bcb0316820ccee14aefcb056e58d31830ecab8e47eda6540e136 \
+    --hash=sha256:e90e62ced43dc8105fb9a26d62f0d9340b5c8db053a814e25d95c19873ae87db
+colorama==0.4.4 \
+    --hash=sha256:5941b2b48a20143d2267e95b1c2a7603ce057ee39fd88e7329b0c292aa16869b \
+    --hash=sha256:9f47eda37229f68eee03b24b9748937c7dc3868f906e8ba69fbcbdd3bc5dc3e2
+packaging==20.9 \
+    --hash=sha256:5b327ac1320dc863dca72f4514ecc086f31186744b84a230374cc1fd776feae5 \
+    --hash=sha256:67714da7f7bc052e064859c05c595155bd1ee9f69f76557e21f051443c20947a
+pyparsing==2.4.7 \
+    --hash=sha256:c203ec8783bf771a155b207279b9bccb8dea02d8f0c9e5f8ead507bc3246ecc1 \
+    --hash=sha256:ef9d7589ef3c200abe66653d3f1ab1033c3c419ae9b9bdb1240a85b024efc88b
+userpath==1.5.0 \
+    --hash=sha256:61f84899b7280800a8b6cc1b959a0cf250f6757e6f6c7176d7455bb693a4423a \
+    --hash=sha256:c6a5b42e454f5e88d54af035fe3756de33a5318ad65a4191bb64e6b7cac03bcc
