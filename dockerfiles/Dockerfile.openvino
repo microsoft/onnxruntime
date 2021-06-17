@@ -1,6 +1,6 @@
 #-------------------------------------------------------------------------
-# Copyright(C) 2019 Intel Corporation.
-# Licensed under the MIT License.
+# Copyright(C) 2021 Intel Corporation.
+# SPDX-License-Identifier: MIT
 #--------------------------------------------------------------------------
 
 ARG OPENVINO_VERSION=2021.3
