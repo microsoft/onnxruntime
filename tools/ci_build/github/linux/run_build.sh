@@ -56,12 +56,11 @@ else
     elif [[ $BUILD_DEVICE = "tensorrt"* ]]; then
         if [ $BUILD_DEVICE = "tensorrt-v7.1" ]; then
             CUR_PWD=$(pwd)
-            cd $SCRIPT_DIR/../../../../
-            chmod 775 .gitmodules
-            git config --file=.gitmodules submodule.cmake/external/onnx-tensorrt.branch 7.1
-            git submodule update --init --remote cmake/external/onnx-tensorrt
-            COMMON_BUILD_ARGS=${COMMON_BUILD_ARGS/"--skip_submodule_sync"}
+            cd $SCRIPT_DIR/../../../../cmake/external/onnx-tensorrt/
+            git remote update
+            git checkout 7.1
             cd $CUR_PWD
+            COMMON_BUILD_ARGS=${COMMON_BUILD_ARGS/"--skip_submodule_sync"}
         fi
         _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
         python3 $SCRIPT_DIR/../../build.py --build_dir /build \
