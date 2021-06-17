@@ -1907,6 +1907,12 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     return graph_inferencer;
   }
 
+  // XXX: When we changed and kept sparse constant initializers in sparse form,
+  // we would adjust this method
+  const SparseTensorProto* getInputSparseData(size_t) const override {
+    return nullptr;
+  }
+  
  private:
   Node& node_;
   // node_output_types_ will be populated by the operator-specific shape inference.
