@@ -46,10 +46,21 @@ The main difference between dynamic quantization and static quantization is how 
 
 In general, it is recommended to use dynamic quantization for RNN and transformer-based models, and static quantization for CNN models.
 
-If both post-training quantization can not meet your accuracy goal, you can try quantization-aware training to retrain the model. ONNX Runtime does not provide retraining at this time, but you can retrain your model with the original framework and reconvert back to ONNX.
+If both post-training quantization can not meet your accuracy goal, you can try quantization-aware training (QAT) to retrain the model. ONNX Runtime does not provide retraining at this time, but you can retrain your model with the original framework and reconvert back to ONNX.
 
 ## ONNX quantization representation format
+There are 2 ways to represent quantized ONNX models:
+- Operator Oriented. All the quantized operators have their own ONNX definitions, like QLinearConv, MatMulInteger and etc.
+- Tensor Oriented, aka Quantize and DeQuantize (QDQ). This format uses DQ(Q(tensor)) to simulate the quantize and dequantize process, and QuantizeLinear and DeQuantizeLinear operators also carry the quantization parameters. Models generated like below are in QDQ format:
+  - Models quantized by quantize_static API below with quant_format=QuantFormat.QDQ.
+  - QAT models converted from Tensorflow or exported from PyTorch.
+  - Quantized models converted from tflite and other framework.
 
+For the last 2 cases, you don't need to quantize the model with quantization tool. OnnxRuntime CPU EP can run them directly as quantized model. TensorRT and NNAPI EP are adding support. 
+
+Picure below shows the equivalent representation with QDQ format and Operator oriented format for quantized Conv. This [E2E](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/E2E_example_model/image_classification/cpu/run.py) example demonstrates QDQ and Operator Oriented format.
+
+![Changes to nodes from basic and extended optimizations](../../images/QDQ_Format.png)
 
 ## List of Supported Quantized Ops
 Please refer to [registry](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/registry.py) for the list of supported Ops.
