@@ -129,6 +129,7 @@ std::vector<EventRecord> CudaProfiler::EndProfiling() {
         events.push_back({EventCategory::KERNEL_EVENT, pid_, tid_, stat.name_, DUR(profiling_start, stat.stop_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}});
       }
       stats_.clear();
+      cuptiFinalize();
     } else {
       std::initializer_list<std::pair<std::string, std::string>> args;
       events.push_back({EventCategory::KERNEL_EVENT, pid_, tid_, "not_available_due_to_cupti_error", 0, 0, {args.begin(), args.end()}});
