@@ -687,7 +687,7 @@ def get_system_info(workspace):
     return info
 
 def find_model_path(path):
-    output = get_output(["find", path, "-name", "*.onnx"])
+    output = get_output(["find", "-L", path, "-name", "*.onnx"])
     model_path = split_and_sort_output(output)
     logger.info(model_path)
 
@@ -708,7 +708,7 @@ def find_model_path(path):
     return target_model_path[0]
 
 def find_model_directory(path):
-    output = get_output(["find", path, "-maxdepth", "1", "-mindepth", "1", "-name", "*", "-type", "d"])
+    output = get_output(["find", "-L", path, "-maxdepth", "1", "-mindepth", "1", "-name", "*", "-type", "d"])
     model_dir = split_and_sort_output(output)
     if model_dir == ['']:
         return None
@@ -716,7 +716,7 @@ def find_model_directory(path):
     return model_dir
 
 def find_test_data_directory(path):
-    output = get_output(["find", path, "-maxdepth", "1", "-name", "test_data*", "-type", "d"])
+    output = get_output(["find", "-L", path, "-maxdepth", "1", "-name", "test_data*", "-type", "d"])
     test_data_dir = split_and_sort_output(output)
     logger.info(test_data_dir)
 
