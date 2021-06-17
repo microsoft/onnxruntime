@@ -136,11 +136,6 @@ Status GatherND::Compute(OpKernelContext* context) const {
   const auto& input_shape = input_tensor->Shape();
   const auto& indices_shape = indices_tensor->Shape();
 
-  if (Node().Name() == "StatefulPartitionedCall/mask_rcnn/roi_align_mask/GatherNd_3") {
-    double d = 2.34;
-    ORT_IGNORE_RETURN_VALUE(d);
-  }
-
   int64_t last_indices_dimension = batch_dims_ + indices_shape[indices_shape.NumDimensions() - 1];
   if (last_indices_dimension > static_cast<int64_t>(input_shape.NumDimensions())) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
