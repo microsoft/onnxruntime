@@ -8,10 +8,16 @@ Kernel implementation for blocking repeated n-grams.
 */
 
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "ngram_repeat_block_impl.h"
+#include "contrib_ops/cuda/bert/ngram_repeat_block_impl.h"
+
+namespace onnxruntime {
+namespace contrib {
+namespace cuda {
+
+using namespace onnxruntime::cuda;
 
 // Ban repeated ngrams of length = 'no_repeat_ngram_size'
-__global__ void banRepeatedTokens(long* __restrict__ tokens,
+__global__ void banRepeatedTokens(const long* __restrict__ tokens,
                                   float* __restrict__ lprobs,
                                   int max_predict_len, int vocab_size,
                                   int no_repeat_ngram_size) {
@@ -52,7 +58,7 @@ __global__ void banRepeatedTokens(long* __restrict__ tokens,
 void NGramRepeatBlockImpl(
     cudaStream_t stream,
     const long* tokens_ptr,
-    const float* scores_ptr,
+    float* scores_ptr,
     int bsz,
     int step,
     int max_predict_len,
@@ -72,3 +78,7 @@ void NGramRepeatBlockImpl(
   banRepeatedTokens<<<blocks, threads, shared_mem_size, stream>>>(
       tokens_ptr, scores_ptr, max_predict_len, vocab_size, no_repeat_ngram_size);
 }
+
+}  // namespace cuda
+}  // namespace contrib
+}  // namespace onnxruntime
