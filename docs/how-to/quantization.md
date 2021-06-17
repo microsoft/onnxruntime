@@ -44,18 +44,21 @@ There are 3 ways of quantizing a model: dynamic, static and quantize-aware train
 ### Method selection
 The main difference between dynamic quantization and static quantization is how scale and zero point of activation is calculated. For static quantization, they are calculated offline with calibration data set. All the activations have same scale and zero point. While for dynamic quantization, they are calculated on flight and will be specific for each activation, thus they are more accurate but introduce extra computation overhead.
 
-In general, it is recommended to use dynamic quantization for RNN and transformer-based models, and static quantizaiton for CNN models.
+In general, it is recommended to use dynamic quantization for RNN and transformer-based models, and static quantization for CNN models.
 
-If both post-training quantization can not meet your accuracy goal, you can try quantization-aware training to retrain the model. OnnxRuntime doesn't provide retrain capability now. You can retrain you model with original framework and then converted it back to ONNX. 
+If both post-training quantization can not meet your accuracy goal, you can try quantization-aware training to retrain the model. ONNX Runtime does not provide retraining at this time, but you can retrain your model with the original framework and reconvert back to ONNX.
+
+## ONNX quantization representation format
+
 
 ## List of Supported Quantized Ops
 Please refer to [registry](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/registry.py) for the list of supported Ops.
 
 ## Quantization and model opset versions
- Quantization ops were introduced in ONNX opset version 10, so the model which is being quantized must be opset 10 or higher. If the model opset version is < 10 then the model should be reconverted to ONNX from its original framework using a later opset.
+Models must be opset10 or higher to be quantized. Models with opset < 10 must be reconverted to ONNX from its original framework using a later opset.
 
 ## Quantization API
-Quantization has 3 main APIs, which corresponds to the 3 quantization method:
+Quantization has 3 main APIs, which corresponds to the 3 quantization methods:
 * quantize_dynamic: dynamic quantization
 * quantize_static: static quantization
 * quantize_qat: quantize-aware training quantization
@@ -96,7 +99,7 @@ Currently, OnnxRuntime CPU only supports activation with type uint8, i.e., U8X8 
 
 ### x86-64
 #### AVX2
-Try U8U8 firstly, and then U8S8.
+Try U8U8 first, and then U8S8.
 - Performance
 U8S8 leverage VPMADDUBSW instruction but U8U8 kernel can process 6 rows at a time versus 4 rows for the U8S8 kernel, and U8U8 sequence is two instructions vs three instructions for U8S8. Thus, this balance ends up with u8u8 just in reach of U8S8 for older HW (Broadwell)
 - Accuracy
@@ -105,9 +108,9 @@ VPMADDUBSW has saturation issue, thus U8S8 needs to use [reduce_range](https://g
 #### AVX512
 U8S8 is much faster, but may suffer saturation issue.
 - Performance
-U8S8 can only do twice mul/adds per instruction as much as U8U8. Typically U8S8 sequence ends up winning, can be twice as fast as u8u8.
+U8S8 can do twice as many mul/adds per instruction compared to U8U8 so can be twice as fast.
 - Accuracy
-Same as the AVX2 because of VPMADDUBSW. Needs to ure reduce_range if accuracy is not good enough.
+Same as the AVX2 because of VPMADDUBSW. Needs to use reduce_range if accuracy is not good enough.
 
 #### VNNI
 No difference.
@@ -116,14 +119,14 @@ No difference.
 U8S8 can be faster than U8U8 for low end ARM64 and no difference on accuracy. There is no difference for high end ARM64.
 
 ## Transformer-based models
-We have specific optimization for transformer-based models, like QAttention for quantization of attention layer. In order to leverage those specific optimization, you need to optimize your models with [Transformer Model Optimization Tool](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers) before quantizing the model.
+There are specific optimization for transformer-based models, like QAttention for quantization of attention layer. In order to leverage those specific optimization, you need to optimize your models with [Transformer Model Optimization Tool](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers) before quantizing the model.
 
-We have a [notebook](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/quantization/notebooks/bert) that demonstrates the E2E process.
+This [notebook](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/quantization/notebooks/bert) demonstrates the E2E process.
 
 ## Quantization on GPU
-Hardware suppor is required to achieve better performance with quantization on GPUs. You need a device that supports Tensor Core int8 computation, like T4, A100. Older hardware won't get benefit.
+Hardware suppor is required to achieve better performance with quantization on GPUs. You need a device that support Tensor Core int8 computation, like T4, A100. Older hardware won't get benefit.
 
-We leverage TRT EP for quantization on GPU. Different with CPU EP, TRT takes in full precision model and calibration result for inputs. It decides how to quantize with their own logic. The overall procedure to leverage TRT EP quantization is:
+ORT leverage TRT EP for quantization on GPU now. Different with CPU EP, TRT takes in full precision model and calibration result for inputs. It decides how to quantize with their own logic. The overall procedure to leverage TRT EP quantization is:
 - Implement a [CalibrationDataReader](https://github.com/microsoft/onnxruntime/blob/07788e082ef2c78c3f4e72f49e7e7c3db6f09cb0/onnxruntime/python/tools/quantization/calibrate.py).
 - Compute quantization parameter with calibration data set. Our quantization tool supports 2 calibration methods: MinMax and Entropy. Note: In order to include all tensors from the model for better calibration, please run symbolic_shape_infer.py first. Please refer to[here](https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#sample) for detail.
 - Save quantization parameter into a flatbuffer file
