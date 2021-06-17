@@ -124,6 +124,9 @@ class GraphExecutionManager(ABC):
             self._torch_alloc = self._torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
             self._torch_free = self._torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
 
+        # WIP feature to enable caching in Gradient accumulation scenario.
+        self._enable_grad_acc_optimization = False
+
     @staticmethod
     def execution_session_run_forward(execution_session, onnx_model, device, *inputs):
         """Runs the forward pass on `execution_session` with given `onnx_model`, `device` and `inputs`
