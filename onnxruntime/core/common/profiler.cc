@@ -49,6 +49,7 @@ class CudaProfiler final: public DeviceProfiler {
     int32_t block_z_ = 0;
     int64_t start_ = 0;
     int64_t stop_ = 0;
+    int64_t correlation_id = 0;
   };
   static OrtMutex mutex_;
   static std::vector<KernelStat> stats_;
@@ -75,17 +76,18 @@ void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer
   CUptiResult status;
   CUpti_Activity* record = NULL;
   if (validSize > 0) {
-    std::unique_lock<OrtMutex> lock(mutex_);
+    std::lock_guard<OrtMutex> lock(mutex_);
     do {
       status = cuptiActivityGetNextRecord(buffer, validSize, &record);
       if (status == CUPTI_SUCCESS) {
-        if (CUPTI_ACTIVITY_KIND_KERNEL == record->kind) {
+        if (CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL == record->kind) {
           CUpti_ActivityKernel4* kernel = (CUpti_ActivityKernel4*)record;
           stats_.push_back({kernel->name, kernel->streamId,
                             kernel->gridX, kernel->gridY, kernel->gridZ,
                             kernel->blockX, kernel->blockY, kernel->blockZ,
                             static_cast<int64_t>(kernel->start),
-                            static_cast<int64_t>(kernel->end)});
+                            static_cast<int64_t>(kernel->end),
+                            static_cast<int64_t>(kernel->correlationId)});
         }
       } else if (status == CUPTI_ERROR_MAX_LIMIT_REACHED) {
         break;
@@ -100,7 +102,7 @@ void CudaProfiler::StartProfiling(TimePoint start_time, int pid, int tid) {
     start_time_ = start_time;
     pid_ = pid;
     tid_ = tid;
-    if (cuptiActivityEnable(CUPTI_ACTIVITY_KIND_KERNEL) == CUPTI_SUCCESS &&
+    if (cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL) == CUPTI_SUCCESS &&
         cuptiActivityRegisterCallbacks(BufferRequested, BufferCompleted) == CUPTI_SUCCESS) {
       initialized_ = true;
     }
@@ -110,9 +112,10 @@ void CudaProfiler::StartProfiling(TimePoint start_time, int pid, int tid) {
 std::vector<EventRecord> CudaProfiler::EndProfiling() {
   std::vector<EventRecord> events;
   if (enabled_.test_and_set()) {
+    cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL);
     if (initialized_) {
       cuptiActivityFlushAll(1);
-      std::unique_lock<OrtMutex> lock(mutex_);
+      std::lock_guard<OrtMutex> lock(mutex_);
       int64_t profiling_start = std::chrono::duration_cast<nanoseconds>(start_time_.time_since_epoch()).count();
       for (const auto& stat : stats_) {
         std::initializer_list<std::pair<std::string, std::string>> args = {{"stream", std::to_string(stat.stream_)},
@@ -121,7 +124,8 @@ std::vector<EventRecord> CudaProfiler::EndProfiling() {
                                                                            {"grid_z", std::to_string(stat.grid_z_)},
                                                                            {"block_x", std::to_string(stat.block_x_)},
                                                                            {"block_y", std::to_string(stat.block_y_)},
-                                                                           {"block_z", std::to_string(stat.block_z_)}};
+                                                                           {"block_z", std::to_string(stat.block_z_)},
+                                                                           {"correlation_id", std::to_string(stat.correlation_id)}};
         events.push_back({EventCategory::KERNEL_EVENT, pid_, tid_, stat.name_, DUR(profiling_start, stat.stop_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}});
       }
       stats_.clear();
