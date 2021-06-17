@@ -4,6 +4,7 @@
 import {MatMul} from '../../../ops/matmul';
 import {Tensor} from '../../../tensor';
 import {BroadcastUtil} from '../../../util';
+import {ShapeUtil} from '../../../util';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, WebGLOperator} from '../types';
@@ -17,7 +18,7 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
   }
   createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
     const hasBias = inputs.length > 2;
-    const processBias = hasBias ? 'value += getBiasAtOutCoords();' : '';
+    const processBias = hasBias ? 'result += getBiasForMatmul();' : '';
     const aShape = inputs[0].dims;
     const bShape = inputs[1].dims;
     const outputShape = BroadcastUtil.calcShape(aShape, bShape, true);
@@ -39,8 +40,13 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
     float max = float(${this.clipMax});` :
                                                         '';
     const {activationFunction, applyActivation} = getActicationSnippet(this.activation);
+
+    const getBiasForMatmulSnippet =
+        hasBias ? `${getBiasForMatmul(coordsDataType, allGlChannels, inputs[2].dims, outputShape)}` : '';
+
     const shaderSource = `
       ${additionalVars}
+      ${getBiasForMatmulSnippet}
       ${activationFunction}
       void main() {
         ${coordsDataType} rc = getOutputCoords();
@@ -82,6 +88,37 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
   }
 }
 
+function getBiasForMatmul(
+    coordsDataType: string, allGlChannels: readonly string[], inShape: readonly number[],
+    outShape: readonly number[]): string {
+  let unpackedCoordsSnippet = '';
+  const inRank = inShape.length;
+  const outRank = outShape.length;
+  const rankDiff = outRank - inRank;
+  if (outRank < 2 && inRank > 0) {
+    unpackedCoordsSnippet = 'coords';
+  } else {
+    unpackedCoordsSnippet = inShape.map((s, i) => `coords.${allGlChannels[i + rankDiff]}`).join(', ');
+  }
+  const broadcastDims = BroadcastUtil.getBroadcastDims(inShape, outShape);
+  const coordsSnippet = broadcastDims.map(d => `coords.${allGlChannels[d + rankDiff]} = 0;`).join('\n');
+  const inSize = ShapeUtil.size(inShape);
+  const isInputScalar = inSize === 1;
+  let output = 'vec4(outputValue.xx, outputValue.yy)';
+  if (isInputScalar) {
+    output = 'vec4(outputValue.x)';
+  }
+  const getBiasForMatmulSource = `
+  vec4 getBiasForMatmul() {
+    ${coordsDataType} coords = getOutputCoords();
+    ${coordsSnippet}
+    vec4 outputValue = getBias(${unpackedCoordsSnippet});
+    return ${output};
+
+  }`;
+
+  return getBiasForMatmulSource;
+}
 function getA(allGlChannels: string[], rank: number): string {
   let res = '';
   for (let i = 0; i < rank - 2; i++) {

@@ -7,6 +7,7 @@ import {env} from 'onnxruntime-common';
 import {Backend, InferenceHandler, resolveBackend, SessionHandler} from '../../../../lib/onnxjs/backend';
 import {WebGLInferenceHandler} from '../../../../lib/onnxjs/backends/webgl/inference-handler';
 import {WebGLMatMulPacked} from '../../../../lib/onnxjs/backends/webgl/ops/matmul-pack';
+import {TextureData} from '../../../../lib/onnxjs/backends/webgl/types';
 import {Profiler} from '../../../../lib/onnxjs/instrument';
 import {Tensor} from '../../../../lib/onnxjs/tensor';
 import {ShapeUtil} from '../../../../lib/onnxjs/util';
@@ -173,6 +174,9 @@ describe('#UnitTest# - packed matmul - Tensor matmul', () => {
       const inputDataB = createAscendingArray(elementCountB);
       const inputTensorA = new Tensor(inputTensorShapeA, 'float32', undefined, undefined, inputDataA);
       const inputTensorB = new Tensor(inputTensorShapeB, 'float32', undefined, undefined, inputDataB);
+      const biasTensor = testData.biasValue ?
+          new Tensor([1], 'float32', undefined, undefined, new Float32Array([testData.biasValue])) :
+          undefined;
 
       // manually creat packed texture from inputTensor, and insert in cache
       const gl = webglInferenceHandler.session.textureManager.glContext.gl;
@@ -184,6 +188,12 @@ describe('#UnitTest# - packed matmul - Tensor matmul', () => {
       const webglTextureB = createTextureFromArray(
           webglInferenceHandler.session.textureManager.glContext, testData.rawInputB ? testData.rawInputB : inputDataB,
           gl.RGBA, inputTextureShapeB[0], inputTextureShapeB[1]);
+
+      const webglTextureBias = biasTensor && testData.biasValue ?
+          createTextureFromArray(
+              webglInferenceHandler.session.textureManager.glContext, new Float32Array([testData.biasValue, 0, 0, 0]),
+              gl.RGBA, 1, 1) :
+          undefined;
 
       webglInferenceHandler.session.textureManager.glContext.checkError();
       const packedShapeA = inputTextureShapeA;
@@ -212,15 +222,25 @@ describe('#UnitTest# - packed matmul - Tensor matmul', () => {
         texture: webglTextureB!
       };
 
+      const packedShapeBias = [1];
       webglInferenceHandler.setTextureData(inputTensorA.dataId, textureDataA, true);
       webglInferenceHandler.setTextureData(inputTensorB.dataId, textureDataB, true);
+      if (biasTensor && webglTextureBias) {
+        const textureDataBias: TextureData = {
+          width: 1,
+          height: 1,
+          channels: 4 as const,
+          isPacked: true,
+          shape: packedShapeBias,
+          strides: ShapeUtil.computeStrides(packedShapeBias),
+          unpackedShape: [1],
+          tensor: biasTensor,
+          texture: webglTextureBias
+        };
 
-      const inputList = testData.biasValue ?
-          [
-            inputTensorA, inputTensorB,
-            new Tensor([1], 'float32', undefined, undefined, new Float32Array([testData.biasValue]))
-          ] :
-          [inputTensorA, inputTensorB];
+        webglInferenceHandler.setTextureData(biasTensor.dataId, textureDataBias, true);
+      }
+      const inputList = biasTensor ? [inputTensorA, inputTensorB, biasTensor] : [inputTensorA, inputTensorB];
 
       // compile shader code
       const programInfo = op.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, inputList);
