@@ -41,6 +41,9 @@ class TrainingAgent {
                                               const std::vector<OrtDevice>& outputs_device_info,
                                               std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager);
 
+  void GetFrontierTensors(const std::vector<std::string>& param_names,
+                          std::unordered_map<std::string, std::string>& frontier_node_arg_map);
+
  private:
   // TrainingAgent runs on a InferenceSession under the hood
   InferenceSession& inference_session_;
