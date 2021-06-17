@@ -30,8 +30,10 @@ ONNX_CPU_OPERATOR_KERNEL(
     Concat);
 
 static bool DimsAllZero(const std::vector<int64_t>& dims) {
-  if (dims.size() == 0)
-    return false;  // scalar is not all zeros
+  if (dims.size() == 0) {
+    // scalar is not all zeros
+    return false;
+  }
 
   for (auto dim : dims) {
     if (dim != 0) {
