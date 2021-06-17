@@ -361,6 +361,12 @@ void DataOps::populate_op_mode_supported() {
                                      if(node->InputDefs()[2]->Name() == "B")
                                        if_bias = true;
                                    }
+                                  //If the kernel size is 1D and the input has bias and the output precision is FP32, the op is rejected.
+                                  if(ints.size() == 1 && if_bias) {
+                                    auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+                                    if (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT)
+                                      return true;
+                                  }
                                   //If the kernel size is 3D and the input doesnot have bias, the op is rejected in case of GPU
                                   if(ints.size() == 3 && !if_bias)
                                     return true;
