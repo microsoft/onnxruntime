@@ -49,7 +49,7 @@ Status NGramRepeatBlock::ComputeInternal(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  const auto* input_ids_data = static_cast<const int64_t*>(input_ids->DataRaw(input_ids->DataType()));
+  const auto* input_ids_data = static_cast<const long*>(input_ids->DataRaw(input_ids->DataType()));
 
   NGramRepeatBlockImpl(
       Stream(),
