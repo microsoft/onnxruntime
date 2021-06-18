@@ -16,6 +16,7 @@ if (onnxruntime_ENABLE_TRAINING)
     "${ORTTRAINING_ROOT}/orttraining/python/*.h"
     "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.cc"
     "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.h"
+    "${ONNXRUNTIME_ROOT}/core/dlpack/python_common.h"
   )
 endif()
 
@@ -60,8 +61,6 @@ elseif(UNIX)
 else()
   set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${ONNXRUNTIME_ROOT}/python/pybind.def")
 endif()
-
-set(onnxruntime_pybind11_state_link_targets)
 
 if (onnxruntime_ENABLE_TRAINING)
   target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_training)

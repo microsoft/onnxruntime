@@ -200,7 +200,7 @@ target_include_directories(onnxruntime_providers PRIVATE ${ONNXRUNTIME_ROOT} ${e
 add_dependencies(onnxruntime_providers onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
-  target_include_directories(onnxruntime_providers PUBLIC ${ORTTRAINING_ROOT})
+  target_include_directories(onnxruntime_providers PRIVATE ${ORTTRAINING_ROOT})
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
