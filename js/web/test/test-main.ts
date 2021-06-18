@@ -22,32 +22,32 @@ const options = ORT_WEB_TEST_CONFIG.options;
 if (options.debug !== undefined) {
   ort.env.debug = options.debug;
 }
-if (options.globalEnvFlags && options.globalEnvFlags.logLevel !== undefined) {
-  ort.env.logLevel = options.globalEnvFlags.logLevel;
-}
-if (ort.env.webgl && options.globalEnvFlags && options.globalEnvFlags.webgl &&
-    options.globalEnvFlags.webgl.contextId !== undefined) {
-  ort.env.webgl.contextId = options.globalEnvFlags.webgl.contextId;
-}
-if (ort.env.webgl && options.globalEnvFlags && options.globalEnvFlags.webgl &&
-    options.globalEnvFlags.webgl.matmulMaxBatchSize !== undefined) {
-  ort.env.webgl.matmulMaxBatchSize = options.globalEnvFlags.webgl.matmulMaxBatchSize;
-}
-if (ort.env.webgl && options.globalEnvFlags && options.globalEnvFlags.webgl &&
-    options.globalEnvFlags.webgl.textureCacheMode !== undefined) {
-  ort.env.webgl.textureCacheMode = options.globalEnvFlags.webgl.textureCacheMode;
-}
-if (ort.env.webgl && options.globalEnvFlags && options.globalEnvFlags.webgl &&
-    options.globalEnvFlags.webgl.pack !== undefined) {
-  ort.env.webgl.pack = options.globalEnvFlags.webgl.pack;
-}
-if (ort.env.wasm && options.globalEnvFlags && options.globalEnvFlags.wasm &&
-    options.globalEnvFlags.wasm.numThreads !== undefined) {
-  ort.env.wasm.numThreads = options.globalEnvFlags.wasm.numThreads;
-}
-if (ort.env.wasm && options.globalEnvFlags && options.globalEnvFlags.wasm &&
-    options.globalEnvFlags.wasm.initTimeout !== undefined) {
-  ort.env.wasm.initTimeout = options.globalEnvFlags.wasm.initTimeout;
+if (options.globalEnvFlags) {
+  const flags = options.globalEnvFlags;
+  if (flags.logLevel !== undefined) {
+    ort.env.logLevel = flags.logLevel;
+  }
+  if (flags.webgl?.contextId !== undefined) {
+    ort.env.webgl.contextId = flags.webgl.contextId;
+  }
+  if (flags.webgl?.matmulMaxBatchSize !== undefined) {
+    ort.env.webgl.matmulMaxBatchSize = flags.webgl.matmulMaxBatchSize;
+  }
+  if (flags.webgl?.textureCacheMode !== undefined) {
+    ort.env.webgl.textureCacheMode = flags.webgl.textureCacheMode;
+  }
+  if (flags.webgl?.pack !== undefined) {
+    ort.env.webgl.pack = flags.webgl.pack;
+  }
+  if (flags.wasm?.numThreads !== undefined) {
+    ort.env.wasm.numThreads = flags.wasm.numThreads;
+  }
+  if (flags.wasm?.simd !== undefined) {
+    ort.env.wasm.simd = flags.wasm.simd;
+  }
+  if (flags.wasm?.initTimeout !== undefined) {
+    ort.env.wasm.initTimeout = flags.wasm.initTimeout;
+  }
 }
 
 // Set logging configuration

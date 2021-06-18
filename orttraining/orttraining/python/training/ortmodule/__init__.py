@@ -55,5 +55,8 @@ try:
 except:
     raise(f'PyTorch {MINIMUM_TORCH_VERSION_STR} must be installed in order to run ONNX Runtime ORTModule frontend!')
 
+from ._custom_autograd_function import enable_custom_autograd_support
+enable_custom_autograd_support()
+
 # ORTModule must be loaded only after all validation passes
 from .ortmodule import ORTModule

@@ -78,3 +78,4 @@
 	path = cmake/external/emsdk
 	url = https://github.com/emscripten-core/emsdk.git
 	branch = 2.0.23
+	ignore = dirty

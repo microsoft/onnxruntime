@@ -104,7 +104,7 @@ Status DynamicQuantizeMatMulFusion::ApplyImpl(Graph& graph, bool& modified, int 
     nodes_to_remove.push_back(matmul_integer_to_float_node);
   }
 
-  modified = !nodes_to_remove.empty();
+  modified = modified || !nodes_to_remove.empty();
 
   for (const auto& node : nodes_to_remove) {
     graph_utils::RemoveNodeOutputEdges(graph, node);

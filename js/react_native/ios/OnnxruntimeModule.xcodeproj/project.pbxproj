@@ -7,16 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		D1D81F804850BCAF0F66320B /* libPods-OnnxruntimeModuleTest.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 4ED4282B152369F0F6753107 /* libPods-OnnxruntimeModuleTest.a */; };
+		094C43D4312FB83139FA4E3B /* Pods_OnnxruntimeModule.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 83B4C5FACE5CEC3A22F50945 /* Pods_OnnxruntimeModule.framework */; };
+		9B52917A0F2BDC354D087A67 /* Pods_OnnxruntimeModuleTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 69B56D4AAAA9C6D8C15652DC /* Pods_OnnxruntimeModuleTest.framework */; };
 		DB8FC9B525C2867800C72F26 /* OnnxruntimeModule.mm in Sources */ = {isa = PBXBuildFile; fileRef = DB8FC9B425C2867800C72F26 /* OnnxruntimeModule.mm */; };
 		DB8FC9B825C2868700C72F26 /* TensorHelper.mm in Sources */ = {isa = PBXBuildFile; fileRef = DB8FC9B725C2868700C72F26 /* TensorHelper.mm */; };
-		DBD3F06A263F7F9C00CD0373 /* libonnxruntime.${ONNXRUNTIME_VERSION}.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = DBD3F069263F7F9C00CD0373 /* libonnxruntime.${ONNXRUNTIME_VERSION}.dylib */; };
-		DBD3F06B263F803D00CD0373 /* libonnxruntime.${ONNXRUNTIME_VERSION}.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = DBD3F069263F7F9C00CD0373 /* libonnxruntime.${ONNXRUNTIME_VERSION}.dylib */; };
 		DBDB57DA2603211A004F16BE /* TensorHelperTest.mm in Sources */ = {isa = PBXBuildFile; fileRef = DBDB57D92603211A004F16BE /* TensorHelperTest.mm */; };
 		DBDB57DC2603211A004F16BE /* libOnnxruntimeModule.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 134814201AA4EA6300B7C361 /* libOnnxruntimeModule.a */; };
 		DBDB588B2609B18F004F16BE /* Resources in Resources */ = {isa = PBXBuildFile; fileRef = DBDB588A2609B18F004F16BE /* Resources */; };
 		DBDB58B0262A92D7004F16BE /* OnnxruntimeModuleTest.mm in Sources */ = {isa = PBXBuildFile; fileRef = DBDB58AF262A92D6004F16BE /* OnnxruntimeModuleTest.mm */; };
-		F92876D1F6656034AD2EC8D1 /* libPods-OnnxruntimeModule.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 6E96BE961E158CBAAD5BA677 /* libPods-OnnxruntimeModule.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -42,29 +40,20 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		01C2D06548A9114EA7E75A55 /* Pods-OnnxruntimeModuleTest.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OnnxruntimeModuleTest.debug.xcconfig"; path = "Target Support Files/Pods-OnnxruntimeModuleTest/Pods-OnnxruntimeModuleTest.debug.xcconfig"; sourceTree = "<group>"; };
 		134814201AA4EA6300B7C361 /* libOnnxruntimeModule.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libOnnxruntimeModule.a; sourceTree = BUILT_PRODUCTS_DIR; };
-		4ED4282B152369F0F6753107 /* libPods-OnnxruntimeModuleTest.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-OnnxruntimeModuleTest.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		4EF73D38B9D8F90FB428108C /* Pods-OnnxruntimeModuleTest.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OnnxruntimeModuleTest.debug.xcconfig"; path = "Target Support Files/Pods-OnnxruntimeModuleTest/Pods-OnnxruntimeModuleTest.debug.xcconfig"; sourceTree = "<group>"; };
 		4FA772A32BE6D874419D9094 /* Pods-OnnxruntimeModule.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OnnxruntimeModule.debug.xcconfig"; path = "Target Support Files/Pods-OnnxruntimeModule/Pods-OnnxruntimeModule.debug.xcconfig"; sourceTree = "<group>"; };
-		6E96BE961E158CBAAD5BA677 /* libPods-OnnxruntimeModule.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-OnnxruntimeModule.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		69B56D4AAAA9C6D8C15652DC /* Pods_OnnxruntimeModuleTest.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_OnnxruntimeModuleTest.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		83B4C5FACE5CEC3A22F50945 /* Pods_OnnxruntimeModule.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_OnnxruntimeModule.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		94FB38C2CBF8DFA9F2AEAB37 /* Pods-OnnxruntimeModule.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OnnxruntimeModule.release.xcconfig"; path = "Target Support Files/Pods-OnnxruntimeModule/Pods-OnnxruntimeModule.release.xcconfig"; sourceTree = "<group>"; };
-		BD5F629FF761AD0F444C93B5 /* Pods-OnnxruntimeModuleTest.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OnnxruntimeModuleTest.release.xcconfig"; path = "Target Support Files/Pods-OnnxruntimeModuleTest/Pods-OnnxruntimeModuleTest.release.xcconfig"; sourceTree = "<group>"; };
-		DB8FC9A325C2850300C72F26 /* onnxruntime_session_options_config_keys.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = onnxruntime_session_options_config_keys.h; sourceTree = "<group>"; };
-		DB8FC9A425C2850300C72F26 /* automl_data_containers.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = automl_data_containers.h; sourceTree = "<group>"; };
-		DB8FC9A525C2850300C72F26 /* experimental_onnxruntime_cxx_inline.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = experimental_onnxruntime_cxx_inline.h; sourceTree = "<group>"; };
-		DB8FC9A625C2850300C72F26 /* environment.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = environment.h; sourceTree = "<group>"; };
-		DB8FC9A725C2850300C72F26 /* onnxruntime_cxx_inline.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = onnxruntime_cxx_inline.h; sourceTree = "<group>"; };
-		DB8FC9A825C2850300C72F26 /* onnxruntime_cxx_api.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = onnxruntime_cxx_api.h; sourceTree = "<group>"; };
-		DB8FC9A925C2850300C72F26 /* onnxruntime_c_api.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = onnxruntime_c_api.h; sourceTree = "<group>"; };
-		DB8FC9AA25C2850300C72F26 /* experimental_onnxruntime_cxx_api.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = experimental_onnxruntime_cxx_api.h; sourceTree = "<group>"; };
 		DB8FC9B425C2867800C72F26 /* OnnxruntimeModule.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = OnnxruntimeModule.mm; sourceTree = SOURCE_ROOT; };
 		DB8FC9B725C2868700C72F26 /* TensorHelper.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = TensorHelper.mm; sourceTree = SOURCE_ROOT; };
-		DBD3F069263F7F9C00CD0373 /* libonnxruntime.${ONNXRUNTIME_VERSION}.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libonnxruntime.${ONNXRUNTIME_VERSION}.dylib"; path = "Libraries/onnxruntime/lib/iphonesimulator/libonnxruntime.${ONNXRUNTIME_VERSION}.dylib"; sourceTree = "<group>"; };
 		DBDB57D72603211A004F16BE /* OnnxruntimeModuleTest.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OnnxruntimeModuleTest.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DBDB57D92603211A004F16BE /* TensorHelperTest.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = TensorHelperTest.mm; sourceTree = "<group>"; };
 		DBDB57DB2603211A004F16BE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		DBDB588A2609B18F004F16BE /* Resources */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Resources; path = OnnxruntimeModuleTest/Resources; sourceTree = "<group>"; };
 		DBDB58AF262A92D6004F16BE /* OnnxruntimeModuleTest.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = OnnxruntimeModuleTest.mm; sourceTree = "<group>"; };
+		FEC2B1289C2940FC626B52E2 /* Pods-OnnxruntimeModuleTest.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-OnnxruntimeModuleTest.release.xcconfig"; path = "Target Support Files/Pods-OnnxruntimeModuleTest/Pods-OnnxruntimeModuleTest.release.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -72,8 +61,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F92876D1F6656034AD2EC8D1 /* libPods-OnnxruntimeModule.a in Frameworks */,
-				DBD3F06A263F7F9C00CD0373 /* libonnxruntime.${ONNXRUNTIME_VERSION}.dylib in Frameworks */,
+				094C43D4312FB83139FA4E3B /* Pods_OnnxruntimeModule.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -81,9 +69,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				DBD3F06B263F803D00CD0373 /* libonnxruntime.${ONNXRUNTIME_VERSION}.dylib in Frameworks */,
 				DBDB57DC2603211A004F16BE /* libOnnxruntimeModule.a in Frameworks */,
-				D1D81F804850BCAF0F66320B /* libPods-OnnxruntimeModuleTest.a in Frameworks */,
+				9B52917A0F2BDC354D087A67 /* Pods_OnnxruntimeModuleTest.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -103,7 +90,6 @@
 			children = (
 				DBDB588A2609B18F004F16BE /* Resources */,
 				DB8FC9B325C2861300C72F26 /* OnnxruntimeModule */,
-				DB8FC9A125C284E700C72F26 /* Libraries */,
 				DBDB57D82603211A004F16BE /* OnnxruntimeModuleTest */,
 				134814211AA4EA7D00B7C361 /* Products */,
 				DB8FC99D25C284A200C72F26 /* Frameworks */,
@@ -117,8 +103,8 @@
 			children = (
 				4FA772A32BE6D874419D9094 /* Pods-OnnxruntimeModule.debug.xcconfig */,
 				94FB38C2CBF8DFA9F2AEAB37 /* Pods-OnnxruntimeModule.release.xcconfig */,
-				01C2D06548A9114EA7E75A55 /* Pods-OnnxruntimeModuleTest.debug.xcconfig */,
-				BD5F629FF761AD0F444C93B5 /* Pods-OnnxruntimeModuleTest.release.xcconfig */,
+				4EF73D38B9D8F90FB428108C /* Pods-OnnxruntimeModuleTest.debug.xcconfig */,
+				FEC2B1289C2940FC626B52E2 /* Pods-OnnxruntimeModuleTest.release.xcconfig */,
 			);
 			path = Pods;
 			sourceTree = "<group>";
@@ -126,35 +112,11 @@
 		DB8FC99D25C284A200C72F26 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				DBD3F069263F7F9C00CD0373 /* libonnxruntime.${ONNXRUNTIME_VERSION}.dylib */,
-				6E96BE961E158CBAAD5BA677 /* libPods-OnnxruntimeModule.a */,
-				4ED4282B152369F0F6753107 /* libPods-OnnxruntimeModuleTest.a */,
+				83B4C5FACE5CEC3A22F50945 /* Pods_OnnxruntimeModule.framework */,
+				69B56D4AAAA9C6D8C15652DC /* Pods_OnnxruntimeModuleTest.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
-		};
-		DB8FC9A125C284E700C72F26 /* Libraries */ = {
-			isa = PBXGroup;
-			children = (
-				DB8FC9A225C2850300C72F26 /* onnxruntime */,
-			);
-			path = Libraries;
-			sourceTree = "<group>";
-		};
-		DB8FC9A225C2850300C72F26 /* onnxruntime */ = {
-			isa = PBXGroup;
-			children = (
-				DB8FC9A325C2850300C72F26 /* onnxruntime_session_options_config_keys.h */,
-				DB8FC9A425C2850300C72F26 /* automl_data_containers.h */,
-				DB8FC9A525C2850300C72F26 /* experimental_onnxruntime_cxx_inline.h */,
-				DB8FC9A625C2850300C72F26 /* environment.h */,
-				DB8FC9A725C2850300C72F26 /* onnxruntime_cxx_inline.h */,
-				DB8FC9A825C2850300C72F26 /* onnxruntime_cxx_api.h */,
-				DB8FC9A925C2850300C72F26 /* onnxruntime_c_api.h */,
-				DB8FC9AA25C2850300C72F26 /* experimental_onnxruntime_cxx_api.h */,
-			);
-			path = onnxruntime;
-			sourceTree = SOURCE_ROOT;
 		};
 		DB8FC9B325C2861300C72F26 /* OnnxruntimeModule */ = {
 			isa = PBXGroup;
@@ -200,11 +162,11 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = DBDB57E12603211A004F16BE /* Build configuration list for PBXNativeTarget "OnnxruntimeModuleTest" */;
 			buildPhases = (
-				5B732845A8C64D3A3B502FEC /* [CP] Check Pods Manifest.lock */,
+				4723405DB17478264B2CEA2A /* [CP] Check Pods Manifest.lock */,
 				DBDB57D32603211A004F16BE /* Sources */,
 				DBDB57D42603211A004F16BE /* Frameworks */,
 				DBDB57D52603211A004F16BE /* Resources */,
-				0E58273833B892727485824E /* [CP] Copy Pods Resources */,
+				08C0DD8EAE25681EA57D04AB /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -266,22 +228,64 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		0E58273833B892727485824E /* [CP] Copy Pods Resources */ = {
+		08C0DD8EAE25681EA57D04AB /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			inputPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-OnnxruntimeModuleTest/Pods-OnnxruntimeModuleTest-resources.sh",
-				"${PODS_CONFIGURATION_BUILD_DIR}/React-Core/AccessibilityResources.bundle",
+				"${PODS_ROOT}/Target Support Files/Pods-OnnxruntimeModuleTest/Pods-OnnxruntimeModuleTest-frameworks.sh",
+				"${BUILT_PRODUCTS_DIR}/DoubleConversion/DoubleConversion.framework",
+				"${BUILT_PRODUCTS_DIR}/FBReactNativeSpec/FBReactNativeSpec.framework",
+				"${BUILT_PRODUCTS_DIR}/Folly/folly.framework",
+				"${BUILT_PRODUCTS_DIR}/RCTTypeSafety/RCTTypeSafety.framework",
+				"${BUILT_PRODUCTS_DIR}/React-Core/React.framework",
+				"${BUILT_PRODUCTS_DIR}/React-CoreModules/CoreModules.framework",
+				"${BUILT_PRODUCTS_DIR}/React-RCTAnimation/RCTAnimation.framework",
+				"${BUILT_PRODUCTS_DIR}/React-RCTBlob/RCTBlob.framework",
+				"${BUILT_PRODUCTS_DIR}/React-RCTImage/RCTImage.framework",
+				"${BUILT_PRODUCTS_DIR}/React-RCTLinking/RCTLinking.framework",
+				"${BUILT_PRODUCTS_DIR}/React-RCTNetwork/RCTNetwork.framework",
+				"${BUILT_PRODUCTS_DIR}/React-RCTSettings/RCTSettings.framework",
+				"${BUILT_PRODUCTS_DIR}/React-RCTText/RCTText.framework",
+				"${BUILT_PRODUCTS_DIR}/React-RCTVibration/RCTVibration.framework",
+				"${BUILT_PRODUCTS_DIR}/React-cxxreact/cxxreact.framework",
+				"${BUILT_PRODUCTS_DIR}/React-jsi/jsi.framework",
+				"${BUILT_PRODUCTS_DIR}/React-jsiexecutor/jsireact.framework",
+				"${BUILT_PRODUCTS_DIR}/React-jsinspector/jsinspector.framework",
+				"${BUILT_PRODUCTS_DIR}/ReactCommon/ReactCommon.framework",
+				"${BUILT_PRODUCTS_DIR}/Yoga/yoga.framework",
+				"${BUILT_PRODUCTS_DIR}/glog/glog.framework",
+				"${PODS_ROOT}/onnxruntime-mobile-c/onnxruntime.framework",
 			);
-			name = "[CP] Copy Pods Resources";
+			name = "[CP] Embed Pods Frameworks";
 			outputPaths = (
-				"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/AccessibilityResources.bundle",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/DoubleConversion.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/FBReactNativeSpec.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/folly.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/RCTTypeSafety.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/React.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/CoreModules.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/RCTAnimation.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/RCTBlob.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/RCTImage.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/RCTLinking.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/RCTNetwork.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/RCTSettings.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/RCTText.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/RCTVibration.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/cxxreact.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/jsi.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/jsireact.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/jsinspector.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/ReactCommon.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/yoga.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/glog.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/onnxruntime.framework",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-OnnxruntimeModuleTest/Pods-OnnxruntimeModuleTest-resources.sh\"\n";
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-OnnxruntimeModuleTest/Pods-OnnxruntimeModuleTest-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 		148DE3680F0F3FE8BA6A82D1 /* [CP] Check Pods Manifest.lock */ = {
@@ -306,7 +310,7 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
-		5B732845A8C64D3A3B502FEC /* [CP] Check Pods Manifest.lock */ = {
+		4723405DB17478264B2CEA2A /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -403,9 +407,9 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				"HEADER_SEARCH_PATHS[arch=*]" = "$(PROJECT_DIR)/Libraries/onnxruntime/include";
+				"HEADER_SEARCH_PATHS[arch=*]" = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 9.0;
-				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libraries/onnxruntime/lib";
+				LIBRARY_SEARCH_PATHS = "";
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
@@ -448,9 +452,9 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				"HEADER_SEARCH_PATHS[arch=*]" = "$(PROJECT_DIR)/Libraries/onnxruntime/include";
+				"HEADER_SEARCH_PATHS[arch=*]" = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 9.0;
-				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libraries/onnxruntime/lib";
+				LIBRARY_SEARCH_PATHS = "";
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				VALIDATE_PRODUCT = YES;
@@ -467,11 +471,10 @@
 					"$(SRCROOT)/../../../React/**",
 					"$(SRCROOT)/../../react-native/React/**",
 				);
+				"HEADER_SEARCH_PATHS[arch=*]" = "\"$(PODS_ROOT)/onnxruntime-mobile/onnxruntime.framework/Headers\"";
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)",
-					"$(PROJECT_DIR)/Libraries/onnxruntime/lib",
-					"$(PROJECT_DIR)/Libraries/onnxruntime/lib/iphonesimulator",
 				);
 				OTHER_LDFLAGS = "$(inherited)";
 				PRODUCT_NAME = OnnxruntimeModule;
@@ -492,11 +495,10 @@
 					"$(SRCROOT)/../../../React/**",
 					"$(SRCROOT)/../../react-native/React/**",
 				);
+				"HEADER_SEARCH_PATHS[arch=*]" = "\"$(PODS_ROOT)/onnxruntime-mobile/onnxruntime.framework/Headers\"";
 				LIBRARY_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)",
-					"$(PROJECT_DIR)/Libraries/onnxruntime/lib",
-					"$(PROJECT_DIR)/Libraries/onnxruntime/lib/iphonesimulator",
 				);
 				OTHER_LDFLAGS = "$(inherited)";
 				PRODUCT_NAME = OnnxruntimeModule;
@@ -508,7 +510,7 @@
 		};
 		DBDB57DF2603211A004F16BE /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 01C2D06548A9114EA7E75A55 /* Pods-OnnxruntimeModuleTest.debug.xcconfig */;
+			baseConfigurationReference = 4EF73D38B9D8F90FB428108C /* Pods-OnnxruntimeModuleTest.debug.xcconfig */;
 			buildSettings = {
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -543,7 +545,7 @@
 					"\"${PODS_ROOT}/Headers/Public/Yoga\"",
 					"\"${PODS_ROOT}/Headers/Public/glog\"",
 					"\"$(PODS_ROOT)/Headers/Private/React-Core\"",
-					"$(PROJECT_DIR)/Libraries/onnxruntime/include",
+					"\"$(PODS_ROOT)/onnxruntime-mobile/onnxruntime.framework/Headers\"",
 					"$(PROJECT_DIR)",
 				);
 				"HEADER_SEARCH_PATHS[arch=*]" = (
@@ -565,17 +567,12 @@
 					"\"${PODS_ROOT}/Headers/Public/Yoga\"",
 					"\"${PODS_ROOT}/Headers/Public/glog\"",
 					"\"$(PODS_ROOT)/Headers/Private/React-Core\"",
-					"$(PROJECT_DIR)/Libraries/onnxruntime/include",
 					"$(PROJECT_DIR)",
 				);
 				INFOPLIST_FILE = OnnxruntimeModuleTest/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 14.4;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks $(PROJECT_DIR)/Libraries/onnxruntime/lib $(PROJECT_DIR)/Libraries/onnxruntime/lib/iphonesimulator";
-				LIBRARY_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/Libraries/onnxruntime/lib",
-					"$(PROJECT_DIR)/Libraries/onnxruntime/lib/iphonesimulator",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				LIBRARY_SEARCH_PATHS = "$(inherited)";
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.onnxruntime.reactnative.OnnxruntimeModuleTest;
@@ -586,7 +583,7 @@
 		};
 		DBDB57E02603211A004F16BE /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = BD5F629FF761AD0F444C93B5 /* Pods-OnnxruntimeModuleTest.release.xcconfig */;
+			baseConfigurationReference = FEC2B1289C2940FC626B52E2 /* Pods-OnnxruntimeModuleTest.release.xcconfig */;
 			buildSettings = {
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -622,7 +619,7 @@
 					"\"${PODS_ROOT}/Headers/Public/Yoga\"",
 					"\"${PODS_ROOT}/Headers/Public/glog\"",
 					"\"$(PODS_ROOT)/Headers/Private/React-Core\"",
-					"$(PROJECT_DIR)/Libraries/onnxruntime/include",
+					"\"$(PODS_ROOT)/onnxruntime-mobile/onnxruntime.framework/Headers\"",
 					"$(PROJECT_DIR)",
 				);
 				"HEADER_SEARCH_PATHS[arch=*]" = (
@@ -644,17 +641,12 @@
 					"\"${PODS_ROOT}/Headers/Public/Yoga\"",
 					"\"${PODS_ROOT}/Headers/Public/glog\"",
 					"\"$(PODS_ROOT)/Headers/Private/React-Core\"",
-					"$(PROJECT_DIR)/Libraries/onnxruntime/include",
 					"$(PROJECT_DIR)",
 				);
 				INFOPLIST_FILE = OnnxruntimeModuleTest/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 14.4;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks $(PROJECT_DIR)/Libraries/onnxruntime/lib $(PROJECT_DIR)/Libraries/onnxruntime/lib/iphonesimulator";
-				LIBRARY_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/Libraries/onnxruntime/lib",
-					"$(PROJECT_DIR)/Libraries/onnxruntime/lib/iphonesimulator",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+				LIBRARY_SEARCH_PATHS = "$(inherited)";
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.onnxruntime.reactnative.OnnxruntimeModuleTest;
 				PRODUCT_NAME = "$(TARGET_NAME)";

@@ -91,13 +91,10 @@ downloadJson(
           `https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/builds/${
               buildId}/artifacts?api-version=6.1-preview.5`,
           data => {
-            let ortWasmZipLink, ortWasmThreadedZipLink;
+            let zipLink;
             for (const v of data.value) {
-              if (v.name === 'Release_ort-wasm') {
-                ortWasmZipLink = v.resource.downloadUrl;
-              }
-              if (v.name === 'Release_ort-wasm-threaded') {
-                ortWasmThreadedZipLink = v.resource.downloadUrl;
+              if (v.name === 'Release_wasm') {
+                zipLink = v.resource.downloadUrl;
               }
             }
 
@@ -109,18 +106,16 @@ downloadJson(
             }
             const JS_FOLDER = path.join(__dirname, '../lib/wasm/binding');
 
-            downloadZip(ortWasmZipLink, buffer => {
+            downloadZip(zipLink, buffer => {
               void jszip.loadAsync(buffer).then(zip => {
-                extractFile(zip, JS_FOLDER, 'ort-wasm.js', 'Release_ort-wasm');
-                extractFile(zip, WASM_FOLDER, 'ort-wasm.wasm', 'Release_ort-wasm');
-              });
-            });
+                extractFile(zip, WASM_FOLDER, 'ort-wasm.wasm', 'Release_wasm');
+                extractFile(zip, WASM_FOLDER, 'ort-wasm-threaded.wasm', 'Release_wasm');
+                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd.wasm', 'Release_wasm');
+                extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.wasm', 'Release_wasm');
 
-            downloadZip(ortWasmThreadedZipLink, buffer => {
-              void jszip.loadAsync(buffer).then(zip => {
-                extractFile(zip, JS_FOLDER, 'ort-wasm-threaded.js', 'Release_ort-wasm-threaded');
-                extractFile(zip, JS_FOLDER, 'ort-wasm-threaded.worker.js', 'Release_ort-wasm-threaded');
-                extractFile(zip, WASM_FOLDER, 'ort-wasm-threaded.wasm', 'Release_ort-wasm-threaded');
+                extractFile(zip, JS_FOLDER, 'ort-wasm.js', 'Release_wasm');
+                extractFile(zip, JS_FOLDER, 'ort-wasm-threaded.js', 'Release_wasm');
+                extractFile(zip, JS_FOLDER, 'ort-wasm-threaded.worker.js', 'Release_wasm');
               });
             });
           });
