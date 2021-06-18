@@ -112,9 +112,9 @@ void CudaProfiler::StartProfiling(TimePoint start_time, int pid, int tid) {
 std::vector<EventRecord> CudaProfiler::EndProfiling() {
   std::vector<EventRecord> events;
   if (enabled_.test_and_set()) {
-    cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL);
     if (initialized_) {
-      cuptiActivityFlushAll(1);
+      cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL);
+      cuptiActivityFlushAll(CUPTI_ACTIVITY_FLAG_FLUSH_FORCED);
       std::lock_guard<OrtMutex> lock(mutex_);
       int64_t profiling_start = std::chrono::duration_cast<nanoseconds>(start_time_.time_since_epoch()).count();
       for (const auto& stat : stats_) {
