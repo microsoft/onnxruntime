@@ -216,7 +216,7 @@ class FusionAttention(Fusion):
             qkv_bias_dim = q_bias_shape + k_bias_shape + v_bias_shape
         else:
             qkv_bias = np.stack((qb, kb, vb), axis=0)
-            bias_dim = 3 * q_bias_shape
+            qkv_bias_dim = 3 * q_bias_shape
 
         assert qkv_weight_dim == qkv_bias_dim
 
