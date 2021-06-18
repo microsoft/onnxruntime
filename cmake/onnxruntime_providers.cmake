@@ -150,6 +150,14 @@ if (onnxruntime_ENABLE_TRAINING)
     "${ORTTRAINING_SOURCE_DIR}/core/framework/communication/*"
   )
 
+  # This is already built in framework.cmake
+  file(GLOB_RECURSE onnxruntime_training_framework_excude_srcs CONFIGURE_DEPENDS
+      "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.h"
+      "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.cc"
+  )
+
+  list(REMOVE_ITEM onnxruntime_cpu_training_ops_srcs ${onnxruntime_training_framework_excude_srcs})
+
   source_group(TREE ${ORTTRAINING_ROOT}/ FILES ${onnxruntime_cpu_training_ops_srcs})
   list(APPEND onnxruntime_providers_src ${onnxruntime_cpu_training_ops_srcs})
 
