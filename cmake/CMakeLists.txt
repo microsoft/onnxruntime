@@ -230,7 +230,7 @@ if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   add_compile_definitions(ENABLE_LANGUAGE_INTEROP_OPS)
 endif()
 
-if (NOT (onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING AND (NOT onnxruntime_BUILD_SHARED_LIB)))
+if (NOT (UNIX AND onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING AND (NOT onnxruntime_BUILD_SHARED_LIB)))
   set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OFF)
 endif()
 
@@ -1694,10 +1694,6 @@ if (onnxruntime_ENABLE_TRAINING)
   include(onnxruntime_training.cmake)
   if (onnxruntime_ENABLE_TRAINING_E2E_TESTS)
     include(onnxruntime_training_e2e_tests.cmake)
-  endif()
-
-  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    include(onnxruntime_interop_torch.cmake)
   endif()
 endif()
 

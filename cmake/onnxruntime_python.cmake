@@ -10,9 +10,12 @@ set(onnxruntime_pybind_srcs_pattern
 )
 
 if (onnxruntime_ENABLE_TRAINING)
+  # todo: move dlpack/dlpack_python.* to ${ONNXRUNTIME_ROOT}/python folder.
   list(APPEND onnxruntime_pybind_srcs_pattern
     "${ORTTRAINING_ROOT}/orttraining/python/*.cc"
     "${ORTTRAINING_ROOT}/orttraining/python/*.h"
+    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.cc"
+    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.h"
   )
 endif()
 
@@ -61,10 +64,10 @@ endif()
 set(onnxruntime_pybind11_state_link_targets)
 
 if (onnxruntime_ENABLE_TRAINING)
-  list(APPEND onnxruntime_pybind11_state_link_targets onnxruntime_training)
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_training)
 endif()
 
-list(APPEND onnxruntime_pybind11_state_link_targets
+target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_MIGRAPHX}
@@ -80,27 +83,7 @@ list(APPEND onnxruntime_pybind11_state_link_targets
     onnxruntime_providers
     onnxruntime_util
     ${onnxruntime_tvm_libs}
-)
-
-if (onnxruntime_ENABLE_TRAINING)
-  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    list(APPEND onnxruntime_pybind11_state_link_targets onnxruntime_interop_torch)
-  endif()
-endif()
-
-list(APPEND onnxruntime_pybind11_state_link_targets onnxruntime_framework)
-
-if (onnxruntime_ENABLE_TRAINING)
-  if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    if (NOT TARGET onnxruntime_python_interface)
-      include(onnxruntime_python_interface.cmake)
-    endif()
-  endif()
-
-  list(APPEND onnxruntime_pybind11_state_link_targets onnxruntime_python_interface)
-endif()
-
-list(APPEND onnxruntime_pybind11_state_link_targets
+    onnxruntime_framework
     onnxruntime_util
     onnxruntime_graph
     onnxruntime_common
@@ -108,8 +91,6 @@ list(APPEND onnxruntime_pybind11_state_link_targets
     onnxruntime_flatbuffers
     ${pybind11_lib}
 )
-
-target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_link_targets})
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_language_interop onnxruntime_pyop)

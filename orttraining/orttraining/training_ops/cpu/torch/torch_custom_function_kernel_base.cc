@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 
-#include "core/dlpack/python_common.h"
+#include "orttraining/core/framework/torch/python_common.h"
 #ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel_context_internal.h"
 #endif

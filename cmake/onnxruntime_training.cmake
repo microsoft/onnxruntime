@@ -17,6 +17,14 @@ file(GLOB_RECURSE onnxruntime_training_srcs
     "${ORTTRAINING_SOURCE_DIR}/core/agent/*.cc"
     )
 
+# This needs to be built in framework.cmake
+file(GLOB_RECURSE onnxruntime_training_framework_excude_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.cc"
+)
+
+list(REMOVE_ITEM onnxruntime_training_srcs ${onnxruntime_training_framework_excude_srcs})
+
 onnxruntime_add_static_library(onnxruntime_training ${onnxruntime_training_srcs})
 add_dependencies(onnxruntime_training onnx tensorboard ${onnxruntime_EXTERNAL_DEPENDENCIES})
 onnxruntime_add_include_to_target(onnxruntime_training onnxruntime_common onnx onnx_proto tensorboard ${PROTOBUF_LIB} flatbuffers)
@@ -64,7 +72,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
 
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     onnxruntime_add_include_to_target(onnxruntime_training_runner Python::Module)
-    target_link_libraries(onnxruntime_training_runner PRIVATE onnxruntime_interop_torch onnxruntime_python_interface Python::Python)
+    target_link_libraries(onnxruntime_training_runner PRIVATE Python::Python)
   endif()
 
   onnxruntime_add_include_to_target(onnxruntime_training_runner onnxruntime_training onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} onnxruntime_training flatbuffers)
@@ -106,7 +114,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   )
   onnxruntime_add_executable(onnxruntime_training_mnist ${training_mnist_src})
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    onnxruntime_add_include_to_target(onnxruntime_training_mnist onnxruntime_python_interface Python::Module)
+    onnxruntime_add_include_to_target(onnxruntime_training_mnist Python::Module)
   endif()
   onnxruntime_add_include_to_target(onnxruntime_training_mnist onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} onnxruntime_training flatbuffers)
   target_include_directories(onnxruntime_training_mnist PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
@@ -123,7 +131,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   )
 
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    list(APPEND ONNXRUNTIME_LIBS onnxruntime_interop_torch onnxruntime_python_interface Python::Python)
+    list(APPEND ONNXRUNTIME_LIBS Python::Python)
   endif()
 
   list(APPEND ONNXRUNTIME_LIBS
@@ -156,7 +164,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   onnxruntime_add_include_to_target(onnxruntime_training_squeezenet onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} onnxruntime_training flatbuffers)
   target_include_directories(onnxruntime_training_squeezenet PUBLIC ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${eigen_INCLUDE_DIRS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    onnxruntime_add_include_to_target(onnxruntime_training_squeezenet onnxruntime_python_interface Python::Module)
+    onnxruntime_add_include_to_target(onnxruntime_training_squeezenet Python::Module)
   endif()
   if(UNIX AND NOT APPLE)
     target_compile_options(onnxruntime_training_squeezenet PUBLIC "-Wno-maybe-uninitialized")
@@ -179,7 +187,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   endif()
 
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    onnxruntime_add_include_to_target(onnxruntime_training_bert onnxruntime_python_interface Python::Module)
+    onnxruntime_add_include_to_target(onnxruntime_training_bert Python::Module)
   endif()
   onnxruntime_add_include_to_target(onnxruntime_training_bert onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} onnxruntime_training flatbuffers)
   target_include_directories(onnxruntime_training_bert PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_CXX_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
@@ -201,7 +209,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   endif()
 
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    onnxruntime_add_include_to_target(onnxruntime_training_pipeline_poc onnxruntime_python_interface Python::Module)
+    onnxruntime_add_include_to_target(onnxruntime_training_pipeline_poc Python::Module)
   endif()
   onnxruntime_add_include_to_target(onnxruntime_training_pipeline_poc onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} onnxruntime_training flatbuffers)
   target_include_directories(onnxruntime_training_pipeline_poc PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_CXX_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)
@@ -225,7 +233,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   endif()
 
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-    onnxruntime_add_include_to_target(onnxruntime_training_gpt2 onnxruntime_python_interface Python::Module)
+    onnxruntime_add_include_to_target(onnxruntime_training_gpt2 Python::Module)
   endif()
   onnxruntime_add_include_to_target(onnxruntime_training_gpt2 onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} onnxruntime_training flatbuffers)
   target_include_directories(onnxruntime_training_gpt2 PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${ORTTRAINING_ROOT} ${MPI_CXX_INCLUDE_DIRS} ${eigen_INCLUDE_DIRS} ${CXXOPTS} ${extra_includes} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/onnx onnxruntime_training_runner)

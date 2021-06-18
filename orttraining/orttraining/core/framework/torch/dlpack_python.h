@@ -3,15 +3,15 @@
 
 /// Python level interface for DLPack conversion.
 
-/// todo(pengwa) move this file back to pybind projects.
 #pragma once
 
 #include "core/dlpack/dlpack_converter.h"
-#include "core/dlpack/python_common.h"
+#include "orttraining/core/framework/torch/python_common.h"
 
 namespace onnxruntime {
-
-namespace dlpack {
+namespace training {
+namespace framework {
+namespace torch {
 
 // Allocate a new Capsule object, which takes the ownership of OrtValue.
 // Caller is responsible for releasing.
@@ -22,5 +22,7 @@ PyObject* ToDlpack(OrtValue ort_value);
 // create a OrtValue. This function calls DlpackToOrtValue(...) to do the conversion.
 OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor);
 
-}  // namespace dlpack
+}  // namespace torch
+}  // namespace framework
+}  // namespace training
 }  // namespace onnxruntime
