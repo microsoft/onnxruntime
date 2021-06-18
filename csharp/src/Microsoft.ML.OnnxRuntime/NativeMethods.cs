@@ -201,9 +201,10 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleasePrepackedWeightsContainer;
         public IntPtr CreateSessionWithPrepackedWeightsContainer;
         public IntPtr CreateSessionFromArrayWithPrepackedWeightsContainer;
+        public IntPtr SessionOptionsAppendExecutionProvider_TensorRT_V2;
         public IntPtr CreateTensorRTProviderOptions;
         public IntPtr UpdateTensorRTProviderOptions;
-        public IntPtr GetTensorRTProviderOptions;
+        public IntPtr GetTensorRTProviderOptionsAsString;
         public IntPtr ReleaseTensorRTProviderOptions;
     }
 
@@ -360,9 +361,11 @@ namespace Microsoft.ML.OnnxRuntime
             OrtCreatePrepackedWeightsContainer = (DOrtCreatePrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.CreatePrepackedWeightsContainer, typeof(DOrtCreatePrepackedWeightsContainer));
             OrtReleasePrepackedWeightsContainer = (DOrtReleasePrepackedWeightsContainer)Marshal.GetDelegateForFunctionPointer(api_.ReleasePrepackedWeightsContainer, typeof(DOrtReleasePrepackedWeightsContainer));
 
+            SessionOptionsAppendExecutionProvider_TensorRT_V2 = (DSessionOptionsAppendExecutionProvider_TensorRT_V2)Marshal.GetDelegateForFunctionPointer(
+                                                             api_.SessionOptionsAppendExecutionProvider_TensorRT_V2, typeof(DSessionOptionsAppendExecutionProvider_TensorRT_V2));
             OrtCreateTensorRTProviderOptions = (DOrtCreateTensorRTProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.CreateTensorRTProviderOptions, typeof(DOrtCreateTensorRTProviderOptions));
             OrtUpdateTensorRTProviderOptions = (DOrtUpdateTensorRTProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.UpdateTensorRTProviderOptions, typeof(DOrtUpdateTensorRTProviderOptions));
-            OrtGetTensorRTProviderOptions = (DOrtGetTensorRTProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.GetTensorRTProviderOptions, typeof(DOrtGetTensorRTProviderOptions));
+            OrtGetTensorRTProviderOptionsAsString = (DOrtGetTensorRTProviderOptionsAsString)Marshal.GetDelegateForFunctionPointer(api_.GetTensorRTProviderOptionsAsString, typeof(DOrtGetTensorRTProviderOptionsAsString));
             OrtReleaseTensorRTProviderOptions = (DOrtReleaseTensorRTProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseTensorRTProviderOptions, typeof(DOrtReleaseTensorRTProviderOptions));
         }
 
@@ -411,14 +414,15 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtUpdateTensorRTProviderOptions OrtUpdateTensorRTProviderOptions;
 
         /// <summary>
-        /// Updates native OrtTensorRTProviderOptions instance using given key/value pairs
+        /// Get native OrtTensorRTProviderOptionsV2 in serialized string
         /// </summary>
         /// <param name="allocator">instance of OrtAllocator</param>
         /// <param name="ptr">is a UTF-8 null terminated string allocated using 'allocator'</param>
-        public delegate IntPtr /* OrtStatus* */DOrtGetTensorRTProviderOptions(
+        public delegate IntPtr /* OrtStatus* */DOrtGetTensorRTProviderOptionsAsString(
+            IntPtr /*(OrtTensorRTProviderOptionsV2**)*/ trtProviderOptionsInstance,
             IntPtr /*(OrtAllocator*)*/ allocator,
             out IntPtr /*(char**)*/ptr);
-        public static DOrtGetTensorRTProviderOptions OrtGetTensorRTProviderOptions;
+        public static DOrtGetTensorRTProviderOptionsAsString OrtGetTensorRTProviderOptionsAsString;
 
         /// <summary>
         /// Releases native OrtTensorRTProviderOptions instance
@@ -703,6 +707,16 @@ namespace Microsoft.ML.OnnxRuntime
                                                IntPtr /*(OrtSessionOptions*)*/ options,
                                                IntPtr /*(const OrtTensorRTProviderOptions*)*/ trtProviderOptions);
         public static DSessionOptionsAppendExecutionProvider_TensorRT SessionOptionsAppendExecutionProvider_TensorRT;
+
+        /// <summary>
+        /// Append a TensorRT EP instance (configured based on given provider options) to the native OrtSessionOptions instance
+        /// </summary>
+        /// <param name="options">Native OrtSessionOptions instance</param>
+        /// <param name="trtProviderOptions">Native OrtTensorRTProviderOptionsV2 instance</param>
+        public delegate IntPtr /*(OrtStatus*)*/DSessionOptionsAppendExecutionProvider_TensorRT_V2(
+                                               IntPtr /*(OrtSessionOptions*)*/ options,
+                                               IntPtr /*(const OrtTensorRTProviderOptionsV2*)*/ trtProviderOptions);
+        public static DSessionOptionsAppendExecutionProvider_TensorRT_V2 SessionOptionsAppendExecutionProvider_TensorRT_V2;
 
         /// <summary>
         /// Free Dimension override (by denotation)

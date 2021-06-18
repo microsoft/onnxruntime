@@ -48,7 +48,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             // Process provider options string
             IntPtr providerOptions = IntPtr.Zero;
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorRTProviderOptions(allocator.Pointer, out providerOptions));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetTensorRTProviderOptionsAsString(handle, allocator.Pointer, out providerOptions));
             using (var ortAllocation = new OrtMemoryAllocation(allocator, providerOptions, 0))
             {
                 return NativeOnnxValueHelper.StringFromNativeUtf8(providerOptions);

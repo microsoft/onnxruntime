@@ -44,7 +44,6 @@ struct Tensorrt_Provider : Provider {
     TensorrtExecutionProviderInfo info;
     info.device_id = device_id;
     info.has_trt_options = false;
-    trt_options_.device_id = device_id;
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
@@ -70,7 +69,6 @@ struct Tensorrt_Provider : Provider {
     info.engine_decryption_enable = options.trt_engine_decryption_enable;
     info.engine_decryption_lib_path = options.trt_engine_decryption_lib_path == nullptr ? "" : options.trt_engine_decryption_lib_path;
     info.force_sequential_engine_build = options.trt_force_sequential_engine_build;
-    CopyToInternalProviderOptions(options);
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
@@ -84,11 +82,12 @@ struct Tensorrt_Provider : Provider {
     trt_options.trt_fp16_enable = internal_options.fp16_enable;
     trt_options.trt_int8_enable = internal_options.int8_enable;
 
-    if (internal_options.int8_calibration_table_name.size() == 0) {
+    auto str_size = internal_options.int8_calibration_table_name.size(); 
+    if (str_size == 0) {
       trt_options.trt_int8_calibration_table_name = nullptr;
     } else {
-      trt_options.trt_int8_calibration_table_name = new char[internal_options.int8_calibration_table_name.size() + 1];
-      strcpy((char*)trt_options.trt_int8_calibration_table_name, internal_options.int8_calibration_table_name.c_str());
+      trt_options.trt_int8_calibration_table_name = new char[str_size + 1];
+      strncpy((char*)trt_options.trt_int8_calibration_table_name, internal_options.int8_calibration_table_name.c_str(), str_size + 1);
     }
 
     trt_options.trt_int8_use_native_calibration_table = internal_options.int8_use_native_calibration_table;
@@ -97,89 +96,34 @@ struct Tensorrt_Provider : Provider {
     trt_options.trt_dump_subgraphs = internal_options.dump_subgraphs;
     trt_options.trt_engine_cache_enable = internal_options.engine_cache_enable;
 
-    if (internal_options.engine_cache_path.size() == 0) {
+    str_size = internal_options.engine_cache_path.size();
+    if (str_size == 0) {
       trt_options.trt_engine_cache_path = nullptr;
     } else {
-      trt_options.trt_engine_cache_path = new char[internal_options.engine_cache_path.size() + 1];
-      strcpy((char*)trt_options.trt_engine_cache_path, internal_options.engine_cache_path.c_str());
+      trt_options.trt_engine_cache_path = new char[str_size + 1];
+      strncpy((char*)trt_options.trt_engine_cache_path, internal_options.engine_cache_path.c_str(), str_size + 1);
     }
 
     trt_options.trt_engine_decryption_enable = internal_options.engine_decryption_enable;
 
-    if (internal_options.engine_decryption_lib_path.size() == 0) {
+    str_size = internal_options.engine_decryption_lib_path.size();
+    if (str_size == 0) {
       trt_options.trt_engine_decryption_lib_path = nullptr;
     } else {
-      trt_options.trt_engine_decryption_lib_path = new char[internal_options.engine_decryption_lib_path.size() + 1];
-      strcpy((char*)trt_options.trt_engine_decryption_lib_path, internal_options.engine_decryption_lib_path.c_str());
+      trt_options.trt_engine_decryption_lib_path = new char[str_size + 1];
+      strncpy((char*)trt_options.trt_engine_decryption_lib_path, internal_options.engine_decryption_lib_path.c_str(), str_size + 1);
     }
 
     trt_options.trt_force_sequential_engine_build = internal_options.force_sequential_engine_build;
-
-    CopyToInternalProviderOptions(trt_options);
   }
 
-  ProviderOptions GetProviderOptions() override {
-    return onnxruntime::TensorrtExecutionProviderInfo::ToProviderOptions(trt_options_);
+  ProviderOptions GetProviderOptions(const void* provider_options) override {
+    auto& options = *reinterpret_cast<const OrtTensorRTProviderOptions*>(provider_options);
+    return onnxruntime::TensorrtExecutionProviderInfo::ToProviderOptions(options);
   }
 
   void Shutdown() override {
     Shutdown_DeleteRegistry();
-  }
-
-  ~Tensorrt_Provider() {
-    FreeInternalProviderOptions();
-  }
-
-  private:
-   OrtTensorRTProviderOptions trt_options_{
-    0,
-    0,
-    nullptr,
-    1000,
-    1,
-    1 << 30,
-    false,
-    false,
-    nullptr,
-    false,
-    false,
-    0,
-    false,
-    false,
-    nullptr,
-    false,
-    nullptr,
-    false,
-   };
-
-  void CopyToInternalProviderOptions(OrtTensorRTProviderOptions trt_options) {
-    FreeInternalProviderOptions();
-
-    trt_options_ = trt_options;
-    if (trt_options.trt_int8_calibration_table_name != nullptr) {
-      trt_options_.trt_int8_calibration_table_name = new char[strlen(trt_options.trt_int8_calibration_table_name) + 1];
-      strcpy((char*)trt_options_.trt_int8_calibration_table_name, (char*)trt_options.trt_int8_calibration_table_name);
-    }
-    if (trt_options.trt_engine_cache_path!= nullptr) {
-      trt_options_.trt_engine_cache_path= new char[strlen(trt_options.trt_engine_cache_path) + 1];
-      strcpy((char*)trt_options_.trt_engine_cache_path, (char*)trt_options.trt_engine_cache_path);
-    }
-    if (trt_options.trt_engine_decryption_lib_path!= nullptr) {
-      trt_options_.trt_engine_decryption_lib_path= new char[strlen(trt_options.trt_engine_decryption_lib_path) + 1];
-      strcpy((char*)trt_options_.trt_engine_decryption_lib_path, (char*)trt_options.trt_engine_decryption_lib_path);
-    }
-  }
-
-  void FreeInternalProviderOptions() {
-    if (trt_options_.trt_int8_calibration_table_name != nullptr) {
-      delete trt_options_.trt_int8_calibration_table_name;
-    }
-    if (trt_options_.trt_engine_cache_path!= nullptr) {
-      delete trt_options_.trt_engine_cache_path;
-    }
-    if (trt_options_.trt_engine_decryption_lib_path!= nullptr) {
-      delete trt_options_.trt_engine_decryption_lib_path;
-    }
   }
 
 } g_provider;

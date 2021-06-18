@@ -94,6 +94,7 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #include "core/providers/openvino/openvino_provider_factory.h"
+#include "core/platform/tensorrt_provider_options.h"
 
 // The filename extension for a shared library is different per platform
 #ifdef _WIN32
@@ -1103,9 +1104,9 @@ void UpdateProviderInfo_Tensorrt(OrtTensorRTProviderOptions* provider_options, c
   }
 }
 
-ProviderOptions GetProviderInfo_Tensorrt() {
+ProviderOptions GetProviderInfo_Tensorrt(const OrtTensorRTProviderOptions* provider_options) {
   if (auto provider = s_library_tensorrt.Get()) {
-    return provider->GetProviderOptions();
+    return provider->GetProviderOptions(reinterpret_cast<const void*>(provider_options));
   }
 
   return {};
@@ -1202,13 +1203,32 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA, _In_ Or
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptions** out) {
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options) {
+  return OrtApis::SessionOptionsAppendExecutionProvider_TensorRT(options, reinterpret_cast<const OrtTensorRTProviderOptions*>(tensorrt_options));
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptionsV2** out) {
   API_IMPL_BEGIN
 #ifdef USE_TENSORRT
-  *out = new OrtTensorRTProviderOptions();
+  *out = new OrtTensorRTProviderOptionsV2();
+  (*out)->device_id = 0;
+  (*out)->has_user_compute_stream = 0;
+  (*out)->user_compute_stream = nullptr;
+  (*out)->trt_max_partition_iterations = 1000;
+  (*out)->trt_min_subgraph_size = 1;
+  (*out)->trt_max_workspace_size = 1 << 30;
+  (*out)->trt_fp16_enable = false;
+  (*out)->trt_int8_enable = false;
   (*out)->trt_int8_calibration_table_name = nullptr;
+  (*out)->trt_int8_use_native_calibration_table = false;
+  (*out)->trt_dla_enable = false;
+  (*out)->trt_dla_core = false;
+  (*out)->trt_dump_subgraphs = false;
+  (*out)->trt_engine_cache_enable= false;
   (*out)->trt_engine_cache_path = nullptr;
+  (*out)->trt_engine_decryption_enable = false;
   (*out)->trt_engine_decryption_lib_path = nullptr;
+  (*out)->trt_force_sequential_engine_build = false;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);
@@ -1218,7 +1238,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRT
 }
 
 ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
-                    _Inout_ OrtTensorRTProviderOptions* tensorrt_provider_options,
+                    _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options,
                     _In_reads_(num_keys) const char* const* provider_options_keys,
                     _In_reads_(num_keys) const char* const* provider_options_values,
                     size_t num_keys) {
@@ -1234,10 +1254,11 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
     provider_options_map[provider_options_keys[i]] = provider_options_values[i];
   }
 
-  onnxruntime::UpdateProviderInfo_Tensorrt(tensorrt_provider_options, reinterpret_cast<const onnxruntime::ProviderOptions&>(provider_options_map));
+  onnxruntime::UpdateProviderInfo_Tensorrt(reinterpret_cast<OrtTensorRTProviderOptions*>(tensorrt_options),
+                                           reinterpret_cast<const onnxruntime::ProviderOptions&>(provider_options_map));
   return nullptr;
 #else
-  ORT_UNUSED_PARAMETER(tensorrt_provider_options);
+  ORT_UNUSED_PARAMETER(tensorrt_options);
   ORT_UNUSED_PARAMETER(provider_options_keys);
   ORT_UNUSED_PARAMETER(provider_options_values);
   ORT_UNUSED_PARAMETER(num_keys);
@@ -1246,11 +1267,11 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptions, _Inout_ OrtAllocator* allocator,
+ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** ptr) {
   API_IMPL_BEGIN
 #ifdef USE_TENSORRT
-  onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Tensorrt();
+  onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Tensorrt(reinterpret_cast<const OrtTensorRTProviderOptions*>(tensorrt_options));
   onnxruntime::ProviderOptions::iterator it = options.begin();
   std::string options_str = "";
 
@@ -1273,7 +1294,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptions, _Inout_ OrtAllocator* a
   API_IMPL_END
 }
 
-ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptions* ptr) {
+ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptionsV2* ptr) {
 #ifdef USE_TENSORRT
   if (ptr != nullptr) {
     if (ptr->trt_int8_calibration_table_name != nullptr) {

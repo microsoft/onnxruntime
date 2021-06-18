@@ -14,7 +14,8 @@ struct Provider {
 
   virtual void* GetInfo() { return nullptr; }  // Returns a provider specific information interface if it exists
 
-  virtual ProviderOptions GetProviderOptions() { return {}; }  // Returns a provider options interface if it exists
+  // Convert provider options struct to ProviderOptions which is a map
+  virtual ProviderOptions GetProviderOptions(const void* /*provider options struct*/) { return {}; }
 
   // Update provider options from key-value string configuration
   virtual void UpdateProviderOptions(void* /*provider options to be configured*/, const ProviderOptions& /*key-value string provider options*/){};
