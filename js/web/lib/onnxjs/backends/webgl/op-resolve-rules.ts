@@ -33,11 +33,12 @@ import {WebGLSum} from './ops/sum';
 import {WebGLTile} from './ops/tile';
 import {WebGLTranspose} from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
+import { abs } from './ops/unary-op';
 import {WebGLUnsqueeze} from './ops/unsqueeze';
 import {WebGLUpsample} from './ops/upsample';
 
 export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
-  ['Abs', '', '6+', () => new unaryOps.WebGLUnaryOp(NUMBER_TYPES, unaryOps.glslAbs())],
+  ['Abs', '', '6+', abs],
   ['Acos', '', '7+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslAcos())],
   ['Add', '', '7+', () => new binaryOps.WebGLBinaryOp(NUMBER_TYPES, binaryOps.glslAdd())],
   ['And', '', '7+', () => new binaryOps.WebGLBinaryOp(['bool'], binaryOps.glslAnd())],

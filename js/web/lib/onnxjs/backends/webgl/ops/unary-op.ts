@@ -1,12 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import { Attribute } from '../../../attribute';
 import {UnaryOp} from '../../../ops/unary-op';
 import {Tensor} from '../../../tensor';
 import {FunctionType, GlslValueFunction} from '../glsl-definitions';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, RunData, WebGLOperator} from '../types';
+import {ProgramInfo, RunData, TextureType, WebGLOperator} from '../types';
+import {Guid} from 'guid-typescript';
 
 export class WebGLUnaryOp extends UnaryOp implements WebGLOperator {
   constructor(protected typeConstraint: readonly Tensor.DataType[], protected glslFunc: GlslValueFunction) {
@@ -190,3 +192,32 @@ function glslBuiltinUnary(fname: string): GlslValueFunction {
   `;
   return {body, name, type: FunctionType.ValueBased};
 }
+
+/////
+/////
+/////
+
+const createElementwiseProgramInfo = (handler: WebGLInferenceHandler,
+                                      input:Tensor, glslFunc: GlslValueFunction,
+                                      attributes?: Attribute):ProgramInfo => {
+  const textureType = handler.session.pack ? TextureType.packed : TextureType.unpacked;
+  const glsl = getGlsl(handler.session.backend.glContext.version);
+  return {
+     inputTypes:[textureType],
+     inputNames: ['A'],
+     output: {id: Guid.create(), dims:input.dims, type:input.type, textureType },
+     shaderSource: `
+     ${glslFunc.body}
+     void main() {
+       vec4 v = ${glsl.texture2D}(A, TexCoords);
+       v = ${glslFunc.name}(v);
+       ${glsl.output} = v;
+     }
+     `,
+     hasMain:true
+   };
+};
+
+export const abs = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createElementwiseProgramInfo(handler, inputs[0],glslAbs() ), inputs)];
+};
