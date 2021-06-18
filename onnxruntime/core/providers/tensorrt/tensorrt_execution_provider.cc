@@ -809,24 +809,26 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           const auto& node = graph.GetNode(node_index[index]);
           std::vector<onnxruntime::NodeArg*> inputs, outputs;
           for (auto input : node->InputDefs()) {
-            bool has_dim_value_or_param = true;
-            auto input_shape = input->Shape();
-            if (input_shape != nullptr) {
-              auto dim_size = input_shape->dim_size();
-              for (int i = 0; i < dim_size; ++i) {
-                auto& dim = input_shape->dim(i);
-                if (!dim.has_dim_value() && !dim.has_dim_param()) {
-                  has_dim_value_or_param = false;
-                  break;
+            if (iterations > 1) {
+              bool has_dim_value_or_param = true;
+              auto input_shape = input->Shape();
+              if (input_shape != nullptr) {
+                auto dim_size = input_shape->dim_size();
+                for (int i = 0; i < dim_size; ++i) {
+                  auto& dim = input_shape->dim(i);
+                  if (!dim.has_dim_value() && !dim.has_dim_param()) {
+                    has_dim_value_or_param = false;
+                    break;
+                  }
                 }
               }
-            }
 
-            if (input_shape == nullptr || !has_dim_value_or_param) {
-              ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                                 "TensorRT input: " + input->Name() + " has no shape specified. " +
-                                                     "Please run shape inference on the onnx model first. Details can be found in " +
-                                                     "https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#shape-inference-for-tensorrt-subgraphs"));
+              if (input_shape == nullptr || !has_dim_value_or_param) {
+                ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                                   "TensorRT input: " + input->Name() + " has no shape specified. " +
+                                                       "Please run shape inference on the onnx model first. Details can be found in " +
+                                                       "https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#shape-inference-for-tensorrt-subgraphs"));
+              }
             }
 
             auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
