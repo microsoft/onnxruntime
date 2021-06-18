@@ -62,28 +62,30 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
   std::vector<int64_t> input_tensor_sizes;
   input_tensor_sizes.reserve(input_count);
 
-  bool all_inputs_have_only_zero_dims = true;
+  bool all_inputs_are_empty = true;
 
   for (int index = 0; index < input_count; ++index) {
     const auto* input = input_tensors[index];
     ORT_ENFORCE(input != nullptr, "input count mismatch");
 
-    // find the first tensor that doesn't have all zeros in its dimensions
-    //  to be used as a reference for all downstream checks
-    const auto& dims = input->Shape().GetDims();
-    if (!DimsAllZero(dims)) {
-      reference_dims = dims;
+    // find the first tensor that isn't empty
+    // to be used as a reference for all
+    // downstream shape/rank validations of other inputs
+    const auto& shape = input->Shape();
+    const auto num_elements = shape.Size();
+    if (num_elements > 0) {
+      reference_dims = shape.GetDims();
       reference_rank = reference_dims.size();
       reference_tensor_index = index;
-      input_tensor_sizes.push_back(input->Shape().Size());
-      all_inputs_have_only_zero_dims = false;
+      input_tensor_sizes.push_back(num_elements);
+      all_inputs_are_empty = false;
       break;
     } else {
       input_tensor_sizes.push_back(0);
     }
   }
 
-  if (all_inputs_have_only_zero_dims) {
+  if (all_inputs_are_empty) {
     // Reference dim (used to compute output shape downstream)
     // and reference rank(used to validate ranks across all inputs)
     // can just come from the first input
@@ -105,13 +107,26 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
   for (int index = reference_tensor_index + 1; index < input_count; index++) {
     const auto* input = input_tensors[index];
     ORT_ENFORCE(input != nullptr, "input count mismatch");
-    const auto& input_dims = input->Shape().GetDims();
+    const auto& input_shape = input->Shape();
+    const auto& input_dims = input_shape.GetDims();
 
-    if (DimsAllZero(input_dims)) {
+    // Skip shape/rank validation for inputs that are empty.
+    // The ONNX spec states that all dim values along axes not concatentated on
+    // need to be the same for all inputs.
+    // The model in GH issue 8020 has a bunch of Loop nodes all feeding into
+    // the 'Concat' node and one of these Loops tend to have an iteration
+    // count of 0 for some inputs. If the iteration count for a Loop is zero,
+    // we don't execute its subgraph (since the outputs are going to be empty anyway)
+    // and we send an "empty" tensor(s) downstream and use ONNX shape inferred shape
+    // to "compose" the shape for these empty tensor(s).
+    // If we encounter symbolic dims in the ONNX shape inferred shape, we place a '0'
+    // in that position and due to the "lossy" nature of this, we fail the inputs' shape
+    // validation for these empty inputs and hence we skip these validations.
+    // This isn't too bad as we will never use empty inputs whie concatenating anyway.
+    // We just loosen this check to unblock model in GH issue 8020 to complete processing.
+    if (input_shape.Size() == 0) {
       input_tensor_sizes.push_back(0);
     } else {
-      // Perform rank shape validation only if atleast one of the input dims values
-      // is non-zero. See GH issue 8020 for more details.
       const size_t input_rank = input_dims.size();
 
       ORT_ENFORCE(input_rank == reference_rank,
