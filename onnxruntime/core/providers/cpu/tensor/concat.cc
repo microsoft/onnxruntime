@@ -29,21 +29,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::AllTensorTypes()),
     Concat);
 
-static bool DimsAllZero(const std::vector<int64_t>& dims) {
-  if (dims.size() == 0) {
-    // scalar is not all zeros
-    return false;
-  }
-
-  for (auto dim : dims) {
-    if (dim != 0) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 // this method will be shared between 'Concat' (CPU and GPU) and
 // 'ConcatFromSequence' ('concat' and 'stack' modes) to validate inputs
 Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
@@ -112,7 +97,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
 
     // Skip shape/rank validation for inputs that are empty.
     // The ONNX spec states that all dim values along axes not concatentated on
-    // need to be the same for all inputs.
+    // need to be the same for all inputs (empty inputs are not explicitly exempted).
     // The model in GH issue 8020 has a bunch of Loop nodes all feeding into
     // the 'Concat' node and one of these Loops tend to have an iteration
     // count of 0 for some inputs. If the iteration count for a Loop is zero,
@@ -120,9 +105,10 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
     // and we send an "empty" tensor(s) downstream and use ONNX shape inferred shape
     // to "compose" the shape for these empty tensor(s).
     // If we encounter symbolic dims in the ONNX shape inferred shape, we place a '0'
-    // in that position and due to the "lossy" nature of this, we fail the inputs' shape
-    // validation for these empty inputs and hence we skip these validations.
-    // This isn't too bad as we will never use empty inputs whie concatenating anyway.
+    // in that position and due to the "lossy" nature of this process, the inputs' shape
+    // validation for such empty inputs fail and hence we skip these validations for all
+    // empty inputs.
+    // This isn't too bad as we will never use empty inputs while concatenating anyway.
     // We just loosen this check to unblock model in GH issue 8020 to complete processing.
     if (input_shape.Size() == 0) {
       input_tensor_sizes.push_back(0);
