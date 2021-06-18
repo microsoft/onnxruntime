@@ -244,7 +244,7 @@ stages:
           Python38 Torch181:
             PythonVersion: '3.8'
             TorchVersion: '1.8.1'
-          Python39 Torch190:
+          Python39 Torch181:
             PythonVersion: '3.9'
             TorchVersion: '1.8.1'
           Python36 Torch190:
