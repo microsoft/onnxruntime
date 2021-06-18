@@ -175,13 +175,20 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
 
 
 def deepcopy_model_input(*inputs, **kwargs):
-    sample_inputs_copy = [model_input.data if isinstance(model_input, torch.Tensor) else model_input
-                          for model_input in inputs]
+    def extract_tensor(value):
+        if isinstance(value, torch.Tensor):
+            if value.requires_grad:
+                return value.data.requires_grad_()
+            else:
+                return value.data
+        else:
+            return value
+    sample_inputs_copy = [extract_tensor(value) for value in inputs]
     sample_inputs_copy = copy.deepcopy(tuple(sample_inputs_copy))
 
     sample_kwargs_copy = {}
-    for name, model_input in kwargs.items():
-        sample_kwargs_copy[name] = model_input.data if isinstance(model_input, torch.Tensor) else model_input
+    for name, value in kwargs.items():
+        sample_kwargs_copy[name] = extract_tensor(value)
     sample_kwargs_copy = copy.deepcopy(sample_kwargs_copy)
 
     return sample_inputs_copy, sample_kwargs_copy
