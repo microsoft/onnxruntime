@@ -12,7 +12,7 @@ using namespace onnxruntime::cuda;
 
 void NGramRepeatBlockImpl(
     cudaStream_t stream,
-    const long* tokens_ptr,
+    const int64_t* tokens_ptr,
     float* scores_ptr,
     int bsz,
     int step,
