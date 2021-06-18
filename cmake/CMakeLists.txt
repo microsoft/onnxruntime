@@ -232,6 +232,7 @@ endif()
 
 if (NOT (UNIX AND onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING AND (NOT onnxruntime_BUILD_SHARED_LIB)))
   set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OFF)
+  message(WARNING "onnxruntime_ENABLE_TRAINING_TORCH_INTEROP is turned OFF due to incompatible build combinations.")
 endif()
 
 set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB OFF)
