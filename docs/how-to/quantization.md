@@ -101,7 +101,7 @@ In general, it is recommended to use dynamic quantization for RNN and transforme
 
 If both post-training quantization can not meet your accuracy goal, you can try quantization-aware training (QAT) to retrain the model. ONNX Runtime does not provide retraining at this time, but you can retrain your model with the original framework and reconvert back to ONNX.
 
-### data type selection
+### Data type selection
 {: .no_toc}
 
 Quantization represents value with 8 bit, which can be either int8 and uint8. Combining with activation and weight, the data format can be (activation:uint8, weight:uint8), (activation:uint8, weight:int8), etc.
