@@ -42,7 +42,7 @@ There are 3 ways of quantizing a model: dynamic, static and quantize-aware train
 * **Quantize-Aware training quantization**: The quantization parameter of activation are calculated while training, and the training process can control activation to a certain range.
 
 ### Method selection
-{: .no_toc }
+{:.no_toc}
 
 The main difference between dynamic quantization and static quantization is how scale and zero point of activation is calculated. For static quantization, they are calculated offline with calibration data set. All the activations have same scale and zero point. While for dynamic quantization, they are calculated on flight and will be specific for each activation, thus they are more accurate but introduce extra computation overhead.
 
