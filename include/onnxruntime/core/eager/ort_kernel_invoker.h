@@ -48,7 +48,7 @@ class ORTInvoker {
   const logging::Logger& logger_;
   // custom ops for current execution provider
   // we need the op schema to resolve the output type during invoke
-  IOnnxRuntimeOpSchemaRegistryList custom_op_registries_;
+  const IOnnxRuntimeOpSchemaRegistryList& custom_op_registries_;
 };
 
 #ifdef __GNUC__

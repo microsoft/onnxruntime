@@ -24,7 +24,8 @@ TEST(InvokerTest, Basic) {
       &logger_id); 
   std::unique_ptr<Environment> env;
   Environment::Create(std::move(logging_manager), env);
-  ORTInvoker kernel_invoker(std::move(cpu_execution_provider), env->GetLoggingManager()->DefaultLogger(), {});
+  IOnnxRuntimeOpSchemaRegistryList tmp_op_registry = {};
+  ORTInvoker kernel_invoker(std::move(cpu_execution_provider), env->GetLoggingManager()->DefaultLogger(), tmp_op_registry);
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -57,7 +58,8 @@ TEST(InvokerTest, Inplace) {
       &logger_id); 
   std::unique_ptr<Environment> env;
   Environment::Create(std::move(logging_manager), env);
-  ORTInvoker kernel_invoker(std::move(cpu_execution_provider), env->GetLoggingManager()->DefaultLogger(), {});
+  IOnnxRuntimeOpSchemaRegistryList tmp_op_registry = {};
+  ORTInvoker kernel_invoker(std::move(cpu_execution_provider), env->GetLoggingManager()->DefaultLogger(), tmp_op_registry);
 
   std::vector<int64_t> dims_mul_x = {3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
