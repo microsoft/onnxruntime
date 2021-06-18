@@ -12,4 +12,8 @@ from .orttrainer_options import ORTTrainerOptions
 from .orttrainer import ORTTrainer, TrainStepInfo
 from . import amp, checkpoint, optim, model_desc_validation
 
-from .ortmodule import ORTModule
+try:
+    from .ortmodule import ORTModule
+except ImportError:
+    # Not a ORTModule training package
+    pass
