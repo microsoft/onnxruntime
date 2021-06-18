@@ -106,7 +106,7 @@ else
 		if [ $BUILD_DEVICE = "openvino" ]; then
            IMAGE="$BUILD_OS-openvino"
            DOCKER_FILE=Dockerfile.ubuntu_openvino
-		   BUILD_ARGS+=" OPENVINO_VERSION=${OPENVINO_VERSION}"           
+		   BUILD_ARGS+=" --build-arg OPENVINO_VERSION=${OPENVINO_VERSION}"           
 		else
            IMAGE="$BUILD_OS"
 		   DOCKER_FILE=Dockerfile.ubuntu           
