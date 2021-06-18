@@ -80,7 +80,7 @@ void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer
     do {
       status = cuptiActivityGetNextRecord(buffer, validSize, &record);
       if (status == CUPTI_SUCCESS) {
-        if (CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL == record->kind) {
+        if (CUPTI_ACTIVITY_KIND_KERNEL == record->kind) {
           CUpti_ActivityKernel4* kernel = (CUpti_ActivityKernel4*)record;
           stats_.push_back({kernel->name, kernel->streamId,
                             kernel->gridX, kernel->gridY, kernel->gridZ,
@@ -103,7 +103,7 @@ void CudaProfiler::StartProfiling(TimePoint start_time, int pid, int tid) {
     start_time_ = start_time;
     pid_ = pid;
     tid_ = tid;
-    if (cuptiActivityEnable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL) == CUPTI_SUCCESS &&
+    if (cuptiActivityEnable(CUPTI_ACTIVITY_KIND_KERNEL) == CUPTI_SUCCESS &&
         cuptiActivityRegisterCallbacks(BufferRequested, BufferCompleted) == CUPTI_SUCCESS) {
       initialized_ = true;
     }
@@ -114,7 +114,7 @@ std::vector<EventRecord> CudaProfiler::EndProfiling() {
   std::vector<EventRecord> events;
   if (enabled_.test_and_set()) {
     if (initialized_) {
-      cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL);
+      cuptiActivityDisable(CUPTI_ACTIVITY_KIND_KERNEL);
       cuptiActivityFlushAll(CUPTI_ACTIVITY_FLAG_FLUSH_FORCED);
       std::lock_guard<OrtMutex> lock(mutex_);
       int64_t profiling_start = std::chrono::duration_cast<nanoseconds>(start_time_.time_since_epoch()).count();
