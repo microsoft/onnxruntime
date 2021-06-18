@@ -220,6 +220,8 @@ jobs:
              mkdir %%~ni\runtimes\linux-x64
              mkdir %%~ni\runtimes\linux-x64\native
              move linux-x64\linux-x64\libonnxruntime.so %%~ni\runtimes\linux-x64\native\libonnxruntime.so
+             move linux-x64\linux-x64\libonnxruntime_providers_shared.so %%~ni\runtimes\linux-x64\native\libonnxruntime_providers_shared.so
+             move linux-x64\linux-x64\libonnxruntime_providers_cuda.so %%~ni\runtimes\linux-x64\native\libonnxruntime_providers_cuda.so
              pushd %%~ni
              zip -r ..\%%~ni.zip .
              popd
