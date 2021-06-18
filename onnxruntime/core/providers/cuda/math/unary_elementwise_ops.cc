@@ -13,35 +13,35 @@ Status UnaryElementwise::Prepare(OpKernelContext* context, UnaryElementwisePrepa
   return Status::OK();
 }
 
-#define UNARY_ELEMENTWISE_REGISTER_VERSIONED_KERNEL(x, startver, endver, T)     \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                      \
-      x,                                                                        \
-      kOnnxDomain,                                                              \
-      startver,                                                                 \
-      endver,                                                                   \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define UNARY_ELEMENTWISE_REGISTER_VERSIONED_KERNEL(x, startver, endver, T)                \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      x,                                                                                   \
+      kOnnxDomain,                                                                         \
+      startver,                                                                            \
+      endver,                                                                              \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       x<T>);
 
-#define UNARY_ELEMENTWISE_REGISTER_KERNEL(x, ver, T)                            \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      x,                                                                        \
-      kOnnxDomain,                                                              \
-      ver,                                                                      \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define UNARY_ELEMENTWISE_REGISTER_KERNEL(x, ver, T)                                       \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      x,                                                                                   \
+      kOnnxDomain,                                                                         \
+      ver,                                                                                 \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       x<T>);
 
-#define UNARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(x, ver, T)                                                                      \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                          \
-      x,                                                                                                                                  \
-      kOnnxDomain,                                                                                                                        \
-      ver,                                                                                                                                \
-      T,                                                                                                                                  \
-      kCudaExecutionProvider,                                                                                                             \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
+#define UNARY_ELEMENTWISE_LOGICALOP_REGISTER_KERNEL_TYPED(x, ver, T)                                                                                 \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                                                                     \
+      x,                                                                                                                                             \
+      kOnnxDomain,                                                                                                                                   \
+      ver,                                                                                                                                           \
+      T,                                                                                                                                             \
+      kCudaExecutionProvider,                                                                                                                        \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()), \
       x<T>);
 
 #define UNARY_ELEMENTWISE_COMPUTE(x, T)                                                                    \

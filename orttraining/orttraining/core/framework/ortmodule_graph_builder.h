@@ -44,11 +44,11 @@ struct GraphInfo {
   // Map from user input names to corresponding user input grad names for those user inputs that require grad.
   std::unordered_map<std::string, std::string> user_input_grad_names{};
   // All initializers (trainable as well as non trainable).
-  std::unordered_set<std::string> initializer_names{};
+  std::vector<std::string> initializer_names{};
   // Trainable initializers.
-  std::unordered_set<std::string> initializer_names_to_train{};
+  std::vector<std::string> initializer_names_to_train{};
   // Trainable initializer grad names, ordered according to initializer_names_to_train.
-  std::unordered_set<std::string> initializer_grad_names_to_train{};
+  std::vector<std::string> initializer_grad_names_to_train{};
   // The user outputs.
   std::vector<std::string> user_output_names{};
   // Indices of output grads that are non-differentiable.
@@ -56,6 +56,9 @@ struct GraphInfo {
   // Indices of output grads that need to be materialized to full size all-0 tensor.
   // Otherwise, we can use scalar-0 tensor.
   std::vector<size_t> output_grad_indices_require_full_shape{};
+  // Indices of module output that are needed for backward computation
+  std::vector<size_t> module_output_indices_requires_save_for_backward{};
+  // Names of module outputs' gradient
   std::vector<std::string> module_output_gradient_name{};
 };
 
@@ -110,6 +113,9 @@ class OrtModuleGraphBuilder {
 
   // Reorder gradient graph outputs.
   void ReorderOutputs();
+
+  // Find the module output that are needed for backward computation
+  void FindModuleOutputNeededForBackward();
 
   std::shared_ptr<onnxruntime::Model> model_;
   std::shared_ptr<onnxruntime::Model> inference_optimized_model_;

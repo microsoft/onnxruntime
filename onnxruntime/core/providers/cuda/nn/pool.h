@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "core/common/common.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cpu/nn/pool_base.h"
@@ -14,7 +13,7 @@ namespace cuda {
 template <typename T, typename PoolType>
 class Pool : public CudaKernel, public PoolBase {
  public:
-  Pool(OpKernelInfo info) : CudaKernel(info), PoolBase(info) {}
+  Pool(const OpKernelInfo& info) : CudaKernel(info), PoolBase(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };
@@ -22,7 +21,7 @@ class Pool : public CudaKernel, public PoolBase {
 template <typename T>
 class Pool<T, MaxPool<8>> final : public Pool<T, MaxPool<1>> {
  public:
-  Pool(OpKernelInfo info) : Pool<T, MaxPool<1>>(info) {}
+  Pool(const OpKernelInfo& info) : Pool<T, MaxPool<1>>(info) {}
 
   Status ComputeInternal(OpKernelContext* context) const override;
 };

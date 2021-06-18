@@ -58,6 +58,9 @@ export class WebGLBackend implements Backend {
       if (typeof this.pack !== 'boolean') {
         this.pack = false;
       }
+
+      Logger.setWithEnv(env);
+
       Logger.verbose(
           'WebGLBackend',
           `Created WebGLContext: ${typeof this.glContext} with matmulMaxBatchSize: ${

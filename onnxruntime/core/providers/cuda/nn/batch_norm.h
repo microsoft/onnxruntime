@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "gsl/gsl"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/cudnn_common.h"
 
@@ -35,6 +34,13 @@ class BatchNorm final : public CudaKernel {
     if (op_kernel_info.GetAttr<float>("momentum", &tmp_momentum).IsOK()) {
       momentum_ = static_cast<double>(tmp_momentum);
     }
+
+    is_training_mode_ = (op_kernel_info.GetAttrOrDefault<int64_t>("training_mode", 0) == 1);
+    const auto& node = op_kernel_info.node();
+    auto opset = node.SinceVersion();
+
+    // batch norm opset 14 is not implemented for training mode
+    ORT_ENFORCE(!(is_training_mode_ && opset==14), "Training mode does not support BN opset 14 yet.");
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -44,6 +50,7 @@ class BatchNorm final : public CudaKernel {
   int64_t spatial_ = 1;  // default as per spec
   cudnnBatchNormMode_t cudnn_batch_norm_mode_;
   double momentum_;
+  bool is_training_mode_ = 0; //default as per spec
 };
 
 }  // namespace cuda

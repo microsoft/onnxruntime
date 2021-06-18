@@ -31,10 +31,10 @@ RUN pip3 install numpy
 
 # Build the latest cmake
 WORKDIR /code
-RUN wget https://github.com/Kitware/CMake/releases/download/v3.18.3/cmake-3.18.3.tar.gz
-RUN tar zxf cmake-3.18.3.tar.gz 
+RUN wget https://github.com/Kitware/CMake/releases/download/v3.20.3/cmake-3.20.3.tar.gz
+RUN tar zxf cmake-3.20.3.tar.gz 
 
-WORKDIR /code/cmake-3.18.3
+WORKDIR /code/cmake-3.20.3
 RUN ./configure --system-curl
 RUN make
 RUN sudo make install
@@ -50,7 +50,7 @@ RUN git clone --single-branch --branch ${ONNXRUNTIME_SERVER_BRANCH} --recursive 
 
 # Build ORT including the shared lib and python bindings
 WORKDIR /code/onnxruntime
-RUN ./build.sh --use_openmp ${BUILDARGS} --update --build --build_shared_lib --build_wheel
+RUN ./build.sh ${BUILDARGS} --update --build --build_shared_lib --build_wheel
 
 # Build Output
 RUN ls -l /code/onnxruntime/build/Linux/${BUILDTYPE}/*.so

@@ -1,7 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifndef SHARED_PROVIDER
 #include "core/common/common.h"
+#endif
 #pragma once
 
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
@@ -191,7 +193,7 @@ inline void ReceiveShapeInfo(
       info_shapes.buffer, info_shapes.size, MPI_CHAR,
       info_shapes.rank, info_shapes.tag, MPI_COMM_WORLD, MPI_STATUS_IGNORE));
 }
-#endif // USE_MPI
+#endif  // USE_MPI
 
 inline void ComputeTensorSizeAndBufferLength(OpKernelContext* context,
                                              std::vector<int>& tensor_element_counts,

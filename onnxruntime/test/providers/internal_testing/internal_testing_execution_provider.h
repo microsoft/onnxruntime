@@ -8,7 +8,9 @@
 namespace onnxruntime {
 class InternalTestingExecutionProvider : public IExecutionProvider {
  public:
-  InternalTestingExecutionProvider(const std::unordered_set<std::string>& ops);
+  InternalTestingExecutionProvider(const std::unordered_set<std::string>& ops,
+                                   const std::unordered_set<std::string>& stop_ops = {},
+                                   bool debug_output = false);
   virtual ~InternalTestingExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -23,6 +25,18 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
   }
 
  private:
+  const std::string ep_name_;
+
+  // List of operators that the EP will claim nodes for
   const std::unordered_set<std::string> ops_;
+
+  // operators that we stop processing at.
+  // all nodes of an operator in this list and all their downstream nodes will be skipped
+  // e.g. NonMaxSuppression is the beginning of post-processing in an SSD model. It's unsupported for NNAPI,
+  //      so from the NMS node on we want to use the CPU EP as the remaining work to do is far cheaper than
+  //      the cost of going back to NNAPI.
+  const std::unordered_set<std::string> stop_ops_;
+
+  const bool debug_output_;
 };
 }  // namespace onnxruntime

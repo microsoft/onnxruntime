@@ -18,7 +18,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Creates an ORT Environment.
  *
  * @param loggingLevel The environment logging level.
- * @param[out] error Optional error information set if an error occurs.
+ * @param error Optional error information set if an error occurs.
  * @return The instance, or nil if an error occurs.
  */
 - (nullable instancetype)initWithLoggingLevel:(ORTLoggingLevel)loggingLevel

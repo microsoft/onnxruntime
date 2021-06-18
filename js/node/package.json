@@ -7,7 +7,7 @@
     "type": "git"
   },
   "author": "fs-eire",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "keywords": [
     "ONNX",
     "ONNXRuntime",
@@ -21,8 +21,8 @@
     "rebuildd": "tsc && node ./script/build --rebuild --config=Debug",
     "rebuildr": "tsc && node ./script/build --rebuild --config=RelWithDebInfo",
     "install": "prebuild-install -r napi || (tsc && node ./script/build)",
-    "prepare": "tsc",
-    "test": "mocha ./test/test-main",
+    "prepare": "tsc --build script && tsc",
+    "test": "tsc --build test && mocha ./test/test-main",
     "prepack": "node ./script/prepack"
   },
   "dependencies": {
@@ -50,8 +50,8 @@
     "typedoc": "^0.20.25",
     "typescript": "^4.2.4"
   },
-  "main": "./lib/index.js",
-  "types": "./types/lib/index.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "os": [
     "win32",
     "darwin",

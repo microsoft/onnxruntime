@@ -55,7 +55,6 @@ namespace profiling {
 enum EventCategory {
   SESSION_EVENT = 0,
   NODE_EVENT,
-  KERNEL_EVENT,
   EVENT_CATEGORY_MAX
 };
 
@@ -64,8 +63,7 @@ Event descriptions for the above session events.
 */
 static constexpr const char* event_categor_names_[EVENT_CATEGORY_MAX] = {
     "Session",
-    "Node",
-    "Kernel"};
+    "Node"};
 
 /*
 Timing record for all events.

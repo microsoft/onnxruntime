@@ -14,7 +14,7 @@ namespace cuda {
       1, 9,                                                             \
       TIND,                                                             \
       kCudaExecutionProvider,                                           \
-      KernelDefBuilder()                                                \
+      (*KernelDefBuilder::Create())                                     \
           .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
       Slice<false>);
@@ -30,11 +30,11 @@ REGISTER_VERSIONED_TYPED_SLICE(float)
       10, 10,                                                           \
       TIND,                                                             \
       kCudaExecutionProvider,                                           \
-      KernelDefBuilder()                                                \
-          .InputMemoryType<OrtMemTypeCPUInput>(1)                       \
-          .InputMemoryType<OrtMemTypeCPUInput>(2)                       \
-          .InputMemoryType<OrtMemTypeCPUInput>(3)                       \
-          .InputMemoryType<OrtMemTypeCPUInput>(4)                       \
+      (*KernelDefBuilder::Create())                                     \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                       \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                       \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                       \
+          .InputMemoryType(OrtMemTypeCPUInput, 4)                       \
           .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
       Slice<true>);
@@ -50,11 +50,11 @@ REGISTER_V10_TYPED_SLICE(float)
       11, 12,                                                           \
       TIND,                                                             \
       kCudaExecutionProvider,                                           \
-      KernelDefBuilder()                                                \
-          .InputMemoryType<OrtMemTypeCPUInput>(1)                       \
-          .InputMemoryType<OrtMemTypeCPUInput>(2)                       \
-          .InputMemoryType<OrtMemTypeCPUInput>(3)                       \
-          .InputMemoryType<OrtMemTypeCPUInput>(4)                       \
+      (*KernelDefBuilder::Create())                                     \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                       \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                       \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                       \
+          .InputMemoryType(OrtMemTypeCPUInput, 4)                       \
           .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
       Slice<true>);
@@ -70,11 +70,11 @@ REGISTER_V12_TYPED_SLICE(float)
       13,                                                               \
       TIND,                                                             \
       kCudaExecutionProvider,                                           \
-      KernelDefBuilder()                                                \
-          .InputMemoryType<OrtMemTypeCPUInput>(1)                       \
-          .InputMemoryType<OrtMemTypeCPUInput>(2)                       \
-          .InputMemoryType<OrtMemTypeCPUInput>(3)                       \
-          .InputMemoryType<OrtMemTypeCPUInput>(4)                       \
+      (*KernelDefBuilder::Create())                                     \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)                       \
+          .InputMemoryType(OrtMemTypeCPUInput, 2)                       \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                       \
+          .InputMemoryType(OrtMemTypeCPUInput, 4)                       \
           .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()) \
           .TypeConstraint("Tind", DataTypeImpl::GetTensorType<TIND>()), \
       Slice<true>);

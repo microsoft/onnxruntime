@@ -18,7 +18,7 @@ class LoggingWrapper : public onnxruntime::logging::ISink {
  public:
   LoggingWrapper(OrtLoggingFunction logging_function, void* logger_param);
 
-  void SendImpl(const onnxruntime::logging::Timestamp& /*timestamp*/ /*timestamp*/, const std::string& logger_id,
+  void SendImpl(const onnxruntime::logging::Timestamp& /*timestamp*/, const std::string& logger_id,
                 const onnxruntime::logging::Capture& message) override;
 
  private:

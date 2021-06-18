@@ -17,13 +17,13 @@ when the first input to Div is 1.
 1 / x1 *  x2 -> x2 / x1
  */
 bool DivMulFusion::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger&) const {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Div", {7, 13}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Div", {7, 13, 14}) ||
       node.GetOutputEdgesCount() != 1) {
     return false;
   }
 
   const auto& next_node = *node.OutputNodesBegin();
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Mul", {7, 13}) ||
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Mul", {7, 13, 14}) ||
       // Make sure the two nodes do not span execution providers.
       next_node.GetExecutionProviderType() != node.GetExecutionProviderType()) {
     return false;

@@ -42,9 +42,20 @@ class QDQConvTransformer : public QDQOperatorTransformer {
       return false;
     }
 
-    // Currently QLinearConv only support activation type uint8_t
-    int32_t dt = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-    return dt == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8;
+    // Currently QLinearConv only support activation type uint8_t and output type uint8_t
+    int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    if (dt_input != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8 ||
+        dt_output != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8) {
+      return false;
+    }
+
+    if (dq_nodes.size() < 3) {  // no bias
+      return true;
+    }
+
+    int32_t dt_bias = dq_nodes[2]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    return dt_bias == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32;
   }
 };
 

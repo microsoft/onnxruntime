@@ -103,6 +103,10 @@ class CudnnRnnBase : public CudaKernel {
     cudnn_dropout_desc_.GetCudnnDropoutStatesSize(CudnnHandle(), state_size);
     state_buffer_ = GetScratchBuffer<void>(state_size);
     cudnn_dropout_desc_.Set(CudnnHandle(), state_buffer_.get(), state_size);
+
+    layout_ = info.GetAttrOrDefault("layout", static_cast<int64_t>(0));
+    ORT_ENFORCE(layout_ == 0, 
+                "Batchwise recurrent operations (layout == 1) are not supported. If you need support create a github issue with justification.");
   }
 
   Status CacheCudnnRnnWeights(const OpKernelInfo& info);
@@ -160,6 +164,7 @@ class CudnnRnnBase : public CudaKernel {
   CudnnFilterDescriptor w_desc_cache_;
   IAllocatorUniquePtr<void> w_data_cache_;
   bool weight_cached_;
+  int64_t layout_;
 
   // cudnn_dropout_desc_ is a cache, never to be changed
   IAllocatorUniquePtr<void> state_buffer_;

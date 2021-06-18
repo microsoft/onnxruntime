@@ -14,11 +14,12 @@
         "--parallel",
         "--use_xcode",
         "--build_apple_framework",
-        "--minimal_build",
+        "--minimal_build=extended",
         "--disable_rtti",
         "--disable_ml_ops",
         "--disable_exceptions",
         "--enable_reduced_operator_type_support",
+        "--use_coreml",
         "--skip_tests",
         "--apple_deploy_target=11.0"
     ]

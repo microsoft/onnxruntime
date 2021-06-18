@@ -22,14 +22,14 @@ def GenerateModel(model_name, sign, has_zp = True, bias = False):
             helper.make_tensor_value_info('A', TensorProto.UINT8, ['M', 'K']),
             helper.make_tensor_value_info('B', TensorProto.INT8 if sign else TensorProto.UINT8, ['K', 'N']),
             helper.make_tensor_value_info('a_scale', TensorProto.FLOAT, [1]),
-            helper.make_tensor_value_info('b_scale', TensorProto.FLOAT, [1]),
+            helper.make_tensor_value_info('b_scale', TensorProto.FLOAT, ['C']),
 
         ]
 
     if has_zp:
         inputs.extend([
             helper.make_tensor_value_info('a_zero_point', TensorProto.UINT8, [1]),
-            helper.make_tensor_value_info('b_zero_point', TensorProto.INT8 if sign else TensorProto.UINT8, [1]),
+            helper.make_tensor_value_info('b_zero_point', TensorProto.INT8 if sign else TensorProto.UINT8, ['C']),
         ])
 
     if bias:

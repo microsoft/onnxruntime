@@ -245,6 +245,51 @@ TEST(NhwcTransformerTests, ConvGlobalAveragePool) {
                     TransformerLevel::Level3);
 }
 
+TEST(NhwcTransformerTests, ConvAveragePool) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<uint8_t>({1, 23, 13, 13}, 0, 31);
+    auto* conv1_output_arg = builder.MakeIntermediate();
+    auto* conv2_output_arg = builder.MakeIntermediate();
+    auto* avgpool1_output_arg = builder.MakeIntermediate();
+    auto* avgpool2_output_arg = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+    auto* conv1_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {30, 23, 3, 3});
+    auto* conv2_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {16, 30, 3, 3});
+
+    Node& conv1_node = builder.AddQLinearConvNode<uint8_t>(input_arg, .01f, 135,
+                                                           conv1_weight_arg, .02f, 126,
+                                                           conv1_output_arg, .37f, 131);
+    conv1_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    Node& avgpool_node1 = builder.AddQLinearActivationNode("QLinearAveragePool",
+                                                           conv1_output_arg, .37f, 131,
+                                                           avgpool1_output_arg, .43f, 111);
+    avgpool_node1.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+    avgpool_node1.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+
+    builder.AddQLinearConvNode<uint8_t>(avgpool1_output_arg, .43f, 111,
+                                        conv2_weight_arg, .015f, 129,
+                                        conv2_output_arg, .37f, 131);
+    Node& avgpool_node2 = builder.AddQLinearActivationNode("QLinearAveragePool",
+                                                         conv2_output_arg, .37f, 131,
+                                                         avgpool2_output_arg, .37f, 131);
+    avgpool_node2.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+    avgpool_node2.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+
+    builder.AddDequantizeLinearNode<uint8_t>(avgpool2_output_arg, .37f, 131, output_arg);
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["com.microsoft.QLinearConv"], 2);
+    EXPECT_EQ(op_to_count["Transpose"], 2);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3);
+}
+
 TEST(NhwcTransformerTests, ConvSplit) {
   for (int64_t axis = -4LL; axis < 4; axis++) {
     auto build_test_case = [&, axis](ModelTestBuilder& builder) {
@@ -312,7 +357,7 @@ TEST(NhwcTransformerTests, ConvSplitQLinearConcat) {
 
       Node& qlconcat_node = builder.AddQLinearConcatLike(
           "QLinearConcat", qlconcat_output_arg, .37f, 131,
-          {{split_output1_arg, .37f, uint8_t(131)}, {split_output2_arg, .37f, uint8_t(131)}});
+          {std::make_tuple(split_output1_arg, .37f, uint8_t(131)), std::make_tuple(split_output2_arg, .37f, uint8_t(131))});
       qlconcat_node.AddAttribute("axis", static_cast<int64_t>(axis));
 
       auto* conv2_weight_arg = NhwcMakeInitializer<uint8_t>(builder, {17, conv1_output_channels, 3, 3});

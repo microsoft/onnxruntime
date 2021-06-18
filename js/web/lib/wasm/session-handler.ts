@@ -3,6 +3,10 @@
 
 import {onnx} from 'onnx-proto';
 import {env, InferenceSession, SessionHandler, Tensor, TypedTensor} from 'onnxruntime-common';
+
+import {setRunOptions} from './run-options';
+import {setSessionOptions} from './session-options';
+import {allocWasmString} from './string-utils';
 import {getInstance} from './wasm-factory';
 
 let ortInit: boolean;
@@ -102,8 +106,8 @@ const numericTensorTypeToTypedArray = (type: Tensor.Type): Float32ArrayConstruct
       }
     };
 
-const getLoggingLevel = (loggingLevel: 'verbose'|'info'|'warning'|'error'|'fatal'): number => {
-  switch (loggingLevel) {
+const getLogLevel = (logLevel: 'verbose'|'info'|'warning'|'error'|'fatal'): number => {
+  switch (logLevel) {
     case 'verbose':
       return 0;
     case 'info':
@@ -115,135 +119,8 @@ const getLoggingLevel = (loggingLevel: 'verbose'|'info'|'warning'|'error'|'fatal
     case 'fatal':
       return 4;
     default:
-      throw new Error(`unsupported logging level: ${loggingLevel}`);
+      throw new Error(`unsupported logging level: ${logLevel}`);
   }
-};
-
-const setSessionOptions = (options?: InferenceSession.SessionOptions): [number, number[]] => {
-  const wasm = getInstance();
-  const sessionOptionsHandle = wasm._OrtCreateSessionOptions();
-  const allocs: number[] = [];
-
-  if (sessionOptionsHandle === 0) {
-    throw new Error('Can\'t create session options');
-  }
-
-  if (options === undefined) {
-    return [sessionOptionsHandle, allocs];
-  }
-
-  let errorCode = 0;
-
-  if (options.graphOptimizationLevel !== undefined) {
-    switch (options.graphOptimizationLevel) {
-      case 'disabled':
-        errorCode = wasm._OrtSetSessionGraphOptimizationLevel(sessionOptionsHandle, 0);
-        break;
-      case 'basic':
-        errorCode = wasm._OrtSetSessionGraphOptimizationLevel(sessionOptionsHandle, 1);
-        break;
-      case 'extended':
-        errorCode = wasm._OrtSetSessionGraphOptimizationLevel(sessionOptionsHandle, 2);
-        break;
-      case 'all':
-        errorCode = wasm._OrtSetSessionGraphOptimizationLevel(sessionOptionsHandle, 99);
-        break;
-      default:
-        throw new Error(`unsupported graph optimization level: ${options.graphOptimizationLevel}`);
-    }
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a graph optimization level as a session option. error code = ${errorCode}`);
-    }
-  }
-
-  if (options.enableCpuMemArena !== undefined) {
-    if (options.enableCpuMemArena) {
-      errorCode = wasm._OrtEnableCpuMemArena(sessionOptionsHandle);
-    } else {
-      errorCode = wasm._OrtDisableCpuMemArena(sessionOptionsHandle);
-    }
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a CPU memory arena as a session option. error code = ${errorCode}`);
-    }
-  }
-
-  if (options.enableMemPattern !== undefined) {
-    if (options.enableMemPattern) {
-      errorCode = wasm._OrtEnableMemPattern(sessionOptionsHandle);
-    } else {
-      errorCode = wasm._OrtDisableMemPattern(sessionOptionsHandle);
-    }
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a memory pattern as a session option. error code = ${errorCode}`);
-    }
-  }
-
-  if (options.executionMode !== undefined) {
-    switch (options.executionMode) {
-      case 'sequential':
-        errorCode = wasm._OrtSetSessionExecutionMode(sessionOptionsHandle, 0);
-        break;
-      case 'parallel':
-        errorCode = wasm._OrtSetSessionExecutionMode(sessionOptionsHandle, 1);
-        break;
-      default:
-        throw new Error(`unsupported execution mode: ${options.executionMode}`);
-    }
-    if (errorCode !== 0) {
-      throw new Error(`Can't set an execution mode as a session option. error code = ${errorCode}`);
-    }
-  }
-
-  if (options.logId !== undefined) {
-    const logIdDataLength = wasm.lengthBytesUTF8(options.logId) + 1;
-    const logIdDataOffset = wasm._malloc(logIdDataLength);
-    wasm.stringToUTF8(options.logId, logIdDataOffset, logIdDataLength);
-    errorCode = wasm._OrtSetSessionLogId(sessionOptionsHandle, logIdDataOffset);
-    allocs.push(logIdDataOffset);
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a log id as a session option. error code = ${errorCode}`);
-    }
-  }
-
-  if (options.logSeverityLevel !== undefined) {
-    errorCode = wasm._OrtSetSessionLogSeverityLevel(sessionOptionsHandle, options.logSeverityLevel);
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a log severity level as a session option. error code = ${errorCode}`);
-    }
-  }
-
-  return [sessionOptionsHandle, allocs];
-};
-
-const setRunOptions = (options: InferenceSession.RunOptions): [number, number[]] => {
-  const wasm = getInstance();
-  const runOptionsHandle = wasm._OrtCreateRunOptions();
-  if (runOptionsHandle === 0) {
-    throw new Error('Can\'t create run options');
-  }
-
-  const allocs: number[] = [];
-  let errorCode = 0;
-
-  if (options.logSeverityLevel !== undefined) {
-    errorCode = wasm._OrtRunOptionsSetRunLogSeverityLevel(runOptionsHandle, options.logSeverityLevel);
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a log severity level as a run option. error code = ${errorCode}`);
-    }
-  }
-
-  if (options.tag !== undefined) {
-    const tagDataLength = wasm.lengthBytesUTF8(options.tag) + 1;
-    const tagDataOffset = wasm._malloc(tagDataLength);
-    wasm.stringToUTF8(options.tag, tagDataOffset, tagDataLength);
-    errorCode = wasm._OrtRunOptionsSetRunTag(runOptionsHandle, tagDataOffset);
-    allocs.push(tagDataOffset);
-    if (errorCode !== 0) {
-      throw new Error(`Can't set a tag as a run option. error code = ${errorCode}`);
-    }
-  }
-
-  return [runOptionsHandle, allocs];
 };
 
 export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
@@ -257,7 +134,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
   loadModel(model: Uint8Array, options?: InferenceSession.SessionOptions): void {
     const wasm = getInstance();
     if (!ortInit) {
-      const errorCode = wasm._OrtInit(env.wasm.numThreads!, getLoggingLevel(env.wasm.loggingLevel!));
+      const errorCode = wasm._OrtInit(env.wasm.numThreads!, getLogLevel(env.logLevel!));
       if (errorCode !== 0) {
         throw new Error(`Can't initialize onnxruntime. error code = ${errorCode}`);
       }
@@ -336,10 +213,6 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
       if (index === -1) {
         throw new Error(`invalid input '${name}'`);
       }
-      if (tensor.type === 'string') {
-        // TODO: support string tensor
-        throw new TypeError('string tensor is not supported');
-      }
       inputArray.push(tensor);
       inputIndices.push(index);
     });
@@ -359,41 +232,55 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
     const outputCount = outputIndices.length;
 
     let runOptionsHandle = 0;
-    let allocs: number[] = [];
+    let runOptionsAllocs: number[] = [];
 
     const inputValues: number[] = [];
-    const inputDataOffsets: number[] = [];
+    const inputAllocs: number[] = [];
 
     try {
-      [runOptionsHandle, allocs] = setRunOptions(options);
+      [runOptionsHandle, runOptionsAllocs] = setRunOptions(options);
 
       // create input tensors
       for (let i = 0; i < inputCount; i++) {
         const data = inputArray[i].data;
+
+        let dataOffset: number;
+        let dataByteLength: number;
+
         if (Array.isArray(data)) {
           // string tensor
-          throw new TypeError('string tensor is not supported');
-        } else {
-          const dataOffset = wasm._malloc(data.byteLength);
-          inputDataOffsets.push(dataOffset);
-          wasm.HEAPU8.set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength), dataOffset);
-
-          const dims = inputArray[i].dims;
-
-          const stack = wasm.stackSave();
-          const dimsOffset = wasm.stackAlloc(4 * dims.length);
-          try {
-            let dimIndex = dimsOffset / 4;
-            dims.forEach(d => wasm.HEAP32[dimIndex++] = d);
-            const tensor = wasm._OrtCreateTensor(
-                tensorDataTypeStringToEnum(inputArray[i].type), dataOffset, data.byteLength, dimsOffset, dims.length);
-            if (tensor === 0) {
-              throw new Error('Can\'t create a tensor');
+          dataByteLength = 4 * data.length;
+          dataOffset = wasm._malloc(dataByteLength);
+          inputAllocs.push(dataOffset);
+          let dataIndex = dataOffset / 4;
+          for (let i = 0; i < data.length; i++) {
+            if (typeof data[i] !== 'string') {
+              throw new TypeError(`tensor data at index ${i} is not a string`);
             }
-            inputValues.push(tensor);
-          } finally {
-            wasm.stackRestore(stack);
+            wasm.HEAPU32[dataIndex++] = allocWasmString(data[i], inputAllocs);
           }
+        } else {
+          dataByteLength = data.byteLength;
+          dataOffset = wasm._malloc(dataByteLength);
+          inputAllocs.push(dataOffset);
+          wasm.HEAPU8.set(new Uint8Array(data.buffer, data.byteOffset, dataByteLength), dataOffset);
+        }
+
+        const dims = inputArray[i].dims;
+
+        const stack = wasm.stackSave();
+        const dimsOffset = wasm.stackAlloc(4 * dims.length);
+        try {
+          let dimIndex = dimsOffset / 4;
+          dims.forEach(d => wasm.HEAP32[dimIndex++] = d);
+          const tensor = wasm._OrtCreateTensor(
+              tensorDataTypeStringToEnum(inputArray[i].type), dataOffset, dataByteLength, dimsOffset, dims.length);
+          if (tensor === 0) {
+            throw new Error('Can\'t create a tensor');
+          }
+          inputValues.push(tensor);
+        } finally {
+          wasm.stackRestore(stack);
         }
       }
 
@@ -431,6 +318,8 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
             const beforeGetTensorDataStack = wasm.stackSave();
             // stack allocate 4 pointer value
             const tensorDataOffset = wasm.stackAlloc(4 * 4);
+
+            let type: Tensor.Type|undefined, dataOffset = 0;
             try {
               errorCode = wasm._OrtGetTensorData(
                   tensor, tensorDataOffset, tensorDataOffset + 4, tensorDataOffset + 8, tensorDataOffset + 12);
@@ -439,7 +328,7 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
               }
               let tensorDataIndex = tensorDataOffset / 4;
               const dataType = wasm.HEAPU32[tensorDataIndex++];
-              const dataOffset: number = wasm.HEAPU32[tensorDataIndex++];
+              dataOffset = wasm.HEAPU32[tensorDataIndex++];
               const dimsOffset = wasm.HEAPU32[tensorDataIndex++];
               const dimsLength = wasm.HEAPU32[tensorDataIndex++];
               const dims = [];
@@ -448,13 +337,19 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
               }
               wasm._OrtFree(dimsOffset);
 
-              const type = tensorDataTypeEnumToString(dataType);
+              const size = dims.length === 0 ? 1 : dims.reduce((a, b) => a * b);
+              type = tensorDataTypeEnumToString(dataType);
               if (type === 'string') {
-                // string tensor
-                throw new TypeError('string tensor is not supported');
+                const stringData: string[] = [];
+                let dataIndex = dataOffset / 4;
+                for (let i = 0; i < size; i++) {
+                  const offset = wasm.HEAPU32[dataIndex++];
+                  const maxBytesToRead = i === size - 1 ? undefined : wasm.HEAPU32[dataIndex] - offset;
+                  stringData.push(wasm.UTF8ToString(offset, maxBytesToRead));
+                }
+                output[this.outputNames[outputIndices[i]]] = new Tensor('string', stringData, dims);
               } else {
                 const typedArray = numericTensorTypeToTypedArray(type);
-                const size = dims.length === 0 ? 1 : dims.reduce((a, b) => a * b);
                 const t = new Tensor(type, new typedArray(size), dims) as TypedTensor<Exclude<Tensor.Type, 'string'>>;
                 new Uint8Array(t.data.buffer, t.data.byteOffset, t.data.byteLength)
                     .set(wasm.HEAPU8.subarray(dataOffset, dataOffset + t.data.byteLength));
@@ -462,6 +357,9 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
               }
             } finally {
               wasm.stackRestore(beforeGetTensorDataStack);
+              if (type === 'string' && dataOffset) {
+                wasm._free(dataOffset);
+              }
               wasm._OrtReleaseTensor(tensor);
             }
           }
@@ -477,10 +375,10 @@ export class OnnxruntimeWebAssemblySessionHandler implements SessionHandler {
       }
     } finally {
       inputValues.forEach(wasm._OrtReleaseTensor);
-      inputDataOffsets.forEach(wasm._free);
+      inputAllocs.forEach(wasm._free);
 
       wasm._OrtReleaseRunOptions(runOptionsHandle);
-      allocs.forEach(wasm._free);
+      runOptionsAllocs.forEach(wasm._free);
     }
   }
 

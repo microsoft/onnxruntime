@@ -39,12 +39,10 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
     graph_info_.user_output_names.emplace_back(node_arg->Name());
   }
 
-  graph_info_.initializer_names_to_train = std::unordered_set<std::string>(
-                                                        config_.initializer_names_to_train.begin(),
-                                                        config_.initializer_names_to_train.end());
-  graph_info_.initializer_names = std::unordered_set<std::string>(
-                                                config_.initializer_names.begin(),
-                                                config_.initializer_names.end());
+  graph_info_.initializer_names_to_train.assign(config.initializer_names_to_train.begin(),
+                                                config.initializer_names_to_train.end());
+  graph_info_.initializer_names.assign(config.initializer_names.begin(),
+                                       config.initializer_names.end());
 
   std::vector<const NodeArg*> input_args;
   for (const auto& input_name : graph_info_.user_input_names) {
@@ -54,7 +52,8 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
   // Remove all the initializers from the graph and move them to graph inputs.
   for (const auto& initializer_name : config_.initializer_names) {
     const NodeArg* node_arg = graph.GetNodeArg(initializer_name);
-    ORT_ENFORCE(node_arg != nullptr);
+    ORT_ENFORCE(node_arg != nullptr, "node arg is nullptr for initializer name: ", initializer_name);
+
     input_args.emplace_back(node_arg);
     graph.RemoveInitializedTensor(initializer_name);
   }
@@ -95,6 +94,9 @@ Status OrtModuleGraphBuilder::Build(const std::vector<std::vector<int64_t>>* inp
 
   // Reorder outputs.
   ReorderOutputs();
+
+  // Find module outputs needed for backward computation
+  FindModuleOutputNeededForBackward();
 
   return Status::OK();
 }
@@ -320,11 +322,51 @@ void OrtModuleGraphBuilder::ReorderOutputs() {
     std::string initializer_gradient_name = GradientBuilderBase::GradientName(initializer_name);
     ORT_ENFORCE(gradient_output_arg_map.find(initializer_gradient_name) != gradient_output_arg_map.end(),
                 "Trainable initializer grad is not found on gradient graph.");
-    graph_info_.initializer_grad_names_to_train.emplace(initializer_gradient_name);
+    graph_info_.initializer_grad_names_to_train.emplace_back(initializer_gradient_name);
     new_output_args.emplace_back(gradient_output_arg_map[initializer_gradient_name]);
   }
 
   gradient_graph.SetOutputs(new_output_args);
+}
+
+void OrtModuleGraphBuilder::FindModuleOutputNeededForBackward() {
+  Graph& gradient_graph = gradient_model_->MainGraph();
+  gradient_graph.Resolve();
+  GraphViewer gradient_graph_viewer(gradient_graph);
+  const auto& exec_order = gradient_graph_viewer.GetNodesInTopologicalOrder();
+  
+  size_t yield_node_order = 0;
+  bool yield_node_found = false;
+  std::unordered_map<NodeIndex, size_t> id_to_exec_order;
+  for (size_t i = 0; i < exec_order.size(); ++i) {
+    if (gradient_graph_viewer.GetNode(exec_order[i])->OpType() == "YieldOp") {
+      yield_node_order = i;
+      yield_node_found = true;
+    }
+    id_to_exec_order.insert({exec_order[i], i});
+  }
+  ORT_ENFORCE(yield_node_found, "YieldOp is not found in the training graph");
+
+  const Node* yield_node = gradient_graph_viewer.GetNode(exec_order[yield_node_order]);
+  auto yield_input_node_args = yield_node->InputDefs();
+
+  for (size_t i = 0; i < yield_input_node_args.size(); ++i) {
+    const NodeArg* yield_input = yield_input_node_args[i];
+
+    const Node* producer_node = gradient_graph.GetProducerNode(yield_input->Name());
+    if (producer_node->OpType() == "Identity") {
+      yield_input = producer_node->InputDefs()[0];
+    }
+
+    std::vector<const Node*> consumer_nodes = gradient_graph.GetConsumerNodes(yield_input->Name());
+    for (const Node* n : consumer_nodes) {
+      // If a module output has a consumer that is executed after the YieldOp, marked it needed for backward
+      if (id_to_exec_order[n->Index()] > yield_node_order) {
+        graph_info_.module_output_indices_requires_save_for_backward.emplace_back(i);
+        break;
+      }
+    }
+  }
 }
 
 }  // namespace training

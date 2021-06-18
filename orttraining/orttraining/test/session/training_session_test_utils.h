@@ -17,7 +17,7 @@
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"  // TODO: move with PipelineBatchPlanner
 
 #ifdef USE_CUDA
-#include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/providers/cuda/cuda_execution_provider_info.h"
 #elif USE_ROCM
 #include "core/providers/rocm/rocm_execution_provider.h"
 #endif
@@ -44,18 +44,18 @@ void GenerateOptimizerConfig(const std::string optimizer_name,
                              training::TrainingSession::TrainingConfiguration& config);
 
 template <class T>
-void GenerateOptimizerInitialState(const std::string& optimizer_op_name, 
-                                    const T init_moment_value, 
-                                    training::TrainingSession::OptimizerState& optimizer_state);
+void GenerateOptimizerInitialState(const std::string& optimizer_op_name,
+                                   const T init_moment_value,
+                                   training::TrainingSession::OptimizerState& optimizer_state);
 
-void SeparateStateTensors(const NameMLValMap& training_state, 
-                          NameMLValMap& model_state, 
+void SeparateStateTensors(const NameMLValMap& training_state,
+                          NameMLValMap& model_state,
                           training::TrainingSession::OptimizerState& optimizer_state);
 
 void VerifyState(const DataTransferManager& data_transfer_mgr, const NameMLValMap& expected_state, const NameMLValMap& actual_state);
 
-void VerifyOptimizerState(const DataTransferManager& data_transfer_manager, 
-                          const training::TrainingSession::OptimizerState& expected_state, 
+void VerifyOptimizerState(const DataTransferManager& data_transfer_manager,
+                          const training::TrainingSession::OptimizerState& expected_state,
                           const training::TrainingSession::OptimizerState& actual_state);
 
 std::unordered_set<std::string> GetModelOutputNames(const InferenceSession& session);

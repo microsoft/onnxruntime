@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/controlflow/loop.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_fwd.h"
+#include "core/framework/ml_value.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
@@ -15,9 +17,9 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
                                   kOnnxDomain,
                                   1, 10,
                                   kCudaExecutionProvider,
-                                  KernelDefBuilder()
-                                      .InputMemoryType<OrtMemTypeCPUInput>(0)  // 'M' needs to be on CPU
-                                      .InputMemoryType<OrtMemTypeCPUInput>(1)  // 'cond' needs to be on CPU
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'M' needs to be on CPU
+                                      .InputMemoryType(OrtMemTypeCPUInput, 1)  // 'cond' needs to be on CPU
                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
                                       .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
@@ -28,9 +30,9 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
                                   kOnnxDomain,
                                   11, 12,
                                   kCudaExecutionProvider,
-                                  KernelDefBuilder()
-                                      .InputMemoryType<OrtMemTypeCPUInput>(0)  // 'M' needs to be on CPU
-                                      .InputMemoryType<OrtMemTypeCPUInput>(1)  // 'cond' needs to be on CPU
+                                  (*KernelDefBuilder::Create())
+                                      .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'M' needs to be on CPU
+                                      .InputMemoryType(OrtMemTypeCPUInput, 1)  // 'cond' needs to be on CPU
                                       .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
                                       .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
@@ -43,9 +45,9 @@ ONNX_OPERATOR_KERNEL_EX(Loop,
                         kOnnxDomain,
                         13,
                         kCudaExecutionProvider,
-                        KernelDefBuilder()
-                            .InputMemoryType<OrtMemTypeCPUInput>(0)  // 'M' needs to be on CPU
-                            .InputMemoryType<OrtMemTypeCPUInput>(1)  // 'cond' needs to be on CPU
+                        (*KernelDefBuilder::Create())
+                            .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'M' needs to be on CPU
+                            .InputMemoryType(OrtMemTypeCPUInput, 1)  // 'cond' needs to be on CPU
                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
                             .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
@@ -69,7 +71,7 @@ static Status ConcatenateGpuOutput(void* stream, std::vector<OrtValue>& per_iter
     }
 
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cur_output, iteration_data.DataRaw(), bytes_per_iteration,
-                                    cudaMemcpyDeviceToDevice, static_cast<cudaStream_t>(stream)));
+                                         cudaMemcpyDeviceToDevice, static_cast<cudaStream_t>(stream)));
 
     cur_output = static_cast<void*>((static_cast<gsl::byte*>(cur_output) + bytes_per_iteration));
   }

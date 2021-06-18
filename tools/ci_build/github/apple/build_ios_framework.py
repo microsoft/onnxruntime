@@ -75,16 +75,16 @@ def _build_package(args):
             build_dir_current_arch, build_config, build_config + "-" + sysroot, 'onnxruntime.framework')
         ort_libs.append(os.path.join(framework_dir, 'onnxruntime'))
 
-        # We actually only need to define the info.plist and headers once since they are all the same
+        # We actually only need to define the Info.plist and headers once since they are all the same
         if not info_plist_path:
-            info_plist_path = os.path.join(build_dir_current_arch, build_config, 'info.plist')
+            info_plist_path = os.path.join(build_dir_current_arch, build_config, 'Info.plist')
             headers = glob.glob(os.path.join(framework_dir, 'Headers', '*.h'))
 
     # manually create the fat framework
     framework_dir = os.path.join(build_dir, 'framework_out', 'onnxruntime.framework')
     pathlib.Path(framework_dir).mkdir(parents=True, exist_ok=True)
 
-    # copy the header files and info.plist
+    # copy the header files and Info.plist
     shutil.copy(info_plist_path, framework_dir)
     header_dir = os.path.join(framework_dir, 'Headers')
     pathlib.Path(header_dir).mkdir(parents=True, exist_ok=True)

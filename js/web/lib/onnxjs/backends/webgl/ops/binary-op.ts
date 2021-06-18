@@ -10,6 +10,8 @@ import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, WebGLOperator} from '../types';
 
 export class WebGLBinaryOp extends BinaryOp implements WebGLOperator {
+  private usePackedTexture?: boolean;
+
   constructor(
       typeConstraint: readonly Tensor.DataType[], protected glslFunc: GlslValueFunction, opType?: string,
       resultType?: Tensor.DataType) {
@@ -19,14 +21,20 @@ export class WebGLBinaryOp extends BinaryOp implements WebGLOperator {
     return inferenceHandler.run(this, inputs);
   }
   createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
-    const inputLayouts = handler.session.pack ?
+    const isBroadcast = !ShapeUtil.areEqual(inputs[0].dims, inputs[1].dims);
+
+    // TODO fix bcast in packed mode.
+    if (this.usePackedTexture === undefined) {
+      this.usePackedTexture = !isBroadcast && handler.session.pack;
+    }
+
+    const inputLayouts = this.usePackedTexture ?
         inputs.map(t => handler.getOrCreateTextureLayout(t, 4, true, t.dims, true)) :
         inputs.map(t => handler.getOrCreateTextureLayout(t));
-    const ouputLayout = handler.session.pack ?
+    const ouputLayout = this.usePackedTexture ?
         handler.createTextureLayoutFromShape(inputs[0].dims, 4, inputs[0].dims, {isPacked: true, reverseWH: true}) :
         handler.createTextureLayoutFromShape(inputs[0].dims);
 
-    const isBroadcast = !ShapeUtil.areEqual(inputs[0].dims, inputs[1].dims);
     if (isBroadcast) {
       const outputShape = BroadcastUtil.calcShape(inputs[0].dims, inputs[1].dims, false);
       if (!outputShape) {
@@ -48,7 +56,7 @@ export class WebGLBinaryOp extends BinaryOp implements WebGLOperator {
         ${bBcast}
         return ${this.glslFunc.name}(_A(aindices), _B(bindices));
     }`;
-      const outputLayout = handler.session.pack ?
+      const outputLayout = this.usePackedTexture ?
           handler.createTextureLayoutFromShape(outputShape, 4, outputShape, {isPacked: true, reverseWH: true}) :
           handler.createTextureLayoutFromShape(outputShape);
 
@@ -57,8 +65,8 @@ export class WebGLBinaryOp extends BinaryOp implements WebGLOperator {
         outputLayout,
         samplers: ['A', 'B'],
         shaderSource,
-        expectPackedInputs: handler.session.pack,
-        expectPackedOutputs: handler.session.pack
+        expectPackedInputs: this.usePackedTexture,
+        expectPackedOutputs: this.usePackedTexture
       };
     }
     const glsl = getGlsl(handler.session.backend.glContext.version);
@@ -71,7 +79,8 @@ export class WebGLBinaryOp extends BinaryOp implements WebGLOperator {
       ${glsl.output} = result;
     }
     `;
-    if (handler.session.pack) {
+
+    if (this.usePackedTexture) {
       return {
         hasMain: true,
         inputLayouts,
@@ -92,7 +101,7 @@ export class WebGLBinaryOp extends BinaryOp implements WebGLOperator {
     }
   }
   createRunData(handler: WebGLInferenceHandler, programInfo: ProgramInfo, inputs: Tensor[]): RunData {
-    const inputTDs = handler.session.pack ?
+    const inputTDs = this.usePackedTexture ?
         inputs.map((t) => handler.getOrCreateTextureData(t, handler.getOrCreateTextureLayout(t, 1, false, [], true))) :
         inputs.map((t, i) => handler.getOrCreateTextureData(t, programInfo.inputLayouts[i]));
     return {
@@ -159,7 +168,7 @@ export function glslEqual(): GlslValueFunction {
     return float(a == b);
   }
   vec4 ${name}(vec4 v1, vec4 v2) {
-    return vec4( v1 == v2 );
+    return vec4(equal(v1, v2));
   }
   `;
   return {body, name, type: FunctionType.ValueBased};
