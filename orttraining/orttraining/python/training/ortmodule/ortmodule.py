@@ -193,3 +193,18 @@ class ORTModule(torch.nn.Module):
         """Raises a NotImplementedError exception since ORTModule does not support adding modules to it"""
 
         raise NotImplementedError("ORTModule does not support adding modules to it.")
+
+    @property
+    def module(self):
+        """The original `torch.nn.Module` that this module wraps.
+
+        This property provides access to methods and properties on the original module.
+        """
+
+        # HuggingFace Trainer `save_model` method checks to see if the input model is a HuggingFace PreTrainedModel
+        # or if the model has an attribute called `module` which references a HuggingFace PreTrainedModel to save
+        # the entire context of the model so that it can be loaded using HuggingFace `from_pretrained` method.
+        # This `module` property enables HuggingFace Trainer to retrieve the underlying PreTrainedModel inside ORTModule
+        # to save and load a complete checkpoint
+
+        return self._module_metadata.original_module
