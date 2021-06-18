@@ -214,6 +214,9 @@ def _parse_arguments():
     parser.add_argument('--only_onnxruntime', required=False, action='store_true', help="optimized by onnxruntime only")
     parser.set_defaults(only_onnxruntime=False)
 
+    parser.add_argument('--only_offline_opt', required=False, action='store_true', help="optimized by offline optimization only")
+    parser.set_defaults(only_offline_opt=False)
+
     parser.add_argument('--opt_level',
                         required=False,
                         type=int,
@@ -265,6 +268,7 @@ def optimize_model(input,
                    optimization_options=None,
                    opt_level=0,
                    use_gpu=False,
+                   only_offline_opt=False,
                    only_onnxruntime=False):
     """ Optimize Model by OnnxRuntime and/or offline fusion logic.
 
@@ -281,6 +285,7 @@ def optimize_model(input,
         optimization_options (OptimizationOptions or None): optimization options that can use to turn on/off some fusions.
         opt_level (int): onnxruntime graph optimization level (0, 1, 2 or 99). When the level > 0, onnxruntime will be used to optimize model first.
         use_gpu (bool): use gpu or not for onnxruntime.
+        only_offline_opt (bool): only use offline optimization to optimize model,
         only_onnxruntime (bool): only use onnxruntime to optimize model, and no offline fusion logic is used.
 
      Returns:
@@ -289,14 +294,17 @@ def optimize_model(input,
     (optimizer_class, producer, run_onnxruntime) = MODEL_CLASSES[model_type]
 
     temp_model_path = None
-    '''
-    if opt_level > 1:  # Optimization specified for an execution provider.
-        temp_model_path = optimize_by_onnxruntime(input, use_gpu=use_gpu, opt_level=opt_level)
-    elif run_onnxruntime:
-        # Use Onnxruntime to do optimizations (like constant folding and cast elimation) that is not specified to exection provider.
-        # CPU provider is used here so that there is no extra node for GPU memory copy.
-        temp_model_path = optimize_by_onnxruntime(input, use_gpu=False, opt_level=1)
-    '''
+
+    if only_offline_opt and only_onnxruntime:
+        logger.warning("Only one of the options can be true in only_offline_opt or only_onnxruntime")
+
+    if only_offline_opt is False:
+        if opt_level > 1:  # Optimization specified for an execution provider.
+            temp_model_path = optimize_by_onnxruntime(input, use_gpu=use_gpu, opt_level=opt_level)
+        elif run_onnxruntime:
+            # Use Onnxruntime to do optimizations (like constant folding and cast elimation) that is not specified to exection provider.
+            # CPU provider is used here so that there is no extra node for GPU memory copy.
+            temp_model_path = optimize_by_onnxruntime(input, use_gpu=False, opt_level=1)
 
     model = load_model(temp_model_path or input, format=None, load_external_data=True)
 
@@ -349,6 +357,7 @@ def main():
                                opt_level=args.opt_level,
                                optimization_options=optimization_options,
                                use_gpu=args.use_gpu,
+                               only_offline_opt=args.only_offline_opt,
                                only_onnxruntime=args.only_onnxruntime)
 
     if args.float16:
