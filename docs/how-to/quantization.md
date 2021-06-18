@@ -102,6 +102,8 @@ In general, it is recommended to use dynamic quantization for RNN and transforme
 If both post-training quantization can not meet your accuracy goal, you can try quantization-aware training (QAT) to retrain the model. ONNX Runtime does not provide retraining at this time, but you can retrain your model with the original framework and reconvert back to ONNX.
 
 ### data type selection
+{: .no_toc}
+
 Quantization represents value with 8 bit, which can be either int8 and uint8. Combining with activation and weight, the data format can be (activation:uint8, weight:uint8), (activation:uint8, weight:int8), etc.
 
 Let's use U8U8 as as shorthand for (activation:uint8, weight:uint8), and U8S8 for (activation:uint8, weight:int8), and S8U8, S8S8 for other two formats.
@@ -127,9 +129,13 @@ Currently, OnnxRuntime CPU only supports activation with type uint8, i.e., U8X8 
 U8S8 can be faster than U8U8 for low end ARM64 and no difference on accuracy. There is no difference for high end ARM64.
 
 ### List of Supported Quantized Ops
+{: .no_toc}
+
 Please refer to [registry](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/registry.py) for the list of supported Ops.
 
 ### Quantization and model opset versions
+{: .no_toc}
+
 Models must be opset10 or higher to be quantized. Models with opset < 10 must be reconverted to ONNX from its original framework using a later opset.
 
 ## Transformer-based models
@@ -149,7 +155,7 @@ ORT leverage TRT EP for quantization on GPU now. Different with CPU EP, TRT take
 We have 2 E2E examples [Yolo V3](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/quantization/E2E_example_model/object_detection/trt/yolov3) and [resnet50](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/quantization/E2E_example_model/image_classification/trt/resnet50) for your reference.
 
 ## FAQ
-### Why performance is not better or even worse?
+### Why am I not seeing performance improvements?
 {: .no_toc }
 
 Performance improvement depends on your model and hardware. Quantization performance gain comes in 2 part: instruction and cache. Old hardware doesn't have or has few instrction support for byte computation. And quantization has overhead (quantize and dequantize), so it is not rare to get worse performance on old devices.
