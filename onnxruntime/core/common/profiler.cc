@@ -112,7 +112,7 @@ void CudaProfiler::StartProfiling(TimePoint start_time, int pid, int tid) {
 std::vector<EventRecord> CudaProfiler::EndProfiling() {
   std::vector<EventRecord> events;
   if (enabled_.test_and_set()) {
-    //cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL);
+    cuptiActivityDisable(CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL);
     if (initialized_) {
       cuptiActivityFlushAll(1);
       std::lock_guard<OrtMutex> lock(mutex_);
@@ -129,7 +129,7 @@ std::vector<EventRecord> CudaProfiler::EndProfiling() {
         events.push_back({EventCategory::KERNEL_EVENT, pid_, tid_, stat.name_, DUR(profiling_start, stat.stop_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}});
       }
       stats_.clear();
-      //cuptiFinalize();
+      cuptiFinalize();
     } else {
       std::initializer_list<std::pair<std::string, std::string>> args;
       events.push_back({EventCategory::KERNEL_EVENT, pid_, tid_, "not_available_due_to_cupti_error", 0, 0, {args.begin(), args.end()}});
