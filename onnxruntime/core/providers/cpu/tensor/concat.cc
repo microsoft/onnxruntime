@@ -71,9 +71,10 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
   }
 
   if (all_inputs_are_empty) {
-    // Reference dim (used to compute output shape downstream)
-    // and reference rank(used to validate ranks across all inputs)
-    // can just come from the first input
+    // Reference dim and reference rank can just come from the first input
+    // No shape/rank validations will be done (as all inputs are empty).
+    // But the rest of the execution flow (filling in the Prepare instance - p)
+    // can use this info.
     reference_dims = input_tensors[0]->Shape().GetDims();
     reference_rank = reference_dims.size();
   }
