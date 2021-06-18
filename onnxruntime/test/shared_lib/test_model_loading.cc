@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_cxx_api.h"
+#include "onnxruntime_session_options_config_keys.h"
+#include "test/util/include/asserts.h"
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #endif
@@ -55,6 +57,21 @@ TEST(CApiTest, model_from_array) {
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(so, 0));
   create_session(so);
 #endif
+}
+#endif
+
+#ifdef DISABLE_EXTERNAL_INITIALIZERS
+TEST(CApiTest, TestDisableExternalInitiliazers) {
+
+  const char* model_path = "testdata/model_with_external_initializers.onnx";
+
+  Ort::SessionOptions so;
+  try {
+    Ort::Session session(*ort_env.get(), model_path, so);
+    ASSERT_TRUE(false) << "Creation of session should have thrown exception";
+  } catch (const std::exception& ex) {
+    ASSERT_THAT(ex.what(), testing::HasSubstr("Initializer tensors with external data is not allowed."));
+  }
 }
 #endif
 }  // namespace test

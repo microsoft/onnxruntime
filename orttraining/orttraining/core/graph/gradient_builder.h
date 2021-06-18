@@ -47,6 +47,7 @@ DECLARE_GRADIENT_BUILDER(GetLogSoftmaxGradient)
 DECLARE_GRADIENT_BUILDER(GetSoftmaxCrossEntropyGradient)
 DECLARE_GRADIENT_BUILDER(GetSparseSoftmaxCrossEntropyGradient)
 DECLARE_GRADIENT_BUILDER(GetSoftmaxCrossEntropyLossGradient)
+DECLARE_GRADIENT_BUILDER(GetSoftmaxCrossEntropyLossInternalGradient)
 DECLARE_GRADIENT_BUILDER(GetGlobalAveragePoolGradient)
 DECLARE_GRADIENT_BUILDER(GetGemmGradient)
 DECLARE_GRADIENT_BUILDER(GetDropoutGradient)
@@ -73,6 +74,9 @@ DECLARE_GRADIENT_BUILDER(GetAbsGradient)
 DECLARE_GRADIENT_BUILDER(GetMinMaxGradient)
 DECLARE_GRADIENT_BUILDER(GetTileGradient)
 DECLARE_GRADIENT_BUILDER(GetATenOpGradient)
+DECLARE_GRADIENT_BUILDER(GetPadGradient)
+DECLARE_GRADIENT_BUILDER(GetIdentityGradient)
+DECLARE_GRADIENT_BUILDER(GetPythonOpGradient)
 
 }  // namespace training
 }  // namespace onnxruntime

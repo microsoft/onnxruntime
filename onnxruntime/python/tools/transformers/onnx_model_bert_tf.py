@@ -87,14 +87,15 @@ class BertOnnxModelTF(BertOnnxModel):
 
         if segment_id_path and input_ids and input_ids == segment_id_path[-1].input[0]:
             logger.debug("Simplify semgent id path...")
-            self.add_node(helper.make_node('Shape', inputs=[input_ids], outputs=["input_shape"]))
             constantofshape_node = segment_id_path[0]
+            graph_name = self.get_graph_by_node(constantofshape_node).name
+            self.add_node(helper.make_node('Shape', inputs=[input_ids], outputs=["input_shape"]), graph_name)
             constantofshape_value = helper.get_attribute_value(constantofshape_node.attribute[0])
             self.add_node(
                 helper.make_node('ConstantOfShape',
                                  inputs=["input_shape"],
                                  outputs=["zeros_for_input_shape"],
-                                 value=constantofshape_value))
+                                 value=constantofshape_value), graph_name)
             segment_ids = "zeros_for_input_shape"
         return segment_ids
 
@@ -142,13 +143,15 @@ class BertOnnxModelTF(BertOnnxModel):
                         logger.debug("Simplify semgent id path...")
                         constantofshape_node = path_to_be_simplified[0]
                         constantofshape_value = helper.get_attribute_value(constantofshape_node.attribute[0])
+                        graph_name = self.get_graph_by_node(constantofshape_node).name
                         self.add_node(
-                            helper.make_node('Shape', inputs=[duplicated_inputs[0]], outputs=["input_shape_for_mask"]))
+                            helper.make_node('Shape', inputs=[duplicated_inputs[0]], outputs=["input_shape_for_mask"]),
+                            graph_name)
                         self.add_node(
                             helper.make_node('ConstantOfShape',
                                              inputs=["input_shape_for_mask"],
                                              outputs=[unsqueeze_node.input[0]],
-                                             value=constantofshape_value))
+                                             value=constantofshape_value), graph_name)
                     return unsqueeze_node.input[0]
         return None
 
@@ -203,7 +206,7 @@ class BertOnnxModelTF(BertOnnxModel):
             name="EmbedLayer")
         embed_node.domain = "com.microsoft"
         self.replace_input_of_all_nodes(normalize_node.output[0], embed_output)
-        self.add_node(embed_node)
+        self.add_node(embed_node, self.get_graph_by_node(normalize_node).name)
 
     def process_embedding(self):
         """
@@ -284,6 +287,8 @@ class BertOnnxModelTF(BertOnnxModel):
         # Conceptually we treat add before layernorm as skiplayernorm node since they share the same pattern
         start_nodes.extend(skip_layer_norm_nodes)
         start_nodes.extend(layer_norm_nodes)
+
+        graph_name = self.get_graph_by_node(start_nodes[0]).name
 
         for normalize_node in start_nodes:
             # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
@@ -366,7 +371,8 @@ class BertOnnxModelTF(BertOnnxModel):
             if squeeze_node is None and len(mask_nodes) == 5 and self.find_graph_input(mask_nodes[-1].input[0]) is None:
                 mask_input = mask_nodes[-1].input[1]
                 self.add_node(
-                    helper.make_node("Squeeze", [mask_input], [squeeze_output_name], squeeze_node_name, axes=[1]))
+                    helper.make_node("Squeeze", [mask_input], [squeeze_output_name], squeeze_node_name, axes=[1]),
+                    graph_name)
                 mask_nodes[-1].input[0] = squeeze_output_name
 
             is_same_root = self.check_attention_input(matmul_q, matmul_k, matmul_v, parent, output_name_to_node)
@@ -391,13 +397,13 @@ class BertOnnxModelTF(BertOnnxModel):
                                                     [[0, 0, self.num_heads,
                                                       int(self.hidden_size / self.num_heads)]]).tobytes(),
                                                 raw=True)
-                    self.add_initializer(tensor)
+                    self.add_initializer(tensor, graph_name)
                     reshape_ = helper.make_node("Reshape",
                                                 inputs=[attention_node.output[0], qkv_nodes[1].name + "_newshape"],
                                                 outputs=[qkv_nodes[1].name + "_reshape_output"],
                                                 name=qkv_nodes[1].name + "_reshape")
                     qkv_nodes[1].input[0] = qkv_nodes[1].name + "_reshape_output"
-                    self.add_node(reshape_)
+                    self.add_node(reshape_, graph_name)
                 if parent.op_type == 'Reshape':
                     # Temporary work around: we require the skiplayernorm and attention op be fed with 3-d input
                     hidden_size = numpy_helper.to_array(self.get_initializer(parent.input[1]))[1]
@@ -406,10 +412,10 @@ class BertOnnxModelTF(BertOnnxModel):
                                                 dims=[3],
                                                 vals=np.int64([[1, -1, hidden_size]]).tobytes(),
                                                 raw=True)
-                    self.add_initializer(tensor)
+                    self.add_initializer(tensor, graph_name)
                     parent.input[1] = parent.name + "_modified"
 
-                self.add_node(attention_node)
+                self.add_node(attention_node, graph_name)
                 attention_count += 1
 
                 nodes_to_remove.extend(qkv_nodes[2:])

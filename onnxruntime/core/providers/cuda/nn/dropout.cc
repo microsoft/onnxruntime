@@ -11,12 +11,12 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     12, 12,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
         .TypeConstraint("T1", DataTypeImpl::AllIEEEFloatTensorTypes())
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
-        .InputMemoryType<OrtMemTypeCPUInput>(1)
-        .InputMemoryType<OrtMemTypeCPUInput>(2),
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .InputMemoryType(OrtMemTypeCPUInput, 2),
     Dropout);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -24,12 +24,12 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     13,
     kCudaExecutionProvider,
-    KernelDefBuilder()
+    (*KernelDefBuilder::Create())
         .TypeConstraint("T", ALL_IEEE_FLOAT_TENSOR_TYPES)
         .TypeConstraint("T1", ALL_IEEE_FLOAT_TENSOR_TYPES)
         .TypeConstraint("T2", DataTypeImpl::GetTensorType<bool>())
-        .InputMemoryType<OrtMemTypeCPUInput>(1)
-        .InputMemoryType<OrtMemTypeCPUInput>(2),
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .InputMemoryType(OrtMemTypeCPUInput, 2),
     Dropout);
 
 Status Dropout::ComputeInternal(OpKernelContext* context) const {

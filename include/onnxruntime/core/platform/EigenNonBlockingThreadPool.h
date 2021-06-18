@@ -1024,7 +1024,7 @@ void InitializePreferredWorkers(std::vector<int> &preferred_workers) {
 void UpdatePreferredWorker(std::vector<int> &preferred_workers,
                            unsigned par_idx) {
   unsigned ran_on_idx = GetPerThread()->thread_id;
-  assert(ran_on_idx >= 0 && ran_on_idx < num_threads_);
+  assert(ran_on_idx < num_threads_);
   assert(par_idx < preferred_workers.size());
   preferred_workers[par_idx] = ran_on_idx;
 }

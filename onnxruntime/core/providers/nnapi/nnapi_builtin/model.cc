@@ -87,8 +87,8 @@ size_t Model::GetMappedOutputIdx(const std::string& name) const {
 }
 
 bool Model::SupportsDynamicOutputShape() const {
-  // dynamic output shape is only supported on Android API level 29+
-  return GetAndroidSdkVer() >= 29 && dynamic_output_buffer_size_ > 0;
+  // dynamic output shape is only supported on Android API level 29+ (ANEURALNETWORKS_FEATURE_LEVEL_3)
+  return GetNNAPIFeatureLevel() >= ANEURALNETWORKS_FEATURE_LEVEL_3 && dynamic_output_buffer_size_ > 0;
 }
 
 Status Model::PrepareForExecution(std::unique_ptr<Execution>& execution) {
@@ -103,8 +103,8 @@ Status Model::PrepareForExecution(std::unique_ptr<Execution>& execution) {
   return Status::OK();
 }
 
-int32_t Model::GetAndroidSdkVer() const {
-  return nnapi_ ? nnapi_->android_sdk_version : 0;
+int32_t Model::GetNNAPIFeatureLevel() const {
+  return nnapi_ ? nnapi_->nnapi_runtime_feature_level : 0;
 }
 
 #pragma region Model::NNMemory

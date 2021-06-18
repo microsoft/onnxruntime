@@ -81,7 +81,7 @@ def generate_qat_model(model_names):
     graph.initializer.add().CopyFrom(input_bias_1)
 
     model_1 = onnx.helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
-    model_1.ir_version = onnx.IR_VERSION
+    model_1.ir_version = 7 # use stable onnx ir version
     onnx.save(model_1, model_names[0])
 
     test_models.extend([model_1])
@@ -153,7 +153,7 @@ def generate_qat_model(model_names):
     graph.initializer.add().CopyFrom(conv_bias_1)
 
     model_2 = onnx.helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
-    model_2.ir_version = onnx.IR_VERSION
+    model_2.ir_version = 7 # use stable onnx ir version
     onnx.save(model_2, model_names[1])
 
     test_models.extend([model_2])
@@ -202,7 +202,7 @@ def generate_qat_support_model(model_names, test_initializers):
         graph.initializer.add().CopyFrom(init)
 
     model_1 = onnx.ModelProto()
-    model_1.ir_version = onnx.IR_VERSION
+    model_1.ir_version = 7 # use stable onnx ir version
     model_1 = onnx.helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
     onnx.save(model_1, model_names[0])
 
@@ -243,7 +243,7 @@ def generate_qat_support_model(model_names, test_initializers):
         graph.initializer.add().CopyFrom(init)
 
     model_2 = onnx.ModelProto()
-    model_2.ir_version = onnx.IR_VERSION
+    model_2.ir_version = 7 # use stable onnx ir version
     model_2 = onnx.helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
     onnx.save(model_1, model_names[1])
 

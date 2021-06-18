@@ -3,5 +3,9 @@
 
 import {OrtWasmModule} from './ort-wasm';
 
-declare const moduleFactory: EmscriptenModuleFactory<OrtWasmModule>;
+export interface OrtWasmThreadedModule extends OrtWasmModule {
+  PThread?: {terminateAllThreads(): void};
+}
+
+declare const moduleFactory: EmscriptenModuleFactory<OrtWasmThreadedModule>;
 export default moduleFactory;

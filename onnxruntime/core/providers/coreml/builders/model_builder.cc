@@ -151,6 +151,9 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
         multi_array->set_datatype(COREML_SPEC::ArrayFeatureType::FLOAT32);
         break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+        multi_array->set_datatype(COREML_SPEC::ArrayFeatureType::INT32);
+        break;
       default: {
         // TODO: support other type
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

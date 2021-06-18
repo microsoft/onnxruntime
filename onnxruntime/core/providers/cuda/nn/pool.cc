@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/nn/pool.h"
-#include "core/providers/common.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cuda/nn/max_pool_with_index.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
@@ -11,27 +11,26 @@ using namespace onnxruntime::common;
 namespace onnxruntime {
 namespace cuda {
 
-#define POOLING_KERNEL(op_name, data_type, pool_type, since_version)                    \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                        \
-      op_name,                                                                          \
-      kOnnxDomain,                                                                      \
-      since_version,                                                                    \
-      data_type,                                                                        \
-      kCudaExecutionProvider,                                                           \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()), \
+#define POOLING_KERNEL(op_name, data_type, pool_type, since_version)                               \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                                   \
+      op_name,                                                                                     \
+      kOnnxDomain,                                                                                 \
+      since_version,                                                                               \
+      data_type,                                                                                   \
+      kCudaExecutionProvider,                                                                      \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()), \
       Pool<data_type, pool_type>);
 
-#define POOLING_KERNEL_VERSIONED(op_name, data_type, pool_type, since_version, end_version)                                                         \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                                                          \
-      op_name,                                                                                                                                      \
-      kOnnxDomain,                                                                                                                                  \
-      since_version,                                                                                                                                \
-      end_version,                                                                                                                                  \
-      data_type,                                                                                                                                    \
-      kCudaExecutionProvider,                                                                                                                       \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
+#define POOLING_KERNEL_VERSIONED(op_name, data_type, pool_type, since_version, end_version)                                                                    \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                                                                     \
+      op_name,                                                                                                                                                 \
+      kOnnxDomain,                                                                                                                                             \
+      since_version,                                                                                                                                           \
+      end_version,                                                                                                                                             \
+      data_type,                                                                                                                                               \
+      kCudaExecutionProvider,                                                                                                                                  \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
       Pool<data_type, pool_type>);
-
 
 POOLING_KERNEL_VERSIONED(AveragePool, float, AveragePool, 7, 9)
 POOLING_KERNEL_VERSIONED(AveragePool, double, AveragePool, 7, 9)
@@ -63,7 +62,6 @@ POOLING_KERNEL(MaxPool, double, MaxPool<8>, 12)
 POOLING_KERNEL(MaxPool, MLFloat16, MaxPool<8>, 12)
 POOLING_KERNEL(MaxPool, int8_t, MaxPool<8>, 12)
 POOLING_KERNEL(MaxPool, uint8_t, MaxPool<8>, 12)
-
 
 POOLING_KERNEL(GlobalMaxPool, float, MaxPool<1>, 1)
 POOLING_KERNEL(GlobalMaxPool, double, MaxPool<1>, 1)
@@ -167,8 +165,8 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
 
   cudnnPoolingMode_t mode = CUDNN_POOLING_MAX;
   if (PoolType::type == onnxruntime::PoolType::kAveragePool) {
-    mode = pool_attrs_.count_include_pad ? CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING 
-    : CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING;
+    mode = pool_attrs_.count_include_pad ? CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING
+                                         : CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING;
   }
   CudnnPoolingDescriptor pooling_desc;
   ORT_RETURN_IF_ERROR(pooling_desc.Set(mode, kernel_shape, pads, strides));

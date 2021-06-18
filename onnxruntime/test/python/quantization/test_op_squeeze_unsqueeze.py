@@ -79,7 +79,7 @@ class TestOpSqueezeUnsqueeze(unittest.TestCase):
         graph = helper.make_graph([conv1_node, conv2_node, conv3_node, squeeze1_node, squeeze2_node, add1_node, unsqueeze_node, add2_node],
                                   'TestOpSuqeezes_test_model', [input_tensor], [output_tensor], initializer=initializers)
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset)])
-        model.ir_version = onnx.IR_VERSION
+        model.ir_version = 7 # use stable onnx ir version
         onnx.save(model, output_model_path)
 
     def run_quantize_squeezes_of_opset(self, opset = 13):

@@ -37,13 +37,18 @@ ONNX_CPU_OPERATOR_KERNEL(
     ConvTranspose<float>);
 
 template <typename T>
-Status ConvTranspose<T>::PrePack(const Tensor& /* tensor */, int /* input_idx */, bool& is_packed) {
+Status ConvTranspose<T>::PrePack(const Tensor& /*tensor*/, int /*input_idx*/, AllocatorPtr /*alloc*/,
+                                 /*out*/ bool& is_packed,
+                                 /*out*/ PrePackedWeights* /*prepacked_weights*/
+) {
   is_packed = false;
   return Status::OK();
 }
 
 template <>
-Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                                     /*out*/ bool& is_packed,
+                                     /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
   // only pack filter tensor
@@ -56,12 +61,18 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, bool& 
     const size_t K = static_cast<size_t>(filter_shape_[0]) / conv_transpose_attrs_.group;
     const size_t N = filter_shape_.SizeFromDimension(1);
     auto packed_elements_per_group = N * K;
-    if (packed_elements_per_group == 0 || N == 1 || K == 1) { // No need for single row or single col case
+    if (packed_elements_per_group == 0 || N == 1 || K == 1) {  // No need for single row or single col case
       return Status::OK();
     }
 
-    auto alloc = Info().GetAllocator(0, OrtMemTypeDefault);
-    auto* packed_filter_data = alloc->Alloc(packed_elements_per_group * sizeof(float) * conv_transpose_attrs_.group);
+    size_t packed_filter_data_size = packed_elements_per_group * sizeof(float) * conv_transpose_attrs_.group;
+    auto* packed_filter_data = alloc->Alloc(packed_filter_data_size);
+
+    // Initialize memory to 0 as there could be some padding associated with pre-packed
+    // buffer memory and we don not want it uninitialized and generate different hashes
+    // if and when we try to cache this pre-packed buffer for sharing between sessions.
+    memset(packed_filter_data, 0, packed_filter_data_size);
+
     transposed_filter_ = BufferUniquePtr(packed_filter_data, BufferDeleter(alloc));
 
     for (int64_t group_id = 0; group_id < conv_transpose_attrs_.group; ++group_id) {
@@ -70,8 +81,36 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, bool& 
                     K, N);
     }
 
+    bool share_prepacked_weights = (prepacked_weights != nullptr);
+    if (share_prepacked_weights) {
+      prepacked_weights->buffers_.push_back(std::move(transposed_filter_));
+      prepacked_weights->buffer_sizes_.push_back(packed_filter_data_size);
+    }
+
     is_packed = true;
   }
+  return Status::OK();
+}
+
+template <typename T>
+Status ConvTranspose<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& /*prepacked_buffers*/,
+                                                   int /*input_idx*/,
+                                                   /*out*/ bool& used_shared_buffers) {
+  used_shared_buffers = false;
+  return Status::OK();
+}
+
+template <>
+Status ConvTranspose<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                       int input_idx,
+                                                       /*out*/ bool& used_shared_buffers) {
+  used_shared_buffers = false;
+
+  if (input_idx == 1) {
+    used_shared_buffers = true;
+    transposed_filter_ = std::move(prepacked_buffers[0]);
+  }
+
   return Status::OK();
 }
 

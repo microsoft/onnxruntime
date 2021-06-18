@@ -10,14 +10,14 @@
 namespace onnxruntime {
 namespace cuda {
 
-#define REGISTER_GRADIENT_KERNEL_TYPED(T)                                       \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                \
-      ConvGrad,                                                                 \
-      kMSDomain,                                                                \
-      1,                                                                        \
-      T,                                                                        \
-      kCudaExecutionProvider,                                                   \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+#define REGISTER_GRADIENT_KERNEL_TYPED(T)                                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      ConvGrad,                                                                            \
+      kMSDomain,                                                                           \
+      1,                                                                                   \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       ConvGrad<T>);
 
 REGISTER_GRADIENT_KERNEL_TYPED(float)

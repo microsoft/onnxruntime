@@ -46,6 +46,9 @@ class FusionGptAttention(Fusion):
                                     outputs=[output],
                                     name=attention_node_name + "_add")
         self.nodes_to_add.extend([attention_node, matmul_node, add_node])
+        self.node_name_to_graph_name[attention_node.name] = self.this_graph_name
+        self.node_name_to_graph_name[matmul_node.name] = self.this_graph_name
+        self.node_name_to_graph_name[add_node.name] = self.this_graph_name
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
         past = None

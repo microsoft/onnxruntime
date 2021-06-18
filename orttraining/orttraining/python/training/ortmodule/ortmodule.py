@@ -5,41 +5,24 @@
 
 from . import _io
 from ._graph_execution_manager_factory import GraphExecutionManagerFactory
+from ._utils import _PytorchModuleMetadata
 
 from onnxruntime.training import register_custom_ops_pytorch_exporter
 
 import copy
 import functools
 import torch
-from typing import Iterator, Optional, Tuple, TypeVar
+from typing import Iterator, Optional, Tuple, TypeVar, Set, Callable
 import onnx
 
 # Needed to override PyTorch methods
 T = TypeVar('T', bound='Module')
 
 class ORTModule(torch.nn.Module):
-    """Specializes a user torch.nn.Module to leverage ONNX Runtime graph execution.
+    """Extends user's :class:`torch.nn.Module` model to leverage ONNX Runtime super fast training engine.
 
-    ORTModule specializes the user's torch.nn.Module and provides forward, backward
-    implementations be leveraging ONNX Runtime.
-
-    ORTModule interacts with:
-    - GraphExecutionManagerFactory: Which returns a GraphExecutionManager based on
-    whether or not the user's torch module is in training mode or eval mode.
-    - GraphExecutionManager: Responsible for building and executing the forward and backward graphs.
-        - InferenceManager(GraphExecutionManager): Responsible for building, optimizing
-        and executing the inference onnx graph.
-        - TrainingManager(GraphExecutionManager): Responsible for building, optimizing
-        and executing the training onnx graph.
-
-        The GraphExecutionManager first exports the user model into an onnx model.
-        Following that, GraphExecutionManager interacts with OrtModuleGraphBuilder to optimize the onnx graph.
-        Once the onnx graph has been optimized, an ExecutionAgent is instantiated that
-        facilitates in executing the forward and backward subgraphs of the onnx model.
-
-    - _ortmodule_io: Provides utilities to transform the user inputs and outputs of the model.
-        - It facilitates in flattening the output from the user's PyTorch model (since exporting
-        of nested structures is not supported at the moment)
+    ORTModule specializes the user's :class:`torch.nn.Module` model, providing :meth:`~torch.nn.Module.forward`,
+    :meth:`~torch.nn.Module.backward` along with all others :class:`torch.nn.Module`'s APIs.
     """
 
     def __init__(self, module, device=None):
@@ -72,11 +55,11 @@ class ORTModule(torch.nn.Module):
 
         if isinstance(module, torch.nn.Module):
             # User module is wrapped to use its initializers and save computed gradients
-            self._original_module = module
-            # Get the module that flattens both input and output
-            self._flattened_module = _io._FlattenedModule(self._original_module)
-            self._isTrain = self._flattened_module.training and torch.is_grad_enabled()
-            self._execution_manager = GraphExecutionManagerFactory(self._flattened_module)
+            # along with the module that flattens both input and output of the user module
+            # inside _PytorchModuleMetadata
+            self._module_metadata = _PytorchModuleMetadata(module, _io._FlattenedModule(module))
+
+            self._execution_manager = GraphExecutionManagerFactory(self._module_metadata.flattened_module)
 
         elif isinstance(module, onnx.ModelProto):
             self._onnx_model = module
@@ -85,29 +68,50 @@ class ORTModule(torch.nn.Module):
                         for initializer in self._onnx_model.graph.initializer]
             self._execution_manager = GraphExecutionManagerFactory(self._onnx_model, self._onnx_model_parameters, device)
 
-    def __call__(self, *inputs, **kwargs):
-        return self.forward(*inputs, **kwargs)
-
+    # IMPORTANT: DO NOT add code here
+    # This declaration is for automatic document generation purposes only
+    # The actual forward implementation is bound during ORTModule initialization
     def forward(self, *inputs, **kwargs):
-        '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
+        '''Dummy documentation for forward method'''
+        ...
 
-        ONNX model is exported the first time this method is executed.
-        Next, we build a full training graph with module_gradient_graph_builder.
-        Finally, we instantiate the ONNX Runtime InferenceSession.
-        '''
-        return self._execution_manager(self._isTrain).forward(*inputs, **kwargs)
+    def _apply(self, fn):
+        """Override original method to delegate execution to the flattened PyTorch user module"""
 
-    def is_training(self, isTrain = True):
-        self._isTrain = isTrain
+        # Delegation must happen to _flattened_module since methods depend on
+        # _apply to recursively apply the internal setting changes
+        self._module_metadata.flattened_module._apply(fn)
+        return self
+
+    def apply(self: T, fn: Callable[['Module'], None]) -> T:
+        """Override original method to delegate execution to the flattened PyTorch user module"""
+
+        # Delegation must happen to _flattened_module since methods depend on
+        # apply to recursively apply the internal setting changes
+        self._module_metadata.flattened_module.apply(fn)
+        return self
+
+    def _is_training(self):
+        return self.training and torch.is_grad_enabled()
+
+    def train(self: T, mode: bool = True) -> T:
+        """Override original method to delegate execution to the flattened PyTorch user module"""
+
+        # Since _modules is empty, the task needs to be delegated to _module.flattened_module.train
+        # which will recursively update the original_module
+        self.training = mode
+        self._module_metadata.flattened_module.train(mode)
+        return self
 
     def state_dict(self, destination=None, prefix='', keep_vars=False):
         if not self._original_module:
             raise NotSupported("ORTModule crated from ONNX model doesn't support load_state_dict")
+        
         """Override original method to delegate execution to the base module"""
 
         # Override the state_dict() method so that the state dict key names
-        # do not contain the _flattened_module._original_module prefix
-        return self._original_module.state_dict(
+        # do not contain the flattened_module._original_module prefix
+        return self._module_metadata.original_module.state_dict(
             destination=destination, prefix=prefix, keep_vars=keep_vars)
 
     def load_state_dict(self, state_dict: 'OrderedDict[str, Tensor]',
@@ -115,68 +119,68 @@ class ORTModule(torch.nn.Module):
         if not self._original_module:
             raise NotSupported("ORTModule crated from ONNX model doesn't support load_state_dict")
 
-        """Override original method to delegate execution to the base module"""
+        """Override original method to delegate execution to the original PyTorch user module"""
         # Override the load_state_dict() method so that the loaded state dict
-        # key names does not need to contain the _flattened_module._original_module prefix
-        return self._original_module.load_state_dict(
+        # key names does not need to contain the _module.flattened_module._original_module prefix
+        return self._module_metadata.original_module.load_state_dict(
             state_dict, strict=strict)
 
     def register_buffer(self, name: str, tensor: Optional[torch.Tensor], persistent: bool = True) -> None:
         if not self._original_module:
             raise NotSupported("ORTModule crated from ONNX model doesn't support register_buffer")
 
-        """Override original method to delegate execution to the base module"""
-        self._original_module.register_buffer(name, tensor, persistent=persistent)
+        """Override original method to delegate execution to the original PyTorch user module"""
+        self._module_metadata.original_module.register_buffer(name, tensor, persistent=persistent)
 
     def register_parameter(self, name: str, param: Optional[torch.nn.Parameter]) -> None:
         if not self._original_module:
             raise NotSupported("ORTModule crated from ONNX model doesn't support register_parameter")
 
-        """Override original method to delegate execution to the base module"""
-        self._original_module.register_parameter(name, param)
+        """Override original method to delegate execution to the original PyTorch user module"""
+        self._module_metadata.original_module.register_parameter(name, param)
 
     def get_parameter(self, target: str) -> torch.nn.Parameter:
         if not self._original_module:
             raise NotSupported("ORTModule crated from ONNX model doesn't support get_parameter")
 
-        """Override original method to delegate execution to the base module"""
-        return self._original_module.get_parameter(target)
+        """Override original method to delegate execution to the original PyTorch user module"""
+        return self._module_metadata.original_module.get_parameter(target)
 
     def get_buffer(self, target: str) -> torch.Tensor:
         if not self._original_module:
             raise NotSupported("ORTModule crated from ONNX model doesn't support get_buffer")
 
-        """Override original method to delegate execution to the base module"""
-        return self._original_module.get_buffer(target)
+        """Override original method to delegate execution to the original PyTorch user module"""
+        return self._module_metadata.original_module.get_buffer(target)
 
     def parameters(self, recurse: bool = True) -> Iterator[torch.nn.Parameter]:
         if self._onnx_model:
             for _, parameter in self._onnx_model_parameters:
                 yield parameter
         else:
-            """Override original method to delegate execution to the base module"""
-            yield from self._original_module.parameters(recurse=recurse)
+            """Override original method to delegate execution to the original PyTorch user module"""
+            yield from self._module_metadata.original_module.parameters(recurse=recurse)
 
     def named_parameters(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.nn.Parameter]]:        
         if not self._original_module:
             raise NotSupported("ORTModule crated from ONNX model doesn't support named_parameters")
 
-        """Override original method to delegate execution to the base module"""
-        yield from self._original_module.named_parameters(prefix=prefix, recurse=recurse)
+        """Override original method to delegate execution to the original PyTorch user module"""
+        yield from self._module_metadata.original_module.named_parameters(prefix=prefix, recurse=recurse)
 
     def buffers(self, recurse: bool = True) -> Iterator[torch.Tensor]:        
         if not self._original_module:
             raise NotSupported("ORTModule crated from ONNX model doesn't support buffers")
 
-        """Override original method to delegate execution to the base module"""
-        yield from self._original_module.buffers(recurse=recurse)
+        """Override original method to delegate execution to the original PyTorch user module"""
+        yield from self._module_metadata.original_module.buffers(recurse=recurse)
 
     def named_buffers(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.Tensor]]:
         if not self._original_module:
             raise NotSupported("ORTModule crated from ONNX model doesn't support named_buffers")
 
-        """Override original method to delegate execution to the base module"""
-        yield from self._original_module.named_buffers(prefix=prefix, recurse=recurse)
+        """Override original method to delegate execution to the original PyTorch user module"""
+        yield from self._module_metadata.original_module.named_buffers(prefix=prefix, recurse=recurse)
 
     def _replicate_for_data_parallel(self):
         """Raises a NotImplementedError exception since ORTModule is not compatible with torch.nn.DataParallel
@@ -196,3 +200,36 @@ class ORTModule(torch.nn.Module):
 
         raise NotImplementedError("ORTModule is not compatible with torch.nn.DataParallel. "
                                   "Please use torch.nn.parallel.DistributedDataParallel instead.")
+
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
+                                missing_keys, unexpected_keys, error_msgs):
+        """Override original method to delegate execution to the original PyTorch user module"""
+
+        # PyTorch load_state_dict implementation does not recursively call load_state_dict on its sub-modules. 
+        # Instead, it creates a recursive function and invokes _load_from_state_dict on all child modules.
+        # For the scenario where an ORTModule is a sub-module of another module, loading of the state
+        # dictionary requires the _load_from_state_dict to be overridden to prevent an error.
+        self._module_metadata.original_module._load_from_state_dict(state_dict, prefix, local_metadata, strict,
+                                missing_keys, unexpected_keys, error_msgs)
+
+    def named_children(self) -> Iterator[Tuple[str, 'Module']]:
+        """Override original method to delegate execution to the original PyTorch user module"""
+
+        yield from self._module_metadata.original_module.named_children()
+
+    def modules(self) -> Iterator['Module']:
+        """Override original method to delegate execution to the original PyTorch user module"""
+
+        yield from self._module_metadata.original_module.modules()
+
+    def named_modules(self, *args, **kwargs):
+        """Override original method to delegate execution to the original PyTorch user module"""
+
+        # PyTorch >1.8.1 has an extra arg remove_duplicate that is not present in 1.8.1
+        # To support both, use args and kwargs (since user can call the method with only positional args or kwargs)
+        yield from self._module_metadata.original_module.named_modules(*args, **kwargs)
+
+    def add_module(self, name: str, module: Optional['Module']) -> None:
+        """Raises a NotImplementedError exception since ORTModule does not support adding modules to it"""
+
+        raise NotImplementedError("ORTModule does not support adding modules to it.")

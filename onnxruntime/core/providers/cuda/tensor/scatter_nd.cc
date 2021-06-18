@@ -13,7 +13,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(ScatterND,
                                   kOnnxDomain,
                                   11, 12,
                                   kCudaExecutionProvider,
-                                  KernelDefBuilder()
+                                  (*KernelDefBuilder::Create())
                                       .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
                                       .MayInplace(0, 0),
                                   ScatterND);
@@ -22,7 +22,7 @@ ONNX_OPERATOR_KERNEL_EX(ScatterND,
                         kOnnxDomain,
                         13,
                         kCudaExecutionProvider,
-                        KernelDefBuilder()
+                        (*KernelDefBuilder::Create())
                             .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
                             .MayInplace(0, 0),
                         ScatterND);

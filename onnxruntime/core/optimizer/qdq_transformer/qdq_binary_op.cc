@@ -32,6 +32,19 @@ class QDQBinaryOpTransformer : public QDQOperatorTransformer {
         .SetExecutionProviderType(kCpuExecutionProvider);
     return true;
   }
+
+  bool Check(const std::vector<const Node*>& dq_nodes, const std::vector<const Node*>& q_nodes) const override {
+    if (!QDQOperatorTransformer::Check(dq_nodes, q_nodes)) {
+      return false;
+    }
+
+    // Currently QLinearConv only support activation type uint8_t
+    int32_t dt_input_1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    return dt_input_1 == dt_input_2 &&
+           dt_input_1 == dt_output;
+  }
 };
 
 DEFINE_QDQ_CREATOR(Add, QDQBinaryOpTransformer)

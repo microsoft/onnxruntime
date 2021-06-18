@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-
 #include "core/providers/cuda/math/clip.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"

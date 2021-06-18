@@ -18,16 +18,16 @@ namespace cuda {
       1,                                                                                               \
       T1##_##T2##_##T3##_##T4##_##T_GRAD##_##T_GRAD_NORM##_##T_MIXED_PRECISION_FP,                     \
       kCudaExecutionProvider,                                                                          \
-      KernelDefBuilder()                                                                               \
+      (*KernelDefBuilder::Create())                                                                    \
           .Alias(1, 0)                              /* Update step count in-place */                   \
           .Alias(2, 3)                              /* Update weights in-place */                      \
           .Alias(3, 4)                              /* Update gradients in-place */                    \
           .Alias(4, 1)                              /* Update moment-1 in-place */                     \
           .Alias(5, 2)                              /* Update moment-2 in-place */                     \
           .Alias(6, 5)                              /* Update mixed_precision weights in-place */      \
-          .InputMemoryType<OrtMemTypeCPUInput>(1)   /* Keep step count in CPU */                       \
-          .InputMemoryType<OrtMemTypeCPUInput>(9)   /* Keep do_update in CPU */                        \
-          .OutputMemoryType<OrtMemTypeCPUOutput>(0) /* Keep step count in CPU */                       \
+          .InputMemoryType(OrtMemTypeCPUInput, 1)   /* Keep step count in CPU */                       \
+          .InputMemoryType(OrtMemTypeCPUInput, 9)   /* Keep do_update in CPU */                        \
+          .OutputMemoryType(OrtMemTypeCPUOutput, 0) /* Keep step count in CPU */                       \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())                                     \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T2>())                                     \
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<T3>())                                     \

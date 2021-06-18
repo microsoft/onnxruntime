@@ -400,7 +400,8 @@ and present state are optional. Present state could appear in output even when p
       .Input(
           4,
           "weight_scale",
-          "scale of weight scale. It's a scalar, which means a per-tensor/layer quantization.",
+          "scale of weight scale. It's a scalar or a 1D tensor, which means a per-tensor/per-column quantization."
+          "Its size should be 3 * hidden_size if it is per-column quantization",
           "T3")
       .Input(
           5,
@@ -417,7 +418,8 @@ and present state are optional. Present state could appear in output even when p
       .Input(
           7,
           "weight_zero_point",
-          "zero point of quantized weight tensor. It's a scalar, which means a per-tensor/layer quantization.",
+          "zero point of quantized weight tensor. It's a scalar or a 1D tensor, which means a per-tensor/per-column quantization."
+          "Its size should be 3 * hidden_size if it is per-column quantization",
           "T2",
           OpSchema::Optional)
       .Input(
@@ -2309,13 +2311,6 @@ Example 4:
         }
       });
 
-  // Register the NCHWc schemas if supported by the platform.
-  if (MlasNchwcGetBlockSize() > 1) {
-    RegisterNchwcSchemas();
-  }
-
-  RegisterNhwcSchemas();
-
   static const char* Gelu_ver1_doc =
       R"DOC(Gaussian Error Linear Unit.
 A high-performing neural network activation function.The GELU nonlinearity is
@@ -2684,10 +2679,14 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
         updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
       });
 
+#ifndef _OPSCHEMA_LIB_
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();
   }
+#endif
+
+  RegisterNhwcSchemas();
   RegisterBertSchemas();
 
 #ifdef BUILD_MS_EXPERIMENTAL_OPS

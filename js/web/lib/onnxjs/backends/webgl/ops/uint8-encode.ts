@@ -71,7 +71,8 @@ export class WebGLUint8Encode {
         float value = ${glsl.texture2D}(X,TexCoords).r;
         ${glsl.output} = encodeAsUint8(value);
       }`;
-    const programInfo = {inputLayouts: [input], outputLayout, samplers: ['X'], shaderSource, hasMain: true};
+    const programInfo =
+        {name: 'Uint8Encode', inputLayouts: [input], outputLayout, samplers: ['X'], shaderSource, hasMain: true};
     const artifact = inferenceHandler.session.programManager.build(programInfo);
 
     const encoder = inferenceHandler.session.backend.glContext.getEncoder('byte', 4);

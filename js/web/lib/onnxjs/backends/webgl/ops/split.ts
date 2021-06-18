@@ -43,6 +43,7 @@ export class WebGLSplit extends Split {
         return _A(indices);
       }`;
     return {
+      name: 'WebGLSplit',
       inputLayouts: [inferenceHandler.getOrCreateTextureLayout(input)],
       outputLayout: inferenceHandler.createTextureLayoutFromShape(outputShape),
       samplers: ['A'],

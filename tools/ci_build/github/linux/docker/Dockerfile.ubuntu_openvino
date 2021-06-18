@@ -38,8 +38,8 @@ RUN wget https://github.com/intel/compute-runtime/releases/download/19.41.14441/
     sudo dpkg -i *.deb && rm -rf *.deb
 
 RUN mkdir -p /opt/cmake/bin && \
-    wget https://github.com/Kitware/CMake/releases/download/v3.13.2/cmake-3.13.2-Linux-x86_64.tar.gz && \
-    tar -xf cmake-3.13.2-Linux-x86_64.tar.gz --strip 1 -C /opt/cmake && rm -rf /cmake-3.13.2-Linux-x86_64.tar.gz && \
+    wget https://github.com/Kitware/CMake/releases/download/v3.20.2/cmake-3.20.2-Linux-x86_64.tar.gz && \
+    tar -xf cmake-3.20.2-Linux-x86_64.tar.gz --strip 1 -C /opt/cmake && rm -rf /cmake-3.20.2-Linux-x86_64.tar.gz && \
     ln -sf /opt/cmake/bin/* /usr/bin
 
 ARG BUILD_UID=1000

@@ -2,33 +2,6 @@
 # Licensed under the MIT License.
 
 include(pybind11)
-FIND_PACKAGE(NumPy)
-
-if(NOT PYTHON_INCLUDE_DIR)
-  set(PYTHON_NOT_FOUND false)
-  exec_program("${PYTHON_EXECUTABLE}"
-    ARGS "-c \"import distutils.sysconfig; print(distutils.sysconfig.get_python_inc())\""
-    OUTPUT_VARIABLE PYTHON_INCLUDE_DIR
-    RETURN_VALUE PYTHON_NOT_FOUND)
-  if(${PYTHON_NOT_FOUND})
-    message(FATAL_ERROR
-            "Cannot get Python include directory. Is distutils installed?")
-  endif(${PYTHON_NOT_FOUND})
-endif(NOT PYTHON_INCLUDE_DIR)
-
-# 2. Resolve the installed version of NumPy (for numpy/arrayobject.h).
-if(NOT NUMPY_INCLUDE_DIR)
-  set(NUMPY_NOT_FOUND false)
-  exec_program("${PYTHON_EXECUTABLE}"
-    ARGS "-c \"import numpy; print(numpy.get_include())\""
-    OUTPUT_VARIABLE NUMPY_INCLUDE_DIR
-    RETURN_VALUE NUMPY_NOT_FOUND)
-  if(${NUMPY_NOT_FOUND})
-    message(FATAL_ERROR
-            "Cannot get NumPy include directory: Is NumPy installed?")
-  endif(${NUMPY_NOT_FOUND})
-endif(NOT NUMPY_INCLUDE_DIR)
-
 
 # ---[ Python + Numpy
 set(onnxruntime_pybind_srcs_pattern
@@ -64,7 +37,8 @@ if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4244")
 endif()
 
-target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${PYTHON_INCLUDE_DIR} ${NUMPY_INCLUDE_DIR} ${pybind11_INCLUDE_DIRS})
+onnxruntime_add_include_to_target(onnxruntime_pybind11_state Python::Module Python::NumPy)
+target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${pybind11_INCLUDE_DIRS})
 if(onnxruntime_USE_CUDA)
     target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CUDNN_HOME}/include)
 endif()
@@ -75,10 +49,23 @@ endif()
 if (onnxruntime_USE_NCCL)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${NCCL_INCLUDE_DIRS})
 endif()
+
 if (onnxruntime_ENABLE_TRAINING)
   # DLPack is a header-only dependency
   set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${ORTTRAINING_ROOT} ${DLPACK_INCLUDE_DIR})
+
+  file(GLOB onnxruntime_python_interface_cc_srcs
+    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.cc"
+    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.h"
+    "${ONNXRUNTIME_ROOT}/core/dlpack/python_common.h"
+  )
+
+  onnxruntime_add_static_library(onnxruntime_python_interface ${onnxruntime_python_interface_cc_srcs})
+  add_dependencies(onnxruntime_python_interface onnx  ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  target_include_directories(onnxruntime_python_interface PRIVATE ${DLPACK_INCLUDE_DIR})
+  onnxruntime_add_include_to_target(onnxruntime_python_interface onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers Python::Module)
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_python_interface)
 endif()
 
 if(APPLE)
@@ -89,10 +76,17 @@ else()
   set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${ONNXRUNTIME_ROOT}/python/pybind.def")
 endif()
 
-set(onnxruntime_pybind11_state_libs
+if (onnxruntime_ENABLE_TRAINING)
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_training)
+endif()
+
+if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_interop_torch)
+endif()
+
+target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
-    ${PROVIDERS_CUDA}
     ${PROVIDERS_MIGRAPHX}
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_VITISAI}
@@ -116,11 +110,7 @@ set(onnxruntime_pybind11_state_libs
 )
 
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
-  list(APPEND onnxruntime_pybind11_state_libs onnxruntime_language_interop onnxruntime_pyop)
-endif()
-
-if (onnxruntime_ENABLE_TRAINING)
-  list(INSERT onnxruntime_pybind11_state_libs 1 onnxruntime_training)
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
 
 set(onnxruntime_pybind11_state_dependencies
@@ -133,19 +123,18 @@ add_dependencies(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_depende
 if (MSVC)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG}")
   # if MSVC, pybind11 looks for release version of python lib (pybind11/detail/common.h undefs _DEBUG)
-  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs}
-          ${PYTHON_LIBRARY_RELEASE} ${onnxruntime_EXTERNAL_LIBRARIES})
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE Python::Module)
 elseif (APPLE)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG} -undefined dynamic_lookup")
-  target_link_libraries(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_libs} ${onnxruntime_EXTERNAL_LIBRARIES})
   set_target_properties(onnxruntime_pybind11_state PROPERTIES
     INSTALL_RPATH "@loader_path"
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH_USE_LINK_PATH FALSE)
 else()
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind11_state_libs} ${onnxruntime_EXTERNAL_LIBRARIES})
-  set_property(TARGET onnxruntime_pybind11_state APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker -rpath=\$ORIGIN")
+  set_property(TARGET onnxruntime_pybind11_state APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker -rpath=\\$ORIGIN")
 endif()
+
+target_link_libraries(onnxruntime_pybind11_state PRIVATE ${onnxruntime_EXTERNAL_LIBRARIES})
 
 set_target_properties(onnxruntime_pybind11_state PROPERTIES PREFIX "")
 set_target_properties(onnxruntime_pybind11_state PROPERTIES FOLDER "ONNXRuntime")
@@ -245,6 +234,12 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   file(GLOB onnxruntime_python_dhp_parallel_test_srcs CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/test/python/dhp_parallel/*.py"
   )
+  file(GLOB onnxruntime_python_transformers_test_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/test/python/transformers/*.py"
+  )
+  file(GLOB onnxruntime_python_transformers_testdata_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/test/python/transformers/test_data/models/*.onnx"
+  )
 endif()
 
 file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
@@ -304,6 +299,8 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/checkpoint
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/dhp_parallel
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/quantization
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
@@ -369,7 +366,8 @@ add_custom_command(
       $<TARGET_FILE_DIR:${build_output_target}>
 )
 
-if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD 
+if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
+                                  AND NOT onnxruntime_ENABLE_TRAINING
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
                                   AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
                                   AND NOT onnxruntime_BUILD_WEBASSEMBLY)
@@ -396,6 +394,12 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_dhp_parallel_test_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/dhp_parallel/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_transformers_test_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_transformers_testdata_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/
   )
 endif()
 
@@ -457,6 +461,16 @@ if (onnxruntime_USE_OPENVINO)
     )
 endif()
 
+if (onnxruntime_USE_CUDA)
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
+          $<TARGET_FILE:onnxruntime_providers_cuda>
+          $<TARGET_FILE:onnxruntime_providers_shared>
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    )
+endif()
+
 if (onnxruntime_USE_TVM)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
@@ -499,4 +513,8 @@ endif()
 endif()
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   include(onnxruntime_language_interop_ops.cmake)
+endif()
+
+if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+  include(onnxruntime_interop_torch.cmake)
 endif()

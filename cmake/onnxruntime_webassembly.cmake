@@ -24,7 +24,7 @@ target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
 
 target_link_libraries(onnxruntime_webassembly PRIVATE
   nsync_cpp
-  protobuf::libprotobuf-lite
+  ${PROTOBUF_LIB}
   onnx
   onnx_proto
   onnxruntime_common
@@ -51,6 +51,7 @@ set_target_properties(onnxruntime_webassembly PROPERTIES LINK_FLAGS "           
                       -s LLD_REPORT_UNDEFINED                                                 \
                       -s VERBOSE=0                                                            \
                       -s NO_FILESYSTEM=1                                                      \
+                      -s MALLOC=${onnxruntime_WEBASSEMBLY_MALLOC}                             \
                       --no-entry")
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -60,9 +61,19 @@ else()
 endif()
 
 if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-  set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasmThreaded -s USE_PTHREADS=1")
-  set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-threaded")
+  if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasmSimdThreaded -s USE_PTHREADS=1")
+    set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-simd-threaded")
+  else()
+    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasmThreaded -s USE_PTHREADS=1")
+    set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-threaded")
+  endif()
 else()
-  set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasm")
-  set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm")
+  if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasmSimd")
+    set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm-simd")
+  else()
+    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " -s EXPORT_NAME=ortWasm")
+    set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME "ort-wasm")
+  endif()
 endif()

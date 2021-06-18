@@ -109,9 +109,8 @@ export declare namespace Test {
     cudaOptions?: InferenceSession.CudaExecutionProviderOption;
     cudaFlags?: Record<string, unknown>;
     wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
-    wasmFlags?: Env.WebAssemblyFlags;
     webglOptions?: InferenceSession.WebGLExecutionProviderOption;
-    webglFlags?: Env.WebGLFlags;
+    globalEnvFlags?: Env;
   }
 
   /**
