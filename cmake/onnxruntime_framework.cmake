@@ -55,11 +55,11 @@ target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} ${e
 endif()
 # Needed for the provider interface, as it includes training headers when training is enabled
 if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
+  target_include_directories(onnxruntime_framework PRIVATE ${ORTTRAINING_ROOT})
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     onnxruntime_add_include_to_target(onnxruntime_framework Python::Module)
     # DLPack is a header-only dependency
     set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
-    target_include_directories(onnxruntime_framework PUBLIC ${DLPACK_INCLUDE_DIR})
   endif()
   if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)  
     target_include_directories(onnxruntime_framework PUBLIC ${MPI_CXX_INCLUDE_DIRS})
