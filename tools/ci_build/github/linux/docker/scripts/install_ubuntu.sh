@@ -99,32 +99,10 @@ apt-get update && apt-get install -y --no-install-recommends $PACKAGE_LIST
 locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
 
-if [ "$SYS_LONG_BIT" = "64" ]; then
-  mkdir -p /tmp/dotnet
-  aria2c -q -d /tmp/dotnet https://packages.microsoft.com/config/ubuntu/${OS_VERSION}/packages-microsoft-prod.deb
-  dpkg -i /tmp/dotnet/packages-microsoft-prod.deb
-  apt-get update
-  apt-get install -y dotnet-sdk-2.1
-  rm -rf /tmp/dotnet
-fi
-
 if [ "$OS_VERSION" = "16.04" ]; then
     exit 1
 elif [ "$OS_VERSION" = "18.04" ]; then
-    if [ "$PYTHON_VER" != "3.6" ]; then
-	    add-apt-repository -y ppa:deadsnakes/ppa
-        apt-get update
-        apt-get install -y --no-install-recommends \
-                python${PYTHON_VER} \
-                python${PYTHON_VER}-dev
-        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VER} 1
-        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.6 2
-        update-alternatives --set python3 /usr/bin/python${PYTHON_VER}
-        #TODO: the old one(/usr/bin/pip3) should be uninstalled first. Because the one will be
-        #put at /usr/local/. Then there will be two pips.
-        /usr/bin/python${PYTHON_VER} -m pip install --upgrade --force-reinstall pip==19.0.3
-    fi
-
+    exit 1
 else # ubuntu20.04
     if [ "$PYTHON_VER" != "3.8" ]; then
 	    add-apt-repository -y ppa:deadsnakes/ppa
