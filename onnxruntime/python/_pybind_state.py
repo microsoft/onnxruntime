@@ -20,7 +20,7 @@ if platform.system() == "Windows":
             # Prior to CUDA 11 both major and minor version at build time/runtime have to match.
             cuda_env_variable = f"CUDA_PATH_V{cuda_version_major}_{cuda_version_minor}"
             if cuda_env_variable not in os.environ:
-                raise ImportError(f"CUDA Toolkit {version_info.cuda_version} not installed on the machine.")
+                print(f"CUDA Toolkit {version_info.cuda_version} not installed on the machine.")
         else:
             # With CUDA 11 and newer only the major version at build time/runtime has to match.
             # Use the most recent minor version available.
@@ -30,7 +30,7 @@ if platform.system() == "Windows":
                     cuda_env_variable = f"CUDA_PATH_V{cuda_version_major}_{i}"
                     break
             if not cuda_env_variable:
-                raise ImportError(f"CUDA Toolkit {cuda_version_major}.x not installed on the machine.")
+                print(f"CUDA Toolkit {cuda_version_major}.x not installed on the machine.")
 
         cuda_bin_dir = os.path.join(os.environ[cuda_env_variable], "bin")
 
@@ -40,9 +40,9 @@ if platform.system() == "Windows":
         cudnn_bin_dir = os.path.join(cudnn_path, "bin")
 
         if not os.path.isfile(os.path.join(cudnn_bin_dir, f"cudnn64_{version_info.cudnn_version}.dll")):
-            raise ImportError(f"cuDNN {version_info.cudnn_version} not installed in {cudnn_bin_dir}. "
-                              f"Set the CUDNN_HOME environment variable to the path of the 'cuda' directory "
-                              f"in your CUDNN installation if necessary.")
+            print(f"cuDNN {version_info.cudnn_version} not installed in {cudnn_bin_dir}. "
+                  f"Set the CUDNN_HOME environment variable to the path of the 'cuda' directory "
+                  f"in your CUDNN installation if necessary.")
 
         if sys.version_info >= (3, 8):
             # Python 3.8 (and later) doesn't search system PATH when loading DLLs, so the CUDA location needs to be
@@ -57,7 +57,7 @@ if platform.system() == "Windows":
             # Python 3.7 (and earlier) searches directories listed in PATH variable.
             # Make sure that the target CUDA version is at the beginning (important if multiple CUDA versions are
             # installed on the machine.)
-            os.environ["PATH"] = cuda_bin_dir + os.pathsep + os.environ["PATH"]
+            os.environ["PATH"] += cuda_bin_dir + os.pathsep + os.environ["PATH"]
 
     if version_info.vs2019 and platform.architecture()[0] == "64bit":
         if not os.path.isfile("C:\\Windows\\System32\\vcruntime140_1.dll"):

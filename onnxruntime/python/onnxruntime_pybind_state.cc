@@ -491,6 +491,12 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
         external_allocator_info = info.external_allocator_info;
         RegisterExecutionProvider(sess, *cuda_provider_info->CreateExecutionProviderFactory(info));
       }
+      else
+      {
+        if(!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
+          ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded");
+        }
+      }
 #endif
     } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
