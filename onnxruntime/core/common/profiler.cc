@@ -89,7 +89,8 @@ void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer
                             static_cast<int64_t>(kernel->end),
                             static_cast<int64_t>(kernel->correlationId)});
         }
-      } else if (status == CUPTI_ERROR_MAX_LIMIT_REACHED) {
+      //} else if (status == CUPTI_ERROR_MAX_LIMIT_REACHED) {
+      } else {
         break;
       }
     } while (1);
