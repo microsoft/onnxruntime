@@ -12,7 +12,7 @@ import {WebGLUnpack} from './ops/unpack';
 import {WebGLSessionHandler} from './session-handler';
 import {Encoder} from './texture-data-encoder';
 import {WidthHeightPrefs} from './texture-layout-strategy';
-import {Artifact, RunData, TextureData, TextureLayout, WebGLOperator} from './types';
+import {Artifact, ProgramInfo, RunData, TextureData, TextureLayout, WebGLOperator} from './types';
 import {getPackedShape} from './utils';
 
 export class WebGLInferenceHandler implements InferenceHandler {
@@ -28,19 +28,22 @@ export class WebGLInferenceHandler implements InferenceHandler {
     this.unpack2packMap = new Map();
   }
 
-  run(op: WebGLOperator, inputs: Tensor[]): Tensor[] {
-    let artifact = this.session.programManager.getArtifact(op);
-    if (!artifact) {
-      const programInfo = op.createProgramInfo(this, inputs);
-      if (!programInfo.name) {
-        programInfo.name = op.constructor?.name;
-      }
-      artifact = this.session.programManager.build(programInfo);
-      this.session.programManager.setArtifact(op, artifact);
-    }
-    const runData = op.createRunData(this, artifact.programInfo, inputs);
-    this.runProgram(artifact, runData);
-    return [runData.outputTextureData.tensor];
+  // run(op: WebGLOperator, inputs: Tensor[]): Tensor[] {
+  //   let artifact = this.session.programManager.getArtifact(op);
+  //   if (!artifact) {
+  //     const programInfo = op.createProgramInfo(this, inputs);
+  //     if (!programInfo.name) {
+  //       programInfo.name = op.constructor?.name;
+  //     }
+  //     artifact = this.session.programManager.build(programInfo);
+  //     this.session.programManager.setArtifact(op, artifact);
+  //   }
+  //   const runData = op.createRunData(this, artifact.programInfo, inputs);
+  //   this.runProgram(artifact, runData);
+  //   return [runData.outputTextureData.tensor];
+  // }
+  run(programInfo: ProgramInfo, inputs: Tensor[]): Tensor {
+    // TODO
   }
 
   checkAndUpdateTextureForm(artifact: Artifact, runData: RunData) {

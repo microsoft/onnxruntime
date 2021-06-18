@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {Graph} from '../../../graph';
 import {BatchNormalization} from '../../../ops/batch-normalization';
 import {Tensor} from '../../../tensor';
 import {getGlsl} from '../glsl-source';
@@ -41,3 +42,21 @@ export class WebGLBatchNormalization extends BatchNormalization {
     return {inputTextureDatas: inputTDs, outputTextureData: outputTD, uniformData: {}};
   }
 }
+
+export interface BatchNormalizationAttributes {
+  epsilon: number;
+  momentum: number;
+  spatial: number;
+}
+
+export const batchNormalization =
+    (inferenceHandler: WebGLInferenceHandler, attributes: BatchNormalizationAttributes, inputs: Tensor[]): Tensor[] => {
+      // TODO: implementation
+    };
+
+export const parseBatchNormalizationAttributes = (node: Graph.Node): BatchNormalizationAttributes => {
+  const epsilon = node.attributes.getFloat('epsilon', 1e-5);
+  const momentum = node.attributes.getFloat('momentum', 0.9);
+  const spatial = node.attributes.getInt('spatial', 1);
+  return {epsilon, momentum, spatial};
+};

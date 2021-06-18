@@ -4,7 +4,7 @@
 import {FLOAT_TYPES, NUMBER_TYPES} from '../../operators';
 import {OpSet} from '../../opset';
 
-import {WebGLBatchNormalization} from './ops/batch-normalization';
+import {batchNormalization, parseBatchNormalizationAttributes} from './ops/batch-normalization';
 import * as binaryOps from './ops/binary-op';
 import {WebGLClip} from './ops/clip';
 import {WebGLConcat} from './ops/concat';
@@ -44,7 +44,7 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Asin', '', '7+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslAsin())],
   ['Atan', '', '7+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslAtan())],
   ['AveragePool', '', '7-10', () => new WebGLAveragePool()],  // TODO: support new attributes for AveragePool-10
-  ['BatchNormalization', '', '7+', () => new WebGLBatchNormalization()],
+  ['BatchNormalization', '', '7+', batchNormalization, parseBatchNormalizationAttributes],
   ['Ceil', '', '6+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslCeil())],
   ['Clip', '', '6-10', () => new WebGLClip()],
   ['Concat', '', '4+', () => new WebGLConcat()],

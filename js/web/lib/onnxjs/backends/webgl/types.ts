@@ -3,17 +3,6 @@
 
 import {Tensor} from '../../tensor';
 
-import {WebGLInferenceHandler} from './inference-handler';
-import {WebGLContext} from './webgl-context';
-
-/**
- * Represent an operator instance that can run in WebGL backend
- */
-export interface WebGLOperator {
-  createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo;
-  createRunData(handler: WebGLInferenceHandler, programInfo: ProgramInfo, inputs: Tensor[]): RunData;
-}
-
 /**
  * Layout info is used for mapping n-dimensional array to 2D textures
  * The layout is created by the TextureLayoutStrategy based on
@@ -50,26 +39,47 @@ export interface TextureData extends TextureLayout {
   texture: WebGLTexture;
 }
 
+export enum TextureType {
+  unpacked,
+  packed,
+  downloadUint8AsFloat,
+  packedConvWeight
+}
+
+export interface TensorInfo {
+  id: Tensor.Id;
+  dims: readonly number[];
+  type: Tensor.DataType;
+  textureType: TextureType;
+}
+
+export interface ProgramVariable {
+  type: 'float'|'int';
+  name: string;
+  arrayLength?: number;
+  data: number|number[];
+}
+
 /**
  * A set of data that represent a shader program
  */
 export interface ProgramInfo {
   /**
-   * texture layouts for each input
+   * texture types for each input
    */
-  inputLayouts: TextureLayout[];
+  inputTypes: TextureType[];
   /**
-   * names of uniform samplers
+   * names of each input
    */
-  samplers: string[];
+  inputNames: string[];
   /**
    * information of uniform variables
    */
-  variables?: VariableInfo[];
+  variables?: ProgramVariable[];
   /**
-   * texture layout for output
+   * tensor info for output
    */
-  outputLayout: TextureLayout;
+  output: TensorInfo;
   /**
    * the shader's processing source code
    */
@@ -78,10 +88,9 @@ export interface ProgramInfo {
    * whether the shader source contains a customized main function implementation
    */
   hasMain?: boolean;
-  params?: {[name: string]: number|number[]|string};
-
-  expectPackedInputs?: boolean;
-  expectPackedOutputs?: boolean;
+  /**
+   * the name of the program. used for debugging and profiling
+   */
   name?: string;
 }
 
@@ -89,6 +98,13 @@ export interface VariableInfo {
   type: 'float'|'int';
   name: string;
   arrayLength?: number;
+}
+
+export interface ProgramVariable {
+  type: 'float'|'int';
+  name: string;
+  arrayLength?: number;
+  data: number|number[];
 }
 
 /**
@@ -122,14 +138,4 @@ export declare namespace Artifact {
 
 export interface UniformData {
   [name: string]: number|number[];
-}
-
-/**
- * RunData contains all inputs that required to run a "program"
- */
-export interface RunData {
-  inputTextureDatas: TextureData[];
-  outputTextureData: TextureData;
-  uniformData: UniformData;
-  draw?: (glContext: WebGLContext, artifact: Artifact) => void;
 }
