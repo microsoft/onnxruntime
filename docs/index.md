@@ -67,6 +67,9 @@ The ORTModule is instantiated from [`torch-ort`](https://github.com/pytorch/ort)
 
 ```python
    from torch_ort import ORTModule
+   .
+   .
+   .
    model = ORTModule(model)
 ```
 
