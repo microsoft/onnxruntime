@@ -42,7 +42,7 @@ def insert_latency(commit_hash, report_url, latency):
 
         # delete old records
         delete_query = ('DELETE FROM onnxruntime.ep_latency_over_time '
-                        'WHERE UploadTime < DATE_SUB(Now(), INTERVAL 30 DAY);'
+                        'WHERE UploadTime < DATE_SUB(Now(), INTERVAL 100 DAY);'
                         )
 
         cursor.execute(delete_query)
@@ -144,9 +144,9 @@ def main():
     cert = get_database_cert()
     ssl_args = {'ssl_ca': cert}
     connection_string = sql_connector + \
-                        user + \
+                        user + ':' + \
                         password + \
-                        host + \
+                        '@' + host + '/' + \
                         database
     engine = create_engine(connection_string, connect_args=ssl_args)
 

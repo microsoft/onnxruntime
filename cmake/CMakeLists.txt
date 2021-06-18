@@ -664,7 +664,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
     # We will not need to install benchmark since we link it statically.
     set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "Disable benchmark install to avoid overwriting vendor install.")
     add_subdirectory(${PROJECT_SOURCE_DIR}/external/googlebenchmark EXCLUDE_FROM_ALL)
-    add_library(benchmark::benchmark ALIAS benchmark)
+    #add_library(benchmark::benchmark ALIAS benchmark)
   endif()
 endif()
 
