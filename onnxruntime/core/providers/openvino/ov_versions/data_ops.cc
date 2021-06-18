@@ -531,7 +531,7 @@ void DataOps::populate_op_mode_supported() {
     op_list_.insert({"And", obj});
   }
   {
-    UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3, V_2021_4},
+    UnsupportedOpMode obj = {{V_2021_1, V_2021_2, V_2021_3},
                              [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("GPU") != std::string::npos) {
                                  const auto& input = node->InputDefs()[0];
@@ -542,6 +542,27 @@ void DataOps::populate_op_mode_supported() {
                                    if (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64)
                                      return true;
                                  }
+                               }
+                               return false;
+                             }};
+    op_list_.insert({"Gather", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2021_4},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               if (device_id_.find("GPU") != std::string::npos) {
+                                 const auto& input = node->InputDefs()[0];
+                                 auto graph_inputs = graph_viewer_.GetInputs();
+                                 auto it = find(graph_inputs.begin(), graph_inputs.end(), input);
+                                 if (it != graph_inputs.end()) {
+                                   const auto& indices_arg = node->InputDefs()[1];
+                                   if (indices_arg->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT64)
+                                     return true;
+                                 }
+                                 auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+                                 //If the output of Gather op is INT8, it is rejected for GPU.
+                                 if (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8)
+                                   return true;
                                }
                                return false;
                              }};
@@ -717,6 +738,19 @@ void DataOps::populate_op_mode_supported() {
                                return false;
                              }};
     op_list_.insert({"Mod", obj});
+  }
+  {
+    UnsupportedOpMode obj = {{V_2021_4},
+                             [this](const Node* node, const InitializedTensorSet&) {
+                               if (device_id_.find("GPU") != std::string::npos) {
+                                auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+                                //If the output of Neg op is INT8, it is rejected for GPU.
+                                if (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8)
+                                  return true;
+                               }
+                               return false;
+                             }};
+    op_list_.insert({"Neg", obj});
   }
   {
     UnsupportedOpMode obj = {{V_2021_2, V_2021_3, V_2021_4},
