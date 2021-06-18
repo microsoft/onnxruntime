@@ -47,7 +47,7 @@ export enum TextureType {
 }
 
 export interface TensorInfo {
-  id: Tensor.Id;
+  id?: Tensor.Id;
   dims: readonly number[];
   type: Tensor.DataType;
   textureType: TextureType;
