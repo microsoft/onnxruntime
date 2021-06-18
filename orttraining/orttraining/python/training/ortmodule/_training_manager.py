@@ -47,9 +47,6 @@ class TrainingManager(GraphExecutionManager):
         execution_session.run_forward(forward_inputs, forward_outputs, state)
         user_outputs = tuple(_utils._ortvalue_to_torch_tensor(forward_output) for forward_output in forward_outputs)
 
-        # Assert that the outputs and model device match
-        _utils._check_same_device(device, "Output argument from forward", *user_outputs)
-
         output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
         run_info = RunStateInfo(state, output_info)
         # Return user outputs and forward run information
@@ -118,6 +115,14 @@ class TrainingManager(GraphExecutionManager):
                 # converted to a tensor filled with zeros prior to calling backward.
                 # Save shape, device and type info to ctx for materializing tensor in backward if output grad is None.
                 ctx.set_materialize_grads(False)
+
+                # Mark the outputs tensors needed in backward computation
+                # ORT is NOT relying on save_for_backward() to actually save the tensor, 
+                # as this tensor is also kept in ORT's PartialGraphState
+                # This call is to invoke pytorch's version check to detect the potential inplace corruption
+                for idx in self._graph_info.module_output_indices_requires_save_for_backward:
+                    ctx.save_for_backward(user_outputs[idx])
+
                 return user_outputs
 
             @staticmethod
@@ -126,6 +131,9 @@ class TrainingManager(GraphExecutionManager):
 
                 assert ctx.run_info is not None, 'forward() or __call__() methods must be called before backward()'
                 _utils._check_same_device(self._device, "Input argument to backward", *grad_outputs)
+
+                # Unpack saved_tensor to trigger version detection that catches inplace corruption
+                _ = ctx.saved_tensors
 
                 # Use IO binding
                 # Push user output grads to ONNX backend.
@@ -192,8 +200,7 @@ class TrainingManager(GraphExecutionManager):
         return _io.unflatten_user_output(self._module_output_schema,
                                         _ORTModuleFunction.apply(
                                             *_io._combine_input_buffers_initializers(
-                                                [param for name, param in self._flattened_module.named_parameters()
-                                                    if name in self._graph_initializer_names],
+                                                self._graph_initializers,
                                                 self._graph_info.user_input_names,
                                                 self._input_info,
                                                 self._flattened_module.named_buffers(),
