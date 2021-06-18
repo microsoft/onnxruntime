@@ -90,14 +90,7 @@ elif [ $BUILD_DEVICE = "tensorrt" ]; then
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
             --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64  --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-9/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-9/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-9/root/usr/lib64:/opt/rh/devtoolset-9/root/usr/lib:/opt/rh/devtoolset-9/root/usr/lib64/dyninst:/opt/rh/devtoolset-9/root/usr/lib/dyninst:/usr/local/lib64" \
             --dockerfile $DOCKER_FILE --context .
-elif [ $BUILD_DEVICE = "openvino" ]; then
-        IMAGE="$BUILD_OS-openvino"
-        DOCKER_FILE=Dockerfile.ubuntu_openvino
-        $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-            --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OPENVINO_VERSION=${OPENVINO_VERSION}" \
-            --dockerfile $DOCKER_FILE --context .
-else
-        IMAGE="$BUILD_OS"
+else        
 		IMAGE_OS_VERSION=""
 		if [ $BUILD_OS = "ubuntu18.04" ]; then
 		   IMAGE_OS_VERSION="18.04"
@@ -108,10 +101,19 @@ else
 		else
 		   exit 1
 	    fi
+		BUILD_ARGS="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OS_VERSION=${IMAGE_OS_VERSION}"
 		
-        $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-                --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OS_VERSION=${IMAGE_OS_VERSION}" \
-                --dockerfile Dockerfile.ubuntu --context .
+		if [ $BUILD_DEVICE = "openvino" ]; then
+           IMAGE="$BUILD_OS-openvino"
+           DOCKER_FILE=Dockerfile.ubuntu_openvino
+		   BUILD_ARGS+="OPENVINO_VERSION=${OPENVINO_VERSION}"           
+		else
+           IMAGE="$BUILD_OS"
+		   DOCKER_FILE=Dockerfile.ubuntu           
+		fi
+		$GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
+                --docker-build-args="${BUILD_ARGS}" \
+                --dockerfile $DOCKER_FILE --context .
 fi
 
 if [ -v EXTRA_IMAGE_TAG ]; then
