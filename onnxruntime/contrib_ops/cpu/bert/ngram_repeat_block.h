@@ -13,6 +13,7 @@ class NGramRepeatBlock : public OpKernel {
  public:
   explicit NGramRepeatBlock(const OpKernelInfo& info) : OpKernel(info) {
     ORT_ENFORCE(info.GetAttr<int64_t>("ngram_size", &ngram_size_).IsOK());
+    ORT_ENFORCE(ngram_size_ > 0);
   }
 
   Status Compute(OpKernelContext* context) const override {
@@ -35,7 +36,7 @@ class NGramRepeatBlock : public OpKernel {
     ORT_ENFORCE(scores_dims[0] == batch_size);
     int64_t vocab_size = scores_dims[1];
 
-    if (cur_len + 1 < ngram_size_ || ngram_size_ <= 0) {
+    if (cur_len + 1 < ngram_size_) {
       return Status::OK();
     }
 
