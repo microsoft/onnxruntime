@@ -1320,6 +1320,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtT
   *ptr = onnxruntime::StrDup(options_str, allocator);
   return nullptr;
 #else
+  ORT_UNUSED_PARAMETER(tensorrt_options);
   ORT_UNUSED_PARAMETER(allocator);
   ORT_UNUSED_PARAMETER(ptr);
   return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");

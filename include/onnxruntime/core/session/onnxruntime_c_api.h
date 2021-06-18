@@ -1416,7 +1416,7 @@ struct OrtApi {
   * Use this API to set appropriate configuration knobs of a TensorRT Execution Provider.
   *
   * Please reference to https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#c-api-example
-  * to know the available keys and values. key should be in string format of the member of OrtTensorRTProviderOptions and value should be it's related range. 
+  * to know the available keys and values. Key should be in string format of the member of OrtTensorRTProviderOptions and value should be its related range.
   * For example, key="trt_max_workspace_size" and value="2147483648"
   *
   * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance
