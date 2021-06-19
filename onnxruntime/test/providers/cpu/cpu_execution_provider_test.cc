@@ -66,7 +66,7 @@ TEST(CPUExecutionProviderTest, ModelTest) {
     tensor_type_shape_info.GetDimensions(tensor_data.shape.data(), dims_count);
 
     // replace dynamic dim to 1
-    for (size_t j = 0; j < dims_count; i++) {
+    for (size_t j = 0; j < dims_count; j++) {
       if (tensor_data.shape[j] == -1)
         tensor_data.shape[j] = 1;
     }
