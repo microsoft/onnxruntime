@@ -24,7 +24,7 @@ struct TensorData {
 
 int GetRand(int min, int max) {
   srand(time(NULL));
-  return value = rand() / (max - min + 1) + min;
+  return rand() / (max - min + 1) + min;
 }
 
 void FillInputData(std::vector<TensorData>& input_data) {
@@ -42,7 +42,7 @@ void FillInputData(std::vector<TensorData>& input_data) {
           reinterpret_cast<int32_t*>(entry.buffer.get())[i] = static_cast<int32_t>(r);
           break;
         case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-          entry.buffer.get()[i] = static_cast<float>(r);
+          entry.buffer.get()[i] = static_cast<uint8_t>(r);
           break;
         default:
           ORT_CXX_API_THROW("The input type is not supported for now", ORT_INVALID_ARGUMENT);
@@ -110,6 +110,8 @@ TEST(CPUExecutionProviderTest, ModelTest) {
   std::vector<TensorData> input_data, output_data;
   GetIOInfo(session, ort_alloc, input_names, input_data, true /* is_input */);
   GetIOInfo(session, ort_alloc, output_names, output_data, false /* is_input */);
+
+  FillInputData(input_data);
 }
 
 }  // namespace test
