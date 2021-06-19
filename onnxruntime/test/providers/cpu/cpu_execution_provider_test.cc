@@ -98,29 +98,31 @@ void GetIOInfo(const Ort::Session& session, OrtAllocator* allocator,
 
 std::vector<Ort::Value> GetIOTensors(std::vector<TensorData>& io_data) {
   std::vector<Ort::Value> io_tensors;
+  io_tensors.reserve(io_data.size());
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
   for (auto& entry : io_data) {
     switch (entry.type) {
       case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
-        Ort::Value::CreateTensor<int64_t>(memory_info, reinterpret_cast<int64_t*>(entry.buffer.get()), entry.size,
-                                          entry.shape.data(), entry.shape.size());
+        io_tensors.push_back(Ort::Value::CreateTensor<int64_t>(
+            memory_info, reinterpret_cast<int64_t*>(entry.buffer.get()), entry.size, entry.shape.data(), entry.shape.size()));
         break;
       case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-        Ort::Value::CreateTensor<float>(memory_info, reinterpret_cast<float*>(entry.buffer.get()), entry.size,
-                                        entry.shape.data(), entry.shape.size());
+        io_tensors.push_back(Ort::Value::CreateTensor<float>(
+            memory_info, reinterpret_cast<float*>(entry.buffer.get()), entry.size, entry.shape.data(), entry.shape.size()));
         break;
       case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-        Ort::Value::CreateTensor<int32_t>(memory_info, reinterpret_cast<int32_t*>(entry.buffer.get()), entry.size,
-                                          entry.shape.data(), entry.shape.size());
+        io_tensors.push_back(Ort::Value::CreateTensor<int32_t>(
+            memory_info, reinterpret_cast<int32_t*>(entry.buffer.get()), entry.size, entry.shape.data(), entry.shape.size()));
         break;
       case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-        Ort::Value::CreateTensor<uint8_t>(memory_info, reinterpret_cast<uint8_t*>(entry.buffer.get()), entry.size,
-                                          entry.shape.data(), entry.shape.size());
+        io_tensors.push_back(Ort::Value::CreateTensor<uint8_t>(
+            memory_info, reinterpret_cast<uint8_t*>(entry.buffer.get()), entry.size, entry.shape.data(), entry.shape.size()));
         break;
       default:
         ORT_CXX_API_THROW("The input type is not supported for now", ORT_INVALID_ARGUMENT);
     }
   }
+  return io_tensors;
 }
 
 TEST(CPUExecutionProviderTest, ModelTest) {
