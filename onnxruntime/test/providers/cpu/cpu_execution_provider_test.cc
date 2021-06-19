@@ -21,27 +21,21 @@ struct TensorData {
   std::vector<int64_t> shape;
 };
 
-TEST(CPUExecutionProviderTest, ModelTest) {
-  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/coreml_argmax_cast_test.onnx");
-  Ort::AllocatorWithDefaultOptions ort_alloc;
-
-  Ort::SessionOptions so;
-  so.SetLogId("ModelTest");
-
-  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "test"};
-  Ort::Session session(env, model_file_name, so);
-
+void GetIOInfo(const Ort::Session& session, OrtAllocator* allocator,
+               std::vector<char*>& io_names, std::vector<TensorData>& io_info) {
+  io_names.clear();
+  io_info.clear();
   size_t num_input = session.GetInputCount();
-  std::vector<char*> input_name(num_input);
-  std::vector<TensorData> input_data(num_input);
+  io_names.resize(num_input);
+  io_info.resize(num_input);
   for (size_t i = 0; i < num_input; ++i) {
-    input_name[i] = session.GetInputName(i, ort_alloc);
+    io_names[i] = session.GetInputName(i, allocator);
     const auto type_info = session.GetInputTypeInfo(i);
     if (type_info.GetONNXType() != ONNXType::ONNX_TYPE_TENSOR) {
       ORT_CXX_API_THROW("We only accept tensor input", ORT_INVALID_ARGUMENT);
     }
 
-    TensorData& tensor_data = input_data[i];
+    TensorData& tensor_data = io_info[i];
     const auto& tensor_type_shape_info = type_info.GetTensorTypeAndShapeInfo();
     tensor_data.type = tensor_type_shape_info.GetElementType();
     tensor_data.size = tensor_type_shape_info.GetElementCount();
@@ -54,7 +48,6 @@ TEST(CPUExecutionProviderTest, ModelTest) {
         tensor_data.buffer.reset(new uint8_t[tensor_data.size * 4]);
         break;
       case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-      case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
         tensor_data.buffer.reset(new uint8_t[tensor_data.size]);
         break;
       default:
@@ -71,6 +64,21 @@ TEST(CPUExecutionProviderTest, ModelTest) {
         tensor_data.shape[j] = 1;
     }
   }
+}
+
+TEST(CPUExecutionProviderTest, ModelTest) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/coreml_argmax_cast_test.onnx");
+  Ort::AllocatorWithDefaultOptions ort_alloc;
+
+  Ort::SessionOptions so;
+  so.SetLogId("ModelTest");
+
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "test"};
+  Ort::Session session(env, model_file_name, so);
+
+  std::vector<char*> input_names;
+  std::vector<TensorData> input_info;
+  GetIOInfo(session, ort_alloc, input_names, input_info);
 }
 
 }  // namespace test
