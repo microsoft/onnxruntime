@@ -291,7 +291,7 @@ def _extract_schema(data):
     elif isinstance(data, torch.Tensor):
         return _TensorStub(dtype=str(data.dtype), shape_dims=len(data.size()))
 
-    if isinstance(data, abc.Sequence):
+    if isinstance(data, abc.Sequence) and not isinstance(data, str):
         sequence_type = type(data)
         data = list(data)
         for idx in range(len(data)):
