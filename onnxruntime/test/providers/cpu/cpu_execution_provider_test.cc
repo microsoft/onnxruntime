@@ -4,6 +4,7 @@
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "gtest/gtest.h"
 #include <onnxruntime_cxx_api.h>
+#include <time.h>
 
 namespace onnxruntime {
 namespace test {
@@ -21,13 +22,42 @@ struct TensorData {
   std::vector<int64_t> shape;
 };
 
+int GetRand(int min, int max) {
+  srand(time(NULL));
+  return value = rand() / (max - min + 1) + min;
+}
+
+void FillInputData(std::vector<TensorData>& input_data) {
+  for (auto& entry : input_data) {
+    for (size_t i = 0; i < entry.size; i++) {
+      int r = GetRand(-100, 100);
+      switch (entry.type) {
+        case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+          reinterpret_cast<int64_t*>(entry.buffer.get())[i] = static_cast<int64_t>(r);
+          break;
+        case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+          reinterpret_cast<float*>(entry.buffer.get())[i] = static_cast<float>(r);
+          break;
+        case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+          reinterpret_cast<int32_t*>(entry.buffer.get())[i] = static_cast<int32_t>(r);
+          break;
+        case ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+          entry.buffer.get()[i] = static_cast<float>(r);
+          break;
+        default:
+          ORT_CXX_API_THROW("The input type is not supported for now", ORT_INVALID_ARGUMENT);
+      }
+    }
+  }
+}
+
 void GetIOInfo(const Ort::Session& session, OrtAllocator* allocator,
-               std::vector<char*>& io_names, std::vector<TensorData>& io_info, bool is_input) {
+               std::vector<char*>& io_names, std::vector<TensorData>& io_data, bool is_input) {
   io_names.clear();
-  io_info.clear();
+  io_data.clear();
   size_t num_io = is_input ? session.GetInputCount() : session.GetOutputCount();
   io_names.resize(num_io);
-  io_info.resize(num_io);
+  io_data.resize(num_io);
   for (size_t i = 0; i < num_io; ++i) {
     io_names[i] = is_input ? session.GetInputName(i, allocator) : session.GetOutputName(i, allocator);
     const auto type_info = is_input ? session.GetInputTypeInfo(i) : session.GetOutputTypeInfo(i);
@@ -35,7 +65,7 @@ void GetIOInfo(const Ort::Session& session, OrtAllocator* allocator,
       ORT_CXX_API_THROW("We only accept tensor input", ORT_INVALID_ARGUMENT);
     }
 
-    TensorData& tensor_data = io_info[i];
+    TensorData& tensor_data = io_data[i];
     const auto& tensor_type_shape_info = type_info.GetTensorTypeAndShapeInfo();
     tensor_data.type = tensor_type_shape_info.GetElementType();
     tensor_data.size = tensor_type_shape_info.GetElementCount();
@@ -77,9 +107,9 @@ TEST(CPUExecutionProviderTest, ModelTest) {
   Ort::Session session(env, model_file_name, so);
 
   std::vector<char*> input_names, output_names;
-  std::vector<TensorData> input_info, output_info;
-  GetIOInfo(session, ort_alloc, input_names, input_info, true /* is_input */);
-  GetIOInfo(session, ort_alloc, output_names, output_info, false /* is_input */);
+  std::vector<TensorData> input_data, output_data;
+  GetIOInfo(session, ort_alloc, input_names, input_data, true /* is_input */);
+  GetIOInfo(session, ort_alloc, output_names, output_data, false /* is_input */);
 }
 
 }  // namespace test
