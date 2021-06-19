@@ -23,8 +23,8 @@ struct TensorData {
 };
 
 int GetRand(int min, int max) {
-  srand(time(NULL));
-  return rand() / (max - min + 1) + min;
+  srand(static_cast<unsigned int>(time(NULL)));
+  return rand() % (max - min + 1) + min;
 }
 
 void FillInputData(std::vector<TensorData>& input_data) {
@@ -131,6 +131,8 @@ TEST(CPUExecutionProviderTest, ModelTest) {
 
   Ort::SessionOptions so;
   so.SetLogId("ModelTest");
+  Ort::RunOptions ro;
+  ro.SetRunTag("ModelTest");
 
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "test"};
   Ort::Session session(env, model_file_name, so);
@@ -141,7 +143,16 @@ TEST(CPUExecutionProviderTest, ModelTest) {
   GetIOInfo(session, ort_alloc, output_names, output_data, false /* is_input */);
 
   FillInputData(input_data);
+  auto input_tensors = GetIOTensors(input_data);
+  auto output_tensors = GetIOTensors(output_data);
+  session.Run(ro, input_names.data(), input_tensors.data(), input_names.size(), output_names.data(), output_tensors.data(), output_names.size());
+
+  for (auto& name : input_names)
+    ort_alloc.Free(name);
 }
+
+class OrtModelRunner {
+};
 
 }  // namespace test
 }  // namespace onnxruntime
