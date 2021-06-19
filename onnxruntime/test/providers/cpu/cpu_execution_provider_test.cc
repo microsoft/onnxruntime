@@ -32,8 +32,8 @@ TEST(CPUExecutionProviderTest, ModelTest) {
   Ort::Session session(env, model_file_name, so);
 
   size_t num_input = session.GetInputCount();
-  char* input_name[num_input];
-  TensorData input_data[num_input];
+  std::vector<char*> input_name(num_input);
+  std::vector<TensorData> input_data(num_input);
   for (size_t i = 0; i < num_input; ++i) {
     input_name[i] = session.GetInputName(i, ort_alloc);
     const auto type_info = session.GetInputTypeInfo(i);
