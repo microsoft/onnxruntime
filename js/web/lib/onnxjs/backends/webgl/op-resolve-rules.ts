@@ -33,49 +33,50 @@ import {WebGLSum} from './ops/sum';
 import {WebGLTile} from './ops/tile';
 import {WebGLTranspose} from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
-import { abs } from './ops/unary-op';
+//import { abs } from './ops/unary-op';
 import {WebGLUnsqueeze} from './ops/unsqueeze';
 import {WebGLUpsample} from './ops/upsample';
 
 export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
-  ['Abs', '', '6+', abs],
-  ['Acos', '', '7+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslAcos())],
+  ['Abs', '', '6+', unaryOps.abs],
+  ['Acos', '', '7+', unaryOps.acos],
   ['Add', '', '7+', () => new binaryOps.WebGLBinaryOp(NUMBER_TYPES, binaryOps.glslAdd())],
   ['And', '', '7+', () => new binaryOps.WebGLBinaryOp(['bool'], binaryOps.glslAnd())],
-  ['Asin', '', '7+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslAsin())],
-  ['Atan', '', '7+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslAtan())],
+  ['Asin', '', '7+', unaryOps.asin],
+  ['Atan', '', '7+', unaryOps.atan],
+
   ['AveragePool', '', '7-10', () => new WebGLAveragePool()],  // TODO: support new attributes for AveragePool-10
   ['BatchNormalization', '', '7+', batchNormalization, parseBatchNormalizationAttributes],
-  ['Ceil', '', '6+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslCeil())],
+  ['Ceil', '', '6+', unaryOps.ceil],
   ['Clip', '', '6-10', () => new WebGLClip()],
   ['Concat', '', '4+', () => new WebGLConcat()],
   ['Conv', '', '1+', () => new WebGLConv()],
-  ['Cos', '', '7+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslCos())],
+  ['Cos', '', '7+', unaryOps.cos],
   ['Div', '', '7+', () => new binaryOps.WebGLBinaryOp(NUMBER_TYPES, binaryOps.glslDiv())],
   ['Dropout', '', '7+', () => new WebGLDropout()],
   ['DepthToSpace', '', '1+', () => new WebGLDepthToSpace()],
   ['Equal', '', '7+', () => new binaryOps.WebGLBinaryOp(NUMBER_TYPES, binaryOps.glslEqual(), undefined, 'bool')],
   ['Elu', '', '6+', () => new WebGLElu()],
-  ['Exp', '', '6+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslExp())],
+  ['Exp', '', '6+', unaryOps.exp],
   ['Flatten', '', '1+', () => new WebGLFlatten()],
-  ['Floor', '', '6+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslFloor())],
+  ['Floor', '', '6+', unaryOps.floor],
   ['Gather', '', '1+', () => new WebGLGather()],
   ['Gemm', '', '7-10', () => new WebGLGemm(false)],
   ['Gemm', '', '11+', () => new WebGLGemm(true)],
   ['GlobalAveragePool', '', '1+', () => new WebGLGlobalAveragePool()],
   ['GlobalMaxPool', '', '1+', () => new WebGLGlobalMaxPool()],
   ['Greater', '', '7+', () => new binaryOps.WebGLBinaryOp(NUMBER_TYPES, binaryOps.glslGreater(), undefined, 'bool')],
-  ['Identity', '', '1+', () => new unaryOps.WebGLUnaryOp(NUMBER_TYPES, unaryOps.glslIdentity())],
+  ['Identity', '', '1+', unaryOps.identity],
   ['ImageScaler', '', '1+', () => new WebGLImageScaler()],
   ['InstanceNormalization', '', '6+', () => new WebGLInstanceNormalization()],
   ['LeakyRelu', '', '6+', () => new WebGLLeakyRelu()],
   ['Less', '', '7+', () => new binaryOps.WebGLBinaryOp(NUMBER_TYPES, binaryOps.glslLess(), undefined, 'bool')],
-  ['Log', '', '6+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslLog())],
+  ['Log', '', '6+', unaryOps.log],
   ['MatMul', '', '1+', () => new WebGLMatMul()],
   ['MaxPool', '', '1-9', () => new WebGLMaxPool()],  // TODO: support new attributes for MaxPool-8 and MaxPool-10
   ['Mul', '', '7+', () => new binaryOps.WebGLBinaryOp(NUMBER_TYPES, binaryOps.glslMul())],
-  ['Neg', '', '6+', () => new unaryOps.WebGLUnaryOp(NUMBER_TYPES, unaryOps.glslNeg())],
-  ['Not', '', '1+', () => new unaryOps.WebGLUnaryOp(['bool'], unaryOps.glslNot())],
+  ['Neg', '', '6+', unaryOps.neg],
+  ['Not', '', '1+', unaryOps.not],
   ['Or', '', '7+', () => new binaryOps.WebGLBinaryOp(['bool'], binaryOps.glslOr())],
   ['Pad', '', '2-10', () => new WebGLPad()],
   ['Pow', '', '7+', () => new binaryOps.WebGLBinaryOp(FLOAT_TYPES, binaryOps.glslPow())],
@@ -87,13 +88,13 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['ReduceProd', '', '1+', () => new reduceOps.WebGLReduceProd()],
   ['ReduceSum', '', '1+', () => new reduceOps.WebGLReduceSum()],
   ['ReduceSumSquare', '', '1+', () => new reduceOps.WebGLReduceSumSquare()],
-  ['Relu', '', '6+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslRelu())],
+  ['Relu', '', '6+', unaryOps.relu],
   ['Reshape', '', '5+', () => new WebGLReshape()],
   ['Resize', '', '10', () => new WebGLResizePacked(10)],
   ['Resize', '', '11+', () => new WebGLResizePacked(11)],
   ['Shape', '', '1+', () => new WebGLShape()],
-  ['Sigmoid', '', '6+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslSigmoid())],
-  ['Sin', '', '7+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslSin())],
+  ['Sigmoid', '', '6+', unaryOps.sigmoid],
+  ['Sin', '', '7+', unaryOps.sin],
   ['Slice', '', '10+', () => new WebGLSliceV10()],  // TODO: support 'steps' for Slice-10
   ['Slice', '', '1-9', () => new WebGLSlice()],
   ['Softmax', '', '1+', () => new WebGLSoftmax()],
@@ -102,12 +103,12 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // is split. When the attribute is missing, we need the count of number of outputs
   // so that we can determine the 'split' attribute from the runtime input to the Operator
   ['Split', '', '2+', (node) => new WebGLSplit(node.outputs.length)],
-  ['Sqrt', '', '6+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslSqrt())],
+  ['Sqrt', '', '6+', unaryOps.sqrt],
   ['Squeeze', '', '1+', () => new WebGLSqueeze()],
   ['Sub', '', '7+', () => new binaryOps.WebGLBinaryOp(NUMBER_TYPES, binaryOps.glslSub())],
   ['Sum', '', '6+', () => new WebGLSum()],  // TODO: support multidirectional broadcast for Sum-8
-  ['Tan', '', '7+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslTan())],
-  ['Tanh', '', '6+', () => new unaryOps.WebGLUnaryOp(FLOAT_TYPES, unaryOps.glslTanh())],
+  ['Tan', '', '7+', unaryOps.tan],
+  ['Tanh', '', '6+', unaryOps.tanh],
   ['Tile', '', '6+', () => new WebGLTile()],
   ['Transpose', '', '1+', () => new WebGLTranspose()],
   ['Upsample', '', '7-8', () => new WebGLUpsample(7)],

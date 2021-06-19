@@ -221,3 +221,73 @@ const createElementwiseProgramInfo = (handler: WebGLInferenceHandler,
 export const abs = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
   return [handler.run(createElementwiseProgramInfo(handler, inputs[0],glslAbs() ), inputs)];
 };
+
+export const acos = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createElementwiseProgramInfo(handler, inputs[0],glslAcos() ), inputs)];
+};
+
+export const asin = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createElementwiseProgramInfo(handler, inputs[0],glslAsin() ), inputs)];
+};
+
+export const atan = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createElementwiseProgramInfo(handler, inputs[0],glslAtan() ), inputs)];
+};
+
+export const ceil = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslCeil() ), inputs)];
+};
+
+export const cos = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslCos() ), inputs)];
+};
+
+export const exp = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslExp() ), inputs)];
+};
+
+export const floor = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslFloor() ), inputs)];
+};
+
+export const identity = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslIdentity() ), inputs)];
+};
+
+export const log = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslLog() ), inputs)];
+};
+
+export const neg = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslNeg() ), inputs)];
+};
+
+export const not = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslNot() ), inputs)];
+};
+
+export const relu = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslRelu() ), inputs)];
+};
+
+export const sigmoid = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslSigmoid() ), inputs)];
+};
+
+export const sin = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslSin() ), inputs)];
+};
+
+export const sqrt = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslSqrt() ), inputs)];
+};
+
+export const tan = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslTan() ), inputs)];
+};
+
+export const tanh = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslTanh() ), inputs)];
+};
+
+
