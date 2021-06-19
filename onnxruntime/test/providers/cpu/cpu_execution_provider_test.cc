@@ -22,15 +22,15 @@ struct TensorData {
 };
 
 void GetIOInfo(const Ort::Session& session, OrtAllocator* allocator,
-               std::vector<char*>& io_names, std::vector<TensorData>& io_info) {
+               std::vector<char*>& io_names, std::vector<TensorData>& io_info, bool is_input) {
   io_names.clear();
   io_info.clear();
-  size_t num_input = session.GetInputCount();
-  io_names.resize(num_input);
-  io_info.resize(num_input);
-  for (size_t i = 0; i < num_input; ++i) {
-    io_names[i] = session.GetInputName(i, allocator);
-    const auto type_info = session.GetInputTypeInfo(i);
+  size_t num_io = is_input ? session.GetInputCount() : session.GetOutputCount();
+  io_names.resize(num_io);
+  io_info.resize(num_io);
+  for (size_t i = 0; i < num_io; ++i) {
+    io_names[i] = is_input ? session.GetInputName(i, allocator) : session.GetOutputName(i, allocator);
+    const auto type_info = is_input ? session.GetInputTypeInfo(i) : session.GetOutputTypeInfo(i);
     if (type_info.GetONNXType() != ONNXType::ONNX_TYPE_TENSOR) {
       ORT_CXX_API_THROW("We only accept tensor input", ORT_INVALID_ARGUMENT);
     }
@@ -76,9 +76,10 @@ TEST(CPUExecutionProviderTest, ModelTest) {
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "test"};
   Ort::Session session(env, model_file_name, so);
 
-  std::vector<char*> input_names;
-  std::vector<TensorData> input_info;
-  GetIOInfo(session, ort_alloc, input_names, input_info);
+  std::vector<char*> input_names, output_names;
+  std::vector<TensorData> input_info, output_info;
+  GetIOInfo(session, ort_alloc, input_names, input_info, true /* is_input */);
+  GetIOInfo(session, ort_alloc, output_names, output_info, false /* is_input */);
 }
 
 }  // namespace test
