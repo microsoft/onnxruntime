@@ -41,7 +41,7 @@ TEST(CPUExecutionProviderTest, ModelTest) {
       ORT_CXX_API_THROW("We only accept tensor input", ORT_INVALID_ARGUMENT);
     }
 
-    TensorData tensor_data;
+    TensorData& tensor_data = input_data[i];
     const auto& tensor_type_shape_info = type_info.GetTensorTypeAndShapeInfo();
     tensor_data.type = tensor_type_shape_info.GetElementType();
     tensor_data.size = tensor_type_shape_info.GetElementCount();
