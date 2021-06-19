@@ -2808,3 +2808,16 @@ def test_hf_save_pretrained():
 
         for p1, p2 in zip(model1.parameters(), model2.parameters()):
             assert p1.data.ne(p2.data).sum() == 0
+
+def test_input_with_string_exception():
+    class MyStrNet(torch.nn.Module):
+        def forward(self, x, my_str):
+            if my_str.lower() == 'hello':
+                print('hi')
+            return x
+
+    model = MyStrNet()
+    model = ORTModule(model)
+    with pytest.raises(TypeError) as ex_info:
+        _ = model(torch.randn(1, 2), 'hello')
+    assert "ORTModule does not support the following model data type <class 'str'>" in str(ex_info.value)
