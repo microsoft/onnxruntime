@@ -1,0 +1,1 @@
+model_name,model_class,gpu,precision,optimizer,torchscript,batch_size,sequence_length,past_sequence_length,torch_latency,onnxruntime_latency,onnxruntime_io_binding_latency

@@ -214,7 +214,7 @@ def _parse_arguments():
     parser.add_argument('--only_onnxruntime', required=False, action='store_true', help="optimized by onnxruntime only")
     parser.set_defaults(only_onnxruntime=False)
 
-    parser.add_argument('--only_offline_opt', required=False, action='store_true', help="optimized by offline optimization only")
+    parser.add_argument('--only_offline_opt', required=False, action='store_true', help="optimized by offline fusion only")
     parser.set_defaults(only_offline_opt=False)
 
     parser.add_argument('--opt_level',
@@ -285,7 +285,7 @@ def optimize_model(input,
         optimization_options (OptimizationOptions or None): optimization options that can use to turn on/off some fusions.
         opt_level (int): onnxruntime graph optimization level (0, 1, 2 or 99). When the level > 0, onnxruntime will be used to optimize model first.
         use_gpu (bool): use gpu or not for onnxruntime.
-        only_offline_opt (bool): only use offline optimization to optimize model,
+        only_offline_opt (bool): only use offline fusion logic to optimize model,
         only_onnxruntime (bool): only use onnxruntime to optimize model, and no offline fusion logic is used.
 
      Returns:

@@ -20,7 +20,7 @@ class TestFusion(unittest.TestCase):
         dir = '.'
         model_path = os.path.join(dir, "pruned_attention.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path)
+        optimized_model = optimize_model(model_path, "bert", num_heads=2, hidden_size=16)
         os.remove(model_path)
 
         expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models',
@@ -33,8 +33,10 @@ class TestFusion(unittest.TestCase):
         dir = '.'
         model_path = os.path.join(dir, "bert_attention_reverse_add_order.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path)
+        optimized_model = optimize_model(model_path,"bert", num_heads=2, hidden_size=16)
         os.remove(model_path)
+        #opt_model_path = os.path.join(dir, "bert_attention_reverse_add_order_opt.onnx")
+        #onnx.save(optimized_model.model, opt_model_path)
 
         # reverse add input order will get same optimized model
         expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models',
