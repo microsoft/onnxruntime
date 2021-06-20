@@ -8,7 +8,6 @@ import {FunctionType, GlslValueFunction} from '../glsl-definitions';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, TextureType, WebGLOperator} from '../types';
-import {Guid} from 'guid-typescript';
 
 export class WebGLUnaryOp extends UnaryOp implements WebGLOperator {
   constructor(protected typeConstraint: readonly Tensor.DataType[], protected glslFunc: GlslValueFunction) {
@@ -205,7 +204,7 @@ const createElementwiseProgramInfo = (handler: WebGLInferenceHandler,
   return {
      inputTypes:[textureType],
      inputNames: ['A'],
-     output: {id: Guid.create(), dims:input.dims, type:input.type, textureType },
+     output: {dims:input.dims, type:input.type, textureType },
      shaderSource: `
      ${glslFunc.body}
      void main() {
