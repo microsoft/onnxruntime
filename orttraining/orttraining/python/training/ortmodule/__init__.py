@@ -41,7 +41,7 @@ if not os.path.exists(TORCH_CPP_BUILD_DIR):
 elif os.path.exists(os.path.join(TORCH_CPP_BUILD_DIR,'lock')):
     print("WARNING: ORTModule detected PyTorch's CPP extension lock file during initialization, "
           "which can cause the script to stop responding. "
-          f"Delete {os.path.join(TORCH_CPP_BUILD_DIR,'lock')} if a hang occurs.")
+          f"Delete {os.path.join(TORCH_CPP_BUILD_DIR,'lock')} if the script stop responding and .")
 
 # Verify proper PyTorch is installed before proceding to ONNX Runtime initialization
 try:
