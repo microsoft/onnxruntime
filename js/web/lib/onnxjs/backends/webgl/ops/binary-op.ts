@@ -7,7 +7,7 @@ import {BroadcastUtil, ShapeUtil} from '../../../util';
 import {FunctionType, GlslValueFunction} from '../glsl-definitions';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, RunData, WebGLOperator} from '../types';
+import {ProgramInfo, TextureType, RunData, WebGLOperator} from '../types';
 
 export class WebGLBinaryOp extends BinaryOp implements WebGLOperator {
   private usePackedTexture?: boolean;
@@ -287,3 +287,81 @@ function glslBuiltinBinary(fname: string): GlslValueFunction {
   `;
   return {body, name, type: FunctionType.ValueBased};
 }
+
+const createBinaryProgramInfo = (handler: WebGLInferenceHandler,
+  inputs: Tensor[], glslFunc: GlslValueFunction,
+  ): ProgramInfo => {
+    const textureType = handler.session.pack ? TextureType.packed : TextureType.unpacked;
+    const isBroadcast = !ShapeUtil.areEqual(inputs[0].dims, inputs[1].dims);
+
+    // TODO fix bcast in packed mode.
+    const usePackedTexture = !isBroadcast && handler.session.pack;
+
+  if (isBroadcast) {
+    const outputShape = BroadcastUtil.calcShape(inputs[0].dims, inputs[1].dims, false);
+    if (!outputShape) {
+      throw new Error('Can\'t perform binary op on the given tensors');
+    }
+    const outputRank = outputShape.length;
+    const aRank = inputs[0].dims.length !== 0 ? inputs[0].dims.length : 1;
+    const bRank = inputs[1].dims.length !== 0 ? inputs[1].dims.length : 1;
+    const aBcast = inputs[0].dims.length !== 0 ? 'bcastIndices_A(indices, aindices);' : 'aindices[0] = 0;';
+    const bBcast = inputs[1].dims.length !== 0 ? 'bcastIndices_B(indices, bindices);' : 'bindices[0] = 0;';
+
+    // TODO: for packed tensors, we need to implement logic to caculate textCoords for broadcast tensor
+    const shaderSource = `
+      ${glslFunc.body}
+      float process(int indices[${outputRank}]) {
+        int aindices[${aRank}];
+        int bindices[${bRank}];
+        ${aBcast}
+        ${bBcast}
+        return ${glslFunc.name}(_A(aindices), _B(bindices));
+    }`;
+
+    return {
+      inputTypes: [textureType],
+      inputNames: ['A', 'B'],
+      output: getOutputShape(), // TODO: implement this
+      shaderSource: shaderSource,
+      hasMain: false
+    };
+
+  }
+  const glsl = getGlsl(handler.session.backend.glContext.version);
+  const shaderSource = `
+    ${glslFunc.body}
+    void main() {
+      vec4 v1 = ${glsl.texture2D}(A, TexCoords);
+      vec4 v2 = ${glsl.texture2D}(B, TexCoords);
+      vec4 result = ${glslFunc.name}(v1, v2);
+      ${glsl.output} = result;
+    }
+    `;
+
+  if (usePackedTexture) {
+    return {
+      inputTypes: [textureType],
+      inputNames: ['A', 'B'],
+      output: getOutputShape(), // TODO: implement this
+      shaderSource: shaderSource,
+      hasMain: true
+    };
+  } else {
+    return {
+      inputTypes: [textureType],
+      inputNames: ['A', 'B'],
+      output: {dims:input[0].dims, type:input[0].type, textureType },
+      shaderSource: shaderSource,
+      hasMain: true
+    };
+  }
+};
+
+export const add = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createBinaryProgramInfo(handler, inputs, glslAdd()), inputs)];
+};
+
+export const and = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createBinaryProgramInfo(handler, inputs, glslAnd()), inputs)];
+};

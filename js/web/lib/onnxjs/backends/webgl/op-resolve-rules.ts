@@ -40,8 +40,8 @@ import {WebGLUpsample} from './ops/upsample';
 export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Abs', '', '6+', unaryOps.abs],
   ['Acos', '', '7+', unaryOps.acos],
-  ['Add', '', '7+', () => new binaryOps.WebGLBinaryOp(NUMBER_TYPES, binaryOps.glslAdd())],
-  ['And', '', '7+', () => new binaryOps.WebGLBinaryOp(['bool'], binaryOps.glslAnd())],
+  ['Add', '', '7+', binaryOps.add],
+  ['And', '', '7+', binaryOps.and],
   ['Asin', '', '7+', unaryOps.asin],
   ['Atan', '', '7+', unaryOps.atan],
 
