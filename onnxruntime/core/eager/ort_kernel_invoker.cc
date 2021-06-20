@@ -18,7 +18,14 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
                                   const std::string& domain,
                                   const int /*version*/) {
   //create a graph
-  Model model("test", false, logger_);
+  Model model("test", 
+              false, 
+              ModelMetaData(),
+              "",
+              custom_op_registries_,
+              {},
+              {},
+              logger_);
 
   std::vector<onnxruntime::NodeArg*> input_args;
   std::vector<onnxruntime::NodeArg*> output_args;
