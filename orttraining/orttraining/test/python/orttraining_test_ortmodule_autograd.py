@@ -161,6 +161,53 @@ def test_ScalarAndTuple():
     run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
+def test_ScalarAndTupleReordered():
+    class ScalarAndTupleReorderedFunction(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, alpha, beta, input, gamma):
+            ctx.save_for_backward(input)
+            ctx.alpha = alpha
+            ctx.beta = beta
+            ctx.gamma = gamma
+            return alpha * beta[0] * beta[1] * gamma * input.clamp(min=0)
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            input, = ctx.saved_tensors
+            alpha = ctx.alpha
+            beta = ctx.beta
+            gamma = ctx.gamma
+            grad_input = grad_output.clone()
+            grad_input[input < 0] = 0
+            return None, None, alpha * beta[0] * beta[1] * gamma * grad_input, None
+
+    class ScalarAndTupleReorderedModel(torch.nn.Module):
+        def __init__(self, output_size):
+            super(ScalarAndTupleReorderedModel, self).__init__()
+            self.activation = ScalarAndTupleReorderedFunction.apply
+            self.linear_a = torch.nn.Linear(output_size, output_size)
+            self.linear_b = torch.nn.Linear(output_size, output_size)
+
+        def forward(self, x):
+            h = self.linear_a(x)
+            h = self.activation(5.0, (-1.0, 2.0), h, -1.0)
+            h = self.linear_b(h)
+            return h
+
+    output_size = 2
+
+    def model_builder():
+        return ScalarAndTupleReorderedModel(output_size)
+
+    def input_generator():
+        return torch.randn(output_size, dtype=torch.float)
+
+    # generate a label that have same shape as forward output.
+    label_input = torch.ones([output_size])
+
+    run_training_test_and_compare(model_builder, input_generator, label_input)
+
+
 @pytest.mark.skip(reason="This test is not correct. All tensors modified by in-place operattions should be mark_dirty(...).")
 def test_InplaceUpdateInputAsOutputNotRequireGrad():
     class InplaceUpdateInputAsOutputNotRequireGradFunction(torch.autograd.Function):

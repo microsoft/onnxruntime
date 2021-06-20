@@ -224,11 +224,14 @@ void PythonOpBase::SetOtherOutputs(OpKernelContext* context, std::vector<OrtValu
 void PythonOpGradBase::Init(const OpKernelInfo& info) {
   ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
   ORT_THROW_IF_ERROR(info.GetAttr("inplace", &inplace_));
-  ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_tensor_types_));
+  ORT_THROW_IF_ERROR(info.GetAttr("output_convention", &output_convention_));
   ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_tensor_types_));
-  input_tensor_requires_grads_ = info.GetAttrsOrDefault("input_tensor_requires_grads", std::vector<int64_t>());
   output_tensor_requires_grads_ = info.GetAttrsOrDefault("output_tensor_requires_grads", std::vector<int64_t>());
-  SetPositions();
+  ORT_ENFORCE(output_tensor_types_.size() == output_tensor_requires_grads_.size(), "backward tensor output count mismatch");
+
+  // Exclude context and forward activations from inputs
+  const size_t tensor_input_count = (info.node().InputDefs().size() - 1) / 2;
+  SetPositions(tensor_input_count);
 }
 
 void PythonOpGradBase::RunBackward(OpKernelContext* context,
@@ -245,7 +248,6 @@ void PythonOpGradBase::RunBackward(OpKernelContext* context,
   TorchProxy::GetInstance().Backward(
       OrtTorchFunctionPool::GetInstance()
           .GetBackwardCore(name_),
-      input_tensor_requires_grads_,
       args,
       arg_positions_,
       const_args,
@@ -258,16 +260,21 @@ void PythonOpGradBase::RunBackward(OpKernelContext* context,
 
 void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) const {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
-  const auto outputs_count = static_cast<size_t>(ctx_internal->OutputCount());
-  for (size_t i = 0; i < outputs_count; ++i) {
-    if (!output_tensor_requires_grads_[i]) {
-      continue;
+  ORT_ENFORCE(output_convention_.size() == returned_ortvalues.size(), "backward output count mismatch.");
+  int tensor_output_index = 0;
+  for (size_t i = 0; i < returned_ortvalues.size(); ++i) {
+    if (output_convention_[i] == 'd') {
+      if (output_tensor_requires_grads_[tensor_output_index]) {
+        ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(tensor_output_index, returned_ortvalues.at(i)));
+      }
+      ++tensor_output_index;
     }
-    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(static_cast<int>(i), returned_ortvalues.at(i)));
   }
+
+  ORT_ENFORCE(tensor_output_index == ctx_internal->OutputCount(), "backward tensor output count mismatch.");
 }
 
-void PythonOpGradBase::SetPositions() {
+void PythonOpGradBase::SetPositions(size_t tensor_input_count) {
   ORT_ENFORCE(const_arg_positions_.size() == 0);
   ORT_ENFORCE(arg_positions_.size() == 0);
 
@@ -276,7 +283,7 @@ void PythonOpGradBase::SetPositions() {
   const_arg_positions_ = {0};
 
   // The rest inputs are just Pytorch tensors.
-  arg_positions_.resize(input_tensor_types_.size());
+  arg_positions_.resize(tensor_input_count);
   for (size_t i = 0; i < arg_positions_.size(); ++i) {
     // i-th tensor is the (i+1)-th input of autograd.Function.backward.
     arg_positions_.at(i) = static_cast<int64_t>(i) + 1;
