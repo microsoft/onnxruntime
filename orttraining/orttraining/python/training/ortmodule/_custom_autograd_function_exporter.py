@@ -145,7 +145,24 @@ def _export(g, n, *args, **kwargs):
         sys.stderr.flush()
         raise
 
-def _post_process_after_export(exported_model):
+def _post_process_after_export(exported_model, enable_custom_autograd_function):
+    if enable_custom_autograd_function:
+        return _post_process_enabling_autograd_fallback(exported_model)
+
+    is_fallback_needed = False
+    for node in exported_model.graph.node:
+        if node.domain == 'com.microsoft' and node.op_type in ["PythonOp"]:
+            is_fallback_needed = True
+            break
+
+    if is_fallback_needed:
+        raise RuntimeError('Detected autograd functions usage in current model, the run will fail \
+            without enabling \'_enable_custom_autograd_function\'. Please enable it with: \
+            \'module._execution_manager(is_training_mode)._enable_custom_autograd_function = True\'') 
+
+    return exported_model
+
+def _post_process_enabling_autograd_fallback(exported_model):
     index = 0
     for node in exported_model.graph.node:
         if node.domain == 'com.microsoft' and node.op_type in ["PythonOp"]:
