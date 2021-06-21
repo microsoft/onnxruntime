@@ -146,7 +146,6 @@ class FusionAttention(Fusion):
 
             Union[NodeProto, None]: the node created or None if failed.
         """
-        print ("viboga_debug:" + "num_heads:" + str(num_heads) + "hidden_size:" + str(hidden_size) + "hidden_size%num_heads:" + str(hidden_size % num_heads))
         assert num_heads > 0 and hidden_size > 0 and (hidden_size % num_heads) == 0
 
         q_weight = self.model.get_initializer(q_matmul.input[1])
@@ -173,8 +172,6 @@ class FusionAttention(Fusion):
         vw_in_size = vw.shape[0]
 
         assert qw_in_size == kw_in_size == vw_in_size == hidden_size
-        print("viboga_debug: weights are correct")
-        print("qw.shape:" + ":" + str(qw.shape) + ":  vw.shape" + str(vw.shape))
         is_qkv_diff_dims = False
         if qw.shape != vw.shape:
             is_qkv_diff_dims = True
@@ -201,7 +198,6 @@ class FusionAttention(Fusion):
         # 1d bias shape: [outsize,]. 2d bias shape: [a, b] where a*b = out_size
         assert qb.shape == kb.shape == vb.shape or qb.shape == kb.shape
 
-        print ("viboga_debug: bias is correct")
         q_bias_shape = np.prod(qb.shape)
         k_bias_shape = np.prod(kb.shape)
         v_bias_shape = np.prod(vb.shape)
@@ -249,7 +245,6 @@ class FusionAttention(Fusion):
                                           name=attention_node_name)
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
-        print ("viboga_debug: made attention node")
 
         if is_qkv_diff_dims:
             attention_node.attribute.extend([helper.make_attribute("qkv_hidden_sizes", [qw_out_size, qw_out_size, vw_out_size])])
@@ -282,7 +277,6 @@ class FusionAttention(Fusion):
             else:
                 return
 
-        print("viboga_debug: trying to fuse attention:" + str(qkv_nodes))
         other_inputs = []
         for i, input in enumerate(start_node.input):
             if input not in output_name_to_node:
@@ -293,8 +287,6 @@ class FusionAttention(Fusion):
             other_inputs.append(input)
         if len(other_inputs) != 1:
             return
-
-        print("viboga_debug: trying to fuse attention, root_input" + str(other_inputs[0]))
 
         root_input = other_inputs[0]
         """
@@ -380,7 +372,6 @@ class FusionAttention(Fusion):
         add_q = q_nodes[-2]
         matmul_q = q_nodes[-1]
 
-        print("viboga_debug: " + str(q_nodes))
         k_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, None])
         if k_nodes is None:
             k_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Transpose', 'Reshape', 'Add', 'MatMul'],
@@ -428,7 +419,6 @@ class FusionAttention(Fusion):
             new_node = self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v,
                                                   v_num_heads, self.hidden_size, root_input, attention_last_node.output[0])
             if new_node is None:
-                print("viboga_debug: new node is None")
                 return
 
             self.nodes_to_add.append(new_node)
@@ -455,7 +445,6 @@ class FusionAttention(Fusion):
             self.nodes_to_remove.extend(k_nodes)
             self.nodes_to_remove.extend(v_nodes)
 
-            print ("viboga_debug: added nodes_to_remove()")
             # Use prune graph to remove mask nodes since they are shared by all attention nodes.
             #self.nodes_to_remove.extend(mask_nodes)
             self.prune_graph = True
