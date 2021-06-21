@@ -408,21 +408,17 @@ class FusionAttention(Fusion):
 
             attention_last_node = reshape_qkv if einsum_node is None else transpose_qkv
 
-            v_num_heads, v_hidden_size = self.get_num_heads_and_hidden_size(reshape_v)
-
-            if  (v_hidden_size % v_num_heads != 0):
-                logger.debug("fuse_attention: failed since hidden size is not a multiple of number of heads in v path")
-                return
-
-            # number of heads are same for all the paths, hence to create attention node, we pass the v_num_heads
+            # number of heads are same for all the paths, hence to create attention node, we pass the self.num_heads
             # the hidden_size represents the hidden input size, this is used as needed but hidden sizes for Q, K are extracted appropriately
             new_node = self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v,
-                                                  v_num_heads, self.hidden_size, root_input, attention_last_node.output[0])
+                                                  self.num_heads, self.hidden_size, root_input, attention_last_node.output[0])
             if new_node is None:
                 return
 
             self.nodes_to_add.append(new_node)
             self.node_name_to_graph_name[new_node.name] = self.this_graph_name
+
+            num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
 
             if einsum_node is not None:
                 unique_index = einsum_node.input[0]
@@ -430,8 +426,8 @@ class FusionAttention(Fusion):
                 shape_tensor = helper.make_tensor(name="shape_modified_tensor" + unique_index,
                                                   data_type=TensorProto.INT64,
                                                   dims=[4],
-                                                  vals=np.int64([0, 0, v_num_heads,
-                                                                 int(v_hidden_size / v_num_heads)]).tobytes(),
+                                                  vals=np.int64([0, 0, num_heads,
+                                                                 int(hidden_size / num_heads)]).tobytes(),
                                                   raw=True)
                 self.model.add_initializer(shape_tensor, self.this_graph_name)
                 self.model.add_node(
