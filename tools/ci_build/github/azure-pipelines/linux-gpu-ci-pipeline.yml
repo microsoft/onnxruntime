@@ -117,11 +117,11 @@ jobs:
               --enable_onnx_tests --use_cuda --cuda_version=11.1 --cuda_home=/usr/local/cuda-11.1 --cudnn_home=/usr/local/cuda-11.1 \
               --enable_pybind --build_java --ctest_path ''
 
-              - job: Linux_Test
+- job: Linux_Test
   timeoutInMinutes: 60
   workspace:
     clean: all
-  pool: centos7cpu
+  pool: centos7gpu
   dependsOn:
   - Linux_Build
   steps:
