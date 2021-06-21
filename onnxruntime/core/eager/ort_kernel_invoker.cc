@@ -54,7 +54,7 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
   OptimizerExecutionFrame::Info info({&node}, initializer_map, graph.ModelPath(), *execution_provider_);
   auto kernel = info.CreateKernel(&node);
   if (!kernel) {
-    ORT_THROW("Could not find kernel name:", op_name, ", domain:", domain, " version:", version);
+    ORT_THROW("Could not find kernel name:", op_name, ", domain:", domain, ", version:", version);
   }
 
   std::vector<int> fetch_mlvalue_idxs;
