@@ -130,6 +130,19 @@ function getTestData(): TestData[] {
       rawInputA: new Float32Array([1, 2, 4, 5, 3, 0, 6, 0, 1, 2, 4, 5, 3, 0, 6, 0]),
       rawInputB: new Float32Array([1, 2, 3, 4, 5, 6, 0, 0]),
     },
+    {
+      elementCountA: 12,
+      elementCountB: 6,
+      inputShapeA: [1, 2, 2, 3],
+      inputShapeB: [1, 1, 1, 3, 2],
+      outputShape: [1, 1, 2, 2, 2],
+      inputTextureShapeA: [2, 2],
+      inputTextureShapeB: [1, 2],
+      outputTextureShape: [2, 1],
+      expectedOutput: new Float32Array([22, 28, 49, 64, 22, 28, 49, 64]),
+      rawInputA: new Float32Array([1, 2, 4, 5, 3, 0, 6, 0, 1, 2, 4, 5, 3, 0, 6, 0]),
+      rawInputB: new Float32Array([1, 2, 3, 4, 5, 6, 0, 0]),
+    },
   ];
 }
 
@@ -257,14 +270,20 @@ describe('#UnitTest# - packed matmul - Tensor matmul', () => {
       // verify result.
       const expectedOutput = testData.expectedOutput;
       expect(result).to.not.equal(null);
-      let batchMultiplier = 1;
+      let batchMultiplierA = 1;
+      let batchMultiplierB = 1;
+
       if (testData.inputShapeA.length > 2) {
-        batchMultiplier = testData.inputShapeA[0];
+        for (let i = 0; i < testData.inputShapeA.length - 2; i++) {
+          batchMultiplierA *= testData.inputShapeA[i];
+        }
       }
       if (testData.inputShapeB.length > 2) {
-        batchMultiplier = Math.max(batchMultiplier, testData.inputShapeB[0]);
+        for (let i = 0; i < testData.inputShapeB.length - 2; i++) {
+          batchMultiplierB *= testData.inputShapeB[i];
+        }
       }
-
+      const batchMultiplier = Math.max(batchMultiplierA, batchMultiplierB);
       expect(result).to.have.lengthOf(
           batchMultiplier * testData.inputShapeA[testData.inputShapeA.length - 2] *
           testData.inputShapeB[testData.inputShapeB.length - 1]);
