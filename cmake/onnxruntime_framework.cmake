@@ -7,6 +7,22 @@ file(GLOB_RECURSE onnxruntime_framework_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/framework/*.cc"
 )
 
+if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+  # todo: move those training related files into orttraining/core/framework/torch folder.
+  list(APPEND onnxruntime_framework_srcs
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/dlpack_python.cc"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/dlpack_python.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/python_common.h"
+    "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/custom_function_register.cc"
+    "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/custom_function_register.h"
+    "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/gil.h"
+    "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/refcount_tracker.cc"
+    "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/refcount_tracker.h"
+    "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/torch_proxy.cc"
+    "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/torch_proxy.h"
+  )
+endif()
+
 if (onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_framework_src_exclude
     "${ONNXRUNTIME_ROOT}/core/framework/provider_bridge_ort.cc"
@@ -42,6 +58,7 @@ if (onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_TRAINING_OPS)
   target_include_directories(onnxruntime_framework PRIVATE ${ORTTRAINING_ROOT})
   if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     onnxruntime_add_include_to_target(onnxruntime_framework Python::Module)
+    target_include_directories(onnxruntime_framework PRIVATE ${PROJECT_SOURCE_DIR}/external/dlpack/include)
   endif()
   if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)  
     target_include_directories(onnxruntime_framework PUBLIC ${MPI_CXX_INCLUDE_DIRS})
