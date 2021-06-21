@@ -51,14 +51,13 @@ class ORTModule(torch.nn.Module):
         register_custom_ops_pytorch_exporter.register_custom_op(is_ortmodule=True)
 
         self._onnx_model = None
-        self._isTrain = True
+        self._module_metadata = None
 
         if isinstance(module, torch.nn.Module):
             # User module is wrapped to use its initializers and save computed gradients
             # along with the module that flattens both input and output of the user module
             # inside _PytorchModuleMetadata
             self._module_metadata = _PytorchModuleMetadata(module, _io._FlattenedModule(module))
-
             self._execution_manager = GraphExecutionManagerFactory(self._module_metadata.flattened_module)
 
         elif isinstance(module, onnx.ModelProto):
@@ -68,12 +67,14 @@ class ORTModule(torch.nn.Module):
                         for initializer in self._onnx_model.graph.initializer]
             self._execution_manager = GraphExecutionManagerFactory(self._onnx_model, self._onnx_model_parameters, device)
 
-    # IMPORTANT: DO NOT add code here
-    # This declaration is for automatic document generation purposes only
-    # The actual forward implementation is bound during ORTModule initialization
     def forward(self, *inputs, **kwargs):
-        '''Dummy documentation for forward method'''
-        ...
+        '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
+        ONNX model is exported the first time this method is executed.
+        Next, we build a full training graph with module_gradient_graph_builder.
+        Finally, we instantiate the ONNX Runtime InferenceSession.
+        '''
+
+        return self._execution_manager(self._is_training()).forward(*inputs, **kwargs)
 
     def _apply(self, fn):
         """Override original method to delegate execution to the flattened PyTorch user module"""
@@ -100,7 +101,8 @@ class ORTModule(torch.nn.Module):
         # Since _modules is empty, the task needs to be delegated to _module.flattened_module.train
         # which will recursively update the original_module
         self.training = mode
-        self._module_metadata.flattened_module.train(mode)
+        if self._module_metadata:
+            self._module_metadata.flattened_module.train(mode)
         return self
 
     def state_dict(self, destination=None, prefix='', keep_vars=False):

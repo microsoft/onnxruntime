@@ -70,6 +70,7 @@ class TrainingManager(GraphExecutionManager):
             self._initialize_graph_builder(training=True)
 
         create_execution_session = build_gradient_graph
+        device = None
         if self._original_module:
             input_info = _io.parse_inputs_for_onnx_export(self._module_parameters,
                                                           self._onnx_model,
@@ -89,8 +90,7 @@ class TrainingManager(GraphExecutionManager):
         if build_gradient_graph:
             self._build_graph()
 
-        device = _utils.get_device_from_module(self._original_module) or \
-            _utils.get_device_from_inputs(inputs, kwargs)
+        device = device or _utils.get_device_from_inputs(inputs, kwargs)
         # The _training_session/_inference_session should be created every time
         # the graph was built or if the device changed between calls to forward
         create_execution_session = build_gradient_graph or self._device != device
