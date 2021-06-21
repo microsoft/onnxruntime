@@ -282,6 +282,7 @@ class FusionAttention(Fusion):
             else:
                 return
 
+        print("viboga_debug: trying to fuse attention:" + str(qkv_nodes))
         other_inputs = []
         for i, input in enumerate(start_node.input):
             if input not in output_name_to_node:
@@ -292,6 +293,8 @@ class FusionAttention(Fusion):
             other_inputs.append(input)
         if len(other_inputs) != 1:
             return
+
+        print("viboga_debug: trying to fuse attention, root_input" + str(other_inputs[0]))
 
         root_input = other_inputs[0]
         """
@@ -377,6 +380,7 @@ class FusionAttention(Fusion):
         add_q = q_nodes[-2]
         matmul_q = q_nodes[-1]
 
+        print("viboga_debug: " + str(q_nodes))
         k_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Reshape', 'Add', 'MatMul'], [1, 0, 0, None])
         if k_nodes is None:
             k_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Transpose', 'Reshape', 'Add', 'MatMul'],

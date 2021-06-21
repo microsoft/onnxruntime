@@ -8,7 +8,7 @@ import unittest
 import os
 import sys
 import onnx
-from bert_model_generator import create_bert_attention, create_tf2onnx_attention_3d, create_bert_attention_with_varied_qkv
+from bert_model_generator import create_tf2onnx_attention_3d, create_bert_attention
 
 # set path so that we could import from parent directory
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -16,7 +16,7 @@ from onnxruntime.transformers.optimizer import optimize_model
 
 class TestFusion(unittest.TestCase):
     def test_attention_fusion_pruned_model(self):
-        model = create_bert_attention()
+        model = create_bert_attention(input_hidden_size=16, num_heads=2, pruned_qk_hidden_size=8, pruned_v_hidden_size=8)
         dir = '.'
         model_path = os.path.join(dir, "pruned_attention.onnx")
         onnx.save(model, model_path)
@@ -29,11 +29,11 @@ class TestFusion(unittest.TestCase):
         self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
 
     def test_attention_fusion_reverse_add_order(self):
-        model = create_bert_attention(switch_add_inputs=True)
+        model = create_bert_attention(input_hidden_size=16, num_heads=2, pruned_qk_hidden_size=8, pruned_v_hidden_size=8, switch_add_inputs=True)
         dir = '.'
         model_path = os.path.join(dir, "bert_attention_reverse_add_order.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path,"bert", num_heads=2, hidden_size=16)
+        optimized_model = optimize_model(model_path, "bert", num_heads=2, hidden_size=16)
         os.remove(model_path)
         opt_model_path = os.path.join(dir, "bert_attention_reverse_add_order_opt.onnx")
         onnx.save(optimized_model.model, opt_model_path)
@@ -45,19 +45,11 @@ class TestFusion(unittest.TestCase):
         self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
 
     def test_attention_fusion_for_varied_qkv_dimensions(self):
-        model = create_bert_attention_with_varied_qkv(input_hidden_size=16, num_heads=2, pruned_qk_hidden_size=24)
+        model = create_bert_attention(input_hidden_size=16, num_heads=2, pruned_qk_hidden_size=24, pruned_v_hidden_size=16)
         dir = '.'
         model_path = os.path.join(dir, "attention_with_varied_qkv.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path,
-                    "bert",
-                    num_heads=2,
-                    hidden_size=16,
-                    optimization_options=None,
-                    opt_level=0,
-                    use_gpu=False,
-                    only_onnxruntime=False,
-                    only_offline_opt=True)
+        optimized_model = optimize_model(model_path, "bert", num_heads=2, hidden_size=16)
         os.remove(model_path)
         opt_model_path = os.path.join(dir, "attention_with_varied_qkv_opt.onnx")
         onnx.save(optimized_model.model, opt_model_path)
