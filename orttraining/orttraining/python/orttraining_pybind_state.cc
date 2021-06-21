@@ -646,6 +646,14 @@ void addObjectMethodsForTraining(py::module& m) {
       .def("get_graph_info", [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
         return ortmodule_graph_builder->GetGraphInfo();
       });
+
+  py::class_<GradientGraphBuilder> gradient_graph_builder(m, "GradientGraphBuilder");
+  // FIXME Pass params to constructor.
+  gradient_graph_builder.def(py::init([]() {
+    return std::make_unique<GradientGraphBuilder>();
+  }))
+      // TODO Add methods that we need in Python.
+      ;
 }
 
 }  // namespace python
