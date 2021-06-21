@@ -99,7 +99,7 @@ class TestOpEmbedLayerNormalization(unittest.TestCase):
         sequence_length = 4
 
         model_f32_path = 'test_embed_layer_norm_unit_test_batch1.onnx'
-        model_uint8_path = 'ttest_embed_layer_norm_unit_test_batch1_uint8.onnx'
+        model_uint8_path = 'test_embed_layer_norm_unit_test_batch1_uint8.onnx'
 
         self.construct_model(batch, hidden_size, sequence_length, model_f32_path)
 
@@ -122,7 +122,7 @@ class TestOpEmbedLayerNormalization(unittest.TestCase):
         sequence_length = 4
 
         model_f32_path = 'test_embed_layer_norm_unit_test_batch2.onnx'
-        model_uint8_path = 'ttest_embed_layer_norm_unit_test_batch2_uint8.onnx'
+        model_uint8_path = 'test_embed_layer_norm_unit_test_batch2_uint8.onnx'
 
         self.construct_model(batch, hidden_size, sequence_length, model_f32_path)
 

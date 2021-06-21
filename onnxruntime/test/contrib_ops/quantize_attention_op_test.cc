@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "test/common/quantization_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -13,52 +14,6 @@
 
 namespace onnxruntime {
 namespace test {
-
-static float RoundHalfToEven(float input) {
-  std::fesetround(FE_TONEAREST);
-  auto result = std::nearbyintf(input);
-  return result;
-}
-
-template <typename Integer, bool symmetric, typename = typename std::enable_if<std::is_integral<Integer>::value, Integer>::type>
-inline std::vector<Integer> QuantizeLinear(const std::vector<float>& data, float& scale, Integer& zp) {
-  std::vector<Integer> result;
-  result.reserve(data.size());
-
-  // find quantization range min and max
-  float qmax = std::numeric_limits<Integer>::max();
-  float qmin = std::numeric_limits<Integer>::min();
-  // Adjust the int8 range to -127 to 127 so that zero point can be 0
-  if (qmin == -128) {
-    qmin = -127;
-  }
-
-  const auto minmax = std::minmax_element(data.begin(), data.end());
-  float min = std::min(*minmax.first, 0.0f);  // ensure the input range includes zero
-  float max = std::max(*minmax.second, 0.0f);
-  if (symmetric) {
-    scale = std::max(std::abs(max), std::abs(min)) / 127;
-    zp = 0;
-  } else {
-    scale = (max - min) / (qmax - qmin);
-    zp = static_cast<Integer>(RoundHalfToEven(std::max(qmin, std::min(qmax, qmin - min / scale))));
-  }
-
-  for (size_t i = 0; i < data.size(); i++) {
-    result.push_back(static_cast<Integer>(RoundHalfToEven(std::max(qmin, std::min(qmax, data[i] / scale + zp)))));
-  }
-  return result;
-}
-
-template <typename Integer, typename = typename std::enable_if<std::is_integral<Integer>::value, Integer>::type>
-inline std::vector<Integer> ToInteger(const std::vector<float>& data, float scale, Integer zero_point = 0) {
-  std::vector<Integer> result;
-  result.reserve(data.size());
-  for (size_t i = 0; i < data.size(); i++) {
-    result.push_back(static_cast<Integer>(std::round(data[i] / scale) + zero_point));
-  }
-  return result;
-}
 
 enum class EP : char {
   CPU,
@@ -106,8 +61,8 @@ void RunQAttention(const std::vector<float>& input_data,         // input:      
   QInput input_zero_point = quantize_parameters.input_zero_point;
   QWeight weight_zero_point = quantize_parameters.weight_zero_point;
   if (input_scale != 0.0f) {
-    tester.AddInput<QInput>("input", input_dims, ToInteger<QInput>(input_data, input_scale, input_zero_point));
-    tester.AddInput<QWeight>("weight", weights_dims, ToInteger<QWeight>(weights_data, weight_scale, weight_zero_point));
+    tester.AddInput<QInput>("input", input_dims, Quantize<QInput>(input_data, input_scale, input_zero_point));
+    tester.AddInput<QWeight>("weight", weights_dims, Quantize<QWeight>(weights_data, weight_scale, weight_zero_point));
   } else {
     tester.AddInput<QInput>("input", input_dims, QuantizeLinear<QInput, ep == EP::CUDA>(input_data, input_scale, input_zero_point));
     tester.AddInput<QWeight>("weight", weights_dims, QuantizeLinear<QWeight, ep == EP::CUDA>(weights_data, weight_scale, weight_zero_point));
@@ -892,8 +847,8 @@ TEST(QAttentionTest, SharedPrepackedWeights) {
   OpTester tester("QAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
 
-  tester.AddInput<uint8_t>("input", input_dims, ToInteger<uint8_t>(input_data, 0.1f, 128));
-  auto weight_data_converted_to_int = ToInteger<uint8_t>(weight_data, 0.1f, 128);
+  tester.AddInput<uint8_t>("input", input_dims, Quantize<uint8_t>(input_data, /*scale=*/0.1f, /*zero_point=*/128));
+  auto weight_data_converted_to_int = Quantize<uint8_t>(weight_data, /*scale=*/0.1f, /*zero_point=*/128);
   tester.AddInput<uint8_t>("weight", weights_dims, weight_data_converted_to_int, true);  // Trigger pre-packing
 
   tester.AddInput<float>("bias", bias_dims, bias_data);

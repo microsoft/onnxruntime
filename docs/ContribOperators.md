@@ -32,6 +32,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
+  * <a href="#com.microsoft.NGramRepeatBlock">com.microsoft.NGramRepeatBlock</a>
   * <a href="#com.microsoft.NhwcMaxPool">com.microsoft.NhwcMaxPool</a>
   * <a href="#com.microsoft.Pad">com.microsoft.Pad</a>
   * <a href="#com.microsoft.QAttention">com.microsoft.QAttention</a>
@@ -1514,6 +1515,47 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain input type to unsigned or signed 32-bit integer tensor, or string tensor. It should be utf-8 encoded if using unicode.</dd>
 <dt><tt>T2</tt> : tensor(uint32), tensor(int32)</dt>
 <dd>Constrain output type to unsigned and signed 32-bit integer tensor.</dd>
+</dl>
+
+
+### <a name="com.microsoft.NGramRepeatBlock"></a><a name="com.microsoft.ngramrepeatblock">**com.microsoft.NGramRepeatBlock**</a>
+
+  Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form a repeated n-gram if added to the back of the input_ids.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>ngram_size</tt> : int (required)</dt>
+<dd>The NGram size.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>input_ids</tt> : Tid</dt>
+<dd>2D input tensor with shape (batch_size, sequence_length)</dd>
+<dt><tt>scores</tt> : T</dt>
+<dd>2D input tensor with shape (batch_size, vocab_size)</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>scores_out</tt> : T</dt>
+<dd>2D output tensor with shape (batch_size, vocab_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>Tid</tt> : tensor(int64)</dt>
+<dd>Constrain indices to integer types</dd>
+<dt><tt>T</tt> : tensor(float)</dt>
+<dd>Constrain scores input and output types to float tensors.</dd>
 </dl>
 
 
