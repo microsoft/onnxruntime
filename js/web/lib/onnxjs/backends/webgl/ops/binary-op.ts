@@ -46,7 +46,6 @@ export class WebGLBinaryOp extends BinaryOp implements WebGLOperator {
       const aBcast = inputs[0].dims.length !== 0 ? 'bcastIndices_A(indices, aindices);' : 'aindices[0] = 0;';
       const bBcast = inputs[1].dims.length !== 0 ? 'bcastIndices_B(indices, bindices);' : 'bindices[0] = 0;';
 
-      // TODO: for packed tensors, we need to implement logic to caculate textCoords for broadcast tensor
       const shaderSource = this.usePackedTexture ? `
       ${this.glslFunc.body}
       void main() {
