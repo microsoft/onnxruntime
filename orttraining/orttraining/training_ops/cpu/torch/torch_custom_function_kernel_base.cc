@@ -30,11 +30,11 @@ void PythonOpBase::Init(const OpKernelInfo& info) {
   ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
   inplace_ = info.GetAttrOrDefault("inplace", static_cast<int64_t>(0));
   is_training_mode_ = static_cast<bool>(info.GetAttrOrDefault("training_mode", static_cast<int64_t>(0)));
-  ORT_THROW_IF_ERROR(info.GetAttr("call_convention", &call_convention_));
+  ORT_THROW_IF_ERROR(info.GetAttr("input_convention", &input_convention));
+  input_requires_grads_ = info.GetAttrsOrDefault("input_requires_grads", std::vector<int64_t>());
 
   // Input tensors.
   input_tensor_types_ = info.GetAttrsOrDefault("input_tensor_types", std::vector<int64_t>());
-  input_tensor_requires_grads_ = info.GetAttrsOrDefault("input_tensor_requires_grads", std::vector<int64_t>());
 
   ORT_ENFORCE(input_tensor_types_.size() == info.node().InputDefs().size());
 
@@ -94,7 +94,7 @@ void PythonOpBase::RunForward(OpKernelContext* context,
   std::string err;
   TorchProxy::GetInstance().Forward(
       OrtTorchFunctionPool::GetInstance().GetForwardCore(name_),
-      input_tensor_requires_grads_,
+      input_requires_grads_,
       args,
       arg_positions_,
       const_args_,

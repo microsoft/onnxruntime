@@ -1733,7 +1733,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
   std::vector<AttributeProto> attrs;
   ORT_ENFORCE(utils::HasString(src_attrs.at("name")));
   attrs.push_back(MakeAttribute("name", src_attrs.at("name").s()));
-  attrs.push_back(MakeAttribute("output_convention", src_attrs.at("call_convention").s()));
+  attrs.push_back(MakeAttribute("output_convention", src_attrs.at("input_convention").s()));
   attrs.push_back(MakeAttribute("inplace", src_attrs.at("inplace").i()));
 
   // output_tensor_types[i] stores the type of autograd.Function.apply's i-th input.
@@ -1772,15 +1772,15 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
     input_args.push_back(O(i));
   }
 
-  // src_attrs["input_tensor_requires_grads"] stores all inputs's requires_grad attributes,
+  // src_attrs["input_requires_grads"] stores all inputs's requires_grad attributes,
   // including both tensor inputs and non-tensor inputs (e.g. constants), here we filter out
   // those non-tensor inputs when constructing PythonOpGrad's outputs.
-  const std::string& call_convention = src_attrs.at("call_convention").s();
-  const auto& fw_input_tensor_requires_grads = src_attrs["input_tensor_requires_grads"].ints();
+  const std::string& input_convention = src_attrs.at("input_convention").s();
+  const auto& fw_input_requires_grads = src_attrs["input_requires_grads"].ints();
   std::vector<int64_t> bw_tensor_output_requires_grads;
-  for (auto i = 0; i < fw_input_tensor_requires_grads.size(); ++i) {
-    if (call_convention[i] == 'd') { // only handle gradients for tensor type inputs.
-      bw_tensor_output_requires_grads.push_back(fw_input_tensor_requires_grads.Get(i));
+  for (auto i = 0; i < fw_input_requires_grads.size(); ++i) {
+    if (input_convention[i] == 'd') { // only handle gradients for tensor type inputs.
+      bw_tensor_output_requires_grads.push_back(fw_input_requires_grads.Get(i));
     }
   }
   ORT_ENFORCE(static_cast<size_t>(GetSrcNodeInputSize()) == bw_tensor_output_requires_grads.size(), 

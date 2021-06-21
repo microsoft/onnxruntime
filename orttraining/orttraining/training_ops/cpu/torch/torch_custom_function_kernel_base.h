@@ -52,14 +52,14 @@ class PythonOpBase {
   // Name of containing class. For example, MyReLU.
   std::string name_;
   int64_t inplace_;
-  std::string call_convention_;
+  std::string input_convention;
   bool is_training_mode_;
+  // input_requires_grads_[i] indicates if the i-th inputs of apply() should have gradient.
+  std::vector<int64_t> input_requires_grads_;
 
   // Attributes of input tensors for calling MyReLU.apply(...).
   // Types. input_tensor_types_[i] is the element type of the i-th tensor.
   std::vector<int64_t> input_tensor_types_;
-  // input_tensor_types_[i] indicates if the i-th tensor should have gradient.
-  std::vector<int64_t> input_tensor_requires_grads_;
 
   // Concatenation of all floats from apply(...) 's inputs.
   std::vector<int64_t> input_int_scalars_;

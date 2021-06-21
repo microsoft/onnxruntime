@@ -2887,9 +2887,14 @@ Return true if all elements are true and false otherwise.
           "Name of custom class.",
           AttributeProto::STRING)
       .Attr(
-          "call_convention",
-          "call_convention[i]==c means a non-tensor argument. call_convention[i]==d means a tensor.",
+          "input_convention",
+          "input_convention[i]==c means a non-tensor argument. input_convention[i]==d means a tensor.",
           AttributeProto::STRING)
+      .Attr(
+          "input_requires_grads",
+          "Flags to indicate whether the torch.autograd.apply's inputs (including both tensor"
+          " and non-tensor inputs) has gradient",
+          AttributeProto::INTS)
       // Input Pytorch tensors.
       .Attr(
           "input_tensor_types",
@@ -2898,10 +2903,6 @@ Return true if all elements are true and false otherwise.
       .Attr(
           "input_tensor_ranks",
           "Input tensors' ranks of autograd.Function.apply.",
-          AttributeProto::INTS)
-      .Attr(
-          "input_tensor_requires_grads",
-          "Flags to indicate which inputs has gradient",
           AttributeProto::INTS)
       // Input int scalars.
       .Attr(
