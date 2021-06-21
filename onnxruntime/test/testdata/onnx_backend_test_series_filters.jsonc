@@ -61,7 +61,8 @@
         "^test_mul_uint8_cpu",
         "^test_add_uint8_cpu",
         "^test_div_uint8_cpu",
-        "^test_batchnorm_*"
+        "^test_batchnorm_*",
+        "^test_bernoulli_*"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
