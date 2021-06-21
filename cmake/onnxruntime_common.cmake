@@ -171,3 +171,11 @@ endif()
 if(APPLE)
   target_link_libraries(onnxruntime_common "-framework Foundation")
 endif()
+
+
+# Link cpuinfo
+# Using it mainly in ARM with Android. 
+# Its functionality in detecting x86 cpu features are lacking, so is support for Windows.
+
+target_include_directories(onnxruntime_common PRIVATE ${PYTORCH_CPUINFO_INCLUDE_DIR})
+target_link_libraries(onnxruntime_common  cpuinfo)

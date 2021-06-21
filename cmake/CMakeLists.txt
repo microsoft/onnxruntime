@@ -787,6 +787,16 @@ if(NOT TARGET re2::re2)
   set(RE2_INCLUDE_DIR ${REPO_ROOT}/cmake/external/re2)
 endif()
 
+# Adding pytorch CPU info library
+# TODO  do we have to add target_include_directories to each project that uses this?
+set(PYTORCH_CPUINFO_DIR external/pytorch_cpuinfo)
+set(PYTORCH_CPUINFO_INCLUDE_DIR ${PYTORCH_CPUINFO_DIR}/include)
+set(CPUINFO_BUILD_TOOLS OFF CACHE INTERNAL "")
+set(CPUINFO_BUILD_UNIT_TESTS OFF CACHE INTERNAL "")
+set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE INTERNAL "")
+set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
+add_subdirectory(external/pytorch_cpuinfo EXCLUDE_FROM_ALL)
+
 # bounds checking behavior.
 # throw instead of calling terminate if there's a bounds checking violation.
 # we make it through via a handler so CUDA does not complain

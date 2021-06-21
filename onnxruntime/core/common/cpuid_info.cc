@@ -18,6 +18,9 @@
 
 #include "core/common/cpuid_info.h"
 
+// Using pytorch cpu info for cache size and arm related info
+#include <cpuinfo.h>
+
 namespace onnxruntime {
 
 #if defined(PLATFORM_X86)
@@ -42,7 +45,15 @@ static inline int XGETBV() {
 }
 #endif  // PLATFORM_X86
 
-CPUIDInfo::CPUIDInfo() noexcept {
+CPUIDInfo CPUIDInfo::instance_;
+
+
+common::Status CPUIDInfo::Init() {
+  if (!cpuinfo_initialize()) {
+    // Unfortunately we can not capture cpuinfo log!!
+    return ORT_MAKE_STATUS(SYSTEM, FAIL, "Failed to initialize cpuinfo");
+  }
+
 #if defined(PLATFORM_X86)
   int data[4] = {-1};
   GetCPUID(0, data);
@@ -56,6 +67,7 @@ CPUIDInfo::CPUIDInfo() noexcept {
       int value = XGETBV();
       bool has_sse2 = (data[3] & (1 << 26));
       has_sse3_ = (data[2] & 0x1);
+      has_sse4_1_ = (data[2] & (1 << 19));
       bool has_ssse3 = (data[2] & (1 << 9));
       has_avx_ = has_sse2 && has_ssse3 && (data[2] & (1 << 28)) && ((value & AVX_MASK) == AVX_MASK);
       bool has_avx512 = (value & AVX512_MASK) == AVX512_MASK;
@@ -72,7 +84,15 @@ CPUIDInfo::CPUIDInfo() noexcept {
       }
     }
   }
+#else
+
+  // only works on ARM linux or android, does not work on Windows
+  is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
+  has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
+
 #endif
+  initalized_ = true;
+  return common::Status();
 }
 
 }  // namespace onnxruntime
