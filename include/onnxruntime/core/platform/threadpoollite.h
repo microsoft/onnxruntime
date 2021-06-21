@@ -128,5 +128,46 @@ class ThreadPoolLite3 final : public ThreadPool {
 };
 */
 
+class ThreadPoolLite4 final : public ThreadPool {
+ public:
+  ThreadPoolLite4(Env*,
+                  const ThreadOptions&,
+                  const NAME_CHAR_TYPE*,
+                  int num_threads,
+                  bool);
+  ~ThreadPoolLite4();
+
+ private:
+  int NumThreads() const override { return static_cast<int>(sub_threads_.size()); }
+  void ParallelFor(std::ptrdiff_t, double, const Fn&) override;
+  void ParallelFor(std::ptrdiff_t, const TensorOpCost&, const Fn&) override;
+  void SimpleParallelFor(std::ptrdiff_t, const SimpleFn&) override;
+  void ParallelForImpl(const SchdFn&);
+  void Schedule(SchdFn) override;
+  void StartProfiling() override;
+  std::string StopProfiling() override;
+  void MainLoop(int);
+
+  enum Stage {
+    empty = 0,
+    loading,
+    ready,
+    running,
+    done
+  };
+
+  struct Slot {
+    std::atomic<Stage> stage_{empty};
+    SchdFn schd_fn_;
+  };
+
+  std::unique_ptr<Slot[]> slots_; 
+  std::vector<std::thread> sub_threads_;
+  ThreadPoolProfiler profiler_;
+  int num_sub_threads_{0};
+  bool set_denormal_as_zero_{false};
+  bool exit_ = false;
+};
+
 }  // namespace concurrency
 }  // namespace onnxruntime
