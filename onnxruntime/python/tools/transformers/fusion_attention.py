@@ -174,7 +174,7 @@ class FusionAttention(Fusion):
 
         assert qw_in_size == kw_in_size == vw_in_size == hidden_size
         print("viboga_debug: weights are correct")
-
+        print("qw.shape:" + ":" + str(qw.shape) + ":  vw.shape" + str(vw.shape))
         is_qkv_diff_dims = False
         if qw.shape != vw.shape:
             is_qkv_diff_dims = True

@@ -139,7 +139,7 @@ def create_bert_attention(input_hidden_size=16,
 def create_bert_attention_with_varied_qkv(input_hidden_size=16,
                           num_heads=2,
                           pruned_qk_hidden_size=8,
-                          pruned_v_hidden_size=8,
+                          pruned_v_hidden_size=16,
                           switch_add_inputs=False,
                           use_float_mask=False):
         # unsqueeze in opset version 13 has two inputs (axis is moved from attribute to input).

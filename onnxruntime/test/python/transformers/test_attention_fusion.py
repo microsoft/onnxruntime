@@ -35,8 +35,8 @@ class TestFusion(unittest.TestCase):
         onnx.save(model, model_path)
         optimized_model = optimize_model(model_path,"bert", num_heads=2, hidden_size=16)
         os.remove(model_path)
-        #opt_model_path = os.path.join(dir, "bert_attention_reverse_add_order_opt.onnx")
-        #onnx.save(optimized_model.model, opt_model_path)
+        opt_model_path = os.path.join(dir, "bert_attention_reverse_add_order_opt.onnx")
+        onnx.save(optimized_model.model, opt_model_path)
 
         # reverse add input order will get same optimized model
         expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models',
@@ -45,9 +45,9 @@ class TestFusion(unittest.TestCase):
         self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
 
     def test_attention_fusion_for_varied_qkv_dimensions(self):
-        model = create_bert_attention_with_varied_qkv()
+        model = create_bert_attention_with_varied_qkv(input_hidden_size=16, num_heads=2, pruned_qk_hidden_size=24)
         dir = '.'
-        model_path = os.path.join(dir, "bert_attention_create_bert_attention_with_varied_qkv.onnx")
+        model_path = os.path.join(dir, "attention_with_varied_qkv.onnx")
         onnx.save(model, model_path)
         optimized_model = optimize_model(model_path,
                     "bert",
@@ -58,16 +58,14 @@ class TestFusion(unittest.TestCase):
                     use_gpu=False,
                     only_onnxruntime=False,
                     only_offline_opt=True)
-        #os.remove(model_path)
-        opt_model_path = os.path.join(dir, "bert_attention_create_bert_attention_with_varied_qkv_opt.onnx")
+        os.remove(model_path)
+        opt_model_path = os.path.join(dir, "attention_with_varied_qkv_opt.onnx")
         onnx.save(optimized_model.model, opt_model_path)
 
-        '''
         expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models',
-                                           'pruned_attention_opt.onnx')
+                                           'attention_with_varied_qkv_opt.onnx')
         expected = onnx.load(expected_model_path)
-        #self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
-        '''
+        self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
 
     def test_3d_attention_fusion_tf2onnx_model(self):
         model = create_tf2onnx_attention_3d()
