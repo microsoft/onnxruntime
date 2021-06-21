@@ -93,27 +93,27 @@ class FusionAttention(Fusion):
         self.num_heads = num_heads
         self.attention_mask = attention_mask
 
-    def get_num_heads_and_hidden_size(self, reshape_v: NodeProto) -> Tuple[int, int]:
+    def get_num_heads_and_hidden_size(self, reshape_q: NodeProto) -> Tuple[int, int]:
         """ Detect num_heads and hidden_size from a reshape node.
         Args:
-            reshape_q (NodeProto): reshape node for V
+            reshape_q (NodeProto): reshape node for q
         Returns:
             Tuple[int, int]: num_heads and hidden_size
         """
 
         # we assume that reshape fusion has done, so the shape is a tensor like [0, 0, num_heads, head_size]
-        v_shape = self.model.get_initializer(reshape_v.input[1])
-        if v_shape is None:
-            logger.debug(f"{reshape_v.input[1]} is not initializer.")
+        q_shape = self.model.get_initializer(reshape_q.input[1])
+        if q_shape is None:
+            logger.debug(f"{reshape_q.input[1]} is not initializer.")
             return self.num_heads, self.hidden_size  # Fall back to user specified value
 
-        v_shape_value = NumpyHelper.to_array(v_shape)
-        if len(v_shape_value) != 4 or (v_shape_value[2] <= 0 or v_shape_value[3] <= 0):
-            logger.debug(f"q_shape_value={v_shape_value}. Expected value are like [0, 0, num_heads, head_size].")
+        q_shape_value = NumpyHelper.to_array(q_shape)
+        if len(q_shape_value) != 4 or (q_shape_value[2] <= 0 or q_shape_value[3] <= 0):
+            logger.debug(f"q_shape_value={q_shape_value}. Expected value are like [0, 0, num_heads, head_size].")
             return self.num_heads, self.hidden_size  # Fall back to user specified value
 
-        num_heads = v_shape_value[2]
-        head_size = v_shape_value[3]
+        num_heads = q_shape_value[2]
+        head_size = q_shape_value[3]
         hidden_size = num_heads * head_size
 
         if self.num_heads > 0 and num_heads != self.num_heads:
@@ -180,13 +180,14 @@ class FusionAttention(Fusion):
         # For 2d weights, the shapes would be [in_size, out_size].
         # For 3d weights, shape would be [in_size, a, b] where a*b = out_size
         qw_out_size = np.prod(qw.shape[1:])
+        kw_out_size = np.prod(qw.shape[1:])
         vw_out_size = np.prod(vw.shape[1:])
 
         qkv_weight_dim = 0
         if is_qkv_diff_dims:
             qkv_weight = np.concatenate((qw, kw, vw), axis=1)
             # q and k out sizes are same, hence adding it twice
-            qkv_weight_dim = qw_out_size + qw_out_size + vw_out_size
+            qkv_weight_dim = qw_out_size + kw_out_size + vw_out_size
         else:
             qkv_weight = np.stack((qw, kw, vw), axis=1)
             qkv_weight_dim = 3*qw_out_size
@@ -247,7 +248,7 @@ class FusionAttention(Fusion):
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
 
         if is_qkv_diff_dims:
-            attention_node.attribute.extend([helper.make_attribute("qkv_hidden_sizes", [qw_out_size, qw_out_size, vw_out_size])])
+            attention_node.attribute.extend([helper.make_attribute("qkv_hidden_sizes", [qw_out_size, kw_out_size, vw_out_size])])
 
         return attention_node
 

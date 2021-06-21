@@ -28,7 +28,7 @@ def reverse_if(inputs, reverse=False):
 
 def create_bert_attention(input_hidden_size=16,
                           num_heads=2,
-                          pruned_qk_hidden_size=8,
+                          pruned_qk_hidden_size=16,
                           pruned_v_hidden_size=16,
                           switch_add_inputs=False,
                           use_float_mask=False):
@@ -92,7 +92,6 @@ def create_bert_attention(input_hidden_size=16,
                          epsion=0.000009999999747378752),
     ]
 
-    #pruned_hidden_size = pruned_num_heads * pruned_head_size
     pruned_qk_head_size = int(pruned_qk_hidden_size / num_heads)
     pruned_v_head_size = int(pruned_v_hidden_size / num_heads)
     initializers = [  # initializers
