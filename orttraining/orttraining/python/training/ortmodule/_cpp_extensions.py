@@ -124,26 +124,6 @@ class ATenOperatorCache {
   std::unordered_map<std::string, ATenOperator> ops_;
 };
 
-// Some arguments of backward operator are not from forward operator's input or output,
-// but need some processing. Since we cannot build such processing to ONNX graph for now,
-// we are putting such processing code here if needed.
-// Take embedding_backward as example:
-//   weight: embedding_backward(grad, indices, weight.size(0), padding_idx, scale_grad_by_freq, sparse)
-// the 3rd argument (index 2) is weight.size(0), we add this processing here.
-using TensorTransformFunc = std::function<c10::IValue(const at::Tensor&)>;
-static const TensorTransformFunc embedding_num_weights = [](const at::Tensor& tensor) {
-  return c10::IValue(tensor.size(0));
-};
-
-static const TensorTransformFunc unfold_input_sizes = [](const at::Tensor& tensor) {
-  return c10::IValue(tensor.sizes());
-};
-
-static const std::unordered_map<std::string, std::unordered_map<size_t, TensorTransformFunc>> TENSOR_TRANSFORM_FUNCS = {
-    {"aten::embedding_backward", {{2, embedding_num_weights}}},
-    {"aten::unfold_backward", {{1, unfold_input_sizes}}},
-};
-
 template <typename T>
 void SetIValueArguments(const std::vector<std::pair<size_t, T>>& raw_arguments,
                         const std::vector<bool>& is_optional_arguments, std::vector<c10::IValue>& ivalue_arguments) {
@@ -190,20 +170,8 @@ std::vector<DLManagedTensor*> ExecuteATenOperator(
   for (const auto& tensor_argument : tensor_arguments) {
     size_t index = tensor_argument.first;
     at::Tensor tensor = at::fromDLPack(tensor_argument.second);
-    bool has_transform_func = false;
-    auto op_it = TENSOR_TRANSFORM_FUNCS.find(op_name_str);
-    if (op_it != TENSOR_TRANSFORM_FUNCS.end()) {
-      auto func_it = op_it->second.find(index);
-      if (func_it != op_it->second.end()) {
-        arguments[index] = func_it->second(tensor);
-        has_transform_func = true;
-      }
-    }
-
-    if (!has_transform_func) {
-      arguments[index] =
-          aten_op.is_optional_arguments[index] ? c10::IValue(c10::optional<at::Tensor>(tensor)) : c10::IValue(tensor);
-    }
+    arguments[index] =
+        aten_op.is_optional_arguments[index] ? c10::IValue(c10::optional<at::Tensor>(tensor)) : c10::IValue(tensor);
   }
 
   SetIValueArguments<int64_t>(int_arguments, aten_op.is_optional_arguments, arguments);
