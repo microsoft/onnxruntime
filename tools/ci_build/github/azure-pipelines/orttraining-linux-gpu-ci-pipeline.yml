@@ -15,7 +15,7 @@ jobs:
       --config $(buildConfig)
       --build_wheel
       --enable_nvtx_profile
-      --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=70
+      --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=70 onnxruntime_ENABLE_TRAINING_TORCH_INTEROP=ON
       "
     DoNugetPack: 'false'
     RunInjectedPipeline: 'true'
@@ -23,7 +23,7 @@ jobs:
     DockerImageTag: 'onnxruntime_orttraining_ortmodule_tests_image'
     BuildConfig: $(buildConfig)
     ArtifactName: 'drop-linux'
-    TimeoutInMinutes: 120
+    TimeoutInMinutes: 140
     # Enable unreleased onnx opsets in CI builds
     # This facilitates testing the implementation for the new opsets
     AllowReleasedOpsetOnly: '0'

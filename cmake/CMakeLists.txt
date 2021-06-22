@@ -230,14 +230,19 @@ if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   add_compile_definitions(ENABLE_LANGUAGE_INTEROP_OPS)
 endif()
 
-if (NOT (onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING))
+if (NOT (UNIX AND onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING AND (NOT onnxruntime_BUILD_SHARED_LIB)))
   set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OFF)
+  message(WARNING "onnxruntime_ENABLE_TRAINING_TORCH_INTEROP is turned OFF due to incompatible build combinations.")
 endif()
 
+set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB OFF)
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   add_compile_definitions(ENABLE_TRAINING_TORCH_INTEROP)
-  # disable tests because executable projects need link to python so which did not always exist for test envs.
-  set(onnxruntime_BUILD_UNIT_TESTS OFF)
+
+  # Python::Python is required for building unit test executables. 
+  if (onnxruntime_BUILD_UNIT_TESTS)
+    set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB ON)
+  endif()
 endif()
 
 # General C# properties
@@ -641,7 +646,7 @@ endif()
 #Need python to generate def file
 if(onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
   if(onnxruntime_ENABLE_PYTHON)
-    if(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+    if(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OR onnxruntime_REQUIRE_PYTHON_EMBED_LIB)
       find_package(Python 3.6 COMPONENTS Interpreter Development NumPy)
     else()
       find_package(Python 3.6 COMPONENTS Interpreter Development.Module NumPy)
@@ -664,7 +669,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
     # We will not need to install benchmark since we link it statically.
     set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "Disable benchmark install to avoid overwriting vendor install.")
     add_subdirectory(${PROJECT_SOURCE_DIR}/external/googlebenchmark EXCLUDE_FROM_ALL)
-    add_library(benchmark::benchmark ALIAS benchmark)
+    #add_library(benchmark::benchmark ALIAS benchmark)
   endif()
 endif()
 
