@@ -268,9 +268,9 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtSession_run
 
     // Extract the names and native pointers of the input values.
     for (int i = 0; i < numInputs; i++) {
-      javaInputStrings[i] = (*jniEnv)->GetObjectArrayElement(jniEnv,inputNamesArr,i);
-      inputNames[i] = (*jniEnv)->GetStringUTFChars(jniEnv,javaInputStrings[i],NULL);
-      inputValues[i] = (OrtValue*)inputTensors[i];
+        javaInputStrings[i] = (*jniEnv)->GetObjectArrayElement(jniEnv,inputNamesArr,i);
+        inputNames[i] = (*jniEnv)->GetStringUTFChars(jniEnv,javaInputStrings[i],NULL);
+        inputValues[i] = (OrtValue*)inputTensors[i];
     }
 
     // Extract the names of the output values, and allocate their output array.
