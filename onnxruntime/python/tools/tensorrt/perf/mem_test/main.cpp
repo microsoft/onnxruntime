@@ -57,6 +57,7 @@ void ort_trt_run_with_engine_cache() {
   session_options.AppendExecutionProvider_TensorRT(*tensorrt_options.get());
   printf("Using Onnxruntime C++ API\n");
   printf("Runing ORT TRT EP with:\n\tengine cache enabled\n\tfp16 enabled if supports\n\tint8 enabled if supports\n\tint8 calibration table provided\n");
+
   Ort::Session session(env, model_path, session_options);
 
   //*************************************************************************
