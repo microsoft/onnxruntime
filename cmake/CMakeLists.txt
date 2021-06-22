@@ -1372,6 +1372,7 @@ if (onnxruntime_USE_VITISAI)
 endif()
 
 configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_config.h)
+configure_file(../requirements.txt.in ${CMAKE_CURRENT_BINARY_DIR}/requirements.txt)
 
 if (onnxruntime_USE_CUDA)
   #The following 6 lines are copied from https://gitlab.kitware.com/cmake/cmake/issues/17559
