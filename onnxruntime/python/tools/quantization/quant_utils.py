@@ -109,7 +109,7 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
     return arr_fp32.astype(dtype)
 
 
-def compute_scale_zp(rmin, rmax, qmin, qmax, symmetrize=False):
+def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False):
     '''
     Calculate the scale s and zero point z for the quantization relation 
     r = s(q-z), where r are the original values and q are the corresponding
@@ -117,7 +117,7 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetrize=False):
 
     r and z are calculated such that every value within [rmin,rmax] has an
     approximate representation within [qmin,qmax]. In addition, qmin <= z <=
-    qmax is enforced. If the symmetrize flag is set to True, the interval
+    qmax is enforced. If the symmetric flag is set to True, the interval
     [rmin,rmax] is symmetrized to [-absmax, +absmax], where
     absmax = max(abs(rmin), abs(rmax)).
 
@@ -135,7 +135,7 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetrize=False):
     rmin = min(rmin, 0)
     rmax = max(rmax, 0)
 
-    if symmetrize:
+    if symmetric:
         absmax = max(abs(rmin), abs(rmax))
         rmin = -absmax
         rmax = +absmax
@@ -146,7 +146,7 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetrize=False):
     return [zero_point, scale]
 
 
-def quantize_data(data, qType, symmetrize, reduce_range=False):
+def quantize_data(data, qType, symmetric, reduce_range=False):
     '''
         :parameter data: data to quantize
         :parameter qType: data type to quantize to. Supported types UINT8 and INT8
@@ -167,7 +167,7 @@ def quantize_data(data, qType, symmetrize, reduce_range=False):
     rmax = max(data)
     qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range)
 
-    zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetrize)
+    zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric)
     quantized_data = quantize_nparray(qType, numpy.asarray(data), scale, zero_point)
 
     return rmin, rmax, zero_point, scale, quantized_data

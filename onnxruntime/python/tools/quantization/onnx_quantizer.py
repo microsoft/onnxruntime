@@ -41,8 +41,8 @@ class ONNXQuantizer:
         self.fuse_dynamic_quant = False
         self.extra_options = extra_options if extra_options is not None else {}
         self.q_matmul_const_b_only = 'MatMulConstBOnly' in self.extra_options and self.extra_options['MatMulConstBOnly']
-        self.is_weight_symmetric = 'WeightSymmetric' not in self.extra_options or self.extra_options['WeightSymmetric']
-        self.is_activation_symmetric = 'ActivationSymmetric' not in self.extra_options or self.extra_options['WeightSymmetric']
+        self.is_weight_symmetric = True if 'WeightSymmetric' not in self.extra_options else self.extra_options['WeightSymmetric']
+        self.is_activation_symmetric = False if 'ActivationSymmetric' not in self.extra_options else self.extra_options['ActivationSymmetric']
 
         self.input_qType = onnx_proto.TensorProto.INT8 if input_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
         self.weight_qType = onnx_proto.TensorProto.INT8 if weight_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
