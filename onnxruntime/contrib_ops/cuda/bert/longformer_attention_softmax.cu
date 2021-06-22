@@ -173,8 +173,7 @@ __launch_bounds__(blockSize)
   if (is_local_row) {
     for (int g = tid; g < global_num; g += blockSize) {
       int i = global_index[g];
-
-      if ((i < col_start || i >= col_end) && (i < zero_start && i >= zero_end)) {
+      if (i < col_start || i >= col_end) {
         float x = input_block[i];
         x = expf((x)*scaler + (float)mask_block[i] - max_shared);
         output_block[i] = (T)(recip_sum * x);
