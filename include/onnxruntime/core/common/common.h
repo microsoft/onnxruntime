@@ -40,14 +40,6 @@
 #include <mimalloc.h>
 #endif
 
-#ifdef ORT_NO_EXCEPTIONS
-#if defined(__ANDROID__)
-#include <android/log.h>
-#else
-#include <iostream>
-#endif
-#endif
-
 namespace onnxruntime {
 
 using TimePoint = std::chrono::high_resolution_clock::time_point;
@@ -81,18 +73,12 @@ using common::Status;
 #define ORT_ATTRIBUTE_UNUSED
 #endif
 
-// ORT_PRINT_ERROR_MSG
-// Print the given error message, the message must be a null terminated char*
+#ifdef ORT_NO_EXCEPTIONS
+// Print the given final message, the message must be a null terminated char*
+// ORT will abort after printing the message.
 // For Android, will print to Android system log
 // For other platforms, will print to stderr
-#ifdef ORT_NO_EXCEPTIONS
-#if defined(__ANDROID__)
-#define ORT_PRINT_ERROR_MSG(msg) \
-  __android_log_print(ANDROID_LOG_ERROR, "onnxruntime", "%s", msg);
-#else
-#define ORT_PRINT_ERROR_MSG(msg) \
-  std::cerr << msg << std::endl;
-#endif
+void PrintFinalMessage(const char* msg);
 #endif
 
 // macro to explicitly ignore the return value from a function call so Code Analysis doesn't complain
@@ -128,17 +114,12 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 // a lambda function. otherwise the exception referred will be undefined and cause build break
 #define ORT_HANDLE_EXCEPTION(func)
 
-// TODO, consider changing the output of the error message from std::cerr to logging when the
-// exceptions are disabled, since using std::cerr might increase binary size, and std::cerr output
-// might not be easily accesible on some systems such as mobile
-// TODO, see if we need to change the output of the error message from std::cerr to NSLog for iOS
-
 // Throw an exception with optional message.
 // NOTE: The arguments get streamed into a string via ostringstream::operator<<
 // DO NOT use a printf format string, as that will not work as you expect.
 #define ORT_THROW(...)                                                    \
   do {                                                                    \
-    ORT_PRINT_ERROR_MSG(                                                  \
+    PrintErrorMessage(                                                    \
         ::onnxruntime::OnnxRuntimeException(                              \
             ORT_WHERE_WITH_STACK, ::onnxruntime::MakeString(__VA_ARGS__)) \
             .what());                                                     \
@@ -148,7 +129,7 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 // Just in order to mark things as not implemented. Do not use in final code.
 #define ORT_NOT_IMPLEMENTED(...)                                                       \
   do {                                                                                 \
-    ORT_PRINT_ERROR_MSG(                                                               \
+    PrintErrorMessage(                                                                 \
         ::onnxruntime::NotImplementedException(::onnxruntime::MakeString(__VA_ARGS__)) \
             .what());                                                                  \
     abort();                                                                           \
@@ -160,7 +141,7 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 #define ORT_ENFORCE(condition, ...)                                                   \
   do {                                                                                \
     if (!(condition)) {                                                               \
-      ORT_PRINT_ERROR_MSG(                                                            \
+      PrintErrorMessage(                                                              \
           ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition,       \
                                               ::onnxruntime::MakeString(__VA_ARGS__)) \
               .what());                                                               \
@@ -170,7 +151,7 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 
 #define ORT_THROW_EX(ex, ...)                                                                      \
   do {                                                                                             \
-    ORT_PRINT_ERROR_MSG(                                                                           \
+    PrintErrorMessage(                                                                             \
         ::onnxruntime::MakeString(#ex, "(", ::onnxruntime::MakeString(__VA_ARGS__), ")").c_str()); \
     abort();                                                                                       \
   } while (false)
