@@ -433,7 +433,7 @@ ThreadPoolLite4::ThreadPoolLite4(Env*,
   }
 #else
   for (int i = 0; i < num_sub_threads_; ++i) {
-    sub_threads_.emplace_back(&ThreadPoolLite2::MainLoop, this, i);
+    sub_threads_.emplace_back(&ThreadPoolLite4::MainLoop, this, i);
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     CPU_SET(i, &cpuset);
