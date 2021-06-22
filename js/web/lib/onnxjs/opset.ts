@@ -1,9 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InferenceHandler} from './backend';
 import {Graph} from './graph';
-import {Tensor} from './tensor';
+import {OperatorImplementation, OperatorInitialization} from './operators';
 
 export interface OpSet {
   domain: string;
@@ -11,9 +10,6 @@ export interface OpSet {
 }
 
 export declare namespace OpSet {
-  type OperatorImplementation<T> = (inferenceHandler: InferenceHandler, inputs: Tensor[], context: T) => Tensor[];
-  type OperatorInitialization<T> = (node: Graph.Node) => T;
-
   /**
    * Domain of an opset, it can be an empty string(default value, represent for ai.onnx), or 'ai.onnx.ml'
    */
@@ -33,14 +29,15 @@ export function resolveOperator(node: Graph.Node, opsets: readonly OpSet[], rule
     const opType = rule[0];
     const domain = rule[1];
     const versionSelector = rule[2];
-    const opConstructor = rule[3];
+    const opImpl = rule[3];
+    const opInit = rule[4];
 
     if (node.opType === opType) {  // operator type matches
       for (const opset of opsets) {
         // opset '' and 'ai.onnx' are considered the same.
         if (opset.domain === domain || (opset.domain === 'ai.onnx' && domain === '')) {  // opset domain found
           if (matchSelector(opset.version, versionSelector)) {
-            return opConstructor(node);  // TODO: <<--- modify usage of 'Operator' in onnxjs session
+            return {opImpl, opInit};
           }
         }
       }
