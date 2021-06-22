@@ -90,6 +90,13 @@ struct TrainingConfigurationResult {
   optional<std::string> loss_scale_input_name;
 };
 
+struct PyGradientGraphBuilder {
+  GradientGraphBuilder& builder;
+  Model& model;
+  PyGradientGraphBuilder(GradientGraphBuilder& builder, Model& model)
+      : builder(builder), model(model) {}
+};
+
 // TODO: this method does not handle parallel optimization.
 TrainingConfigurationResult ConfigureSessionForTraining(
     training::PipelineTrainingSession* sess, TrainingParameters& parameters) {
@@ -650,7 +657,7 @@ void addObjectMethodsForTraining(py::module& m) {
         return ortmodule_graph_builder->GetGraphInfo();
       });
 
-  py::class_<GradientGraphBuilder> gradient_graph_builder(m, "GradientGraphBuilder", R"pbdoc(A utility for making a gradient graph that can be used to help train a model.)pbdoc");
+  py::class_<PyGradientGraphBuilder> gradient_graph_builder(m, "GradientGraphBuilder", R"pbdoc(A utility for making a gradient graph that can be used to help train a model.)pbdoc");
   gradient_graph_builder.def(py::init([](
                                           const std::string& model_path,
                                           const std::unordered_set<std::string>& y_node_arg_names,
@@ -663,19 +670,20 @@ void addObjectMethodsForTraining(py::module& m) {
                           GradientGraphConfiguration gradient_graph_config{};
                           gradient_graph_config.set_gradients_as_graph_outputs = true;
 
-                          return std::make_unique<GradientGraphBuilder>(
+                          GradientGraphBuilder builder{
                               &model->MainGraph(),
                               y_node_arg_names,
                               x_node_arg_names,
                               loss_node_arg_name,
                               gradient_graph_config,
-                              logger);
+                              logger};
+                          return std::make_unique<PyGradientGraphBuilder>(builder, *model);
                         }))
-      .def("build", [](GradientGraphBuilder* gradient_graph_builder) {
-        ORT_THROW_IF_ERROR(gradient_graph_builder->Build());
+      .def("build", [](PyGradientGraphBuilder* gradient_graph_builder) {
+        ORT_THROW_IF_ERROR(gradient_graph_builder->builder.Build());
       })
-      .def("export", []() {
-
+      .def("save", [](PyGradientGraphBuilder* gradient_graph_builder, const std::string& path) {
+        ORT_THROW_IF_ERROR(Model::Save(gradient_graph_builder->model, path));
       });
 }
 
