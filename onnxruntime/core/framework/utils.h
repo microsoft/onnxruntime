@@ -31,7 +31,7 @@ class KernelRegistryManager;
 class IExecutionProvider;
 class Node;
 class Tensor;
-class KernelCreateInfo;
+struct KernelCreateInfo;
 
 namespace logging {
 class Logger;
