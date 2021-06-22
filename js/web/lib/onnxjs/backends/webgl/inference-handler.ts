@@ -32,15 +32,21 @@ export class WebGLInferenceHandler implements InferenceHandler {
     this.unpack2packMap = new Map();
   }
 
+  /**
+   * @returns [width, height]
+   */
+  calculateTextureWidthAndHeight(shape: readonly number[], textureType: TextureType): [number, number] {
+    const layout = this.createTextureLayoutFromTextureType(shape, textureType);
+    return [layout.width, layout.height];
+  }
+
   run(programInfo: ProgramInfo, inputs: Tensor[]): Tensor {
     // create texture info for input
     const inputTextureDatas = inputs.map((tensor, i) => {
       const textureType = programInfo.inputTypes[i];
       let td = this.getTextureData(tensor.dataId, textureType === TextureType.packed);
       if (!td) {
-        const layout = this.createTextureLayoutFromShape(
-            tensor.dims, textureType === TextureType.unpacked ? 1 : 4, [],
-            textureType === TextureType.packed ? {isPacked: true, reverseWH: true} : undefined);
+        const layout = this.createTextureLayoutFromTextureType(tensor.dims, textureType);
 
         if (textureType === TextureType.packed) {
           const unpackedTextureLayout = this.getOrCreateTextureLayout(tensor, 1, false, [], true);
@@ -55,9 +61,8 @@ export class WebGLInferenceHandler implements InferenceHandler {
     });
 
     // create texture info for output
-    const outputTextureLayout = this.createTextureLayoutFromShape(
-        programInfo.output.dims, programInfo.output.textureType === TextureType.unpacked ? 1 : 4, [],
-        programInfo.output.textureType === TextureType.packed ? {isPacked: true, reverseWH: true} : undefined);
+    const outputTextureLayout =
+        this.createTextureLayoutFromTextureType(programInfo.output.dims, programInfo.output.textureType);
     const outputTextureData = this.createTextureData(outputTextureLayout, programInfo.output.type);
 
     const key = getProgramInfoUniqueKey(programInfo, inputTextureDatas);
@@ -71,7 +76,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
     return outputTextureData.tensor;
   }
 
-  checkAndUpdateTextureForm(artifact: Artifact, inputs: TextureData[]) {
+  private checkAndUpdateTextureForm(artifact: Artifact, inputs: TextureData[]) {
     // pack/unpack inputs
     for (let i = 0; i < inputs.length; ++i) {
       const input = inputs[i];
@@ -82,7 +87,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
       }
     }
   }
-  runProgram(artifact: Artifact, inputs: TextureData[], output: TextureData): void {
+  private runProgram(artifact: Artifact, inputs: TextureData[], output: TextureData): void {
     this.checkAndUpdateTextureForm(artifact, inputs);
 
     // output should match
@@ -104,7 +109,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
    *   Creates a texture data object associated with the given tensor.
    * @param tensor the tensor with data to upload
    */
-  getOrCreateTextureData(tensor: Tensor, layout?: TextureLayout, isPacked = false) {
+  private getOrCreateTextureData(tensor: Tensor, layout?: TextureLayout, isPacked = false) {
     let td = this.getTextureData(tensor.dataId, isPacked);
     if (!td) {
       Logger.verbose('InferenceHandler', `Creating new TextureData for dims: [${tensor.dims}]`);
@@ -136,7 +141,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
    * Usage = Encoder.Usage.Default.
    * @param dataType the tensor data type
    */
-  createTextureDataFromLayout(layout: TextureLayout, dataType: Tensor.DataType): TextureData {
+  private createTextureDataFromLayout(layout: TextureLayout, dataType: Tensor.DataType): TextureData {
     return this.createTextureData(layout, dataType);
   }
 
@@ -149,7 +154,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
    * @param data the actual data to upload
    * @param tensor the tensor to bind. tensor's data is ignored.
    */
-  createTextureDataFromLayoutBindTensor(
+  private createTextureDataFromLayoutBindTensor(
       layout: TextureLayout, dataType: Tensor.DataType, data: Tensor.NumberType, tensor: Tensor): TextureData {
     return this.createTextureData(layout, dataType, data, tensor, Encoder.Usage.UploadOnly);
   }
@@ -169,7 +174,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
    * @param texture the WebGLTexture object to share
    * @param tensorId the tensor ID of the shared tensor data
    */
-  createSharedTextureData(
+  createSharedTextureData(  // TODO: make private
       layout: TextureLayout, dataType: Tensor.DataType, texture: WebGLTexture, tensorId?: Tensor.Id): TextureData {
     return this.createTextureDataFromTexture(layout, dataType, texture, undefined, tensorId);
   }
@@ -188,12 +193,12 @@ export class WebGLInferenceHandler implements InferenceHandler {
     return textureData;
   }
 
-  getTextureData(tensorId: Tensor.Id, isPacked = false): TextureData|undefined {
+  private getTextureData(tensorId: Tensor.Id, isPacked = false): TextureData|undefined {
     return this.session.isInitializer(tensorId) ?
         this.session.getTextureData(tensorId, isPacked) :
         isPacked ? this.packedTextureDataCache.get(tensorId) : this.unpackedTextureDataCache.get(tensorId);
   }
-  setTextureData(tensorId: Tensor.Id, td: TextureData, isPacked = false): void {
+  private setTextureData(tensorId: Tensor.Id, td: TextureData, isPacked = false): void {
     if (this.session.isInitializer(tensorId)) {
       this.session.setTextureData(tensorId, td, isPacked);
     } else {
@@ -206,7 +211,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
   /**
    * Create a TextureLayout object from a tensor. If a related texture data is found, returns the cached texture layout.
    */
-  getOrCreateTextureLayout(
+  private getOrCreateTextureLayout(
       tensor: Tensor, channels: 1|4 = 1, isPacked = false, unpackedShape?: readonly number[],
       reverseWH = false): TextureLayout {
     const td = this.getTextureData(tensor.dataId, isPacked);
@@ -218,10 +223,17 @@ export class WebGLInferenceHandler implements InferenceHandler {
         isPacked || reverseWH ? {isPacked, reverseWH} : undefined);
   }
 
+  private createTextureLayoutFromTextureType(  // TODO: rename this function and (possibly?) move out of this class
+      shape: readonly number[], textureType: TextureType): TextureLayout {
+    return this.createTextureLayoutFromShape(
+        shape, textureType === TextureType.unpacked ? 1 : 4, [],
+        textureType === TextureType.packed ? {isPacked: true, reverseWH: true} : undefined);
+  }
+
   /**
    * Create a TextureLayout object from shape.
    */
-  createTextureLayoutFromShape(
+  private createTextureLayoutFromShape(
       shape: readonly number[], channels: 1|4 = 1, unpackedShape?: readonly number[],
       prefs?: WidthHeightPrefs): TextureLayout {
     const isPacked = !!(prefs && prefs.isPacked);
