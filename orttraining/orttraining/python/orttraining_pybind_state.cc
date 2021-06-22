@@ -9,11 +9,14 @@
 #include <pybind11/stl_bind.h>
 
 #include "core/dlpack/dlpack_python.h"
+#include "core/graph/model.h"
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/agent/training_agent.h"
+#include "orttraining/core/graph/gradient_config.h"
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
+#include "orttraining/core/framework/gradient_graph_builder.h"
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 
@@ -647,13 +650,33 @@ void addObjectMethodsForTraining(py::module& m) {
         return ortmodule_graph_builder->GetGraphInfo();
       });
 
-  py::class_<GradientGraphBuilder> gradient_graph_builder(m, "GradientGraphBuilder");
-  // FIXME Pass params to constructor.
-  gradient_graph_builder.def(py::init([]() {
-    return std::make_unique<GradientGraphBuilder>();
-  }))
-      // TODO Add methods that we need in Python.
-      ;
+  py::class_<GradientGraphBuilder> gradient_graph_builder(m, "GradientGraphBuilder", R"pbdoc(A utility for making a gradient graph that can be used to help train a model.)pbdoc");
+  gradient_graph_builder.def(py::init([](
+                                          const std::string& model_path,
+                                          const std::unordered_set<std::string>& y_node_arg_names,
+                                          const std::unordered_set<std::string>& x_node_arg_names,
+                                          const std::string& loss_node_arg_name) {
+                          auto file_path = ToPathString(model_path);
+                          std::shared_ptr<Model> model;
+                          auto logger = logging::LoggingManager::DefaultLogger();
+                          ORT_THROW_IF_ERROR(Model::Load(file_path, model, nullptr, logger));
+                          GradientGraphConfiguration gradient_graph_config{};
+                          gradient_graph_config.set_gradients_as_graph_outputs = true;
+
+                          return std::make_unique<GradientGraphBuilder>(
+                              &model->MainGraph(),
+                              y_node_arg_names,
+                              x_node_arg_names,
+                              loss_node_arg_name,
+                              gradient_graph_config,
+                              logger);
+                        }))
+      .def("build", [](GradientGraphBuilder* gradient_graph_builder) {
+        ORT_THROW_IF_ERROR(gradient_graph_builder->Build());
+      })
+      .def("export", []() {
+
+      });
 }
 
 }  // namespace python
