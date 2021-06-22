@@ -208,7 +208,7 @@ class ONNXQuantizer:
             op_quantizer.quantize()
             for i in range(number_of_existing_new_nodes, len(self.new_nodes)):
                 for output_name in self.new_nodes[i].output:
-                    self.generated_value_names.update({output_name : 1})
+                    self.generated_value_names.add(output_name)
 
         self._dequantize_outputs()
 
