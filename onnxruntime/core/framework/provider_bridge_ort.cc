@@ -1310,9 +1310,9 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtT
 
   while (it != options.end()) {
     if (options_str == "") {
-      options_str = it->first + "=" + it->second;
+      options_str.append(it->first + "=" + it->second);
     } else {
-      options_str += ";" + it->first + "=" + it->second;
+      options_str.append(";" + it->first + "=" + it->second);
     }
     it++;
   }
