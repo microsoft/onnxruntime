@@ -134,13 +134,13 @@ struct ATenOperatorConfig {
 
   bool IsInputOnCpu(size_t input_index, bool is_backward) const {
     const auto& argument_configs = is_backward ? backward_argument_configs : forward_argument_configs;
-    size_t curr_tensor_index = -1;
+    size_t tensor_input_index = 0;
     for (const auto& argument_config : argument_configs) {
       if (argument_config.kind == TENSOR || argument_config.is_cpu_tensor) {
-        curr_tensor_index++;
-        if (curr_tensor_index == input_index) {
+        if (tensor_input_index == input_index) {
           return argument_config.is_cpu_tensor;
         }
+        tensor_input_index++;
       }
     }
 
