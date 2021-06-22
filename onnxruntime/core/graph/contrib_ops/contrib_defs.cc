@@ -611,8 +611,6 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
 
-<<<<<<< HEAD
-
   static const char* NGramRepeatBlock_ver1_doc = R"DOC(
 Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form a repeated n-gram if added to the back of the input_ids.
 )DOC";
@@ -633,7 +631,9 @@ Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form 
           return;
         }
         propagateShapeFromInputToOutput(ctx, 1, 0);
-=======
+      });
+
+
   static const char* SequencePooling_ver1_doc = R"DOC(sequence pooling and padding trial)DOC";
   ONNX_CONTRIB_OPERATOR_SCHEMA(SequencePooling)
       .SetDomain(kMSDomain)
@@ -671,7 +671,6 @@ Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form 
         //shape.add_dim()->set_dim_value(256);
         //*shape.add_dim() = batch_input_tensor_dims[2];
         //ONNX_NAMESPACE::updateOutputShape(ctx, 0, shape);
->>>>>>> a28074518 (sequencepooling cuda kernel)
       });
 }
 
