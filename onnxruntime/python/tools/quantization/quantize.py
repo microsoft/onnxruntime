@@ -188,13 +188,6 @@ def quantize_static(model_input,
 
     mode = QuantizationMode.QLinearOps
 
-    # Set default behavior for symmetrization if not specified based on
-    # quantization data type (signed vs unsigned)
-    if symmetrize_activations is None:
-        symmetrize_activations = True if activation_type==QuantType.QInt8 else False
-    if symmetrize_weights is None:
-        symmetrize_weights = True if weight_type==QuantType.QInt8 else False
-
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
         op_types_to_quantize = list(QLinearOpsRegistry.keys())
 
