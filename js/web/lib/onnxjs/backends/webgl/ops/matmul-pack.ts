@@ -17,7 +17,7 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
   }
   createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
     const hasBias = inputs.length > 2;
-    const processBias = hasBias ? 'result += getBiasAtOutCoords();' : '';
+    const processBias = hasBias ? 'value += getBiasAtOutCoords();' : '';
     const aShape = inputs[0].dims;
     const bShape = inputs[1].dims;
     const outputShape = BroadcastUtil.calcShape(aShape, bShape, true);
@@ -34,9 +34,13 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
     const coordsDataType = getCoordsDataType(outputShape.length);
     const outRank = outputShape.length;
     const allGlChannels = ['x', 'y', 'z', 'w', 'u', 'v'];
-
+    const additionalVars = this.activation === 'Clip' ? `
+    float min = float(${this.clipMin});
+    float max = float(${this.clipMax});` :
+                                                        '';
     const {activationFunction, applyActivation} = getActicationSnippet(this.activation);
     const shaderSource = `
+      ${additionalVars}
       ${activationFunction}
       void main() {
         ${coordsDataType} rc = getOutputCoords();
@@ -44,16 +48,16 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
         rc.${allGlChannels[outRank - 1]} = rc.${allGlChannels[outRank - 2]};
         rc.${allGlChannels[outRank - 2]} = lastDim;
 
-        vec4 result = vec4(0);
+        vec4 value = vec4(0);
         for (int i = 0; i < ${sharedDimIndex}; i++) {
           vec4 a = getA(${getA(allGlChannels, aRank)});
           vec4 b = getB(${getB(allGlChannels, bRank)});
-          result += (a.rrbb * b.rgrg);
-          result += (a.ggaa * b.baba);
+          value += (a.rrbb * b.rgrg);
+          value += (a.ggaa * b.baba);
         }
         ${processBias}
         ${applyActivation}
-        ${glsl.output} = result;
+        ${glsl.output} = value;
       }`;
     return {
       name: 'WebGLMatMulPacked',
