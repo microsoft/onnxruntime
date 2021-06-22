@@ -560,8 +560,9 @@ void DataOps::populate_op_mode_supported() {
                                      return true;
                                  }
                                  auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-                                 //If the output of Gather op is INT8, it is rejected for GPU.
-                                 if (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8)
+                                 //If the output of Gather op is INT8 or UINT8, it is rejected for GPU.
+                                 if (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 ||
+                                    output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT8)
                                    return true;
                                }
                                return false;
@@ -849,10 +850,12 @@ void DataOps::populate_op_mode_supported() {
                              [this](const Node* node, const InitializedTensorSet&) {
                                if (device_id_.find("MYRIAD") != std::string::npos) {
                                  const auto& input_arg = node->InputDefs()[1];
-                                 for (const auto& dim : input_arg->Shape()->dim()) {
-                                    if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
-                                      return true;
-                                  }
+                                 auto shape = input_arg->Shape();
+                                 if (shape != nullptr) {
+                                   for (const auto& dim : input_arg->Shape()->dim()) {
+                                     if (utils::HasDimValue(dim) && dim.dim_value() == 0)
+                                       return true;
+                                   }
                                  }
                                }
                                return false;
