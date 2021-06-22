@@ -41,10 +41,14 @@ class GraphExecutionManager(ABC):
         Interacts with OrtModuleGraphBuilder to build and optimize
         the onnx graph, and ExecutionAgent to run the onnx graph.
         """
-
+        
+        # Original and flattened (tranformed) output module
         self._original_module = None
-        self._onnx_model = None
         self._flattened_module = None
+
+        # Exported model
+        self._onnx_model = None
+        self._optimized_onnx_model = None
 
         if isinstance(module, torch.nn.Module): 
             # Original and flattened (tranformed) output module
