@@ -18,7 +18,7 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
   }
   createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
     const hasBias = inputs.length > 2;
-    const processBias = hasBias ? 'result += getBiasForMatmul();' : '';
+    const processBias = hasBias ? 'value += getBiasForMatmul();' : '';
     const aShape = inputs[0].dims;
     const bShape = inputs[1].dims;
     const outputShape = BroadcastUtil.calcShape(aShape, bShape, true);
@@ -68,8 +68,8 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
           vec4 a = ${getSamplerAInLoopSnippet};
           vec4 b = ${getSamplerBInLoopSnippet};
 
-          result += (a.rrbb * b.rgrg);
-          result += (a.ggaa * b.baba);
+          value += (a.rrbb * b.rgrg);
+          value += (a.ggaa * b.baba);
         }
         ${processBias}
         ${applyActivation}
