@@ -38,7 +38,7 @@ jobs:
          ln -sf /data/models $(Build.BinariesDirectory)
 
   - task: Bash@3
-    displayName: 'Run Package Test GPU (x64)'
+    displayName: 'Run Package Test'
     inputs:
       targetType: filePath
       filePath: '$(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh'
