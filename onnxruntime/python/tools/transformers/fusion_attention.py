@@ -95,8 +95,9 @@ class FusionAttention(Fusion):
 
     def get_num_heads_and_hidden_size(self, reshape_q: NodeProto) -> Tuple[int, int]:
         """ Detect num_heads and hidden_size from a reshape node.
+
         Args:
-            reshape_q (NodeProto): reshape node for q
+            reshape_q (NodeProto): reshape node for Q
         Returns:
             Tuple[int, int]: num_heads and hidden_size
         """
@@ -143,7 +144,6 @@ class FusionAttention(Fusion):
             output (str): output name
 
         Returns:
-
             Union[NodeProto, None]: the node created or None if failed.
         """
         assert num_heads > 0 and hidden_size > 0 and (hidden_size % num_heads) == 0
@@ -164,8 +164,8 @@ class FusionAttention(Fusion):
         kw = NumpyHelper.to_array(k_weight)
         vw = NumpyHelper.to_array(v_weight)
 
-        # Check if all matrices have the same shape or q and k have same shape
-        assert qw.shape == kw.shape == vw.shape or qw.shape == kw.shape
+        # Check if q and k have same shape
+        assert qw.shape == kw.shape
 
         qw_in_size = qw.shape[0]
         kw_in_size = kw.shape[0]
@@ -186,7 +186,6 @@ class FusionAttention(Fusion):
         qkv_weight_dim = 0
         if is_qkv_diff_dims:
             qkv_weight = np.concatenate((qw, kw, vw), axis=1)
-            # q and k out sizes are same, hence adding it twice
             qkv_weight_dim = qw_out_size + kw_out_size + vw_out_size
         else:
             qkv_weight = np.stack((qw, kw, vw), axis=1)
@@ -326,7 +325,7 @@ class FusionAttention(Fusion):
         if v_nodes is None:
             logger.debug("fuse_attention: failed to match v path")
             return
-        (_, reshape_v, add_v, matmul_v) = v_nodes
+        (_, _, add_v, matmul_v) = v_nodes
 
         is_distill = False
         is_distill_add = False
@@ -358,7 +357,7 @@ class FusionAttention(Fusion):
         if is_distill:
             (_, where_qk, matmul_qk, _) = qk_nodes
         elif is_distill_add:
-            (_, add_qk, where_qk, matmul_qk) = qk_nodes
+            (_, _, where_qk, matmul_qk) = qk_nodes
         else:
             (_, add_qk, _, matmul_qk) = qk_nodes
 
@@ -380,7 +379,6 @@ class FusionAttention(Fusion):
             if k_nodes is None:
                 logger.debug("fuse_attention: failed to match k path")
                 return
-        reshape_k = k_nodes[-3]
         add_k = k_nodes[-2]
         matmul_k = k_nodes[-1]
 
