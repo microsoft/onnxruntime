@@ -214,8 +214,8 @@ def _parse_arguments():
     parser.add_argument('--only_onnxruntime', required=False, action='store_true', help="optimized by onnxruntime only")
     parser.set_defaults(only_onnxruntime=False)
 
-    parser.add_argument('--only_offline_opt', required=False, action='store_true', help="optimized by offline fusion only")
-    parser.set_defaults(only_offline_opt=False)
+    parser.add_argument('--disable_onnxruntime', required=False, action='store_true', help="do not use onnxruntime to optimize")
+    parser.set_defaults(disable_onnxruntime=False)
 
     parser.add_argument('--opt_level',
                         required=False,
@@ -268,7 +268,7 @@ def optimize_model(input,
                    optimization_options=None,
                    opt_level=0,
                    use_gpu=False,
-                   only_offline_opt=False,
+                   disable_onnxruntime=False,
                    only_onnxruntime=False):
     """ Optimize Model by OnnxRuntime and/or offline fusion logic.
 
@@ -285,7 +285,7 @@ def optimize_model(input,
         optimization_options (OptimizationOptions or None): optimization options that can use to turn on/off some fusions.
         opt_level (int): onnxruntime graph optimization level (0, 1, 2 or 99). When the level > 0, onnxruntime will be used to optimize model first.
         use_gpu (bool): use gpu or not for onnxruntime.
-        only_offline_opt (bool): only use offline fusion logic to optimize model,
+        disable_onnxruntime (bool): only use offline fusion logic to optimize model,
         only_onnxruntime (bool): only use onnxruntime to optimize model, and no offline fusion logic is used.
 
      Returns:
@@ -295,10 +295,10 @@ def optimize_model(input,
 
     temp_model_path = None
 
-    if only_offline_opt and only_onnxruntime:
-        logger.warning("Only one of the options can be true in only_offline_opt or only_onnxruntime")
+    if disable_onnxruntime and only_onnxruntime:
+        logger.warning("Only one of the options can be true in disable_onnxruntime or only_onnxruntime")
 
-    if only_offline_opt is False:
+    if disable_onnxruntime is False:
         if opt_level > 1:  # Optimization specified for an execution provider.
             temp_model_path = optimize_by_onnxruntime(input, use_gpu=use_gpu, opt_level=opt_level)
         elif run_onnxruntime:
@@ -357,7 +357,7 @@ def main():
                                opt_level=args.opt_level,
                                optimization_options=optimization_options,
                                use_gpu=args.use_gpu,
-                               only_offline_opt=args.only_offline_opt,
+                               disable_onnxruntime=args.disable_onnxruntime,
                                only_onnxruntime=args.only_onnxruntime)
 
     if args.float16:

@@ -98,6 +98,7 @@ class FusionAttention(Fusion):
 
         Args:
             reshape_q (NodeProto): reshape node for Q
+
         Returns:
             Tuple[int, int]: num_heads and hidden_size
         """
@@ -172,6 +173,7 @@ class FusionAttention(Fusion):
         vw_in_size = vw.shape[0]
 
         assert qw_in_size == kw_in_size == vw_in_size == hidden_size
+
         is_qkv_diff_dims = False
         if qw.shape != vw.shape:
             is_qkv_diff_dims = True
