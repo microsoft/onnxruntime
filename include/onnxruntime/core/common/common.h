@@ -119,7 +119,7 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 // DO NOT use a printf format string, as that will not work as you expect.
 #define ORT_THROW(...)                                                    \
   do {                                                                    \
-    PrintErrorMessage(                                                    \
+    PrintFinalMessage(                                                    \
         ::onnxruntime::OnnxRuntimeException(                              \
             ORT_WHERE_WITH_STACK, ::onnxruntime::MakeString(__VA_ARGS__)) \
             .what());                                                     \
@@ -129,7 +129,7 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 // Just in order to mark things as not implemented. Do not use in final code.
 #define ORT_NOT_IMPLEMENTED(...)                                                       \
   do {                                                                                 \
-    PrintErrorMessage(                                                                 \
+    PrintFinalMessage(                                                                 \
         ::onnxruntime::NotImplementedException(::onnxruntime::MakeString(__VA_ARGS__)) \
             .what());                                                                  \
     abort();                                                                           \
@@ -141,7 +141,7 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 #define ORT_ENFORCE(condition, ...)                                                   \
   do {                                                                                \
     if (!(condition)) {                                                               \
-      PrintErrorMessage(                                                              \
+      PrintFinalMessage(                                                              \
           ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition,       \
                                               ::onnxruntime::MakeString(__VA_ARGS__)) \
               .what());                                                               \
@@ -151,7 +151,7 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 
 #define ORT_THROW_EX(ex, ...)                                                                      \
   do {                                                                                             \
-    PrintErrorMessage(                                                                             \
+    PrintFinalMessage(                                                                             \
         ::onnxruntime::MakeString(#ex, "(", ::onnxruntime::MakeString(__VA_ARGS__), ")").c_str()); \
     abort();                                                                                       \
   } while (false)

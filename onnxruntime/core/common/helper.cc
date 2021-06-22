@@ -54,8 +54,7 @@ void PrintFinalMessage(const char* msg) {
   // exceptions are disabled, since using std::cerr might increase binary size, and std::cerr output
   // might not be easily accesible on some systems such as mobile
   // TODO, see if we need to change the output of the error message from std::cerr to NSLog for iOS
-  std::cerr << msg << std::endl
-            << std::flush;
+  std::cerr << msg << std::endl;
 #endif
 }
 #endif  //#ifdef ORT_NO_EXCEPTIONS
