@@ -420,14 +420,12 @@ class FusionAttention(Fusion):
             attention_last_node = reshape_qkv if einsum_node is None else transpose_qkv
 
             q_num_heads, q_hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
-
-            num_heads = self.num_heads if self.num_heads != 0 else q_num_heads
-            hidden_size = self.hidden_size if self.hidden_size != 0 else q_hidden_size
+            input_hidden_size = self.hidden_size if self.hidden_size != 0 else q_hidden_size
 
             # number of heads are same for all the paths, hence to create attention node, we pass the q_num_heads
-            # the hidden_size represents the hidden input size, this is used as needed but hidden sizes for Q, K are extracted appropriately
+            # the input_hidden_size represents the input hidden size, this is used as needed but hidden sizes for Q, K are extracted appropriately
             new_node = self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v,
-                                                  num_heads, hidden_size, root_input, attention_last_node.output[0])
+                                                  q_num_heads, input_hidden_size, root_input, attention_last_node.output[0])
             if new_node is None:
                 return
 
@@ -440,8 +438,8 @@ class FusionAttention(Fusion):
                 shape_tensor = helper.make_tensor(name="shape_modified_tensor" + unique_index,
                                                   data_type=TensorProto.INT64,
                                                   dims=[4],
-                                                  vals=np.int64([0, 0, num_heads,
-                                                                 int(hidden_size / num_heads)]).tobytes(),
+                                                  vals=np.int64([0, 0, q_num_heads,
+                                                                 int(q_hidden_size / q_num_heads)]).tobytes(),
                                                   raw=True)
                 self.model.add_initializer(shape_tensor, self.this_graph_name)
                 self.model.add_node(
