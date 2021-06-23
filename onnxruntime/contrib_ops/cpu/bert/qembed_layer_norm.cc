@@ -205,7 +205,7 @@ Status QEmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
             sum += a * a;
           }
 
-          T e = sqrt(sum / hidden_size + static_cast<T>(EmbedLayerNorm<T>::epsilon_));
+          T e = sqrt(sum / hidden_size + epsilon_);
           for (int i = 0; i < hidden_size; i++) {
             T cur_gamma = Dequantize<uint8_t>(gamma_data[i],
                                               layer_norm_weights_scale,
@@ -226,8 +226,9 @@ Status QEmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
   // Calculate mask
   if (nullptr != mask) {
     const int32_t* mask_data = mask->template Data<int32_t>();
+    int32_t* mask_index_data = mask_index->template MutableData<int32_t>();
     for (int b = 0; b < batch_size; b++) {
-      mask_index->template MutableData<int32_t>()[b] =
+      mask_index_data[b] =
           static_cast<int32_t>(std::count_if(mask_data + (static_cast<int64_t>(b) * sequence_length),
                                              mask_data + (static_cast<int64_t>(b) * sequence_length) + sequence_length,
                                              [](int v) { return v == 1; }));

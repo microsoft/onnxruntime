@@ -126,10 +126,12 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
   // Calculate mask
   if (nullptr != mask) {
     const int32_t* mask_data = mask->template Data<int32_t>();
+    int32_t* mask_index_data = mask_index->template MutableData<int32_t>();
     for (int b = 0; b < batch_size; b++) {
-      mask_index->template MutableData<int32_t>()[b] = static_cast<int32_t>(std::count_if(mask_data + (b * sequence_length),
-                                                                                          mask_data + (b * sequence_length) + sequence_length,
-                                                                                          [](int v) { return v == 1; }));
+      mask_index_data[b] =
+          static_cast<int32_t>(std::count_if(mask_data + (static_cast<int64_t>(b) * sequence_length),
+                                             mask_data + (static_cast<int64_t>(b) * sequence_length) + sequence_length,
+                                             [](int v) { return v == 1; }));
     }
   } else {
     memset(mask_index->template MutableData<int32_t>(), 0, batch_size * sizeof(int32_t));

@@ -190,9 +190,9 @@ void embedLayerNormalizationShapeInference(InferenceContext& ctx) {
 
   // input shape is (batch_size, sequence_length), output shape is (batch_size, sequence_length, hidden_size)
   ONNX_NAMESPACE::TensorShapeProto output_shape;
-  for (auto& dim : input_ids_dims) {
-    *output_shape.add_dim() = dim;
-  }
+  *output_shape.add_dim() = input_ids_dims[0];
+  *output_shape.add_dim() = input_ids_dims[1];
+
   output_shape.add_dim();
   output_shape.mutable_dim(2)->set_dim_value(hidden_size);
 
