@@ -3,6 +3,7 @@
 
 #include "embed_layer_norm_helper.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/providers/common.h"
 #include "onnx/defs/tensor_proto_util.h"
 
 #include "longformer_attention_base.h"
@@ -98,6 +99,73 @@ Status CheckInputs(const OpKernelContext* context) {
   if (gamma_dims[0] != word_embedding_dims[1]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "gamma is expected to have size of ", word_embedding_dims[1], ", got ", gamma_dims[0]);
+  }
+
+  return Status::OK();
+}
+
+Status CheckQuantizedInputs(OpKernelContext* context) {
+  const Tensor* word_embedding_scale_tensor = context->Input<Tensor>(8);
+  const Tensor* position_embedding_scale_tensor = context->Input<Tensor>(9);
+  const Tensor* segment_embedding_scale_tensor = context->Input<Tensor>(10);
+  const Tensor* gamma_scale_tensor = context->Input<Tensor>(11);
+  const Tensor* beta_scale_tensor = context->Input<Tensor>(12);
+  const Tensor* word_embedding_zero_point_tensor = context->Input<Tensor>(13);
+  const Tensor* position_embedding_zero_point_tensor = context->Input<Tensor>(14);
+  const Tensor* segment_embedding_zero_point_tensor = context->Input<Tensor>(15);
+  const Tensor* gamma_zero_point_tensor = context->Input<Tensor>(16);
+  const Tensor* beta_zero_point_tensor = context->Input<Tensor>(17);
+
+  bool has_segment_embedding = context->Input<Tensor>(1) != nullptr;
+
+  if (!IsScalarOr1ElementVector(word_embedding_scale_tensor)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Word embedding scale must be a scalar or 1D tensor of size 1");
+  }
+
+  if (!IsScalarOr1ElementVector(position_embedding_scale_tensor)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Position embedding scale must be a scalar or 1D tensor of size 1");
+  }
+
+  if (has_segment_embedding && !IsScalarOr1ElementVector(segment_embedding_scale_tensor)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Segment embedding scale must be a scalar or 1D tensor of size 1");
+  }
+
+  if (!IsScalarOr1ElementVector(gamma_scale_tensor)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Gamma scale must be a scalar or 1D tensor of size 1");
+  }
+
+  if (!IsScalarOr1ElementVector(beta_scale_tensor)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Beta scale must be a scalar or 1D tensor of size 1");
+  }
+
+  if (!IsScalarOr1ElementVector(word_embedding_zero_point_tensor)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Word embedding zero point must be a scalar or 1D tensor of size 1");
+  }
+
+  if (!IsScalarOr1ElementVector(position_embedding_zero_point_tensor)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Position embedding zero point must be a scalar or 1D tensor of size 1");
+  }
+
+  if (has_segment_embedding && !IsScalarOr1ElementVector(segment_embedding_zero_point_tensor)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Segment embedding zero point must be a scalar or 1D tensor of size 1");
+  }
+
+  if (!IsScalarOr1ElementVector(gamma_zero_point_tensor)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Gamma zero point must be a scalar or 1D tensor of size 1");
+  }
+
+  if (!IsScalarOr1ElementVector(beta_zero_point_tensor)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Beta zero point must be a scalar or 1D tensor of size 1");
   }
 
   return Status::OK();

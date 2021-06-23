@@ -548,7 +548,7 @@ will be calculated.)DOC";
 QEmbedLayerNormalization is the quantized fusion of embedding layer in BERT model, with optional mask processing.
 The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
 and segment_emedding; the embeddings are added then applied layer normalization using gamma and beta tensors. The input_ids
-and segment_ids remain int32. All embeddings, gamma, and beta tensors are converted to uint8. The last input mask is optional.
+and segment_ids remain int32. All embeddings, gamma, and beta tensors are converted to int8/uint8. The last input mask is optional.
 If mask is provided, mask index (that is position of first 0 in mask, or number of words will be calculated.)DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QEmbedLayerNormalization)

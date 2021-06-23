@@ -44,6 +44,7 @@ QEmbedLayerNorm<T>::QEmbedLayerNorm(const OpKernelInfo& op_kernel_info)
 template <typename T>
 Status QEmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(embed_layer_norm::CheckInputs(context));
+  ORT_RETURN_IF_ERROR(embed_layer_norm::CheckQuantizedInputs(context));
 
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* segment_ids = context->Input<Tensor>(1);  // optional. nullptr if it's distill-bert
@@ -64,32 +65,7 @@ Status QEmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
   const Tensor* gamma_zero_point_tensor = context->Input<Tensor>(16);
   const Tensor* beta_zero_point_tensor = context->Input<Tensor>(17);
 
-  ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(word_embedding_scale_tensor),
-                    "Word embedding scale must be a scalar or 1D tensor of size 1");
-  ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(position_embedding_scale_tensor),
-                    "Position embedding scale must be a scalar or 1D tensor of size 1");
-  if (segment_embedding != nullptr) {
-    ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(segment_embedding_scale_tensor),
-                      "Segment embedding scale must be a scalar or 1D tensor of size 1");
-  }
-  ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(gamma_scale_tensor),
-                    "Gamma scale must be a scalar or 1D tensor of size 1");
-  ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(beta_scale_tensor),
-                    "Beta scale must be a scalar or 1D tensor of size 1");
-  ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(word_embedding_zero_point_tensor),
-                    "Word embedding zero point must be a scalar or 1D tensor of size 1");
-  ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(position_embedding_zero_point_tensor),
-                    "Position embedding zero point must be a scalar or 1D tensor of size 1");
-  if (segment_embedding != nullptr) {
-    ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(segment_embedding_zero_point_tensor),
-                      "Segment embedding zero point must be a scalar or 1D tensor of size 1");
-  }
-  ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(gamma_zero_point_tensor),
-                    "Gamma zero point must be a scalar or 1D tensor of size 1");
-  ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(beta_zero_point_tensor),
-                    "Beta zero point must be a scalar or 1D tensor of size 1");
-
-  bool has_segment_embedding = segment_embedding != nullptr;
+  bool has_segment_embedding = segment_ids != nullptr;
 
   const int32_t* input_ids_data = input_ids->template Data<int32_t>();
   const int32_t* segment_ids_data =
