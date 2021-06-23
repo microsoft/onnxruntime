@@ -133,17 +133,3 @@ class TrainingAgent(object):
          :param state: State of the graph that is used for executing partial graph runs.
         """
         self._training_agent.run_backward(feeds, fetches, state)
-
-    def _get_frontier_tensors(self, params):
-        """
-        Get "frontier" tensors - the output of series of operations 
-        that only depend on the param values, eg Casting a param
-        :params: Names of the parameters to get the frontier for.
-
-        The output contains a map from the param to the nodearg name of the 
-        corresponding "frontier".
-        The output may not contain a frontier for all the params passed to it,
-        as it would only return frontier for viable candidates for caching
-        of the tensor.
-        """
-        return self._training_agent.get_frontier_tensors(params)

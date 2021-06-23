@@ -529,11 +529,6 @@ void addObjectMethodsForTraining(py::module& m) {
         return std::make_unique<TrainingAgent>(*session->GetSessionHandle(), fw_feed_names, fw_outputs_device_info,
                                                bw_fetches_names, bw_outputs_device_info);
       }))
-      .def("get_frontier_tensors", [](TrainingAgent* agent, const std::vector<std::string>& param_names) {
-        std::unordered_map<std::string, std::string> frontier_node_arg_map;
-        agent->GetFrontierTensors(param_names, frontier_node_arg_map);
-        return frontier_node_arg_map;
-      })
       .def("run_forward", [](TrainingAgent* agent, const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches, PartialGraphExecutionState* state) -> void {
         Status status = agent->RunForward(feeds, fetches, *state);
         if (!status.IsOK()) {
@@ -607,6 +602,7 @@ void addObjectMethodsForTraining(py::module& m) {
                      &OrtModuleGraphBuilderConfiguration::use_invertible_layernorm_grad)
       .def_readwrite("build_gradient_graph", &OrtModuleGraphBuilderConfiguration::build_gradient_graph)
       .def_readwrite("graph_transformer_config", &OrtModuleGraphBuilderConfiguration::graph_transformer_config)
+      .def_readwrite("enable_caching", &OrtModuleGraphBuilderConfiguration::enable_caching)
       .def_readwrite("loglevel", &OrtModuleGraphBuilderConfiguration::loglevel);
 
   py::class_<GraphInfo> graph_info(m, "GraphInfo",
@@ -621,6 +617,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("output_grad_indices_non_differentiable", &GraphInfo::output_grad_indices_non_differentiable)
       .def_readwrite("output_grad_indices_require_full_shape", &GraphInfo::output_grad_indices_require_full_shape)
       .def_readwrite("module_output_indices_requires_save_for_backward", &GraphInfo::module_output_indices_requires_save_for_backward)
+      .def_readwrite("frontier_node_arg_map", &GraphInfo::frontier_node_arg_map)
       .def_readwrite("module_output_gradient_name", &GraphInfo::module_output_gradient_name);
 
   py::class_<OrtModuleGraphBuilder> ortmodule_graph_builder(m, "OrtModuleGraphBuilder");
