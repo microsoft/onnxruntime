@@ -195,15 +195,15 @@ MlasSgemmComputeAElements(
     MLAS_FLOAT32X4 ABroadcast[RowCount]
     )
 {
-	__vector float a1,a2;
-	a1 = vec_mergee (AElements[0], AElements[1]);
-	a2 = vec_mergee (AElements[2], AElements[3]);
-	ABroadcast[0] =vec_xxpermdi(a1,a2,0);
-	ABroadcast[2] =vec_xxpermdi(a1,a2,3);
-	a1 = vec_mergeo (AElements[0], AElements[1]);
-	a2 = vec_mergeo (AElements[2], AElements[3]);
-	ABroadcast[1] =vec_xxpermdi(a1,a2,0);
-	ABroadcast[3] =vec_xxpermdi(a1,a2,3);
+        __vector float a1,a2;
+        a1 = vec_mergee (AElements[0], AElements[1]);
+        a2 = vec_mergee (AElements[2], AElements[3]);
+        ABroadcast[0] =vec_xxpermdi(a1,a2,0);
+        ABroadcast[2] =vec_xxpermdi(a1,a2,3);
+        a1 = vec_mergeo (AElements[0], AElements[1]);
+        a2 = vec_mergeo (AElements[2], AElements[3]);
+        ABroadcast[1] =vec_xxpermdi(a1,a2,0);
+        ABroadcast[3] =vec_xxpermdi(a1,a2,3);
 }
 template<size_t RowCount>
 MLAS_FORCEINLINE
@@ -288,7 +288,7 @@ struct MlasSgemmStoreVectorMMA
     static
     void
     Iteration(
-	MLAS_FLOAT32X4 Result[4],
+        MLAS_FLOAT32X4 Result[4],
         float* C,
         size_t ldc,
         MLAS_FLOAT32X4 AlphaBroadcast,
@@ -564,7 +564,7 @@ MlasSgemmMMAProcessCount(
         MLAS_FLOAT32X4 AElements[RowCount];
         MLAS_FLOAT32X4 ABroadcast[RowCount] = { 0 };
         MLAS_FLOAT32X4 A2Broadcast[RowCount] = { 0 };
-	__vector_quad acc[8];
+        __vector_quad acc[8];
 
         //
         // Clear the block accumulators.
