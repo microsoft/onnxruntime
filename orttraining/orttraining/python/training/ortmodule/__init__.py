@@ -58,5 +58,20 @@ except:
 from ._custom_autograd_function import enable_custom_autograd_support
 enable_custom_autograd_support()
 
+# Override torch.manual_seed and torch.cuda.manual_seed
+def override_torch_manual_seed(seed):
+    from onnxruntime import set_seed
+    set_seed(seed)
+    return torch_manual_seed(seed)
+torch_manual_seed = torch.manual_seed
+torch.manual_seed = override_torch_manual_seed
+
+def override_torch_cuda_manual_seed(seed):
+    from onnxruntime import set_seed
+    set_seed(seed)
+    return torch_cuda_manual_seed(seed)
+torch_cuda_manual_seed = torch.cuda.manual_seed
+torch.cuda.manual_seed = override_torch_cuda_manual_seed
+
 # ORTModule must be loaded only after all validation passes
 from .ortmodule import ORTModule
