@@ -175,7 +175,9 @@ class FusionAttention(Fusion):
         assert qw_in_size == kw_in_size == vw_in_size
 
         if qw_in_size != hidden_size and qw.shape != vw.shape:
-            logger.debug(f"Input hidden size {hidden_size} is not same as weight matrix dimension of q,k,v paths {qw_in_size}, provide input hidden size")
+            logger.debug(
+                f"Input hidden size {hidden_size} is not same as weight matrix dimension of q,k,v paths {qw_in_size}, provide input hidden size"
+            )
             return None
 
         is_qkv_diff_dims = False
@@ -195,7 +197,7 @@ class FusionAttention(Fusion):
             qkv_weight_dim = qw_out_size + kw_out_size + vw_out_size
         else:
             qkv_weight = np.stack((qw, kw, vw), axis=1)
-            qkv_weight_dim = 3*qw_out_size
+            qkv_weight_dim = 3 * qw_out_size
 
         qb = NumpyHelper.to_array(q_bias)
         kb = NumpyHelper.to_array(k_bias)
@@ -248,7 +250,8 @@ class FusionAttention(Fusion):
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
 
         if is_qkv_diff_dims:
-            attention_node.attribute.extend([helper.make_attribute("qkv_hidden_sizes", [qw_out_size, kw_out_size, vw_out_size])])
+            attention_node.attribute.extend(
+                [helper.make_attribute("qkv_hidden_sizes", [qw_out_size, kw_out_size, vw_out_size])])
 
         return attention_node
 
@@ -331,10 +334,10 @@ class FusionAttention(Fusion):
         is_distill = False
         is_distill_add = False
         qk_paths = {
-            "path1" : (['Softmax', 'Add', 'Div', 'MatMul'], [0, 0, None, 0]),
-            "path2" : (['Softmax', 'Add', 'Mul', 'MatMul'], [0, 0, None, 0]),
-            "path3" : (['Softmax', 'Where', 'MatMul', 'Div'], [0, 0, 2, 0]),
-            "path4" : (['Softmax', 'Add', 'Where', 'MatMul'], [0, 0, 0, 2])
+            "path1": (['Softmax', 'Add', 'Div', 'MatMul'], [0, 0, None, 0]),
+            "path2": (['Softmax', 'Add', 'Mul', 'MatMul'], [0, 0, None, 0]),
+            "path3": (['Softmax', 'Where', 'MatMul', 'Div'], [0, 0, 2, 0]),
+            "path4": (['Softmax', 'Add', 'Where', 'MatMul'], [0, 0, 0, 2])
         }
 
         qk_nodes = None
@@ -391,10 +394,9 @@ class FusionAttention(Fusion):
                                                               (['Cast', 'Expand', 'Reshape', 'Equal'], [0, 0, 0, 0])],
                                                              output_name_to_node)
         elif is_distill_add:
-            _, mask_nodes, _ = self.model.match_parent_paths(where_qk,
-                                                             [(['Cast', 'Equal', 'Unsqueeze', 'Unsqueeze'], [0, 0, 0, 0]),
-                                                              (['Equal', 'Unsqueeze', 'Unsqueeze'], [0, 0, 0])],
-                                                             output_name_to_node)
+            _, mask_nodes, _ = self.model.match_parent_paths(
+                where_qk, [(['Cast', 'Equal', 'Unsqueeze', 'Unsqueeze'], [0, 0, 0, 0]),
+                           (['Equal', 'Unsqueeze', 'Unsqueeze'], [0, 0, 0])], output_name_to_node)
         else:
             _, mask_nodes, _ = self.model.match_parent_paths(
                 add_qk, [(['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'], [None, 0, 1, 0, 0]),
@@ -414,7 +416,8 @@ class FusionAttention(Fusion):
             # number of heads are same for all the paths, hence to create attention node, we pass the q_num_heads
             # the input_hidden_size represents the input hidden size, this is used as needed but hidden sizes for Q, K are extracted appropriately
             new_node = self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v,
-                                                  q_num_heads, input_hidden_size, root_input, attention_last_node.output[0])
+                                                  q_num_heads, input_hidden_size, root_input,
+                                                  attention_last_node.output[0])
             if new_node is None:
                 return
 

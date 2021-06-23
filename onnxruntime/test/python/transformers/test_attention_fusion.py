@@ -14,9 +14,13 @@ from bert_model_generator import create_bert_attention, create_tf2onnx_attention
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from onnxruntime.transformers.optimizer import optimize_model
 
+
 class TestFusion(unittest.TestCase):
     def test_attention_fusion_pruned_model(self):
-        model = create_bert_attention(input_hidden_size=16, num_heads=2, pruned_qk_hidden_size=8, pruned_v_hidden_size=8)
+        model = create_bert_attention(input_hidden_size=16,
+                                      num_heads=2,
+                                      pruned_qk_hidden_size=8,
+                                      pruned_v_hidden_size=8)
         dir = '.'
         model_path = os.path.join(dir, "pruned_attention.onnx")
         onnx.save(model, model_path)
@@ -29,7 +33,11 @@ class TestFusion(unittest.TestCase):
         self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
 
     def test_attention_fusion_reverse_add_order(self):
-        model = create_bert_attention(input_hidden_size=16, num_heads=2, pruned_qk_hidden_size=8, pruned_v_hidden_size=8, switch_add_inputs=True)
+        model = create_bert_attention(input_hidden_size=16,
+                                      num_heads=2,
+                                      pruned_qk_hidden_size=8,
+                                      pruned_v_hidden_size=8,
+                                      switch_add_inputs=True)
         dir = '.'
         model_path = os.path.join(dir, "bert_attention_reverse_add_order.onnx")
         onnx.save(model, model_path)
@@ -43,7 +51,10 @@ class TestFusion(unittest.TestCase):
         self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
 
     def test_attention_fusion_for_varied_qkv_dimensions(self):
-        model = create_bert_attention(input_hidden_size=16, num_heads=2, pruned_qk_hidden_size=24, pruned_v_hidden_size=16)
+        model = create_bert_attention(input_hidden_size=16,
+                                      num_heads=2,
+                                      pruned_qk_hidden_size=24,
+                                      pruned_v_hidden_size=16)
         dir = '.'
         model_path = os.path.join(dir, "attention_with_varied_qkv.onnx")
         onnx.save(model, model_path)
@@ -67,6 +78,7 @@ class TestFusion(unittest.TestCase):
                                            'bert_3d_attention_opt.onnx')
         expected = onnx.load(expected_model_path)
         self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
+
 
 if __name__ == '__main__':
     unittest.main()

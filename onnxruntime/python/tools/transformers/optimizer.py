@@ -40,7 +40,7 @@ MODEL_CLASSES = {
     "bert_tf": (BertOnnxModelTF, "tf2onnx", False),
     "bert_keras": (BertOnnxModelKeras, "keras2onnx", False),
     "gpt2": (Gpt2OnnxModel, "pytorch", True),
-    "gpt2_tf": (Gpt2OnnxModel, 'tf2onnx', False) # might add a class for GPT2OnnxModel for TF later. 
+    "gpt2_tf": (Gpt2OnnxModel, 'tf2onnx', False)  # might add a class for GPT2OnnxModel for TF later.
 }
 
 
@@ -214,7 +214,10 @@ def _parse_arguments():
     parser.add_argument('--only_onnxruntime', required=False, action='store_true', help="optimized by onnxruntime only")
     parser.set_defaults(only_onnxruntime=False)
 
-    parser.add_argument('--disable_onnxruntime', required=False, action='store_true', help="do not use onnxruntime to optimize")
+    parser.add_argument('--disable_onnxruntime',
+                        required=False,
+                        action='store_true',
+                        help="do not use onnxruntime to optimize")
     parser.set_defaults(disable_onnxruntime=False)
 
     parser.add_argument('--opt_level',
