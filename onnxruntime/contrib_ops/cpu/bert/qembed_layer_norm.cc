@@ -181,7 +181,8 @@ Status QEmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
             sum += a * a;
           }
 
-          T e = sqrt(sum / hidden_size + epsilon_);
+          // TODO(kreeger): Make a EmbedLayerNormBase.
+          T e = sqrt(sum / hidden_size + EmbedLayerNorm<T>::epsilon_);
           for (int i = 0; i < hidden_size; i++) {
             T cur_gamma = Dequantize<uint8_t>(gamma_data[i],
                                               layer_norm_weights_scale,
