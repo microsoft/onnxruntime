@@ -483,13 +483,12 @@ void ThreadPoolLite4::SimpleParallelFor(std::ptrdiff_t total, const SimpleFn& fn
 
 void ThreadPoolLite4::ParallelForImpl(const SchdFn& schd_fn) {
   std::vector<Slot*> engaged_slots;
-  for (int i = 0, c = 0; c < 16 && i < num_sub_threads_; ++i) {
+  for (int i = 0; i < num_sub_threads_; ++i) {
     Stage stage = Stage::empty;
     if (slots_[i].stage_.compare_exchange_weak(stage, Stage::loading, std::memory_order_relaxed)) {
       slots_[i].schd_fn_ = schd_fn;
       slots_[i].stage_.store(Stage::ready, std::memory_order_release);
       engaged_slots.push_back(&slots_[i]);
-      c++;
     }
   }
   schd_fn();
@@ -500,6 +499,7 @@ void ThreadPoolLite4::ParallelForImpl(const SchdFn& schd_fn) {
            !slot->stage_.compare_exchange_weak(stage_done, Stage::empty, std::memory_order_relaxed)) {
       stage_ready = Stage::ready;
       stage_done = Stage::done;
+      onnxruntime::concurrency::SpinPause();
     }
   }
 }
@@ -524,6 +524,8 @@ void ThreadPoolLite4::MainLoop(int idx) {
     if (slot.stage_.compare_exchange_weak(stage, Stage::running, std::memory_order_acquire, std::memory_order_relaxed)) {
       slot.schd_fn_();
       slot.stage_.store(Stage::done, std::memory_order_relaxed);
+    } else {
+      onnxruntime::concurrency::SpinPause();
     }
   }
 }
