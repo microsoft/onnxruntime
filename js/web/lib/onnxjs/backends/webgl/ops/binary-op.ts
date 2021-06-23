@@ -365,3 +365,43 @@ export const add = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] 
 export const and = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
   return [handler.run(createBinaryProgramInfo(handler, inputs, glslAnd()), inputs)];
 };
+
+export const div = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createBinaryProgramInfo(handler, inputs, glslDiv()), inputs)];
+};
+
+export const equal = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createBinaryProgramInfo(handler, inputs, glslEqual()), inputs)];
+};
+
+export const greater = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createBinaryProgramInfo(handler, inputs, glslGreater()), inputs)];
+};
+
+export const less = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createBinaryProgramInfo(handler, inputs, glslLess()), inputs)];
+};
+
+export const mul = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createBinaryProgramInfo(handler, inputs, glslMul()), inputs)];
+};
+
+export const or = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createBinaryProgramInfo(handler, inputs, glslOr()), inputs)];
+};
+
+export const pow = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createBinaryProgramInfo(handler, inputs, glslPow()), inputs)];
+};
+
+export const pRelu = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createBinaryProgramInfo(handler, inputs, glslPRelu()), inputs)];
+};
+
+export const sub = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createBinaryProgramInfo(handler, inputs, glslSub()), inputs)];
+};
+
+export const xor = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  return [handler.run(createBinaryProgramInfo(handler, inputs, glslXor()), inputs)];
+};
