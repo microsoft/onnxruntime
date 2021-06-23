@@ -229,7 +229,7 @@ class _TensorStub(object):
             raise NotImplemented('_TensorStub must only be compared to another _TensorStub instance!')
         elif self.name != other.name:
             return False
-        elif self.dtype != other.dtype:  
+        elif self.dtype != other.dtype:
             return False
         elif self.shape != other.shape:
             return False

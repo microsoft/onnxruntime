@@ -104,4 +104,3 @@ class _PytorchModuleMetadata():
     def __init__(self, original_module, flattened_module):
         self.original_module = original_module
         self.flattened_module = flattened_module
-

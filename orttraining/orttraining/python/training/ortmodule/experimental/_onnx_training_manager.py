@@ -15,13 +15,16 @@ import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
 
-class TrainingManager(GraphExecutionManager):
+class OnnxTrainingManager(GraphExecutionManager):
     """Concrete instance of GraphExecutionManager that is able to manage the training model
+
     TrainingManager is resposible for building and running the forward and backward graph of the training model
     """
 
-    def __init__(self, model):
+    def __init__(self, model, onnx_model_parameters=None, device=None):
         super().__init__(model)
+        self._device = device
+        self._onnx_model_parameters = onnx_model_parameters
         self._export_mode = torch.onnx.TrainingMode.TRAINING
 
     @staticmethod
@@ -53,6 +56,7 @@ class TrainingManager(GraphExecutionManager):
 
     def forward(self, *inputs, **kwargs):
         '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
+
         ONNX model is exported the first time this method is executed.
         Next, we build a full training graph with module_graph_builder.
         Finally, we instantiate the ONNX Runtime InferenceSession.
@@ -60,26 +64,14 @@ class TrainingManager(GraphExecutionManager):
 
         # Exporting module to ONNX for the first time
         build_gradient_graph = self._export_model(*inputs, **kwargs)
+
         if build_gradient_graph:
             # If model was exported, then initialize the graph builder
             self._initialize_graph_builder(training=True)
-
-        input_info = _io.parse_inputs_for_onnx_export(self._module_parameters,
-                                                      self._onnx_model,
-                                                      inputs,
-                                                      kwargs)
-
-        # Reinitialize graph builder if the inputs or initializers requiring gradient have changed.
-        # Order of or operation is important here because we always need to call
-        # _reinitialize_graph_builder irrespective of the value of build_gradient_graph.
-        build_gradient_graph = self._reinitialize_graph_builder(input_info) or build_gradient_graph
-
-        # Build the gradient graph
-        if build_gradient_graph:
+            # Build the gradient graph
             self._build_graph()
 
-        device = _utils.get_device_from_module(self._original_module) or \
-            _utils.get_device_from_inputs(inputs, kwargs)
+        device = _utils.get_device_from_inputs(inputs, kwargs)
         # The _training_session/_inference_session should be created every time
         # the graph was built or if the device changed between calls to forward
         create_execution_session = build_gradient_graph or self._device != device
@@ -96,9 +88,11 @@ class TrainingManager(GraphExecutionManager):
             @staticmethod
             def forward(ctx, *inputs):
                 '''Performs forward pass based on user input and PyTorch initializer
+
                 Autograd Function's apply() doesn't support keyword arguments,
                 so `*inputs` has all the arguments - keyword arguments converted
                 to positional/keywords during `TrainingManager.forward`.
+
                 Module outputs are returned to the user
                 '''
 
@@ -196,10 +190,10 @@ class TrainingManager(GraphExecutionManager):
         return _io.unflatten_user_output(self._module_output_schema,
                                         _ORTModuleFunction.apply(
                                             *_io._combine_input_buffers_initializers(
-                                                self._graph_initializers,
+                                                [p[1] for p in self._onnx_model_parameters],
                                                 self._graph_info.user_input_names,
                                                 self._input_info,
-                                                self._flattened_module.named_buffers(),
+                                                {},
                                                 inputs,
                                                 kwargs,
                                                 self._device)))

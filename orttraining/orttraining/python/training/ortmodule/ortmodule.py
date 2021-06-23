@@ -5,6 +5,7 @@
 
 from . import _io
 from ._graph_execution_manager_factory import GraphExecutionManagerFactory
+from ._graph_execution_manager_factory import OnnxGraphExecutionManagerFactory
 from ._utils import _PytorchModuleMetadata
 
 from onnxruntime.training import register_custom_ops_pytorch_exporter
@@ -65,7 +66,7 @@ class ORTModule(torch.nn.Module):
             self._onnx_model_parameters = [
                 (initializer.name, torch.nn.Parameter(torch.as_tensor(copy.deepcopy(onnx.numpy_helper.to_array(initializer)))))
                         for initializer in self._onnx_model.graph.initializer]
-            self._execution_manager = GraphExecutionManagerFactory(self._onnx_model, self._onnx_model_parameters, device)
+            self._execution_manager = OnnxGraphExecutionManagerFactory(self._onnx_model, self._onnx_model_parameters, device)
 
     def forward(self, *inputs, **kwargs):
         '''Forward pass starts here and continues at `_ORTModuleFunction.forward`

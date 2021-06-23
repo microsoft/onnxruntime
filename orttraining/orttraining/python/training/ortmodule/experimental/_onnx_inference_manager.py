@@ -12,13 +12,16 @@ import onnx
 import torch
 
 
-class InferenceManager(GraphExecutionManager):
+class OnnxInferenceManager(GraphExecutionManager):
     """Concrete instance of GraphExecutionManager that is able to manage the inference model
+
     InferenceManager is resposible for building and running the forward graph of the inference model
     """
 
-    def __init__(self, model):
+    def __init__(self, model, onnx_model_parameters=None, device=None):
         super().__init__(model)
+        self._device = device
+        self._onnx_model_parameters = onnx_model_parameters
         self._export_mode = torch.onnx.TrainingMode.EVAL
 
     @staticmethod
@@ -54,6 +57,7 @@ class InferenceManager(GraphExecutionManager):
 
     def forward(self, *inputs, **kwargs):
         '''Forward pass of the inference model
+
         ONNX model is exported the first time this method is executed.
         Next, we build an optimized inference graph with module_graph_builder.
         Finally, we instantiate the ONNX Runtime InferenceSession through the InferenceAgent.
@@ -69,11 +73,13 @@ class InferenceManager(GraphExecutionManager):
             if self._save_onnx:
                 onnx.save(self._onnx_model, self._save_onnx_prefix + '_exported_inference_model.onnx')
 
-        # Build the inference graph
-        if build_graph:
+            # Build the inference graph
             self._build_graph()
 
-        module_device = _utils.get_device_from_module(self._original_module)
+        module_device = self._device
+        if self._original_module:
+            module_device = _utils.get_device_from_module(self._original_module)
+
         # The inference session should be created every time
         # the graph was built or if the device changed between calls to forward
         create_execution_session = build_graph or self._device != module_device
@@ -83,17 +89,17 @@ class InferenceManager(GraphExecutionManager):
             # Create execution session creates the inference_session
             self._create_execution_agent()
 
-        user_outputs, _ = InferenceManager.execution_session_run_forward(self._execution_agent,
-                                                                         self._optimized_onnx_model,
-                                                                         self._device,
-                                                                         *_io._combine_input_buffers_initializers(
-                                                                             self._graph_initializers,
-                                                                             self._graph_info.user_input_names,
-                                                                             self._input_info,
-                                                                             self._flattened_module.named_buffers(),
-                                                                             inputs,
-                                                                             kwargs,
-                                                                             self._device))
+        user_outputs, _ = OnnxInferenceManager.execution_session_run_forward(self._execution_agent,
+                                                                             self._optimized_onnx_model,
+                                                                             self._device,
+                                                                             *_io._combine_input_buffers_initializers(
+                                                                                 self._graph_initializers,
+                                                                                 self._graph_info.user_input_names,
+                                                                                 self._input_info,
+                                                                                 self._flattened_module.named_buffers() if self._flattened_module else [],
+                                                                                 inputs,
+                                                                                 kwargs,
+                                                                                 self._device))
 
         return _io.unflatten_user_output(self._module_output_schema,
                                          user_outputs)
