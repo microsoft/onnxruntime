@@ -147,7 +147,11 @@ class FusionAttention(Fusion):
         Returns:
             Union[NodeProto, None]: the node created or None if failed.
         """
-        assert num_heads > 0 and hidden_size > 0 and (hidden_size % num_heads) == 0
+        assert num_heads > 0
+
+        if hidden_size > 0 and (hidden_size % num_heads) != 0:
+            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
+            return None
 
         q_weight = self.model.get_initializer(q_matmul.input[1])
         k_weight = self.model.get_initializer(k_matmul.input[1])
@@ -174,9 +178,9 @@ class FusionAttention(Fusion):
 
         assert qw_in_size == kw_in_size == vw_in_size
 
-        if qw_in_size != hidden_size and qw.shape != vw.shape:
+        if hidden_size > 0 and hidden_size != qw_in_size:
             logger.debug(
-                f"Input hidden size {hidden_size} is not same as weight matrix dimension of q,k,v paths {qw_in_size}, provide input hidden size"
+                f"Input hidden size {hidden_size} is not same as weight matrix dimension of q,k,v paths {qw_in_size}, provide correct input hidden size or pass 0"
             )
             return None
 
@@ -411,12 +415,10 @@ class FusionAttention(Fusion):
             attention_last_node = reshape_qkv if einsum_node is None else transpose_qkv
 
             q_num_heads, q_hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
-            input_hidden_size = self.hidden_size if self.hidden_size != 0 else q_hidden_size
-
             # number of heads are same for all the paths, hence to create attention node, we pass the q_num_heads
             # the input_hidden_size represents the input hidden size, this is used as needed but hidden sizes for Q, K are extracted appropriately
             new_node = self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v,
-                                                  q_num_heads, input_hidden_size, root_input,
+                                                  q_num_heads, self.hidden_size, root_input,
                                                   attention_last_node.output[0])
             if new_node is None:
                 return
