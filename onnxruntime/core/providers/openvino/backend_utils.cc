@@ -321,7 +321,7 @@ void FillOutputsWithConstantData(Ort::CustomOpApi& ort, std::shared_ptr<ngraph::
       break;
     }
     case ngraph::element::Type_t::f16: {
-      FillOutputHelper<int64_t>(ort, out_tensor, node);
+      FillOutputHelper<float>(ort, out_tensor, node);
       break;
     }
     default:
