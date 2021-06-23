@@ -2006,7 +2006,7 @@ TEST(MathOpTest, Mean_8) {
 #endif
 }
 
-#if defined(__APPLE__) && defined(__MACH__)
+#ifdef _LIBCPP_VERSION
 #define MATH_NO_EXCEPT
 #else
 #define MATH_NO_EXCEPT noexcept
