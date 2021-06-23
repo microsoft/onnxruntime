@@ -128,6 +128,11 @@ class ThreadPoolLite3 final : public ThreadPool {
 };
 */
 
+#if defined(_MSC_VER)
+//#pragma warning(disable : 4316)
+#pragma warning(disable : 4324)
+#endif
+
 class ThreadPoolLite4 final : public ThreadPool {
  public:
   ThreadPoolLite4(Env*,
@@ -157,16 +162,32 @@ class ThreadPoolLite4 final : public ThreadPool {
   };
 
   struct Slot {
-    std::atomic<Stage> stage_{empty};
-    SchdFn schd_fn_;
+    ORT_ALIGN_TO_AVOID_FALSE_SHARING std::atomic<Stage> stage_{empty};
+    ORT_ALIGN_TO_AVOID_FALSE_SHARING SchdFn schd_fn_;
+    Slot() {}
+    Slot(const Slot& slot) {
+      stage_.store(slot.stage_, std::memory_order_relaxed);
+      schd_fn_ = slot.schd_fn_;
+    }
+    Slot& operator=(const Slot& slot) {
+      if (this == &slot) {
+        return *this;
+      }
+      stage_.store(slot.stage_, std::memory_order_relaxed);
+      schd_fn_ = slot.schd_fn_;
+      return *this;
+    }
   };
 
-  std::unique_ptr<Slot[]> slots_; 
+  //std::unique_ptr<Slot[]> slots_;
+  std::vector<Slot> slots_;
+  //Eigen::MaxSizeVector<Slot> slots_;
   std::vector<std::thread> sub_threads_;
   ThreadPoolProfiler profiler_;
   int num_sub_threads_{0};
   bool set_denormal_as_zero_{false};
   bool exit_ = false;
+  //void* slot_buffer_ = nullptr;
 };
 
 }  // namespace concurrency
