@@ -85,8 +85,8 @@ int32_t IndexOfNodeOutput(const Node& node, const NodeArg& node_arg);
 template <typename T>
 bool IsSupportedDataType(const Node& node, const T& supported_data_types) {
   for (const auto& input_arg : node.InputDefs()) {
-    if (std::find(supported_data_types.begin(), supported_data_types.end(),
-                  *(input_arg->Type())) == supported_data_types.end()) {
+    if (std::find(std::begin(supported_data_types), std::end(supported_data_types),
+                  *(input_arg->Type())) == std::end(supported_data_types)) {
       return false;
     }
   }
