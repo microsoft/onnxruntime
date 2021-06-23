@@ -8,7 +8,7 @@ import unittest
 import os
 import sys
 import onnx
-from bert_model_generator import create_bert_attention,create_tf2onnx_attention_3d
+from bert_model_generator import create_bert_attention, create_tf2onnx_attention_3d
 
 # set path so that we could import from parent directory
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))

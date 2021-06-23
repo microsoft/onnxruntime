@@ -33,7 +33,7 @@ def create_bert_attention(input_hidden_size=16,
                           pruned_v_hidden_size=16,
                           use_float_mask=False,
                           switch_add_inputs=False):
-        # unsqueeze in opset version 13 has two inputs (axis is moved from attribute to input).
+    # unsqueeze in opset version 13 has two inputs (axis is moved from attribute to input).
     has_unsqueeze_two_inputs = (version.parse(onnx.__version__) >= version.parse('1.8.0'))
 
     # nodes in attention subgraph
