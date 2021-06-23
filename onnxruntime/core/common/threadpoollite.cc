@@ -518,9 +518,12 @@ void ThreadPoolLite4::ParallelForImpl(const SchdFn& schd_fn) {
   }
   schd_fn();
   for (auto slot : engaged_slots) {
-    Stage stage = Stage::done;
-    while (!slot->stage_.compare_exchange_weak(stage, Stage::empty, std::memory_order_relaxed)) {
-      stage = done;
+    Stage stage_ready = Stage::ready;
+    Stage stage_done = Stage::done;
+    while (!slot->stage_.compare_exchange_weak(stage_ready, Stage::empty, std::memory_order_relaxed) &&
+           !slot->stage_.compare_exchange_weak(stage_done, Stage::empty, std::memory_order_relaxed)) {
+      stage_ready = Stage::ready;
+      stage_done = Stage::done;
     }
   }
 }
