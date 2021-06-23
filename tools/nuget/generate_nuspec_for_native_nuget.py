@@ -53,7 +53,8 @@ def generate_description(list, package_name):
     if package_name == 'Microsoft.AI.MachineLearning':
         description = 'This package contains Windows ML binaries.'
     elif 'Microsoft.ML.OnnxRuntime' in package_name:  # This is a Microsoft.ML.OnnxRuntime.* package
-        description = 'This package contains native shared library artifacts for all supported platforms of ONNX Runtime.'
+        description = 'This package contains native shared library artifacts ' \
+                      'for all supported platforms of ONNX Runtime.'
 
     list.append('<description>' + description + '</description>')
 
