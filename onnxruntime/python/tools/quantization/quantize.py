@@ -182,7 +182,7 @@ def quantize_static(model_input,
     :param extra_options:
         key value pair dictionary for various options in different case. Current used:
             extra.Sigmoid.nnapi = True/False  (Default is False)
-            ActivationSymmetric = True/False: symmetrize calibration data for activations (default is True).
+            ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).
             WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
     '''
 
