@@ -34,7 +34,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.MurmurHash3">com.microsoft.MurmurHash3</a>
   * <a href="#com.microsoft.NGramRepeatBlock">com.microsoft.NGramRepeatBlock</a>
   * <a href="#com.microsoft.NhwcMaxPool">com.microsoft.NhwcMaxPool</a>
-  * <a href="#com.microsoft.OptionalConstruct">com.microsoft.OptionalConstruct</a>
+  * <a href="#com.microsoft.Optional">com.microsoft.Optional</a>
   * <a href="#com.microsoft.OptionalGetElement">com.microsoft.OptionalGetElement</a>
   * <a href="#com.microsoft.OptionalHasElement">com.microsoft.OptionalHasElement</a>
   * <a href="#com.microsoft.Pad">com.microsoft.Pad</a>
@@ -1607,7 +1607,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
-### <a name="com.microsoft.OptionalConstruct"></a><a name="com.microsoft.optionalconstruct">**com.microsoft.OptionalConstruct**</a>
+### <a name="com.microsoft.Optional"></a><a name="com.microsoft.optional">**com.microsoft.Optional**</a>
 
   Construct an optional type containing either an empty optional of a certain type specified by the attribute, "
         "or an optional type containing the 'input' element."

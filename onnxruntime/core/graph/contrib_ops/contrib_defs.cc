@@ -2702,15 +2702,15 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
         updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
       });
 
-  static const char* OptionalConstruct_ver1_doc = R"DOC(
+  static const char* Optional_ver1_doc = R"DOC(
       Construct an optional type containing either an empty optional of a certain type specified by the attribute, "
       "or an optional type containing the 'input' element."
       )DOC";
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(OptionalConstruct)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Optional)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc(OptionalConstruct_ver1_doc)
+      .SetDoc(Optional_ver1_doc)
       .Input(0, "input", "The input element.", "V", OpSchema::Optional)
       .Attr("type", "Type of the element in the optional output", AttributeProto::TYPE_PROTO, OPTIONAL_VALUE)
       .Output(0, "output", "The optional output enclosing the input element.", "O")
@@ -2747,7 +2747,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
           const size_t numOutputs = ctx.getNumOutputs();
           if (numOutputs != 1) {
-            fail_type_inference("OptionalConstruct is expected to have an output.");
+            fail_type_inference("Optional is expected to have an output.");
           }
 
           const size_t numInputs = ctx.getNumInputs();
@@ -2772,7 +2772,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
                 ->mutable_elem_type()
                 ->CopyFrom(*input_type);
           } else {
-            fail_type_inference("OptionalConstruct is expected to have either an input or the type attribute set.");
+            fail_type_inference("Optional is expected to have either an input or the type attribute set.");
           }
         });
 
