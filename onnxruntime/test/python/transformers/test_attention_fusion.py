@@ -23,6 +23,7 @@ class TestFusion(unittest.TestCase):
         onnx.save(model, model_path)
         optimized_model = optimize_model(model_path)
         os.remove(model_path)
+
         expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models', 'attention_opt.onnx')
         expected = onnx.load(expected_model_path)
         self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
