@@ -14,6 +14,7 @@ import torch
 
 class InferenceManager(GraphExecutionManager):
     """Concrete instance of GraphExecutionManager that is able to manage the inference model
+
     InferenceManager is resposible for building and running the forward graph of the inference model
     """
 
@@ -54,6 +55,7 @@ class InferenceManager(GraphExecutionManager):
 
     def forward(self, *inputs, **kwargs):
         '''Forward pass of the inference model
+
         ONNX model is exported the first time this method is executed.
         Next, we build an optimized inference graph with module_graph_builder.
         Finally, we instantiate the ONNX Runtime InferenceSession through the InferenceAgent.

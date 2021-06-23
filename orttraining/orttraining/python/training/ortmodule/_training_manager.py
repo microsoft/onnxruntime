@@ -17,6 +17,7 @@ from torch.utils.dlpack import from_dlpack, to_dlpack
 
 class TrainingManager(GraphExecutionManager):
     """Concrete instance of GraphExecutionManager that is able to manage the training model
+
     TrainingManager is resposible for building and running the forward and backward graph of the training model
     """
 
@@ -53,6 +54,7 @@ class TrainingManager(GraphExecutionManager):
 
     def forward(self, *inputs, **kwargs):
         '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
+
         ONNX model is exported the first time this method is executed.
         Next, we build a full training graph with module_graph_builder.
         Finally, we instantiate the ONNX Runtime InferenceSession.
@@ -96,16 +98,18 @@ class TrainingManager(GraphExecutionManager):
             @staticmethod
             def forward(ctx, *inputs):
                 '''Performs forward pass based on user input and PyTorch initializer
+
                 Autograd Function's apply() doesn't support keyword arguments,
                 so `*inputs` has all the arguments - keyword arguments converted
                 to positional/keywords during `TrainingManager.forward`.
+
                 Module outputs are returned to the user
                 '''
 
-                user_outputs, ctx.run_info = OnnxTrainingManager.execution_session_run_forward(self._execution_agent,
-                                                                                               self._optimized_onnx_model,
-                                                                                               self._device,
-                                                                                               *inputs)
+                user_outputs, ctx.run_info = TrainingManager.execution_session_run_forward(self._execution_agent,
+                                                                                           self._optimized_onnx_model,
+                                                                                           self._device,
+                                                                                           *inputs)
 
                 # Disable materializing grads then None object will not be
                 # converted to a tensor filled with zeros prior to calling backward.
