@@ -1623,6 +1623,30 @@ MlasGemmBatch(
         ThreadCountN = 1;
     }
 
+    double mm = ((double)M)/ThreadCountM;
+    double nn = ((double)N)/ThreadCountN;
+    double cc = mm * nn * K;
+    onnxruntime::TensorOpCost cost{cc, cc, cc};
+
+    onnxruntime::concurrency::ThreadPool::TryParallelFor(ThreadPool,
+        ThreadsPerGemm * static_cast<ptrdiff_t>(BatchSize),
+        cost, [=] (ptrdiff_t st, ptrdiff_t ed) {
+            for (auto tid = st; tid < ed; ++tid) {
+                ptrdiff_t GemmIdx = tid / ThreadsPerGemm;
+                ptrdiff_t ThreadIdx = tid % ThreadsPerGemm;
+                MlasSgemmThreaded(ThreadCountM, ThreadCountN,
+                    TransA, TransB, M, N, K, &(Data[GemmIdx]), ThreadIdx);}});
+/*
+        [=](ptrdiff_t tid)
+        {
+            ptrdiff_t GemmIdx = tid / ThreadsPerGemm;
+            ptrdiff_t ThreadIdx = tid % ThreadsPerGemm;
+            MlasSgemmThreaded(ThreadCountM, ThreadCountN,
+                TransA, TransB, M, N, K, &(Data[GemmIdx]), ThreadIdx);}
+    );
+*/
+
+/*
     MlasTrySimpleParallel(ThreadPool, 
         ThreadsPerGemm * static_cast<ptrdiff_t>(BatchSize), 
         [=](ptrdiff_t tid)
@@ -1632,6 +1656,7 @@ MlasGemmBatch(
         MlasSgemmThreaded(ThreadCountM, ThreadCountN,
             TransA, TransB, M, N, K, &(Data[GemmIdx]), ThreadIdx);
     });
+*/
 }
 
 size_t
