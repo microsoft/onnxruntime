@@ -15,7 +15,7 @@ import {WEBGL_OP_RESOLVE_RULES} from './op-resolve-rules';
 import {ProgramManager} from './program-manager';
 import {PreferLogicalStrategy, TextureLayoutStrategy} from './texture-layout-strategy';
 import {TextureManager} from './texture-manager';
-import {TextureData, WebGLOperator} from './types';
+import {TextureData} from './types';
 
 export class WebGLSessionHandler implements SessionHandler {
   programManager: ProgramManager;
@@ -83,7 +83,6 @@ export class WebGLSessionHandler implements SessionHandler {
   }
   resolve(node: Graph.Node, opsets: readonly OpSet[], graph: Graph): Operator {
     const op = resolveOperator(node, opsets, WEBGL_OP_RESOLVE_RULES);
-    op.initialize(node.attributes, node, graph);
-    return op;
+    return {impl: op.opImpl, context: op.opInit ? op.opInit(node, graph) : node};
   }
 }
