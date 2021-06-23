@@ -26,12 +26,13 @@ def reverse_if(inputs, reverse=False):
         inputs.reverse()
     return inputs
 
+
 def create_bert_attention(input_hidden_size=16,
                           num_heads=2,
                           pruned_qk_hidden_size=16,
                           pruned_v_hidden_size=16,
-                          switch_add_inputs=False,
-                          use_float_mask=False):
+                          use_float_mask=False,
+                          switch_add_inputs=False):
         # unsqueeze in opset version 13 has two inputs (axis is moved from attribute to input).
     has_unsqueeze_two_inputs = (version.parse(onnx.__version__) >= version.parse('1.8.0'))
 
@@ -138,6 +139,7 @@ def create_bert_attention(input_hidden_size=16,
 
     model = helper.make_model(graph)
     return model
+
 
 def create_tf2onnx_attention_3d(input_hidden_size=16, num_heads=4, head_size=4, use_float_mask=False):
     # unsqueeze in opset version 13 has two inputs (axis is moved from attribute to input).

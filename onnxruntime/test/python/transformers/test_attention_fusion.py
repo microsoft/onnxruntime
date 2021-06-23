@@ -8,7 +8,7 @@ import unittest
 import os
 import sys
 import onnx
-from bert_model_generator import create_tf2onnx_attention_3d, create_bert_attention
+from bert_model_generator import create_bert_attention,create_tf2onnx_attention_3d
 
 # set path so that we could import from parent directory
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -20,7 +20,7 @@ class TestFusion(unittest.TestCase):
         dir = '.'
         model_path = os.path.join(dir, "pruned_attention.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path, "bert", num_heads=2, hidden_size=16)
+        optimized_model = optimize_model(model_path)
         os.remove(model_path)
 
         expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models',
@@ -33,7 +33,7 @@ class TestFusion(unittest.TestCase):
         dir = '.'
         model_path = os.path.join(dir, "bert_attention_reverse_add_order.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path, "bert", num_heads=2, hidden_size=16)
+        optimized_model = optimize_model(model_path)
         os.remove(model_path)
 
         # reverse add input order will get same optimized model
@@ -70,4 +70,3 @@ class TestFusion(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
- 

@@ -165,10 +165,8 @@ class FusionAttention(Fusion):
         kw = NumpyHelper.to_array(k_weight)
         vw = NumpyHelper.to_array(v_weight)
 
-        # Check if q and k have same shape
-        if qw.shape != kw.shape:
-            logger.debug(f"Q Weight matrix shape {qw.shape} does not match K weight matrix {kw.shape}")
-            return None
+        # assert q and k have same shape as expected
+        assert qw.shape == kw.shape
 
         qw_in_size = qw.shape[0]
         kw_in_size = kw.shape[0]
@@ -176,7 +174,7 @@ class FusionAttention(Fusion):
 
         assert qw_in_size == kw_in_size == vw_in_size
 
-        if qw_in_size != hidden_size:
+        if qw_in_size != hidden_size and qw.shape != vw.shape:
             logger.debug(f"Input hidden size {hidden_size} is not same as weight matrix dimension of q,k,v paths {qw_in_size}, provide input hidden size")
             return None
 
@@ -203,11 +201,6 @@ class FusionAttention(Fusion):
         kb = NumpyHelper.to_array(k_bias)
         vb = NumpyHelper.to_array(v_bias)
 
-        # 1d bias shape: [outsize,]. 2d bias shape: [a, b] where a*b = out_size
-        if qb.shape != kb.shape:
-            logger.debug(f"Q bias shape {qb.shape} does not match K bias shape {kb.shape}")
-            return None
-
         q_bias_shape = np.prod(qb.shape)
         k_bias_shape = np.prod(kb.shape)
         v_bias_shape = np.prod(vb.shape)
@@ -222,10 +215,6 @@ class FusionAttention(Fusion):
         else:
             qkv_bias = np.stack((qb, kb, vb), axis=0)
             qkv_bias_dim = 3 * q_bias_shape
-
-        if qkv_weight_dim != qkv_bias_dim:
-            logger.debug(f"qkv weight matrix dim {qkv_weight_dim} does not match bias dim {qkv_bias_dim}")
-            return None
 
         attention_node_name = self.model.create_node_name('Attention')
 
