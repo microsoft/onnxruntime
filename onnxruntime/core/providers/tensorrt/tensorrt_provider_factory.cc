@@ -82,12 +82,15 @@ struct Tensorrt_Provider : Provider {
     trt_options.trt_fp16_enable = internal_options.fp16_enable;
     trt_options.trt_int8_enable = internal_options.int8_enable;
 
+    char* dest = nullptr;
     auto str_size = internal_options.int8_calibration_table_name.size(); 
     if (str_size == 0) {
       trt_options.trt_int8_calibration_table_name = nullptr;
     } else {
-      trt_options.trt_int8_calibration_table_name = new char[str_size + 1];
-      strncpy((char*)trt_options.trt_int8_calibration_table_name, internal_options.int8_calibration_table_name.c_str(), str_size + 1);
+      dest = new char[str_size + 1];
+      strncpy(dest, internal_options.int8_calibration_table_name.c_str(), str_size);
+      dest[str_size] = '\0';
+      trt_options.trt_int8_calibration_table_name = (const char*)dest;
     }
 
     trt_options.trt_int8_use_native_calibration_table = internal_options.int8_use_native_calibration_table;
@@ -100,8 +103,10 @@ struct Tensorrt_Provider : Provider {
     if (str_size == 0) {
       trt_options.trt_engine_cache_path = nullptr;
     } else {
-      trt_options.trt_engine_cache_path = new char[str_size + 1];
-      strncpy((char*)trt_options.trt_engine_cache_path, internal_options.engine_cache_path.c_str(), str_size + 1);
+      dest = new char[str_size + 1];
+      strncpy(dest, internal_options.engine_cache_path.c_str(), str_size);
+      dest[str_size] = '\0';
+      trt_options.trt_engine_cache_path = (const char*)dest;
     }
 
     trt_options.trt_engine_decryption_enable = internal_options.engine_decryption_enable;
@@ -110,8 +115,10 @@ struct Tensorrt_Provider : Provider {
     if (str_size == 0) {
       trt_options.trt_engine_decryption_lib_path = nullptr;
     } else {
-      trt_options.trt_engine_decryption_lib_path = new char[str_size + 1];
-      strncpy((char*)trt_options.trt_engine_decryption_lib_path, internal_options.engine_decryption_lib_path.c_str(), str_size + 1);
+      dest = new char[str_size + 1];
+      strncpy(dest, internal_options.engine_decryption_lib_path.c_str(), str_size);
+      dest[str_size] = '\0';
+      trt_options.trt_engine_decryption_lib_path = (const char*)dest;
     }
 
     trt_options.trt_force_sequential_engine_build = internal_options.force_sequential_engine_build;
