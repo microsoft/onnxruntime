@@ -77,4 +77,4 @@ Other
   - DeepLabV3 (https://pytorch.org/tutorials/beginner/deeplabv3_on_android.html)
   - EfficientNet (https://github.com/lukemelas/EfficientNet-PyTorch)
   - SSD Mobilenet V1 and V2 (https://github.com/qfgaohao/pytorch-ssd)
-  - wav2vec 2.0 (adapted from https://github.com/pytorch/ios-demo-app/blob/9845c51c2b417416ccd11277c46e54f9ab811d37/SpeechRecognition/create_wav2vec2.py)
+  - Wav2Vec 2.0 (adapted from https://github.com/pytorch/ios-demo-app/blob/f2b9aa196821c136d3299b99c5dd592de1fa1776/SpeechRecognition/create_wav2vec2.py)
