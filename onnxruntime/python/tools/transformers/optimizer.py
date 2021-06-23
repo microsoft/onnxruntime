@@ -268,8 +268,8 @@ def optimize_model(input,
                    optimization_options=None,
                    opt_level=0,
                    use_gpu=False,
-                   disable_onnxruntime=False,
-                   only_onnxruntime=False):
+                   only_onnxruntime=False,
+                   disable_onnxruntime=False):
     """ Optimize Model by OnnxRuntime and/or offline fusion logic.
 
     The following optimizes model by OnnxRuntime only, and no offline fusion logic:
@@ -285,8 +285,8 @@ def optimize_model(input,
         optimization_options (OptimizationOptions or None): optimization options that can use to turn on/off some fusions.
         opt_level (int): onnxruntime graph optimization level (0, 1, 2 or 99). When the level > 0, onnxruntime will be used to optimize model first.
         use_gpu (bool): use gpu or not for onnxruntime.
-        disable_onnxruntime (bool): only use offline fusion logic to optimize model,
         only_onnxruntime (bool): only use onnxruntime to optimize model, and no offline fusion logic is used.
+        disable_onnxruntime (bool): only use offline fusion logic to optimize model.
 
      Returns:
         object of an optimizer class.
@@ -357,8 +357,8 @@ def main():
                                opt_level=args.opt_level,
                                optimization_options=optimization_options,
                                use_gpu=args.use_gpu,
-                               disable_onnxruntime=args.disable_onnxruntime,
-                               only_onnxruntime=args.only_onnxruntime)
+                               only_onnxruntime=args.only_onnxruntime,
+                               disable_onnxruntime=args.disable_onnxruntime)
 
     if args.float16:
         optimizer.convert_model_float32_to_float16()
