@@ -12,7 +12,7 @@ namespace contrib {
 
 // Quantized version of QEmbedLayerNorm.
 template <typename T>
-class QEmbedLayerNorm final : public EmbedLayerNorm<T> {
+class QEmbedLayerNorm final : public EmbedLayerNormBase {
  public:
   explicit QEmbedLayerNorm(const OpKernelInfo& op_kernel_info);
   Status Compute(OpKernelContext* context) const override;

@@ -20,6 +20,73 @@ inline float Dequantize(T value, float scale, T zero_point) {
   return static_cast<float>(static_cast<int32_t>(value) - zero_point) * scale;
 }
 
+Status CheckQuantizedInputs(OpKernelContext* context) {
+  const Tensor* word_embedding_scale_tensor = context->Input<Tensor>(8);
+  const Tensor* position_embedding_scale_tensor = context->Input<Tensor>(9);
+  const Tensor* segment_embedding_scale_tensor = context->Input<Tensor>(10);
+  const Tensor* gamma_scale_tensor = context->Input<Tensor>(11);
+  const Tensor* beta_scale_tensor = context->Input<Tensor>(12);
+  const Tensor* word_embedding_zero_point_tensor = context->Input<Tensor>(13);
+  const Tensor* position_embedding_zero_point_tensor = context->Input<Tensor>(14);
+  const Tensor* segment_embedding_zero_point_tensor = context->Input<Tensor>(15);
+  const Tensor* gamma_zero_point_tensor = context->Input<Tensor>(16);
+  const Tensor* beta_zero_point_tensor = context->Input<Tensor>(17);
+
+  bool has_segment_embedding = context->Input<Tensor>(1) != nullptr;
+
+  if (!IsScalarOr1ElementVector(word_embedding_scale_tensor)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Word embedding scale must be a scalar or 1D tensor of size 1");
+  }
+
+  if (!IsScalarOr1ElementVector(position_embedding_scale_tensor)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Position embedding scale must be a scalar or 1D tensor of size 1");
+  }
+
+  if (has_segment_embedding && !IsScalarOr1ElementVector(segment_embedding_scale_tensor)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Segment embedding scale must be a scalar or 1D tensor of size 1");
+  }
+
+  if (!IsScalarOr1ElementVector(gamma_scale_tensor)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Gamma scale must be a scalar or 1D tensor of size 1");
+  }
+
+  if (!IsScalarOr1ElementVector(beta_scale_tensor)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Beta scale must be a scalar or 1D tensor of size 1");
+  }
+
+  if (!IsScalarOr1ElementVector(word_embedding_zero_point_tensor)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Word embedding zero point must be a scalar or 1D tensor of size 1");
+  }
+
+  if (!IsScalarOr1ElementVector(position_embedding_zero_point_tensor)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Position embedding zero point must be a scalar or 1D tensor of size 1");
+  }
+
+  if (has_segment_embedding && !IsScalarOr1ElementVector(segment_embedding_zero_point_tensor)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Segment embedding zero point must be a scalar or 1D tensor of size 1");
+  }
+
+  if (!IsScalarOr1ElementVector(gamma_zero_point_tensor)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Gamma zero point must be a scalar or 1D tensor of size 1");
+  }
+
+  if (!IsScalarOr1ElementVector(beta_zero_point_tensor)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Beta zero point must be a scalar or 1D tensor of size 1");
+  }
+
+  return Status::OK();
+}
+
 }  // namespace
 
 // This op is internal-only, so register outside of onnx:
@@ -38,13 +105,13 @@ REGISTER_KERNEL_TYPED(float)
 
 template <typename T>
 QEmbedLayerNorm<T>::QEmbedLayerNorm(const OpKernelInfo& op_kernel_info)
-    : EmbedLayerNorm<T>(op_kernel_info) {
+    : EmbedLayerNormBase(op_kernel_info) {
 }
 
 template <typename T>
 Status QEmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(embed_layer_norm::CheckInputs(context));
-  ORT_RETURN_IF_ERROR(embed_layer_norm::CheckQuantizedInputs(context));
+  ORT_RETURN_IF_ERROR(CheckQuantizedInputs(context));
 
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* segment_ids = context->Input<Tensor>(1);  // optional. nullptr if it's distill-bert
@@ -181,8 +248,7 @@ Status QEmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
             sum += a * a;
           }
 
-          // TODO(kreeger): Make a EmbedLayerNormBase.
-          T e = sqrt(sum / hidden_size + EmbedLayerNorm<T>::epsilon_);
+          T e = sqrt(sum / hidden_size + epsilon());
           for (int i = 0; i < hidden_size; i++) {
             T cur_gamma = Dequantize<uint8_t>(gamma_data[i],
                                               layer_norm_weights_scale,
