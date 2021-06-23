@@ -416,31 +416,12 @@ void ThreadPoolLite3<PoolSize>::MainLoop(int idx) {
 template ThreadPoolLite3<16>;
 */
 
-/*
-void* aligned_malloc(size_t bytes, size_t alignment) {
-  void *p1, *p2;
-  if ((p1 = (void*)malloc(bytes + alignment + sizeof(size_t))) == NULL)
-    return NULL;
-  size_t addr = (size_t)p1 + alignment + sizeof(size_t);
-  p2 = (void*)(addr - (addr % alignment));
-  *((size_t*)p2 - 1) = (size_t)p1;
-  return p2;
-}
-
-void aligned_free(void* p) {
-  free((void*)(*((size_t*)p - 1)));
-}*/
-
 ThreadPoolLite4::ThreadPoolLite4(Env*,
                                  const ThreadOptions& options,
                                  const NAME_CHAR_TYPE*,
                                  int num_threads,
                                  bool) : profiler_(num_threads - 1, ORT_TSTR("ThreadPoolLite")) {
   num_sub_threads_ = num_threads - 1;
-  //slot_buffer_ = aligned_malloc(sizeof(Slot) * num_sub_threads_, ORT_FALSE_SHARING_BYTES);
-  //slot_buffer_ = malloc(sizeof(Slot) * num_sub_threads_);
-  //slots_.reset(new (slot_buffer_) Slot[num_sub_threads_]);
-  //slots_.reset(new Slot[num_sub_threads_]);
   slots_.assign(num_threads - 1, {});
   set_denormal_as_zero_ = options.set_denormal_as_zero;
 #ifdef _WIN32
@@ -467,12 +448,6 @@ ThreadPoolLite4::~ThreadPoolLite4() {
   for (std::thread& t : sub_threads_) {
     t.join();
   }
-  /*
-  if (slot_buffer_) {
-    //aligned_free(slot_buffer_);
-    free(slot_buffer_);
-    slot_buffer_ = nullptr;
-  }*/
 }
 
 void ThreadPoolLite4::ParallelFor(std::ptrdiff_t total, double c, const Fn& fn) {
@@ -508,12 +483,13 @@ void ThreadPoolLite4::SimpleParallelFor(std::ptrdiff_t total, const SimpleFn& fn
 
 void ThreadPoolLite4::ParallelForImpl(const SchdFn& schd_fn) {
   std::vector<Slot*> engaged_slots;
-  for (int i = 0; i < num_sub_threads_; ++i) {
+  for (int i = 0, c = 0; c < 16 && i < num_sub_threads_; ++i) {
     Stage stage = Stage::empty;
     if (slots_[i].stage_.compare_exchange_weak(stage, Stage::loading, std::memory_order_relaxed)) {
       slots_[i].schd_fn_ = schd_fn;
       slots_[i].stage_.store(Stage::ready, std::memory_order_release);
       engaged_slots.push_back(&slots_[i]);
+      c++;
     }
   }
   schd_fn();

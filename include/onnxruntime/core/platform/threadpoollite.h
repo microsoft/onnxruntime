@@ -179,15 +179,12 @@ class ThreadPoolLite4 final : public ThreadPool {
     }
   };
 
-  //std::unique_ptr<Slot[]> slots_;
   std::vector<Slot> slots_;
-  //Eigen::MaxSizeVector<Slot> slots_;
   std::vector<std::thread> sub_threads_;
   ThreadPoolProfiler profiler_;
   int num_sub_threads_{0};
   bool set_denormal_as_zero_{false};
   bool exit_ = false;
-  //void* slot_buffer_ = nullptr;
 };
 
 }  // namespace concurrency
