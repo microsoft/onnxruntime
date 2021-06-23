@@ -40,10 +40,6 @@
 #include <mimalloc.h>
 #endif
 
-#ifdef ORT_NO_EXCEPTIONS
-#include <iostream>
-#endif
-
 namespace onnxruntime {
 
 using TimePoint = std::chrono::high_resolution_clock::time_point;
@@ -75,6 +71,14 @@ using common::Status;
 #define ORT_ATTRIBUTE_UNUSED __attribute__((__unused__))
 #else
 #define ORT_ATTRIBUTE_UNUSED
+#endif
+
+#ifdef ORT_NO_EXCEPTIONS
+// Print the given final message, the message must be a null terminated char*
+// ORT will abort after printing the message.
+// For Android, will print to Android system log
+// For other platforms, will print to stderr
+void PrintFinalMessage(const char* msg);
 #endif
 
 // macro to explicitly ignore the return value from a function call so Code Analysis doesn't complain
@@ -110,49 +114,46 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 // a lambda function. otherwise the exception referred will be undefined and cause build break
 #define ORT_HANDLE_EXCEPTION(func)
 
-// TODO, consider changing the output of the error message from std::cerr to logging when the
-// exceptions are disabled, since using std::cerr might increase binary size, and std::cerr output
-// might not be easily accesible on some systems such as mobile
-
 // Throw an exception with optional message.
 // NOTE: The arguments get streamed into a string via ostringstream::operator<<
 // DO NOT use a printf format string, as that will not work as you expect.
-#define ORT_THROW(...)                                                                       \
-  do {                                                                                       \
-    std::cerr << ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK,                   \
-                                                     ::onnxruntime::MakeString(__VA_ARGS__)) \
-                     .what()                                                                 \
-              << std::endl;                                                                  \
-    abort();                                                                                 \
+#define ORT_THROW(...)                                                    \
+  do {                                                                    \
+    ::onnxruntime::PrintFinalMessage(                                     \
+        ::onnxruntime::OnnxRuntimeException(                              \
+            ORT_WHERE_WITH_STACK, ::onnxruntime::MakeString(__VA_ARGS__)) \
+            .what());                                                     \
+    abort();                                                              \
   } while (false)
 
 // Just in order to mark things as not implemented. Do not use in final code.
-#define ORT_NOT_IMPLEMENTED(...)                                                                \
-  do {                                                                                          \
-    std::cerr << ::onnxruntime::NotImplementedException(::onnxruntime::MakeString(__VA_ARGS__)) \
-                     .what()                                                                    \
-              << std::endl;                                                                     \
-    abort();                                                                                    \
+#define ORT_NOT_IMPLEMENTED(...)                                                       \
+  do {                                                                                 \
+    ::onnxruntime::PrintFinalMessage(                                                  \
+        ::onnxruntime::NotImplementedException(::onnxruntime::MakeString(__VA_ARGS__)) \
+            .what());                                                                  \
+    abort();                                                                           \
   } while (false)
 
 // Check condition.
 // NOTE: The arguments get streamed into a string via ostringstream::operator<<
 // DO NOT use a printf format string, as that will not work as you expect.
-#define ORT_ENFORCE(condition, ...)                                                            \
-  do {                                                                                         \
-    if (!(condition)) {                                                                        \
-      std::cerr << ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition,       \
-                                                       ::onnxruntime::MakeString(__VA_ARGS__)) \
-                       .what()                                                                 \
-                << std::endl;                                                                  \
-      abort();                                                                                 \
-    }                                                                                          \
+#define ORT_ENFORCE(condition, ...)                                                   \
+  do {                                                                                \
+    if (!(condition)) {                                                               \
+      ::onnxruntime::PrintFinalMessage(                                               \
+          ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition,       \
+                                              ::onnxruntime::MakeString(__VA_ARGS__)) \
+              .what());                                                               \
+      abort();                                                                        \
+    }                                                                                 \
   } while (false)
 
-#define ORT_THROW_EX(ex, ...)                                                              \
-  do {                                                                                     \
-    std::cerr << #ex << "(" << ::onnxruntime::MakeString(__VA_ARGS__) << ")" << std::endl; \
-    abort();                                                                               \
+#define ORT_THROW_EX(ex, ...)                                                                      \
+  do {                                                                                             \
+    ::onnxruntime::PrintFinalMessage(                                                              \
+        ::onnxruntime::MakeString(#ex, "(", ::onnxruntime::MakeString(__VA_ARGS__), ")").c_str()); \
+    abort();                                                                                       \
   } while (false)
 
 #else
