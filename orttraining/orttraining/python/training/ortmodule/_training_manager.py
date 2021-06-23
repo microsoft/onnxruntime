@@ -286,8 +286,6 @@ class TrainingManager(GraphExecutionManager):
                                               session_options,
                                               providers,
                                               provider_options)
-        if self._enable_grad_acc_optimization:
-            frontier_tensor_map = self._execution_agent._get_frontier_tensors(list(self._graph_initializer_names_to_train))
 
     def _reinitialize_graph_builder(self, input_info):
         """Return true if the module graph builder was reinitialized"""

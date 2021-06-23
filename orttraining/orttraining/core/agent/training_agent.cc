@@ -85,21 +85,5 @@ void TrainingAgent::CreateAndInitializeFeedsFetchesManager(const SessionState& s
   ORT_ENFORCE(utils::InitializeFeedFetchCopyInfo(session_state, *feeds_fetches_manager) == Status::OK());
 }
 
-void TrainingAgent::GetFrontierTensors(const std::vector<std::string>& param_names,
-                                       std::unordered_map<std::string, std::string>& frontier_node_arg_map) {
-  const Graph& graph = inference_session_.GetSessionState().GetGraphViewer().GetGraph();
-  for (const auto& param : param_names) {
-    std::vector<const Node*> consumer_nodes = graph.GetConsumerNodes(param);
-    // Initial support is limited to caching Cast output. This can 
-    // be extended to accomodate more ops whose result depends only 
-    // on the weight tensor which is a WIP.
-    for (const Node* node : consumer_nodes) {
-      if (node != nullptr && node->OpType() == "Cast") {
-        frontier_node_arg_map[param] = node->OutputDefs()[0]->Name();
-      }
-    }
-  }
-}
-
 }  // namespace training
 }  // namespace onnxruntime
