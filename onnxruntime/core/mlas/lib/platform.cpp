@@ -126,13 +126,13 @@ Return Value:
     //
 
     this->GemmFloatKernel = MlasGemmFloatKernelSse;
+    this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchSse;
+    this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchSse;
 
 #if defined(MLAS_TARGET_AMD64)
 
     this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Sse;
     this->GemmDoubleKernel = MlasGemmDoubleKernelSse;
-    this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchSse;
-    this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchSse;
     this->ConvNchwFloatKernel = MlasConvNchwFloatKernelSse;
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelSse;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelSse;
@@ -170,7 +170,7 @@ Return Value:
     __cpuid(1, Cpuid1[0], Cpuid1[1], Cpuid1[2], Cpuid1[3]);
 #endif
 
-#if defined(MLAS_TARGET_AMD64) && defined(_MSC_VER)
+#if defined(_MSC_VER)
 
     //
     // Check if the processor supports SSE 4.1 instructions.
