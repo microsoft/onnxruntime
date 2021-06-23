@@ -1,12 +1,15 @@
 #!/bin/bash
 set -x
 
-while getopts p: parameter
+while getopts p:o: parameter
 do case "${parameter}"
 in
-p) ORT_BINARY_PATH=${OPTARG};;
+o) ORT_BINARY_PATH=${OPTARG};;
+p) WORKSPACE=${OPTARG};;
 esac
 done
+
+cd ${WORKSPACE}
 
 ONNX_MODEL_URL="https://github.com/onnx/models/raw/master/vision/classification/squeezenet/model/squeezenet1.0-7.onnx"
 ONNX_MODEL="squeezenet.onnx"
@@ -22,7 +25,13 @@ cp ../squeezenet_calibration.flatbuffers .
 cmake ..
 make -j8
 wget $ONNX_MODEL_URL -O $ONNX_MODEL
-ASAN_OPTIONS=$ASAN_OPTIONS ./onnx_memtest
+ASAN_OPTIONS=$ASAN_OPTIONS ./onnx_memtest ||
+
+if [ $? -ne 0 ]
+then
+    echo "Memory test application failed."
+    exit 1
+fi
 
 if [ -e asan.log* ]
 then
