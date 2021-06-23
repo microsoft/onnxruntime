@@ -964,15 +964,12 @@ class TestInferenceSession(unittest.TestCase):
             return
 
         # Exclude for training
-        training_enabled = False
         try:
             from onnxruntime.capi.ort_trainer import ORTTrainer
-            training_enabled = True
-        except:
-            pass
-
-        if training_enabled:
+            # Assume training is enabled.
             return
+        except Exception as err:
+            print("Assuming training is not enabled because " + str(err))
 
         shared_library = 'test_execution_provider.dll'
         if not os.path.exists(shared_library):
