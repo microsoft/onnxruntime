@@ -48,15 +48,15 @@ def generate_owners(list, owners):
 
 
 def generate_description(list, package_name):
-	description = ''
+    description = ''
 
-	if package_name == 'Microsoft.AI.MachineLearning':
-		description = 'This package contains Windows ML binaries.'
+    if package_name == 'Microsoft.AI.MachineLearning':
+        description = 'This package contains Windows ML binaries.'
+    elif 'Microsoft.ML.OnnxRuntime' in package_name:  # This is a Microsoft.ML.OnnxRuntime.* package
+        description = 'This package contains native shared library artifacts for all supported platforms of ONNX Runtime.'
 
-	elif 'Microsoft.ML.OnnxRuntime' in package_name:  # This is a Microsoft.ML.OnnxRuntime.* package 
-		description = 'This package contains native shared library artifacts for all supported platforms of ONNX Runtime.'
+    list.append('<description>' + description + '</description>')
 
-	list.append('<description>' + description + '</description>')
 
 def generate_copyright(list, copyright):
     list.append('<copyright>' + copyright + '</copyright>')
