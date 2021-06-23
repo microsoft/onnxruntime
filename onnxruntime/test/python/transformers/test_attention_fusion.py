@@ -16,6 +16,17 @@ from onnxruntime.transformers.optimizer import optimize_model
 
 
 class TestFusion(unittest.TestCase):
+    def test_attention_fusion(self):
+        model = create_bert_attention()
+        dir = '.'
+        model_path = os.path.join(dir, "attention.onnx")
+        onnx.save(model, model_path)
+        optimized_model = optimize_model(model_path)
+        os.remove(model_path)
+        expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models', 'attention_opt.onnx')
+        expected = onnx.load(expected_model_path)
+        self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
+
     def test_attention_fusion_pruned_model(self):
         model = create_bert_attention(input_hidden_size=16,
                                       num_heads=2,
@@ -58,7 +69,7 @@ class TestFusion(unittest.TestCase):
         dir = '.'
         model_path = os.path.join(dir, "attention_with_varied_qkv.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path, "bert", num_heads=2, hidden_size=16)
+        optimized_model = optimize_model(model_path)
         os.remove(model_path)
 
         expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models',
