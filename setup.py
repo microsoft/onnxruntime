@@ -402,7 +402,9 @@ if local_version:
     version_number = version_number + local_version
 
 if wheel_name_suffix:
-    package_name = "{}-{}".format(package_name, wheel_name_suffix)
+    if not (enable_training and wheel_name_suffix == 'gpu'):
+        # for training packages, local version is used to indicate device types
+        package_name = "{}-{}".format(package_name, wheel_name_suffix)
 
 cmd_classes = {}
 if bdist_wheel is not None:
