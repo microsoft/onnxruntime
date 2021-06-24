@@ -306,7 +306,7 @@ if enable_training:
         if cuda_version:
             # removing '.' to make local Cuda version number in the same form as Pytorch.
             if torch_version:
-                local_version = '+torch' + torch_version + '_'\
+                local_version = '+torch' + torch_version + '.'\
                     + 'cu' + cuda_version.replace('.', '')
             else:
                 local_version = '+cu' + cuda_version.replace('.', '')
@@ -314,7 +314,7 @@ if enable_training:
             # removing '.' to make Cuda version number in the same form as Pytorch.
             rocm_version = rocm_version.replace('.', '')
             if torch_version:
-                local_version = '+torch' + torch_version + '_'\
+                local_version = '+torch' + torch_version + '.'\
                     + 'rocm' + rocm_version
             else:
                 local_version = '+rocm' + rocm_version
