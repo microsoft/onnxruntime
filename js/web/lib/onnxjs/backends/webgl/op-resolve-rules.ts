@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {FLOAT_TYPES, NUMBER_TYPES} from '../../operators';
 import {OpSet} from '../../opset';
 
 import {batchNormalization, parseBatchNormalizationAttributes} from './ops/batch-normalization';
@@ -33,7 +32,7 @@ import {WebGLSum} from './ops/sum';
 import {WebGLTile} from './ops/tile';
 import {WebGLTranspose} from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
-//import { abs } from './ops/unary-op';
+// import { abs } from './ops/unary-op';
 import {WebGLUnsqueeze} from './ops/unsqueeze';
 import {WebGLUpsample} from './ops/upsample';
 
@@ -65,7 +64,7 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Gemm', '', '11+', () => new WebGLGemm(true)],
   ['GlobalAveragePool', '', '1+', () => new WebGLGlobalAveragePool()],
   ['GlobalMaxPool', '', '1+', () => new WebGLGlobalMaxPool()],
-  ['Greater', '', '7+', binaryOps.greater,
+  ['Greater', '', '7+', binaryOps.greater],
   ['Identity', '', '1+', unaryOps.identity],
   ['ImageScaler', '', '1+', () => new WebGLImageScaler()],
   ['InstanceNormalization', '', '6+', () => new WebGLInstanceNormalization()],
