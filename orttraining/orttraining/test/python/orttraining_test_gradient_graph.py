@@ -24,7 +24,10 @@ class GradientGraphBuilderTest(unittest.TestCase):
         model = NeuralNet(input_size=10, hidden_size=5, num_classes=2)
         print(__file__)
         print(GradientGraphBuilder)
+        # TODO Export the model, then try to pass that to `GradientGraphBuilder`.
         # Just make sure that this test runs.
         self.assertTrue(False)
 
 
+if __name__ == '__main__':
+    unittest.main()
