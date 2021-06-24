@@ -64,7 +64,7 @@ jobs:
   
   variables:
     - name: build_args
-      ${{ if eq(parameters.TrtContainer, true) }}:
+      ${{ if eq(parameters.RunTrtContainer, true) }}:
         value: Dockerfile.tensorrt-perf -t $(trtContainer)
       ${{ if eq(parameters.RunCustom, true) }}: 
         value: Dockerfile.custom-trt-perf -c ${{ parameters.CudaVersion }} -t ${{ parameters.TrtVersion }}
@@ -81,12 +81,12 @@ jobs:
 
     - ${{ if eq(parameters.BuildORT, true) }}:
 
-      - ${{ if eq(parameters.RunDocker, true) }}:
+      - ${{ if ne(parameters.RunMachine, true) }}:
         - script: echo '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/$(build_args) -b $(branch) -i ort-$(branch)'
           displayName: 'Build latest ORT Images'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
           
-      - ${{ if eq(parameters.RunDocker, false) }}:
+      - ${{ if eq(parameters.RunMachine, true) }}:
         - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/ort_build_latest.py -b $(branch) -c /usr/local/cuda -o ~/repos/onnxruntime/ -t ${{ parameters.TrtVersion }}'
           displayName: 'Build latest ORT'
           workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
