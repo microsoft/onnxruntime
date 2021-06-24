@@ -1327,6 +1327,67 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
                     nullptr);
 }
 
+// This test registers a custom allocator for sharing across sessions
+TEST(CApiTest, TestSharingCustomAllocator) {
+  // simple inference test
+  // prepare inputs
+  std::vector<Input> inputs(1);
+  Input& input = inputs.back();
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+  OrtEnv* env_ptr = (OrtEnv*)(*ort_env);
+
+  const auto& api = Ort::GetApi();
+
+  MockedOrtAllocator custom_allocator;
+  ASSERT_TRUE(api.RegisterAllocator(env_ptr, &custom_allocator) == nullptr);
+
+  // test for duplicates
+  std::unique_ptr<OrtStatus, decltype(api.ReleaseStatus)>
+      status_releaser(
+          api.RegisterAllocator(env_ptr, &custom_allocator),
+          api.ReleaseStatus);
+  ASSERT_FALSE(status_releaser.get() == nullptr);
+
+  Ort::SessionOptions session_options;
+  auto allocator_for_allocating_inputs = std::make_unique<MockedOrtAllocator>();
+  session_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1");
+
+  {  // Keep this scoped to destroy the underlying sessions
+
+    // create session 1
+    Ort::Session session1(*ort_env, MODEL_URI, session_options);
+    RunSession<float>(allocator_for_allocating_inputs.get(),
+                      session1,
+                      inputs,
+                      "Y",
+                      expected_dims_y,
+                      expected_values_y,
+                      nullptr);
+
+    // create session 2
+    Ort::Session session2(*ort_env, MODEL_URI, session_options);
+    RunSession<float>(allocator_for_allocating_inputs.get(),
+                      session2,
+                      inputs,
+                      "Y",
+                      expected_dims_y,
+                      expected_values_y,
+                      nullptr);
+  }
+
+  // Ensure that there was no leak
+  size_t num_allocations = custom_allocator.NumAllocations();
+  ASSERT_TRUE(num_allocations == 4);
+
+  custom_allocator.LeakCheck();
+}
+
 TEST(CApiTest, TestSharingOfInitializerAndItsPrepackedVersion) {
   // simple inference test
   // prepare inputs

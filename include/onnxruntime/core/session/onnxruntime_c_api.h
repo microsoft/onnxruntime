@@ -208,14 +208,6 @@ typedef struct OrtAllocator {
   const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);
 } OrtAllocator;
 
-typedef struct OrtAllocatorV2 {
-  uint32_t version;  // Initialize to ORT_API_VERSION
-  void*(ORT_API_CALL* Reserve)(struct OrtAllocatorV2* this_, size_t size);
-  void*(ORT_API_CALL* Alloc)(struct OrtAllocatorV2* this_, size_t size);
-  void(ORT_API_CALL* Free)(struct OrtAllocatorV2* this_, void* p);
-  const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocatorV2* this_);
-} OrtAllocatorV2;
-
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
     void* param, OrtLoggingLevel severity, const char* category, const char* logid, const char* code_location,
     const char* message);
@@ -1412,7 +1404,7 @@ struct OrtApi {
    * ORT uses the user-provided custom allocator.
    * See docs/C_API.md for details.
   */
-  ORT_API2_STATUS(RegisterAllocator, _Inout_ OrtEnv* env, _In_ OrtAllocatorV2* allocator);
+  ORT_API2_STATUS(RegisterAllocator, _Inout_ OrtEnv* env, _In_ OrtAllocator* allocator);
 };
 
 /*

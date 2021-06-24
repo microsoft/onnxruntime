@@ -1866,10 +1866,10 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_exte
                     int max_dead_bytes_per_chunk, _Outptr_ OrtArenaCfg** out) {
   API_IMPL_BEGIN
   *out = new OrtArenaCfg();
-  (*out)->max_mem_ = max_mem;
-  (*out)->arena_extend_strategy_ = arena_extend_strategy;
-  (*out)->initial_chunk_size_bytes_ = initial_chunk_size_bytes;
-  (*out)->max_dead_bytes_per_chunk_ = max_dead_bytes_per_chunk;
+  (*out)->max_mem = max_mem;
+  (*out)->arena_extend_strategy = arena_extend_strategy;
+  (*out)->initial_chunk_size_bytes = initial_chunk_size_bytes;
+  (*out)->max_dead_bytes_per_chunk = max_dead_bytes_per_chunk;
   return nullptr;
   API_IMPL_END
 }
@@ -1881,15 +1881,15 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* 
 
   for (size_t i = 0; i < num_keys; ++i) {
     if (strcmp(arena_config_keys[i], "max_mem") == 0) {
-      cfg->max_mem_ = arena_config_values[i];
+      cfg->max_mem = arena_config_values[i];
     } else if (strcmp(arena_config_keys[i], "arena_extend_strategy") == 0) {
-      cfg->arena_extend_strategy_ = static_cast<int>(arena_config_values[i]);
+      cfg->arena_extend_strategy = static_cast<int>(arena_config_values[i]);
     } else if (strcmp(arena_config_keys[i], "initial_chunk_size_bytes") == 0) {
-      cfg->initial_chunk_size_bytes_ = static_cast<int>(arena_config_values[i]);
+      cfg->initial_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
     } else if (strcmp(arena_config_keys[i], "max_dead_bytes_per_chunk") == 0) {
-      cfg->max_dead_bytes_per_chunk_ = static_cast<int>(arena_config_values[i]);
+      cfg->max_dead_bytes_per_chunk = static_cast<int>(arena_config_values[i]);
     } else if (strcmp(arena_config_keys[i], "initial_growth_chunk_size_bytes") == 0) {
-      cfg->initial_growth_chunk_size_bytes_ = static_cast<int>(arena_config_values[i]);
+      cfg->initial_growth_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
     } else {
       std::ostringstream oss;
       oss << "Invalid key found: " << arena_config_keys[i];

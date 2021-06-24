@@ -20,7 +20,7 @@ struct OrtAllocatorImpl : public OrtAllocator {
 struct OrtAllocatorImplWrappingIAllocator : public OrtAllocatorImpl {
   explicit OrtAllocatorImplWrappingIAllocator(onnxruntime::AllocatorPtr&& i_allocator);
 
-  ~OrtAllocatorImplWrappingIAllocator() override;
+  ~OrtAllocatorImplWrappingIAllocator() override = default;
 
   void* Alloc(size_t size);
 
@@ -37,21 +37,17 @@ struct OrtAllocatorImplWrappingIAllocator : public OrtAllocatorImpl {
 class IAllocatorImplWrappingOrtAllocator : public IAllocator {
  public:
   explicit IAllocatorImplWrappingOrtAllocator(OrtAllocator* ort_allocator);
-  explicit IAllocatorImplWrappingOrtAllocator(OrtAllocatorV2* ort_allocator);
 
-  ~IAllocatorImplWrappingOrtAllocator() override;
+  ~IAllocatorImplWrappingOrtAllocator() override = default;
 
   void* Alloc(size_t size) override;
 
   void Free(void* p) override;
 
-  void* Reserve(size_t size) override;
-
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(IAllocatorImplWrappingOrtAllocator);
 
  private:
   OrtAllocator* ort_allocator_ = nullptr;
-  OrtAllocatorV2* ort_allocator_v2_ = nullptr;
 };
 
 }  // namespace onnxruntime

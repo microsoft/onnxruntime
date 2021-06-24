@@ -115,7 +115,7 @@ class FuseExecutionProvider : public IExecutionProvider {
         [](int) {
           return std::make_unique<CPUAllocator>(OrtMemoryInfo("Fuse", OrtAllocatorType::OrtDeviceAllocator));
         }};
-    InsertAllocator(device_info.device_alloc_factory_(0));
+    InsertAllocator(device_info.device_alloc_factory(0));
   }
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -1998,7 +1998,7 @@ TEST(InferenceSessionTests, TestParallelExecutionWithCudaProvider) {
 
 TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
   OrtArenaCfg arena_cfg;
-  arena_cfg.arena_extend_strategy_ = 1;  // kSameAsRequested
+  arena_cfg.arena_extend_strategy = 1;  // kSameAsRequested
 
   SessionOptions so;
   InferenceSession session_object{so, GetEnvironment()};

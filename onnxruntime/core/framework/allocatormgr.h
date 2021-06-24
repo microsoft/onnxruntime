@@ -23,16 +23,16 @@ struct AllocatorCreationInfo {
                         OrtDevice::DeviceId device_id = 0,
                         bool use_arena = true,
                         OrtArenaCfg arena_cfg = {0, -1, -1, -1, -1})
-      : device_alloc_factory_(device_alloc_factory),
-        device_id_(device_id),
-        use_arena_(use_arena),
-        arena_cfg_(arena_cfg) {
+      : device_alloc_factory(device_alloc_factory),
+        device_id(device_id),
+        use_arena(use_arena),
+        arena_cfg(arena_cfg) {
   }
 
-  AllocatorFactory device_alloc_factory_;
-  OrtDevice::DeviceId device_id_;
-  bool use_arena_;
-  OrtArenaCfg arena_cfg_;
+  AllocatorFactory device_alloc_factory;
+  OrtDevice::DeviceId device_id;
+  bool use_arena;
+  OrtArenaCfg arena_cfg;
 };
 
 // Returns an allocator (an instance of IAllocator) based on the creation info provided.

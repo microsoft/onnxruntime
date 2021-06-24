@@ -100,9 +100,9 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
 
     // override with values from the user supplied arena_cfg object
     if (arena_cfg) {
-      max_mem = arena_cfg->max_mem_;
+      max_mem = arena_cfg->max_mem;
 
-      arena_extend_strategy = arena_cfg->arena_extend_strategy_;
+      arena_extend_strategy = arena_cfg->arena_extend_strategy;
       // validate the value here
       if (!(arena_extend_strategy == -1 || arena_extend_strategy == 0 || arena_extend_strategy == 1)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -110,9 +110,9 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
                                " Valid values can be either 0, 1 or -1.");
       }
 
-      initial_chunk_size_bytes = arena_cfg->initial_chunk_size_bytes_;
-      max_dead_bytes_per_chunk = arena_cfg->max_dead_bytes_per_chunk_;
-      initial_growth_chunk_size_bytes = arena_cfg->initial_growth_chunk_size_bytes_;
+      initial_chunk_size_bytes = arena_cfg->initial_chunk_size_bytes;
+      max_dead_bytes_per_chunk = arena_cfg->max_dead_bytes_per_chunk;
+      initial_growth_chunk_size_bytes = arena_cfg->initial_growth_chunk_size_bytes;
     }
 
     OrtArenaCfg l_arena_cfg{max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk,
