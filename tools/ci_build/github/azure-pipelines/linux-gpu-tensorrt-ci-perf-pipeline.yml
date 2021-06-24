@@ -60,9 +60,9 @@ jobs:
   variables:
     - name: build_custom
       ${{ if eq(parameters.RunCustom, true) }}:
-        $ {{ if eq( ${{ variables.trtContainer }} , 21.04) }}:
+        $ {{ if eq( $[variables.trtContainer], 21.04) }}:
           value: true
-        $ {{ if ne( ${{ variables.trtContainer}} , 21.04) }}:
+        $ {{ if ne( $[variables.trtContainer] , 21.04) }}:
           value: false
       #   value: Dockerfile.custom-trt-perf
       # ${{ if eq(parameters.RunCustom, false) }}:   
