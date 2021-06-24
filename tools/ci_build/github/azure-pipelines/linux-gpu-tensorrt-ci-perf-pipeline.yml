@@ -19,7 +19,7 @@ parameters:
 - name: RunCustom
   displayName: Select Custom (Versions Below or set trtContainer Variable)
   type: boolean
-  default: False
+  default: false
 
 - name: TrtVersion
   displayName: TensorRT Version
@@ -59,9 +59,9 @@ jobs:
   
   variables:
     - name: buildContainer
-      ${{ if ne(parameters.RunCustom, True) }}:
+      ${{ if ne(parameters.RunCustom, true) }}:
         value: $(trtContainer) # choose default container
-      ${{ if eq(parameters.RunCustom, True) }}:   
+      ${{ if eq(parameters.RunCustom, true) }}:   
         ${{ if ne(variables.trtContainer, 21.04) }}:
           value: $(trtContainer)
         ${{ if eq(parameters.TrtVersion, 7.1) }}:
