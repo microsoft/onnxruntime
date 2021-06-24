@@ -133,7 +133,6 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
           T sum = static_cast<T>(0);
           for (int i = 0; i < hidden_size; ++i) {
             // TODO(kreeger): Use a table query to improve performance:
-            // TODO(kreeger): Use (input_word_embedding[i] - word_embedding_zero_point ) * word_embedding_scale + (input_segment_embedding[i] - segment_embedding_zero_point) * segment_embedding_scale
             T subtotal = Dequantize<T2>(input_word_embedding[i],
                                         word_embedding_scale_data,
                                         word_embedding_zero_point_data) +
