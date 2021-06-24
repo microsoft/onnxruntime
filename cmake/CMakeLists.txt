@@ -764,7 +764,7 @@ target_include_directories(safeint_interface INTERFACE ${SAFEINT_INCLUDE_DIR})
 
 set(OPTIONAL_LITE_INCLUDE_DIR ${REPO_ROOT}/cmake/external/optional-lite/include)
 if(onnxruntime_DISABLE_EXCEPTIONS)
-  add_compile_definitions(optional_CONFIG_NO_EXCEPTIONS=1)
+  add_compile_definitions(optional_CONFIG_NO_EXCEPTIONS=optional_OPTIONAL_NONSTD)
 endif()
 
 add_subdirectory(external/mp11 EXCLUDE_FROM_ALL)
