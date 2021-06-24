@@ -266,6 +266,7 @@ Status QEmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
 
   // Calculate mask
   if (nullptr != mask) {
+    // TODO: Consider summing the values in the mask and measure performance.
     const int32_t* mask_data = mask->template Data<int32_t>();
     int32_t* mask_index_data = mask_index->template MutableData<int32_t>();
     for (int b = 0; b < batch_size; b++) {
