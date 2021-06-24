@@ -25,8 +25,8 @@ parameters:
   displayName: TensorRT Version
   type: string
   values:
-  - 7.2
-  - 7.1
+  - 7.2.3.4
+  - 7.1.3.4
 
 - name: CudaVersion
   displayName: CUDA Version
@@ -58,17 +58,21 @@ jobs:
   pool: Linux-GPU-TensorRT-Perf 
   
   variables:
-    - name: whichOption
-      ${{ if eq(parameters.RunCustom, false) }}:
-        value: 1 
-      ${{ if eq(parameters.RunCustom, true) }}:   
-        ${{ if ne( $(trtContainer), 21.04) }}:
-          value: 2
-        ${{ if eq(parameters.TrtVersion, 7.1) }}:
-          ${{ if eq(parameters.CUDAVersion, 11.0) }}:
-            value: 
-          ${{ if eq(parameters.CUDAVersion, 10.2) }}:
-            value: 4 
+    - name: build_custom
+      ${{ if eq(parameters.RunCustom, true) }}:
+        $ {{ if eq( ${{ variables.trtContainer }} , 21.04) }}:
+          value: true
+        $ {{ if ne( ${{ variables.trtContainer}} , 21.04) }}:
+          value: false
+      #   value: Dockerfile.custom-trt-perf
+      # ${{ if eq(parameters.RunCustom, false) }}:   
+      #   ${{ if ne( $(trtContainer), 21.04) }}:
+      #     value: 2
+      #   ${{ if eq(parameters.TrtVersion, 7.1) }}:
+      #     ${{ if eq(parameters.CUDAVersion, 11.0) }}:
+      #       value: 
+      #     ${{ if eq(parameters.CUDAVersion, 10.2) }}:
+      #       value: 4 
     - name: environment
       ${{ if eq(parameters.RunDocker, true) }}:
         value: docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf 
@@ -80,7 +84,7 @@ jobs:
       
   steps:
 
-    - script: echo $(whichOption)
+    - script: echo $(build_custom)
     # - ${{ if eq(parameters.BuildORT, true) }}:
 
     #   - ${{ if eq(parameters.RunDocker, true) }}:
