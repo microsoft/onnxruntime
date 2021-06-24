@@ -58,7 +58,7 @@ jobs:
   pool: Linux-GPU-TensorRT-Perf 
   
   variables:
-    - name: buildContainer
+    - name: whichOption
       ${{ if eq(parameters.RunCustom, false) }}:
         value: 1 
       ${{ if eq(parameters.RunCustom, true) }}:   
@@ -66,9 +66,9 @@ jobs:
           value: 2
         ${{ if eq(parameters.TrtVersion, 7.1) }}:
           ${{ if eq(parameters.CUDAVersion, 11.0) }}:
-            value: 3 #20.09
+            value: 
           ${{ if eq(parameters.CUDAVersion, 10.2) }}:
-            value: 4 # 20.06
+            value: 4 
     - name: environment
       ${{ if eq(parameters.RunDocker, true) }}:
         value: docker.sh -d ort-$(branch) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf 
@@ -80,7 +80,7 @@ jobs:
       
   steps:
 
-    - script: echo $(buildContainer)
+    - script: echo $(whichOption)
     # - ${{ if eq(parameters.BuildORT, true) }}:
 
     #   - ${{ if eq(parameters.RunDocker, true) }}:
