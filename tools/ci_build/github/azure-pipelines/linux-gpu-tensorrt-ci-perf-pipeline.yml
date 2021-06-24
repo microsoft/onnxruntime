@@ -17,7 +17,7 @@ parameters:
   default: true
 
 - name: RunContainer
-  displayName: Run TRT Container (set trtContainer variable)
+  displayName: Run Custom TRT
   type: boolean
   default: True
 
@@ -46,6 +46,12 @@ parameters:
   type: boolean
   default: false
 
+- name: myParameter
+  type: object
+  default:
+      name1: value1
+      name2: value2
+      
 - name: ModelGroups
   type: object
   default: 
