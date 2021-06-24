@@ -161,6 +161,9 @@ option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
 # build eager mode
 option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
 
+# build separate library of schemas of (custom) ops used by ORT (for ONNX to MLIR translation)
+option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
+
 # Single output director for all binaries
 set (RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
 
@@ -227,14 +230,19 @@ if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   add_compile_definitions(ENABLE_LANGUAGE_INTEROP_OPS)
 endif()
 
-if (NOT (onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING))
+if (NOT (UNIX AND onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING AND (NOT onnxruntime_BUILD_SHARED_LIB)))
   set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OFF)
+  message(WARNING "onnxruntime_ENABLE_TRAINING_TORCH_INTEROP is turned OFF due to incompatible build combinations.")
 endif()
 
+set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB OFF)
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   add_compile_definitions(ENABLE_TRAINING_TORCH_INTEROP)
-  # disable tests because executable projects need link to python so which did not always exist for test envs.
-  set(onnxruntime_BUILD_UNIT_TESTS OFF)
+
+  # Python::Python is required for building unit test executables. 
+  if (onnxruntime_BUILD_UNIT_TESTS)
+    set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB ON)
+  endif()
 endif()
 
 # General C# properties
@@ -638,7 +646,7 @@ endif()
 #Need python to generate def file
 if(onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
   if(onnxruntime_ENABLE_PYTHON)
-    if(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+    if(onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS OR onnxruntime_REQUIRE_PYTHON_EMBED_LIB)
       find_package(Python 3.6 COMPONENTS Interpreter Development NumPy)
     else()
       find_package(Python 3.6 COMPONENTS Interpreter Development.Module NumPy)
@@ -661,7 +669,7 @@ if(onnxruntime_BUILD_BENCHMARKS)
     # We will not need to install benchmark since we link it statically.
     set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "Disable benchmark install to avoid overwriting vendor install.")
     add_subdirectory(${PROJECT_SOURCE_DIR}/external/googlebenchmark EXCLUDE_FROM_ALL)
-    add_library(benchmark::benchmark ALIAS benchmark)
+    #add_library(benchmark::benchmark ALIAS benchmark)
   endif()
 endif()
 
@@ -1364,6 +1372,14 @@ if (onnxruntime_USE_VITISAI)
 endif()
 
 configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_config.h)
+if(WIN32)
+  configure_file(../requirements.txt.in ${CMAKE_CURRENT_BINARY_DIR}/Debug/requirements.txt)
+  configure_file(../requirements.txt.in ${CMAKE_CURRENT_BINARY_DIR}/Release/requirements.txt)
+  configure_file(../requirements.txt.in ${CMAKE_CURRENT_BINARY_DIR}/RelWithDebInfo/requirements.txt)
+  configure_file(../requirements.txt.in ${CMAKE_CURRENT_BINARY_DIR}/MinSizeRel/requirements.txt)
+else()
+  configure_file(../requirements.txt.in ${CMAKE_CURRENT_BINARY_DIR}/requirements.txt)
+endif()
 
 if (onnxruntime_USE_CUDA)
   #The following 6 lines are copied from https://gitlab.kitware.com/cmake/cmake/issues/17559
@@ -1735,4 +1751,9 @@ if(BUILD_PKGCONFIG_FILES)
     ${CMAKE_CURRENT_BINARY_DIR}/libonnxruntime.pc @ONLY)
   install( FILES  ${CMAKE_CURRENT_BINARY_DIR}/libonnxruntime.pc DESTINATION
     ${CMAKE_INSTALL_LIBDIR}/pkgconfig )
+endif()
+
+if (onnxruntime_BUILD_OPSCHEMA_LIB AND onnxruntime_ENABLE_TRAINING)
+  # opschema library requires training ops as well
+  include(onnxruntime_opschema_lib.cmake)
 endif()

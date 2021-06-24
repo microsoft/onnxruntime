@@ -1610,7 +1610,7 @@ static struct {
 void addObjectMethodsForTraining(py::module& m);
 #endif
 
-PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
+void CreatePybindStateModule(py::module& m){
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
 

@@ -1,29 +1,34 @@
 #!/bin/bash
+#This file is only for Linux pipelines that build on ubuntu. All the docker images here are based on ubuntu.
+#Please don't put CentOS or manylinux2014 related stuffs here.
 set -e -o -x
 id
-SCRIPT_DIR="$( dirname "${BASH_SOURCE[0]}" )"
-SOURCE_ROOT=$(realpath $SCRIPT_DIR/../../../../)
+SOURCE_ROOT=$BUILD_SOURCESDIRECTORY
+SCRIPT_DIR=$BUILD_SOURCESDIRECTORY/tools/ci_build/github/linux
+BUILD_DIR=$BUILD_BINARIESDIRECTORY
+
+
 YOCTO_VERSION="4.19"
+#Training only
 INSTALL_DEPS_DISTRIBUTED_SETUP=false
+#Training only
 ORTMODULE_BUILD=false
+#Training only
 USE_CONDA=false
 ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV="ALLOW_RELEASED_ONNX_OPSET_ONLY="$ALLOW_RELEASED_ONNX_OPSET_ONLY
 echo "ALLOW_RELEASED_ONNX_OPSET_ONLY environment variable is set as "$ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV
 
-while getopts c:o:d:r:p:x:a:v:y:t:i:mue parameter_Option
+while getopts o:d:p:x:v:y:t:i:mue parameter_Option
 do case "${parameter_Option}"
 in
-#android, ubuntu16.04, ubuntu18.04, CentOS7
+#android, yocto, ubuntu20.04
 o) BUILD_OS=${OPTARG};;
-#cpu, gpu, tensorrt
+#gpu, tensorrt or openvino. It is ignored when BUILD_OS is android or yocto.
 d) BUILD_DEVICE=${OPTARG};;
-r) BUILD_DIR=${OPTARG};;
 #python version: 3.6 3.7 (absence means default 3.6)
 p) PYTHON_VER=${OPTARG};;
 # "--build_wheel --use_openblas"
 x) BUILD_EXTR_PAR=${OPTARG};;
-# x86 or other, only for ubuntu16.04 os
-a) BUILD_ARCH=${OPTARG};;
 # openvino version tag: 2020.3 (OpenVINO EP 2.0 supports version starting 2020.3)
 v) OPENVINO_VERSION=${OPTARG};;
 # YOCTO 4.19 + ACL 19.05, YOCTO 4.14 + ACL 19.02
@@ -43,7 +48,15 @@ esac
 done
 
 EXIT_CODE=1
-PYTHON_VER=${PYTHON_VER:=3.6}
+if [ $BUILD_OS = "ubuntu18.04" ]; then
+   DEFAULT_PYTHON_VER="3.6"
+elif [ $BUILD_OS = "ubuntu20.04" ]; then
+   DEFAULT_PYTHON_VER="3.8"
+else
+   DEFAULT_PYTHON_VER="3.6"   
+fi
+		
+PYTHON_VER=${PYTHON_VER:=$DEFAULT_PYTHON_VER}
 echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EXTR_PAR"
 
 GET_DOCKER_IMAGE_CMD="${SOURCE_ROOT}/tools/ci_build/get_docker_image.py"
@@ -83,35 +96,43 @@ elif [ $BUILD_DEVICE = "gpu" ]; then
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
             --docker-build-args="--build-arg BASEIMAGE=nvcr.io/nvidia/cuda:11.1.1-cudnn8-devel-${BUILD_OS} --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA} --network=host" \
             --dockerfile Dockerfile.ubuntu_gpu_training --context .
-elif [ $BUILD_DEVICE = "tensorrt" ]; then
-        # TensorRT container release 20.12
-        IMAGE="$BUILD_OS-cuda11.1-cudnn8.0-tensorrt7.2"
-        DOCKER_FILE=Dockerfile.ubuntu_tensorrt
+elif [[ $BUILD_DEVICE = "tensorrt"* ]]; then
+        if [ $BUILD_DEVICE = "tensorrt-v7.1" ]; then
+            # TensorRT container release 20.07
+            IMAGE="$BUILD_OS-cuda11.0-cudnn8.0-tensorrt7.1"
+            DOCKER_FILE=Dockerfile.ubuntu_tensorrt7_1
+        else
+            # TensorRT container release 20.12
+            IMAGE="$BUILD_OS-cuda11.1-cudnn8.0-tensorrt7.2"
+            DOCKER_FILE=Dockerfile.ubuntu_tensorrt
+        fi
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-            --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64  --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-9/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-9/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-9/root/usr/lib64:/opt/rh/devtoolset-9/root/usr/lib:/opt/rh/devtoolset-9/root/usr/lib64/dyninst:/opt/rh/devtoolset-9/root/usr/lib/dyninst:/usr/local/lib64" \
-            --dockerfile $DOCKER_FILE --context .
-elif [ $BUILD_DEVICE = "openvino" ]; then
-        IMAGE="$BUILD_OS-openvino"
-        DOCKER_FILE=Dockerfile.ubuntu_openvino
-        $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-            --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OPENVINO_VERSION=${OPENVINO_VERSION}" \
+            --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
             --dockerfile $DOCKER_FILE --context .
 else
-        IMAGE="$BUILD_OS"
-		IMAGE_OS_VERSION=""
-		if [ $BUILD_OS = "ubuntu18.04" ]; then
-		   IMAGE_OS_VERSION="18.04"
-		   PYTHON_VER="3.6"
-		elif [ $BUILD_OS = "ubuntu20.04" ]; then
-		   IMAGE_OS_VERSION="20.04"
-		   PYTHON_VER="3.8"
-		else
-		   exit 1
-	    fi
-		
+        IMAGE_OS_VERSION=""
+        if [ $BUILD_OS = "ubuntu18.04" ]; then
+           IMAGE_OS_VERSION="18.04"
+           PYTHON_VER="3.6"
+        elif [ $BUILD_OS = "ubuntu20.04" ]; then
+           IMAGE_OS_VERSION="20.04"
+           PYTHON_VER="3.8"
+        else
+           exit 1
+        fi
+        BUILD_ARGS="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OS_VERSION=${IMAGE_OS_VERSION}"
+        
+        if [ $BUILD_DEVICE = "openvino" ]; then
+           IMAGE="$BUILD_OS-openvino"
+           DOCKER_FILE=Dockerfile.ubuntu_openvino
+           BUILD_ARGS+=" --build-arg OPENVINO_VERSION=${OPENVINO_VERSION}"
+        else
+           IMAGE="$BUILD_OS"
+           DOCKER_FILE=Dockerfile.ubuntu
+        fi
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-                --docker-build-args="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OS_VERSION=${IMAGE_OS_VERSION}" \
-                --dockerfile Dockerfile.ubuntu --context .
+                --docker-build-args="${BUILD_ARGS}" \
+                --dockerfile $DOCKER_FILE --context .
 fi
 
 if [ -v EXTRA_IMAGE_TAG ]; then
@@ -119,7 +140,6 @@ if [ -v EXTRA_IMAGE_TAG ]; then
 fi
 
 set +e
-mkdir -p ~/.cache/onnxruntime
 mkdir -p ~/.onnx
 
 if [ -z "$NIGHTLY_BUILD" ]; then

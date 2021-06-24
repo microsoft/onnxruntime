@@ -11,6 +11,8 @@ export abstract class MatMul implements Operator {
 
   initialize(attributes: Attribute): void {
     this.activation = attributes.getString('__internal_activation', '');
+    this.clipMax = attributes.getFloat('__clip_max', 3.402823e+38);
+    this.clipMin = attributes.getFloat('__clip_min', -3.402823e+38);
   }
 
   checkInputs(inputs: Tensor[]): boolean {
@@ -41,4 +43,6 @@ export abstract class MatMul implements Operator {
     return true;
   }
   protected activation: string;
+  protected clipMin: number;
+  protected clipMax: number;
 }

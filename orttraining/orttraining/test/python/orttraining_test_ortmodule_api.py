@@ -6,7 +6,7 @@ import math
 import random
 import copy
 import torch
-from transformers import AutoConfig, BertForSequenceClassification
+from transformers import AutoConfig, BertForSequenceClassification, Trainer
 from transformers.modeling_outputs import SequenceClassifierOutput
 import pytest
 from time import sleep
@@ -15,6 +15,7 @@ from unittest.mock import patch
 from collections import OrderedDict
 from collections import namedtuple
 from inspect import signature
+import tempfile
 
 from onnxruntime.training.ortmodule import ORTModule, _utils, _io
 import _test_helpers
@@ -889,7 +890,7 @@ def test_multiple_ortmodules_common_backbone_training():
         ort_prediction = run_step(ort_model0, ort_model2, x1)
 
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
-        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model0, pt_model0, reset_gradient=True, atol=1.5e-6)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model0, pt_model0, reset_gradient=True, atol=1e-5)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
 
 def test_multiple_chained_ortmodules_training():
@@ -2777,3 +2778,46 @@ def test_load_state_dict_for_wrapped_ortmodule():
     for param_name, param_value in state_dict1.items():
         assert param_name in state_dict2
         assert torch.equal(param_value, state_dict2[param_name])
+
+def test_hf_save_pretrained():
+    device = 'cuda'
+
+    model1 = _get_bert_for_sequence_classification_model(device)
+    model1 = ORTModule(model1)
+    state_dict = model1.state_dict()
+    list(next(iter(state_dict.items())))[1] += 100
+    model1.load_state_dict(state_dict)
+
+    trainer = Trainer(model=model1)
+
+    # Assert that ORTModule has an attribute called module. This attribute is used
+    # for trainer.save_model to reference the underlying HuggingFace PreTrainedModel
+    assert hasattr(model1, "module")
+
+    # Create a temporary directory for the checkpoint from save_pretrained
+    with tempfile.TemporaryDirectory() as temporary_dir:
+        trainer.save_model(temporary_dir)
+
+        # Create a new model and compare all state dictionary values for equality
+        # to check if from_pretrained worked.
+        config = AutoConfig.from_pretrained(temporary_dir)
+        model2 = BertForSequenceClassification.from_pretrained(
+            temporary_dir, config=config,
+        ).to(device)
+        model2 = ORTModule(model2)
+
+        for p1, p2 in zip(model1.parameters(), model2.parameters()):
+            assert p1.data.ne(p2.data).sum() == 0
+
+def test_input_with_string_exception():
+    class MyStrNet(torch.nn.Module):
+        def forward(self, x, my_str):
+            if my_str.lower() == 'hello':
+                print('hi')
+            return x
+
+    model = MyStrNet()
+    model = ORTModule(model)
+    with pytest.raises(TypeError) as ex_info:
+        _ = model(torch.randn(1, 2), 'hello')
+    assert "ORTModule does not support the following model data type <class 'str'>" in str(ex_info.value)

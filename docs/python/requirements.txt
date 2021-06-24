@@ -7,7 +7,7 @@ sphinx-gallery
 sphinxcontrib.imagesvg
 sphinx_rtd_theme
 pyquickhelper
-tensorflow>=2.2.0,<2.5.0
+tensorflow==2.5.0
 tf2onnx
 pandas
 pydot

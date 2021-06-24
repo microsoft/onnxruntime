@@ -24,10 +24,6 @@ def pretty_print(pp, json_object):
     pp.pprint(json_object)
     sys.stdout.flush()
 
-def get_latest_commit_hash():
-    commit = get_output(["git", "rev-parse", "--short", "HEAD"])
-    return commit
-
 def parse_single_file(f):
 
     try:

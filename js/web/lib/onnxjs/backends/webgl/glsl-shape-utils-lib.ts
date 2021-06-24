@@ -28,7 +28,7 @@ export class ShapeUtilsGlslLib extends GlslLib {
     const outputRank = programInfo.outputLayout.shape.length;
     const result: {[name: string]: GlslLibRoutine} = {};
     this.context.programInfo.samplers.forEach((name, i) => {
-      const shape = programInfo.inputLayouts[i].shape;
+      const shape = programInfo.inputLayouts[i].unpackedShape;
       if (shape.length <= outputRank) {
         const rank = shape.length;
         const dimOffset = outputRank - rank;

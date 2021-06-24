@@ -654,7 +654,7 @@ export class CoordsGlslLib extends GlslLib {
 
     if (inRank === 1 && !isInputScalar && !isOutputScalar) {
       output = `
-        return vec4(outputValue.xx, outputValue.yy);
+        return vec4(outputValue.xy, outputValue.xy);
       `;
     } else if (isInputScalar && !isOutputScalar) {
       if (outRank === 1) {
@@ -679,9 +679,16 @@ export class CoordsGlslLib extends GlslLib {
         output = 'return vec4(outputValue.xx, outputValue.zz);';
       }
     }
+
+    const swapLastDimsSnippet = `
+        int lastDim = coords.${fields[outRank - 1]};
+        coords.${fields[outRank - 1]} = coords.${fields[outRank - 2]};
+        coords.${fields[outRank - 2]} = lastDim;
+      `;
     const source = `
       vec4 ${funcName}() {
         ${type} coords = getOutputCoords();
+        ${swapLastDimsSnippet}
         ${coordsSnippet}
         vec4 outputValue = ${texFuncSnippet}(${unpackedCoordsSnippet});
         ${output}
