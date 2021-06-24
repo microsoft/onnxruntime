@@ -297,7 +297,7 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
 
     auto& bias_shape = getInputShape(ctx, 2);
     auto& bias_dims = bias_shape.dim();
-    if (bias_dims.size() != 1 || bias_shape.dim(0).dim_value() % 3 != 0) {
+    if (bias_dims.size() != 1) {
       fail_shape_inference("Invalid bias shape");
     }
 
