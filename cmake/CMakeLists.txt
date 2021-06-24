@@ -1024,7 +1024,7 @@ function(onnxruntime_set_compile_flags target_name)
 
       target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
       if(APPLE)
-        target_compile_definitions(${target_name} PRIVATE -Doptional_CONFIG_SELECT_OPTIONAL=1)
+        target_compile_definitions(${target_name} PRIVATE -Doptional_CONFIG_SELECT_OPTIONAL=optional_OPTIONAL_NONSTD)
       endif()
       target_include_directories(${target_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
     endif()
