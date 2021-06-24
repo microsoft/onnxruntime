@@ -440,6 +440,11 @@ inline SessionOptions& SessionOptions::DisableProfiling() {
   return *this;
 }
 
+inline SessionOptions& SessionOptions::EnableOrtCustomOps() {
+  ThrowOnError(GetApi().EnableOrtCustomOps(p_));
+  return *this;
+}
+
 inline SessionOptions& SessionOptions::EnableMemPattern() {
   ThrowOnError(GetApi().EnableMemPattern(p_));
   return *this;

@@ -1387,6 +1387,11 @@ struct OrtApi {
                   _In_ const void* model_data, size_t model_data_length,
                   _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
                   _Outptr_ OrtSession** out);
+
+  /**
+     * Enable custom operators in onnxruntime-extensions: https://github.com/microsoft/onnxruntime-extensions.git
+     */
+  ORT_API2_STATUS(EnableOrtCustomOps, _Inout_ OrtSessionOptions* options);
 };
 
 /*

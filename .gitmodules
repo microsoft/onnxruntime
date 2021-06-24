@@ -79,3 +79,6 @@
 	url = https://github.com/emscripten-core/emsdk.git
 	branch = 2.0.23
 	ignore = dirty
+[submodule "cmake/external/onnxruntime-extensions"]
+	path = cmake/external/onnxruntime-extensions
+	url = https://github.com/microsoft/onnxruntime-extensions.git
