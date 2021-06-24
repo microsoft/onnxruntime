@@ -1671,7 +1671,7 @@ void CreatePybindStateModule(py::module& m){
   addOrtValueMethods(m);
   addIoBindingMethods(m);
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#if !defined(ENABLE_TRAINING) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
   Ort::SessionOptions tmp_options;
   if (!InitProvidersSharedLibrary()) {
     const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
