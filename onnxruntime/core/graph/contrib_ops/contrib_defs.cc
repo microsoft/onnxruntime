@@ -166,8 +166,10 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
 void embedLayerNormalizationShapeInference(InferenceContext& ctx) {
   propagateElemTypeFromInputToOutput(ctx, 2, 0);
   propagateElemTypeFromInputToOutput(ctx, 0, 1);
-  if (!hasInputShape(ctx, 0))
+  if (!hasInputShape(ctx, 0)) {
+    // TODO(kreeger): Return a 3D shape with hidden_size in this case.
     return;
+  }
 
   auto& input_ids_shape = getInputShape(ctx, 0);
   auto& input_ids_dims = input_ids_shape.dim();
@@ -175,11 +177,28 @@ void embedLayerNormalizationShapeInference(InferenceContext& ctx) {
   // Note that both batch size and sequence length could be symbolic.
   // So we only check dimension size here.
   if (input_ids_dims.size() != 2) {
-    fail_shape_inference("Inputs 0 shall be 2 dimensions");
+    fail_shape_inference("input_ids shall be 2 dimensions");
+  }
+
+  bool has_segment = hasInputShape(ctx, 1);
+  if (has_segment) {
+    // Ensure that segment_ids has the same shape.
+    auto& segment_ids_shape = getInputShape(ctx, 1);
+    auto& segment_ids_dims = segment_ids_shape.dim();
+    if (segment_ids_dims.size() != 2 ||
+        !segment_ids_dims[0].has_dim_value() ||
+        !segment_ids_dims[1].has_dim_value()) {
+      fail_shape_inference("segment_ids input shall be 2 dimensions");
+    }
+
+    if (input_ids_dims[0] != segment_ids_dims[0] ||
+        input_ids_dims[1] != segment_ids_dims[1]) {
+      fail_shape_inference("input_ids and segment_ids input shall hav the same shape");
+    }
   }
 
   // get hidden_size from the last dimension of embedding
-  auto& word_embedding_shape = getInputShape(ctx, 3);
+  auto& word_embedding_shape = getInputShape(ctx, 2);
   auto& word_embedding_dims = word_embedding_shape.dim();
   if (word_embedding_dims.size() != 2 ||
       !word_embedding_dims[1].has_dim_value() ||
@@ -187,6 +206,49 @@ void embedLayerNormalizationShapeInference(InferenceContext& ctx) {
     fail_shape_inference("word_embedding should have 2 dimensions and dimension size is known.");
   }
   int64_t hidden_size = word_embedding_shape.dim(1).dim_value();
+
+  // Ensure that all embeddings + the gamma/beta tensors have the same hidden_size:
+  auto& position_embedding_shape = getInputShape(ctx, 3);
+  auto& position_embedding_dims = position_embedding_shape.dim();
+  if (position_embedding_dims.size() != 2 ||
+      !position_embedding_dims[1].has_dim_value() ||
+      position_embedding_shape.dim(1).dim_value() != hidden_size) {
+    fail_shape_inference(
+        "position_embedding should have 2 dimensions, dimension size known, "
+        "and same hidden size as word_embedding.");
+  }
+
+  if (has_segment) {
+    auto& segment_embedding_shape = getInputShape(ctx, 4);
+    auto& segment_embedding_dims = segment_embedding_shape.dim();
+    if (segment_embedding_dims.size() != 2 ||
+        !segment_embedding_dims[1].has_dim_value() ||
+        segment_embedding_shape.dim(1).dim_value() != hidden_size) {
+      fail_shape_inference(
+          "segment_embedding should have 2 dimensions, dimension size known, "
+          "and same hidden size as word_embedding.");
+    }
+  }
+
+  auto& gamma_shape = getInputShape(ctx, 5);
+  auto& gamma_dims = gamma_shape.dim();
+  if (gamma_dims.size() != 1 ||
+      !gamma_dims[0].has_dim_value() ||
+      gamma_shape.dim(0).dim_value() != hidden_size) {
+    fail_shape_inference(
+        "gamma should have 2 dimension, dimension size known, "
+        "and same hidden size as word_embedding.");
+  }
+  
+  auto& beta_shape = getInputShape(ctx, 6);
+  auto& beta_dims = gamma_shape.dim();
+  if (beta_dims.size() != 1 ||
+      !beta_dims[0].has_dim_value() ||
+      beta_shape.dim(0).dim_value() != hidden_size) {
+    fail_shape_inference(
+        "beta should have 1 dimension, dimension size known, "
+        "and same hidden size as word_embedding.");
+  }
 
   // input shape is (batch_size, sequence_length), output shape is (batch_size, sequence_length, hidden_size)
   ONNX_NAMESPACE::TensorShapeProto output_shape;

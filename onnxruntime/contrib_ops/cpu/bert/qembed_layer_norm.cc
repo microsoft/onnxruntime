@@ -162,11 +162,11 @@ Status QEmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
   uint8_t segment_embedding_zero_point =
       has_segment_embedding ? *(segment_embedding_zero_point_tensor->template Data<uint8_t>()) : 0;
 
-  float layer_norm_weights_scale = *(gamma_scale_tensor->template Data<float>());
-  uint8_t layer_norm_weights_zero_point = *(gamma_zero_point_tensor->template Data<uint8_t>());
+  float gamma_scale = *(gamma_scale_tensor->template Data<float>());
+  uint8_t gamma_zero_point = *(gamma_zero_point_tensor->template Data<uint8_t>());
 
-  float layer_norm_bias_scale = *(beta_scale_tensor->template Data<float>());
-  uint8_t layer_norm_bias_zero_point = *(beta_zero_point_tensor->template Data<uint8_t>());
+  float beta_scale = *(beta_scale_tensor->template Data<float>());
+  uint8_t beta_zero_point = *(beta_zero_point_tensor->template Data<uint8_t>());
 
   // Request outputs:
   TensorShape output_shape({batch_size, sequence_length, hidden_size});
@@ -189,6 +189,8 @@ Status QEmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
   {
     std::atomic_bool failed{false};
 
+    // TODO: Profile and tune this batch parallel execution based on input size.
+    // More info: https://github.com/microsoft/onnxruntime/pull/8124/files#r656629895
     int n = batch_size * sequence_length;
     concurrency::ThreadPool::TryBatchParallelFor(
         context->GetOperatorThreadPool(), n, [=, &failed](ptrdiff_t index) {
@@ -250,12 +252,8 @@ Status QEmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
 
           T e = sqrt(sum / hidden_size + epsilon());
           for (int i = 0; i < hidden_size; i++) {
-            T cur_gamma = Dequantize<uint8_t>(gamma_data[i],
-                                              layer_norm_weights_scale,
-                                              layer_norm_weights_zero_point);
-            T cur_beta = Dequantize<uint8_t>(beta_data[i],
-                                             layer_norm_bias_scale,
-                                             layer_norm_bias_zero_point);
+            T cur_gamma = Dequantize<uint8_t>(gamma_data[i], gamma_scale, gamma_zero_point);
+            T cur_beta = Dequantize<uint8_t>(beta_data[i], beta_scale, beta_zero_point);
             output[i] = output[i] / e * cur_gamma + cur_beta;
           }
         },
