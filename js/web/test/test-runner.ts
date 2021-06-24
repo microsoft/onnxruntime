@@ -551,10 +551,10 @@ async function runOpTestcase(
   const inputTensors =
       testcase.inputs.map(input => createTensor(input.dims, input.type as Tensor.DataType, input.data));
 
-  let results = operator.run(inferenceHandler, inputTensors);
-  if ('then' in results) {
-    results = await results;
-  }
+  const results = operator.impl(inferenceHandler, inputTensors, operator.context);
+  // if ('then' in results) {
+  //   results = await results;
+  // }
 
   results.forEach((output, i) => {
     Logger.verbose('TestOpRunner', `  Result'${i}': ${output.type}[${output.dims.join(',')}]`);
