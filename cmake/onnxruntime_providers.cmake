@@ -854,9 +854,7 @@ if (onnxruntime_USE_RKNPU)
   onnxruntime_add_static_library(onnxruntime_providers_rknpu ${onnxruntime_providers_rknpu_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_rknpu onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite flatbuffers)
   target_link_libraries(onnxruntime_providers_rknpu PRIVATE -lrknpu_ddk)
-  add_dependencies(onnxruntime_providers_rknpu onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  set_target_properties(onnxruntime_providers_rknpu PROPERTIES CXX_STANDARD 17)
-  set_target_properties(onnxruntime_providers_rknpu PROPERTIES CXX_STANDARD_REQUIRED ON)
+  add_dependencies(onnxruntime_providers_rknpu onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})  
   set_target_properties(onnxruntime_providers_rknpu PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_rknpu PRIVATE ${ONNXRUNTIME_ROOT} ${rknpu_INCLUDE_DIRS} ${RKNPU_DDK_INCLUDE_DIR})
   link_directories(onnxruntime_providers_rknpu ${RKNPU_DDK_LIB_DIR})
@@ -906,10 +904,6 @@ if (onnxruntime_USE_DML)
   endif()
 
   set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /ignore:4199")
-
-  # The DML EP requires C++17
-  set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD 17)
-  set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD_REQUIRED ON)
 
   target_compile_definitions(onnxruntime_providers_dml PRIVATE ONNX_NAMESPACE=onnx ONNX_ML LOTUS_LOG_THRESHOLD=2 LOTUS_ENABLE_STDERR_LOGGING PLATFORM_WINDOWS)
   target_compile_definitions(onnxruntime_providers_dml PRIVATE UNICODE _UNICODE NOMINMAX)
