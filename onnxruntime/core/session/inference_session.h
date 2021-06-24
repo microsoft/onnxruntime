@@ -452,6 +452,9 @@ class InferenceSession {
     */
   common::Status Load(std::unique_ptr<ONNX_NAMESPACE::ModelProto> p_model_proto) ORT_MUST_USE_RESULT;
 
+  common::Status Load(std::function<common::Status(std::shared_ptr<Model>&)> loader,
+                      const std::string& event_name) ORT_MUST_USE_RESULT;
+
   common::Status DoPostLoadProcessing(onnxruntime::Model& model) ORT_MUST_USE_RESULT;
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -497,8 +500,6 @@ class InferenceSession {
   common::Status SaveModelMetadata(const onnxruntime::Model& model) ORT_MUST_USE_RESULT;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  common::Status Load(std::function<common::Status(std::shared_ptr<Model>&)> loader,
-                      const std::string& event_name) ORT_MUST_USE_RESULT;
 
   template <typename T>
   common::Status Load(const std::basic_string<T>& model_uri) ORT_MUST_USE_RESULT;
