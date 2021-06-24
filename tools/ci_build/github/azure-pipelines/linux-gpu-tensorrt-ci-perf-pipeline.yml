@@ -14,7 +14,27 @@ parameters:
 - name: RunDocker
   displayName: Run in Docker (CUDA 11.0)
   type: boolean
-  default: false
+  default: true
+
+- name: RunContainer
+  displayName: Run TRT Container (set trtContainer variable)
+  type: boolean
+  default: True
+
+- name: TrtVersion
+  displayName: TensorRT Version
+  type: string
+  default: 7.2.3.4
+  values:
+  - 7.1.3.4
+
+- name: CudaVersion
+  displayName: CUDA Version
+  type: string
+  default: 11.1
+  values:
+  - 11.0
+  - 10.2
 
 - name: ConfigureEPs
   displayName: Configure EPs (set epList variable - separate by spaces)
