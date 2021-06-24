@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 #include "core/graph/contrib_ops/contrib_defs.h"
 
-
 #include <cmath>
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
@@ -11,7 +10,6 @@
 #endif
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
-
 
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/constants.h"

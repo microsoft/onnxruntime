@@ -9,7 +9,6 @@
 #include "onnx/defs/data_type_utils.h"
 #endif
 
-
 namespace onnxruntime {
 namespace contrib {
 #define ONNX_CONTRIB_OPERATOR_SCHEMA(name) \

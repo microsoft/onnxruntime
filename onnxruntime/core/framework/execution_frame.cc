@@ -52,7 +52,7 @@ void IExecutionFrame::UpdateFeeds(const std::vector<int>& feed_mlvalue_idxs, con
 
   for (size_t idx = 0, end = feed_mlvalue_idxs.size(); idx < end; ++idx) {
     int ort_value_idx = feed_mlvalue_idxs[idx];
-    // we are sharing the underlying tensor/object for MLValue
+    // we are sharing the underlying tensor/object for OrtValue
 
     ORT_ENFORCE(!all_values_[ort_value_idx].IsAllocated());
 
@@ -583,7 +583,7 @@ static Status AllocateTensorSequence(OrtValue& ort_value) {
   return Status::OK();
 }
 
-static Status AllocateSparseTensor(MLValue& mlvalue, const DataTypeImpl& ml_type, AllocatorPtr allocator,
+static Status AllocateSparseTensor(OrtValue& mlvalue, const DataTypeImpl& ml_type, AllocatorPtr allocator,
                                    const TensorShape& shape, size_t nnz, bool create_fence,
                                    const SessionState& session_state) {
   auto element_type = ml_type.AsSparseTensorType()->GetElementType();

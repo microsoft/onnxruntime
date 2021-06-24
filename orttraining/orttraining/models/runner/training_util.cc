@@ -161,7 +161,7 @@ std::vector<OrtValue> RandomDataSet::GetKthBatch(size_t /*batch_size*/, size_t /
 void TrainingUtil::PrintNameMLValMap(const NameMLValMap& mlvalue_map) {
   for (auto pair : mlvalue_map) {
     auto name = pair.first;
-    MLValue value = pair.second;
+    OrtValue value = pair.second;
     const Tensor& tensor = value.Get<Tensor>();
 
     printf("Name: %s \n", name.c_str());

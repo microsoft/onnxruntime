@@ -912,7 +912,6 @@ else()
   if(HAS_UNDEFINED_VAR_TEMPLATE)
     list(APPEND ORT_WARNING_FLAGS -Wno-undefined-var-template)
   endif()
-  list(APPEND ORT_WARNING_FLAGS -Wno-deprecated)
 endif()
 
 #names in this var must match the directory names under onnxruntime/core/providers

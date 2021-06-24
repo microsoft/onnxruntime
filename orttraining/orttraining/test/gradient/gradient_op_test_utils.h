@@ -32,7 +32,7 @@ class GradientOpTester : public OpTester {
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr);
 
  private:
-  void FillFeedsAndOutputNames(std::unordered_map<std::string, MLValue>& feeds,
+  void FillFeedsAndOutputNames(std::unordered_map<std::string, OrtValue>& feeds,
                                std::vector<std::string>& output_names,
                                int output_index_to_use_as_loss,
                                int data_index_of_output);
