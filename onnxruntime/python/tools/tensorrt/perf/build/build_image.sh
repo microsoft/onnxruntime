@@ -11,4 +11,4 @@ c) CUDA_VERSION=${OPTARG};;
 esac
 done 
 
-sudo docker build --no-cache -t $IMAGE_NAME --build-arg TRT=$TRT --build-arg CUDA_VERSION=$CUDA_VERSION --build-arg ONNXRUNTIME_BRANCH=$ORT_BRANCH -f $PERF_DOCKERFILE_PATH .
+docker build --no-cache -t $IMAGE_NAME --build-arg TRT=$TRT --build-arg CUDA_VERSION=$CUDA_VERSION --build-arg ONNXRUNTIME_BRANCH=$ORT_BRANCH -f $PERF_DOCKERFILE_PATH .
