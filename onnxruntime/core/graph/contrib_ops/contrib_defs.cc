@@ -307,7 +307,7 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
     int64_t output_hidden_size = 0;
     if (qkv_hidden_sizes.size() != 0) {
       // TODO always get it from input the below code gets the dims from input, why not the value??
-      output_hidden_size = input_dims.dim(2).dim_value();
+      output_hidden_size = input_shape.dim(2).dim_value();
     } else {
       output_hidden_size = bias_shape.dim(0).dim_value() / 3;
     }
