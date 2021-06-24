@@ -61,14 +61,12 @@ MlasGemmU8X8GetDispatch(
 
     MLAS_UNREFERENCED_PARAMETER(BIsSigned);
 
-#if defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_TARGET_AMD64_IX86)
     if (BIsSigned) {
         GemmU8X8Dispatch = MlasPlatform.GemmU8S8Dispatch;
     } else {
         GemmU8X8Dispatch = MlasPlatform.GemmU8U8Dispatch;
     }
-#elif defined(MLAS_SSE2_INTRINSICS)
-    GemmU8X8Dispatch = &MlasGemmU8X8DispatchSse;
 #elif defined(MLAS_NEON64_INTRINSICS)
     GemmU8X8Dispatch = MlasPlatform.GemmU8X8Dispatch;
 #elif defined(MLAS_NEON32_INTRINSICS) && !defined(_MSC_VER)

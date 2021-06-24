@@ -859,11 +859,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       )
     add_executable(onnxruntime_eager_mode_test ${onnxruntime_eager_mode_test_src})
     target_include_directories(onnxruntime_eager_mode_test PRIVATE ${ONNXRUNTIME_ROOT}
-            ${onnxruntime_graph_header} 
+            ${onnxruntime_graph_header}
             ${onnxruntime_exec_src_dir}
             ${CMAKE_CURRENT_BINARY_DIR}
             "${TEST_SRC_DIR}/util/include")
-    set(onnxruntime_eager_mode_libs 
+    set(onnxruntime_eager_mode_libs
             onnxruntime_eager
             onnxruntime_session
             onnxruntime_optimizer
@@ -871,11 +871,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
             onnxruntime_util
             onnxruntime_framework
             flatbuffers
-            onnxruntime_graph 
+            onnxruntime_graph
             onnxruntime_common
             onnxruntime_mlas
-            onnx 
-            onnx_proto 
+            onnx
+            onnx_proto
             ${PROTOBUF_LIB}
             GTest::gtest
             re2::re2
@@ -883,7 +883,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
             ${CMAKE_DL_LIBS}
             )
     if(onnxruntime_ENABLE_TRAINING)
-      list(APPEND onnxruntime_eager_mode_libs onnxruntime_training tensorboard) 
+      list(APPEND onnxruntime_eager_mode_libs onnxruntime_training tensorboard)
     endif()
     IF(NOT WIN32)
       list(APPEND onnxruntime_eager_mode_libs nsync_cpp)
@@ -1074,6 +1074,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   if(NOT WIN32)
     list(APPEND onnxruntime_mlas_test_libs nsync_cpp ${CMAKE_DL_LIBS})
   endif()
+  if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+    list(APPEND onnxruntime_mlas_test_libs ${android_shared_libs})
+  endif()
   if (onnxruntime_USE_OPENMP)
     list(APPEND onnxruntime_mlas_test_libs OpenMP::OpenMP_CXX)
   endif()
@@ -1144,7 +1147,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
 
   # limit to only test on windows first, due to a runtime path issue on linux
-  if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD 
+  if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
                                     AND NOT onnxruntime_ENABLE_TRAINING
                                     AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
                                     AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")

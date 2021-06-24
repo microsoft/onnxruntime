@@ -315,7 +315,7 @@ jobs:
   parameters:
     AgentPool : 'Onnxruntime-Linux-GPU'
     TestGPU : 'true'
-    
+
 - job: Publish_NuGet_Package_And_Report
   workspace:
     clean: all
