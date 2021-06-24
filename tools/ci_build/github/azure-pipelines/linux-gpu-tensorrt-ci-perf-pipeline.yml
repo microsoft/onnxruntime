@@ -16,23 +16,21 @@ parameters:
   type: boolean
   default: true
 
-- name: RunContainer
-  displayName: Run Custom TRT
+- name: RunCustom
+  displayName: Select Custom Versions Below (may override trtContainer)
   type: boolean
   default: True
 
 - name: TrtVersion
   displayName: TensorRT Version
   type: string
-  default: none
   values:
-  - 7.2.2.1
-  - 7.1.3.4
+  - 7.2
+  - 7.1
 
 - name: CudaVersion
   displayName: CUDA Version
   type: string
-  default: none
   values:
   - 11.1
   - 11.0
@@ -61,21 +59,31 @@ jobs:
   
   variables:
 
-    - name: trtContainer
-      ${{ if eq(parameters.TrtVersion, 7.2.2.1) }}:
-        ${{ if eq(parameters.CUDAVersion, 11.1) }}:
-        value: 20.12
-        ${{ if eq(parameters.CUDAVersion, 11.0) }}:
-        value: custom
-        ${{ if eq(parameters.CUDAVersion, 10.2) }}:
-        value: custom
-      ${{ if eq(parameters.TrtVersion, 7.1.3.4) }}:
-        ${{ if eq(parameters.CUDAVersion, 11.1) }}:
-        value: custom
-        ${{ if eq(parameters.CUDAVersion, 11.0) }}:
-        value: 20.09
-        ${{ if eq(parameters.CUDAVersion, 10.2) }}:
-        value: 20.06
+    #${{ if eq(parameters.CUDAVersion, 11.0) }}:
+            # value: custom
+          #${{ if eq(parameters.CUDAVersion, 10.2) }}:
+            #value: custom
+      #${{ if eq(parameters.CUDAVersion, 11.1) }}:
+            #value: custom
+
+    - name: buildContainer
+      ${{ if eq(parameters.RunCustom, True) }}:
+        
+        ${{ if neq(variables.trtContainer, 21.04) }}:
+          value: $(trtContainer)
+        
+        ${{ if eq(parameters.TrtVersion, 7.2) }}:
+          ${{ if eq(parameters.CUDAVersion, 11.1) }}:
+            value: 20.12
+
+        ${{ if eq(parameters.TrtVersion, 7.1) }}:
+          ${{ if eq(parameters.CUDAVersion, 11.0) }}:
+            value: 20.09
+          ${{ if eq(parameters.CUDAVersion, 10.2) }}:
+            value: 20.06
+            
+      ${{ if neq(parameters.RunCustom, True) }}:
+        value: $(trtContainer) # else choose default container
 
     - name: environment
       ${{ if eq(parameters.RunDocker, true) }}:
