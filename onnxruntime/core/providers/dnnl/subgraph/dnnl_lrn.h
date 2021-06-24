@@ -5,24 +5,24 @@
 #include "dnnl_subgraph.h"
 #include "dnnl_subgraph_primitive.h"
 
-//class DnnlSubgraphPrimitive;
-//class DnnlNode;
-
 namespace onnxruntime {
 namespace ort_dnnl {
 
-class DnnlSum {
+class DnnlLrn {
  public:
   enum InputTensors : int {
-    IN_DATA_0 = 0,
+    IN_X = 0
   };
 
   enum OutputTensors : int {
-    OUT_SUM = 0,
+    OUT_Y = 0
   };
-
-  DnnlSum();
+  DnnlLrn();
   void CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node);
+  int64_t ReadSize(DnnlNode& node);
+  float ReadAlpha(DnnlNode& node);
+  float ReadBeta(DnnlNode& node);
+  float ReadBias(DnnlNode& node);
 };
 
 }  // namespace ort_dnnl

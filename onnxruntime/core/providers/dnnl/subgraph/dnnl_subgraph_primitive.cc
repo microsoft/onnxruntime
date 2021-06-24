@@ -3,6 +3,7 @@
 
 #include "dnnl_subgraph_primitive.h"
 #include "dnnl_conv.h"
+#include "dnnl_lrn.h"
 #include "dnnl_matmul.h"
 #include "dnnl_matmul_integer.h"
 #include "dnnl_pool.h"
@@ -165,6 +166,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlPool().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Conv") {
       DnnlConv().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "LRN") {
+      DnnlLrn().CreatePrimitive(*this, node);
     } else if (node.OpType() == "MatMul") {
       DnnlMatMul().CreatePrimitive(*this, node);
     } else if (node.OpType() == "MatMulInteger") {
