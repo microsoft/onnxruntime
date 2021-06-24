@@ -602,6 +602,7 @@ void addObjectMethodsForTraining(py::module& m) {
                      &OrtModuleGraphBuilderConfiguration::use_invertible_layernorm_grad)
       .def_readwrite("build_gradient_graph", &OrtModuleGraphBuilderConfiguration::build_gradient_graph)
       .def_readwrite("graph_transformer_config", &OrtModuleGraphBuilderConfiguration::graph_transformer_config)
+      .def_readwrite("enable_caching", &OrtModuleGraphBuilderConfiguration::enable_caching)
       .def_readwrite("loglevel", &OrtModuleGraphBuilderConfiguration::loglevel);
 
   py::class_<GraphInfo> graph_info(m, "GraphInfo",
@@ -616,6 +617,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("output_grad_indices_non_differentiable", &GraphInfo::output_grad_indices_non_differentiable)
       .def_readwrite("output_grad_indices_require_full_shape", &GraphInfo::output_grad_indices_require_full_shape)
       .def_readwrite("module_output_indices_requires_save_for_backward", &GraphInfo::module_output_indices_requires_save_for_backward)
+      .def_readwrite("frontier_node_arg_map", &GraphInfo::frontier_node_arg_map)
       .def_readwrite("module_output_gradient_name", &GraphInfo::module_output_gradient_name);
 
   py::class_<OrtModuleGraphBuilder> ortmodule_graph_builder(m, "OrtModuleGraphBuilder");
