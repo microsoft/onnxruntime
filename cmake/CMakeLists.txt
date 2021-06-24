@@ -829,8 +829,6 @@ if (WIN32)
     list(APPEND ORT_WARNING_FLAGS "/wd4251")
     # issued by thrust nonstandard extension used: nameless struct/union
     list(APPEND ORT_WARNING_FLAGS "/wd4201")
-    # TODO: these warnings can be fixed by replacing 'if' with 'if constexpr'.
-    list(APPEND ORT_WARNING_FLAGS "/wd6326") # potential comparison of a constant with another constant
     if(onnxruntime_USE_OPENMP)
       list(APPEND ORT_WARNING_FLAGS "/wd6993") # Code analysis ignores OpenMP constructs
     endif()
