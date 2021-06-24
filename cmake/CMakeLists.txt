@@ -764,7 +764,7 @@ target_include_directories(safeint_interface INTERFACE ${SAFEINT_INCLUDE_DIR})
 
 set(OPTIONAL_LITE_INCLUDE_DIR ${REPO_ROOT}/cmake/external/optional-lite/include)
 if(onnxruntime_DISABLE_EXCEPTIONS)
-  add_compile_definitions(optional_CONFIG_NO_EXCEPTIONS=optional_OPTIONAL_NONSTD)
+  add_compile_definitions(optional_CONFIG_NO_EXCEPTIONS=1)
 endif()
 
 add_subdirectory(external/mp11 EXCLUDE_FROM_ALL)
@@ -1023,7 +1023,7 @@ function(onnxruntime_set_compile_flags target_name)
       endif()
 
       target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
-      if(APPLE)
+      if(APPLE AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "iOSCross" AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "iOS")
         target_compile_definitions(${target_name} PRIVATE -Doptional_CONFIG_SELECT_OPTIONAL=optional_OPTIONAL_NONSTD)
       endif()
       target_include_directories(${target_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")

@@ -8,13 +8,6 @@
 #else
 #include "onnx/defs/data_type_utils.h"
 #endif
+
 #include "onnx/onnx_pb.h"
 #include "onnx/onnx-operators_pb.h"
-
-namespace onnxruntime {
-namespace contrib {
-
-::ONNX_NAMESPACE::OpSchema& RegisterAttnLSTMContribOpSchema(::ONNX_NAMESPACE::OpSchema&& op_schema);
-
-}
-}

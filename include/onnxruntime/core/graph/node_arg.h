@@ -3,8 +3,11 @@
 
 #pragma once
 
+#include "onnx/onnx_pb.h"
+
 #include "core/graph/basic_types.h"
-#include "core/graph/onnx_protobuf.h"
+#include "core/common/status.h"
+#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 
@@ -46,7 +49,7 @@ class NodeArg {
   const std::string& Name() const noexcept;
 
   /** Gets the data type. */
-  ONNX_NAMESPACE::DataType Type() const noexcept;
+  const std::string* Type() const noexcept;
 
   /** Gets the TypeProto
   @returns TypeProto if type is set. nullptr otherwise. */
@@ -100,12 +103,12 @@ class NodeArg {
   NodeArg(NodeArgInfo&& node_arg_info);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  void SetType(ONNX_NAMESPACE::DataType p_type);
+  void SetType(const std::string* p_type);
   void SetType(const ONNX_NAMESPACE::TypeProto& type_proto);
 #endif
 
   // Node arg PType.
-  ONNX_NAMESPACE::DataType type_;
+  const std::string* type_;
 
   // Node arg name, type and shape.
   NodeArgInfo node_arg_info_;
