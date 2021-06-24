@@ -51,7 +51,6 @@ wheel_name_suffix = parse_arg_remove_string(sys.argv, '--wheel_name_suffix=')
 
 cuda_version = None
 rocm_version = None
-pytorch_version = None
 # The following arguments are mutually exclusive
 if parse_arg_remove_boolean(sys.argv, '--use_tensorrt'):
     package_name = 'onnxruntime-gpu-tensorrt' if not nightly_build else 'ort-trt-nightly'
@@ -100,54 +99,6 @@ manylinux_tags = [
 ]
 is_manylinux = environ.get('AUDITWHEEL_PLAT', None) in manylinux_tags
 
-
-def build_torch_cpp_extensions():
-    '''Builds PyTorch CPP extensions and returns metadata'''
-
-    # Run this from build dir (e.g. (...)/build/Linux/RelWithDebInfo/)
-    pytorch_version = None
-    is_gpu_available = False
-    try:
-        import torch
-        pytorch_version = torch.__version__
-        is_gpu_available = torch.cuda.is_available()
-    except ImportError:
-        pass
-
-    ############################################################################
-    # Pytorch CPP Extensions that DO require CUDA/ROCM
-    ############################################################################
-    if is_gpu_available:
-        ret_code = subprocess.call(
-            f"{sys.executable} torch_cpp_extensions/torch_gpu_allocator/setup.py build {'--use_rocm' if rocm_version else ''}", shell=True
-        )
-        if ret_code != 0:
-            print('There was an error compiling a PyTorch CPP extension called "torch_gpu_allocator"')
-            sys.exit(ret_code)
-
-    ############################################################################
-    # Pytorch CPP Extensions that DO NOT require CUDA/ROCM
-    ############################################################################
-    ret_code = subprocess.call(
-        f"{sys.executable} torch_cpp_extensions/aten_op_executor/setup.py build", shell=True
-    )
-    if ret_code != 0:
-        print('There was an error compiling a PyTorch CPP extension called "aten_op_executor"')
-        sys.exit(ret_code)
-
-    ############################################################################
-    # Copy Pytorch CPP Extenions to the local onnxruntime package folder
-    ############################################################################
-    torch_cpp_exts = glob('./build/lib.*/*.so')
-    torch_cpp_exts.extend(glob('./build/lib.*/*.dll'))
-    torch_cpp_exts.extend(glob('./build/lib.*/*.dylib'))
-    original_build_dir = path.dirname(torch_cpp_exts[0]) if torch_cpp_exts else None
-    dest_build_dir = 'onnxruntime/training/ortmodule/torch_cpp_extensions' if torch_cpp_exts else None
-    for ext in torch_cpp_exts:
-        dest_ext = path.join(dest_build_dir, path.basename(ext))
-        logger.info('copying %s -> %s', ext, dest_ext)
-        copyfile(ext, dest_ext)
-    return original_build_dir, dest_build_dir, pytorch_version
 class build_ext(_build_ext):
     def build_extension(self, ext):
         dest_file = self.get_ext_fullpath(ext.name)
@@ -211,36 +162,7 @@ try:
                     args.append(dest)
                     if len(args) > 3:
                         subprocess.run(args, check=True, stdout=subprocess.PIPE)
-                if enable_training:
-                    # Remove PyTorch dependencies from all PyTorch CPP extensions
-                    torch_cpp_exts = glob(f'{torch_cpp_build_dir}/*.so')
-                    torch_cpp_exts.extend(glob(f'{torch_cpp_build_dir}/*.dll'))
-                    torch_cpp_exts.extend(glob(f'{torch_cpp_build_dir}/*.dylib'))
-                    torch_dependencies = ['libc10', 'libtorch']
-                    for ext in torch_cpp_exts:
-                        args = ['patchelf', '--debug']
-                        if path.isfile(ext):
-                            result = subprocess.run(['patchelf', '--print-needed', ext],
-                                                    check=True,
-                                                    stdout=subprocess.PIPE,
-                                                    universal_newlines=True)
-                            for line in result.stdout.split('\n'):
-                                for dependency in torch_dependencies:
-                                    if dependency in line:
-                                        if not dependency in to_preload:
-                                            to_preload.append(line)
-                                        args.extend(['--remove-needed', line])
-                            args.append(ext)
-                            if len(args) > 3:
-                                subprocess.run(args, check=True, stdout=subprocess.PIPE)
-                                torch_cpp_exts = glob(f'{torch_cpp_orig_build_dir}/*.so')
-                                torch_cpp_exts.extend(glob(f'{torch_cpp_orig_build_dir}/*.dll'))
-                                torch_cpp_exts.extend(glob(f'{torch_cpp_orig_build_dir}/*.dylib'))
-                                dest = path.join(torch_cpp_orig_build_dir, path.basename(ext))
-                                # Overwrite torch cpp extension with the one without pytorch dependencies
-                                copyfile(ext, dest)
-
-                self._rewrite_ld_preload(to_preload)
+                    self._rewrite_ld_preload(to_preload)
             _bdist_wheel.run(self)
             if is_manylinux:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
@@ -352,8 +274,7 @@ if enable_training:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
                      'onnxruntime.training.optim',
-                     'onnxruntime.training.ortmodule',
-                     'onnxruntime.training.ortmodule.torch_cpp_extensions'])
+                     'onnxruntime.training.ortmodule'])
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
     # stable:
@@ -373,18 +294,6 @@ if enable_training:
             # removing '.' to make Cuda version number in the same form as Pytorch.
             rocm_version = rocm_version.replace('.', '')
             local_version = '+rocm' + rocm_version
-
-
-# Build Torch CPP extensions for ORTModule
-if enable_training:
-    # Add Torch CPP extensions to the official onnxruntime package
-    torch_cpp_orig_build_dir, torch_cpp_build_dir, pytorch_version = build_torch_cpp_extensions()
-    torch_cpp_exts = glob(f'{torch_cpp_build_dir}/*.so')
-    torch_cpp_exts.extend(glob(f'{torch_cpp_build_dir}/*.dll'))
-    torch_cpp_exts.extend(glob(f'{torch_cpp_build_dir}/*.dylib'))
-    for ext in torch_cpp_exts:
-        dest_ext = path.join(f'{path.join(*torch_cpp_build_dir.split(path.sep)[1:])}', path.basename(ext))
-        data.append(dest_ext)
 
 package_data = {}
 data_files = []
@@ -486,7 +395,7 @@ with open(requirements_path) as f:
 
 
 if enable_training:
-    def save_build_and_package_info(package_name, version_number, cuda_version, pytorch_version):
+    def save_build_and_package_info(package_name, version_number, cuda_version):
         sys.path.append(path.join(path.dirname(__file__), 'onnxruntime', 'python'))
         from onnxruntime_collect_build_info import find_cudart_versions
 
@@ -511,10 +420,8 @@ if enable_training:
             else:
                 # TODO: rocm
                 pass
-            if pytorch_version:
-                f.write("pytorch_version = '{}'\n".format(pytorch_version))
 
-    save_build_and_package_info(package_name, version_number, cuda_version, pytorch_version)
+    save_build_and_package_info(package_name, version_number, cuda_version)
 
 # Setup
 setup(

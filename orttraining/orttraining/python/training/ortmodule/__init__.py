@@ -4,8 +4,10 @@
 # --------------------------------------------------------------------------
 
 import os
+import sys
+
+from glob import glob
 from packaging import version
-from onnxruntime.capi.build_and_package_info import pytorch_version as build_pytorch_version
 
 
 ################################################################################
@@ -13,6 +15,8 @@ from onnxruntime.capi.build_and_package_info import pytorch_version as build_pyt
 ################################################################################
 ONNX_OPSET_VERSION = 12
 MINIMUM_RUNTIME_PYTORCH_VERSION_STR = '1.8.1'
+TORCH_CPP_DIR = os.path.join(os.path.dirname(__file__),
+                             'torch_cpp_extensions')
 
 # Verify minimum PyTorch version is installed before proceding to ONNX Runtime initialization
 try:
@@ -24,16 +28,14 @@ try:
             f'ONNX Runtime ORTModule frontend requires PyTorch version greater or equal to {MINIMUM_RUNTIME_PYTORCH_VERSION_STR}, '
             f'but version {torch.__version__} was found instead.')
 except:
-    raise(f'PyTorch {MINIMUM_RUNTIME_PYTORCH_VERSION_STR} must be installed in order to run ONNX Runtime ORTModule frontend!')
+    raise RuntimeError(f'PyTorch {MINIMUM_RUNTIME_PYTORCH_VERSION_STR} must be installed in order to run ONNX Runtime ORTModule frontend!')
 
-# Verify PyTorch installed on the system is compatible with the version used during ONNX Runtime build
-if not build_pytorch_version:
-    raise RuntimeError('ONNX Runtime was compiled without PyTorch support!')
-
-if runtime_pytorch_version != version.parse(build_pytorch_version.split('+')[0]):
-    raise RuntimeError(f'ONNX Runtime was compiled using PyTorch {build_pytorch_version}'
-                       f', but PyTorch {runtime_pytorch_version} is installed on your system!')
-
+# Verify whether PyTorch C++ extensions are already compiled
+torch_cpp_exts = glob(os.path.join(TORCH_CPP_DIR, '*.so'))
+torch_cpp_exts.extend(glob(os.path.join(TORCH_CPP_DIR, '*.dll')))
+torch_cpp_exts.extend(glob(os.path.join(TORCH_CPP_DIR, '*.dylib')))
+if not torch_cpp_exts and '-m' not in sys.argv:
+    raise EnvironmentError(f"ORTModule's extensions were not detected at {TORCH_CPP_DIR}. Run bla bla bla")
 
 # PyTorch custom Autograd function support
 from ._custom_autograd_function import enable_custom_autograd_support

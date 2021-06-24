@@ -4,8 +4,10 @@
 # --------------------------------------------------------------------------
 
 import fileinput
-from setuptools import setup, Extension
+import os
 import sys
+
+from setuptools import setup
 from torch.utils import cpp_extension
 
 
@@ -17,11 +19,13 @@ def parse_arg_remove_boolean(argv, arg_name):
 
     return arg_value
 
+
 use_rocm = True if parse_arg_remove_boolean(sys.argv, '--use_rocm') else False
 gpu_identifier = "hip" if use_rocm else "cuda"
 gpu_allocator_header = "HIPCachingAllocator" if use_rocm else "CUDACachingAllocator"
 
-filename = 'torch_cpp_extensions/torch_gpu_allocator/torch_gpu_allocator.cc'
+filename = os.path.join(os.path.dirname(__file__),
+                        'torch_gpu_allocator.cc')
 with fileinput.FileInput(filename, inplace=True) as file:
     for line in file:
         if '___gpu_identifier___' in line:
@@ -31,5 +35,6 @@ with fileinput.FileInput(filename, inplace=True) as file:
         sys.stdout.write(line)
 
 setup(name='torch_gpu_allocator',
-      ext_modules=[cpp_extension.CUDAExtension('torch_gpu_allocator', [filename])],
+      ext_modules=[cpp_extension.CUDAExtension(name='torch_gpu_allocator',
+                                               sources=[filename])],
       cmdclass={'build_ext': cpp_extension.BuildExtension})

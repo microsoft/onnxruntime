@@ -404,9 +404,8 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/optim
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/torch_cpp_extensions
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/torch_cpp_extensions/aten_op_executor
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/torch_cpp_extensions/torch_gpu_allocator
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/aten_op_executor
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/torch_gpu_allocator
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_capi_training_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
@@ -427,10 +426,10 @@ if (onnxruntime_ENABLE_TRAINING)
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_ortmodule_torch_cpp_ext_aten_op_executor_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/torch_cpp_extensions/aten_op_executor/
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/aten_op_executor/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_ortmodule_torch_cpp_ext_torch_gpu_allocator_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/torch_cpp_extensions/torch_gpu_allocator/
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/torch_gpu_allocator/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_train_tools_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/
