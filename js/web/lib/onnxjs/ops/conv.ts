@@ -18,6 +18,8 @@ export abstract class Conv implements Operator {
     this.pads = attributes.getInts('pads', [0, 0, 0, 0]);
     this.strides = attributes.getInts('strides', [1, 1]);
     this.activation = attributes.getString('__internal_activation', '');
+    this.clipMax = attributes.getFloat('__clip_max', 3.402823e+38);
+    this.clipMin = attributes.getFloat('__clip_min', -3.402823e+38);
   }
 
   checkInputs(inputs: Tensor[]): boolean {
@@ -90,4 +92,6 @@ export abstract class Conv implements Operator {
   protected pads: number[];
   protected strides: number[];
   protected activation: string;
+  protected clipMin: number;
+  protected clipMax: number;
 }

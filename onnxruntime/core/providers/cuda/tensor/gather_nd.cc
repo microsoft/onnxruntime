@@ -193,6 +193,11 @@ Status GatherND<TIndex>::ComputeInternal(OpKernelContext* context) const {
 
   auto output_tensor = context->Output(0, TensorShape(shape));
 
+  // Bail out early in case the output is going to be empty
+  if (output_tensor->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
   // Compute
   int64_t num_slices;
   int64_t slice_size;
