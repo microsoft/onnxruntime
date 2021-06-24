@@ -56,7 +56,7 @@ void run_ort_trt2() {
 
   session_options.AppendExecutionProvider_TensorRT(*tensorrt_options.get());
   printf("Runing ORT TRT EP with:\n\tengine cache enabled\n\tfp16 enabled if supports\n\tint8 enabled if supports\n\tint8 calibration table provided\n");
-  printf("First run ...\n")
+  printf("First run ...\n");
 
   Ort::Session session(env, model_path, session_options);
 
@@ -129,7 +129,7 @@ void run_ort_trt2() {
 
 
   // we need another run in order to make TRT EP use engine cache
-  printf("Second run ...\n")
+  printf("Second run ...\n");
 
   // score model & input tensor, get back output tensor
   output_tensors = session.Run(Ort::RunOptions{nullptr}, input_node_names.data(), &input_tensor, 1, output_node_names.data(), 1);
