@@ -62,7 +62,7 @@ jobs:
       ${{ if eq(parameters.RunCustom, false) }}:
         value: 1 
       ${{ if eq(parameters.RunCustom, true) }}:   
-        - ${{ if ne( $(trtContainer), 21.04) }}:
+        - ${{ if ne( $(variables.trtContainer), 21.04) }}:
           value: 2
         - ${{ if eq(parameters.TrtVersion, 7.1) }}:
           - ${{ if eq(parameters.CUDAVersion, 11.0) }}:
