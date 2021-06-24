@@ -26,6 +26,7 @@
 #pragma warning(push)
 #pragma warning(disable : 4554)
 #pragma warning(disable : 4245)
+#pragma warning(disable : 4127)
 #endif
 
 #include "unsupported/Eigen/CXX11/Tensor"
