@@ -20,6 +20,7 @@ jobs:
   variables:
     OrtPackageId: 'Microsoft.ML.OnnxRuntime.Gpu'
     MsbuildArguments: '-maxcpucount'
+    TESTONGPU: 'ON'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
     setVcvars: true
