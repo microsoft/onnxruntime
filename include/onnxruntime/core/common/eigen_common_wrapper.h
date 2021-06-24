@@ -25,11 +25,6 @@
 // to 'uint64_t', signed/unsigned mismatch
 #pragma warning(push)
 #pragma warning(disable : 4554)
-#pragma warning(disable : 4245)
-#pragma warning(disable : 4127)
-#pragma warning(disable : 4805)
-#pragma warning(disable : 6313)
-#pragma warning(disable : 6294)
 #endif
 
 #include "unsupported/Eigen/CXX11/Tensor"
