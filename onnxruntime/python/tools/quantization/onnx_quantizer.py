@@ -16,13 +16,12 @@ from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
 
 from .quant_utils import QuantizationMode, QuantizedValueType, QuantizedInitializer, QuantizedValue
 from .quant_utils import find_by_name, get_elem_index, get_mul_node, generate_identified_filename, attribute_to_kwarg, type_to_name
-from .quant_utils import quantize_nparray, quantize_data, compute_scale_zp, get_qrange_for_qType
+from .quant_utils import quantize_nparray, quantize_data, compute_scale_zp, get_qrange_for_qType, get_qmin_qmax_for_qType
 from .quant_utils import QuantType, onnx_domain, __producer__, __version__
 
 from .registry import CreateOpQuantizer, CreateDefaultOpQuantizer
 
 from .onnx_model import ONNXModel
-
 
 class ONNXQuantizer:
     def __init__(self, model, per_channel, reduce_range, mode, static, weight_qType, input_qType, tensors_range,
@@ -42,7 +41,8 @@ class ONNXQuantizer:
         self.fuse_dynamic_quant = False
         self.extra_options = extra_options if extra_options is not None else {}
         self.q_matmul_const_b_only = 'MatMulConstBOnly' in self.extra_options and self.extra_options['MatMulConstBOnly']
-        self.is_weight_symmetric = 'WeightSymmetric' not in self.extra_options or self.extra_options['WeightSymmetric']
+        self.is_weight_symmetric = True if 'WeightSymmetric' not in self.extra_options else self.extra_options['WeightSymmetric']
+        self.is_activation_symmetric = False if 'ActivationSymmetric' not in self.extra_options else self.extra_options['ActivationSymmetric']
 
         self.input_qType = onnx_proto.TensorProto.INT8 if input_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
         self.weight_qType = onnx_proto.TensorProto.INT8 if weight_qType == QuantType.QInt8 else onnx_proto.TensorProto.UINT8
@@ -605,8 +605,8 @@ class ONNXQuantizer:
         # Update packed weight, zero point, and scale initializers
         weight_data = self.tensor_proto_to_array(weight)
         _, _, zero_point, scale, q_weight_data = quantize_data(weight_data.flatten().tolist(),
-                                                               get_qrange_for_qType(qType, self.reduce_range and reduce_range),
-                                                               qType, self.is_weight_symmetric)
+                                                               qType, self.is_weight_symmetric,
+                                                               self.reduce_range and reduce_range)
         q_weight_data = np.asarray(q_weight_data, dtype=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[qType]).reshape(weight.dims)
         q_weight_initializer = onnx.numpy_helper.from_array(q_weight_data, q_weight_name)
 
@@ -641,9 +641,8 @@ class ONNXQuantizer:
         for i in range(channel_count):
             per_channel_data = weights.take(i, channel_axis)
             rmin, rmax, zero_point, scale, quantized_per_channel_data = quantize_data(
-                per_channel_data.flatten().tolist(),
-                get_qrange_for_qType(weight_qType, self.reduce_range and reduce_range),
-                weight_qType, self.is_weight_symmetric)
+                per_channel_data.flatten().tolist(), weight_qType,
+                self.is_weight_symmetric, self.reduce_range and reduce_range)
             rmin_list.append(rmin)
             rmax_list.append(rmax)
             zero_point_list.append(zero_point)
@@ -735,15 +734,11 @@ class ONNXQuantizer:
         quantization_params = {}
         for tensor_name in self.tensors_range.keys():
             rmin, rmax = self.tensors_range[tensor_name]
+            qmin, qmax = get_qmin_qmax_for_qType(self.input_qType)
 
-            # adjust rmin and rmax such that 0 is included in the range. This is required
-            # to make sure zero can be uniquely represented.
-            rmin = min(rmin, 0)
-            rmax = max(rmax, 0)
-
-            quantization_params[tensor_name] = compute_scale_zp(rmin, rmax, self.input_qType,
-                                                                get_qrange_for_qType(self.input_qType),
-                                                                self.is_weight_symmetric)
+            quantization_params[tensor_name] = compute_scale_zp(rmin, rmax,
+                                                                qmin, qmax,
+                                                                self.is_activation_symmetric)
 
         return quantization_params
 
