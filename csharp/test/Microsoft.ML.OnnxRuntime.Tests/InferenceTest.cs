@@ -836,6 +836,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_batchnorm_epsilon_training_mode", "opset14 version not implemented yet"},
                 { "test_batchnorm_example", "opset14 version not implemented yet"},
                 { "test_batchnorm_example_training_mode", "opset14 version not implemented yet"},
+                { "test_bernoulli", "random generator"},
+                { "test_bernoulli_seed", "random generator"},
+                { "test_bernoulli_double", "random generator"},
             };
 
             // The following models fails on nocontribops win CI
