@@ -59,10 +59,10 @@ jobs:
   
   variables:
     - name: buildContainer
-      ${{ if neq(parameters.RunCustom, True) }}:
+      ${{ if ne(parameters.RunCustom, True) }}:
         value: $(trtContainer) # choose default container
       ${{ if eq(parameters.RunCustom, True) }}:   
-        ${{ if neq(variables.trtContainer, 21.04) }}:
+        ${{ if ne(variables.trtContainer, 21.04) }}:
           value: $(trtContainer)
         ${{ if eq(parameters.TrtVersion, 7.1) }}:
           ${{ if eq(parameters.CUDAVersion, 11.0) }}:
