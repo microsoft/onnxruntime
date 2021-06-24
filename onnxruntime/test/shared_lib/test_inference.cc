@@ -1271,6 +1271,10 @@ TEST(CApiTest, get_available_providers_cpp) {
 
 // This test uses the CreateAndRegisterAllocator API to register an allocator with the env,
 // creates 2 sessions and then runs those 2 sessions one after another
+
+// Test sharing of the ORT-internal default arena based allocator only on x64 builds as it
+// is only relevant on x64 (x86 doesn't honor arena creation even if requested).
+#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
 TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
   // simple inference test
   // prepare inputs
@@ -1326,6 +1330,8 @@ TEST(CApiTest, TestSharedAllocatorUsingCreateAndRegisterAllocator) {
                     expected_values_y,
                     nullptr);
 }
+
+#endif
 
 // This test registers a custom allocator for sharing across sessions
 TEST(CApiTest, TestSharingCustomAllocator) {
