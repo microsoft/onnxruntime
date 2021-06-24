@@ -24,7 +24,6 @@ parameters:
 - name: TrtVersion
   displayName: TensorRT Version
   type: string
-  default: 7.2.3.4
   values:
   - 7.2.3.4
   - 7.1.3.4
@@ -32,7 +31,6 @@ parameters:
 - name: CudaVersion
   displayName: CUDA Version
   type: string
-  default: 11.1
   values:
   - 11.1
   - 11.0
