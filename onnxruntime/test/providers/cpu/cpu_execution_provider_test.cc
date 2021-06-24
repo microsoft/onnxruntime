@@ -152,7 +152,69 @@ TEST(CPUExecutionProviderTest, ModelTest) {
 }
 
 class OrtModelRunner {
+ public:
+  struct InitParam {
+    const ORTCHAR_T* model_path;
+  };
+
+  struct RunParam {
+    size_t num_runs;
+  };
+
+  struct Result {
+  };
+
+ public:
+  OrtModelRunner() = default;
+  ~OrtModelRunner();
+
+  void init(const InitParam& param);
+  void Run(const RunParam& param);
+
+ private:
+  Ort::Env env{nullptr};
+  Ort::AllocatorWithDefaultOptions ort_alloc;
+  Ort::Session session{nullptr};
+  std::vector<char*> input_names;
+  std::vector<char*> output_names;
+  std::vector<TensorData> input_data;
+  std::vector<TensorData> output_data;
+  std::vector<Ort::Value> input_tensors;
+  std::vector<Ort::Value> output_tensors;
 };
+
+OrtModelRunner::~OrtModelRunner() {
+  for (auto& name : input_names)
+    ort_alloc.Free(name);
+
+  for (auto& name : output_names)
+    ort_alloc.Free(name);
+}
+
+void OrtModelRunner::init(const InitParam& param) {
+  env = Ort::Env{ORT_LOGGING_LEVEL_WARNING, "ModelTest"};
+  Ort::SessionOptions so;
+  so.SetLogId("ModelTest");
+  session = Ort::Session(env, param.model_path, so);
+
+  GetIOInfo(session, ort_alloc, input_names, input_data, true /* is_input */);
+  GetIOInfo(session, ort_alloc, output_names, output_data, false /* is_input */);
+
+  input_tensors = GetIOTensors(input_data);
+  output_tensors = GetIOTensors(output_data);
+  FillInputData(input_data);
+}
+
+void OrtModelRunner::Run(const RunParam& param) {
+  Ort::RunOptions ro;
+  for (size_t i = 0; i < param.num_runs; i++) {
+    auto input_tensors = GetIOTensors(input_data);
+    auto output_tensors = GetIOTensors(output_data);
+    session.Run(Ort::RunOptions{nullptr},
+                input_names.data(), input_tensors.data(), input_names.size(),
+                output_names.data(), output_tensors.data(), output_names.size());
+  }
+}
 
 }  // namespace test
 }  // namespace onnxruntime
