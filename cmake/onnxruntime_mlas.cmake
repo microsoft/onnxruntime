@@ -363,5 +363,5 @@ onnxruntime_add_static_library(onnxruntime_mlas ${mlas_common_srcs} ${mlas_platf
 target_include_directories(onnxruntime_mlas PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}/core/mlas/lib)
 set_target_properties(onnxruntime_mlas PROPERTIES FOLDER "ONNXRuntime")
 if (WIN32)
-  target_compile_options(onnxruntime_mlas PRIVATE "/wd6385")
+  target_compile_options(onnxruntime_mlas PRIVATE "/wd6385" "/wd4127")
 endif()
