@@ -35,7 +35,8 @@ torch_cpp_exts = glob(os.path.join(TORCH_CPP_DIR, '*.so'))
 torch_cpp_exts.extend(glob(os.path.join(TORCH_CPP_DIR, '*.dll')))
 torch_cpp_exts.extend(glob(os.path.join(TORCH_CPP_DIR, '*.dylib')))
 if not torch_cpp_exts and '-m' not in sys.argv:
-    raise EnvironmentError(f"ORTModule's extensions were not detected at {TORCH_CPP_DIR}. Run bla bla bla")
+    raise EnvironmentError(f"ORTModule's extensions were not detected at '{TORCH_CPP_DIR}' folder. "
+                           "Run `python -m torch_ort.configure` before using `ORTModule` frontend.")
 
 # PyTorch custom Autograd function support
 from ._custom_autograd_function import enable_custom_autograd_support
