@@ -301,13 +301,25 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
       fail_shape_inference("Invalid bias shape");
     }
 
+    std::vector<int64_t> qkv_hidden_sizes;
+    getRepeatedAttribute(ctx, "qkv_hidden_sizes", qkv_hidden_sizes);
+
+    int64_t output_hidden_size = 0;
+    if (qkv_hidden_sizes.size() != 0) {
+      output_hidden_size = qkv_hidden_sizes[2]; // -> coming from V bias shape
+    } else {
+      output_hidden_size = bias_shape.dim(0).dim_value() / 3;
+    }
+
     ONNX_NAMESPACE::TensorShapeProto output_shape;
     for (auto& dim : input_dims) {
       *output_shape.add_dim() = dim;
     }
-    output_shape.mutable_dim(2)->set_dim_value(bias_shape.dim(0).dim_value() / 3);
+
+    output_shape.mutable_dim(2)->set_dim_value(output_hidden_size);
     updateOutputShape(ctx, 0, output_shape);
 
+    // TODO does the extra output need any changes?
     if (ctx.getNumOutputs() > 1) {
       if (hasInputShape(ctx, past_input_index)) {
         auto& past_shape = getInputShape(ctx, past_input_index);
@@ -353,6 +365,10 @@ and present state are optional. Present state could appear in output even when p
             "Whether every token can only attend to previous tokens. Default value is 0.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
+      .Attr("qkv_hidden_sizes",
+            "Hidden layer sizes of Q, K, V paths in Attention",
+            AttributeProto::INTS,
+            OPTIONAL_VALUE)
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, input_hidden_size)", "T")
       .Input(1, "weight", "2D input tensor with shape (input_hidden_size, 3 * hidden_size), where hidden_size = num_heads * head_size", "T")
       .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T")

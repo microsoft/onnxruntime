@@ -274,14 +274,17 @@ class BertOnnxModel(OnnxModel):
         self.fuse_reshape()
 
         if (options is None) or options.enable_skip_layer_norm:
+            logger.info("fuse_skip_layer_norm enabled")
             self.fuse_skip_layer_norm()
 
         if (options is None) or options.enable_attention:
+            logger.info("attention fusion enabled")
             if options is not None:
                 self.attention_mask.set_mask_format(options.attention_mask_format)
             self.fuse_attention()
 
         if (options is None) or options.enable_embed_layer_norm:
+            logger.info("embed_layer_norm enabled")
             self.fuse_embed_layer()
 
         # Post-processing like removing extra reshape nodes.
@@ -294,6 +297,7 @@ class BertOnnxModel(OnnxModel):
             self.fuse_bias_gelu(is_fastgelu=False)
 
         if (options is None) or options.enable_bias_skip_layer_norm:
+            logger.info("bias_skip_layer_norm enabled")
             # Fuse SkipLayerNormalization and Add Bias before it.
             self.fuse_add_bias_skip_layer_norm()
 
