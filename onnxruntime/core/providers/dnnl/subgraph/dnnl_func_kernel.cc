@@ -15,6 +15,7 @@
 #include "core/providers/dnnl/subgraph/dnnl_pool.h"
 #include "core/providers/dnnl/subgraph/dnnl_sum.h"
 #include "core/providers/dnnl/subgraph/dnnl_lrn.h"
+#include "core/providers/dnnl/subgraph/dnnl_reducemean.h"
 #include "core/providers/dnnl/subgraph/dnnl_matmul.h"
 #ifdef ENABLE_TRAINING
 #include "core/providers/dnnl/subgraph/dnnl_convgrad.h"
@@ -106,6 +107,15 @@ class SubgraphPrimitive : public PrimitiveBase {
 #endif  // ENABLE_TRAINING
         for (auto index : dnnl_node.parent_nodes) {
           kernel->parents_.push_back(context_.kernels[index]);
+        }
+        context_.kernels.push_back(kernel);
+      } else if (dnnl_node.name == "ReduceMean") {
+        std::ostringstream os;
+        os << "ReduceMean-" << dnnl_node.node_index << "-";
+        std::shared_ptr<DnnlReduceMean<T>> kernel;
+        kernel = std::make_shared<DnnlReduceMean<T>>(dnnl_node, params.provider, *params.attributes, os.str());
+        for (auto index : dnnl_node.parent_nodes) {
+            kernel->parents_.push_back(context_.kernels[index]);
         }
         context_.kernels.push_back(kernel);
       } else if (dnnl_node.name == "BatchNormalization") {
@@ -340,24 +350,35 @@ template <typename T>
 Status DnnlFuncKernel<T>::Compute(const OrtCustomOpApi* api, OrtKernelContext* context) const {
   Status status;
   try {
-    // The training runner sets up the training graph then calls it via the inferance runner using a new thread
-    // each call. Since the SubgraphPrimitivePool stashes the nodes based on the thread_local memory it results in a new
-    // stash being created per-call from the training loop.  In theory the thread_local memory should be freed when the calling
-    // thread is destroyed but this was not being seen when actually running the code.  Instead of relying on the thread_local
-    // memory being freed we name a new SubgraphPrimitive instead of using the SubgraphPrimitivePool when the code is built for
-    // training. (If the training running is updated to use a thread pool instead of a new thread each run we may be able to
-    // revert back to the SubgraphPrimitivePool.)
+      // The training runner sets up the training graph then calls it via the inferance runner using a new thread
+      // each call. Since the SubgraphPrimitivePool stashes the nodes based on the thread_local memory it results in a new
+      // stash being created per-call from the training loop.  In theory the thread_local memory should be freed when the calling
+      // thread is destroyed but this was not being seen when actually running the code.  Instead of relying on the thread_local
+      // memory being freed we name a new SubgraphPrimitive instead of using the SubgraphPrimitivePool when the code is built for
+      // training. (If the training running is updated to use a thread pool instead of a new thread each run we may be able to
+      // revert back to the SubgraphPrimitivePool.)
 #ifdef ENABLE_TRAINING
-    std::unique_ptr<SubgraphPrimitive<T>> primitive = std::make_unique<SubgraphPrimitive<T>>(api, context, params_);
+      std::unique_ptr<SubgraphPrimitive<T>> primitive = std::make_unique<SubgraphPrimitive<T>>(api, context, params_);
+      primitive->UpdateProvider(params_);
+      status = primitive->Compute(api, context);
 #else
-    SubgraphPrimitive<T>* primitive = SubgraphPrimitivePool<T>::Get(api, context, params_);
-#endif  // ENABLE_TRAINING
-
-    primitive->UpdateProvider(params_);
-    status = primitive->Compute(api, context);
+      std::string subgraph_key = params_.subgraph_key;
+      if (subgraph_key.find("ReduceMean") != std::string::npos) {
+          std::unique_ptr<SubgraphPrimitive<T>> primitive = std::make_unique<SubgraphPrimitive<T>>(api, context, params_);
+          primitive->UpdateProvider(params_);
+          status = primitive->Compute(api, context);
+      }
+      else
+      {
+          SubgraphPrimitive<T>* primitive = SubgraphPrimitivePool<T>::Get(api, context, params_);
+          primitive->UpdateProvider(params_);
+          status = primitive->Compute(api, context);
+      }
+#endif
   } catch (const dnnl::error& e) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status, ", message: ", e.what());
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Status: ", e.status, ", message: ", e.what());
   }
+
   return status;
 }
 

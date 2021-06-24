@@ -94,7 +94,7 @@ jobs:
          #We assume the machine doesn't gcc and python development header files
          sudo rm -f /build /onnxruntime_src
          sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
-         python3 -m pip uninstall -y ort-gpu-nightly ort_nightly onnxruntime onnxruntime-gpu -qq
+         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
          cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
          #Test ORT with the latest ONNX release.
          sed -i 's/git+http:\/\/github\.com\/onnx\/onnx.*/onnx==1.9.0/' $(Build.BinariesDirectory)/requirements.txt
