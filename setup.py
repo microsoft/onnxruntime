@@ -270,12 +270,19 @@ local_version = None
 enable_training = parse_arg_remove_boolean(sys.argv, '--enable_training')
 default_training_package_device = parse_arg_remove_boolean(sys.argv, '--default_training_package_device')
 
+package_data = {}
+data_files = []
+
 if enable_training:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
                      'onnxruntime.training.optim',
                      'onnxruntime.training.ortmodule',
-                     'onnxruntime.training.ortmodule.torch_cpp_extensions'])
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.aten_op_executor',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.torch_gpu_allocator'])
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.aten_op_executor'] = ['*.cc']
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.torch_gpu_allocator'] = ['*.cc']
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
     # stable:
@@ -295,9 +302,6 @@ if enable_training:
             # removing '.' to make Cuda version number in the same form as Pytorch.
             rocm_version = rocm_version.replace('.', '')
             local_version = '+rocm' + rocm_version
-
-package_data = {}
-data_files = []
 
 if package_name == 'onnxruntime-nuphar':
     packages += ["onnxruntime.nuphar"]
