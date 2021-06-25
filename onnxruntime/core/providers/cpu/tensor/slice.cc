@@ -41,23 +41,18 @@ using EnabledIndicesTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuE
                                                                            Slice, Input, 1);
 }  // namespace
 
-#define data_type_constraints (BuildKernelDefConstraintsFromTypeList<DataTypes>())
-#define indices_type_constraints (BuildKernelDefConstraintsFromTypeList<IndicesTypes>())
-#define enabled_data_type_constraints (BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
-#define enabled_indices_type_constraints (BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>())
-
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Slice,
     1, 9,
-    KernelDefBuilder().TypeConstraint("T", data_type_constraints, enabled_data_type_constraints),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<DataTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
     Slice1);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Slice,
     10, 10,
     KernelDefBuilder()
-        .TypeConstraint("T", data_type_constraints, enabled_data_type_constraints)
-        .TypeConstraint("Tind", indices_type_constraints, enabled_indices_type_constraints),
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<DataTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndicesTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
     Slice10);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -65,16 +60,16 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     11,
     12,
     KernelDefBuilder()
-        .TypeConstraint("T", data_type_constraints, enabled_data_type_constraints)
-        .TypeConstraint("Tind", indices_type_constraints, enabled_indices_type_constraints),
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<DataTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndicesTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
     Slice10);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Slice,
     13,
     KernelDefBuilder()
-        .TypeConstraint("T", data_type_constraints, enabled_data_type_constraints)
-        .TypeConstraint("Tind", indices_type_constraints, enabled_indices_type_constraints),
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<DataTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndicesTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
     Slice10);
 
 // Check if it's possible to combine innermost dimensions so we copy larger blocks.
