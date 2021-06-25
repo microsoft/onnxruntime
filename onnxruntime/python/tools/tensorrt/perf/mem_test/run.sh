@@ -56,9 +56,11 @@ then
     exit 1
 fi
 
+mkdir result
 if [ -e asan.log* ]
 then
     cat asan.log*
+    mv asan.log* result
 else
-    echo "No memory Leak(s) or other memory error(s) detected."
+    echo "No memory Leak(s) or other memory error(s) detected." > result/asan.log
 fi
