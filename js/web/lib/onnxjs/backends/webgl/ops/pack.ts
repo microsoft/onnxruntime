@@ -1,16 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import { Tensor } from '../../../tensor';
-import { getGlsl } from '../glsl-source';
-import { WebGLInferenceHandler } from '../inference-handler';
-import { ProgramInfo, TextureType } from '../types';
-import { getCoordsDataType } from '../utils';
+import {Tensor} from '../../../tensor';
+import {getGlsl} from '../glsl-source';
+import {WebGLInferenceHandler} from '../inference-handler';
+import {ProgramInfo, TextureType} from '../types';
+import {getCoordsDataType} from '../utils';
 
-import { getChannels } from './packing-utils';
+import {getChannels} from './packing-utils';
 
-export const creatPackProgramInfo = (handler: WebGLInferenceHandler,
-  input: Tensor): ProgramInfo => {
+export const creatPackProgramInfo = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfo => {
   if (!handler.session.pack) {
     throw new Error('Pack kernel should only be called on pack texture.');
   }
@@ -52,13 +51,10 @@ export const creatPackProgramInfo = (handler: WebGLInferenceHandler,
       `;
   return {
     inputNames: ['A'],
-    inputTypes: [
-      TextureType.packed
-    ],
-    output: { dims: input.dims, type: input.type, textureType: TextureType.packed },
+    inputTypes: [TextureType.packed],
+    output: {dims: input.dims, type: input.type, textureType: TextureType.packed},
     shaderSource
   };
-
 };
 
 /**
