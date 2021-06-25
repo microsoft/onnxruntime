@@ -396,14 +396,6 @@ with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 
 
-if is_manylinux:
-    AUDITWHEEL_PLAT = environ.get('AUDITWHEEL_PLAT', None)
-    if AUDITWHEEL_PLAT == 'manylinux2014_aarch64':
-        for i in range(len(install_requires)):
-            req = install_requires[i]
-            if req.startswith("numpy"):
-                install_requires[i] = "numpy >= 1.19.5"
-
 if enable_training:
     def save_build_and_package_info(package_name, version_number, cuda_version):
 
