@@ -277,4 +277,6 @@ ORT_API_STATUS_IMPL(CreateSessionFromArrayWithPrepackedWeightsContainer, _In_ co
                     _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
                     _Outptr_ OrtSession** out);
 ORT_API_STATUS_IMPL(RegisterAllocator, _Inout_ OrtEnv* env, _In_ OrtAllocator* allocator);
+ORT_API_STATUS_IMPL(RemoveRegisteredAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info);
+
 }  // namespace OrtApis
