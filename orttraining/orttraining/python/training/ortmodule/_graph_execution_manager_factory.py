@@ -5,8 +5,8 @@
 
 from ._training_manager import TrainingManager
 from ._inference_manager import InferenceManager
-from .experimental._onnx_training_manager import OnnxTrainingManager
-from .experimental._onnx_inference_manager import OnnxInferenceManagerr
+from ._onnx_training_manager import OnnxTrainingManager
+from ._onnx_inference_manager import OnnxInferenceManager
 
 
 class GraphExecutionManagerFactory(object):

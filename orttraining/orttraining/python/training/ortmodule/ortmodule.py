@@ -4,10 +4,8 @@
 # --------------------------------------------------------------------------
 
 from . import _io
-from ._graph_execution_manager_factory import GraphExecutionManagerFactory
-from ._graph_execution_manager_factory import OnnxGraphExecutionManagerFactory
-from ._utils import _PytorchModuleMetadata
-
+from ._torch_module_manager import TorchModuleManager
+from ._onnx_module_manager import OnnxTorchModuleManager
 from onnxruntime.training import register_custom_ops_pytorch_exporter
 
 import copy
@@ -22,8 +20,8 @@ T = TypeVar('T', bound='Module')
 def _validate_module(module):
     '''Raises a TypeError if the module is not a torch.nn.Module'''
 
-    if not isinstance(module, torch.nn.Module):
-        raise TypeError(f"ORTModule only support torch.nn.Module as input. {type(module)} is not supported.")
+    if not isinstance(module, torch.nn.Module) and not isinstance(module, onnx.ModelProto):
+        raise TypeError(f"ORTModule only support torch.nn.Module or ONNX as input. {type(module)} is not supported.")
 
 class ORTModule(torch.nn.Module):
     """Extends user's :class:`torch.nn.Module` model to leverage ONNX Runtime super fast training engine.
@@ -32,10 +30,13 @@ class ORTModule(torch.nn.Module):
     :meth:`~torch.nn.Module.backward` along with all others :class:`torch.nn.Module`'s APIs.
     """
 
-    def __init__(self, module):
+    def __init__(self, module, device):
         _validate_module(module)
 
-        self._module_manager = TorchModuleManager(module)
+        if isinstance(module, torch.nn.Module):
+            self._module_manager = TorchModuleManager(module)
+        else:
+            self._module_manager = OnnxTorchModuleManager(module, device)
 
         # Create forward dynamically, so each ORTModule instance will have its own copy.
         # This is needed to be able to copy the forward signatures from the original PyTorch models
@@ -64,13 +65,8 @@ class ORTModule(torch.nn.Module):
     # This declaration is for automatic document generation purposes only
     # The actual forward implementation is bound during ORTModule initialization
     def forward(self, *inputs, **kwargs):
-        '''Forward pass starts here and continues at `_ORTModuleFunction.forward`
-        ONNX model is exported the first time this method is executed.
-        Next, we build a full training graph with module_gradient_graph_builder.
-        Finally, we instantiate the ONNX Runtime InferenceSession.
-        '''
-
-        return self._execution_manager(self._is_training()).forward(*inputs, **kwargs)
+        '''Dummy documentation for forward method'''
+        ...
 
     def _apply(self, fn):
         """Override original method to delegate execution to the flattened PyTorch user module"""
@@ -97,9 +93,6 @@ class ORTModule(torch.nn.Module):
         return self
 
     def state_dict(self, destination=None, prefix='', keep_vars=False):
-        if not self._original_module:
-            raise NotSupported("ORTModule crated from ONNX model doesn't support load_state_dict")
-        
         """Override original method to delegate execution to the base module"""
 
         return self._module_manager.state_dict(
@@ -107,41 +100,26 @@ class ORTModule(torch.nn.Module):
 
     def load_state_dict(self, state_dict: 'OrderedDict[str, Tensor]',
                         strict: bool = True):
-        if not self._original_module:
-            raise NotSupported("ORTModule crated from ONNX model doesn't support load_state_dict")
-
         """Override original method to delegate execution to the original PyTorch user module"""
 
         return self._module_manager.load_state_dict(state_dict, strict=strict)
 
     def register_buffer(self, name: str, tensor: Optional[torch.Tensor], persistent: bool = True) -> None:
-        if not self._original_module:
-            raise NotSupported("ORTModule crated from ONNX model doesn't support register_buffer")
-
         """Override original method to delegate execution to the original PyTorch user module"""
 
         self._module_manager.register_buffer(name, tensor, persistent=persistent)
 
     def register_parameter(self, name: str, param: Optional[torch.nn.Parameter]) -> None:
-        if not self._original_module:
-            raise NotSupported("ORTModule crated from ONNX model doesn't support register_parameter")
-
         """Override original method to delegate execution to the original PyTorch user module"""
 
         self._module_manager.register_parameter(name, param)
 
     def get_parameter(self, target: str) -> torch.nn.Parameter:
-        if not self._original_module:
-            raise NotSupported("ORTModule crated from ONNX model doesn't support get_parameter")
-
         """Override original method to delegate execution to the original PyTorch user module"""
 
         return self._module_manager.get_parameter(target)
 
     def get_buffer(self, target: str) -> torch.Tensor:
-        if not self._original_module:
-            raise NotSupported("ORTModule crated from ONNX model doesn't support get_buffer")
-
         """Override original method to delegate execution to the original PyTorch user module"""
 
         return self._module_manager.get_buffer(target)
@@ -151,26 +129,17 @@ class ORTModule(torch.nn.Module):
 
         yield from self._module_manager.parameters(recurse=recurse)
 
-    def named_parameters(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.nn.Parameter]]:        
-        if not self._original_module:
-            raise NotSupported("ORTModule crated from ONNX model doesn't support named_parameters")
-
+    def named_parameters(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.nn.Parameter]]:
         """Override original method to delegate execution to the original PyTorch user module"""
 
         yield from self._module_manager.named_parameters(prefix=prefix, recurse=recurse)
 
-    def buffers(self, recurse: bool = True) -> Iterator[torch.Tensor]:        
-        if not self._original_module:
-            raise NotSupported("ORTModule crated from ONNX model doesn't support buffers")
-
+    def buffers(self, recurse: bool = True) -> Iterator[torch.Tensor]:
         """Override original method to delegate execution to the original PyTorch user module"""
 
         yield from self._module_manager.buffers(recurse=recurse)
 
     def named_buffers(self, prefix: str = '', recurse: bool = True) -> Iterator[Tuple[str, torch.Tensor]]:
-        if not self._original_module:
-            raise NotSupported("ORTModule crated from ONNX model doesn't support named_buffers")
-
         """Override original method to delegate execution to the original PyTorch user module"""
 
         yield from self._module_manager.named_buffers(prefix=prefix, recurse=recurse)
