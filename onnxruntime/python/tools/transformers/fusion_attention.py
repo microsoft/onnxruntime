@@ -341,17 +341,8 @@ class FusionAttention(Fusion):
         kw = NumpyHelper.to_array(k_weight)
         vw = NumpyHelper.to_array(v_weight)
 
-<<<<<<< HEAD
-        # Check if all matrices have the same shape
-        assert qw.shape == kw.shape == vw.shape or qw.shape == kw.shape
-
-        if qw.shape == kw.shape and qw.shape != vw.shape:
-            return self.create_attention_node_varied_weights(mask_index, q_matmul, k_matmul, v_matmul, q_add, k_add, v_add,
-                        num_heads, hidden_size, q_hidden_size, k_hidden_size, input, output)
-=======
         # assert q and k have same shape as expected
         assert qw.shape == kw.shape
->>>>>>> origin/master
 
         qw_in_size = qw.shape[0]
         kw_in_size = kw.shape[0]
@@ -388,15 +379,9 @@ class FusionAttention(Fusion):
         kb = NumpyHelper.to_array(k_bias)
         vb = NumpyHelper.to_array(v_bias)
 
-<<<<<<< HEAD
-        # 1d bias shape: [outsize,]. 2d bias shape: [a, b] where a*b = out_size
-        assert qb.shape == kb.shape == vb.shape or qb.shape == kb.shape
-        assert np.prod(qb.shape) == out_size
-=======
         q_bias_shape = np.prod(qb.shape)
         k_bias_shape = np.prod(kb.shape)
         v_bias_shape = np.prod(vb.shape)
->>>>>>> origin/master
 
         assert q_bias_shape == k_bias_shape == qw_out_size
         assert v_bias_shape == vw_out_size
@@ -524,21 +509,6 @@ class FusionAttention(Fusion):
  
         is_distill = False
         is_distill_add = False
-<<<<<<< HEAD
-        qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Div', 'MatMul'], [0, 0, None, 0])
-        if qk_nodes is None:
-            qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Mul', 'MatMul'], [0, 0, None, 0])
-            if qk_nodes is None:
-                qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Where', 'MatMul', 'Div'], [0, 0, 2, 0])
-                if qk_nodes is None:
-                    qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Add', 'Where', 'MatMul'], [0, 0, 0, 2])
-                    if qk_nodes is None:
-                        logger.debug("fuse_attention: failed to match qk path")
-                        return
-                    is_distill_add = True
-                else:
-                    is_distill = True
-=======
         qk_paths = {
             "path1": (['Softmax', 'Add', 'Div', 'MatMul'], [0, 0, None, 0]),
             "path2": (['Softmax', 'Add', 'Mul', 'MatMul'], [0, 0, None, 0]),
@@ -560,7 +530,6 @@ class FusionAttention(Fusion):
         if qk_nodes is None:
             logger.debug("fuse_attention: failed to match qk path")
             return
->>>>>>> origin/master
 
         add_qk = None
         matmul_qk = None
@@ -568,11 +537,7 @@ class FusionAttention(Fusion):
         if is_distill:
             (_, where_qk, matmul_qk, _) = qk_nodes
         elif is_distill_add:
-<<<<<<< HEAD
-            (_, add_qk, where_qk, matmul_qk) = qk_nodes
-=======
             (_, _, where_qk, matmul_qk) = qk_nodes
->>>>>>> origin/master
         else:
             (_, add_qk, _, matmul_qk) = qk_nodes
 
@@ -606,14 +571,9 @@ class FusionAttention(Fusion):
                                                               (['Cast', 'Expand', 'Reshape', 'Equal'], [0, 0, 0, 0])],
                                                              output_name_to_node)
         elif is_distill_add:
-<<<<<<< HEAD
-            mask_nodes = self.model.match_parent_path(where_qk, ['Cast', 'Equal', 'Unsqueeze', 'Unsqueeze'],
-                                                             [0, 0, 0, 0])
-=======
             _, mask_nodes, _ = self.model.match_parent_paths(
                 where_qk, [(['Cast', 'Equal', 'Unsqueeze', 'Unsqueeze'], [0, 0, 0, 0]),
                            (['Equal', 'Unsqueeze', 'Unsqueeze'], [0, 0, 0])], output_name_to_node)
->>>>>>> origin/master
         else:
             _, mask_nodes, _ = self.model.match_parent_paths(
                 add_qk, [(['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'], [None, 0, 1, 0, 0]),
@@ -622,44 +582,17 @@ class FusionAttention(Fusion):
             logger.debug("fuse_attention: failed to match mask path")
             return
 
-<<<<<<< HEAD
-        #following line: matmul_v.input[0] is repeated twice
-        first_step = False
-=======
->>>>>>> origin/master
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_k.input[0] == root_input:
             mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
 
             attention_last_node = reshape_qkv if einsum_node is None else transpose_qkv
 
-<<<<<<< HEAD
-            num_heads_v, hidden_size_v = self.get_num_heads_and_hidden_size(reshape_v)
-            num_heads_q, hidden_size_q = self.get_num_heads_and_hidden_size(reshape_q)
-            num_heads_k, hidden_size_k = self.get_num_heads_and_hidden_size(reshape_k)
-            
-            assert num_heads_v == num_heads_q == num_heads_k
-
-            if num_heads_v <= 0 or hidden_size_v <= 0 or (hidden_size_v % num_heads_v) != 0:
-                logger.debug("fuse_attention: failed to detect num_heads or hidden_size")
-                return
-
-            if first_step == True:
-                print("First step is true")
-                self.update_attention(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v,
-                                                  num_heads_v, hidden_size_v, root_input, attention_last_node.output[0])
-                return
-
-            new_node = self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v,
-                                                  num_heads_v, hidden_size_v, hidden_size_q, hidden_size_k,
-                                                  root_input, attention_last_node.output[0])
-=======
             q_num_heads, q_hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
             # number of heads are same for all the paths, hence to create attention node, we pass the q_num_heads
             # the input_hidden_size represents the input hidden size, this is used as needed but hidden sizes for Q, K are extracted appropriately
             new_node = self.create_attention_node(mask_index, matmul_q, matmul_k, matmul_v, add_q, add_k, add_v,
                                                   q_num_heads, self.hidden_size, root_input,
                                                   attention_last_node.output[0])
->>>>>>> origin/master
             if new_node is None:
                 return
 
@@ -674,13 +607,8 @@ class FusionAttention(Fusion):
                 shape_tensor = helper.make_tensor(name="shape_modified_tensor" + unique_index,
                                                   data_type=TensorProto.INT64,
                                                   dims=[4],
-<<<<<<< HEAD
-                                                  vals=np.int64([0, 0, num_heads_v,
-                                                                 int(hidden_size_v / num_heads_v)]).tobytes(),
-=======
                                                   vals=np.int64([0, 0, q_num_heads,
                                                                  int(q_hidden_size / q_num_heads)]).tobytes(),
->>>>>>> origin/master
                                                   raw=True)
                 self.model.add_initializer(shape_tensor, self.this_graph_name)
                 self.model.add_node(
