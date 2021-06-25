@@ -65,6 +65,8 @@ jobs:
       script: |
          rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
          python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl              
+         # PyTorch CPP extensions installation cannot be called from source-code folder
+         cd /
          python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
          
   - task: PythonScript@0
@@ -82,6 +84,8 @@ jobs:
          rm -rf $(Build.BinariesDirectory)/Debug/onnxruntime $(Build.BinariesDirectory)/Debug/pybind11
          python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
          python3 -m pip install $(Build.BinariesDirectory)/Debug/dist/*.whl
+         # PyTorch CPP extensions installation cannot be called from source-code folder
+         cd /
          python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
          
   - task: PythonScript@0
