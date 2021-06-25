@@ -707,7 +707,9 @@ TEST(GradientCheckerTest, SplitGrad) {
 template <typename T>
 static std::vector<std::vector<T>> GetRandomValuesForMaxPool(const std::vector<TensorInfo>& infos) {
   std::vector<std::vector<T>> datas(infos.size());
-  std::random_device rd;
+  const uint32_t seed = GetTestRandomSeed();
+
+  std::default_random_engine generator{gsl::narrow_cast<decltype(generator)::result_type>(seed)};
   for (size_t i = 0; i < infos.size(); i++) {
     const TensorInfo& info = infos[i];
 
@@ -720,7 +722,7 @@ static std::vector<std::vector<T>> GetRandomValuesForMaxPool(const std::vector<T
     }
 
     // Next, shuffle the sequence.
-    std::shuffle(datas[i].begin(), datas[i].end(), rd);
+    std::shuffle(datas[i].begin(), datas[i].end(), generator);
   }
 
   return datas;
