@@ -100,9 +100,6 @@ jobs:
          sed -i 's/git+http:\/\/github\.com\/onnx\/onnx.*/onnx==1.9.0/' $(Build.BinariesDirectory)/requirements.txt
          python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
          python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
-         # PyTorch CPP extensions installation cannot be called from source-code folder
-         cd /
-         python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
          ln -s /data/models $(Build.BinariesDirectory)
          cd $(Build.BinariesDirectory)/Release
          # Restore file permissions
