@@ -273,6 +273,21 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
     qk_hidden_size = static_cast<size_t>(qkv_hidden_sizes_[0]);
     v_hidden_size = static_cast<size_t>(qkv_hidden_sizes_[2]);
 
+    //
+    //for (size_t qkv = 0; qkv < 3; qkv++) {
+    //  std::cout << "For "<<qkv<< std::endl;
+    //  for (size_t row = 0; row < input_hidden_size; row++) {
+    //    size_t col_start = qkv == 0 ? 0 : (qkv == 1 ? qk_hidden_size : 2 * qk_hidden_size);
+    //    size_t col_end = qkv == 0 ? qk_hidden_size : (qkv == 1 ? 2 * qk_hidden_size : 2 * qk_hidden_size + v_hidden_size);
+    //    for (size_t col = col_start; col < col_end ; col++) {
+    //      std::cout << weights.Data<T>()[row* + col] << ",";
+    //    }
+    //    std::cout << std::endl;
+    //  }
+    //  std::cout << std::endl;
+    //}
+    //
+
     const size_t qk_head_size = qk_hidden_size / num_heads_;
     const size_t v_head_size = v_hidden_size / num_heads_;
 
@@ -282,7 +297,15 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
 
     const auto* weights_data = weights.Data<T>();
 
-    qk_packed_weights_size_ = MlasGemmPackBSize(qk_head_size, qk_hidden_size);
+    for (size_t i = 0; i < 16; i++) {
+      for (size_t j = 0; j < 64; j++) {
+        std::cout << weights_data[i * 64 + j] << ",";
+      }
+      std::cout << std::endl;
+    }
+    std::cout << std::endl;
+
+    qk_packed_weights_size_ = MlasGemmPackBSize(qk_head_size, input_hidden_size);
     if (qk_packed_weights_size_ == 0) {
       return Status::OK();
     }
@@ -290,13 +313,25 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
     size_t loop_len = static_cast<size_t>(2) * num_heads_;
     size_t qk_packed_weights_data_size = qk_packed_weights_size_ * loop_len;  // The same size would be computed by AllocArray() below
     auto* packed_weights_data = static_cast<uint8_t*>(alloc->AllocArray(qk_packed_weights_size_, loop_len));
+    auto* packed_weights_data_float = reinterpret_cast<float*> (packed_weights_data);
     memset(packed_weights_data, 0, qk_packed_weights_data_size);
     qk_packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
 
     for (size_t i = 0; i < loop_len; i++) {
-      MlasGemmPackB(CblasNoTrans, qk_head_size, input_hidden_size, weights_data, 2 * qk_hidden_size + v_hidden_size, packed_weights_data);
-      packed_weights_data += packed_weights_size_;
+      MlasGemmPackB(CblasNoTrans, qk_head_size, input_hidden_size, weights_data, size_t(2) * qk_hidden_size + v_hidden_size, packed_weights_data);
+      packed_weights_data += qk_packed_weights_size_;
       weights_data += qk_head_size;
+    }
+
+    std::cout << "qk packed data :" << packed_weights_data << std::endl;
+    for (size_t i = 0; i < loop_len; i++) {
+      for (size_t j = 0; j < input_hidden_size; j++) {
+        for (size_t k = 0; k < qk_head_size; k++) {
+          std::cout << packed_weights_data_float[i * qk_packed_weights_size_ + j * qk_head_size + k] << ",";
+        }
+        std::cout << std::endl;
+      }
+      std::cout << "printing for:" <<i<< std::endl;
     }
 
     v_packed_weights_size_ = MlasGemmPackBSize(v_head_size, v_hidden_size);
@@ -306,14 +341,23 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
 
     loop_len = static_cast<size_t>(1) * num_heads_;
     size_t v_packed_weights_data_size = v_packed_weights_size_ * loop_len;  // The same size would be computed by AllocArray() below
-    packed_weights_data = static_cast<uint8_t*>(alloc->AllocArray(v_packed_weights_size_, loop_len));
-    memset(packed_weights_data, 0, v_packed_weights_data_size);
-    v_packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
+    auto* packed_weights_data_2 = static_cast<uint8_t*>(alloc->AllocArray(v_packed_weights_size_, loop_len));
+    auto* packed_weights_data_2_float = reinterpret_cast<float*>(packed_weights_data_2);
+    memset(packed_weights_data_2, 0, v_packed_weights_data_size);
+    v_packed_weights_ = BufferUniquePtr(packed_weights_data_2, BufferDeleter(alloc));
 
     for (size_t i = 0; i < loop_len; i++) {
       MlasGemmPackB(CblasNoTrans, v_head_size, input_hidden_size, weights_data, 2 * qk_hidden_size + v_hidden_size, packed_weights_data);
-      packed_weights_data += v_packed_weights_size_;
+      packed_weights_data_2 += v_packed_weights_size_;
       weights_data += v_head_size;
+    }
+
+    std::cout << "V Packed data: " << packed_weights_data << std::endl;
+    for (size_t i = 0; i < loop_len; i++) {
+      for (size_t j = 0; j < v_packed_weights_size_; j++) {
+        std::cout << packed_weights_data_2_float[i * v_packed_weights_size_ + j] << ",";
+      }
+      std::cout << std::endl;
     }
 
     bool share_prepacked_weights = (prepacked_weights != nullptr);
@@ -570,6 +614,24 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
       }
     });
   }
+
+  std::cout << "Q values:" << std::endl;
+  for (int i = 0; i < batch_size * sequence_length * q_hidden_size; i++) {
+    std::cout << Q[i] << ",";
+  }
+  std::cout << std::endl;
+
+  std::cout << "K values:" << std::endl;
+  for (int i = 0; i < batch_size * sequence_length * k_hidden_size; i++) {
+    std::cout << K[i] << ",";
+  }
+  std::cout << std::endl;
+
+  std::cout << "V values:" << std::endl;
+  for (int i = 0; i < batch_size * sequence_length * v_hidden_size; i++) {
+    std::cout << V[i] << ",";
+  }
+  std::cout << std::endl;
 
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q, K, V, mask_index, past, output,
