@@ -391,10 +391,13 @@ if nightly_build:
         # alternatively we may bump up version number right after every release.
         ort_version = version.parse(version_number)
         if isinstance(ort_version, Version):
-            version_number = '{major}.{minor}.{macro}'.format(
-                major=ort_version.major,
-                minor=ort_version.minor + 1,
-                macro=ort_version.micro)
+            # TODO: this is the last time we have to do this!!!
+            # We shall bump up release number right after release cut.
+            if ort_version.major == 1 and ort_version.minor == 8 and ort_version.micro == 0:
+                version_number = '{major}.{minor}.{macro}'.format(
+                    major=ort_version.major,
+                    minor=ort_version.minor + 1,
+                    macro=ort_version.micro)
 
     version_number = version_number + ".dev" + build_suffix
 
