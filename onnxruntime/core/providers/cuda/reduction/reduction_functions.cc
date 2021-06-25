@@ -64,7 +64,7 @@ optional<std::pair<int64_t, int64_t>> GetMinAndMaxContiguousAxes(
   }
 
   // expand axes over surrounding dimensions with value of 1
-  const int64_t min_axis = [&dims, &axes, &is_dim_one]() {
+  const int64_t min_axis = [&dims, &axes, &is_dim_one]() -> int64_t {
     const auto& min_given_axis = axes.front();
     // note that std::reverse_iterator(it) refers to the element at (it-1)
     // it -> reverse it: element offset of -1
