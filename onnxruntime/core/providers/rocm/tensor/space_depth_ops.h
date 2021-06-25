@@ -11,7 +11,7 @@ namespace rocm {
 
 class SpaceToDepth final : public RocmKernel, SpaceDepthBase {
  public:
-  SpaceToDepth(const OpKernelInfo& info) : RocmKernel(info), SpaceDepthBase(info) {
+  explicit SpaceToDepth(const OpKernelInfo& info) : RocmKernel(info), SpaceDepthBase(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -19,7 +19,7 @@ class SpaceToDepth final : public RocmKernel, SpaceDepthBase {
 
 class DepthToSpace final : public RocmKernel, SpaceDepthBase {
  public:
-  DepthToSpace(const OpKernelInfo& info) : RocmKernel(info), SpaceDepthBase(info) {
+  explicit DepthToSpace(const OpKernelInfo& info) : RocmKernel(info), SpaceDepthBase(info) {
     std::string mode;
     // if  mode doesn't exist, then it is the default "DCR" mode
     // (or) it is an opset < 11 model for which the only mode is "DCR" mode

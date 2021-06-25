@@ -9,7 +9,7 @@ namespace onnxruntime {
 
 class SpaceDepthBase {
  protected:
-  SpaceDepthBase(const OpKernelInfo& info) {
+  explicit SpaceDepthBase(const OpKernelInfo& info) {
     ORT_ENFORCE(info.GetAttr("blocksize", &blocksize_).IsOK(),
                 "Attribute blocksize is not set.");
   }
@@ -62,7 +62,7 @@ class SpaceDepthBase {
 
 class SpaceToDepth final : public OpKernel, SpaceDepthBase {
  public:
-  SpaceToDepth(const OpKernelInfo& info) : OpKernel(info), SpaceDepthBase(info) {
+  explicit SpaceToDepth(const OpKernelInfo& info) : OpKernel(info), SpaceDepthBase(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -70,7 +70,7 @@ class SpaceToDepth final : public OpKernel, SpaceDepthBase {
 
 class DepthToSpace final : public OpKernel, SpaceDepthBase {
  public:
-  DepthToSpace(const OpKernelInfo& info) : OpKernel(info), SpaceDepthBase(info) {
+  explicit DepthToSpace(const OpKernelInfo& info) : OpKernel(info), SpaceDepthBase(info) {
     std::string mode;
     // if  mode doesn't exist, then it is the default "DCR" mode
     // (or) it is an opset < 11 model for which the only mode is "DCR" mode

@@ -11,7 +11,7 @@ namespace cuda {
 
 class SpaceToDepth final : public CudaKernel, SpaceDepthBase {
  public:
-  SpaceToDepth(const OpKernelInfo& info) : CudaKernel(info), SpaceDepthBase(info) {
+  explicit SpaceToDepth(const OpKernelInfo& info) : CudaKernel(info), SpaceDepthBase(info) {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -19,7 +19,7 @@ class SpaceToDepth final : public CudaKernel, SpaceDepthBase {
 
 class DepthToSpace final : public CudaKernel, SpaceDepthBase {
  public:
-  DepthToSpace(const OpKernelInfo& info) : CudaKernel(info), SpaceDepthBase(info) {
+  explicit DepthToSpace(const OpKernelInfo& info) : CudaKernel(info), SpaceDepthBase(info) {
     std::string mode;
     // if  mode doesn't exist, then it is the default "DCR" mode
     // (or) it is an opset < 11 model for which the only mode is "DCR" mode
