@@ -1405,6 +1405,15 @@ struct OrtApi {
    * See docs/C_API.md for details.
   */
   ORT_API2_STATUS(RegisterAllocator, _Inout_ OrtEnv* env, _In_ OrtAllocator* allocator);
+
+  /**
+   * Removes any registered allocator for sharing across sessions 
+   * based on provided OrtMemoryInfo.
+   * It is an error if you provide an OrtmemoryInfo not corresponding to any
+   * registered allocators for sharing.
+  */
+  ORT_API2_STATUS(RemoveRegisteredAllocator, _Inout_ OrtEnv* env,
+                  _In_ const OrtMemoryInfo* mem_info);
 };
 
 /*

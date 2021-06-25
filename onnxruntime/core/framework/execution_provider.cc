@@ -53,6 +53,8 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 }
 
 // Returns true if an allocator was found and replaced
+// Optionally user can provide an OrtMemoryInfo to swap in place
+// of an OrtMemoryInfo whose corresponding allocator is being replaced.
 static bool FindAndReplaceAllocator(const OrtMemoryInfo& mem_info,
                                     MemoryInfoSet& mem_info_set,
                                     AllocatorMap& allocators,
@@ -96,13 +98,17 @@ void IExecutionProvider::ReplaceAllocator(AllocatorPtr allocator) {
     // allocator. We don't allow users to use OrtAllocatorType as
     // OrtArenaAllocator for their allocators because we reserve its usage
     // for our internal BFCArena.
-    auto check_info = allocator->Info();
+    // TODO: Should we remove the OrtAllocatorType field from OrtmemoryArena to
+    // avoid such problems and also remove the unintuitive phenomenon of binding
+    // the allocator type info to OrtmemoryInfo (which loosely is just device info) ?
+    const auto& original_info = allocator->Info();
 
-    // If the alloc_type was OrtArenaAllocator already, then it is a no-op,
-    // return back
-    if (check_info.alloc_type == OrtAllocatorType::OrtArenaAllocator) {
+    // If the alloc_type was OrtArenaAllocator already, then it is a no-op
+    if (original_info.alloc_type == OrtAllocatorType::OrtArenaAllocator) {
       return;
     }
+
+    auto check_info = original_info;
 
     // Mutate the alloc_type
     check_info.alloc_type = OrtAllocatorType::OrtArenaAllocator;

@@ -101,6 +101,25 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterAllocator, _Inout_ OrtEnv* env, _In_ OrtAll
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::RemoveRegisteredAllocator, _Inout_ OrtEnv* env,
+                    _In_ const OrtMemoryInfo* mem_info) {
+  using namespace onnxruntime;
+  if (!env) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Env is null");
+  }
+
+  if (!mem_info) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Provided OrtMemoryInfo is null");
+  }
+
+  auto st = env->RemoveRegisteredAllocator(*mem_info);
+
+  if (!st.IsOK()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
+  }
+  return nullptr;
+}
+
 ORT_API(void, OrtApis::ReleaseAllocator, _Frees_ptr_opt_ OrtAllocator* allocator) {
   delete static_cast<onnxruntime::OrtAllocatorImpl*>(allocator);
 }

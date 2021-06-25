@@ -113,3 +113,7 @@ onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocator(const OrtMemoryIn
   auto status = value_->CreateAndRegisterAllocator(mem_info, arena_cfg);
   return status;
 }
+
+onnxruntime::common::Status OrtEnv::RemoveRegisteredAllocator(const OrtMemoryInfo& mem_info) {
+  return value_->RemoveRegisteredAllocator(mem_info);
+}

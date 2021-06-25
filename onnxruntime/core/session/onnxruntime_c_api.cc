@@ -2229,6 +2229,7 @@ static constexpr OrtApi ort_api_1_to_9 = {
 
     // Version 9 - In development, feel free to add/remove/rearrange here
     &OrtApis::RegisterAllocator,
+    &OrtApis::RemoveRegisteredAllocator,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
