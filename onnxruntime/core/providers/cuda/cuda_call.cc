@@ -93,6 +93,7 @@ bool CudaCall(ERRTYPE retCode, const char* exprString, const char* libName, ERRT
       std::unique_ptr<char, decltype(del)> hostname_ptr(nullptr, del);
       size_t hostname_len = 0;
       char* hostname = nullptr;
+      //TODO: avoid using const_cast
       if (-1 == _dupenv_s(&hostname, &hostname_len, "COMPUTERNAME"))
         hostname = const_cast<char*>("?");
       else
