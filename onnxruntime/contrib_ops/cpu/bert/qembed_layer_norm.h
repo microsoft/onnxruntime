@@ -3,28 +3,20 @@
 
 #pragma once
 
+#include "embed_layer_norm.h"
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {
 
-class EmbedLayerNormBase : public OpKernel {
- public:
-  explicit EmbedLayerNormBase(const OpKernelInfo& op_kernel_info);
-
- protected:
-  float epsilon() const;
-
- private:
-  float epsilon_;
-};
-
+// Quantized version of QEmbedLayerNorm.
 template <typename T>
-class EmbedLayerNorm : public EmbedLayerNormBase {
+class QEmbedLayerNorm final : public EmbedLayerNormBase {
  public:
-  explicit EmbedLayerNorm(const OpKernelInfo& op_kernel_info);
+  explicit QEmbedLayerNorm(const OpKernelInfo& op_kernel_info);
   Status Compute(OpKernelContext* context) const override;
 };
+
 }  // namespace contrib
 }  // namespace onnxruntime
