@@ -30,6 +30,7 @@ parameters:
 
 - name: MemTest
   displayName: Run memory test
+  type: boolean
   default: true
 
 jobs: 
