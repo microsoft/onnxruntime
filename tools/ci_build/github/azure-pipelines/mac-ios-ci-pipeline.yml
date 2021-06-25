@@ -2,6 +2,8 @@ jobs:
 - job: iOS_CI_on_Mac
   pool:
     vmImage: 'macOS-10.15'
+  variables:
+    MACOSX_DEPLOYMENT_TARGET: '10.13'
   timeoutInMinutes: 120
   steps:
     - script: |

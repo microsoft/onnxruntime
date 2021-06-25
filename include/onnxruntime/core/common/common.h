@@ -283,4 +283,10 @@ inline std::wstring ToWideString(const std::wstring& s) { return s; }
 inline std::string ToWideString(const std::string& s) { return s; }
 #endif
 
+#if ((__cplusplus >= 201703L) || (defined(_MSVC_LANG) && (_MSVC_LANG >= 201703L)))
+#define ORT_IF_CONSTEXPR if constexpr
+#else
+#define ORT_IF_CONSTEXPR if
+#endif
+
 }  // namespace onnxruntime

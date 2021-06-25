@@ -1976,6 +1976,42 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT,
   ORT_UNUSED_PARAMETER(tensorrt_options);
   return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled.");
 }
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2,
+                    _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled.");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptionsV2** out) {
+  ORT_UNUSED_PARAMETER(out);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
+                    _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys) {
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Inout_ OrtAllocator* allocator,
+                    _Outptr_ char** ptr) {
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+}
+
+ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptionsV2* ptr) {
+  ORT_UNUSED_PARAMETER(ptr);
+}
 #endif
 
 static constexpr OrtApiBase ort_api_base = {
@@ -2022,7 +2058,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
 	In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_8 = {
+static constexpr OrtApi ort_api_1_to_9 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -2228,6 +2264,11 @@ static constexpr OrtApi ort_api_1_to_8 = {
     // End of Version 8 - DO NOT MODIFY ABOVE (see above text for more information)
 
     // Version 9 - In development, feel free to add/remove/rearrange here
+    &OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2,
+    &OrtApis::CreateTensorRTProviderOptions,
+    &OrtApis::UpdateTensorRTProviderOptions,
+    &OrtApis::GetTensorRTProviderOptionsAsString,
+    &OrtApis::ReleaseTensorRTProviderOptions,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
@@ -2236,7 +2277,7 @@ static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "S
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_8;
+    return &ort_api_1_to_9;
 
   fprintf(stderr, "The given version [%u] is not supported, only version 1 to %u is supported in this build.\n",
           version, ORT_API_VERSION);
