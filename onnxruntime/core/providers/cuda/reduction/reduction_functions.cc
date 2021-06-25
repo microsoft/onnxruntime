@@ -60,7 +60,7 @@ optional<std::pair<int64_t, int64_t>> GetMinAndMaxContiguousAxes(
     }
 
     // otherwise, not contiguous
-    return std::nullopt;
+    return nullopt;
   }
 
   // expand axes over surrounding dimensions with value of 1
