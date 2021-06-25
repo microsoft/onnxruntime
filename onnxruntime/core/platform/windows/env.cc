@@ -40,6 +40,7 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 namespace onnxruntime {
 
 namespace {
+
 class WindowsThread : public EnvThread {
  private:
   struct Param {

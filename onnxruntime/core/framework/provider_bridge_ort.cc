@@ -109,9 +109,8 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 
 namespace onnxruntime {
 
-//ProviderHost* g_host{};
-
-ProviderInfo_CUDA* GetProviderInfo_CUDA();
+ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
+ProviderInfo_CUDA& GetProviderInfo_CUDA();
 
 struct TensorShapeProto_Dimension_Iterator_Impl : TensorShapeProto_Dimension_Iterator {
   TensorShapeProto_Dimension_Iterator_Impl(google::protobuf::internal::RepeatedPtrIterator<const onnx::TensorShapeProto_Dimension>&& v) : v_{std::move(v)} {}
@@ -187,15 +186,15 @@ struct ProviderHostImpl : ProviderHost {
   void CPUAllocator__Free(CPUAllocator* p, void* allocation) override { return p->CPUAllocator::Free(allocation); }
 
 #ifdef USE_CUDA
-  std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_CUDA()->CreateCUDAAllocator(device_id, name); }
-  std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_CUDA()->CreateCUDAPinnedAllocator(device_id, name); }
-  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) override { return GetProviderInfo_CUDA()->CreateGPUDataTransfer(stream); }
+  std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_CUDA().CreateCUDAAllocator(device_id, name); }
+  std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_CUDA().CreateCUDAPinnedAllocator(device_id, name); }
+  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) override { return GetProviderInfo_CUDA().CreateGPUDataTransfer(stream); }
 
-  void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override { return GetProviderInfo_CUDA()->cuda__Impl_Cast(stream, input_data, output_data, count); }
-  void cuda__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) override { return GetProviderInfo_CUDA()->cuda__Impl_Cast(stream, input_data, output_data, count); }
+  void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }
+  void cuda__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }
 
-  bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA()->CudaCall_false(retCode, exprString, libName, successCode, msg); }
-  bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA()->CudaCall_true(retCode, exprString, libName, successCode, msg); }
+  bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_false(retCode, exprString, libName, successCode, msg); }
+  bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_true(retCode, exprString, libName, successCode, msg); }
 #endif
 
   std::string GetEnvironmentVar(const std::string& var_name) override { return Env::Default().GetEnvironmentVar(var_name); }
@@ -1003,7 +1002,7 @@ void UnloadSharedProviders() {
 
 // Used by test code
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
-  if (auto* info = onnxruntime::GetProviderInfo_CUDA())
+  if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->CreateCUDAPinnedAllocator(device_id, name);
 
   return nullptr;
@@ -1050,10 +1049,17 @@ ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO() {
   return nullptr;
 }
 
-ProviderInfo_CUDA* GetProviderInfo_CUDA() {
+ProviderInfo_CUDA* TryGetProviderInfo_CUDA() {
   if (auto* provider = s_library_cuda.Get())
     return reinterpret_cast<ProviderInfo_CUDA*>(provider->GetInfo());
-  LOGS_DEFAULT(WARNING) << "GetProviderInfo_CUDA called, returning nullptr";
+
+  return nullptr;
+}
+
+ProviderInfo_CUDA& GetProviderInfo_CUDA() {
+  if(auto* info = TryGetProviderInfo_CUDA())
+    return *info;
+
   ORT_THROW("CUDA Provider not available, can't get interface for it");
 }
 
@@ -1063,13 +1069,13 @@ void CopyGpuToCpu(
     const size_t size,
     const OrtMemoryInfo& dst_location,
     const OrtMemoryInfo& src_location) {
-  if (auto* info = onnxruntime::GetProviderInfo_CUDA())
+  if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->CopyGpuToCpu(dst_ptr, src_ptr, size, dst_location, src_location);
   ORT_THROW("GPU-to-CPU copy is not implemented.");
 }
 
 void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) {
-  if (auto* info = onnxruntime::GetProviderInfo_CUDA())
+  if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->cudaMemcpy_HostToDevice(dst, src, count);
   ORT_THROW("cudaMemcpy_HostToDevice is not implemented.");
 }
@@ -1077,7 +1083,7 @@ void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) {
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 namespace cuda {
 INcclService& INcclService::GetInstance() {
-  return GetProviderInfo_CUDA()->GetINcclService();
+  return GetProviderInfo_CUDA().GetINcclService();
 }
 }  // namespace cuda
 #endif
@@ -1147,17 +1153,17 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessi
 
 ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
   API_IMPL_BEGIN
-  if (auto* info = onnxruntime::GetProviderInfo_CUDA())
+  if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->SetCurrentGpuDeviceId(device_id);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is either not enabled or not available.");
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
   API_IMPL_BEGIN
-  if (auto* info = onnxruntime::GetProviderInfo_CUDA())
+  if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->GetCurrentGpuDeviceId(device_id);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is either not enabled or not available.");
   API_IMPL_END
 }
 
