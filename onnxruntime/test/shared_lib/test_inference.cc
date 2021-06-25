@@ -1337,7 +1337,7 @@ TEST(CApiTest, TestSharedAllocators) {
 
     // Remove the registered shared allocator for part 2 of this test
     // where-in we will register a custom allocator for the same device.
-    api.RemoveRegisteredAllocator(env_ptr, mem_info);
+    ASSERT_TRUE(api.RemoveRegisteredAllocator(env_ptr, mem_info) == nullptr);
   }
 
   // CASE 2: We test registering a custom allocator implementation
@@ -1384,7 +1384,7 @@ TEST(CApiTest, TestSharedAllocators) {
 
     // Remove the registered shared allocator from the global environment
     // (common to all tests) to prevent its accidental usage elsewhere
-    api.RemoveRegisteredAllocator(env_ptr, custom_allocator.Info());
+    ASSERT_TRUE(api.RemoveRegisteredAllocator(env_ptr, custom_allocator.Info()) == nullptr);
 
     // Ensure that the registered custom allocator was indeed used for both sessions
     // We should have seen 2 allocations per session (one for the sole initializer
