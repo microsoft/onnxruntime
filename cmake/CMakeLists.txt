@@ -1022,7 +1022,7 @@ function(onnxruntime_set_compile_flags target_name)
 
       target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
       if(APPLE AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "iOSCross" AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "iOS")
-        target_compile_definitions(${target_name} PRIVATE -Doptional_CONFIG_SELECT_OPTIONAL=optional_OPTIONAL_NONSTD)
+        target_compile_definitions(${target_name} PUBLIC -Doptional_CONFIG_SELECT_OPTIONAL=optional_OPTIONAL_NONSTD)
       endif()
       target_include_directories(${target_name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/external/nsync/public")
     endif()
