@@ -167,7 +167,7 @@ void embedLayerNormalizationShapeInference(InferenceContext& ctx) {
   propagateElemTypeFromInputToOutput(ctx, 2, 0);
   propagateElemTypeFromInputToOutput(ctx, 0, 1);
   if (!hasInputShape(ctx, 0)) {
-    // TODO(kreeger): Return a 3D shape with hidden_size in this case.
+    // TODO(kreeger): In this case update the output to (?, ?, hidden_size).
     return;
   }
 
@@ -185,9 +185,7 @@ void embedLayerNormalizationShapeInference(InferenceContext& ctx) {
     // Ensure that segment_ids has the same shape.
     auto& segment_ids_shape = getInputShape(ctx, 1);
     auto& segment_ids_dims = segment_ids_shape.dim();
-    if (segment_ids_dims.size() != 2 ||
-        !segment_ids_dims[0].has_dim_value() ||
-        !segment_ids_dims[1].has_dim_value()) {
+    if (segment_ids_dims.size() != 2) {
       fail_shape_inference("segment_ids input shall be 2 dimensions");
     }
 
