@@ -460,7 +460,7 @@ void ThreadPoolLite4::ParallelFor(std::ptrdiff_t total, const TensorOpCost& cost
     return;
   }
   std::ptrdiff_t block_size = GetBlockSize(total, cost, num_sub_threads_ + 1);
-  std::atomic<std::ptrdiff_t> iter{0};
+  ORT_ALIGN_TO_AVOID_FALSE_SHARING std::atomic<std::ptrdiff_t> iter{0};
   SchdFn schd_fn = [&]() {
     std::ptrdiff_t i{0};
     while ((i = iter.fetch_add(block_size, std::memory_order_relaxed)) < total) {
@@ -471,7 +471,7 @@ void ThreadPoolLite4::ParallelFor(std::ptrdiff_t total, const TensorOpCost& cost
 }
 
 void ThreadPoolLite4::SimpleParallelFor(std::ptrdiff_t total, const SimpleFn& fn) {
-  std::atomic<std::ptrdiff_t> iter{0};
+  ORT_ALIGN_TO_AVOID_FALSE_SHARING std::atomic<std::ptrdiff_t> iter{0};
   SchdFn schd_fn = [&]() {
     std::ptrdiff_t i{0};
     while ((i = iter.fetch_add(1, std::memory_order_relaxed)) < total) {
