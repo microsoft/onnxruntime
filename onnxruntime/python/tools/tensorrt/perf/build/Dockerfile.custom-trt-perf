@@ -10,7 +10,7 @@ FROM nvidia/cuda:${CUDA_VERSION}-cudnn8-devel-ubuntu${OS_VERSION}
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=master
-ARG TRT_VERSION=7.2.3.4
+ARG TRT=7.2.3.4
 
 RUN apt-get update &&\
     apt-get install -y sudo git bash unattended-upgrades wget
@@ -38,7 +38,8 @@ RUN cd /tmp &&\
     rm /etc/apt/sources.list.d/nvidia-ml.list &&\
     wget https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/nvidia-machine-learning-repo-ubuntu1804_1.0.0-1_amd64.deb &&\
     dpkg -i nvidia-machine-learning-repo-*.deb && apt-get update
-RUN v="${TRT_VERSION%.*}-1+cuda${CUDA_VERSION%.*}" &&\
+
+RUN v="${TRT%.*}-1+cuda${CUDA_VERSION%.*}" &&\
     apt-get install -y libnvinfer7=${v} libnvinfer-plugin7=${v} libnvparsers7=${v} libnvonnxparsers7=${v} libnvinfer-dev=${v} libnvinfer-plugin-dev=${v} libnvparsers-dev=${v} python3-libnvinfer=${v} &&\
     apt-mark hold libnvinfer7 libnvinfer-plugin7 libnvparsers7 libnvonnxparsers7 libnvinfer-dev libnvinfer-plugin-dev libnvparsers-dev python3-libnvinfer
 
@@ -49,14 +50,14 @@ RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXR
     cp onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt &&\
     cp onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt &&\
     cd onnxruntime &&\
-    add_args="" &&\
-    trt=${TRT_VERSION%.*.*} &&\
-    if [ ${trt} != 7.2 ]; then CUR_PWD=$(pwd) &&\ 
+    trt_v=${TRT%.*.*} &&\
+    if [ ${trt_v} != 7.2 ]; then add_args="--skip_submodule_sync" &&\
+    CUR_PWD=$(pwd) &&\ 
     cd cmake/external/onnx-tensorrt/ &&\
     git remote update &&\
     git checkout ${trt} &&\
-    cd ${CUR_PWD} &&\
-    add_args="--skip_submodule_sync"; fi &&\
+    cd ${CUR_PWD}; fi &&\
+    echo ${add_args} &&\
     /bin/sh build.sh --parallel --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests ${add_args} &&\
     pip install /code/onnxruntime/build/Linux/Release/dist/*.whl &&\
     cd .. &&\
