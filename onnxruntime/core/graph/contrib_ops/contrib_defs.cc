@@ -188,11 +188,6 @@ void embedLayerNormalizationShapeInference(InferenceContext& ctx) {
     if (segment_ids_dims.size() != 2) {
       fail_shape_inference("segment_ids input shall be 2 dimensions");
     }
-
-    if (input_ids_dims[0] != segment_ids_dims[0] ||
-        input_ids_dims[1] != segment_ids_dims[1]) {
-      fail_shape_inference("input_ids and segment_ids input shall hav the same shape");
-    }
   }
 
   // get hidden_size from the last dimension of embedding
