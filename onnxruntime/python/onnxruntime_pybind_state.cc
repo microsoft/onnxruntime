@@ -1617,7 +1617,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   addOrtValueMethods(m);
   addIoBindingMethods(m);
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#if !defined(__APPLE__) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
   Ort::SessionOptions tmp_options;
   if (!InitProvidersSharedLibrary()) {
     const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
