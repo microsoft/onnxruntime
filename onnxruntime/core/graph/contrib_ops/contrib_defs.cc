@@ -1,17 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "core/graph/contrib_ops/contrib_defs.h"
 
 #include <cmath>
+#if !defined(ORT_MINIMAL_BUILD)
+#include "onnx/defs/schema.h"
+#else
+#include "onnx/defs/data_type_utils.h"
+#endif
+#include "onnx/defs/shape_inference.h"
+#include "onnx/defs/tensor_proto_util.h"
 
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
-#include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
-#include "core/graph/onnx_protobuf.h"
 #include "core/graph/op.h"
-#include "onnx/defs/shape_inference.h"
-#include "onnx/defs/tensor_proto_util.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/graph/signal_ops/signal_defs.h"
 #include "core/graph/contrib_ops/onnx_function_util.h"

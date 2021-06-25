@@ -205,7 +205,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "d10b27fe37736d2944630ecd7557cefa95cf87c9",
+          "commitHash": "1f4c0311cda3403999b702c996898af5707973a9",
           "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
         },
         "comments": "git submodule at cmake/external/eigen"
@@ -425,7 +425,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "30cad267151fa8f1b17da8c1ef0571da6da9a8f1",
+          "commitHash": "4244cd1cb492fa1d10986ec67f862964c073f844",
           "repositoryUrl": "https://github.com/google/re2.git"
         },
         "comments": "git submodule at cmake/external/re2"

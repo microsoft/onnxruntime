@@ -22,18 +22,10 @@
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
-#else
-#pragma warning(push)
-#pragma warning(disable : 4267)
-#pragma warning(disable : 4127)
-#pragma warning(disable : 4805)
-#pragma warning(disable : 6255)
 #endif
 #include "Eigen/src/Core/arch/Default/Half.h"
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
-#else
-#pragma warning(pop)
 #endif
 using onnxruntime::concurrency::ThreadPool;
 
