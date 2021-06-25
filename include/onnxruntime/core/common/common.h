@@ -284,9 +284,9 @@ inline std::string ToWideString(const std::string& s) { return s; }
 #endif
 
 #if ((__cplusplus >= 201703L) || (defined(_MSVC_LANG) && (_MSVC_LANG >= 201703L)))
-#define IF_CONSTEXPR if constexpr
+#define ORT_IF_CONSTEXPR if constexpr
 #else
-#define IF_CONSTEXPR if
+#define ORT_IF_CONSTEXPR if
 #endif
 
 }  // namespace onnxruntime
