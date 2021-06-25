@@ -12,6 +12,9 @@ try:
 except ImportError:
     # Some pipelines do not contain ORTModule
     pass
+except EnvironmentError:
+    # Some pipelines do not contain ORTModule
+    pass
 
 def assert_model_outputs(output_a, output_b, verbose=False, rtol=1e-7, atol=0):
     r"""Asserts whether output_a and output_b difference is within specified tolerance
