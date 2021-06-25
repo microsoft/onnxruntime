@@ -15,7 +15,7 @@ jobs:
     displayName: 'Docker build'
     inputs:
       script: |
-        docker build --pull -t onnxruntime-ubuntu --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.ubuntu .
+        docker build --pull -t onnxruntime-ubuntu --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=20.04 --build-arg PYTHON_VERSION=3.6 -f Dockerfile.ubuntu .
       workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
   - task: CmdLine@2
