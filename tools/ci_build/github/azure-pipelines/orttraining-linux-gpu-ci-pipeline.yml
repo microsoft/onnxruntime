@@ -7,25 +7,29 @@ jobs:
     JobName: 'Onnxruntime_Linux_GPU_Training'
     SubmoduleCheckoutMode: 'recursive'
     RunDockerBuildArgs: >
-      -o ubuntu20.04 -p 3.8 -d gpu -r $(Build.BinariesDirectory)
+      -o ubuntu20.04 -d gpu
+      -t onnxruntime_orttraining_ortmodule_tests_image
+      -e
       -x "
       --enable_training
       --config $(buildConfig)
       --build_wheel
       --enable_nvtx_profile
-      --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=70
+      --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=70 onnxruntime_ENABLE_TRAINING_TORCH_INTEROP=ON
       "
     DoNugetPack: 'false'
+    RunInjectedPipeline: 'true'
+    InjectedPipeline: 'orttraining-linux-gpu-ortmodule-test-ci-pipeline.yml'
+    DockerImageTag: 'onnxruntime_orttraining_ortmodule_tests_image'
+    BuildConfig: $(buildConfig)
     ArtifactName: 'drop-linux'
-    TimeoutInMinutes: 120
+    TimeoutInMinutes: 140
     # Enable unreleased onnx opsets in CI builds
     # This facilitates testing the implementation for the new opsets
     AllowReleasedOpsetOnly: '0'
     Strategy: 
       maxParallel: 2
       matrix:
-        Debug:
-          buildConfig: Debug
         Release:
           buildConfig: Release
 

@@ -133,8 +133,8 @@ std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_view
 std::string Shape2String(const std::vector<uint32_t>& shape);
 
 // Check the given input is an initializer tensor
-bool CheckIsInitializerTensor(const InitializedTensorSet& initializers, const Node& node,
-                              size_t index, const char* input_name) ORT_MUST_USE_RESULT;
+bool CheckIsInitializer(const InitializedTensorSet& initializers, const Node& node,
+                        size_t index, const char* input_name) ORT_MUST_USE_RESULT;
 
 }  // namespace nnapi
 }  // namespace onnxruntime

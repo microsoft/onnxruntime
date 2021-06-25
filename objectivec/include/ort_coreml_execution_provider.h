@@ -43,7 +43,7 @@ BOOL ORTIsCoreMLExecutionProviderAvailable(void);
  * decreasing priority.
  *
  * @param options The CoreML execution provider configuration options.
- * @param[out] error Optional error information set if an error occurs.
+ * @param error Optional error information set if an error occurs.
  * @return Whether the provider was enabled successfully.
  */
 - (BOOL)appendCoreMLExecutionProviderWithOptions:(ORTCoreMLExecutionProviderOptions*)options
