@@ -24,10 +24,18 @@ namespace contrib {
 
 REGISTER_KERNEL_TYPED(float)
 
-template <typename T>
-EmbedLayerNorm<T>::EmbedLayerNorm(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
+EmbedLayerNormBase::EmbedLayerNormBase(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
   ORT_ENFORCE(epsilon_ >= 0);
+}
+
+float EmbedLayerNormBase::epsilon() const {
+  return epsilon_;
+}
+
+template <typename T>
+EmbedLayerNorm<T>::EmbedLayerNorm(const OpKernelInfo& op_kernel_info)
+    : EmbedLayerNormBase(op_kernel_info) {
 }
 
 template <typename T>
@@ -112,7 +120,7 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
         y[i] = a;
         sum += a * a;
       }
-      T e = sqrt(sum / hidden_size + static_cast<T>(epsilon_));
+      T e = sqrt(sum / hidden_size + static_cast<T>(epsilon()));
       for (int i = 0; i < hidden_size; i++) {
         y[i] = y[i] / e * gamma_data[i] + beta_data[i];
       }
@@ -125,11 +133,14 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
 
   // Calculate mask
   if (nullptr != mask) {
+    // TODO: Consider summing the values in the mask and measure performance.
     const int32_t* mask_data = mask->template Data<int32_t>();
+    int32_t* mask_index_data = mask_index->template MutableData<int32_t>();
     for (int b = 0; b < batch_size; b++) {
-      mask_index->template MutableData<int32_t>()[b] = static_cast<int32_t>(std::count_if(mask_data + (b * sequence_length),
-                                                                                          mask_data + (b * sequence_length) + sequence_length,
-                                                                                          [](int v) { return v == 1; }));
+      mask_index_data[b] =
+          static_cast<int32_t>(std::count_if(mask_data + (static_cast<int64_t>(b) * sequence_length),
+                                             mask_data + (static_cast<int64_t>(b) * sequence_length) + sequence_length,
+                                             [](int v) { return v == 1; }));
     }
   } else {
     memset(mask_index->template MutableData<int32_t>(), 0, batch_size * sizeof(int32_t));

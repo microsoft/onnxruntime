@@ -61,6 +61,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.Unique">com.microsoft.Unique</a>
   * <a href="#com.microsoft.WordConvEmbedding">com.microsoft.WordConvEmbedding</a>
   * <sub>experimental</sub> <a href="#com.microsoft.IsAllFinite">com.microsoft.IsAllFinite</a>
+  * <sub>experimental</sub> <a href="#com.microsoft.QEmbedLayerNormalization">com.microsoft.QEmbedLayerNormalization</a>
 
 ## com.microsoft
 ### <a name="com.microsoft.Attention"></a><a name="com.microsoft.attention">**com.microsoft.Attention**</a>
@@ -2902,6 +2903,86 @@ No versioning maintained for experimental ops.
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>T</tt> : tensor(bool)</dt>
 <dd>Constrain the output to a boolean tensor.</dd>
+</dl>
+
+
+### <sub>experimental</sub> <a name="com.microsoft.QEmbedLayerNormalization"></a><a name="com.microsoft.qembedlayernormalization">**com.microsoft.QEmbedLayerNormalization**</a>
+
+  QEmbedLayerNormalization is the quantized fusion of embedding layer in BERT model, with optional mask processing.
+  The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
+  and segment_emedding; the embeddings are added then applied layer normalization using gamma and beta tensors. The input_ids
+  and segment_ids remain int32. All embeddings, gamma, and beta tensors are converted to int8/uint8. The last input mask is optional.
+  If mask is provided, mask index (that is position of first 0 in mask, or number of words will be calculated.
+
+#### Version
+
+No versioning maintained for experimental ops.
+#### Attributes
+
+<dl>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>The epsilon value to use to avoid division by zero.</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>input_ids</tt> : T1</dt>
+<dd>2D words IDs with shape (batch_size, sequence_length)</dd>
+<dt><tt>segment_ids</tt> (optional) : T1</dt>
+<dd>2D segment IDs with shape (batch_size, sequence_length)</dd>
+<dt><tt>word_embedding_quant</tt> : T2</dt>
+<dd>2D with shape (,hidden_size)</dd>
+<dt><tt>position_embedding_quant</tt> : T2</dt>
+<dd>2D with shape (, hidden_size)</dd>
+<dt><tt>segment_embedding</tt> (optional) : T2</dt>
+<dd>2D with shape (, hidden_size)</dd>
+<dt><tt>gamma_quant</tt> : T2</dt>
+<dd>1D gamma tensor for layer normalization with shape (hidden_size)</dd>
+<dt><tt>beta_quant</tt> : T2</dt>
+<dd>1D beta tensor for layer normalization  with shape (hidden_size)</dd>
+<dt><tt>mask</tt> (optional) : T1</dt>
+<dd>Mask</dd>
+<dt><tt>word_embedding_scale</tt> : T</dt>
+<dd>Scale for word embeddings</dd>
+<dt><tt>position_embedding_scale</tt> : T</dt>
+<dd>Scale for position embeddings</dd>
+<dt><tt>segment_embedding_scale</tt> (optional) : T</dt>
+<dd>Scale for segment embeddings</dd>
+<dt><tt>gamma_scale</tt> : T</dt>
+<dd>Scale for 1D gamma tensor</dd>
+<dt><tt>beta_scale</tt> : T</dt>
+<dd>Scale for 1D beta tensor</dd>
+<dt><tt>word_embedding_zero_point</tt> : T2</dt>
+<dd>Zero point for word embeddings</dd>
+<dt><tt>position_embedding_zero_point</tt> : T2</dt>
+<dd>Zero point for position embeddings</dd>
+<dt><tt>segment_embedding_zero_point</tt> (optional) : T2</dt>
+<dd>Zero Point for segment embeddings</dd>
+<dt><tt>gamma_zero_point</tt> : T2</dt>
+<dd>Zero Point for 1D gamma tensor</dd>
+<dt><tt>beta_zero_point</tt> : T2</dt>
+<dd>Zero Point for 1D beta tensor</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>layernorm_out</tt> : T</dt>
+<dd>LayerNorm Output</dd>
+<dt><tt>mask_index_out</tt> : T1</dt>
+<dd>Mask Index Output</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(int32)</dt>
+<dd>Constrain mask index to integer types</dd>
+<dt><tt>T2</tt> : tensor(int8), tensor(uint8)</dt>
+<dd>Constrain input and output types to int8 tensors.</dd>
+<dt><tt>T</tt> : tensor(float)</dt>
+<dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
 
 

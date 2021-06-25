@@ -166,6 +166,102 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
     return;
   }
 }
+
+void embedLayerNormalizationShapeInference(InferenceContext& ctx) {
+  propagateElemTypeFromInputToOutput(ctx, 2, 0);
+  propagateElemTypeFromInputToOutput(ctx, 0, 1);
+  if (!hasInputShape(ctx, 0)) {
+    // TODO(kreeger): In this case update the output to (?, ?, hidden_size).
+    return;
+  }
+
+  auto& input_ids_shape = getInputShape(ctx, 0);
+  auto& input_ids_dims = input_ids_shape.dim();
+
+  // Note that both batch size and sequence length could be symbolic.
+  // So we only check dimension size here.
+  if (input_ids_dims.size() != 2) {
+    fail_shape_inference("input_ids shall be 2 dimensions");
+  }
+
+  bool has_segment = hasInputShape(ctx, 1);
+  if (has_segment) {
+    // Ensure that segment_ids has the same shape.
+    auto& segment_ids_shape = getInputShape(ctx, 1);
+    auto& segment_ids_dims = segment_ids_shape.dim();
+    if (segment_ids_dims.size() != 2) {
+      fail_shape_inference("segment_ids input shall be 2 dimensions");
+    }
+  }
+
+  // get hidden_size from the last dimension of embedding
+  auto& word_embedding_shape = getInputShape(ctx, 2);
+  auto& word_embedding_dims = word_embedding_shape.dim();
+  if (word_embedding_dims.size() != 2 ||
+      !word_embedding_dims[1].has_dim_value() ||
+      word_embedding_shape.dim(1).dim_value() <= 0) {
+    fail_shape_inference("word_embedding should have 2 dimensions and dimension size is known.");
+  }
+  int64_t hidden_size = word_embedding_shape.dim(1).dim_value();
+
+  // Ensure that all embeddings + the gamma/beta tensors have the same hidden_size:
+  auto& position_embedding_shape = getInputShape(ctx, 3);
+  auto& position_embedding_dims = position_embedding_shape.dim();
+  if (position_embedding_dims.size() != 2 ||
+      !position_embedding_dims[1].has_dim_value() ||
+      position_embedding_shape.dim(1).dim_value() != hidden_size) {
+    fail_shape_inference(
+        "position_embedding should have 2 dimensions, dimension size known, "
+        "and same hidden size as word_embedding.");
+  }
+
+  if (has_segment) {
+    auto& segment_embedding_shape = getInputShape(ctx, 4);
+    auto& segment_embedding_dims = segment_embedding_shape.dim();
+    if (segment_embedding_dims.size() != 2 ||
+        !segment_embedding_dims[1].has_dim_value() ||
+        segment_embedding_shape.dim(1).dim_value() != hidden_size) {
+      fail_shape_inference(
+          "segment_embedding should have 2 dimensions, dimension size known, "
+          "and same hidden size as word_embedding.");
+    }
+  }
+
+  auto& gamma_shape = getInputShape(ctx, 5);
+  auto& gamma_dims = gamma_shape.dim();
+  if (gamma_dims.size() != 1 ||
+      !gamma_dims[0].has_dim_value() ||
+      gamma_shape.dim(0).dim_value() != hidden_size) {
+    fail_shape_inference(
+        "gamma should have 2 dimension, dimension size known, "
+        "and same hidden size as word_embedding.");
+  }
+  
+  auto& beta_shape = getInputShape(ctx, 6);
+  auto& beta_dims = gamma_shape.dim();
+  if (beta_dims.size() != 1 ||
+      !beta_dims[0].has_dim_value() ||
+      beta_shape.dim(0).dim_value() != hidden_size) {
+    fail_shape_inference(
+        "beta should have 1 dimension, dimension size known, "
+        "and same hidden size as word_embedding.");
+  }
+
+  // input shape is (batch_size, sequence_length), output shape is (batch_size, sequence_length, hidden_size)
+  ONNX_NAMESPACE::TensorShapeProto output_shape;
+  *output_shape.add_dim() = input_ids_dims[0];
+  *output_shape.add_dim() = input_ids_dims[1];
+
+  output_shape.add_dim();
+  output_shape.mutable_dim(2)->set_dim_value(hidden_size);
+
+  updateOutputShape(ctx, 0, output_shape);
+
+  // mask_index shape is (batch_size)
+  ONNX_NAMESPACE::TensorShapeProto mask_index_shape;
+  *mask_index_shape.add_dim() = input_ids_dims[0];
+  updateOutputShape(ctx, 1, mask_index_shape);
+}
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
@@ -505,46 +601,45 @@ will be calculated.)DOC";
       .Output(1, "mask_index", "1D mask_index tensor with shape (batch_size)", "T1")
       .TypeConstraint("T1", {"tensor(int32)"}, "Constrain input and output integer tensors types")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output float tensors types.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 2, 0);
-        propagateElemTypeFromInputToOutput(ctx, 0, 1);
-        if (!hasInputShape(ctx, 0))
-          return;
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::embedLayerNormalizationShapeInference);
 
-        auto& input_ids_shape = getInputShape(ctx, 0);
-        auto& input_ids_dims = input_ids_shape.dim();
+  static const char* QEmbedLayerNormalization_ver1_doc = R"DOC(
+QEmbedLayerNormalization is the quantized fusion of embedding layer in BERT model, with optional mask processing.
+The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
+and segment_emedding; the embeddings are added then applied layer normalization using gamma and beta tensors. The input_ids
+and segment_ids remain int32. All embeddings, gamma, and beta tensors are converted to int8/uint8. The last input mask is optional.
+If mask is provided, mask index (that is position of first 0 in mask, or number of words will be calculated.)DOC";
 
-        // Note that both batch size and sequence length could be symbolic.
-        // So we only check dimension size here.
-        if (input_ids_dims.size() != 2) {
-          fail_shape_inference("Inputs 0 shall be 2 dimensions");
-        }
-
-        // get hidden_size from the last dimension of embedding
-        auto& word_embedding_shape = getInputShape(ctx, 3);
-        auto& word_embedding_dims = word_embedding_shape.dim();
-        if (word_embedding_dims.size() != 2 ||
-            !word_embedding_dims[1].has_dim_value() ||
-            word_embedding_shape.dim(1).dim_value() <= 0) {
-          fail_shape_inference("word_embedding should have 2 dimensions and dimension size is known.");
-        }
-        int64_t hidden_size = word_embedding_shape.dim(1).dim_value();
-
-        // input shape is (batch_size, sequence_length), output shape is (batch_size, sequence_length, hidden_size)
-        ONNX_NAMESPACE::TensorShapeProto output_shape;
-        for (auto& dim : input_ids_dims) {
-          *output_shape.add_dim() = dim;
-        }
-        output_shape.add_dim();
-        output_shape.mutable_dim(2)->set_dim_value(hidden_size);
-
-        updateOutputShape(ctx, 0, output_shape);
-
-        // mask_index shape is (batch_size)
-        ONNX_NAMESPACE::TensorShapeProto mask_index_shape;
-        *mask_index_shape.add_dim() = input_ids_dims[0];
-        updateOutputShape(ctx, 1, mask_index_shape);
-      });
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QEmbedLayerNormalization)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc(QEmbedLayerNormalization_ver1_doc)
+      .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
+      .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
+      .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
+      .Input(2, "word_embedding_quant", "2D with shape (,hidden_size)", "T2")
+      .Input(3, "position_embedding_quant", "2D with shape (, hidden_size)", "T2")
+      .Input(4, "segment_embedding", "2D with shape (, hidden_size)", "T2", OpSchema::Optional)
+      .Input(5, "gamma_quant", "1D gamma tensor for layer normalization with shape (hidden_size)", "T2")
+      .Input(6, "beta_quant", "1D beta tensor for layer normalization  with shape (hidden_size)", "T2")
+      .Input(7, "mask", "Mask", "T1", OpSchema::Optional)
+      .Input(8, "word_embedding_scale", "Scale for word embeddings", "T")
+      .Input(9, "position_embedding_scale", "Scale for position embeddings", "T")
+      .Input(10, "segment_embedding_scale", "Scale for segment embeddings", "T", OpSchema::Optional)
+      .Input(11, "gamma_scale", "Scale for 1D gamma tensor", "T")
+      .Input(12, "beta_scale", "Scale for 1D beta tensor", "T")
+      .Input(13, "word_embedding_zero_point", "Zero point for word embeddings", "T2")
+      .Input(14, "position_embedding_zero_point", "Zero point for position embeddings", "T2")
+      .Input(15, "segment_embedding_zero_point", "Zero Point for segment embeddings", "T2", OpSchema::Optional)
+      .Input(16, "gamma_zero_point", "Zero Point for 1D gamma tensor", "T2")
+      .Input(17, "beta_zero_point", "Zero Point for 1D beta tensor", "T2")
+      .Output(0, "layernorm_out", "LayerNorm Output", "T")
+      .Output(1, "mask_index_out", "Mask Index Output", "T1")
+      .TypeConstraint("T1", {"tensor(int32)"}, "Constrain mask index to integer types")
+      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float32 tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::embedLayerNormalizationShapeInference);
 
   static const char* FastGelu_ver1_doc = R"DOC(
 GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.035677*X*X*X)) with an optional input of bias that will be added to X before GELU.)DOC";
