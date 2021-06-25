@@ -53,7 +53,7 @@ class TestOpMaxPool(unittest.TestCase):
 
         graph = helper.make_graph([conv_node, identity_node, maxpool_node], 'TestOpQuantizerMaxPool_test_model',
                                   [input_tensor], [identity_out, output_tensor], initializer=initializers)
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 12)])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 14)])
         model.ir_version = 7 # use stable onnx ir version
         onnx.save(model, output_model_path)
 

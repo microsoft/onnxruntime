@@ -48,7 +48,15 @@ esac
 done
 
 EXIT_CODE=1
-PYTHON_VER=${PYTHON_VER:=3.6}
+if [ $BUILD_OS = "ubuntu18.04" ]; then
+   DEFAULT_PYTHON_VER="3.6"
+elif [ $BUILD_OS = "ubuntu20.04" ]; then
+   DEFAULT_PYTHON_VER="3.8"
+else
+   DEFAULT_PYTHON_VER="3.6"   
+fi
+		
+PYTHON_VER=${PYTHON_VER:=$DEFAULT_PYTHON_VER}
 echo "bo=$BUILD_OS bd=$BUILD_DEVICE bdir=$BUILD_DIR pv=$PYTHON_VER bex=$BUILD_EXTR_PAR"
 
 GET_DOCKER_IMAGE_CMD="${SOURCE_ROOT}/tools/ci_build/get_docker_image.py"
