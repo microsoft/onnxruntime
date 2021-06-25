@@ -52,6 +52,10 @@ jobs:
   timeoutInMinutes: 3000 
       
   steps:
+    - ${{ if eq(parameters.MemTest, true) }}:
+      - script: '$(run_conda) && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d $(mem_test_docker_image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
+        displayName: 'Run memory test'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
 
     - ${{ if eq(parameters.BuildORT, true) }}:
 
@@ -72,10 +76,6 @@ jobs:
         env:
           LD_LIBRARY_PATH : "/home/hcsuser/TensorRT-7.2.2.3/lib"
 
-    - ${{ if eq(parameters.MemTest, true) }}:
-      - script: '$(run_conda) && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d $(mem_test_docker_image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
-        displayName: 'Run memory test'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
   
     - ${{ if not(eq(length(parameters.ModelGroups), 0)) }}:
       - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
