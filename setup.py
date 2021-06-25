@@ -274,7 +274,8 @@ if enable_training:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
                      'onnxruntime.training.optim',
-                     'onnxruntime.training.ortmodule'])
+                     'onnxruntime.training.ortmodule',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions'])
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
     # stable:
