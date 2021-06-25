@@ -82,7 +82,7 @@ public class OnnxruntimeModuleTest {
           }
           inputTensorMap.putArray("dims", dimsArray);
 
-          inputTensorMap.putString("type", TensorHelper.TensorTypeFloat);
+          inputTensorMap.putString("type", TensorHelper.JsTensorTypeFloat);
 
           ByteBuffer buffer = ByteBuffer.allocate(5 * Float.BYTES).order(ByteOrder.nativeOrder());
           FloatBuffer floatBuffer = buffer.asFloatBuffer();
@@ -109,7 +109,7 @@ public class OnnxruntimeModuleTest {
           for (int i = 0; i < 2; ++i) {
             Assert.assertEquals(outputMap.getArray("dims").getInt(i), dims[i]);
           }
-          Assert.assertEquals(outputMap.getString("type"), TensorHelper.TensorTypeFloat);
+          Assert.assertEquals(outputMap.getString("type"), TensorHelper.JsTensorTypeFloat);
           String dataEncoded = outputMap.getString("data");
           FloatBuffer buffer = ByteBuffer.wrap(Base64.decode(dataEncoded, Base64.DEFAULT))
                                    .order(ByteOrder.nativeOrder())

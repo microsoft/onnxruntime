@@ -3,9 +3,8 @@
 # Licensed under the MIT License.
 
 LocalNuGetRepo=$1
-BuildDir=$3
-export CurrentOnnxRuntimeVersion=$4
-IsMacOS=${5:-false}
+export CurrentOnnxRuntimeVersion=$2
+IsMacOS=${3:-false}
 PACKAGENAME=${PACKAGENAME:-Microsoft.ML.OnnxRuntime}
 RunTestCsharp=${RunTestCsharp:-true}
 RunTestNative=${RunTestNative:-true}
@@ -29,7 +28,11 @@ if [ $RunTestCsharp = "true" ]; then
     exit 1
   fi
 
-  dotnet test $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --verbosity detailed
+  if [ $PACKAGENAME = "Microsoft.ML.OnnxRuntime.Gpu" ]; then
+    dotnet test -p:DefineConstants=USE_CUDA $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --verbosity detailed
+  else
+    dotnet test $BUILD_SOURCESDIRECTORY/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore --verbosity detailed
+  fi
   if [ $? -ne 0 ]; then
     echo "Failed to build or execute the end-to-end test"
     exit 1

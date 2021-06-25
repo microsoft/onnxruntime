@@ -539,8 +539,8 @@ std::string Shape2String(const std::vector<uint32_t>& shape) {
   return os.str();
 }
 
-bool CheckIsInitializerTensor(const InitializedTensorSet& initializers, const Node& node,
-                              size_t input_idx, const char* input_name) {
+bool CheckIsInitializer(const InitializedTensorSet& initializers, const Node& node,
+                        size_t input_idx, const char* input_name) {
   if (!Contains(initializers, node.InputDefs()[input_idx]->Name())) {
     LOGS_DEFAULT(VERBOSE) << input_name << " of " << node.OpType() << " must be an initializer tensor";
     return false;

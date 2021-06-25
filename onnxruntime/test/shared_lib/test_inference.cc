@@ -162,7 +162,9 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
 static constexpr PATH_TYPE MATMUL_MODEL_URI = TSTR("testdata/matmul_1.onnx");
+#ifndef ORT_NO_RTTI
 static constexpr PATH_TYPE SEQUENCE_MODEL_URI = TSTR("testdata/sequence_length.onnx");
+#endif
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/custom_op_library/custom_op_test.onnx");
 static constexpr PATH_TYPE OVERRIDABLE_INITIALIZER_MODEL_URI = TSTR("testdata/overridable_initializer.onnx");
@@ -1561,5 +1563,64 @@ TEST(CApiTest, ConfigureCudaArenaAndDemonstrateMemoryArenaShrinkage) {
   // To also trigger a cpu memory arena shrinkage along with the gpu arena shrinkage, use the following-
   // (Memory arena for the CPU should not have been disabled)
   //  run_option.AddConfigEntry(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "cpu:0;gpu:0");
+}
+#endif
+
+#ifdef USE_TENSORRT
+
+// This test uses CreateTensorRTProviderOptions/UpdateTensorRTProviderOptions APIs to configure and create a TensorRT Execution Provider
+TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
+  const auto& api = Ort::GetApi();
+  OrtTensorRTProviderOptionsV2* trt_options;
+  OrtAllocator* allocator;
+  char* trt_options_str;
+  ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
+  std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
+
+  const char* engine_cache_path = "./trt_engine_folder";
+
+  std::vector<const char*> keys{"device_id", "trt_fp16_enable", "trt_int8_enable", "trt_engine_cache_enable", "trt_engine_cache_path"};
+
+  std::vector<const char*> values{"0", "1", "0", "1", engine_cache_path};
+
+  ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), 5) == nullptr);
+
+  ASSERT_TRUE(api.GetAllocatorWithDefaultOptions(&allocator) == nullptr);
+  ASSERT_TRUE(api.GetTensorRTProviderOptionsAsString(rel_trt_options.get(), allocator, &trt_options_str) == nullptr);
+  std::string s(trt_options_str);
+  ASSERT_TRUE(s.find(engine_cache_path) != std::string::npos);
+  ASSERT_TRUE(api.AllocatorFree(allocator, (void*)trt_options_str) == nullptr);
+
+  Ort::SessionOptions session_options;
+  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(static_cast<OrtSessionOptions*>(session_options), rel_trt_options.get()) == nullptr);
+
+  // simple inference test
+  // prepare inputs
+  std::vector<Input> inputs(1);
+  Input& input = inputs.back();
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+  std::basic_string<ORTCHAR_T> model_uri = MODEL_URI;
+
+  // if session creation passes, model loads fine
+  Ort::Session session(*ort_env, model_uri.c_str(), session_options);
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+
+  //without preallocated output tensor
+  RunSession(default_allocator.get(),
+             session,
+             inputs,
+             "Y",
+             expected_dims_y,
+             expected_values_y,
+             nullptr);
+
+  struct stat buffer;
+  ASSERT_TRUE(stat(engine_cache_path, &buffer) == 0);
 }
 #endif

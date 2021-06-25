@@ -21,6 +21,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [Atanh](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Atanh) |  |
 | [AveragePool](https://github.com/onnx/onnx/blob/master/docs/Operators.md#AveragePool) | [7-9](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#AveragePool-7), [10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#AveragePool-10) |
 | [BatchNormalization](https://github.com/onnx/onnx/blob/master/docs/Operators.md#BatchNormalization) | [7-8](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-7), [9-13](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-9), [14+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-14) |
+| [Bernoulli](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Bernoulli) |  |
 | [BitShift](https://github.com/onnx/onnx/blob/master/docs/Operators.md#BitShift) |  |
 | [Cast](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Cast) |  |
 | [Ceil](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Ceil) | [6-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Ceil-6), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Ceil-13) |
@@ -101,7 +102,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [Or](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Or) | [7+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Or-7) |
 | [PRelu](https://github.com/onnx/onnx/blob/master/docs/Operators.md#PRelu) | [7-8](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#PRelu-7), [9+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#PRelu-9) |
 | [Pad](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Pad) | [2-10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pad-2) |
-| [Pow](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Pow) | [7-11](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pow-7), [12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pow-12), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pow-13) |
+| [Pow](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Pow) | [7-11](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pow-7), [12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pow-12), [13-14](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pow-13), [15+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Pow-15) |
 | [QLinearConv](https://github.com/onnx/onnx/blob/master/docs/Operators.md#QLinearConv) |  |
 | [QLinearMatMul](https://github.com/onnx/onnx/blob/master/docs/Operators.md#QLinearMatMul) |  |
 | [QuantizeLinear](https://github.com/onnx/onnx/blob/master/docs/Operators.md#QuantizeLinear) |  |

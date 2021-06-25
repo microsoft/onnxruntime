@@ -22,7 +22,7 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-ENV PATH /code/cmake-3.20.3-Linux-x86_64/bin:$PATH
+ENV PATH /code/cmake-3.20.3-linux-x86_64/bin:$PATH
 ENV LD_LIBRARY_PATH /opt/xilinx/xrt/lib:$LD_LIBRARY_PATH
 
 WORKDIR /code
