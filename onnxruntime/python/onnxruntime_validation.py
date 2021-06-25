@@ -66,7 +66,7 @@ def validate_build_package_info():
     except ImportError:
         has_ortmodule = False
     except EnvironmentError:
-        # ORTModule is but not ready to run yet
+        # ORTModule is present but not ready to run yet
         has_ortmodule = True
         pass
     except Exception as e:

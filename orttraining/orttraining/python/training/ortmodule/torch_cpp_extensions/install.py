@@ -53,7 +53,7 @@ def build_torch_cpp_extensions():
         sys.exit(ret_code)
 
     ############################################################################
-    # Copy Pytorch CPP Extenions to the local onnxruntime package folder
+    # Copy Pytorch CPP Extensions to the local onnxruntime package folder
     ############################################################################
     torch_cpp_exts = glob(os.path.join(cpp_ext_dir,
                                        'build',

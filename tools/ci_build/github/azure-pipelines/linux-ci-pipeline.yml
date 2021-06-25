@@ -65,6 +65,7 @@ jobs:
       script: |
          rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
          python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl              
+         python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
          
   - task: PythonScript@0
     displayName: 'Run Release unit tests'
@@ -80,7 +81,8 @@ jobs:
       script: |
          rm -rf $(Build.BinariesDirectory)/Debug/onnxruntime $(Build.BinariesDirectory)/Debug/pybind11
          python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
-         python3 -m pip install $(Build.BinariesDirectory)/Debug/dist/*.whl              
+         python3 -m pip install $(Build.BinariesDirectory)/Debug/dist/*.whl
+         python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install
          
   - task: PythonScript@0
     displayName: 'Run Debug unit tests'
