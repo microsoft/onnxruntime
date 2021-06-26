@@ -60,10 +60,10 @@ static void PreCalcForBilinearInterpolate(const int64_t height, const int64_t wi
     for (int64_t pw = 0; pw < pooled_width; pw++) {
       for (int64_t iy = 0; iy < iy_upper; iy++) {
         const T yy = roi_start_h + ph * bin_size_h +
-                     static_cast<T>(iy + .5f) * bin_size_h / static_cast<T>(roi_bin_grid_h) - 0.5f;  // e.g., 0.5, 1.5
+                     static_cast<T>(iy + .5f) * bin_size_h / static_cast<T>(roi_bin_grid_h);  // e.g., 0.5, 1.5
         for (int64_t ix = 0; ix < ix_upper; ix++) {
           const T xx =
-              roi_start_w + pw * bin_size_w + static_cast<T>(ix + .5f) * bin_size_w / static_cast<T>(roi_bin_grid_w) - 0.5f;
+              roi_start_w + pw * bin_size_w + static_cast<T>(ix + .5f) * bin_size_w / static_cast<T>(roi_bin_grid_w);
 
           T x = xx;
           T y = yy;
