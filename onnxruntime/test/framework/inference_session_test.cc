@@ -66,6 +66,11 @@ struct KernelRegistryAndStatus {
 };
 }  // namespace
 namespace onnxruntime {
+
+#ifdef USE_CUDA
+ProviderInfo_CUDA& GetProviderInfo_CUDA();
+#endif
+
 class FuseAdd : public OpKernel {
  public:
   explicit FuseAdd(const OpKernelInfo& info) : OpKernel(info) {
@@ -354,7 +359,8 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
                                                                   shape,
                                                                   cpu_allocator);
 #ifdef USE_CUDA
-    cudaStream_t stream = static_cast<cudaStream_t>(static_cast<const onnxruntime::CUDAExecutionProvider*>(TestCudaExecutionProvider())->GetComputeStream());
+    cudaStream_t stream = static_cast<cudaStream_t>(gpu_provider->GetComputeStream());
+    st = GetProviderInfo_CUDA().CreateGPUDataTransfer(stream)->CopyTensor(rtensor, *cpu_tensor.get(), 0);
 #elif USE_ROCM
     hipStream_t stream = static_cast<hipStream_t>(static_cast<const onnxruntime::ROCMExecutionProvider*>(TestRocmExecutionProvider())->GetComputeStream());
 #endif
