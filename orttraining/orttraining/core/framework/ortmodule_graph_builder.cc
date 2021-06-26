@@ -89,6 +89,10 @@ Status OrtModuleGraphBuilder::Build(const std::vector<std::vector<int64_t>>* inp
 
   ORT_RETURN_IF_ERROR(BuildGradientGraph(x_node_arg_names));
 
+  if (config_.enable_caching) {
+    GetFrontierTensors();
+  }
+
   // Handle user outputs and output grads.
   HandleOutputsAndGrads();
 
@@ -204,6 +208,21 @@ Status OrtModuleGraphBuilder::BuildGradientGraph(const std::unordered_set<std::s
   ORT_RETURN_IF_ERROR(grad_graph_builder.Build());
 
   return Status::OK();
+}
+
+void OrtModuleGraphBuilder::GetFrontierTensors() {
+  const Graph& graph = gradient_model_->MainGraph();
+  for (const auto& param : graph_info_.initializer_names_to_train) {
+    std::vector<const Node*> consumer_nodes = graph.GetConsumerNodes(param);
+    // Initial support is limited to caching Cast output. This can
+    // be extended to accomodate more ops whose result depends only
+    // on the weight tensor which is a WIP.
+    for (const Node* node : consumer_nodes) {
+      if (node != nullptr && node->OpType() == "Cast") {
+        graph_info_.frontier_node_arg_map[param] = node->OutputDefs()[0]->Name();
+      }
+    }
+  }
 }
 
 void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
@@ -334,7 +353,7 @@ void OrtModuleGraphBuilder::FindModuleOutputNeededForBackward() {
   gradient_graph.Resolve();
   GraphViewer gradient_graph_viewer(gradient_graph);
   const auto& exec_order = gradient_graph_viewer.GetNodesInTopologicalOrder();
-  
+
   size_t yield_node_order = 0;
   bool yield_node_found = false;
   std::unordered_map<NodeIndex, size_t> id_to_exec_order;

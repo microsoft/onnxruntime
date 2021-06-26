@@ -1134,7 +1134,10 @@ gsl_DISABLE_MSVC_WARNINGS(26410 26415 26418 26472 26439 26440 26473 26481 26482 
   struct is_same_signedness : public std::integral_constant<bool, std::is_signed<T>::value == std::is_signed<U>::value> {};
   }  // namespace detail
 #endif
-
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4127)
+#endif
   template <class T, class U>
   gsl_api inline T narrow(U u) {
     T t = narrow_cast<T>(u);
@@ -1162,7 +1165,9 @@ gsl_DISABLE_MSVC_WARNINGS(26410 26415 26418 26472 26439 26440 26473 26481 26482 
     }
     return t;
   }
-
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
   //
   // at() - Bounds-checked way of accessing static arrays, std::array, std::vector.
   //

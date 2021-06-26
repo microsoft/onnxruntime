@@ -488,7 +488,9 @@ def test_model_without_device():
     # ORTModule and PyTorch does not move model to where user input is hosted
     with pytest.raises(RuntimeError) as type_error:
         model(x)
-    assert "Tensor for argument #1 'self' is on CPU, but expected them to be on GPU (while checking arguments for addmm)" in str(type_error.value)
+    assert \
+        ("Tensor for argument #1 'self' is on CPU, but expected them to be on GPU (while checking arguments for addmm)" in str(type_error.value)) \
+        or ("Expected all tensors to be on the same device, but found at least two devices, cpu and cuda:0!" in str(type_error.value))
 
 def test_model_and_input_without_device():
     N, D_in, H, D_out = 64, 784, 500, 10
