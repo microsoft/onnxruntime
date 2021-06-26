@@ -76,6 +76,12 @@ function(AddTest)
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4505>")
       endif()
     endif()
+    if (MSVC)
+      # warning C6326: Potential comparison of a constant with another constant.
+      # Lot of such things came from gtest
+      target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd6326>"
+                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
+    endif()
     target_compile_options(${_UT_TARGET} PRIVATE ${disabled_warnings})
   else()
     target_compile_options(${_UT_TARGET} PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
@@ -544,6 +550,8 @@ onnxruntime_add_static_library(onnxruntime_test_utils ${onnxruntime_test_utils_s
 if(MSVC)
   target_compile_options(onnxruntime_test_utils PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
+  target_compile_options(onnxruntime_test_utils PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd6326>"
+                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
 else()
   target_compile_definitions(onnxruntime_test_utils PUBLIC -DNSYNC_ATOMIC_CPP11)
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
@@ -1062,6 +1070,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   if(MSVC)
     target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
+    target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd6326>"
+                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
   endif()
   if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
     set_target_properties(onnxruntime_mlas_test PROPERTIES

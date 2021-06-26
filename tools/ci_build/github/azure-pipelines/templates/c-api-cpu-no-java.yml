@@ -101,6 +101,8 @@ jobs:
   pool: 
     vmImage: 'macOS-10.15'
   timeoutInMinutes:  120
+  variables:
+    MACOSX_DEPLOYMENT_TARGET: '10.13'
   steps:
     - template: set-version-number-variables-step.yml
 
@@ -117,7 +119,6 @@ jobs:
         export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
         sudo python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
         sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
-        brew install libomp
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py ${{ parameters.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
       displayName: 'Build and Test MacOS'
     - template: c-api-artifacts-package-and-publish-steps-posix.yml

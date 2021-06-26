@@ -288,13 +288,36 @@ if enable_training:
 
     # we want put default training packages to pypi. pypi does not accept package with a local version.
     if not default_training_package_device:
+        def get_torch_version():
+            try:
+                import torch
+                torch_version = torch.__version__
+                torch_version_plus_pos = torch_version.find('+')
+                if torch_version_plus_pos != -1:
+                    torch_version = torch_version[:torch_version_plus_pos]
+                torch_version = torch_version.replace('.', '')
+                return torch_version
+            except ImportError as error:
+                print("Error importing torch to get torch version:")
+                print(error)
+                return None
+
+        torch_version = get_torch_version()
         if cuda_version:
             # removing '.' to make local Cuda version number in the same form as Pytorch.
-            local_version = '+cu' + cuda_version.replace('.', '')
+            if torch_version:
+                local_version = '+torch' + torch_version + '.'\
+                    + 'cu' + cuda_version.replace('.', '')
+            else:
+                local_version = '+cu' + cuda_version.replace('.', '')
         if rocm_version:
             # removing '.' to make Cuda version number in the same form as Pytorch.
             rocm_version = rocm_version.replace('.', '')
-            local_version = '+rocm' + rocm_version
+            if torch_version:
+                local_version = '+torch' + torch_version + '.'\
+                    + 'rocm' + rocm_version
+            else:
+                local_version = '+rocm' + rocm_version
 
 
 package_data = {}
@@ -368,10 +391,13 @@ if nightly_build:
         # alternatively we may bump up version number right after every release.
         ort_version = version.parse(version_number)
         if isinstance(ort_version, Version):
-            version_number = '{major}.{minor}.{macro}'.format(
-                major=ort_version.major,
-                minor=ort_version.minor + 1,
-                macro=ort_version.micro)
+            # TODO: this is the last time we have to do this!!!
+            # We shall bump up release number right after release cut.
+            if ort_version.major == 1 and ort_version.minor == 8 and ort_version.micro == 0:
+                version_number = '{major}.{minor}.{macro}'.format(
+                    major=ort_version.major,
+                    minor=ort_version.minor + 1,
+                    macro=ort_version.micro)
 
     version_number = version_number + ".dev" + build_suffix
 
@@ -379,7 +405,9 @@ if local_version:
     version_number = version_number + local_version
 
 if wheel_name_suffix:
-    package_name = "{}-{}".format(package_name, wheel_name_suffix)
+    if not (enable_training and wheel_name_suffix == 'gpu'):
+        # for training packages, local version is used to indicate device types
+        package_name = "{}-{}".format(package_name, wheel_name_suffix)
 
 cmd_classes = {}
 if bdist_wheel is not None:
