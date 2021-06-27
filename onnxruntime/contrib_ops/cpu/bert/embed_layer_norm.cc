@@ -139,7 +139,9 @@ Status EmbedLayerNorm<T>::Compute(OpKernelContext* context) const {
       int32_t cur_sum = 0;
       const int32_t* cur_mask_data = mask_data + (static_cast<int64_t>(b) * sequence_length);
       for (int s = 0; s < sequence_length; ++s) {
-        cur_sum += cur_mask_data[s];
+        if (cur_mask_data[s] == 1) {
+          cur_sum += cur_mask_data[s];
+        }
       }
       mask_index_data[b] = cur_sum;
     }
