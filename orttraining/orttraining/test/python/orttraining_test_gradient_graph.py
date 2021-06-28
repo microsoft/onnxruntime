@@ -39,9 +39,8 @@ class GradientGraphBuilderTest(unittest.TestCase):
                 'input': {0: 'batch_size', },
                 'output': {0: 'batch_size', },
             })
-        # FIXME TypeError: __init__(): incompatible constructor arguments. The following argument types are supported:
-        # 1. onnxruntime.capi.onnxruntime_pybind11_state.GradientGraphBuilder(arg0: str, arg1: Set[str], arg2: Set[str], arg3: str)
-        builder = GradientGraphBuilder(path, {'output'}, {'input'}, 'loss')
+        # FIXME Gets a Segmentation fault.
+        builder = GradientGraphBuilder(str(path), {'output'}, {'input'}, 'loss')
         builder.build()
         # TODO Maybe it should be .ort?
         gradient_graph_path = directory_path/'gradient_graph_model.onnx'
