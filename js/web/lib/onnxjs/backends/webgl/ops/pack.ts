@@ -9,7 +9,7 @@ import { getCoordsDataType } from '../utils';
 
 import { getChannels } from './packing-utils';
 
-export const creatPackProgramInfo = (handler: WebGLInferenceHandler,
+export const createPackProgramInfo = (handler: WebGLInferenceHandler,
   input: Tensor): ProgramInfo => {
   if (!handler.session.pack) {
     throw new Error('Pack kernel should only be called on pack texture.');

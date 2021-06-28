@@ -8,7 +8,7 @@ import {ProgramInfo, TextureType} from '../types';
 import {getCoordsDataType} from '../utils';
 import {getChannels, unpackFromChannel} from './packing-utils';
 
-export const creatUnpackProgramInfo = (handler: WebGLInferenceHandler,
+export const createUnpackProgramInfo = (handler: WebGLInferenceHandler,
   input: Tensor): ProgramInfo => {
   const rank = input.dims.length;
 

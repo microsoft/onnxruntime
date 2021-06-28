@@ -5,10 +5,10 @@ import {InferenceHandler} from '../../backend';
 import {Logger} from '../../instrument';
 import {Tensor} from '../../tensor';
 import {ShapeUtil} from '../../util';
-import {creatPackProgramInfo} from './ops/pack';
+import {createPackProgramInfo} from './ops/pack';
 
 import {WebGLUint8Encode} from './ops/uint8-encode';
-import {creatUnpackProgramInfo} from './ops/unpack';
+import {createUnpackProgramInfo} from './ops/unpack';
 import {WebGLSessionHandler} from './session-handler';
 import {Encoder} from './texture-data-encoder';
 import {WidthHeightPrefs} from './texture-layout-strategy';
@@ -204,7 +204,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
    * @param data the actual data to upload
    * @param tensor the tensor to bind. tensor's data is ignored.
    */
-  private createTextureDataFromLayoutBindTensor(
+  createTextureDataFromLayoutBindTensor(
       layout: TextureLayout, dataType: Tensor.DataType, data: Tensor.NumberType, tensor: Tensor): TextureData {
     return this.createTextureData(layout, dataType, data, tensor, Encoder.Usage.UploadOnly);
   }
@@ -248,7 +248,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
         this.session.getTextureData(tensorId, isPacked) :
         isPacked ? this.packedTextureDataCache.get(tensorId) : this.unpackedTextureDataCache.get(tensorId);
   }
-  private setTextureData(tensorId: Tensor.Id, td: TextureData, isPacked = false): void {
+  setTextureData(tensorId: Tensor.Id, td: TextureData, isPacked = false): void {
     if (this.session.isInitializer(tensorId)) {
       this.session.setTextureData(tensorId, td, isPacked);
     } else {
@@ -283,7 +283,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
   /**
    * Create a TextureLayout object from shape.
    */
-  private createTextureLayoutFromShape(
+  createTextureLayoutFromShape(
       shape: readonly number[], channels: 1|4 = 1, unpackedShape?: readonly number[],
       prefs?: WidthHeightPrefs): TextureLayout {
     const isPacked = !!(prefs && prefs.isPacked);
@@ -351,12 +351,12 @@ export class WebGLInferenceHandler implements InferenceHandler {
   pack(input: TextureData): TextureData {
 
     //const runData = op.createRunData(this, artifact.programInfo, [input.tensor]);
-    const outputTextureData = this.executeProgram(creatPackProgramInfo(this, input.tensor), inputs);  // TODO: fix after changes done for pack/unpack
+    const outputTextureData = this.executeProgram(createPackProgramInfo(this, input.tensor), inputs);  // TODO: fix after changes done for pack/unpack
     return outputTextureData;
   }
 
   unpack(input: TextureData): TextureData {
-    const outputTextureData = this.executeProgram(creatUnpackProgramInfo(this, input.tensor), inputs);  // TODO: fix after changes done for pack/unpack
+    const outputTextureData = this.executeProgram(createUnpackProgramInfo(this, input.tensor), inputs);  // TODO: fix after changes done for pack/unpack
     return outputTextureData;
   }
 }

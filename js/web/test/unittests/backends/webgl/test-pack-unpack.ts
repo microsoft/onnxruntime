@@ -5,8 +5,8 @@ import {expect} from 'chai';
 
 import {Backend, InferenceHandler, resolveBackend, SessionHandler} from '../../../../lib/onnxjs/backend';
 import {WebGLInferenceHandler} from '../../../../lib/onnxjs/backends/webgl/inference-handler';
-import {WebGLPack} from '../../../../lib/onnxjs/backends/webgl/ops/pack';
-import {WebGLUnpack} from '../../../../lib/onnxjs/backends/webgl/ops/unpack';
+import {createPackProgramInfo} from '../../../../lib/onnxjs/backends/webgl/ops/pack';
+import {createUnpackProgramInfo} from '../../../../lib/onnxjs/backends/webgl/ops/unpack';
 import {Profiler} from '../../../../lib/onnxjs/instrument';
 import {Tensor} from '../../../../lib/onnxjs/tensor';
 import {ShapeUtil} from '../../../../lib/onnxjs/util';
@@ -200,7 +200,7 @@ describe('#UnitTest# - pack - Tensor pack', () => {
   before('Initialize Context', async () => {
     const profiler = Profiler.create();
     backend = await resolveBackend('webgl');
-    sessionhandler = backend.createSessionHandler({profiler});
+    sessionhandler = backend!.createSessionHandler({profiler});
     inferenceHandler = sessionhandler.createInferenceHandler();
   });
   const testDataSet = getTestData();
@@ -218,8 +218,6 @@ describe('#UnitTest# - pack - Tensor pack', () => {
       describe('Test pack', () => {});
       it(`Test pack kernal ${textureLayout[w]} ${JSON.stringify(testData)}`, () => {
         const webglInferenceHandler = inferenceHandler as WebGLInferenceHandler;
-
-        const op = new WebGLPack();
 
         const elementCount = testData.elementCount;
         const inputData = createAscendingArray(elementCount);
@@ -243,17 +241,14 @@ describe('#UnitTest# - pack - Tensor pack', () => {
         }
 
         // compile shader code
-        const programInfo = op.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, [inputTensor]);
-        const artifact = webglInferenceHandler.session.programManager.build(programInfo);
-        webglInferenceHandler.session.programManager.setArtifact(op, artifact);
+        //const programInfo = op.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, [inputTensor]);
+        const programInfo = createPackProgramInfo(inferenceHandler! as WebGLInferenceHandler, inputTensor);
 
         // run kernal and get output
-        const runData = op.createRunData(webglInferenceHandler, artifact.programInfo, [inputTensor]);
-        webglInferenceHandler.session.programManager.run(artifact, runData);
-        const resultTexture = runData.outputTextureData.texture;
+        const resultTextureData = webglInferenceHandler.executeProgram(programInfo, inputTensor);
         const gl = webglInferenceHandler.session.textureManager.glContext.gl;
         const resultDataBuffer =
-            createArrayFromTexture(gl, resultTexture, outputTextureShape[1], outputTextureShape[0]);
+            createArrayFromTexture(gl, resultTextureData.texture, outputTextureShape[1], outputTextureShape[0]);
 
         expect(resultDataBuffer).to.not.equal(null);
 
@@ -270,7 +265,7 @@ describe('#UnitTest# - unpack - Tensor unpack', () => {
   before('Initialize Context', async () => {
     const profiler = Profiler.create();
     backend = await resolveBackend('webgl');
-    sessionhandler = backend.createSessionHandler({profiler});
+    sessionhandler = backend!.createSessionHandler({profiler});
     inferenceHandler = sessionhandler.createInferenceHandler();
   });
   const testDataSet = getTestData(false);
@@ -280,8 +275,6 @@ describe('#UnitTest# - unpack - Tensor unpack', () => {
     describe(`Test unpack ${JSON.stringify(testData)}`, () => {});
     it(`Test unpack kernal ${testData.inputShape}`, () => {
       const webglInferenceHandler = inferenceHandler as WebGLInferenceHandler;
-
-      const op = new WebGLUnpack();
 
       const elementCount = testData.elementCount;
       const inputTensorShape = testData.inputShape;
@@ -316,15 +309,11 @@ describe('#UnitTest# - unpack - Tensor unpack', () => {
       webglInferenceHandler.setTextureData(inputTensor.dataId, textureData, true);
 
       // compile shader code
-      const programInfo = op.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, [inputTensor]);
-
-      const artifact = webglInferenceHandler.session.programManager.build(programInfo);
-      webglInferenceHandler.session.programManager.setArtifact(op, artifact);
+      const programInfo = createUnpackProgramInfo(inferenceHandler! as WebGLInferenceHandler, inputTensor);
 
       // run kernal and get output
-      const runData = op.createRunData(webglInferenceHandler, artifact.programInfo, [inputTensor]);
-      webglInferenceHandler.session.programManager.run(artifact, runData);
-      const result = runData.outputTextureData.tensor.data;
+      const resultTextureData = webglInferenceHandler.executeProgram(programInfo, inputTensor);
+      const result = resultTextureData.tensor.data;
 
       const resultDataBuffer = createArrayFromTexture(gl, webglTexture!, inputTextureShape[0], inputTextureShape[1]);
 
@@ -347,7 +336,7 @@ describe('#UnitTest# - pack-unpack round trip', () => {
   before('Initialize Context', async () => {
     const profiler = Profiler.create();
     backend = await resolveBackend('webgl');
-    sessionhandler = backend.createSessionHandler({profiler});
+    sessionhandler = backend!.createSessionHandler({profiler});
     inferenceHandler = sessionhandler.createInferenceHandler();
   });
   const testDataSet = getTestData();
@@ -358,8 +347,6 @@ describe('#UnitTest# - pack-unpack round trip', () => {
     it(`Test pack-unpack round trip ${JSON.stringify(testData)}`, () => {
       const webglInferenceHandler = inferenceHandler as WebGLInferenceHandler;
 
-      const packOp = new WebGLPack();
-
       const elementCount = testData.elementCount;
       const inputData = createAscendingArray(elementCount);
       const inputTensorShape = testData.inputShape;
@@ -367,31 +354,23 @@ describe('#UnitTest# - pack-unpack round trip', () => {
       const inputTensor = new Tensor(inputTensorShape, 'float32', undefined, undefined, inputData);
 
       // compile pack shader code
-      let programInfo = packOp.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, [inputTensor]);
-      let artifact = webglInferenceHandler.session.programManager.build(programInfo);
-      webglInferenceHandler.session.programManager.setArtifact(packOp, artifact);
-
-      // run pack kernal and get output
-      let runData = packOp.createRunData(webglInferenceHandler, artifact.programInfo, [inputTensor]);
-      webglInferenceHandler.session.programManager.run(artifact, runData);
+      let packProgramInfo = createPackProgramInfo(inferenceHandler! as WebGLInferenceHandler, inputTensor);
+      const packResultData = webglInferenceHandler.executeProgram(packProgramInfo, inputTensor);
 
       // create unpack kernel
-      const unpackOp = new WebGLUnpack();
 
       // compile unpack shader code
-      programInfo =
-          unpackOp.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, [runData.outputTextureData.tensor]);
-      artifact = webglInferenceHandler.session.programManager.build(programInfo);
-      webglInferenceHandler.session.programManager.setArtifact(unpackOp, artifact);
+      const unpackProgramInfo =
+          createPackProgramInfo(inferenceHandler! as WebGLInferenceHandler, packResultData.tensor);
 
       // run unpack kernal and get output
-      runData = unpackOp.createRunData(webglInferenceHandler, artifact.programInfo, [runData.outputTextureData.tensor]);
-      webglInferenceHandler.session.programManager.run(artifact, runData);
+      const unpackResultData = webglInferenceHandler.executeProgram(unpackProgramInfo, inputTensor);
 
-      const resultData = runData.outputTextureData.tensor.data;
+
+      const resultData = unpackResultData.tensor.data;
       expect(resultData).to.not.equal(null);
       expect(resultData).to.have.lengthOf(testData.elementCount);
-      expect(runData.outputTextureData.tensor.data).to.deep.equal(inputTensor.data);
+      expect(unpackResultData.tensor.data).to.deep.equal(inputTensor.data);
     });
   }
 });
