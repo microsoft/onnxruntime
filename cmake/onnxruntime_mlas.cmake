@@ -202,6 +202,29 @@ else()
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/power/SgemmKernelPower.cpp
     )
+    check_cxx_compiler_flag("-mcpu=power10" HAS_POWER10)
+    if(HAS_POWER10)
+      set(CMAKE_REQUIRED_FLAGS "-mcpu=power10")
+      check_cxx_source_compiles("
+        #include <altivec.h>
+        int main() {
+          __vector_quad acc0;
+          __builtin_mma_xxsetaccz (&acc0);
+          return 0;
+        }"
+        COMPILES_P10
+      )
+      if(COMPILES_P10)
+        set(mlas_platform_srcs_power10
+          ${ONNXRUNTIME_ROOT}/core/mlas/lib/power/SgemmKernelPOWER10.cpp
+        )
+        set_source_files_properties(${mlas_platform_srcs_power10} PROPERTIES COMPILE_FLAGS "-O2 -mcpu=power10")
+        set(mlas_platform_srcs
+          ${mlas_platform_srcs}
+          ${mlas_platform_srcs_power10}
+        )
+      endif()
+    endif()
   elseif(X86)
     enable_language(ASM)
 
