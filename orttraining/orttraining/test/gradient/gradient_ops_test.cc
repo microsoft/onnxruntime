@@ -1405,12 +1405,10 @@ TEST(GradientCheckerTest, UnsqueezeGrad) {
 // TODO: Reshape missing
 
 #ifdef USE_CUDA
-// TODO fix flaky test
-// failing random seed: 4133818171
-TEST(GradientCheckerTest, DISABLED_BatchNormalizationGrad) {
+TEST(GradientCheckerTest, BatchNormalizationGrad) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
-  OpDef op_def{"BatchNormalization"};
+  OpDef op_def{"BatchNormInternal", kMSDomain, 1};
   float error_tolerance = 1e-2f;
   float epsilon = 1e-05f;
   float momentum = 0.1f;
