@@ -72,7 +72,7 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
     return false;
   }
 
-  // Case where argmax has multiple succeeding nodes is not supported
+  // Case where argmax has multiple succeeding nodes(cast node among them) is not supported
   if (node.GetOutputEdgesCount() > 1) {
     // TODO: Check if the succeeding nodes contains cast
     // If Yes: Then not supported
@@ -80,7 +80,7 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
     for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
       const auto& op_type = it->GetNode().OpType();
       if (op_type == "Cast") {
-        LOGS(logger, VERBOSE) << "Multiple nodes consuming ArgMax's output";
+        LOGS(logger, VERBOSE) << "ArgMax has multiple output nodes including Cast";
         return false;
       }
     }
