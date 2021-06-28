@@ -183,30 +183,30 @@ function glslBuiltinBinary(fname: string): GlslValueFunction {
   return {body, name, type: FunctionType.ValueBased};
 }
 
-const createBinaryProgramInfo = (
-    handler: WebGLInferenceHandler,
-    inputs: Tensor[],
-    glslFunc: GlslValueFunction,
-    ): ProgramInfo => {
-  const textureType = handler.session.pack ? TextureType.packed : TextureType.unpacked;
-  const isBroadcast = !ShapeUtil.areEqual(inputs[0].dims, inputs[1].dims);
+const createBinaryProgramInfo =
+    (handler: WebGLInferenceHandler, inputs: Tensor[], glslFunc: GlslValueFunction,
+     outputTensorType: Tensor.DataType = inputs[0].type): ProgramInfo => {
+      const textureType = handler.session.pack ? TextureType.packed : TextureType.unpacked;
+      const isBroadcast = !ShapeUtil.areEqual(inputs[0].dims, inputs[1].dims);
+      let outputShape = inputs[0].dims;
 
-  // TODO fix bcast in packed mode.
-  const usePackedTexture = !isBroadcast && handler.session.pack;
+      // TODO fix bcast in packed mode.
+      const usePackedTexture = !isBroadcast && handler.session.pack;
 
-  if (isBroadcast) {
-    const outputShape = BroadcastUtil.calcShape(inputs[0].dims, inputs[1].dims, false);
-    if (!outputShape) {
-      throw new Error('Can\'t perform binary op on the given tensors');
-    }
-    const outputRank = outputShape.length;
-    const aRank = inputs[0].dims.length !== 0 ? inputs[0].dims.length : 1;
-    const bRank = inputs[1].dims.length !== 0 ? inputs[1].dims.length : 1;
-    const aBcast = inputs[0].dims.length !== 0 ? 'bcastIndices_A(indices, aindices);' : 'aindices[0] = 0;';
-    const bBcast = inputs[1].dims.length !== 0 ? 'bcastIndices_B(indices, bindices);' : 'bindices[0] = 0;';
+      if (isBroadcast) {
+        const calculatedShape = BroadcastUtil.calcShape(inputs[0].dims, inputs[1].dims, false);
+        if (!calculatedShape) {
+          throw new Error('Can\'t perform binary op on the given tensors');
+        }
+        outputShape = calculatedShape;
+        const outputRank = outputShape.length;
+        const aRank = inputs[0].dims.length !== 0 ? inputs[0].dims.length : 1;
+        const bRank = inputs[1].dims.length !== 0 ? inputs[1].dims.length : 1;
+        const aBcast = inputs[0].dims.length !== 0 ? 'bcastIndices_A(indices, aindices);' : 'aindices[0] = 0;';
+        const bBcast = inputs[1].dims.length !== 0 ? 'bcastIndices_B(indices, bindices);' : 'bindices[0] = 0;';
 
-    // TODO: for packed tensors, we need to implement logic to caculate textCoords for broadcast tensor
-    const shaderSource = `
+        // TODO: for packed tensors, we need to implement logic to caculate textCoords for broadcast tensor
+        const shaderSource = `
       ${glslFunc.body}
       float process(int indices[${outputRank}]) {
         int aindices[${aRank}];
@@ -216,16 +216,16 @@ const createBinaryProgramInfo = (
         return ${glslFunc.name}(_A(aindices), _B(bindices));
     }`;
 
-    return {
-      inputTypes: [textureType],
-      inputNames: ['A', 'B'],
-      output: getOutputShape(),  // TODO: implement this
-      shaderSource,
-      hasMain: false
-    };
-  }
-  const glsl = getGlsl(handler.session.backend.glContext.version);
-  const shaderSource = `
+        return {
+          inputTypes: [textureType],
+          inputNames: ['A', 'B'],
+          output: {dims: outputShape, type: outputTensorType, textureType},
+          shaderSource,
+          hasMain: false
+        };
+      }
+      const glsl = getGlsl(handler.session.backend.glContext.version);
+      const shaderSource = `
     ${glslFunc.body}
     void main() {
       vec4 v1 = ${glsl.texture2D}(A, TexCoords);
@@ -235,48 +235,48 @@ const createBinaryProgramInfo = (
     }
     `;
 
-  if (usePackedTexture) {
-    return {
-      inputTypes: [textureType],
-      inputNames: ['A', 'B'],
-      output: getOutputShape(),  // TODO: implement this
-      shaderSource,
-      hasMain: true
+      if (usePackedTexture) {
+        return {
+          inputTypes: [textureType],
+          inputNames: ['A', 'B'],
+          output: {dims: inputs[0].dims, type: inputs[0].type, textureType},
+          shaderSource,
+          hasMain: true
+        };
+      } else {
+        return {
+          inputTypes: [textureType],
+          inputNames: ['A', 'B'],
+          output: {dims: inputs[0].dims, type: inputs[0].type, textureType},
+          shaderSource,
+          hasMain: true
+        };
+      }
     };
-  } else {
-    return {
-      inputTypes: [textureType],
-      inputNames: ['A', 'B'],
-      output: {dims: inputs[0].dims, type: inputs[0].type, textureType},
-      shaderSource,
-      hasMain: true
-    };
-  }
-};
 
 export const add = (handler: WebGLInferenceHandler, inputs: Tensor[]):
     Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslAdd()), inputs)];
 
 export const and = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslAnd()), inputs)];
+    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslAnd(), 'bool'), inputs)];
 
 export const div = (handler: WebGLInferenceHandler, inputs: Tensor[]):
     Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslDiv()), inputs)];
 
 export const equal = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslEqual()), inputs)];
+    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslEqual(), 'bool'), inputs)];
 
 export const greater = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslGreater()), inputs)];
+    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslGreater(), 'bool'), inputs)];
 
 export const less = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslLess()), inputs)];
+    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslLess(), 'bool'), inputs)];
 
 export const mul = (handler: WebGLInferenceHandler, inputs: Tensor[]):
     Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslMul()), inputs)];
 
 export const or = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslOr()), inputs)];
+    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslOr(), 'bool'), inputs)];
 
 export const pow = (handler: WebGLInferenceHandler, inputs: Tensor[]):
     Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslPow()), inputs)];
@@ -288,4 +288,4 @@ export const sub = (handler: WebGLInferenceHandler, inputs: Tensor[]):
     Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslSub()), inputs)];
 
 export const xor = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslXor()), inputs)];
+    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslXor(), 'bool'), inputs)];
