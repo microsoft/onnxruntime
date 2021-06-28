@@ -5,7 +5,6 @@
 
 #include "gsl/gsl"
 #include "core/providers/cuda/cuda_kernel.h"
-#include "orttraining/training_ops/cuda/nn/batch_norm_grad.h"
 #include "core/providers/cuda/cudnn_common.h"
 
 namespace onnxruntime {
