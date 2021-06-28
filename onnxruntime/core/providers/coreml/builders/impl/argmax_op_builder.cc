@@ -39,13 +39,21 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   coreml_argmax->set_axis(axis);
   coreml_argmax->set_removedim(removedim);
 
-  // Get ArgMax's next node(Cast)'s outputdefs
-  auto it = node.OutputEdgesBegin();
-  const auto* succ_node(graph_viewer.GetNode(it->GetNode().Index()));
+  // TODO: 1. Special Case 2. Otherwise
+  if (node.GetOutputEdgesCount() == 1) {
+    auto it = node.OutputEdgesBegin();
+    const auto* succ_node(graph_viewer.GetNode(it->GetNode().Index()));
+    if (succ_node->OpType() == "Cast") {
+      // Skip the cast's input/argmax's output
+      *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
+      *layer->mutable_output()->Add() = succ_node->OutputDefs()[0]->Name();
+      model_builder.AddLayer(std::move(layer));
+      return Status::OK();
+    } 
+  }
 
-  // Skip the cast's input/argmax's output
   *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
-  *layer->mutable_output()->Add() = succ_node->OutputDefs()[0]->Name();
+  *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
 
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
@@ -53,42 +61,29 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related
 
-bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
+bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& /*input_params*/,
                                         const logging::Logger& logger) const {
-  // Check if Argmax's output is the graph output
-  const auto& graph_output_list = input_params.graph_viewer.GetOutputs();
-  std::unordered_set<const NodeArg*> graph_outputs(graph_output_list.cbegin(), graph_output_list.cend());
-  const auto& output_defs = node.OutputDefs();
-  for (const auto* output_def : output_defs) {
-    if (graph_outputs.count(output_def) != 0) {
-      LOGS(logger, VERBOSE) << "ArgMax not supported when it produces a graph output";
-      return false;
-    }
-  }
-
-  // Case where argmax has multiple succeeding nodes is not supported
-  if (node.GetOutputEdgesCount() > 1) {
-    LOGS(logger, VERBOSE) << "Multiple nodes consuming ArgMax's output";
-    return false;
-  }
-
-  const auto& succ_node = node.OutputEdgesBegin()->GetNode();
-
-  /*We're only handling the case: an ArgMax op followed by a Cast to int32 type right now so as to fuse
-  the int64 output (not a supported output type by CoreML model) of ArgMax.*/
-  if (succ_node.OpType() != "Cast") {
-    LOGS(logger, VERBOSE) << "ArgMax not supported when next node is not [Cast]"
-                          << "Current next node: [" << succ_node.OpType()
-                          << "]";
-    return false;
-  }
-
+  
   // Attribute `select_last_index` of ArgMax op is not supported
   NodeAttrHelper helper(node);
   const auto select_last_index = helper.Get("select_last_index", 0);
   if (select_last_index != 0) {
     LOGS(logger, VERBOSE) << "selected_last_index for ArgMax is not supported";
     return false;
+  }
+
+  // Case where argmax has multiple succeeding nodes is not supported
+  if (node.GetOutputEdgesCount() > 1) {
+    // TODO: Check if the succeeding nodes contains cast
+    // If Yes: Then not supported
+    // Otherwise: supported
+    for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+      const auto& op_type = it->GetNode().OpType();
+      if (op_type == "Cast") {
+        LOGS(logger, VERBOSE) << "Multiple nodes consuming ArgMax's output";
+        return false;
+      }
+    }
   }
 
   return true;

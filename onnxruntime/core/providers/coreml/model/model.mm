@@ -237,6 +237,8 @@
                              [output_name cStringUsingEncoding:NSUTF8StringEncoding]);
     }
 
+    auto model_output_type = data.dataType;  // MLMultiArrayDataType
+
     auto& output_tensor = output.second;
     size_t num_elements =
         accumulate(output_tensor.tensor_info.shape.begin(),
@@ -249,16 +251,29 @@
     switch (type) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
         output_data_byte_size = num_elements * sizeof(float);
+        memcpy(output_tensor.buffer, model_output_data, output_data_byte_size);
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_INT32:
         output_data_byte_size = num_elements * sizeof(int32_t);
+        memcpy(output_tensor.buffer, model_output_data, output_data_byte_size);
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+        output_data_byte_size = num_elements * sizeof(int64_t);
+        if (model_output_type == MLMultiArrayDataTypeInt32) {
+          // TO Investigate a better way
+          int32_t* model_output_data_prime = static_cast<int32_t*>(model_output_data);
+          int64_t* output_tensor_buffer_prime = static_cast<int64_t*>(output_tensor.buffer);
+          for (size_t i = 0; i < num_elements; i++) {
+            *(output_tensor_buffer_prime + i * sizeof(int64_t)) = static_cast<int64_t>(*(model_output_data_prime + i * sizeof(int32_t)));
+          }
+        }
         break;
       default:
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Output data type is not float/int32, actual type: ",
+                               "Output data type is not supported, actual type: ",
                                type);
-  }
-    memcpy(output_tensor.buffer, model_output_data, output_data_byte_size);
+    }
+    // memcpy(output_tensor.buffer, model_output_data, output_data_byte_size);
   }
 
   return onnxruntime::common::Status::OK();
@@ -333,6 +348,10 @@ Status Model::Predict(const std::unordered_map<std::string, OnnxTensorData>& inp
 
 bool Model::IsScalarOutput(const std::string& output_name) const {
   return Contains(scalar_outputs_, output_name);
+}
+
+bool Model::IsInt64Output(const std::string& output_name) const {
+  return Contains(int64_outputs_, output_name);
 }
 
 const OnnxTensorInfo& Model::GetInputOutputInfo(const std::string& name) const {
