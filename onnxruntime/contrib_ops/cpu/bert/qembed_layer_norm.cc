@@ -14,6 +14,8 @@ namespace contrib {
 
 namespace {
 
+constexpr size_t kLookupTableSize = 256;
+
 // TODO(kreeger): Drop this when ComputeInternal() is using a lookup table.
 template <typename T>
 inline float Dequantize(T value, float scale, T zero_point) {
@@ -270,6 +272,25 @@ Status CheckQuantizedInputs(OpKernelContext* context, bool* is_signed_inputs) {
   return Status::OK();
 }
 
+Status PopulateConstantLookupTable(const OpKernelInfo& info,
+                                   std::vector<uint8_t>& table,
+                                   int tensor_scale_index,
+                                   int tensor_zero_point_index) {
+  Tensor* scale_tensor = nullptr;
+  ORT_RETURN_IF_NOT(info.TryGetConstantInput(tensor_scale_index, &scale_tensor),
+                    "Could not load constant tensor at index %d", tensor_scale_index);
+
+  Tensor* zero_point_tensor = nullptr;
+  ORT_RETURN_IF_NOT(info.TryGetConstantInput(tensor_scale_index, &scale_tensor),
+                    "Could not load constant tensor at index %d", tensor_scale_index);
+
+
+  // 256 elements are cached in the table:
+  table.resize(kLookupTableSize);
+
+  return Status::OK();
+}
+
 }  // namespace
 
 // This op is internal-only, so register outside of onnx:
@@ -289,6 +310,15 @@ REGISTER_KERNEL_TYPED(float)
 template <typename T>
 QEmbedLayerNorm<T>::QEmbedLayerNorm(const OpKernelInfo& op_kernel_info)
     : EmbedLayerNormBase(op_kernel_info) {
+  PopulateConstantLookupTable(word_embedding_lookup_table_,
+                              op_kernel_info.TryGetConstantInput(2),
+                              op_kernel_info.TryGetConstantInput(3));
+
+  //word_embedding_lookup_table_.resize(kLookupTableSize);
+  //position_embedding_lookup_table_.resize(kLookupTableSize);
+  //segment_embedding_lookup_table_.resize(kLookupTableSize);
+  //gamma_lookup_table_.resize(kLookupTableSize);
+  //beta_lookup_table_.resize(kLookupTableSize);
 }
 
 template <typename T>
