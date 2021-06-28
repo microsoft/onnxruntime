@@ -1,10 +1,10 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# _torch_module_manager.py
+# _torch_module.py
 
 from . import _io
 from ._graph_execution_manager_factory import GraphExecutionManagerFactory
-from ._module_manager_interface import ModuleManagerInterface
+from ._torch_module_interface import TorchModuleInterface
 
 import functools
 import torch
@@ -12,9 +12,9 @@ from typing import Iterator, Optional, Tuple, TypeVar, Set, Callable
 
 T = TypeVar('T', bound='Module')
 
-class TorchModuleManager(ModuleManagerInterface):
+class TorchModule(TorchModuleInterface):
     def __init__(self, module: torch.nn.Module):
-        super(TorchModuleManager, self).__init__(module)
+        super(TorchModule, self).__init__(module)
         self._flattened_module = _io._FlattenedModule(module)
 
         def _forward(self, *inputs, **kwargs):

@@ -30,6 +30,12 @@ class RunStateInfo(object):
         self.state = state
         self.output_info = output_info
 
+def _validate_module_type(module):
+    """Raises a TypeError if the module is not a torch.nn.Module"""
+
+    if not isinstance(module, torch.nn.Module):
+        raise TypeError(f"ORTModule only supports torch.nn.Module as input. {type(module)} is not supported.")
+
 class GraphExecutionManager(ABC):
     def __init__(self, module):
         """Manages building and execution of onnx graphs
@@ -40,6 +46,9 @@ class GraphExecutionManager(ABC):
         Interacts with OrtModuleGraphBuilder to build and optimize
         the onnx graph, and ExecutionAgent to run the onnx graph.
         """
+
+        _validate_module_type(module)
+        _validate_module_type(module._original_module)
 
         # Original and flattened (tranformed) output module
         self._original_module = module._original_module
