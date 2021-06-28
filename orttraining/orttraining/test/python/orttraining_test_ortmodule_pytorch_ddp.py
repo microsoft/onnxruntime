@@ -16,9 +16,6 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import onnxruntime
 from onnxruntime.training.ortmodule import ORTModule
 
-print('*'*10240)
-print(onnxruntime.__file__)
-print('@'*1024)
 
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
