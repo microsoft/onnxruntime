@@ -116,6 +116,8 @@ RUN export OPENSSL_ROOT=openssl-1.1.1k && \
 COPY build_scripts/build-cpython.sh /build_scripts/
 
 
+ARG CACHE_DATA=2021-06-28
+
 FROM build_cpython AS build_cpython36
 COPY build_scripts/cpython-pubkeys.txt /build_scripts/cpython-pubkeys.txt
 
