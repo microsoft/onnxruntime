@@ -25,23 +25,20 @@ export const createUnpackProgramInfo = (handler: WebGLInferenceHandler,
     void main() {
       ${coordsDataType} rc = getOutputCoords();
 
-      // Sample the texture with the coords to get the rgba channel value.
-      vec4 packedInput = getA(${sourceCoords});
+       // Sample the texture with the coords to get the rgba channel value.
+       vec4 packedInput = getA(${sourceCoords});
 
-      ${glsl.output} = vec4(getChannel(packedInput, ${coords}), 0, 0, 0);
-    }
-  `;
+       ${glsl.output} = vec4(getChannel(packedInput, ${coords}), 0, 0, 0);
+     }
+   `;
 
   return {
     inputNames: ['A'],
-    inputTypes: [
-      TextureType.unpacked
-    ],
-    output: { dims: input.dims, type: input.type, textureType: TextureType.packed },
+    inputTypes: [TextureType.unpacked],
+    output: {dims: input.dims, type: input.type, textureType: TextureType.packed},
     shaderSource
   };
-
-}
+};
 
 export function getSourceCoords(rank: number, dims: string[]): string {
   if (rank === 1) {
