@@ -38,7 +38,7 @@ mkdir -p ${PREFIX}/lib
 ./configure \
 	CFLAGS_NODIST="${MANYLINUX_CFLAGS} ${MANYLINUX_CPPFLAGS}" \
 	LDFLAGS_NODIST="${MANYLINUX_LDFLAGS}" \
-	--prefix=${PREFIX} --disable-shared --with-ensurepip=no > /dev/null
+	--prefix=${PREFIX} --with-ensurepip=no > /dev/null
 make -j$(nproc) > /dev/null
 make install > /dev/null
 popd
