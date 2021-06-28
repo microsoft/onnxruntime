@@ -174,14 +174,17 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
 
   // Calculate mask
   if (nullptr != mask) {
-    // TODO: Consider summing the values in the mask and measure performance.
     const int32_t* mask_data = mask->template Data<int32_t>();
     int32_t* mask_index_data = mask_index->template MutableData<int32_t>();
     for (int b = 0; b < batch_size; b++) {
-      mask_index_data[b] =
-          static_cast<int32_t>(std::count_if(mask_data + (static_cast<int64_t>(b) * sequence_length),
-                                             mask_data + (static_cast<int64_t>(b) * sequence_length) + sequence_length,
-                                             [](int v) { return v == 1; }));
+      int32_t cur_sum = 0;
+      const int32_t* cur_mask_data = mask_data + (static_cast<int64_t>(b) * sequence_length);
+      for (int s = 0; s < sequence_length; ++s) {
+        if (cur_mask_data[s] == 1) {
+          cur_sum += cur_mask_data[s];
+        }
+      }
+      mask_index_data[b] = cur_sum;
     }
   } else {
     memset(mask_index->template MutableData<int32_t>(), 0, batch_size * sizeof(int32_t));
