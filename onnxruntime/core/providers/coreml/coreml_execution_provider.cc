@@ -73,7 +73,7 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   const auto num_of_supported_nodes = std::transform_reduce(
       result.begin(), result.end(),
       size_t{0}, std::plus<>{},
-      [](const auto& partition) {
+      [](const auto& partition) -> size_t {
         return partition && partition->sub_graph ? partition->sub_graph->nodes.size() : 0;
       });
 
