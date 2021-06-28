@@ -65,15 +65,12 @@ bool DnnlPoolNodeCapability::IsAttributeSupported(const Node* node) const {
 
 bool DnnlPoolNodeCapability::IsDimensionSupported(const Node* node) const {
   auto node_inputs = node->InputDefs();
-#ifdef ENABLE_TRAINING
   if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() < 3) {
-#else
-  if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() <= 3) {
-#endif  // ENABLE_TRAINING
     return false;
   }
-
-#ifdef ENABLE_TRAINING
+//Curently dissabled till MaxPool grad is implemented
+#if 0
+//#ifdef ENABLE_TRAINING
   if (node->OutputDefs().size() > 2)
     return false;
 #else

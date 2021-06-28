@@ -5,6 +5,7 @@
 #include "dnnl_conv.h"
 #include "dnnl_matmul.h"
 #include "dnnl_matmul_integer.h"
+#include "dnnl_pool.h"
 #include "dnnl_relu.h"
 
 namespace onnxruntime {
@@ -153,7 +154,10 @@ void DnnlSubgraphPrimitive::AddInitializers() {
 
 void DnnlSubgraphPrimitive::AddKernels() {
   for (auto& node : subgraph_->GetDnnlNodes()) {
-    if (node.OpType() == "Conv") {
+    if (node.OpType() == "AveragePool" || node.OpType() == "GlobalAveragePool" ||
+        node.OpType() == "GlobalMaxPool" || node.OpType() == "MaxPool") {
+      DnnlPool().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Conv") {
       DnnlConv().CreatePrimitive(*this, node);
     } else if (node.OpType() == "MatMul") {
       DnnlMatMul().CreatePrimitive(*this, node);
