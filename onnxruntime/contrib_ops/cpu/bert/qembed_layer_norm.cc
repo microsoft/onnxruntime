@@ -38,6 +38,7 @@ Status PopulateLookupTable(const Tensor* word_embedding_scale_tensor,
   const auto identity_float = [](float v) -> float { return v; };
   const auto transform_array = [](const float* input, float* output, size_t length) -> void {
     for (size_t i = 0; i < length; ++i) {
+
     }
   };
 
@@ -97,12 +98,12 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
       has_segment_embedding ? static_cast<int>(segment_embedding->Shape()[0]) : 0;
 
   // Calculate dynamic lookup tables:
-    std::vector<uint8_t> word_position_embedding_lookup_table;
-    PopulateLookupTable<uint8_t>(word_embedding_scale_tensor,
-                                 word_embedding_zero_point_tensor,
-                                 position_embedding_scale_tensor,
-                                 position_embedding_zero_point_tensor,
-                                 word_position_embedding_lookup_table);
+    //std::vector<uint8_t> word_position_embedding_lookup_table;
+    //PopulateLookupTable<uint8_t>(word_embedding_scale_tensor,
+    //                             word_embedding_zero_point_tensor,
+    //                             position_embedding_scale_tensor,
+    //                             position_embedding_zero_point_tensor,
+    //                             word_position_embedding_lookup_table);
 
 
   // Grab quantization values:
@@ -333,6 +334,14 @@ REGISTER_KERNEL_TYPED(float)
 template <typename T>
 QEmbedLayerNorm<T>::QEmbedLayerNorm(const OpKernelInfo& op_kernel_info)
     : EmbedLayerNormBase(op_kernel_info), has_cached_lookup_table_(false) {
+
+  // Try and get a constant thing
+  const Tensor* word_embeddings_scale = nullptr;
+  bool found = op_kernel_info.TryGetConstantInput(8, &word_embeddings_scale);
+  if (found) {
+
+    // Cool do something.
+  }
 }
 
 template <typename T>
