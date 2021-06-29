@@ -288,7 +288,7 @@ static inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime
 }
 
 #ifdef USE_CUDA
-static inline void RegisterCudaExecutionProviderWithCache(InferenceSession* sess, const ProviderOptionsMap& provider_options_map) {
+static inline void RegisterCudaExecutionProvider(InferenceSession* sess, const ProviderOptionsMap& provider_options_map) {
   if (auto* cuda_provider_info = TryGetProviderInfo_CUDA()) {
     const auto it = provider_options_map.find(kCudaExecutionProvider);
     CUDAExecutionProviderInfo info{};
@@ -308,14 +308,19 @@ static inline void RegisterCudaExecutionProviderWithCache(InferenceSession* sess
     // since FromProviderOptions might contain external CUDA allocator.
     external_allocator_info = info.external_allocator_info;
 
+#ifdef ENABLE_TRAINING
+    // For training, CUDA EPs are created per device
+    // Multiple ORTModule instances will share the CUDA EP for the same physical device
     static std::unordered_map<OrtDevice::DeviceId, std::shared_ptr<IExecutionProvider>> cuda_eps;
-
     auto device_id = info.device_id;
     if (cuda_eps.find(device_id) == cuda_eps.end()) {
       auto cuda_ep_factory = cuda_provider_info->CreateExecutionProviderFactory(info);
       cuda_eps[device_id] = std::move(cuda_ep_factory->CreateProvider());
     }
     OrtPybindThrowIfError(sess->RegisterExecutionProvider(cuda_eps[device_id]));
+#else
+    RegisterExecutionProvider(sess, *cuda_provider_info->CreateExecutionProviderFactory(info));
+#endif  // ENABLE_TRAINING
 
   } else {
     if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
@@ -323,10 +328,10 @@ static inline void RegisterCudaExecutionProviderWithCache(InferenceSession* sess
     }
   }
 }
-#endif
+#endif  // USE_CUDA
 
 #ifdef USE_ROCM
-static inline void RegisterRocmExecutionProviderWithCache(InferenceSession* sess, const ProviderOptionsMap& provider_options_map) {
+static inline void RegisterRocmExecutionProvider(InferenceSession* sess, const ProviderOptionsMap& provider_options_map) {
   const auto it = provider_options_map.find(kRocmExecutionProvider);
   const ROCMExecutionProviderInfo info =
       it != provider_options_map.end()
@@ -345,25 +350,30 @@ static inline void RegisterRocmExecutionProviderWithCache(InferenceSession* sess
   // since FromProviderOptions might contain external CUDA allocator.
   external_allocator_info = info.external_allocator_info;
 
+#ifdef ENABLE_TRAINING
+  // For training, Rocm EPs are created per device
+  // Multiple ORTModule instances will share the EP for the same physical device
   static std::unordered_map<OrtDevice::DeviceId, std::shared_ptr<IExecutionProvider>> rocm_eps;
-
   auto device_id = info.device_id;
   if (rocm_eps.find(device_id) == rocm_eps.end()) {
     auto rocm_ep_factory = onnxruntime::CreateExecutionProviderFactory_ROCM(info);
     rocm_eps[device_id] = std::move(rocm_ep_factory->CreateProvider());
   }
   OrtPybindThrowIfError(sess->RegisterExecutionProvider(rocm_eps[device_id]));
+#else
+  RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_ROCM(info));
+#endif  // ENABLE_TRAINING
 }
-#endif
+#endif  // USE_ROCM
 
 using RegisterFunc = void (*)(InferenceSession*, const ProviderOptionsMap&);
 
 static std::unordered_map<std::string, RegisterFunc> EP_register_func_map = {
 #ifdef USE_CUDA
-    {kCudaExecutionProvider, RegisterCudaExecutionProviderWithCache},
+    {kCudaExecutionProvider, RegisterCudaExecutionProvider},
 #endif
 #ifdef USE_ROCM
-    {kRocmExecutionProvider, RegisterRocmExecutionProviderWithCache}
+    {kRocmExecutionProvider, RegisterRocmExecutionProvider}
 #endif
 };
 
@@ -550,12 +560,12 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      RegisterFunc func = EP_register_func_map[kCudaExecutionProvider];
+      RegisterFunc func = EP_register_func_map[type];
       func(sess, provider_options_map);
 #endif
     } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
-      RegisterFunc func = EP_register_func_map[kRocmExecutionProvider];
+      RegisterFunc func = EP_register_func_map[type];
       func(sess, provider_options_map);
 #endif
     } else if (type == kDnnlExecutionProvider) {
