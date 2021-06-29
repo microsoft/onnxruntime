@@ -41,7 +41,7 @@ MLDataType DataTypeImpl::GetType<Tensor>() {
 
 }  // namespace onnxruntime
 
-// This conflics with the above GetType<>() specialization
+// This conflicts with the above GetType<>() specialization
 #include "core/framework/tensorprotoutils.h"
 
 namespace onnxruntime {
@@ -461,6 +461,53 @@ MLDataType SequenceTensorTypeBase::Type() {
   return &sequence_tensor_base;
 }
 
+///// OptionalTypeBase
+
+struct OptionalTypeBase::Impl : public data_types_internal::TypeProtoImpl {
+};
+
+OptionalTypeBase::OptionalTypeBase() : impl_(new Impl()) {}
+
+OptionalTypeBase::~OptionalTypeBase() {
+  delete impl_;
+}
+
+bool OptionalTypeBase::IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const {
+  const auto* thisProto = GetTypeProto();
+  if (&type_proto == thisProto) {
+    return true;
+  }
+  if (type_proto.value_case() != TypeProto::ValueCase::kSequenceType) {
+    return false;
+  }
+
+  ORT_ENFORCE(thisProto->value_case() == TypeProto::ValueCase::kSequenceType);
+  ORT_ENFORCE(utils::HasElemType(thisProto->sequence_type()));
+
+  return data_types_internal::IsCompatible(thisProto->sequence_type(), type_proto.sequence_type());
+}
+
+size_t SequenceTensorTypeBase::Size() const {
+  return sizeof(TensorSeq);
+}
+
+DeleteFunc SequenceTensorTypeBase::GetDeleteFunc() const {
+  return &Delete<TensorSeq>;
+}
+
+const ONNX_NAMESPACE::TypeProto* OptionalTypeBase::GetTypeProto() const {
+  return impl_->GetProto();
+}
+
+ONNX_NAMESPACE::TypeProto& OptionalTypeBase::mutable_type_proto() {
+  return impl_->mutable_type_proto();
+}
+
+MLDataType OptionalTypeBase::Type() {
+  static OptionalTypeBase optional_type_base;
+  return &optional_type_base;
+}
+
 /// NoTensorTypeBase
 struct NonTensorTypeBase::Impl : public data_types_internal::TypeProtoImpl {};
 
@@ -589,6 +636,9 @@ ORT_REGISTER_SEQ_TENSOR_TYPE(BFloat16);
 ORT_REGISTER_SEQ(VectorMapStringToFloat);
 ORT_REGISTER_SEQ(VectorMapInt64ToFloat);
 #endif
+
+ORT_REGISTER_OPTIONAL_TYPE(Tensor)
+ORT_REGISTER_OPTIONAL_TYPE(TensorSeq)
 
 // Used for Tensor Proto registrations
 #define REGISTER_TENSOR_PROTO(TYPE, reg_fn)                  \
