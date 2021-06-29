@@ -20,11 +20,8 @@ class QEmbedLayerNorm final : public EmbedLayerNormBase {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  std::vector<uint8_t> word_embedding_lookup_table_;
-  std::vector<uint8_t> position_embedding_lookup_table_;
-  std::vector<uint8_t> segment_embedding_lookup_table_;
-  std::vector<uint8_t> gamma_lookup_table_;
-  std::vector<uint8_t> beta_lookup_table_;
+  // TODO - better name? What about segment in here?
+  std::vector<uint8_t> word_position_embedding_lookup_table_;
 };
 
 }  // namespace contrib
