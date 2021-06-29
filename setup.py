@@ -99,7 +99,6 @@ manylinux_tags = [
 ]
 is_manylinux = environ.get('AUDITWHEEL_PLAT', None) in manylinux_tags
 
-
 class build_ext(_build_ext):
     def build_extension(self, ext):
         dest_file = self.get_ext_fullpath(ext.name)
@@ -271,11 +270,19 @@ local_version = None
 enable_training = parse_arg_remove_boolean(sys.argv, '--enable_training')
 default_training_package_device = parse_arg_remove_boolean(sys.argv, '--default_training_package_device')
 
+package_data = {}
+data_files = []
+
 if enable_training:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
                      'onnxruntime.training.optim',
-                     'onnxruntime.training.ortmodule'])
+                     'onnxruntime.training.ortmodule',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.aten_op_executor',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.torch_gpu_allocator'])
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.aten_op_executor'] = ['*.cc']
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.torch_gpu_allocator'] = ['*.cc']
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
     # stable:
@@ -318,10 +325,6 @@ if enable_training:
                     + 'rocm' + rocm_version
             else:
                 local_version = '+rocm' + rocm_version
-
-
-package_data = {}
-data_files = []
 
 if package_name == 'onnxruntime-nuphar':
     packages += ["onnxruntime.nuphar"]
@@ -426,7 +429,6 @@ with open(requirements_path) as f:
 
 if enable_training:
     def save_build_and_package_info(package_name, version_number, cuda_version):
-
         sys.path.append(path.join(path.dirname(__file__), 'onnxruntime', 'python'))
         from onnxruntime_collect_build_info import find_cudart_versions
 
