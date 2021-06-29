@@ -73,6 +73,8 @@ elif parse_arg_remove_boolean(sys.argv, '--use_acl'):
 elif parse_arg_remove_boolean(sys.argv, '--use_armnn'):
     package_name = 'onnxruntime-armnn'
 
+# Extra files such as EULA and ThirdPartyNotices
+extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md"]
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -222,9 +224,6 @@ else:
 # Additional examples
 examples_names = ["mul_1.onnx", "logreg_iris.onnx", "sigmoid.onnx"]
 examples = [path.join('datasets', x) for x in examples_names]
-
-# Extra files such as EULA and ThirdPartyNotices
-extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md"]
 
 # Description
 README = path.join(getcwd(), "docs/python/README.rst")
