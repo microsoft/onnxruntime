@@ -132,6 +132,7 @@ try:
                         f.write('_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
 
         def run(self):
+            global extra
             if is_manylinux:
                 source = 'onnxruntime/capi/onnxruntime_pybind11_state.so'
                 dest = 'onnxruntime/capi/onnxruntime_pybind11_state_manylinux1.so'
@@ -139,7 +140,11 @@ try:
                 copyfile(source, dest)
                 to_preload = []
                 if rocm_version:
-                    extra += [path.join('tools','ci_build', 'github', 'azure-pipelines', 'licenses', 'ROCmNotices.txt')]
+                    source = 'tools/ci_build/github/azure-pipelines/licenses/ROCmNotices.txt'
+                    dest = 'ROCmNotices.txt'
+                    logger.info('copying %s -> %s', source, dest)
+                    copyfile(source, dest) 
+                    extra += ['ROCmNotices.txt']
                 dest = 'onnxruntime/capi/libonnxruntime_providers_cuda.so'
                 if path.isfile(dest):
                     result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
