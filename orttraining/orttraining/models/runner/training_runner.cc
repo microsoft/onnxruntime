@@ -318,10 +318,10 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
                                                 LearningRateScheduler* lr_scheduler,
                                                 const size_t batch_index,
                                                 std::vector<std::string>& feed_names,
-                                                std::vector<MLValue>& feeds) {
+                                                std::vector<OrtValue>& feeds) {
   // Initialize outputs of this function.
   feed_names = std::vector<std::string>();
-  feeds = std::vector<MLValue>();
+  feeds = std::vector<OrtValue>();
 
   auto allowed_feed_begin = pipeline_context_.feed_names.begin();
   auto allowed_feed_end = pipeline_context_.feed_names.end();
@@ -329,7 +329,7 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
   // Pick up feeds from data loader
   {
     std::vector<std::string> data_feed_names = training_data_loader.DataSetTensorNames();
-    std::vector<MLValue> data_feeds = training_data.GetKthBatch(params_.batch_size, batch_index, input_allocator_);
+    std::vector<OrtValue> data_feeds = training_data.GetKthBatch(params_.batch_size, batch_index, input_allocator_);
     for (size_t i = 0; i < data_feed_names.size(); ++i) {
       const auto name = data_feed_names[i];
       if (params_.pipeline_parallel_size == 1 || std::find(allowed_feed_begin, allowed_feed_end, name) != allowed_feed_end) {
@@ -430,10 +430,10 @@ Status TrainingRunner::PrepareFeedNamesAndFeeds(const SessionMode mode,
 
 Status TrainingRunner::PrepareFetchNamesAndFetches(const SessionMode mode,
                                                    std::vector<std::string>& fetch_names,
-                                                   std::vector<MLValue>& fetches) {
+                                                   std::vector<OrtValue>& fetches) {
   // Initialize outputs of this function.
   fetch_names = std::vector<std::string>();
-  fetches = std::vector<MLValue>();
+  fetches = std::vector<OrtValue>();
 
   const auto& allowed_fetch_names = pipeline_context_.fetch_names;
 
@@ -541,8 +541,8 @@ void TrainingRunner::CheckWorkerException(const std::exception_ptr& p) {
 // Launch synced session.Run on the main thread.
 void TrainingRunner::RunWithUpdate(VectorString& feed_names,
                                    VectorString& fetch_names,
-                                   std::vector<MLValue>& feeds,
-                                   std::vector<MLValue>& fetches) {
+                                   std::vector<OrtValue>& feeds,
+                                   std::vector<OrtValue>& fetches) {
   if (params_.pipeline_parallel_size > 1) {
     // Cyclically pick up a worker ID.
     const size_t worker_id = step_ % params_.pipeline_parallel_size;
@@ -556,7 +556,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
     pipeline_worker_pool_.worker_states[worker_id].feed_names = feed_names;
     pipeline_worker_pool_.worker_states[worker_id].feeds = feeds;
     pipeline_worker_pool_.worker_states[worker_id].fetch_names = fetch_names;
-    pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
+    pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<OrtValue>();
 
     pipeline_worker_pool_.workers[worker_id] = std::thread([&](const size_t worker_id, const size_t step) {
       try {
@@ -651,7 +651,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
 // Launch async session.Run on non-main thread.
 void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
                                       VectorString& fetch_names,
-                                      std::vector<MLValue>& feeds,
+                                      std::vector<OrtValue>& feeds,
                                       size_t& gradient_accumulation_step_count) {
   if (params_.pipeline_parallel_size > 1) {
     // Launch the graph using other threads when pipeline parallel is enabled.
@@ -669,7 +669,7 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
     pipeline_worker_pool_.worker_states[worker_id].feeds = feeds;
     pipeline_worker_pool_.worker_states[worker_id].feed_names = feed_names;
     pipeline_worker_pool_.worker_states[worker_id].fetch_names = fetch_names;
-    pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<MLValue>();
+    pipeline_worker_pool_.worker_states[worker_id].fetches = std::vector<OrtValue>();
 
     // Async launch of a session.
     pipeline_worker_pool_.workers[worker_id] = std::thread([&](const size_t worker_id, const size_t step) {
@@ -710,7 +710,7 @@ void TrainingRunner::RunWithoutUpdate(VectorString& feed_names,
 
     RunOptions run_options;
     run_options.only_execute_path_to_fetches = true;
-    std::vector<MLValue> fetches;
+    std::vector<OrtValue> fetches;
     auto status = session_.Run(
         run_options,
         feed_names,
@@ -821,8 +821,8 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
 
         VectorString feed_names;
         VectorString fetch_names;
-        std::vector<MLValue> feeds;
-        std::vector<MLValue> fetches;
+        std::vector<OrtValue> feeds;
+        std::vector<OrtValue> fetches;
 
         auto start = std::chrono::high_resolution_clock::now();
 
@@ -1131,9 +1131,9 @@ Status TrainingRunner::Evaluate(TrainingSession& session, IDataLoader& data_load
   RunOptions run_options;
   for (size_t batch_idx = 0; batch_idx < num_batches; ++batch_idx) {
     std::vector<std::string> feed_names;
-    std::vector<MLValue> feeds;
+    std::vector<OrtValue> feeds;
     std::vector<std::string> fetch_names;
-    std::vector<MLValue> fetches;
+    std::vector<OrtValue> fetches;
 
     PrepareFeedNamesAndFeeds(EvaluateStep,
                              data_loader,

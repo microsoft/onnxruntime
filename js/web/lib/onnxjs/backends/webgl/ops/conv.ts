@@ -33,16 +33,17 @@
 //     this.packedConvImpl.initialize(attributes);
 //   }
 
-//   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
-//     const packMode = inferenceHandler.session.pack;
-//     if (this.group > 1) {
-//       return this.unpackedGroupedConvImpl.run(inferenceHandler, inputs);
-//     } else if (packMode && inputs[0].dims.length === 4 && inputs[0].dims[0] === 1) {
-//       return this.packedConvImpl.run(inferenceHandler, inputs);
-//     } else {
-//       return this.unpackedConvImpl.run(inferenceHandler, inputs);
-//     }
+// run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
+//   const packMode = inferenceHandler.session.pack;
+//   const isPointwise = this.kernelShape[0] === 1 && this.kernelShape[1] === 1;
+//   if (this.group > 1) {
+//     return this.unpackedGroupedConvImpl.run(inferenceHandler, inputs);
+//   } else if (packMode && inputs[0].dims.length === 4 && inputs[0].dims[0] === 1 && !isPointwise) {
+//     return this.packedConvImpl.run(inferenceHandler, inputs);
+//   } else {
+//     return this.unpackedConvImpl.run(inferenceHandler, inputs);
 //   }
+// }
 
 //   static calcOutputShape(
 //       inputShape: number[], kernelShape: number[], dilations: number[], adjustPads: number[],
@@ -86,12 +87,16 @@
 //             this.kernelShape}, pads:${this.pads}, strides:${this.strides}`);
 //     const outputShape = WebGLConv.calcOutputShape(xShape, wShape, this.dilations, this.pads, this.strides);
 //     const glsl = getGlsl(handler.session.backend.glContext.version);
-
+//     const additionalVars = this.activation === 'Clip' ? `
+//     const float min = float(${this.clipMin});
+//     const float max = float(${this.clipMax});` :
+//                                                         '';
 //     const {activationFunction, applyActivation} = getActicationSnippet(this.activation);
-
+//
 //     const shaderSource = `
 //     const ivec2 strides = ivec2(${this.strides[0]}, ${this.strides[1]});
 //     const ivec2 pads = ivec2(${this.pads[0]}, ${this.pads[1]});
+//     ${additionalVars}
 //     ${activationFunction}
 //     void main() {
 //       ivec4 coords = getOutputCoords();
@@ -318,82 +323,85 @@
 //     let bLayout: TextureLayout|undefined;
 //     const rank = outputShape.length;
 
-//     const inputLayouts = [im2colLayout, kLayout];
-//     if (inputs.length === 3) {
-//       bLayout = inferenceHandler.createTextureLayoutFromShape(inputs[2].dims.slice());
-//       inputLayouts.push(bLayout);
-//     }
-//     const outputLayout = inferenceHandler.createTextureLayoutFromShape(outputShape);
-//     const initValue = (inputs.length < 3) ? '0.0' : '_B(b)';
-//     const sharedDim = im2colLayout.shape[3];
-//     const blendEnabled = inferenceHandler.session.backend.glContext.isBlendSupported && !this.activation;
-//     const sharedDimReadSize = blendEnabled && inferenceHandler.session.backend.matmulMaxBatchSize ?
-//         this.calcSharedDimReadSize(inferenceHandler.session.backend.matmulMaxBatchSize, sharedDim) :
-//         sharedDim;
-//     const samplers = ['Im2Col', 'K'];
-//     if (inputs.length === 3) {
-//       samplers.push('B');
-//     }
-
-//     const {activationFunction, applyActivation} = getActicationSnippet(this.activation);
-
-//     const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
-//     const shaderSource = `
-//     ${activationFunction}
-//     float process(int indices[${rank}]) {
-//       int b[1];
-//       b[0] = indices[1];
-//       int im2col[${im2colLayout.shape.length}];
-//       im2col[0] = indices[0];
-//       im2col[1] = indices[2];
-//       im2col[2] = indices[3];
-//       int im2colOffset = im2col[0] * ${im2colLayout.strides[0]} + im2col[1] * ${
-//         im2colLayout.strides[1]} + im2col[2] * ${im2colLayout.strides[2]} + sharedDimOffset;
-//       int kernelOffset = indices[1] * ${kLayout.strides[0]} + sharedDimOffset;
-//       float value = sharedDimOffset == 0 ? ${initValue} : 0.0;
-//       for (int i = 0; i < ${sharedDimReadSize}; ++i) {
-//         vec2 im2colCoords = offsetToCoords(im2colOffset, ${im2colLayout.width}, ${im2colLayout.height});
-//         vec2 kernelCoords = offsetToCoords(kernelOffset, ${kLayout.width}, ${kLayout.height});
-//         value += dot(${glsl.texture2D}(Im2Col, im2colCoords), ${glsl.texture2D}(K, kernelCoords));
-//         ++im2colOffset;
-//         ++kernelOffset;
-//       }
-//       ${applyActivation}
-//       return value;
-//     }`;
-//     return {
-//       name: 'dotProduct',
-//       inputLayouts: inputs.length === 3 ? [im2colLayout, kLayout, bLayout!] : [im2colLayout, kLayout],
-//       outputLayout,
-//       shaderSource,
-//       samplers,
-//       variables: [{name: 'sharedDimOffset', type: 'int'}],
-//       params: {sharedDim, sharedDimReadSize}
-//     };
+//   const inputLayouts = [im2colLayout, kLayout];
+//   if (inputs.length === 3) {
+//     bLayout = inferenceHandler.createTextureLayoutFromShape(inputs[2].dims.slice());
+//     inputLayouts.push(bLayout);
 //   }
-//   static prepKernelForDotProduct(shape: number[], group: number, channels: number, kernel: Float32Array):
-//   Float32Array {
-//     if (group === 1 && (channels === 1 || (shape[2] * shape[3]) % channels === 0)) {
-//       return kernel;
-//     }
-//     const numFeatureMaps = shape[0];
-//     const oldRowSize = shape[1] * shape[2] * shape[3];
-//     const newRowSize = Math.ceil(oldRowSize * group / channels) * channels;
-//     const newSize = numFeatureMaps * newRowSize;
-//     const buffer = new Float32Array(newSize);
-//     for (let f = 0; f < numFeatureMaps; ++f) {
-//       const oldOffset = f * oldRowSize;
-//       const newOffset = f * newRowSize + f % group * oldRowSize;
-//       buffer.set(kernel.subarray(oldOffset, oldOffset + oldRowSize), newOffset);
-//     }
-//     return buffer;
+//   const outputLayout = inferenceHandler.createTextureLayoutFromShape(outputShape);
+//   const initValue = (inputs.length < 3) ? '0.0' : '_B(b)';
+//   const sharedDim = im2colLayout.shape[3];
+//   const blendEnabled = inferenceHandler.session.backend.glContext.isBlendSupported && !this.activation;
+//   const sharedDimReadSize = blendEnabled && inferenceHandler.session.backend.matmulMaxBatchSize ?
+//       this.calcSharedDimReadSize(inferenceHandler.session.backend.matmulMaxBatchSize, sharedDim) :
+//       sharedDim;
+//   const samplers = ['Im2Col', 'K'];
+//   if (inputs.length === 3) {
+//     samplers.push('B');
 //   }
-//   static calcIm2ColDims(inputShape: number[], kernelShape: number[], outputShape: number[], channels = 1): number[] {
-//     return [
-//       outputShape[0], outputShape[2], outputShape[3],
-//       Math.ceil(inputShape[1] * kernelShape[2] * kernelShape[3] / channels)
-//     ];
+//   const additionalVars = this.activation === 'Clip' ? `
+//   const float min = float(${this.clipMin});
+//   const float max = float(${this.clipMax});` :
+//                                                       '';
+//   const {activationFunction, applyActivation} = getActicationSnippet(this.activation);
+//   const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
+//   const shaderSource = `
+//   ${additionalVars}
+//   ${activationFunction}
+//   float process(int indices[${rank}]) {
+//     int b[1];
+//     b[0] = indices[1];
+//     int im2col[${im2colLayout.shape.length}];
+//     im2col[0] = indices[0];
+//     im2col[1] = indices[2];
+//     im2col[2] = indices[3];
+//     int im2colOffset = im2col[0] * ${im2colLayout.strides[0]} + im2col[1] * ${
+//       im2colLayout.strides[1]} + im2col[2] * ${im2colLayout.strides[2]} + sharedDimOffset;
+//     int kernelOffset = indices[1] * ${kLayout.strides[0]} + sharedDimOffset;
+//     float value = sharedDimOffset == 0 ? ${initValue} : 0.0;
+//     for (int i = 0; i < ${sharedDimReadSize}; ++i) {
+//       vec2 im2colCoords = offsetToCoords(im2colOffset, ${im2colLayout.width}, ${im2colLayout.height});
+//       vec2 kernelCoords = offsetToCoords(kernelOffset, ${kLayout.width}, ${kLayout.height});
+//       value += dot(${glsl.texture2D}(Im2Col, im2colCoords), ${glsl.texture2D}(K, kernelCoords));
+//       ++im2colOffset;
+//       ++kernelOffset;
+//     }
+//     ${applyActivation}
+//     return value;
+//   }`;
+//   return {
+//     name: 'dotProduct',
+//     inputLayouts: inputs.length === 3 ? [im2colLayout, kLayout, bLayout!] : [im2colLayout, kLayout],
+//     outputLayout,
+//     shaderSource,
+//     samplers,
+//     variables: [{name: 'sharedDimOffset', type: 'int'}],
+//     params: {sharedDim, sharedDimReadSize}
+//   };
+// }
+// static prepKernelForDotProduct(shape: number[], group: number, channels: number, kernel: Float32Array):
+// Float32Array {
+//   if (group === 1 && (channels === 1 || (shape[2] * shape[3]) % channels === 0)) {
+//     return kernel;
 //   }
+//   const numFeatureMaps = shape[0];
+//   const oldRowSize = shape[1] * shape[2] * shape[3];
+//   const newRowSize = Math.ceil(oldRowSize * group / channels) * channels;
+//   const newSize = numFeatureMaps * newRowSize;
+//   const buffer = new Float32Array(newSize);
+//   for (let f = 0; f < numFeatureMaps; ++f) {
+//     const oldOffset = f * oldRowSize;
+//     const newOffset = f * newRowSize + f % group * oldRowSize;
+//     buffer.set(kernel.subarray(oldOffset, oldOffset + oldRowSize), newOffset);
+//   }
+//   return buffer;
+// }
+// static calcIm2ColDims(inputShape: number[], kernelShape: number[], outputShape: number[], channels = 1): number[] {
+//   return [
+//     outputShape[0], outputShape[2], outputShape[3],
+//     Math.ceil(inputShape[1] * kernelShape[2] * kernelShape[3] / channels)
+//   ];
+// }
 
 //   protected calcSharedDimReadSize(preferredBatchSize: number, sharedDim: number): number {
 //     if (preferredBatchSize <= 0 || sharedDim < preferredBatchSize || sharedDim % preferredBatchSize !== 0) {

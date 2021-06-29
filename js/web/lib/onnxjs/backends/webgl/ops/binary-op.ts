@@ -190,8 +190,7 @@ const createBinaryProgramInfo =
       const isBroadcast = !ShapeUtil.areEqual(inputs[0].dims, inputs[1].dims);
       let outputShape = inputs[0].dims;
 
-      // TODO fix bcast in packed mode.
-      const usePackedTexture = !isBroadcast && handler.session.pack;
+      const usePackedTexture = handler.session.pack;
 
       if (isBroadcast) {
         const calculatedShape = BroadcastUtil.calcShape(inputs[0].dims, inputs[1].dims, false);
@@ -205,8 +204,16 @@ const createBinaryProgramInfo =
         const aBcast = inputs[0].dims.length !== 0 ? 'bcastIndices_A(indices, aindices);' : 'aindices[0] = 0;';
         const bBcast = inputs[1].dims.length !== 0 ? 'bcastIndices_B(indices, bindices);' : 'bindices[0] = 0;';
 
-        // TODO: for packed tensors, we need to implement logic to caculate textCoords for broadcast tensor
-        const shaderSource = `
+        const glsl = getGlsl(handler.session.backend.glContext.version);
+        const shaderSource = usePackedTexture ? `
+      ${glslFunc.body}
+      void main() {
+      vec4 a = getAAtOutCoords();
+      vec4 b = getBAtOutCoords();
+      vec4 result = ${glslFunc.name}(a, b);
+      ${glsl.output} = result;
+      }` :
+                                                `
       ${glslFunc.body}
       float process(int indices[${outputRank}]) {
         int aindices[${aRank}];
@@ -221,7 +228,7 @@ const createBinaryProgramInfo =
           inputNames: ['A', 'B'],
           output: {dims: outputShape, type: outputTensorType, textureType},
           shaderSource,
-          hasMain: false
+          hasMain: usePackedTexture
         };
       }
       const glsl = getGlsl(handler.session.backend.glContext.version);

@@ -165,7 +165,7 @@ static void ComputeRefOutput(std::vector<float>& Y_data,
   execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 
-  std::vector<MLValue> outputs = test.GetFetches();
+  std::vector<OrtValue> outputs = test.GetFetches();
 
   const float* y_buffer = outputs[0].Get<Tensor>().Data<float>();
   std::copy(y_buffer, y_buffer + y_data_size, Y_data.begin());

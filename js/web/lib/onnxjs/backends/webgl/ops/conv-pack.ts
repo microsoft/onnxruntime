@@ -40,26 +40,29 @@
 //         `autpPad:${this.autoPad}, dilations:${this.dilations}, group:${this.group}, kernelShape:${
 //             this.kernelShape}, pads:${this.pads}, strides:${this.strides}`);
 
-//     if (!this.outputShape) {
-//       this.outputShape = WebGLConv.calcOutputShape(xshape, kshape, this.dilations, this.pads, this.strides);
-//     }
-//     if (this.im2col === undefined) {
-//       this.im2col = new WebGLIm2ColPacked(this.outputShape, kshape, this.dilations, this.pads, this.strides);
-//     }
-//     if (this.activation) {
-//       const attributes = new Attribute(undefined);
-//       attributes.set('__internal_activation', 'string', (this.activation));
-//       this.matmul.initialize(attributes);
-//     }
-//     // shape for kernel reshape
-//     const shape =
-//         new Tensor([2], 'int32', undefined, undefined, new Int32Array([kshape[0], kshape[1] * kshape[2] *
-//         kshape[3]]));
-//     if (!this.artifacts) {
-//       this.artifacts = [];
-//       this.programInfo = [];
-//       this.programInfo[0] = this.im2col.createProgramInfo(inferenceHandler, [inputs[0], inputs[1]]);
-//       this.artifacts[0] = programManager.build(this.programInfo[0]);
+// if (!this.outputShape) {
+//   this.outputShape = WebGLConv.calcOutputShape(xshape, kshape, this.dilations, this.pads, this.strides);
+// }
+// if (this.im2col === undefined) {
+//   this.im2col = new WebGLIm2ColPacked(this.outputShape, kshape, this.dilations, this.pads, this.strides);
+// }
+// if (this.activation) {
+//   const attributes = new Attribute(undefined);
+//   attributes.set('__internal_activation', 'string', (this.activation));
+//   if (this.activation === 'Clip') {
+//     attributes.set('__clip_max', 'float', this.clipMax);
+//     attributes.set('__clip_min', 'float', this.clipMin);
+//   }
+//   this.matmul.initialize(attributes);
+// }
+// // shape for kernel reshape
+// const shape =
+//     new Tensor([2], 'int32', undefined, undefined, new Int32Array([kshape[0], kshape[1] * kshape[2] * kshape[3]]));
+// if (!this.artifacts) {
+//   this.artifacts = [];
+//   this.programInfo = [];
+//   this.programInfo[0] = this.im2col.createProgramInfo(inferenceHandler, [inputs[0], inputs[1]]);
+//   this.artifacts[0] = programManager.build(this.programInfo[0]);
 
 //       this.programInfo[1] = this.kernelReshape.createProgramInfo(inferenceHandler, [inputs[1], shape]);
 //       this.artifacts[1] = programManager.build(this.programInfo[1]);

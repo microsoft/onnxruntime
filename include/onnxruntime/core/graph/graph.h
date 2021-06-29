@@ -19,7 +19,13 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
-#include "core/graph/onnx_protobuf.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "onnx/defs/schema.h"
+#else
+#include "onnx/defs/data_type_utils.h"
+#endif
+#include "onnx/onnx_pb.h"
+#include "onnx/onnx-operators_pb.h"
 #include "core/graph/function.h"
 #include "gsl/gsl"
 
@@ -325,6 +331,7 @@ class Node {
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TensorProto)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::GraphProto)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::SparseTensorProto)
+  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TypeProto)
 
   /** Gets the Node's attributes. */
   const NodeAttributes& GetAttributes() const noexcept { return attributes_; }
