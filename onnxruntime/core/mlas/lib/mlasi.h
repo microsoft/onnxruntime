@@ -497,6 +497,7 @@ extern "C" {
 #endif
 #elif defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernel;
+    MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelPOWER10;
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
@@ -702,7 +703,7 @@ struct MLAS_PLATFORM {
 
     MLAS_PLATFORM(void);
 
-#if defined(MLAS_TARGET_AMD64_IX86)
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
     const MLAS_GEMM_U8X8_DISPATCH* GemmU8S8Dispatch;
     const MLAS_GEMM_U8X8_DISPATCH* GemmU8U8Dispatch;

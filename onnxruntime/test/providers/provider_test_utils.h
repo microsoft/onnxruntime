@@ -442,7 +442,7 @@ class OpTester {
            /*out*/ size_t* number_of_pre_packed_weights_counter = nullptr,
            /*out*/ size_t* number_of_shared_pre_packed_weights_counter = nullptr);
 
-  std::vector<MLValue>
+  std::vector<OrtValue>
   GetFetches() { return fetches_; }
 
   std::unique_ptr<onnxruntime::Model> BuildGraph(const std::unordered_map<std::string, int>& extra_domain_to_version = {});
@@ -513,14 +513,14 @@ class OpTester {
   void FillFeeds(std::unordered_map<std::string, OrtValue>& feeds);
 
   template <class SessionType>
-  std::vector<MLValue> ExecuteModel(Model& model,
-                                    SessionType& session_object,
-                                    ExpectResult expect_result,
-                                    const std::string& expected_failure_string,
-                                    const RunOptions* run_options,
-                                    const std::unordered_map<std::string, OrtValue>& feeds,
-                                    const std::vector<std::string>& output_names,
-                                    const std::string& provider_type);
+  std::vector<OrtValue> ExecuteModel(Model& model,
+                                     SessionType& session_object,
+                                     ExpectResult expect_result,
+                                     const std::string& expected_failure_string,
+                                     const RunOptions* run_options,
+                                     const std::unordered_map<std::string, OrtValue>& feeds,
+                                     const std::vector<std::string>& output_names,
+                                     const std::string& provider_type);
 
   const char* op_;
   std::vector<Data> input_data_;

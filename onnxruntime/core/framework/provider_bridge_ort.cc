@@ -21,6 +21,9 @@
 #include "core/util/math.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/provider_options.h"
+#include "core/common/string_helper.h"
+
 
 #include "core/framework/fallback_cpu_capability.h"
 #include "core/framework/random_generator.h"
@@ -98,6 +101,7 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
 #include "core/providers/openvino/openvino_provider_factory.h"
+#include "core/platform/tensorrt_provider_options.h"
 
 // The filename extension for a shared library is different per platform
 #ifdef _WIN32
@@ -117,9 +121,8 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 
 namespace onnxruntime {
 
-//ProviderHost* g_host{};
-
-ProviderInfo_CUDA* GetProviderInfo_CUDA();
+ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
+ProviderInfo_CUDA& GetProviderInfo_CUDA();
 
 struct TensorShapeProto_Dimension_Iterator_Impl : TensorShapeProto_Dimension_Iterator {
   TensorShapeProto_Dimension_Iterator_Impl(google::protobuf::internal::RepeatedPtrIterator<const onnx::TensorShapeProto_Dimension>&& v) : v_{std::move(v)} {}
@@ -195,15 +198,15 @@ struct ProviderHostImpl : ProviderHost {
   void CPUAllocator__Free(CPUAllocator* p, void* allocation) override { return p->CPUAllocator::Free(allocation); }
 
 #ifdef USE_CUDA
-  std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_CUDA()->CreateCUDAAllocator(device_id, name); }
-  std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_CUDA()->CreateCUDAPinnedAllocator(device_id, name); }
-  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) override { return GetProviderInfo_CUDA()->CreateGPUDataTransfer(stream); }
+  std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_CUDA().CreateCUDAAllocator(device_id, name); }
+  std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_CUDA().CreateCUDAPinnedAllocator(device_id, name); }
+  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) override { return GetProviderInfo_CUDA().CreateGPUDataTransfer(stream); }
 
-  void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override { return GetProviderInfo_CUDA()->cuda__Impl_Cast(stream, input_data, output_data, count); }
-  void cuda__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) override { return GetProviderInfo_CUDA()->cuda__Impl_Cast(stream, input_data, output_data, count); }
+  void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }
+  void cuda__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }
 
-  bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA()->CudaCall_false(retCode, exprString, libName, successCode, msg); }
-  bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA()->CudaCall_true(retCode, exprString, libName, successCode, msg); }
+  bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_false(retCode, exprString, libName, successCode, msg); }
+  bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_true(retCode, exprString, libName, successCode, msg); }
 #endif
 
   std::string GetEnvironmentVar(const std::string& var_name) override { return Env::Default().GetEnvironmentVar(var_name); }
@@ -1048,7 +1051,7 @@ void UnloadSharedProviders() {
 
 // Used by test code
 std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
-  if (auto* info = onnxruntime::GetProviderInfo_CUDA())
+  if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->CreateCUDAPinnedAllocator(device_id, name);
 
   return nullptr;
@@ -1095,10 +1098,17 @@ ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO() {
   return nullptr;
 }
 
-ProviderInfo_CUDA* GetProviderInfo_CUDA() {
+ProviderInfo_CUDA* TryGetProviderInfo_CUDA() {
   if (auto* provider = s_library_cuda.Get())
     return reinterpret_cast<ProviderInfo_CUDA*>(provider->GetInfo());
-  LOGS_DEFAULT(WARNING) << "GetProviderInfo_CUDA called, returning nullptr";
+
+  return nullptr;
+}
+
+ProviderInfo_CUDA& GetProviderInfo_CUDA() {
+  if(auto* info = TryGetProviderInfo_CUDA())
+    return *info;
+
   ORT_THROW("CUDA Provider not available, can't get interface for it");
 }
 
@@ -1108,13 +1118,13 @@ void CopyGpuToCpu(
     const size_t size,
     const OrtMemoryInfo& dst_location,
     const OrtMemoryInfo& src_location) {
-  if (auto* info = onnxruntime::GetProviderInfo_CUDA())
+  if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->CopyGpuToCpu(dst_ptr, src_ptr, size, dst_location, src_location);
   ORT_THROW("GPU-to-CPU copy is not implemented.");
 }
 
 void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) {
-  if (auto* info = onnxruntime::GetProviderInfo_CUDA())
+  if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->cudaMemcpy_HostToDevice(dst, src, count);
   ORT_THROW("cudaMemcpy_HostToDevice is not implemented.");
 }
@@ -1122,10 +1132,24 @@ void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) {
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 namespace cuda {
 INcclService& INcclService::GetInstance() {
-  return GetProviderInfo_CUDA()->GetINcclService();
+  return GetProviderInfo_CUDA().GetINcclService();
 }
 }  // namespace cuda
 #endif
+
+void UpdateProviderInfo_Tensorrt(OrtTensorRTProviderOptions* provider_options, const ProviderOptions& options) {
+  if (auto provider = s_library_tensorrt.Get()) {
+    provider->UpdateProviderOptions(reinterpret_cast<void*>(provider_options), options);
+  }
+}
+
+ProviderOptions GetProviderInfo_Tensorrt(const OrtTensorRTProviderOptions* provider_options) {
+  if (auto provider = s_library_tensorrt.Get()) {
+    return provider->GetProviderOptions(reinterpret_cast<const void*>(provider_options));
+  }
+
+  return {};
+}
 
 }  // namespace onnxruntime
 
@@ -1192,17 +1216,17 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessi
 
 ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
   API_IMPL_BEGIN
-  if (auto* info = onnxruntime::GetProviderInfo_CUDA())
+  if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->SetCurrentGpuDeviceId(device_id);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is either not enabled or not available.");
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
   API_IMPL_BEGIN
-  if (auto* info = onnxruntime::GetProviderInfo_CUDA())
+  if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->GetCurrentGpuDeviceId(device_id);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is either not enabled or not available.");
   API_IMPL_END
 }
 
@@ -1216,4 +1240,123 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA, _In_ Or
   options->provider_factories.push_back(factory);
   return nullptr;
   API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options) {
+  return OrtApis::SessionOptionsAppendExecutionProvider_TensorRT(options, reinterpret_cast<const OrtTensorRTProviderOptions*>(tensorrt_options));
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptionsV2** out) {
+  API_IMPL_BEGIN
+#ifdef USE_TENSORRT
+  *out = new OrtTensorRTProviderOptionsV2();
+  (*out)->device_id = 0;
+  (*out)->has_user_compute_stream = 0;
+  (*out)->user_compute_stream = nullptr;
+  (*out)->trt_max_partition_iterations = 1000;
+  (*out)->trt_min_subgraph_size = 1;
+  (*out)->trt_max_workspace_size = 1 << 30;
+  (*out)->trt_fp16_enable = false;
+  (*out)->trt_int8_enable = false;
+  (*out)->trt_int8_calibration_table_name = nullptr;
+  (*out)->trt_int8_use_native_calibration_table = false;
+  (*out)->trt_dla_enable = false;
+  (*out)->trt_dla_core = false;
+  (*out)->trt_dump_subgraphs = false;
+  (*out)->trt_engine_cache_enable= false;
+  (*out)->trt_engine_cache_path = nullptr;
+  (*out)->trt_engine_decryption_enable = false;
+  (*out)->trt_engine_decryption_lib_path = nullptr;
+  (*out)->trt_force_sequential_engine_build = false;
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(out);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
+                    _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys) {
+  API_IMPL_BEGIN
+#ifdef USE_TENSORRT
+  onnxruntime::ProviderOptions provider_options_map;
+  for (size_t i = 0; i != num_keys; ++i) {
+    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
+        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "key/value cannot be empty");
+    }
+
+    provider_options_map[provider_options_keys[i]] = provider_options_values[i];
+  }
+
+  onnxruntime::UpdateProviderInfo_Tensorrt(reinterpret_cast<OrtTensorRTProviderOptions*>(tensorrt_options),
+                                           reinterpret_cast<const onnxruntime::ProviderOptions&>(provider_options_map));
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Inout_ OrtAllocator* allocator,
+                    _Outptr_ char** ptr) {
+  API_IMPL_BEGIN
+#ifdef USE_TENSORRT
+  onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Tensorrt(reinterpret_cast<const OrtTensorRTProviderOptions*>(tensorrt_options));
+  onnxruntime::ProviderOptions::iterator it = options.begin();
+  std::string options_str = "";
+
+  while (it != options.end()) {
+    if (options_str == "") {
+      options_str += it->first;
+      options_str += "=";
+      options_str += it->second;
+    } else {
+      options_str += ";";
+      options_str += it->first;
+      options_str += "=";
+      options_str += it->second;
+    }
+    it++;
+  }
+
+  *ptr = onnxruntime::StrDup(options_str, allocator);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptionsV2* ptr) {
+#ifdef USE_TENSORRT
+  if (ptr != nullptr) {
+    if (ptr->trt_int8_calibration_table_name != nullptr) {
+      delete ptr->trt_int8_calibration_table_name;
+    }
+
+    if (ptr->trt_engine_cache_path != nullptr) {
+      delete ptr->trt_engine_cache_path;
+    }
+
+    if (ptr->trt_engine_decryption_lib_path != nullptr) {
+      delete ptr->trt_engine_decryption_lib_path;
+    }
+  }
+
+  delete ptr;
+#else
+  ORT_UNUSED_PARAMETER(ptr);
+#endif
 }

@@ -8,6 +8,8 @@
         "^test_batchnorm_example_old",
         "^test_batchnorm_example_training_mode",
         "^test_gathernd_example_int32_batch_dim1",
+        "^test_convtranspose_autopad_same", // ONNX 1.9 changes
+        "^test_convtranspose_autopad_same_cuda", // ONNX 1.9 changes
         "^test_max_int16",
         "^test_max_int8",
         "^test_max_uint16",
@@ -61,6 +63,8 @@
         "^test_mul_uint8_cpu",
         "^test_add_uint8_cpu",
         "^test_div_uint8_cpu",
+        "^test_batchnorm_*",
+        "^test_bernoulli_*",
         //GPU failures
         "^test_batchnorm_epsilon_training_mode_cuda",
         "^test_batchnorm_example_training_mode_cuda",

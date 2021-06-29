@@ -202,7 +202,7 @@ template <typename T>
 template <typename WeightT>
 void UniDirectionalLstm<T>::AllocateQuantizeBuffers(int max_sequence_length) {
   // Can not specialize on WeightT without specify T explicitly, so use sizeof
-  if (sizeof(WeightT) == 1) {
+  if constexpr(sizeof(WeightT) == 1) {
     const int hidden_size_x4 = 4 * hidden_size_;
     const int total_rows = max_sequence_length * batch_size_;
 

@@ -171,6 +171,7 @@ CMD ["/bin/bash"]
 #Build manylinux2014 docker image end
 
 ARG PYTHON_VERSION=3.6
+ARG TORCH_VERSION=1.9.0
 ARG INSTALL_DEPS_EXTRA_ARGS
 
 #Add our own dependencies
@@ -178,7 +179,7 @@ ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && \
     /tmp/scripts/manylinux/install_centos.sh && \
     /tmp/scripts/install_os_deps.sh -d gpu $INSTALL_DEPS_EXTRA_ARGS && \
-    /tmp/scripts/install_python_deps.sh -d gpu -p $PYTHON_VERSION $INSTALL_DEPS_EXTRA_ARGS && \
+    /tmp/scripts/install_python_deps.sh -d gpu -p $PYTHON_VERSION -h $TORCH_VERSION $INSTALL_DEPS_EXTRA_ARGS && \
     rm -rf /tmp/scripts
 
 ARG BUILD_UID=1001

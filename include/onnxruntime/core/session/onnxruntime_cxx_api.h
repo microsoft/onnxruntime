@@ -472,8 +472,8 @@ struct MemoryAllocation {
   ~MemoryAllocation();
   MemoryAllocation(const MemoryAllocation&) = delete;
   MemoryAllocation& operator=(const MemoryAllocation&) = delete;
-  MemoryAllocation(MemoryAllocation&&);
-  MemoryAllocation& operator=(MemoryAllocation&&);
+  MemoryAllocation(MemoryAllocation&&) noexcept;
+  MemoryAllocation& operator=(MemoryAllocation&&) noexcept;
 
   void* get() { return p_; }
   size_t size() const { return size_; }

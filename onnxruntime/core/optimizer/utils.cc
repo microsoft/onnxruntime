@@ -266,16 +266,6 @@ int32_t IndexOfNodeOutput(const Node& node, const NodeArg& node_arg) {
   return -1;
 }
 
-bool IsSupportedDataType(const Node& node, const std::vector<std::string>& supported_data_types) {
-  for (const auto& input_arg : node.InputDefs()) {
-    if (std::find(supported_data_types.begin(), supported_data_types.end(),
-                  *(input_arg->Type())) == supported_data_types.end()) {
-      return false;
-    }
-  }
-  return true;
-}
-
 bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges) {
   if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
     return false;

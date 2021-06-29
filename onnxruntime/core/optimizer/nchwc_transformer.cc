@@ -104,7 +104,7 @@ class NchwcTransformerImpl {
   };
 
   size_t RemoveOutputEdges(Node& node);
-  void CreateNchwcArgument(Node& node, Node& nchwc_node, int64_t channels, const NchwcArgument::Shape& shape);
+  void CreateNchwcArgument(Node& node, Node& nchwc_node, size_t channels, const NchwcArgument::Shape& shape);
   void FuseNchwcArgument(Node& node, const NchwcArgument& nchwc_arg);
   void InsertReorderInput(Node& node);
 
@@ -172,7 +172,7 @@ size_t NchwcTransformerImpl::RemoveOutputEdges(Node& node) {
 
 void NchwcTransformerImpl::CreateNchwcArgument(Node& node,
                                                Node& nchwc_node,
-                                               int64_t channels,
+                                               size_t channels,
                                                const NchwcArgument::Shape& shape) {
   size_t original_uses = RemoveOutputEdges(node);
 
@@ -194,7 +194,7 @@ void NchwcTransformerImpl::FuseNchwcArgument(Node& node, const NchwcArgument& nc
   auto& nchwc_node = nchwc_arg.output_node_;
   auto* output_nchwc_arg = nchwc_node.MutableOutputDefs()[0];
   nchwc_args_[output_original_arg] =
-      std::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, nchwc_arg.channels_, nchwc_arg.shape_);
+      std::make_unique<NchwcArgument>(nchwc_node, output_nchwc_arg, original_uses, static_cast<size_t>(nchwc_arg.channels_), nchwc_arg.shape_);
 }
 
 void NchwcTransformerImpl::InsertReorderInput(Node& node) {
@@ -495,7 +495,7 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
     }
   }
 
-  CreateNchwcArgument(node, nchwc_node, output_channels, output_shape);
+  CreateNchwcArgument(node, nchwc_node, static_cast<size_t>(output_channels), output_shape);
   removed_nodes_.push_front(node.Index());
 }
 
@@ -550,7 +550,7 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
     ConvPoolShapeInference(node, nchwc_input->shape_, output_shape, nullptr);
   }
 
-  CreateNchwcArgument(node, nchwc_node, channels, output_shape);
+  CreateNchwcArgument(node, nchwc_node, static_cast<size_t>(channels), output_shape);
   removed_nodes_.push_front(node.Index());
 }
 
@@ -697,7 +697,7 @@ void NchwcTransformerImpl::TransformBinary(Node& node, bool add_node) {
       }
     }
 
-    CreateNchwcArgument(node, node, nchwc_input_0->channels_, nchwc_input_0->shape_);
+    CreateNchwcArgument(node, node, static_cast<size_t>(nchwc_input_0->channels_), nchwc_input_0->shape_);
     return;
   }
 
@@ -731,7 +731,7 @@ void NchwcTransformerImpl::TransformBinary(Node& node, bool add_node) {
 
     NchwcArgument::Shape output_shape(output_defs[0]);
 
-    CreateNchwcArgument(node, nchwc_node, channels, output_shape);
+    CreateNchwcArgument(node, nchwc_node, static_cast<size_t>(channels), output_shape);
     output_defs[0] = output_reshaped_arg;
     return;
   }
@@ -780,7 +780,7 @@ void NchwcTransformerImpl::TransformConcat(Node& node) {
   NchwcArgument::Shape output_shape = nchwc_inputs[0]->shape_;
   output_shape.dims_[1] = output_defs[0];
 
-  CreateNchwcArgument(node, node, total_channels, output_shape);
+  CreateNchwcArgument(node, node, static_cast<size_t>(total_channels), output_shape);
 }
 
 // After doing a Conv/Add fusion, there may be an activation node that could now
@@ -805,7 +805,7 @@ void NchwcTransformerImpl::TransformActivation(Node& node) {
       FuseNchwcArgument(node, *nchwc_input);
       removed_nodes_.push_front(node.Index());
     } else {
-      CreateNchwcArgument(node, node, nchwc_input->channels_, nchwc_input->shape_);
+      CreateNchwcArgument(node, node, static_cast<size_t>(nchwc_input->channels_), nchwc_input->shape_);
     }
   }
 }
@@ -926,7 +926,7 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
 
   nchwc_input->remaining_original_uses_--;
 
-  CreateNchwcArgument(node, nchwc_node, channels, nchwc_input->shape_);
+  CreateNchwcArgument(node, nchwc_node, static_cast<size_t>(channels), nchwc_input->shape_);
   removed_nodes_.push_front(node.Index());
 }
 
@@ -1127,7 +1127,7 @@ void NchwcTransformerImpl::TransformResize(Node& node) {
 
   NchwcArgument::Shape output_shape(output_defs[0]);
 
-  CreateNchwcArgument(node, nchwc_node, nchwc_input->channels_, output_shape);
+  CreateNchwcArgument(node, nchwc_node, static_cast<size_t>(nchwc_input->channels_), output_shape);
   removed_nodes_.push_front(node.Index());
 }
 
