@@ -23,8 +23,19 @@
 #include "core/common/cpuid_info.h"
 
 #if defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)
-// Using pytorch cpu info for cache size and arm related info
+#ifdef __APPLE__
+
+// TODO!! distinguish iOS vs Mac OS
+// cpuinfo failed to build on iOS but is ok for MacOS.
+// however we don't have a flag to distinguish them
+
+#else
+
+#define CPUINFO_INCLUDED
 #include <cpuinfo.h>
+
+#endif
+
 #endif
 
 namespace onnxruntime {
@@ -56,7 +67,7 @@ CPUIDInfo CPUIDInfo::instance_;
 
 common::Status CPUIDInfo::Init() {
 
-#if defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)
+#ifdef CPUINFO_INCLUDED
   if (!cpuinfo_initialize()) {
     // Unfortunately we can not capture cpuinfo log!!
     return ORT_MAKE_STATUS(SYSTEM, FAIL, "Failed to initialize cpuinfo");
@@ -95,7 +106,7 @@ common::Status CPUIDInfo::Init() {
   }
 #endif
 
-#ifdef CPUIDINFO_ARCH_ARM
+#if defined(CPUIDINFO_ARCH_ARM) && defined(CPUINFO_INCLUDED)
 
   // only works on ARM linux or android, does not work on Windows
   is_hybrid_ = cpuinfo_get_uarchs_count() > 1;

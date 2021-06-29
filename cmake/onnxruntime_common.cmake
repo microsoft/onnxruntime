@@ -226,7 +226,7 @@ elseif(NOT onnxruntime_BUILD_WEBASSEMBLY)
 endif()
 
 
-if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
+if ((ARM64 OR ARM OR X86 OR X64 OR X86_64) AND NOT (CMAKE_SYSTEM_NAME STREQUAL "iOS"))
   # Link cpuinfo
   # Using it mainly in ARM with Android. 
   # Its functionality in detecting x86 cpu features are lacking, so is support for Windows.
