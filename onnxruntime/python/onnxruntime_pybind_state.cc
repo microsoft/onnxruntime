@@ -287,6 +287,18 @@ static inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime
   OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(p)));
 }
 
+static inline void RegisterExecutionProviderFromCache(InferenceSession* sess, const CUDAExecutionProviderInfo& info) {
+  static std::unordered_map<OrtDevice::DeviceId, std::shared_ptr<IExecutionProvider>> cuda_eps;
+
+  auto device_id = info.device_id;
+  if (cuda_eps.find(device_id) == cuda_eps.end()) {
+    auto cuda_ep_factory = GetProviderInfo_CUDA()->CreateExecutionProviderFactory(info);
+    cuda_eps[device_id] = std::move(cuda_ep_factory->CreateProvider());
+  }
+
+  OrtPybindThrowIfError(sess->RegisterExecutionProvider(cuda_eps[device_id]));
+}
+
 static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
     const std::string& ep_shared_lib_path,
     const ProviderOptions& provider_options = {}) {
@@ -487,7 +499,8 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
       // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
       // since FromProviderOptions might contain external CUDA allocator.
       external_allocator_info = info.external_allocator_info;
-      RegisterExecutionProvider(sess, *GetProviderInfo_CUDA()->CreateExecutionProviderFactory(info));
+      // RegisterExecutionProvider(sess, *GetProviderInfo_CUDA()->CreateExecutionProviderFactory(info));
+      RegisterExecutionProviderFromCache(sess, info);
 #endif
     } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
@@ -1610,7 +1623,7 @@ static struct {
 void addObjectMethodsForTraining(py::module& m);
 #endif
 
-void CreatePybindStateModule(py::module& m){
+void CreatePybindStateModule(py::module& m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
 
