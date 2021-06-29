@@ -140,10 +140,6 @@ try:
                 copyfile(source, dest)
                 to_preload = []
                 if rocm_version:
-                    source = 'tools/ci_build/github/azure-pipelines/licenses/ROCmNotices.txt'
-                    dest = 'ROCmNotices.txt'
-                    logger.info('copying %s -> %s', source, dest)
-                    copyfile(source, dest) 
                     extra += ['ROCmNotices.txt']
                 dest = 'onnxruntime/capi/libonnxruntime_providers_cuda.so'
                 if path.isfile(dest):
