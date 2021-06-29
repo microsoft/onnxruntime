@@ -202,8 +202,6 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
     }
 
     if (!s_.cached_benchmark_results.contains(x_dims_cudnn)) {
-      IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize);
-
       // set math type to tensor core before algorithm search
       if (std::is_same<T, MLFloat16>::value)
         CUDNN_RETURN_IF_ERROR(cudnnSetConvolutionMathType(s_.conv_desc, CUDNN_TENSOR_OP_MATH));
@@ -215,6 +213,7 @@ Status Conv<T>::UpdateState(OpKernelContext* context, bool bias_expected) const 
       ORT_ENFORCE(cudnn_conv_algo > -1 && cudnn_conv_algo < 3, "cudnn_conv_algo should be 0, 1 or 2, but got ", cudnn_conv_algo);
       switch (cudnn_conv_algo) {
         case 0: {
+          IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize);
           CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionForwardAlgorithmEx(
               CudnnHandle(),
               s_.x_tensor,
