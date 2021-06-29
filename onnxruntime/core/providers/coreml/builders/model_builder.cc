@@ -156,9 +156,10 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_INT64:
         if (!is_input) {
-          // set -> int32(ArrayFeatureType)
+          // If we have an int64 output type, since COREML_SPEC:ArrayFeatureType does not support INT64
+          // We assgin it to be INT32 here
           multi_array->set_datatype(COREML_SPEC::ArrayFeatureType::INT32);
-          // we need to change these outputs back to Int64 when CoreML EP returns these values to ORT
+          // Record the output names and we need to change them back to Int64 when CoreML EP returns these values to ORT
           AddInt64Output(name);
         }
         break;

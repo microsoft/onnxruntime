@@ -32,7 +32,7 @@ class Model {
                                       const std::unordered_map<std::string, OnnxTensorData>& outputs);
 
   bool IsScalarOutput(const std::string& output_name) const;
-  
+
   bool IsInt64Output(const std::string& output_name) const;
 
   // Mutex for exclusive lock to this model object
@@ -69,8 +69,7 @@ class Model {
   void SetScalarOutputs(std::unordered_set<std::string>&& scalar_outputs) {
     scalar_outputs_ = std::move(scalar_outputs);
   }
-  
-  // TODO:Investigate
+
   void SetInt64Outputs(std::unordered_set<std::string>&& int64_outputs) {
     int64_outputs_ = std::move(int64_outputs);
   }
