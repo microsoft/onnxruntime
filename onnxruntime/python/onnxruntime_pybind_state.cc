@@ -288,7 +288,7 @@ static inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime
 }
 
 #ifdef USE_CUDA
-static inline void RegisterCudaExecutionProviderFromCache(InferenceSession* sess, const ProviderOptionsMap& provider_options_map) {
+static inline void RegisterCudaExecutionProviderWithCache(InferenceSession* sess, const ProviderOptionsMap& provider_options_map) {
   if (auto* cuda_provider_info = TryGetProviderInfo_CUDA()) {
     const auto it = provider_options_map.find(kCudaExecutionProvider);
     CUDAExecutionProviderInfo info{};
@@ -326,7 +326,7 @@ static inline void RegisterCudaExecutionProviderFromCache(InferenceSession* sess
 #endif
 
 #ifdef USE_ROCM
-static inline void RegisterRocmExecutionProviderFromCache(InferenceSession* sess, const ProviderOptionsMap& provider_options_map) {
+static inline void RegisterRocmExecutionProviderWithCache(InferenceSession* sess, const ProviderOptionsMap& provider_options_map) {
   const auto it = provider_options_map.find(kRocmExecutionProvider);
   const ROCMExecutionProviderInfo info =
       it != provider_options_map.end()
@@ -360,10 +360,10 @@ using RegisterFunc = void (*)(InferenceSession*, const ProviderOptionsMap&);
 
 static std::unordered_map<std::string, RegisterFunc> EP_register_func_map = {
 #ifdef USE_CUDA
-    {kCudaExecutionProvider, RegisterCudaExecutionProviderFromCache},
+    {kCudaExecutionProvider, RegisterCudaExecutionProviderWithCache},
 #endif
 #ifdef USE_ROCM
-    {kRocmExecutionProvider, RegisterRocmExecutionProviderFromCache}
+    {kRocmExecutionProvider, RegisterRocmExecutionProviderWithCache}
 #endif
 };
 
