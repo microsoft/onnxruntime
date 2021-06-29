@@ -73,7 +73,7 @@ class AttentionCPUBase : public AttentionBase {
     const std::vector<int64_t>* extra_add_qk_dims = extra_add_qk != nullptr ? &(extra_add_qk->Shape().GetDims()) : nullptr;
 
     // LHS is uint64_t, RHS are ints, how is C++ allowing this.
-    if (extra_add_qk_dims->size() != 0) {
+    if (extra_add_qk_dims != nullptr && extra_add_qk_dims->size() != 0) {
         if (extra_add_qk_dims->at(1) != num_heads_) {
             return Status::OK();
         }
@@ -128,13 +128,6 @@ class AttentionCPUBase : public AttentionBase {
     const size_t input_chunk_length = static_cast<size_t>(sequence_length) * head_size;      // S x H
     const size_t present_chunk_length = past_chunk_length + input_chunk_length;              // S* x H
 
-    if (extra_add_qk_data == nullptr || extra_add_qk_dims->size() == 0) {
-        //std::cout<<"extra_add_qk options are both null"<<std::endl;
-    }
-    else {
-        //std::cout<<"extra_add_qk options are none null"<<std::endl;
-    }
-
     {
       if (mask_data != nullptr) {
         PrepareMask(mask_index, mask_index_dims, mask_data, is_unidirectional_, batch_size, sequence_length, past_sequence_length);
@@ -177,16 +170,18 @@ class AttentionCPUBase : public AttentionBase {
       });
     }
 
-    int64_t batch_offset = num_heads_*sequence_length*all_sequence_length;
-    int64_t head_offset = sequence_length*all_sequence_length;
-    int64_t seq_len_offset = all_sequence_length; 
-   
-    for (size_t i = 0; i < batch_size; i++) {
-      for (size_t j = 0; j < num_heads_; j++) {
-        for (size_t k = 0; k < sequence_length; k++) {
-          for (size_t l = 0; l < all_sequence_length; l++) {
-            int64_t final_offset =  i*batch_offset + j*head_offset + k*seq_len_offset + l;
-            attention_probs[final_offset] += extra_add_qk_data[final_offset];
+    if (extra_add_qk_data != nullptr && extra_add_qk_dims->size() != 0) {
+      int64_t batch_offset = num_heads_*sequence_length*all_sequence_length;
+      int64_t head_offset = sequence_length*all_sequence_length;
+      int64_t seq_len_offset = all_sequence_length;
+
+      for (size_t i = 0; i < batch_size; i++) {
+        for (size_t j = 0; j < num_heads_; j++) {
+          for (size_t k = 0; k < sequence_length; k++) {
+            for (size_t l = 0; l < all_sequence_length; l++) {
+              int64_t final_offset =  i*batch_offset + j*head_offset + k*seq_len_offset + l;
+              attention_probs[final_offset] += extra_add_qk_data[final_offset];
+            }
           }
         }
       }
