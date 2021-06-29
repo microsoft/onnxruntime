@@ -9,8 +9,6 @@
 #include "core/providers/cuda/cuda_fwd.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 
-#include <thread>
-
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cuda/cuda_contrib_kernels.h"
 #endif
@@ -230,15 +228,9 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
     if (context_state_.retired_context_pool.empty()) {
       context = std::make_shared<PerThreadContext>(info_.device_id, static_cast<cudaStream_t>(GetComputeStream()), info_.gpu_mem_limit,
                                                    info_.arena_extend_strategy, info_.external_allocator_info, info_.default_memory_arena_cfg);
-
-      std::cout << "Creating a new PerThreadContext deviceId: " << info_.device_id << " EP Address: " << this << " thread_id: " << std::this_thread::get_id()
-                << " context address: " << context.get() << "\n";
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();
-
-      std::cout << "Reusing a PerThreadContext deviceId: " << info_.device_id << " EP Address: " << this << " thread_id: " << std::this_thread::get_id()
-                << " context address: " << context.get() << "\n";
     }
 
     // insert into active_contexts, should not already be present
@@ -267,9 +259,6 @@ void CUDAExecutionProvider::ReleasePerThreadContext() const {
     context_state_.active_contexts.erase(cached_context);
     context_state_.retired_context_pool.push_back(cached_context);
   }
-
-  std::cout << "Releasing a PerThreadContext deviceId: " << info_.device_id << " EP Address: " << this << " thread_id: " << std::this_thread::get_id()
-            << " context address: " << cached_context.get() << "\n";
 
   per_thread_context_cache->erase(cached_context_it);
 }
