@@ -47,6 +47,9 @@ class ONNXModel:
                 return tensor
         return None
 
+    def get_initializer_name_set(self):
+        return set(initializer.name for initializer in self.model.graph.initializer)
+
     def remove_initializer(self, tensor):
         if tensor in self.model.graph.initializer:
             self.model.graph.initializer.remove(tensor)
@@ -58,6 +61,14 @@ class ONNXModel:
     def remove_initializers(self, init_to_remove):
         for initializer in init_to_remove:
             self.remove_initializer(initializer)
+
+    def get_non_initializer_inputs(self):
+        initializer_names = self.get_initializer_name_set()
+        non_initializer_inputs = set()
+        for input in self.model.graph.input:
+            if input.name not in initializer_names:
+                non_initializer_inputs.add(input.name)
+        return non_initializer_inputs
 
     def input_name_to_nodes(self):
         input_name_to_nodes = {}

@@ -4,6 +4,7 @@
 import {MatMul} from '../../../ops/matmul';
 import {Tensor} from '../../../tensor';
 import {BroadcastUtil} from '../../../util';
+import {ShapeUtil} from '../../../util';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, WebGLOperator} from '../types';
@@ -17,10 +18,11 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
   }
   createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
     const hasBias = inputs.length > 2;
-    const processBias = hasBias ? 'value += getBiasAtOutCoords();' : '';
+    const processBias = hasBias ? 'value += getBiasForMatmul();' : '';
     const aShape = inputs[0].dims;
     const bShape = inputs[1].dims;
     const outputShape = BroadcastUtil.calcShape(aShape, bShape, true);
+    const isBroadcast = !ShapeUtil.areEqual(inputs[0].dims, inputs[1].dims);
 
     if (!outputShape) {
       throw new Error('Can\'t use matmul on the given tensors');
@@ -39,19 +41,33 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
     float max = float(${this.clipMax});` :
                                                         '';
     const {activationFunction, applyActivation} = getActicationSnippet(this.activation);
+
+    const getBiasForMatmulSnippet =
+        hasBias ? `${getBiasForMatmul(coordsDataType, allGlChannels, inputs[2].dims, outputShape)}` : '';
+
+    const getBcastedSamplerForMatmulSnippet =
+        isBroadcast ? `${getBcastSamplerForMatmul(coordsDataType, allGlChannels, inputs, outputShape)}` : '';
+
+    const getSamplerAInLoopSnippet = isBroadcast ? 'getAAtOutCoordsMatmul(i)' : `getA(${getA(allGlChannels, aRank)})`;
+    const getSamplerBInLoopSnippet = isBroadcast ? 'getBAtOutCoordsMatmul(i)' : `getB(${getB(allGlChannels, bRank)})`;
+    const getOutputCoordsSnippet = isBroadcast ? '' : `${coordsDataType} rc = getOutputCoords();
+    int lastDim = rc.${allGlChannels[outRank - 1]};
+    rc.${allGlChannels[outRank - 1]} = rc.${allGlChannels[outRank - 2]};
+    rc.${allGlChannels[outRank - 2]} = lastDim;
+`;
     const shaderSource = `
       ${additionalVars}
+      ${getBcastedSamplerForMatmulSnippet}
+      ${getBiasForMatmulSnippet}
       ${activationFunction}
       void main() {
-        ${coordsDataType} rc = getOutputCoords();
-        int lastDim = rc.${allGlChannels[outRank - 1]};
-        rc.${allGlChannels[outRank - 1]} = rc.${allGlChannels[outRank - 2]};
-        rc.${allGlChannels[outRank - 2]} = lastDim;
+        ${getOutputCoordsSnippet}
 
         vec4 value = vec4(0);
         for (int i = 0; i < ${sharedDimIndex}; i++) {
-          vec4 a = getA(${getA(allGlChannels, aRank)});
-          vec4 b = getB(${getB(allGlChannels, bRank)});
+          vec4 a = ${getSamplerAInLoopSnippet};
+          vec4 b = ${getSamplerBInLoopSnippet};
+
           value += (a.rrbb * b.rgrg);
           value += (a.ggaa * b.baba);
         }
@@ -80,6 +96,89 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
       uniformData: {}
     };
   }
+}
+
+function getBiasForMatmul(
+    coordsDataType: string, allGlChannels: readonly string[], inShape: readonly number[],
+    outShape: readonly number[]): string {
+  let unpackedCoordsSnippet = '';
+  const inRank = inShape.length;
+  const outRank = outShape.length;
+  const rankDiff = outRank - inRank;
+  if (outRank < 2 && inRank > 0) {
+    unpackedCoordsSnippet = 'coords';
+  } else {
+    unpackedCoordsSnippet = inShape.map((s, i) => `coords.${allGlChannels[i + rankDiff]}`).join(', ');
+  }
+  const broadcastDims = BroadcastUtil.getBroadcastDims(inShape, outShape);
+  const coordsSnippet = broadcastDims.map(d => `coords.${allGlChannels[d + rankDiff]} = 0;`).join('\n');
+  const inSize = ShapeUtil.size(inShape);
+  const isInputScalar = inSize === 1;
+  let output = 'vec4(outputValue.xx, outputValue.yy)';
+  if (isInputScalar) {
+    output = 'vec4(outputValue.x)';
+  }
+  const getBiasForMatmulSource = `
+  vec4 getBiasForMatmul() {
+    ${coordsDataType} coords = getOutputCoords();
+    ${coordsSnippet}
+    vec4 outputValue = getBias(${unpackedCoordsSnippet});
+    return ${output};
+
+  }`;
+
+  return getBiasForMatmulSource;
+}
+
+function getBcastSamplerForMatmul(
+    coordsDataType: string, allGlChannels: readonly string[], inputs: Tensor[], outShape: readonly number[]): string {
+  let unpackedACoordsSnippet = [];
+  let unpackedBCoordsSnippet = [];
+
+  const inAShape = inputs[0].dims;
+  const inBShape = inputs[1].dims;
+
+  const inARank = inAShape.length;
+  const inBRank = inBShape.length;
+
+  const outRank = outShape.length;
+  const rankADiff = outRank - inARank;
+  const rankBDiff = outRank - inBRank;
+
+  unpackedACoordsSnippet = inAShape.map((s, i) => `coords.${allGlChannels[i + rankADiff]}`);
+  unpackedACoordsSnippet[inARank - 1] = 'i*2';
+  unpackedACoordsSnippet.join(', ');
+  unpackedBCoordsSnippet = inBShape.map((s, i) => `coords.${allGlChannels[i + rankBDiff]}`);
+  unpackedBCoordsSnippet[inBRank - 2] = 'i*2';
+  unpackedBCoordsSnippet.join(', ');
+
+  const broadcastADims = BroadcastUtil.getBroadcastDims(inAShape, outShape);
+  const broadcastBDims = BroadcastUtil.getBroadcastDims(inBShape, outShape);
+
+  const coordsASnippet = broadcastADims.map(d => `coords.${allGlChannels[d + rankADiff]} = 0;`).join('\n');
+  const coordsBSnippet = broadcastBDims.map(d => `coords.${allGlChannels[d + rankBDiff]} = 0;`).join('\n');
+  const swapDimSnippet = `int lastDim = coords.${allGlChannels[outRank - 1]};
+  coords.${allGlChannels[outRank - 1]} = coords.${allGlChannels[outRank - 2]};
+  coords.${allGlChannels[outRank - 2]} = lastDim;`;
+
+  const getBcastSamplerMatmulSource = `
+vec4 getAAtOutCoordsMatmul(int i) {
+  ${coordsDataType} coords = getOutputCoords();
+  ${swapDimSnippet}
+  ${coordsASnippet}
+  vec4 outputValue = getA(${unpackedACoordsSnippet});
+  return outputValue;
+}
+
+vec4 getBAtOutCoordsMatmul(int i) {
+  ${coordsDataType} coords = getOutputCoords();
+  ${swapDimSnippet}
+  ${coordsBSnippet}
+  vec4 outputValue = getB(${unpackedBCoordsSnippet});
+  return outputValue;
+}`;
+
+  return getBcastSamplerMatmulSource;
 }
 
 function getA(allGlChannels: string[], rank: number): string {

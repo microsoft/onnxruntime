@@ -164,7 +164,7 @@ Status Pool<T, PoolType>::ComputeInternal(OpKernelContext* context) const {
   }
 
   cudnnPoolingMode_t mode = CUDNN_POOLING_MAX;
-  if (PoolType::type == onnxruntime::PoolType::kAveragePool) {
+  if constexpr (PoolType::type == onnxruntime::PoolType::kAveragePool) {
     mode = pool_attrs_.count_include_pad ? CUDNN_POOLING_AVERAGE_COUNT_INCLUDE_PADDING
                                          : CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING;
   }
