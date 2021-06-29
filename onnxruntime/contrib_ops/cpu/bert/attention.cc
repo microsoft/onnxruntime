@@ -67,6 +67,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   //                 or (batch_size, past_sequence_length + sequence_length)
   //                 or (batch_size, sequence_length, past_sequence_length + sequence_length)
   //   past        : (2, batch_size, num_heads, past_sequence_length, head_size)
+  //   extra_add_qk: (batch_size, num_heads, sequence_length, sequence_length)
   //
   // Where hidden_size = num_heads * head_size.
   // When a model is pruned (like some attention heads are removed), hidden_size < input_hidden_size.
@@ -190,6 +191,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                              mask_dims.size());
     }
   }
+
   return Status::OK();
 }
 
@@ -440,8 +442,8 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* bias = context->Input<Tensor>(2);
 
   const Tensor* mask_index = context->Input<Tensor>(3);
-  //const Tensor* past = context->Input<Tensor>(4);
-  const Tensor* past = nullptr;
+  const Tensor* past = context->Input<Tensor>(4);
+  const Tensor* extra_add_qk = context->Input<Tensor>(5);
 
   const TensorShape& weights_shape = (weights ? weights->Shape() : weight_shape_);
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
@@ -454,6 +456,31 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const int batch_size = static_cast<int>(shape[0]);
   const int sequence_length = static_cast<int>(shape[1]);
   const int input_hidden_size = static_cast<int>(shape[2]);
+
+  //TODO move this into CheckInputs
+  const T* extra_add_qk_data = extra_add_qk != nullptr ? extra_add_qk->template Data<T>(): nullptr;
+  const std::vector<int64_t>* extra_add_qk_dims = extra_add_qk_data != nullptr ? &(extra_add_qk->Shape().GetDims()) : nullptr;
+
+  // LHS is uint64_t, RHS are ints, how is C++ allowing this.
+  if (extra_add_qk_dims != nullptr) {
+      if (extra_add_qk_dims->size() != 4) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'extra_add_qk' is expected to have 4 dimensions, got ",
+                           extra_add_qk_dims->size());
+      }
+
+      if (extra_add_qk_dims->at(1) != num_heads_) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'extra_add_qk' dimension 1 should be same as number of heads, got ",
+                           extra_add_qk_dims->at(1));
+      }
+      if (extra_add_qk_dims->at(2) != sequence_length) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'extra_add_qk' dimension 2 should be same as sequence_length, got ",
+                           extra_add_qk_dims->at(2));
+      }
+      if (extra_add_qk_dims->at(3) != sequence_length) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'extra_add_qk' dimension 3 should be same as sequence_length, got ",
+                           extra_add_qk_dims->at(3));
+      }
+  }
 
   int hidden_size;
 
@@ -647,9 +674,8 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q, K, V, mask_index, past, output,
                         batch_size, sequence_length,
-                        //head_size, hidden_size,
                         qk_head_size, v_head_size, v_hidden_size,
-                        context);
+                        extra_add_qk, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime

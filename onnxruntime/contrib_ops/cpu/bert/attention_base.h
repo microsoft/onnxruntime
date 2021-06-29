@@ -11,7 +11,8 @@ namespace contrib {
 
 class AttentionBase {
  public:
-  // This check function is specifically used in cuda
+  Status CheckInputs(const TensorShape & input_shape, const TensorShape & weights_shape, const TensorShape & bias_shape, const Tensor *& mask_index, const Tensor * past, const Tensor * extra_add_qk) const;
+// This check function is specifically used in cuda
   Status CheckInputs(const TensorShape& input_shape,
                      const TensorShape& weights_shape,
                      const TensorShape& bias_shape,
