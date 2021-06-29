@@ -125,7 +125,7 @@ bool ConvAddFusion::SatisfyCondition(const Graph& graph, const Node& node, const
     return false;
   }
 
-  if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
+  if (graph.GetNodeProvidesGraphOutput(node)) {
     return false;
   }
 
