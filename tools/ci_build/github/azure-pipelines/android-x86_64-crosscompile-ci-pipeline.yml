@@ -76,7 +76,9 @@ jobs:
   pool:
     vmImage: 'ubuntu-latest'
   dependsOn: Android_CI
-  condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+  # disable update dashboard of Android Code coverage until Azure CI machine cannot access database issue is resolved
+  # condition: and(succeeded(), in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI'))
+  condition: false
   steps:
   - task: DownloadPipelineArtifact@0
     displayName: 'Download code coverage report'
