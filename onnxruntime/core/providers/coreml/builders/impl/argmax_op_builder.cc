@@ -40,8 +40,9 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   coreml_argmax->set_removedim(removedim);
 
   // There are two cases here:
-  // 1. Special Case (ArgMax-Cast) we fuse the Argmax's output/Cast's input
-  // 2. Otherwise, we add Argma's layer normally
+  // 1. Special Case (ArgMax-Cast), we fuse the Argmax's output/Cast's input
+  // (We still have this special case here because CoreML model does not have Cast)
+  // 2. Otherwise, we add Argmax layer normally
   if (node.GetOutputEdgesCount() == 1) {
     auto it = node.OutputEdgesBegin();
     const auto* succ_node(graph_viewer.GetNode(it->GetNode().Index()));
@@ -75,7 +76,7 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
 
   // Case where argmax has multiple succeeding nodes(cast node among them) is not supported
   if (node.GetOutputEdgesCount() > 1) {
-    // Check if the succeeding nodes contains cast;If yes, not supported
+    // Check if Argmax's succeeding nodes contain Cast;If yes, not supported
     // Otherwise, supported
     for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
       const auto& op_type = it->GetNode().OpType();
