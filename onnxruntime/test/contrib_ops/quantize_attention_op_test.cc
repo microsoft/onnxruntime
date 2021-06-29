@@ -89,7 +89,7 @@ void RunQAttention(const std::vector<float>& input_data,         // input:      
   tester.AddInput<QInput>("input_zero_point", {1}, {input_zero_point});
   tester.AddInput<QWeight>("weight_zero_point", {1}, {weight_zero_point});
 
-  if (ep == EP::CUDA) {
+  if constexpr (ep == EP::CUDA) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);

@@ -289,32 +289,39 @@ static inline void RegisterExecutionProvider(InferenceSession* sess, onnxruntime
 
 #ifdef USE_CUDA
 static inline void RegisterCudaExecutionProviderFromCache(InferenceSession* sess, const ProviderOptionsMap& provider_options_map) {
-  const auto it = provider_options_map.find(kCudaExecutionProvider);
-  CUDAExecutionProviderInfo info{};
-  if (it != provider_options_map.end())
-    GetProviderInfo_CUDA()->CUDAExecutionProviderInfo__FromProviderOptions(it->second, info);
-  else {
-    info.device_id = cuda_device_id;
-    info.gpu_mem_limit = gpu_mem_limit;
-    info.arena_extend_strategy = arena_extend_strategy;
-    info.cudnn_conv_algo_search = cudnn_conv_algo_search;
-    info.do_copy_in_default_stream = do_copy_in_default_stream;
-    info.external_allocator_info = external_allocator_info;
+  if (auto* cuda_provider_info = TryGetProviderInfo_CUDA()) {
+    const auto it = provider_options_map.find(kCudaExecutionProvider);
+    CUDAExecutionProviderInfo info{};
+    if (it != provider_options_map.end())
+      GetProviderInfo_CUDA()->CUDAExecutionProviderInfo__FromProviderOptions(it->second, info);
+    else {
+      info.device_id = cuda_device_id;
+      info.gpu_mem_limit = gpu_mem_limit;
+      info.arena_extend_strategy = arena_extend_strategy;
+      info.cudnn_conv_algo_search = cudnn_conv_algo_search;
+      info.do_copy_in_default_stream = do_copy_in_default_stream;
+      info.external_allocator_info = external_allocator_info;
+    }
+
+    // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
+    // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
+    // since FromProviderOptions might contain external CUDA allocator.
+    external_allocator_info = info.external_allocator_info;
+
+    static std::unordered_map<OrtDevice::DeviceId, std::shared_ptr<IExecutionProvider>> cuda_eps;
+
+    auto device_id = info.device_id;
+    if (cuda_eps.find(device_id) == cuda_eps.end()) {
+      auto cuda_ep_factory = GetProviderInfo_CUDA()->CreateExecutionProviderFactory(info);
+      cuda_eps[device_id] = std::move(cuda_ep_factory->CreateProvider());
+    }
+    OrtPybindThrowIfError(sess->RegisterExecutionProvider(cuda_eps[device_id]));
+
+  } else {
+    if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
+      ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page, make sure they're in the PATH, and that your GPU is supported.");
+    }
   }
-
-  // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
-  // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
-  // since FromProviderOptions might contain external CUDA allocator.
-  external_allocator_info = info.external_allocator_info;
-
-  static std::unordered_map<OrtDevice::DeviceId, std::shared_ptr<IExecutionProvider>> cuda_eps;
-
-  auto device_id = info.device_id;
-  if (cuda_eps.find(device_id) == cuda_eps.end()) {
-    auto cuda_ep_factory = GetProviderInfo_CUDA()->CreateExecutionProviderFactory(info);
-    cuda_eps[device_id] = std::move(cuda_ep_factory->CreateProvider());
-  }
-  OrtPybindThrowIfError(sess->RegisterExecutionProvider(cuda_eps[device_id]));
 }
 #endif
 
@@ -1711,7 +1718,8 @@ void CreatePybindStateModule(py::module& m) {
   addOrtValueMethods(m);
   addIoBindingMethods(m);
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#if !defined(ENABLE_TRAINING) && !defined(__APPLE__) && \
+    (!defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
   Ort::SessionOptions tmp_options;
   if (!InitProvidersSharedLibrary()) {
     const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();

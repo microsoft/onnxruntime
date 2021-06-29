@@ -488,7 +488,9 @@ def test_model_without_device():
     # ORTModule and PyTorch does not move model to where user input is hosted
     with pytest.raises(RuntimeError) as type_error:
         model(x)
-    assert "Tensor for argument #1 'self' is on CPU, but expected them to be on GPU (while checking arguments for addmm)" in str(type_error.value)
+    assert \
+        ("Tensor for argument #1 'self' is on CPU, but expected them to be on GPU (while checking arguments for addmm)" in str(type_error.value)) \
+        or ("Expected all tensors to be on the same device, but found at least two devices, cpu and cuda:0!" in str(type_error.value))
 
 def test_model_and_input_without_device():
     N, D_in, H, D_out = 64, 784, 500, 10
@@ -890,7 +892,7 @@ def test_multiple_ortmodules_common_backbone_training():
         ort_prediction = run_step(ort_model0, ort_model2, x1)
 
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
-        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model0, pt_model0, reset_gradient=True, atol=1.5e-6)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model0, pt_model0, reset_gradient=True, atol=1e-5)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model2, pt_model2)
 
 def test_multiple_chained_ortmodules_training():
@@ -2808,3 +2810,16 @@ def test_hf_save_pretrained():
 
         for p1, p2 in zip(model1.parameters(), model2.parameters()):
             assert p1.data.ne(p2.data).sum() == 0
+
+def test_input_with_string_exception():
+    class MyStrNet(torch.nn.Module):
+        def forward(self, x, my_str):
+            if my_str.lower() == 'hello':
+                print('hi')
+            return x
+
+    model = MyStrNet()
+    model = ORTModule(model)
+    with pytest.raises(TypeError) as ex_info:
+        _ = model(torch.randn(1, 2), 'hello')
+    assert "ORTModule does not support the following model data type <class 'str'>" in str(ex_info.value)

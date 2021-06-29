@@ -14,7 +14,6 @@
 #include "core/providers/op_kernel_type_control_utils.h"
 
 using namespace ::onnxruntime::common;
-using namespace std;
 
 namespace onnxruntime {
 namespace op_kernel_type_control {
@@ -40,25 +39,20 @@ using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExec
                                                                         Slice, Input, 0);
 using EnabledIndicesTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                            Slice, Input, 1);
-
-const auto data_type_constraints = BuildKernelDefConstraintsFromTypeList<DataTypes>();
-const auto indices_type_constraints = BuildKernelDefConstraintsFromTypeList<IndicesTypes>();
-const auto enabled_data_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>();
-const auto enabled_indices_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>();
 }  // namespace
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Slice,
     1, 9,
-    KernelDefBuilder().TypeConstraint("T", data_type_constraints, enabled_data_type_constraints),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<DataTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
     Slice1);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Slice,
     10, 10,
     KernelDefBuilder()
-        .TypeConstraint("T", data_type_constraints, enabled_data_type_constraints)
-        .TypeConstraint("Tind", indices_type_constraints, enabled_indices_type_constraints),
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<DataTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndicesTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
     Slice10);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -66,16 +60,16 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     11,
     12,
     KernelDefBuilder()
-        .TypeConstraint("T", data_type_constraints, enabled_data_type_constraints)
-        .TypeConstraint("Tind", indices_type_constraints, enabled_indices_type_constraints),
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<DataTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndicesTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
     Slice10);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Slice,
     13,
     KernelDefBuilder()
-        .TypeConstraint("T", data_type_constraints, enabled_data_type_constraints)
-        .TypeConstraint("Tind", indices_type_constraints, enabled_indices_type_constraints),
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<DataTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndicesTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
     Slice10);
 
 // Check if it's possible to combine innermost dimensions so we copy larger blocks.
@@ -221,14 +215,14 @@ static Status SliceImpl(OpKernelContext* ctx,
   T* output = reinterpret_cast<T*>(output_tensor.MutableDataRaw());
   const auto* output_end = output + output_tensor.Shape().Size();
 
-  auto create_output = [&output, &output_end](SliceIterator<T>& input_iterator) {
-    if (input_iterator.SolitaryInnerStep()) {
+  auto create_output = [&output, &output_end](SliceIterator<T>& slice_input_iterator) {
+    if (slice_input_iterator.SolitaryInnerStep()) {
       while (output < output_end) {
-        output = input_iterator.CopyInnermostAxisSolitaryInnerStep(output);
+        output = slice_input_iterator.CopyInnermostAxisSolitaryInnerStep(output);
       }
     } else {
       while (output < output_end) {
-        output = input_iterator.CopyInnermostAxisNonSolitaryInnerStep(output);
+        output = slice_input_iterator.CopyInnermostAxisNonSolitaryInnerStep(output);
       }
     }
 
@@ -243,13 +237,13 @@ static Status SliceImpl(OpKernelContext* ctx,
     flattened_input_dims.back() = compute_metadata.p_flattened_output_dims_->back();
     TensorShape input_shape(std::move(flattened_input_dims));
 
-    auto input_iterator = SliceIterator<T>(input_tensor, input_shape, compute_metadata.starts_,
-                                           *compute_metadata.p_flattened_output_dims_, compute_metadata.steps_);
-    create_output(input_iterator);
+    auto input_iterator2 = SliceIterator<T>(input_tensor, input_shape, compute_metadata.starts_,
+                                            *compute_metadata.p_flattened_output_dims_, compute_metadata.steps_);
+    create_output(input_iterator2);
   } else {
-    auto input_iterator = SliceIterator<T>(input_tensor, compute_metadata.starts_, compute_metadata.output_dims_,
-                                           compute_metadata.steps_);
-    create_output(input_iterator);
+    auto input_iterator2 = SliceIterator<T>(input_tensor, compute_metadata.starts_, compute_metadata.output_dims_,
+                                            compute_metadata.steps_);
+    create_output(input_iterator2);
   }
 
   return Status::OK();
