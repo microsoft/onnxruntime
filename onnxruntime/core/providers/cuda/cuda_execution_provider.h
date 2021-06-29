@@ -203,7 +203,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   // Synchronization is required to update the contained structures.
   // On the other hand, access to an individual PerThreadContext is assumed to be from a single thread at a time,
   // so synchronization is not required for that.
-  mutable PerThreadContextState context_state_;
+  static PerThreadContextState context_state_;
 
   PerThreadContext& GetPerThreadContext() const;
   void ReleasePerThreadContext() const;
