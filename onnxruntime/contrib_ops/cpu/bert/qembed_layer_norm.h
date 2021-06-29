@@ -22,6 +22,8 @@ class QEmbedLayerNorm final : public EmbedLayerNormBase {
  private:
   // TODO - better name? What about segment in here?
   std::vector<uint8_t> word_position_embedding_lookup_table_;
+
+  bool has_cached_lookup_table_;
 };
 
 }  // namespace contrib

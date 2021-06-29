@@ -23,6 +23,35 @@ inline float Dequantize(T value, float scale, T zero_point) {
   return static_cast<float>(static_cast<int32_t>(value) - zero_point) * scale;
 }
 
+template <typename T>
+Status PopulateLookupTable(const Tensor* word_embedding_scale_tensor,
+                           const Tensor* word_embedding_zero_point_tensor,
+                           const Tensor* position_embedding_scale_tensor,
+                           const Tensor* position_embedding_zero_point_tensor,
+                           std::vector<uint8_t>& table) {
+
+  // TODO(kreeger): check for int8/uint8/float for these tensors?!
+
+  // 256 elements are cached in the table:
+  table.resize(kLookupTableSize);
+
+  const auto identity_float = [](float v) -> float { return v; };
+  const auto transform_array = [](const float* input, float* output, size_t length) -> void {
+    for (size_t i = 0; i < length; ++i) {
+    }
+  };
+
+
+  QlinearBuildLookupTable<T>(table.data(),
+                             word_embedding_scale_tensor,
+                             word_embedding_zero_point_tensor,
+                             position_embedding_scale_tensor,
+                             position_embedding_zero_point_tensor,
+                             identity_float);
+  return Status::OK();
+}
+
+
 template <typename T, typename T2>
 Status ComputeInternal(OpKernelContext* context, float epsilon) {
   // TODO(kreeger): Let's move these values to a constexpr becuase they are dupe'd throughout this file!
@@ -66,6 +95,15 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
   int position_embedding_length = static_cast<int>(position_embedding->Shape()[0]);
   int segment_embedding_length =
       has_segment_embedding ? static_cast<int>(segment_embedding->Shape()[0]) : 0;
+
+  // Calculate dynamic lookup tables:
+    std::vector<uint8_t> word_position_embedding_lookup_table;
+    PopulateLookupTable<uint8_t>(word_embedding_scale_tensor,
+                                 word_embedding_zero_point_tensor,
+                                 position_embedding_scale_tensor,
+                                 position_embedding_zero_point_tensor,
+                                 word_position_embedding_lookup_table);
+
 
   // Grab quantization values:
   float word_embedding_scale_data = *(word_embedding_scale->template Data<float>());
@@ -134,20 +172,15 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
 
           T* output = output_data + (index * hidden_size);
 
-          // TODO - let's do all this at int8/uint8 - it can be done? 
-
-          T2 sum2 = static_cast<T2>(0);
-
           T sum = static_cast<T>(0);  // TODO - drop this!
           for (int i = 0; i < hidden_size; ++i) {
             // TODO(kreeger): Use a table query to improve performance:
-            //T subtotal = Dequantize<T2>(input_word_embedding[i],
-            //                            word_embedding_scale_data,
-            //                            word_embedding_zero_point_data) +
-            //             Dequantize<T2>(input_position_embedding[i],
-            //                            position_embedding_scale_data,
-            //                            position_embedding_zero_point_data);
-            T subtotal = 
+            T subtotal = Dequantize<T2>(input_word_embedding[i],
+                                        word_embedding_scale_data,
+                                        word_embedding_zero_point_data) +
+                         Dequantize<T2>(input_position_embedding[i],
+                                        position_embedding_scale_data,
+                                        position_embedding_zero_point_data);
             if (segment_embedding_data != nullptr) {
               subtotal += Dequantize<T2>(input_segment_embedding[i],
                                          segment_embedding_scale_data,
@@ -281,69 +314,6 @@ Status CheckQuantizedInputs(OpKernelContext* context, bool* is_signed_inputs) {
   return Status::OK();
 }
 
-Status PopulateConstantLookupTable(const OpKernelInfo& info,
-                                   std::vector<uint8_t>& table) {
-  const Tensor* word_embedding_scale_tensor = nullptr;
-  ORT_RETURN_IF_NOT(info.TryGetConstantInput(/*input_index=*/8, &word_embedding_scale_tensor),
-                    "Could not load constant tensor at index %d", 8);
-
-  const Tensor* position_embedding_scale_tensor = nullptr;
-  ORT_RETURN_IF_NOT(info.TryGetConstantInput(/*input_index=*/9, &position_embedding_scale_tensor),
-                    "Could not load constant tensor at index %d", 9);
-
-  const Tensor* word_embedding_zero_point_tensor = nullptr;
-  ORT_RETURN_IF_NOT(info.TryGetConstantInput(/*input_index=*/13, &word_embedding_zero_point_tensor),
-                    "Could not load constant tensor at index %d", 13);
-
-  const Tensor* position_embedding_zero_point_tensor = nullptr;
-  ORT_RETURN_IF_NOT(info.TryGetConstantInput(/*input_index=*/14, &position_embedding_zero_point_tensor),
-                    "Could not load constant tensor at index %d", 14);
-
-  // TODO(kreeger): Check both ZPs for uint8/int8?
-  bool is_signed_int8 = word_embedding_zero_point_tensor->IsDataType<int8_t>();
-
-  // TODO(kreeger): check for int8/uint8/float for these tensors?!
-
-  // 256 elements are cached in the table:
-  table.resize(kLookupTableSize);
-
-  // Identity function (NOTE: useless comment for now)
-  // NOTE: This is the signature for LookupTableScalarTransfomer - might need the Array Transformer one!
-  const auto identity_float = [](float v) -> float { return v; };
-
-  //
-  //
-  // NOTE: Left off right here - think about this logic here and transcribe it to int8?!
-  //
-  //  
-            //T subtotal = Dequantize<T2>(input_word_embedding[i],
-            //                            word_embedding_scale_data,
-            //                            word_embedding_zero_point_data) +
-            //             Dequantize<T2>(input_position_embedding[i],
-            //                            position_embedding_scale_data,
-            //                            position_embedding_zero_point_data);
-
-
-  // what is tensor-y here?
-  if (is_signed_int8) {
-    QlinearBuildLookupTable<int8_t>(table.data(),
-                                    word_embedding_scale_tensor,
-                                    word_embedding_zero_point_tensor,
-                                    position_embedding_scale_tensor,
-                                    position_embedding_zero_point_tensor,
-                                    identity_float);
-  } else {
-    QlinearBuildLookupTable<uint8_t>(table.data(),
-                                    word_embedding_scale_tensor,
-                                    word_embedding_zero_point_tensor,
-                                    position_embedding_scale_tensor,
-                                    position_embedding_zero_point_tensor,
-                                    identity_float);
-  }
-
-  return Status::OK();
-}
-
 }  // namespace
 
 // This op is internal-only, so register outside of onnx:
@@ -362,8 +332,7 @@ REGISTER_KERNEL_TYPED(float)
 
 template <typename T>
 QEmbedLayerNorm<T>::QEmbedLayerNorm(const OpKernelInfo& op_kernel_info)
-    : EmbedLayerNormBase(op_kernel_info) {
-  PopulateConstantLookupTable(op_kernel_info, word_position_embedding_lookup_table_);
+    : EmbedLayerNormBase(op_kernel_info), has_cached_lookup_table_(false) {
 }
 
 template <typename T>
