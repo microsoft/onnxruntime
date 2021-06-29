@@ -12,7 +12,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/platform/env.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "migraphx_inc.h"
+#include "migraphx_call.h"
 #include "migraphx_execution_provider.h"
 #include "hip_allocator.h"
 #include "gpu_data_transfer.h"
@@ -86,7 +86,7 @@ std::shared_ptr<KernelRegistry> MIGraphXExecutionProvider::GetKernelRegistry() c
 MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider} {
   // Set GPU device to be used
-  hipSetDevice(info.device_id);
+  HIP_CALL_THROW(hipSetDevice(info.device_id));
   AllocatorCreationInfo default_memory_info(
       [](int id) { return std::make_unique<HIPAllocator>(id, MIGRAPHX); }, device_id_);
   allocator_ = CreateAllocator(default_memory_info);
@@ -98,8 +98,6 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   InsertAllocator(CreateAllocator(pinned_memory_info));
 
   // create the target based on the device_id
-  hipDeviceProp_t prop;
-  hipGetDeviceProperties(&prop, device_id_);
   std::set<std::string> valid_targets = {"gpu", "cpu"};
   if (valid_targets.count(info.target_device) == 0) {
     LOGS_DEFAULT(FATAL) << "Device " << info.target_device << " are not supported";
@@ -1200,7 +1198,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
         // lock to avoid race condition
         std::lock_guard<OrtMutex> lock(*(mgx_state->mgx_mu_ptr));
         auto prog_outputs = prog.eval(m);
-        hipDeviceSynchronize();
+        HIP_CALL_THROW(hipDeviceSynchronize());
 
         // In case of input parameters are reused as output parameter call hipMemcpy
         auto output_num = prog_outputs.size();
@@ -1214,7 +1212,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<onnxruntime::Node*>&
             std::vector<int64_t> ort_shape{res_lens.begin(), res_lens.end()};
             OrtValue* output_tensor = ort.KernelContext_GetOutput(context, i, ort_shape.data(), ort_shape.size());
             void* output_data = ort.GetTensorMutableData<void>(output_tensor);
-            hipMemcpy(output_data, gpu_res.data(), res_shape.bytes(), hipMemcpyDeviceToDevice);
+            HIP_CALL_THROW(hipMemcpy(output_data, gpu_res.data(), res_shape.bytes(), hipMemcpyDeviceToDevice));
           }
         }
       }
