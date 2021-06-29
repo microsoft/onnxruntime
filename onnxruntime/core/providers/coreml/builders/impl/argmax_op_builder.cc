@@ -74,15 +74,20 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
     return false;
   }
 
-  // Case where argmax has multiple succeeding nodes(cast node among them) is not supported
+  // If there are multiple downstream nodes and cast (toint32) is one of them
+  // not supported, exit here
+  // Otherwise, for general multiple downstream nodes, supported
   if (node.GetOutputEdgesCount() > 1) {
-    // Check if Argmax's succeeding nodes contain Cast;If yes, not supported
-    // Otherwise, supported
     for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
       const auto& op_type = it->GetNode().OpType();
       if (op_type == "Cast") {
-        LOGS(logger, VERBOSE) << "ArgMax has multiple output nodes including Cast";
-        return false;
+        // Check if the output type of cast node is int32
+        NodeAttrHelper helper(it->GetNode());
+        const auto cast_to_type = helper.Get("to", ONNX_NAMESPACE::TensorProto::UNDEFINED);
+        if (cast_to_type == ONNX_NAMESPACE::TensorProto::INT32) {
+          LOGS(logger, VERBOSE) << "Argmax has both cast and other downstream nodes is not supported.";
+          return false;
+        }
       }
     }
   }

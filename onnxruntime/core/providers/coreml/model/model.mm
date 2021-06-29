@@ -257,6 +257,9 @@
         output_data_byte_size = num_elements * sizeof(int32_t);
         memcpy(output_tensor.buffer, model_output_data, output_data_byte_size);
         break;
+      // For this case, since Coreml Spec only uses int32 for model output while onnx provides
+      // int64 for model output data type. We are doing a type casting (int32 -> int64) here 
+      // when copying the model to ORT
       case ONNX_NAMESPACE::TensorProto_DataType_INT64:
         output_data_byte_size = num_elements * sizeof(int64_t);
         if (model_output_type == MLMultiArrayDataTypeInt32) {
@@ -266,6 +269,8 @@
             output_tensor_buffer_prime[i] = model_output_data_prime[i];
           }
         }
+        ORT_RETURN_IF_NOT(model_output_type == MLMultiArrayDataTypeInt32,
+                          "Coreml model_output_type is not MLMultiArrayDataTypeInt32 for the case")
         break;
       default:
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
