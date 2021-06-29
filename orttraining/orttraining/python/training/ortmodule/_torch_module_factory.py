@@ -4,7 +4,9 @@
 
 from ._torch_module import TorchModule
 
+
 class TorchModuleFactory:
     def __call__(self, module):
         """Creates a TorchModule instance based on the input module."""
+
         return TorchModule(module)

@@ -2,16 +2,20 @@
 # Licensed under the MIT License.
 # _torch_module_interface.py
 
+from collections import OrderedDict
 import torch
-from typing import Iterator, Optional, Tuple, TypeVar, Set, Callable
+from typing import Iterator, Optional, Tuple, TypeVar, Callable
 
-T = TypeVar('T', bound='Module')
+
+T = TypeVar('T', bound='torch.nn.Module')
+
 
 class TorchModuleInterface:
     """Abstract class that provides the function signatures for the torch.nn.Module
 
     Concrete implementations should inherit from this class and provide necessary executions.
     """
+
     def __init__(self, module):
         self._original_module = module
 
@@ -33,13 +37,14 @@ class TorchModuleInterface:
 
         This is an abstract method and must be overridden by a concrete implementation.
         """
+
         raise NotImplementedError(f"forward is not implemented for {type(self)}.")
 
     def _apply(self, fn):
 
         raise NotImplementedError(f"_apply is not implemented for {type(self)}.")
 
-    def apply(self: T, fn: Callable[['Module'], None]) -> T:
+    def apply(self: T, fn: Callable[[T], None]) -> T:
 
         raise NotImplementedError(f"apply is not implemented for {type(self)}.")
 
@@ -55,7 +60,7 @@ class TorchModuleInterface:
 
         raise NotImplementedError(f"state_dict is not implemented for {type(self)}.")
 
-    def load_state_dict(self, state_dict: 'OrderedDict[str, Tensor]',
+    def load_state_dict(self, state_dict: 'OrderedDict[str, torch.Tensor]',
                         strict: bool = True):
 
         raise NotImplementedError(f"load_state_dict is not implemented for {type(self)}.")
@@ -97,11 +102,11 @@ class TorchModuleInterface:
 
         raise NotImplementedError(f"_load_from_state_dict is not implemented for {type(self)}.")
 
-    def named_children(self) -> Iterator[Tuple[str, 'Module']]:
+    def named_children(self) -> Iterator[Tuple[str, T]]:
 
         raise NotImplementedError(f"named_children is not implemented for {type(self)}.")
 
-    def modules(self) -> Iterator['Module']:
+    def modules(self) -> Iterator[T]:
 
         raise NotImplementedError(f"modules is not implemented for {type(self)}.")
 

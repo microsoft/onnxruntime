@@ -6,11 +6,14 @@ from . import _io
 from ._graph_execution_manager_factory import GraphExecutionManagerFactory
 from ._torch_module_interface import TorchModuleInterface
 
+from collections import OrderedDict
 import functools
 import torch
-from typing import Iterator, Optional, Tuple, TypeVar, Set, Callable
+from typing import Iterator, Optional, Tuple, TypeVar, Callable
 
-T = TypeVar('T', bound='Module')
+
+T = TypeVar('T', bound='torch.nn.Module')
+
 
 class TorchModule(TorchModuleInterface):
     def __init__(self, module: torch.nn.Module):
@@ -43,7 +46,7 @@ class TorchModule(TorchModuleInterface):
         self._flattened_module._apply(fn)
         return self
 
-    def apply(self: T, fn: Callable[['Module'], None]) -> T:
+    def apply(self: T, fn: Callable[[T], None]) -> T:
         """Override original method to delegate execution to the flattened PyTorch user module"""
 
         # Delegation must happen to _flattened_module since methods depend on
@@ -70,7 +73,7 @@ class TorchModule(TorchModuleInterface):
         return self._original_module.state_dict(
             destination=destination, prefix=prefix, keep_vars=keep_vars)
 
-    def load_state_dict(self, state_dict: 'OrderedDict[str, Tensor]',
+    def load_state_dict(self, state_dict: 'OrderedDict[str, torch.Tensor]',
                         strict: bool = True):
         """Override original method to delegate execution to the original PyTorch user module"""
 
@@ -123,7 +126,7 @@ class TorchModule(TorchModuleInterface):
                               missing_keys, unexpected_keys, error_msgs):
         """Override original method to delegate execution to the original PyTorch user module"""
 
-        # PyTorch load_state_dict implementation does not recursively call load_state_dict on its sub-modules. 
+        # PyTorch load_state_dict implementation does not recursively call load_state_dict on its sub-modules.
         # Instead, it creates a recursive function and invokes _load_from_state_dict on all child modules.
         # For the scenario where an ORTModule is a sub-module of another module, loading of the state
         # dictionary requires the _load_from_state_dict to be overridden to prevent an error.
@@ -131,12 +134,12 @@ class TorchModule(TorchModuleInterface):
         self._original_module._load_from_state_dict(state_dict, prefix, local_metadata, strict,
                                                     missing_keys, unexpected_keys, error_msgs)
 
-    def named_children(self) -> Iterator[Tuple[str, 'Module']]:
+    def named_children(self) -> Iterator[Tuple[str, T]]:
         """Override original method to delegate execution to the original PyTorch user module"""
 
         yield from self._original_module.named_children()
 
-    def modules(self) -> Iterator['Module']:
+    def modules(self) -> Iterator[T]:
         """Override original method to delegate execution to the original PyTorch user module"""
 
         yield from self._original_module.modules()
