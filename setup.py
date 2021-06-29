@@ -136,6 +136,8 @@ try:
                 logger.info('copying %s -> %s', source, dest)
                 copyfile(source, dest)
                 to_preload = []
+                if rocm_version:
+                    extra += [path.join('tools','ci_build', 'github', 'azure-pipelines', 'licenses', 'ROCmNotices.txt')]
                 dest = 'onnxruntime/capi/libonnxruntime_providers_cuda.so'
                 if path.isfile(dest):
                     result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
