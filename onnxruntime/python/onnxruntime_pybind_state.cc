@@ -293,7 +293,7 @@ static inline void RegisterCudaExecutionProviderWithCache(InferenceSession* sess
     const auto it = provider_options_map.find(kCudaExecutionProvider);
     CUDAExecutionProviderInfo info{};
     if (it != provider_options_map.end())
-      GetProviderInfo_CUDA()->CUDAExecutionProviderInfo__FromProviderOptions(it->second, info);
+      cuda_provider_info->CUDAExecutionProviderInfo__FromProviderOptions(it->second, info);
     else {
       info.device_id = cuda_device_id;
       info.gpu_mem_limit = gpu_mem_limit;
@@ -312,7 +312,7 @@ static inline void RegisterCudaExecutionProviderWithCache(InferenceSession* sess
 
     auto device_id = info.device_id;
     if (cuda_eps.find(device_id) == cuda_eps.end()) {
-      auto cuda_ep_factory = GetProviderInfo_CUDA()->CreateExecutionProviderFactory(info);
+      auto cuda_ep_factory = cuda_provider_info->CreateExecutionProviderFactory(info);
       cuda_eps[device_id] = std::move(cuda_ep_factory->CreateProvider());
     }
     OrtPybindThrowIfError(sess->RegisterExecutionProvider(cuda_eps[device_id]));
