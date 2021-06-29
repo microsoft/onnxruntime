@@ -265,7 +265,7 @@ constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<BFloat16>() {
 template <typename... Types>
 struct TensorElementTypeSetter {
   static void SetTensorElementType(ONNX_NAMESPACE::TypeProto&);
-  static void SetSparseTensorElementType(ONNX_NAMESPACE::TypeProto& proto);
+  static void SetSparseTensorElementType(ONNX_NAMESPACE::TypeProto&);
   static void SetMapKeyType(ONNX_NAMESPACE::TypeProto&);
   static int32_t GetElementType();
 };
@@ -376,6 +376,27 @@ struct SetSequenceType {
                 " expected to be a registered ONNX type");
 #endif
     CopyMutableSeqElement(*elem_proto, proto);
+  }
+};
+
+/// Optional helpers
+
+void CopyMutableOptionalElement(const ONNX_NAMESPACE::TypeProto&,
+                                ONNX_NAMESPACE::TypeProto&);
+
+template <typename T>
+struct SetOptionalType {
+  static void Set(ONNX_NAMESPACE::TypeProto& proto) {
+    // T is not a primitive type - it is an ORT type
+    MLDataType dt = GetMLDataType<T, false>::Get();
+    const auto* elem_proto = dt->GetTypeProto();
+#ifdef ORT_NO_RTTI
+    ORT_ENFORCE(elem_proto != nullptr, "expected a registered ORT type");
+#else
+    ORT_ENFORCE(elem_proto != nullptr, typeid(T).name(),
+                " expected to be a registered ORT type");
+#endif
+    CopyMutableOptionalElement(*elem_proto, proto);
   }
 };
 

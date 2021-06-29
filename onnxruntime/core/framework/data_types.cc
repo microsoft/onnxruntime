@@ -10,6 +10,7 @@
 #include "core/framework/sparse_tensor.h"
 #include "core/framework/tensor.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/OptionalType.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/util/math.h"
 
@@ -55,6 +56,11 @@ MLDataType DataTypeImpl::GetType<SparseTensor>() {
 template <>
 MLDataType DataTypeImpl::GetType<TensorSeq>() {
   return SequenceTensorTypeBase::Type();
+}
+
+template <>
+MLDataType DataTypeImpl::GetType<Optional>() {
+  return OptionalTypeBase::Type();
 }
 
 //static bool IsTensorTypeScalar(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_type_proto) {
@@ -126,6 +132,11 @@ void CopyMutableSeqElement(const ONNX_NAMESPACE::TypeProto& elem_proto,
   proto.mutable_sequence_type()->mutable_elem_type()->CopyFrom(elem_proto);
 }
 
+void CopyMutableOptionalElement(const ONNX_NAMESPACE::TypeProto& elem_proto,
+                                ONNX_NAMESPACE::TypeProto& proto) {
+  proto.mutable_optional_type()->mutable_elem_type()->CopyFrom(elem_proto);
+}
+
 void AssignOpaqueDomainName(const char* domain, const char* name,
                             ONNX_NAMESPACE::TypeProto& proto) {
   auto* mutable_opaque = proto.mutable_opaque_type();
@@ -194,29 +205,27 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Map& map_proto,
 }
 #endif
 
-bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Sequence& sequence_proto,
-                  const ONNX_NAMESPACE::TypeProto_Sequence& type_proto) {
+static bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto_1,
+                         const ONNX_NAMESPACE::TypeProto& type_proto_2) {
   bool result = true;
-  const auto& lhs = sequence_proto;
-  const auto& rhs = type_proto;
-  if (lhs.elem_type().value_case() == rhs.elem_type().value_case()) {
-    switch (lhs.elem_type().value_case()) {
+  if (type_proto_1.value_case() == type_proto_2.value_case()) {
+    switch (type_proto_1.value_case()) {
       case TypeProto::ValueCase::kTensorType:
-        result = IsCompatible(lhs.elem_type().tensor_type(), rhs.elem_type().tensor_type());
+        result = IsCompatible(type_proto_1.tensor_type(), type_proto_2.tensor_type());
         break;
       case TypeProto::ValueCase::kSequenceType:
-        result = IsCompatible(lhs.elem_type().sequence_type(), rhs.elem_type().sequence_type());
+        result = IsCompatible(type_proto_1.sequence_type(), type_proto_2.sequence_type());
         break;
 #if !defined(DISABLE_ML_OPS)
       case TypeProto::ValueCase::kMapType:
-        result = IsCompatible(lhs.elem_type().map_type(), rhs.elem_type().map_type());
+        result = IsCompatible(type_proto_1.map_type(), type_proto_2.map_type());
         break;
 #endif
       case TypeProto::ValueCase::kOpaqueType:
-        result = IsCompatible(lhs.elem_type().opaque_type(), rhs.elem_type().opaque_type());
+        result = IsCompatible(type_proto_1.opaque_type(), type_proto_2.opaque_type());
         break;
       case TypeProto::ValueCase::kSparseTensorType:
-        result = IsCompatible(lhs.elem_type().sparse_tensor_type(), rhs.elem_type().sparse_tensor_type());
+        result = IsCompatible(type_proto_1.sparse_tensor_type(), type_proto_2.sparse_tensor_type());
         break;
       default:
         ORT_ENFORCE(false);
@@ -227,6 +236,17 @@ bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Sequence& sequence_proto,
   }
   return result;
 }
+
+bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Sequence& sequence_proto,
+                  const ONNX_NAMESPACE::TypeProto_Sequence& type_proto) {
+  return IsCompatible(sequence_proto.elem_type(), type_proto.elem_type());
+}
+
+bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Optional& optional_proto,
+                  const ONNX_NAMESPACE::TypeProto_Optional& type_proto) {
+  return IsCompatible(optional_proto.elem_type(), type_proto.elem_type());
+}
+
 bool IsCompatible(const ONNX_NAMESPACE::TypeProto_Opaque& opaque_proto,
                   const ONNX_NAMESPACE::TypeProto_Opaque& type_proto) {
   const auto& lhs = opaque_proto;
@@ -477,22 +497,22 @@ bool OptionalTypeBase::IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto)
   if (&type_proto == thisProto) {
     return true;
   }
-  if (type_proto.value_case() != TypeProto::ValueCase::kSequenceType) {
+  if (type_proto.value_case() != TypeProto::ValueCase::kOptionalType) {
     return false;
   }
 
-  ORT_ENFORCE(thisProto->value_case() == TypeProto::ValueCase::kSequenceType);
-  ORT_ENFORCE(utils::HasElemType(thisProto->sequence_type()));
+  ORT_ENFORCE(thisProto->value_case() == TypeProto::ValueCase::kOptionalType);
+  ORT_ENFORCE(utils::HasElemType(thisProto->optional_type()));
 
-  return data_types_internal::IsCompatible(thisProto->sequence_type(), type_proto.sequence_type());
+  return data_types_internal::IsCompatible(thisProto->optional_type(), type_proto.optional_type());
 }
 
-size_t SequenceTensorTypeBase::Size() const {
-  return sizeof(TensorSeq);
+size_t OptionalTypeBase::Size() const {
+  return sizeof(Optional);
 }
 
-DeleteFunc SequenceTensorTypeBase::GetDeleteFunc() const {
-  return &Delete<TensorSeq>;
+DeleteFunc OptionalTypeBase::GetDeleteFunc() const {
+  return &Delete<Optional>;
 }
 
 const ONNX_NAMESPACE::TypeProto* OptionalTypeBase::GetTypeProto() const {
@@ -651,6 +671,12 @@ ORT_REGISTER_OPTIONAL_TYPE(TensorSeq)
   {                                                                  \
     MLDataType mltype = DataTypeImpl::GetSequenceTensorType<TYPE>(); \
     reg_fn(mltype);                                                  \
+  }
+
+#define REGISTER_OPTIONAL_PROTO(TYPE, reg_fn)                  \
+  {                                                            \
+    MLDataType mltype = DataTypeImpl::GetOptionalType<TYPE>(); \
+    reg_fn(mltype);                                            \
   }
 
 #define REGISTER_SPARSE_TENSOR_PROTO(TYPE, reg_fn)                 \
