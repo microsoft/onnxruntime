@@ -284,7 +284,7 @@ void FusedMatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   updateOutputShape(ctx, 0, resultShape);
 }
 
-void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_input_index) {
+void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_input_index, int extra_add_index) {
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 0);
   if (ctx.getNumOutputs() > 1) {
@@ -323,6 +323,14 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
 
     output_shape.mutable_dim(2)->set_dim_value(output_hidden_size);
     updateOutputShape(ctx, 0, output_shape);
+
+    if (hasInputShape(ctx, extra_add_index)) {
+      auto& extra_add_shape = getInputShape(ctx, extra_add_index);
+      auto& extra_add_dims = extra_add_shape.dim();
+      if (extra_add_dims.size() != 4) {
+        fail_shape_inference("Extra add should have 4 dimenstions");
+      }
+    }
 
     // TODO does the extra output need any changes?
     if (ctx.getNumOutputs() > 1) {
@@ -380,13 +388,15 @@ and present state are optional. Present state could appear in output even when p
       .Input(3, "mask_index", "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, past_sequence_length + sequence_length)"
                 "or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).", "M", OpSchema::Optional)
       .Input(4, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "T", OpSchema::Optional)
+      .Input(5, "extra_add", "additional add to QxK' with shape (1, num_heads, sequence_length, sequence_length).", "T", OpSchema::Optional)
       .Output(0, "output", "3D output tensor with shape (batch_size, append_length, hidden_size)", "T")
       .Output(1, "present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)", "T", OpSchema::Optional)
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
       .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         constexpr int past_input_index = 4;
-        AttentionTypeAndShapeInference(ctx, past_input_index);
+        constexpr int extra_add_index = 5;
+        AttentionTypeAndShapeInference(ctx, past_input_index, extra_add_index);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QAttention)
@@ -449,6 +459,12 @@ and present state are optional. Present state could appear in output even when p
           "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).",
           "T3",
           OpSchema::Optional)
+      .Input(
+          9,
+          "extra_add",
+          "additional add to QxK' with shape (1, num_heads, sequence_length, sequence_length).",
+          "T3",
+          OpSchema::Optional)
       .Output(
           0,
           "output",
@@ -466,7 +482,9 @@ and present state are optional. Present state could appear in output even when p
       .TypeConstraint("T4", {"tensor(int32)"}, "Constrain mask index to integer types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         constexpr int past_input_index = 8;
-        AttentionTypeAndShapeInference(ctx, past_input_index);
+        constexpr int extra_add_index = 9;
+
+        AttentionTypeAndShapeInference(ctx, past_input_index, extra_add_index);
       });
 
   static const char* Longformer_Attention_doc = R"DOC(

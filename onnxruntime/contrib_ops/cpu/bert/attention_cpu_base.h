@@ -68,10 +68,27 @@ class AttentionCPUBase : public AttentionBase {
     const T* past_data = past != nullptr ? past->template Data<T>() : nullptr;
     T* present_data = present != nullptr ? present->template MutableData<T>() : nullptr;
 
+    const Tensor* extra_add_qk = context->Input<Tensor>(4);
+    const float* extra_add_qk_data = extra_add_qk != nullptr ? extra_add_qk->template Data<float>(): nullptr;
+    const std::vector<int64_t>* extra_add_qk_dims = extra_add_qk != nullptr ? &(extra_add_qk->Shape().GetDims()) : nullptr;
+
+    // LHS is uint64_t, RHS are ints, how is C++ allowing this.
+    if (extra_add_qk_dims->size() != 0) {
+        if (extra_add_qk_dims->at(1) != num_heads_) {
+            return Status::OK();
+        }
+        if (extra_add_qk_dims->at(2) != sequence_length) {
+            return Status::OK();
+        }
+        if (extra_add_qk_dims->at(3) != all_sequence_length) {
+            return Status::OK();
+        }
+    }
+
     ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
                              mask_index_data, mask_index_dims, static_cast<T*>(mask_data),
                              batch_size, sequence_length, past_sequence_length, qk_head_size == 0 ? v_head_size : qk_head_size,
-                             past_data, present_data, tp);
+                             past_data, present_data, tp, extra_add_qk_data, extra_add_qk_dims);
 
     // Compute the attentionScore * Value. It does: out_tmp(B, N, S, H) = attention_probs(B, N, S, S*) x V(B, N, S*, H)
     auto out_tmp_data =
@@ -103,11 +120,20 @@ class AttentionCPUBase : public AttentionBase {
                              int head_size,                                // head size of self-attention
                              const T* past,                                // past state
                              T* present,                                   // present state
-                             ThreadPool* tp) const {
+                             ThreadPool* tp,
+                             const float* extra_add_qk_data,
+                             const std::vector<int64_t>* extra_add_qk_dims) const {
     const int all_sequence_length = past_sequence_length + sequence_length;                  // S* = S' + S
     const size_t past_chunk_length = static_cast<size_t>(past_sequence_length) * head_size;  // S' x H
     const size_t input_chunk_length = static_cast<size_t>(sequence_length) * head_size;      // S x H
     const size_t present_chunk_length = past_chunk_length + input_chunk_length;              // S* x H
+
+    if (extra_add_qk_data == nullptr || extra_add_qk_dims->size() == 0) {
+        //std::cout<<"extra_add_qk options are both null"<<std::endl;
+    }
+    else {
+        //std::cout<<"extra_add_qk options are none null"<<std::endl;
+    }
 
     {
       if (mask_data != nullptr) {
@@ -149,6 +175,21 @@ class AttentionCPUBase : public AttentionBase {
                                     reinterpret_cast<T*>(attention_probs) + sequence_length * all_sequence_length * i, nullptr);
         }
       });
+    }
+
+    int64_t batch_offset = num_heads_*sequence_length*all_sequence_length;
+    int64_t head_offset = sequence_length*all_sequence_length;
+    int64_t seq_len_offset = all_sequence_length; 
+   
+    for (size_t i = 0; i < batch_size; i++) {
+      for (size_t j = 0; j < num_heads_; j++) {
+        for (size_t k = 0; k < sequence_length; k++) {
+          for (size_t l = 0; l < all_sequence_length; l++) {
+            int64_t final_offset =  i*batch_offset + j*head_offset + k*seq_len_offset + l;
+            attention_probs[final_offset] += extra_add_qk_data[final_offset];
+          }
+        }
+      }
     }
 
     //  attention_probs(B, N, S, S*) = Softmax(attention_probs)

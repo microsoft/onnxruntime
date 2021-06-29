@@ -241,6 +241,14 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
                              /*out*/ bool& is_packed,
                              /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
+
+  prepacked_weights = nullptr;
+  if (input_idx == 10000) {
+      std::cout << weights.Shape() <<std::endl;
+  }
+
+  return Status::OK();
+
   /*
   if (1 != input_idx || prepacked_weights == nullptr) {
     return Status::OK();
@@ -253,7 +261,7 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
   }
   return Status::OK();
   */
-
+  /*
   if (1 != input_idx) {
     return Status::OK();
   }
@@ -408,6 +416,7 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
 
   is_packed = true;
   return Status::OK();
+  */
 }
 
 template <typename T>
@@ -429,8 +438,10 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = (packed_weights_ || qk_packed_weights_) ? nullptr : context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
+
   const Tensor* mask_index = context->Input<Tensor>(3);
-  const Tensor* past = context->Input<Tensor>(4);
+  //const Tensor* past = context->Input<Tensor>(4);
+  const Tensor* past = nullptr;
 
   const TensorShape& weights_shape = (weights ? weights->Shape() : weight_shape_);
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
@@ -615,24 +626,24 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     });
   }
 
-  std::cout << "Q values:" << std::endl;
-  for (int i = 0; i < batch_size * sequence_length * q_hidden_size; i++) {
-    std::cout << Q[i] << ",";
-  }
-  std::cout << std::endl;
-
-  std::cout << "K values:" << std::endl;
-  for (int i = 0; i < batch_size * sequence_length * k_hidden_size; i++) {
-    std::cout << K[i] << ",";
-  }
-  std::cout << std::endl;
-
-  std::cout << "V values:" << std::endl;
-  for (int i = 0; i < batch_size * sequence_length * v_hidden_size; i++) {
-    std::cout << V[i] << ",";
-  }
-  std::cout << std::endl;
-
+  //std::cout << "Q values:" << std::endl;
+  //for (int i = 0; i < batch_size * sequence_length * q_hidden_size; i++) {
+  //  std::cout << Q[i] << ",";
+  //}
+  //std::cout << std::endl;
+  //
+  //std::cout << "K values:" << std::endl;
+  //for (int i = 0; i < batch_size * sequence_length * k_hidden_size; i++) {
+  //  std::cout << K[i] << ",";
+  //}
+  //std::cout << std::endl;
+  //
+  //std::cout << "V values:" << std::endl;
+  //for (int i = 0; i < batch_size * sequence_length * v_hidden_size; i++) {
+  //  std::cout << V[i] << ",";
+  //}
+  //std::cout << std::endl;
+  //
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q, K, V, mask_index, past, output,
                         batch_size, sequence_length,
