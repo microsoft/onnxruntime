@@ -8,10 +8,11 @@ using namespace ::onnxruntime::common;
 namespace onnxruntime {
 
 namespace {
-// remove edges for the src+src_slot if dest+dest_slot not provided.
-// moves edges from src+src_slot to dest node+dest_slot if provided.
-static void ProcessEdge(Graph& graph, Node& src, const InOutDefSlot& src_slot,
-                        Node* dest, const InOutDefSlot* dest_slot) {
+// Move or remove an edge.
+//   - moves edges from src+src_slot to dest node+dest_slot if provided.
+//   - remove edges for the src+src_slot if dest+dest_slot not provided.
+void ProcessEdge(Graph& graph, Node& src, const InOutDefSlot& src_slot,
+                 Node* dest, const InOutDefSlot* dest_slot) {
   if (src_slot.in_out == ArgType::kInput) {
     // move input edge if present
     auto iter = std::find_if(src.InputEdgesBegin(), src.InputEdgesEnd(),
@@ -42,6 +43,7 @@ static void ProcessEdge(Graph& graph, Node& src, const InOutDefSlot& src_slot,
   }
 }
 
+// move an input or output and its edge between two nodes
 Status MoveInputOutputImpl(Graph& graph, const ValueMoveInfo& move_info, Node& src, Node& dest) {
   auto& src_defs = (move_info.src_slot.in_out == ArgType::kInput)
                        ? src.MutableInputDefs()
@@ -68,7 +70,9 @@ Status MoveInputOutputImpl(Graph& graph, const ValueMoveInfo& move_info, Node& s
 
       // also need to set the arg count
       if (move_info.dest_slot.in_out == ArgType::kInput) {
-        // TODO: need flag if this is a variadic input/output to do a +1 on back() if not the first one
+        // TODO: currently variadic inputs have their count corrected (should be one entry with the total number of
+        // variadic inputs) but that may be part of Graph::Resolve and we need to handle that manually in a minimal
+        // build. obvious place would be in the Action after all the edges are moved.
         dest.MutableInputArgsCount().push_back(1);
       }
     } else {

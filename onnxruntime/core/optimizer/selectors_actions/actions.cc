@@ -11,10 +11,11 @@ namespace onnxruntime {
 
 namespace {
 
-// Check if a node involved in an optimization can be safely removed.
-// This requires that the optimizer correctly handles nodes producing graph outputs and does not attempt to delete
-// one of those nodes unless it has created a new source for the graph output. As we can't easily remove the NodeArg
-// from the Node::OutputDefs for the node being removed, we do not check if the node provides graph outputs here.
+// Check if a node involved in an optimization can be safely removed due to it only having outputs consumed by nodes
+// in the removal_set. If it has an output edge to a node outside of that set it must remain.
+// As we can't easily remove a NodeArg from the Node::OutputDefs for the node being removed, we do not check if the
+// node provides graph outputs here. The optimizer must correctly handle nodes producing graph outputs
+// and not attempt to delete one of those nodes unless it has created a new source for the graph output.
 bool CanSafelyRemoveNode(Node& node_to_remove, const std::unordered_set<const Node*>& removal_set) {
   bool safe = true;
   for (auto iter = node_to_remove.OutputEdgesBegin(), end = node_to_remove.OutputEdgesEnd(); iter != end; ++iter) {
@@ -27,8 +28,7 @@ bool CanSafelyRemoveNode(Node& node_to_remove, const std::unordered_set<const No
   return safe;
 }
 
-// remove nodes if it is safe to do so. 'safe' means no output edges to nodes not in the set of nodes being removed.
-// there is NO check on a node producing a graph output. we assume the optimizer has handled that already.
+// remove nodes if it is 'safe' to do so according to the checks in CanSafelyRemoveNode.
 void SafelyRemoveNodes(Graph& graph, const std::vector<Node*>& nodes_to_remove, const Node* ignore_target) {
   std::unordered_set<const Node*> removal_set(nodes_to_remove.cbegin(), nodes_to_remove.cend());
 

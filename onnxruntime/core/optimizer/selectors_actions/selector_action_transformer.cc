@@ -28,7 +28,8 @@ void SelectorsAndActions::RegisterSelectorAndAction(const std::string& name,
                                                     const SelectorAndAction::OpVersionsMap& ops_and_versions_in,
                                                     std::unique_ptr<NodeSelector> selector_in,
                                                     std::unique_ptr<Action> action_in) {
-  // currently there's no user registration, so throw for invalid usage as it should only happen during development
+  // currently all registrations are done from internal code with no external inputs,
+  // so throw for invalid usage as it should only happen during development.
   ORT_ENFORCE(selectors_and_actions_map_.find(name) == selectors_and_actions_map_.cend(),
               "Existing registration with name ", name);
 
@@ -40,6 +41,9 @@ void SelectorsAndActions::RegisterSelectorAndAction(const std::string& name,
   ORT_IGNORE_RETURN_VALUE(selectors_and_actions_map_.emplace(name, std::move(entry)));
 }
 
+// check if the node matches any of the registered operators.
+// if it does, run the Selector.
+// if that selects nodes, run the Action.
 Status SelectorActionTransformer::MatchAndProcess(Graph& graph, Node& node, bool& modified,
                                                   const logging::Logger& logger) const {
   Status status = Status::OK();
@@ -74,7 +78,9 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, Node& node, bool
     LOGS(logger, VERBOSE) << "Matched " << node.OpType();
 
     if (save_) {
-      // save to Graph. map<transformer name, map<action name, vector<NodesToOptimizeIndexes>>>
+      // TODO: save to Graph using transformer and action name so the node groups and actions are scoped to a
+      // specific transformer.
+      // e.g. map<transformer name, map<action name, vector<NodesToOptimizeIndexes>>>
       ORT_NOT_IMPLEMENTED("TODO: Save the selected nodes into the Graph.");
     } else {
       status = selector_and_actions.action->Run(graph, *node_group);
@@ -91,16 +97,16 @@ Status SelectorActionTransformer::MatchAndProcess(Graph& graph, Node& node, bool
 #else
 void SelectorsAndActions::RegisterAction(const std::string& name,
                                          std::unique_ptr<Action> action) {
-  // currently there's no user registration, so throw for invalid usage as it should only happen during development
   ORT_ENFORCE(actions_map_.find(name) == actions_map_.cend(), "Existing registration with name ", name);
 
   ORT_IGNORE_RETURN_VALUE(actions_map_.emplace(name, std::move(action)));
 }
 
-// TODO: Figure out the final types and where to put them. These would be most conveniently stored in
-// the Graph instance under the transformer name as that makes de/serialization to ORT format simple (done as part of
-// Graph serialization) as well as handling subgraphs (values are stored in the current graph, be that the main
-// graph or the subgraph).
+// TODO: The implementation here is purely an example to give an idea of how it might be done.
+//
+// The optimization info would be most conveniently stored in the Graph instance under the transformer name
+// as that makes de/serialization to ORT format simple (done as part of Graph de/serialization)
+// as well as handling subgraphs (values are stored in the current graph, be that the main graph or the subgraph).
 struct ActionReplay {
   const std::string action_name;
   std::vector<NodesToOptimizeIndexes> node_groups;
@@ -158,8 +164,7 @@ Status SelectorActionTransformer::ApplyImpl(Graph& graph, bool& modified, int gr
     ORT_RETURN_IF_ERROR(Recurse(*node, modified, graph_level, logger));
 
 #if !defined(ORT_MINIMAL_BUILD)
-    // TODO: would be more typical to define the supported EP type/s during construction
-    // and use GraphTransformer::GetCompatibleExecutionProviders, but doesn't really matter when there's only only
+    // TODO: use GraphTransformer::GetCompatibleExecutionProviders if we need something more flexible
     if (node->GetExecutionProviderType() == kCpuExecutionProvider) {
       ORT_RETURN_IF_ERROR(MatchAndProcess(graph, *node, modified, logger));
     }

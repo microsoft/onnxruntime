@@ -3,16 +3,17 @@
 
 #pragma once
 
-#include "core/optimizer/selectors_actions/selector_action_transformer.h"
-
 #if !defined(ORT_MINIMAL_BUILD)
+
+#include "core/optimizer/selectors_actions/selector_action_transformer.h"
 
 namespace onnxruntime {
 class Graph;
 class Node;
 
 namespace QDQ {
-// Base QDQ checker. Provides the DQ and Q nodes to the operator specific checkers
+// Base QDQ checker. Finds and provides the DQ and Q nodes to the operator specific checkers, as the QDQ optimizations
+// always involve those nodes.
 class BaseSelector : public NodeSelector {
  public:
   bool Select(Graph& graph, const Node& node, std::unique_ptr<NodesToOptimize>& selection) const override;
@@ -28,6 +29,7 @@ class BaseSelector : public NodeSelector {
                      int num_dq_inputs = -1) const;
 
  private:
+  // derived classes should implement this check
   bool virtual Check(const Graph& graph, const Node& node,
                      const std::vector<const Node*>& dq_nodes,
                      const std::vector<const Node*>& q_nodes) const = 0;

@@ -94,9 +94,7 @@ class NodesToOptimize {
   // outputs filtered by index. includes all variadic.
   std::vector<Node*> Outputs(const std::vector<int>& indexes, bool required = true) const;
 
-  // Get the Node or Nodes at a specific index.
-  // Enables generic Action implementations that support both single and variadic inputs/outputs.
-  // Generally returns a single node unless it's a variadic input/output. Prefer GetNodeAtLocation if possible.
+  // Get the Node or Nodes (if variadic) at a specific index.
   std::vector<Node*> GetNodesAtLocation(const NodeLocation& location, bool required = true) const;
 
   const std::vector<Node*>& AllNodes() const { return nodes_; }
@@ -121,7 +119,6 @@ class NodesToOptimize {
 
 // Helper to build a NodesToOptimize instance
 // Use in selector to incrementally add pieces
-// Use in minimal build to convert saved node indexes to Node instances.
 struct NodesToOptimizeBuilder {
   std::vector<Node*> input_nodes;
   Node* target_node{nullptr};
@@ -145,7 +142,7 @@ enum class ArgType { kInput,
 // struct to define the location of an input or output definition for a Node
 struct InOutDefSlot {
   ArgType in_out;
-  int idx;  // idx of -1 means 'all' if a source, or 'end' if a target
+  int idx;  // idx of -1 means 'all' if a source, or 'end' if appending to a target
 };
 
 // Helper to define moving a value from one node to another
@@ -181,7 +178,7 @@ struct ValueMoveInfo {
   ValueMoveInfo() = default;
 };
 
-// info to move a value between two nodes
+// info to move a value between a source node in the selected_nodes and the target/replacement node.
 struct NodeAndMoveInfo {
   NodesToOptimize::NodeLocation src_node;
   ValueMoveInfo value_move_info;
@@ -198,7 +195,7 @@ Status MoveInputOutput(Graph& graph, Node& src, Node& dest, const ValueMoveInfo&
 // Helpers to make the 'move' configuration more easily read
 //
 
-// move specific input/output to slot on target node
+// move specific input/output to slot on target/replacement node
 inline NodeAndMoveInfo MoveToSlot(const NodesToOptimize::NodeLocation& src_node,
                                   ArgType src_direction, int src_slot,
                                   ArgType dest_direction, int dest_slot) {
@@ -208,7 +205,7 @@ inline NodeAndMoveInfo MoveToSlot(const NodesToOptimize::NodeLocation& src_node,
                              InOutDefSlot{dest_direction, dest_slot}}};  // to this one
 }
 
-// move specific input/output and append to target node
+// move specific input/output and append to target/replacement node
 inline NodeAndMoveInfo MoveAndAppend(const NodesToOptimize::NodeLocation& src_node,
                                      ArgType src_direction, int src_slot,
                                      ArgType dest_direction,
@@ -218,7 +215,7 @@ inline NodeAndMoveInfo MoveAndAppend(const NodesToOptimize::NodeLocation& src_no
                                        dest_direction, optional}};             // append here
 }
 
-// move all inputs/outputs from the source node to the target node
+// move all inputs/outputs from the source node to the target/replacement node
 inline NodeAndMoveInfo MoveAll(const NodesToOptimize::NodeLocation& src_node,
                                ArgType arg_type,  // moving inputs or outputs
                                bool optional = false) {

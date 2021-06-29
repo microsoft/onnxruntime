@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/optimizer/qdq_transformer/qdq_selectors.h"
-
 #if !defined(ORT_MINIMAL_BUILD)
+
+#include "core/optimizer/qdq_transformer/qdq_selectors.h"
 
 #include "core/graph/graph.h"
 #include "core/optimizer/initializer.h"
@@ -106,7 +106,7 @@ bool BinarySelector::Check(const Graph& graph,
     return false;
   }
 
-  // Currently QLinearConv only support activation type uint8_t
+  // Currently QLinearAdd and QLinearMul only support activation type uint8_t
   int32_t dt_input_1 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
@@ -178,7 +178,7 @@ bool MatMulSelector::Check(const Graph& graph,
   bool qlinear = !q_nodes.empty();
 
   if (qlinear) {
-    // check for QLinearMatMul
+    // QLinearMatMul
     if (!CheckQDQNodes(graph, node, dq_nodes, q_nodes)) {
       return false;
     }
@@ -188,7 +188,7 @@ bool MatMulSelector::Check(const Graph& graph,
       return false;
     }
   } else {
-    // MatMulIntegerToFloat has no additional constraints to check
+    // MatMulIntegerToFloat has no Q node, so no call to CheckQDQNodes
   }
 
   // Currently Quant MatMul only support activation type uint8_t

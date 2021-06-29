@@ -23,7 +23,7 @@ struct Action {
   Action() = default;
 };
 
-// helper to assembly multiple actions into a single instance. We do this to keep SelectionActionTransformer simpler
+// helper to assemble multiple actions into a single instance.
 struct MultiAction : public Action {
   MultiAction(std::vector<std::unique_ptr<Action>>&& actions) : actions_{std::move(actions)} {}
 
@@ -69,8 +69,9 @@ struct MergeIntoTarget : public Action {
   RemoveNodes node_remover_{true};  // preserve target node when removing selected_nodes
 };
 
+// replace the selected_nodes with a new node. the inputs and outputs values for the replaced nodes should be
+// moved to the new node using value_moves. all nodes in selected_nodes will be removed.
 struct ReplaceWithNew : public Action {
-  // provide NodeLocation for source node, and ValueMoveInfo for the value to move to the replacement node
   ReplaceWithNew(const std::string& domain,
                  const std::string& op_name,
                  std::vector<NodeAndMoveInfo>&& value_moves);
@@ -80,10 +81,6 @@ struct ReplaceWithNew : public Action {
  private:
   // support usage where operator name is determined at runtime from the selected nodes
   virtual std::string OpType(const NodesToOptimize&) const { return op_; }
-
-  // TODO: setup mechanism to create a new NodeArg
-  // If we use resize on the input defs we can do the moves and directly populate the slot with a new NodeArg
-  // but this may not be needed for QDQ.
 
   const std::string domain_;
   const std::string op_;

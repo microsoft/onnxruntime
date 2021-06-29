@@ -46,7 +46,7 @@ struct SelectorAndAction {
 };
 #endif
 
-// standalone class to manage a set of selector and associated actions in a full build,
+// class to manage a set of selector and associated actions in a full build,
 // or just the set of actions in a minimal build.
 class SelectorsAndActions {
  public:
