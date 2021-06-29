@@ -84,7 +84,7 @@ def gen_file_from_template(template_file: pathlib.Path, output_file: pathlib.Pat
 
     :param template_file The template file path.
     :param output_file The generated output file path.
-    :variable_substitutions The mapping from template variable name to value.
+    :param variable_substitutions The mapping from template variable name to value.
     '''
     with open(template_file, mode="r") as template:
         content = template.read()
