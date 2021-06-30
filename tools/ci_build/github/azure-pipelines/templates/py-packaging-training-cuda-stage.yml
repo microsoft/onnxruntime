@@ -82,6 +82,7 @@ stages:
           Dockerfile: tools/ci_build/github/linux/docker/$(DockerFile)
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
+            --build-arg LD_LIBRARY_PATH_ARG=${PythonManylinuxLibDir}
             --build-arg TORCH_VERSION=$(TorchVersion)
             --build-arg PYTHON_VERSION=$(PythonVersion)
             --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
@@ -120,7 +121,6 @@ stages:
               -e DEFAULT_TRAINING_PACKAGE_DEVICE \
               -e BUILD_BUILDNUMBER \
               onnxruntimetraininggpubuild \
-                export LD_LIBRARY_PATH=${PythonManylinuxLibDir}:${LD_LIBRARY_PATH} && \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build \
                   --config Release \
