@@ -82,56 +82,54 @@ jobs:
       
   steps:
 
-    # - ${{ if eq(parameters.BuildORT, true) }}:
+    - ${{ if eq(parameters.BuildORT, true) }}:
 
-    #   - ${{ if ne(parameters.RunMachine, true) }}:
-    #     - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/$(build_args) -b $(branch) -i ort-$(branch)'
-    #       displayName: 'Build latest ORT Images'
-    #       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+      - ${{ if ne(parameters.RunMachine, true) }}:
+        - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/build_image.sh -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/$(build_args) -b $(branch) -i ort-$(branch)'
+          displayName: 'Build latest ORT Images'
+          workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
           
-    #   - ${{ if eq(parameters.RunMachine, true) }}:
-    #     - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/ort_build_latest.py -b $(branch) -c /usr/local/cuda -o ~/repos/onnxruntime/ -t ${{ parameters.TrtVersion }}'
-    #       displayName: 'Build latest ORT'
-    #       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+      - ${{ if eq(parameters.RunMachine, true) }}:
+        - script: 'python3 $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/ort_build_latest.py -b $(branch) -c /usr/local/cuda -o ~/repos/onnxruntime/ -t ${{ parameters.TrtVersion }}'
+          displayName: 'Build latest ORT'
+          workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
       
-    # - ${{ if eq(parameters.PublishWheel, true) }}:
+    - ${{ if eq(parameters.PublishWheel, true) }}:
     
-    #   - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/copy_wheel.sh -t $(trtContainer)'
-    #     displayName: 'Copy Wheel from Docker'
-    #     workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/copy_wheel.sh -t $(trtContainer)'
+        displayName: 'Copy Wheel from Docker'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
     
-    #   - script: 'OUTPUT=$(ls dist) && az storage blob upload --account-name anubiscustomerstorage  --account-key $(account-key) --container-name upload --file $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist/*.whl --name ort-trt-ep/$OUTPUT'
-    #     displayName: 'Upload Wheel File'
-    #     workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+      - script: 'OUTPUT=$(ls dist) && az storage blob upload --account-name anubiscustomerstorage  --account-key $(account-key) --container-name upload --file $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist/*.whl --name ort-trt-ep/$OUTPUT'
+        displayName: 'Upload Wheel File'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
       
-    #   - task: PowerShell@2
-    #     inputs:
-    #       filePath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/start_job.ps1'
-    #       arguments: '-file_folder $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist -account_key $(account-key)'
-    #     displayName: 'Start Anubis Job'
+      - task: PowerShell@2
+        inputs:
+          filePath: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/start_job.ps1'
+          arguments: '-file_folder $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist -account_key $(account-key)'
+        displayName: 'Start Anubis Job'
 
-    # - ${{ each option in parameters.ModelGroups }}:
-    #   - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $(${{option}})'
-    #     displayName: '${{option}} perf'
-    #     workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+    - ${{ each option in parameters.ModelGroups }}:
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/run_perf_$(with_arguments) -o ${{option}} -m $(${{option}})'
+        displayName: '${{option}} perf'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    # - ${{ if not(eq(length(parameters.ModelGroups), 0)) }}:
-    #   - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
-    #     displayName: 'Prepare Artifacts'
-    #     workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+    - ${{ if not(eq(length(parameters.ModelGroups), 0)) }}:
+      - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
+        displayName: 'Prepare Artifacts'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
     - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r /home/hcsuser/perf/result/ $(Build.SourcesDirectory)/Artifact'
       displayName: 'Prepare Artifacts'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
     
-    # - publish: $(Build.SourcesDirectory)/Artifact
-    #   artifact: result
     - task: PublishBuildArtifacts@1
       inputs:
         pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
-        artifactName: 'result'
+        artifactName: 'result-$(Build.BuildNumber)'
 
-    - script: sudo rm -rf $(Agent.BuildDirectory)
+    - script: rm -rf $(Agent.BuildDirectory)
       displayName: Clean build files (POSIX)
       condition: not(eq(variables['Agent.OS'], 'Windows_NT')) # and always()
       continueOnError: true  # continuing on error for this step, since linux build folder is somehow getting permission issue
@@ -143,15 +141,17 @@ jobs:
     demands:
     - Agent.Name -equals cus-cpu-52wc
   
-  steps:
-  - task: DownloadPipelineArtifact@2
-    inputs:
-      artifact: result 
-  - script: 'whoami'
-  - script: 'icacls $(Pipeline.Workspace)\result\result' 
-
+  steps: 
   - ${{ if eq(parameters.PostToDashboard, true) }}:
-      - script: 'python $(Build.SourcesDirectory)\onnxruntime\python\tools\tensorrt\perf\post.py -r $(Pipeline.Workspace)/result/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" ' 
-        displayName: 'Post to Dashboard'
-        env:
-          DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        artifact: 'result-$(Build.BuildNumber)' 
+
+    - script: 'python $(Build.SourcesDirectory)\onnxruntime\python\tools\tensorrt\perf\post.py -r $(Pipeline.Workspace)/result-$(Build.BuildNumber)/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" ' 
+      displayName: 'Post to Dashboard'
+      env:
+        DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
+
+    - script: rd /S /Q $(Agent.BuildDirectory)
+      displayName: Clean build files (Windows)
+      condition: eq(variables['Agent.OS'], 'Windows_NT') # and always()
