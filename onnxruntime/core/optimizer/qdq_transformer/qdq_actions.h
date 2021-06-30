@@ -58,7 +58,7 @@ struct MatMulReplaceWithQLinear : public Action {
 
  private:
   QDQReplaceWithNew matmul_int_to_float_replacer_;
-  ReplaceWithQLinear qlinear_matmul_replacer_;
+  BinaryReplaceWithQLinear qlinear_matmul_replacer_;
 };
 
 }  // namespace QDQ

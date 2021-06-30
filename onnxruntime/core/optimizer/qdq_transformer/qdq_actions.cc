@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/qdq_transformer/qdq_actions.h"
+#include "core/optimizer/qdq_transformer/qdq_util.h"
 
 namespace onnxruntime {
 namespace QDQ {
@@ -16,9 +16,9 @@ std::vector<NodeAndMoveInfo> UnaryMoves() {
   NTO::NodeLocation q{NTO::NodeType::kOutput, 0};
 
   std::vector<NodeAndMoveInfo> moves{
-      MoveAll(dq, ArgType::kInput),                            // append all inputs from dq to new node
-      MoveAndAppend(q, ArgType::kInput, 1, ArgType::kInput),   // append scale (input 1) from q
-      MoveAndAppend(q, ArgType::kInput, 2, ArgType ::kInput),  // append zp (input 2) from q
+      MoveAll(dq, ArgType::kInput),                           // append all inputs from dq to new node
+      MoveAndAppend(q, ArgType::kInput, 1, ArgType::kInput),  // append scale (input 1) from q
+      MoveAndAppend(q, ArgType::kInput, 2, ArgType::kInput),  // append zp (input 2) from q
       MoveAll(q, ArgType::kOutput)};
 
   return moves;
@@ -31,11 +31,11 @@ std::vector<NodeAndMoveInfo> BinaryMoves() {
   NTO::NodeLocation q{NTO::NodeType::kOutput, 0};
 
   std::vector<NodeAndMoveInfo> moves{
-      MoveAll(dq1, ArgType::kInput),                           // append all inputs from dq1 to new node
-      MoveAll(dq2, ArgType::kInput),                           // append all inputs from dq2
-      MoveAndAppend(q, ArgType::kInput, 1, ArgType::kInput),   // append scale (input 1) from q
-      MoveAndAppend(q, ArgType::kInput, 2, ArgType ::kInput),  // append zp (input 2) from q
-      MoveAll(q, ArgType::kOutput)};                           // and use the outputs from q
+      MoveAll(dq1, ArgType::kInput),                          // append all inputs from dq1 to new node
+      MoveAll(dq2, ArgType::kInput),                          // append all inputs from dq2
+      MoveAndAppend(q, ArgType::kInput, 1, ArgType::kInput),  // append scale (input 1) from q
+      MoveAndAppend(q, ArgType::kInput, 2, ArgType::kInput),  // append zp (input 2) from q
+      MoveAll(q, ArgType::kOutput)};                          // and use the outputs from q
 
   return moves;
 }
@@ -46,10 +46,10 @@ std::vector<NodeAndMoveInfo> VariadicMoves() {
   NTO::NodeLocation q{NTO::NodeType::kOutput, 0};
 
   std::vector<NodeAndMoveInfo> moves{
-      MoveAndAppend(q, ArgType::kInput, 1, ArgType::kInput),   // append scale (input 1) from q
-      MoveAndAppend(q, ArgType::kInput, 2, ArgType ::kInput),  // append zp (input 2) from q
-      MoveAll(variadic_dq, ArgType::kInput),                   // append all inputs from all dq nodes
-      MoveAll(q, ArgType::kOutput)};                           // and use the outputs from q
+      MoveAndAppend(q, ArgType::kInput, 1, ArgType::kInput),  // append scale (input 1) from q
+      MoveAndAppend(q, ArgType::kInput, 2, ArgType::kInput),  // append zp (input 2) from q
+      MoveAll(variadic_dq, ArgType::kInput),                  // append all inputs from all dq nodes
+      MoveAll(q, ArgType::kOutput)};                          // and use the outputs from q
 
   return moves;
 }
@@ -65,7 +65,7 @@ std::vector<NodeAndMoveInfo> ConvMoves() {
       MoveAll(dq_x, ArgType::kInput),                                     // append all inputs from x
       MoveAll(dq_w, ArgType::kInput),                                     // append all inputs from w
       MoveAndAppend(q, ArgType::kInput, 1, ArgType::kInput),              // append scale (input 1) from q
-      MoveAndAppend(q, ArgType::kInput, 2, ArgType ::kInput),             // append zp (input 2) from q
+      MoveAndAppend(q, ArgType::kInput, 2, ArgType::kInput),              // append zp (input 2) from q
       MoveAndAppend(dq_bias, ArgType::kInput, 0, ArgType::kInput, true),  // (optional) append bias
       MoveAll(q, ArgType::kOutput)};                                      // and use the outputs from q
 
@@ -87,21 +87,6 @@ QDQReplaceWithNew MatMulIntToFloatReplacer() {
       MoveAll(target, ArgType::kOutput)};
 
   return QDQReplaceWithNew(kMSDomain, std::move(moves), "MatMulIntegerToFloat");
-}
-
-ReplaceWithQLinear MatMulQLinearReplacer() {
-  NTO::NodeLocation dq1{NTO::NodeType::kInput, 0};
-  NTO::NodeLocation dq2{NTO::NodeType::kInput, 1};
-  NTO::NodeLocation q{NTO::NodeType::kOutput, 0};
-
-  std::vector<NodeAndMoveInfo> moves{
-      MoveAll(dq1, ArgType::kInput),                           // append all inputs from dq to new node
-      MoveAll(dq2, ArgType::kInput),                           // append all inputs from dq to new node
-      MoveAndAppend(q, ArgType::kInput, 1, ArgType::kInput),   // append scale (input 1) from q
-      MoveAndAppend(q, ArgType::kInput, 2, ArgType ::kInput),  // append zp (input 2) from q
-      MoveAll(q, ArgType::kOutput)};
-
-  return ReplaceWithQLinear(kOnnxDomain, std::move(moves));
 }
 
 struct SetOptionalZeroPoint {
@@ -202,7 +187,7 @@ ConvReplaceWithQLinear::ConvReplaceWithQLinear()
 
 MatMulReplaceWithQLinear::MatMulReplaceWithQLinear()
     : matmul_int_to_float_replacer_{MatMulIntToFloatReplacer()},
-      qlinear_matmul_replacer_{MatMulQLinearReplacer()} {
+      qlinear_matmul_replacer_{kOnnxDomain} {
 }
 
 Status MatMulReplaceWithQLinear::Run(Graph& graph, const NodesToOptimize& selected_nodes) const {

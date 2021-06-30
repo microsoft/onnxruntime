@@ -137,14 +137,16 @@ NodesToOptimize::NodesToOptimize(const std::vector<Node*>& input_nodes,
     : num_inputs{num_input_defs == -1 ? gsl::narrow_cast<int>(input_nodes.size()) : num_input_defs},
       num_outputs{num_output_defs == -1 ? gsl::narrow_cast<int>(output_nodes.size()) : num_output_defs} {
   if (num_input_defs != -1) {
-    num_extra_variadic_inputs_ = gsl::narrow_cast<int>(input_nodes.size()) - num_input_defs;
+    variadic_input_ = true;
+    num_variadic_inputs_ = gsl::narrow_cast<int>(input_nodes.size()) - num_input_defs + 1;
   }
 
   if (num_output_defs != -1) {
-    num_extra_variadic_outputs_ = gsl::narrow_cast<int>(output_nodes.size()) - num_output_defs;
+    variadic_output_ = true;
+    num_variadic_outputs_ = gsl::narrow_cast<int>(output_nodes.size()) - num_output_defs + 1;
   }
 
-  nodes_.reserve(num_inputs + num_extra_variadic_inputs_ + 1 + num_outputs + num_extra_variadic_outputs_);
+  nodes_.reserve(NumInputEntries() + 1 + NumOutputEntries());
   std::copy(input_nodes.begin(), input_nodes.end(), std::back_inserter(nodes_));
   nodes_.push_back(&target_node);
   std::copy(output_nodes.begin(), output_nodes.end(), std::back_inserter(nodes_));
@@ -170,15 +172,17 @@ NodesToOptimizeIndexes NodesToOptimize::ToIndexes() const {
 
   indexes.num_inputs = num_inputs;
   indexes.num_outputs = num_outputs;
-  indexes.num_extra_variadic_inputs = num_extra_variadic_inputs_;
-  indexes.num_extra_variadic_outputs = num_extra_variadic_outputs_;
+  indexes.variadic_input = variadic_input_;
+  indexes.variadic_output = variadic_output_;
+  indexes.num_variadic_inputs = num_variadic_inputs_;
+  indexes.num_variadic_outputs = num_variadic_outputs_;
 
   return indexes;
 }
 
 std::vector<Node*> NodesToOptimize::Inputs(const std::vector<int>& indexes, bool required) const {
   std::vector<Node*> results;
-  results.reserve(num_inputs + num_extra_variadic_inputs_);
+  results.reserve(NumInputEntries());
 
   for (auto idx : indexes) {
     if (idx == num_inputs - 1 && HasVariadicInput()) {
@@ -195,10 +199,10 @@ std::vector<Node*> NodesToOptimize::Inputs(const std::vector<int>& indexes, bool
 
 std::vector<Node*> NodesToOptimize::Outputs(const std::vector<int>& indexes, bool required) const {
   std::vector<Node*> results;
-  results.reserve(num_outputs + num_extra_variadic_outputs_);
+  results.reserve(NumOutputEntries());
 
   // offset by all the inputs and the target node
-  const int offset = num_inputs + num_extra_variadic_inputs_ + 1;
+  const int offset = NumInputEntries() + 1;
 
   for (auto idx : indexes) {
     if (idx == num_outputs - 1 && HasVariadicOutput()) {

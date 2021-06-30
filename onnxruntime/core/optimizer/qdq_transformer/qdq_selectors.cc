@@ -13,10 +13,10 @@
 namespace onnxruntime {
 namespace QDQ {
 namespace {
-// adjust for an optional input that has an entry but does not exist
-int NumActualInputs(const Node& node) {
-  const auto& input_defs = node.InputDefs();
-  return gsl::narrow_cast<int>(std::count_if(input_defs.cbegin(), input_defs.cend(),
+// adjust for an optional input/output that has an entry but does not exist
+int NumActualValues(const Node& node, bool input) {
+  const auto& defs = input ? node.InputDefs() : node.OutputDefs();
+  return gsl::narrow_cast<int>(std::count_if(defs.cbegin(), defs.cend(),
                                              [](const NodeArg* def) { return def && def->Exists(); }));
 }
 }  // namespace
@@ -26,12 +26,14 @@ bool BaseSelector::CheckQDQNodes(const Graph& graph, const Node& node,
                                  const std::vector<const Node*>& q_nodes,
                                  int num_dq_inputs) const {
   if (num_dq_inputs == -1) {
-    num_dq_inputs = NumActualInputs(node);
+    num_dq_inputs = NumActualValues(node, true);
   }
 
+  int num_outputs = NumActualValues(node, false);  // number of outputs that exist
+
   return num_dq_inputs == gsl::narrow_cast<int>(dq_nodes.size()) &&
-         node.OutputDefs().size() == q_nodes.size() &&
-         optimizer_utils::CheckOutputEdges(graph, node, q_nodes.size());
+         num_outputs == q_nodes.size() &&
+         !graph.GetNodeProvidesGraphOutput(node);
 }
 
 bool BaseSelector::Select(Graph& graph, const Node& node, std::unique_ptr<NodesToOptimize>& selection) const {

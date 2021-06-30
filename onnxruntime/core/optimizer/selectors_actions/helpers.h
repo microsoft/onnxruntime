@@ -14,13 +14,23 @@ namespace onnxruntime {
 struct NodesToOptimizeIndexes {
   std::vector<NodeIndex> nodes;
   int num_inputs;
-  int num_extra_variadic_inputs;
   int num_outputs;
-  int num_extra_variadic_outputs;
+  bool variadic_input;
+  bool variadic_output;
+  int num_variadic_inputs;
+  int num_variadic_outputs;
 };
 
-// Group of nodes for processing. Accessors are provided for input/target/output nodes.
-// A single variadic input OR output (not both - but no inferencing operator requires that) is currently supported
+// Group of nodes that will be optimized. The group will either be merged into the target node, or a new node
+// will be created to replace the entire group, including the target node.
+//
+// Accessors are provided for input/target/output nodes.
+// A single variadic input OR output (not both - but no inferencing operator requires that) is currently supported.
+//
+// We don't support multiple nodes being connected to a single output of the target node, as the group of nodes
+// will be removed post-optimization. As such, it's not possible to remove two nodes consuming a single output value
+// as those nodes outputs would also need to be accounted for, and it's not possible to replace a single output
+// from the target node with multiple outputs from downstream nodes.
 class NodesToOptimize {
  public:
   enum class NodeType {
@@ -49,26 +59,27 @@ class NodesToOptimize {
 
   NodesToOptimizeIndexes ToIndexes() const;
 
-  // number of inputs and outputs. these equate to the nodes providing an input/output (defined in the operator schema)
-  // for the target node.
+  // number of inputs and outputs that the target node has, as defined by the operator schema.
+  // for each input/output, the node connected to that is stored
+  // optional non-variadic inputs/outputs that are missing will have a nullptr entry for the node.
+  //
   // if the target node has a variadic input/output, the nodes providing those will always begin at the last entry
   // in the input/output nodes (i.e. at num_inputs - 1 or num_outputs - 1).
   //
   // e.g if there are 3 inputs (same applies to outputs)
-  // if no variadic input
-  //  num_inputs=3. optional inputs that are missing will have a nullptr entry
-  // else variadic input
+  // if there is a variadic input:
   //   if zero variadic values: num_inputs=3, last input is nullptr
   //   if one variadic value: num_inputs=3, last input is the single variadic input
   //   if multiple variadic values: num_inputs=3, total inputs = num_inputs + (NumVariadicInputs() - 1)
   const int num_inputs;
   const int num_outputs;
 
-  bool HasVariadicInput() const { return num_extra_variadic_inputs_ > 0; }
-  int NumVariadicInputs() const { return num_extra_variadic_inputs_ + 1; }
+  bool HasVariadicInput() const { return variadic_input_; }
+  bool HasVariadicOutput() const { return variadic_output_; }
 
-  bool HasVariadicOutput() const { return num_extra_variadic_outputs_ > 0; }
-  int NumVariadicOutputs() const { return num_extra_variadic_outputs_ + 1; }
+  int NumVariadicInputs() const { return num_variadic_inputs_; }
+
+  int NumVariadicOutputs() const { return num_variadic_outputs_; }
 
   bool IsValid() const { return !nodes_.empty(); }
 
@@ -84,11 +95,11 @@ class NodesToOptimize {
   std::vector<Node*> Inputs(const std::vector<int>& indexes, bool required = true) const;
 
   Node& Target() const {
-    return *GetNode(0 + num_inputs + num_extra_variadic_inputs_, /*required*/ true);
+    return *GetNode(NumInputEntries() + 0, /*required*/ true);
   }
 
   Node* Output(int idx, bool required = true) const {
-    return GetNode(idx + num_inputs + num_extra_variadic_inputs_ + 1, required);
+    return GetNode(NumInputEntries() + 1 + idx, required);
   }
 
   // outputs filtered by index. includes all variadic.
@@ -110,10 +121,17 @@ class NodesToOptimize {
     return node;
   }
 
-  // if last input is variadic, how many additional nodes are there for this input?
-  // first one is included in num_inputs_
-  int num_extra_variadic_inputs_{0};
-  int num_extra_variadic_outputs_{0};
+  // if the last input in num_inputs is for the variadic input, the variadic input could have zero or more values
+  // so we need to special case the zero and count that as one. same for outputs
+  int NumInputEntries() const { return variadic_input_ ? num_inputs + std::max(1, num_variadic_inputs_) - 1
+                                                       : num_inputs; }
+  int NumOutputEntries() const { return variadic_output_ ? num_outputs + std::max(1, num_variadic_outputs_) - 1
+                                                         : num_outputs; }
+
+  bool variadic_input_{false};  // is last input variadic
+  bool variadic_output_{false};
+  int num_variadic_inputs_{0};  // how many values does the variadic input have. can be zero or more.
+  int num_variadic_outputs_{0};
   std::vector<Node*> nodes_;
 };
 
@@ -185,7 +203,6 @@ struct NodeAndMoveInfo {
 };
 
 // helpers for moving inputs/outputs and their edges between nodes
-// if there are optional nodes (e.g. bias input to Conv), `required` can be set to false to ignore missing nodes.
 Status MoveInputOutput(Graph& graph, const NodesToOptimize& selected_nodes, Node& dest,
                        const std::vector<NodeAndMoveInfo>& moves);
 
