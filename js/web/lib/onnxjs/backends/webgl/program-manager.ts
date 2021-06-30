@@ -114,7 +114,7 @@ ${fragShaderScript}
     let texturePosition = 0;
     for (const {name, type, location, arrayLength} of uniformLocations) {
       const value = variables.find(v => v.name === name)?.data;
-      if (!value) {
+      if (type !== 'sampler2D' && !value) {
         throw new Error(`variable '${name}' does not have data defined in program info`);
       }
       switch (type) {
