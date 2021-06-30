@@ -2,6 +2,8 @@ jobs:
 - job: CoreML_CI
   pool:
     vmImage: 'macOS-10.15'
+  variables:
+    MACOSX_DEPLOYMENT_TARGET: '10.13'
   timeoutInMinutes: 120
   steps:
   - script: brew install coreutils ninja

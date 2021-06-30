@@ -21,6 +21,7 @@ See [Compatibility](../README.md#Compatibility) for a list of the supported plat
 | [Atanh](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Atanh) |  |
 | [AveragePool](https://github.com/onnx/onnx/blob/master/docs/Operators.md#AveragePool) | [7-9](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#AveragePool-7), [10](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#AveragePool-10) |
 | [BatchNormalization](https://github.com/onnx/onnx/blob/master/docs/Operators.md#BatchNormalization) | [7-8](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-7), [9-13](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-9), [14+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#BatchNormalization-14) |
+| [Bernoulli](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Bernoulli) |  |
 | [BitShift](https://github.com/onnx/onnx/blob/master/docs/Operators.md#BitShift) |  |
 | [Cast](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Cast) |  |
 | [Ceil](https://github.com/onnx/onnx/blob/master/docs/Operators.md#Ceil) | [6-12](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Ceil-6), [13+](https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Ceil-13) |

@@ -478,6 +478,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             ORT_TSTR("operator_non_float_params"),
             ORT_TSTR("operator_params"),
             ORT_TSTR("operator_pow"),
+            ORT_TSTR("bernoulli"),
+            ORT_TSTR("bernoulli_double"),
+            ORT_TSTR("bernoulli_seed")
         };
 
     static const ORTCHAR_T* cuda_flaky_tests[] = {

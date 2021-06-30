@@ -15,14 +15,14 @@ jobs:
     displayName: 'Docker build'
     inputs:
       script: |
-        docker build --pull -t onnxruntime-ubuntu --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=3.6 -f Dockerfile.ubuntu .
+        docker build --pull -t onnxruntime-ubuntu --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg OS_VERSION=20.04 --build-arg PYTHON_VERSION=3.8 -f Dockerfile.ubuntu .
       workingDirectory: $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker
 
   - task: CmdLine@2
     displayName: 'ONNXRuntime build'
     inputs:
       script: |
-        docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD onnxruntime-ubuntu /usr/bin/python3.6 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --build_shared_lib --cmake_path /usr/bin/cmake --build_wheel
+        docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build --volume /data/models:/build/models:ro -e NIGHTLY_BUILD onnxruntime-ubuntu /usr/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --build_shared_lib --cmake_path /usr/bin/cmake --build_wheel
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
