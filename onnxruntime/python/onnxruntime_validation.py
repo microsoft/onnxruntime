@@ -65,6 +65,10 @@ def validate_build_package_info():
         has_ortmodule = True
     except ImportError:
         has_ortmodule = False
+    except EnvironmentError:
+        # ORTModule is present but not ready to run yet
+        has_ortmodule = True
+        pass
     except Exception as e:
         # this may happen if Cuda is not installed, we want to raise it after
         # for any exception other than not having ortmodule, we want to continue

@@ -5,7 +5,7 @@
 #include "onnxruntime_c_api.h"
 
 // NNAPIFlags are bool options we want to set for NNAPI EP
-// This enum is defined as bit flats, and cannot have negative value
+// This enum is defined as bit flags, and cannot have negative value
 // To generate an uint32_t nnapi_flags for using with OrtSessionOptionsAppendExecutionProvider_Nnapi below,
 //   uint32_t nnapi_flags = 0;
 //   nnapi_flags |= NNAPI_FLAG_USE_FP16;
