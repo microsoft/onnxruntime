@@ -21,6 +21,10 @@ jobs:
       architecture: 'x64'
 
   - script: |
+      pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
+    displayName: "Install Python requirements"
+
+  - script: |
       BASE_VERSION=$(cat VERSION_NUMBER)
 
       if [[ "${{ parameters.IsReleaseBuild }}" == "true" ]]; then
