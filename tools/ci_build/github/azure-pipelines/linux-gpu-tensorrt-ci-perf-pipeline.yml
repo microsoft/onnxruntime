@@ -124,12 +124,12 @@ jobs:
       displayName: 'Prepare Artifacts'
       workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
     
-    - publish: $(Build.SourcesDirectory)/Artifact
-      artifact: result
-    # - task: PublishBuildArtifacts@1
-    #   inputs:
-    #     pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
-    #     artifactName: 'result'
+    # - publish: $(Build.SourcesDirectory)/Artifact
+    #   artifact: result
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
+        artifactName: 'result'
 
     - script: sudo rm -rf $(Agent.BuildDirectory)
       displayName: Clean build files (POSIX)
@@ -144,10 +144,12 @@ jobs:
     - Agent.Name -equals cus-cpu-52wc
   
   steps:
-  - download: current
-    artifact: result
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      artifact: result
+
   - ${{ if eq(parameters.PostToDashboard, true) }}:
-      - script: 'python $(Build.SourcesDirectory)\onnxruntime\python\tools\tensorrt\perf\post.py -r result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" ' 
+      - script: 'python $(Build.SourcesDirectory)\onnxruntime\python\tools\tensorrt\perf\post.py -r $(Pipeline.Workspace)/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" ' 
         displayName: 'Post to Dashboard'
         env:
           DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
