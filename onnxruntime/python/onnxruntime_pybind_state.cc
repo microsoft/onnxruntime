@@ -311,13 +311,12 @@ static inline void RegisterCudaExecutionProvider(InferenceSession* sess, const P
 #ifdef ENABLE_TRAINING
     // For training, CUDA EPs are created per device
     // Multiple ORTModule instances will share the CUDA EP for the same physical device
-    static std::unordered_map<OrtDevice::DeviceId, std::shared_ptr<IExecutionProvider>> cuda_eps;
-    auto device_id = info.device_id;
-    if (cuda_eps.find(device_id) == cuda_eps.end()) {
+    static std::unordered_map<CUDAExecutionProviderInfo, std::shared_ptr<IExecutionProvider>> cuda_eps;
+    if (cuda_eps.find(info) == cuda_eps.end()) {
       auto cuda_ep_factory = cuda_provider_info->CreateExecutionProviderFactory(info);
-      cuda_eps[device_id] = std::move(cuda_ep_factory->CreateProvider());
+      cuda_eps[info] = std::move(cuda_ep_factory->CreateProvider());
     }
-    OrtPybindThrowIfError(sess->RegisterExecutionProvider(cuda_eps[device_id]));
+    OrtPybindThrowIfError(sess->RegisterExecutionProvider(cuda_eps[info]));
 #else
     RegisterExecutionProvider(sess, *cuda_provider_info->CreateExecutionProviderFactory(info));
 #endif  // ENABLE_TRAINING
@@ -353,13 +352,12 @@ static inline void RegisterRocmExecutionProvider(InferenceSession* sess, const P
 #ifdef ENABLE_TRAINING
   // For training, Rocm EPs are created per device
   // Multiple ORTModule instances will share the EP for the same physical device
-  static std::unordered_map<OrtDevice::DeviceId, std::shared_ptr<IExecutionProvider>> rocm_eps;
-  auto device_id = info.device_id;
-  if (rocm_eps.find(device_id) == rocm_eps.end()) {
+  static std::unordered_map<ROCMExecutionProviderInfo, std::shared_ptr<IExecutionProvider>> rocm_eps;
+  if (rocm_eps.find(info) == rocm_eps.end()) {
     auto rocm_ep_factory = onnxruntime::CreateExecutionProviderFactory_ROCM(info);
-    rocm_eps[device_id] = std::move(rocm_ep_factory->CreateProvider());
+    rocm_eps[info] = std::move(rocm_ep_factory->CreateProvider());
   }
-  OrtPybindThrowIfError(sess->RegisterExecutionProvider(rocm_eps[device_id]));
+  OrtPybindThrowIfError(sess->RegisterExecutionProvider(rocm_eps[info]));
 #else
   RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_ROCM(info));
 #endif  // ENABLE_TRAINING

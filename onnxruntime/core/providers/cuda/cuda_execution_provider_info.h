@@ -29,6 +29,10 @@ struct CUDAExecutionProviderExternalAllocatorInfo {
   bool UseExternalAllocator() const {
     return (alloc != nullptr) && (free != nullptr);
   }
+
+  bool operator==(const CUDAExecutionProviderExternalAllocatorInfo& other) const {
+    return alloc == other.alloc && free == other.free;
+  }
 };
 
 struct CUDAExecutionProviderInfo {
@@ -48,5 +52,22 @@ struct CUDAExecutionProviderInfo {
 
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);
+
+  bool operator==(const CUDAExecutionProviderInfo& other) const;
 };
 }  // namespace onnxruntime
+
+namespace std {
+using onnxruntime::CUDAExecutionProviderInfo;
+template <>
+struct hash<CUDAExecutionProviderInfo> {
+  size_t operator()(const CUDAExecutionProviderInfo& info) const {
+    return static_cast<size_t>(info.device_id) ^
+           info.gpu_mem_limit ^
+           (static_cast<size_t>(info.arena_extend_strategy) << 16) ^
+           (static_cast<size_t>(info.cudnn_conv_algo_search) << 18) ^
+           (static_cast<size_t>(info.do_copy_in_default_stream) << 20) ^
+           (static_cast<size_t>(info.has_user_compute_stream) << 22);
+  }
+};
+}  // namespace std

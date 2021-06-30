@@ -28,6 +28,10 @@ struct ROCMExecutionProviderExternalAllocatorInfo {
   bool UseExternalAllocator() const {
     return (alloc != nullptr) && (free != nullptr);
   }
+
+  bool operator==(const ROCMExecutionProviderExternalAllocatorInfo& other) const {
+    return alloc == other.alloc && free == other.free;
+  }
 };
 
 struct ROCMExecutionProviderInfo {
@@ -42,5 +46,22 @@ struct ROCMExecutionProviderInfo {
 
   static ROCMExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const ROCMExecutionProviderInfo& info);
+
+  bool operator==(const ROCMExecutionProviderInfo& other) const;
 };
 }  // namespace onnxruntime
+
+namespace std {
+using onnxruntime::ROCMExecutionProviderInfo;
+template <>
+struct hash<ROCMExecutionProviderInfo> {
+  size_t operator()(const ROCMExecutionProviderInfo& info) const {
+    return static_cast<size_t>(info.device_id) ^
+           info.gpu_mem_limit ^
+           (static_cast<size_t>(info.arena_extend_strategy) << 16) ^
+           (static_cast<size_t>(info.miopen_conv_exhaustive_search) << 18) ^
+           (static_cast<size_t>(info.do_copy_in_default_stream) << 20) ^
+           (static_cast<size_t>(info.has_user_compute_stream) << 22);
+  }
+};
+}  // namespace std
