@@ -130,9 +130,9 @@ def get_status(status, model_group):
     return status
 
 def get_database_cert(): 
-    cert = 'https://cacerts.digicert.com/BaltimoreCyberTrustRoot.crt.pem'
+    cert = 'BaltimoreCyberTrustRoot.crt.pem'
     if not os.path.exists(cert):
-        p = subprocess.run(["curl", "-O", cert], check=True)
+        p = subprocess.run(["curl", "-O", 'https://cacerts.digicert.com/BaltimoreCyberTrustRoot.crt.pem'], check=True)
     return cert 
 
 def write_table(engine, table, table_name): 
