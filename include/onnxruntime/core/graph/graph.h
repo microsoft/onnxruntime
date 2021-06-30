@@ -1,3 +1,4 @@
+
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -684,7 +685,7 @@ class Graph {
   /** Returns true if one or more of the Node outputs are Graph outputs. 
   @remarks Cheaper than calling GetNodeOutputsInGraphOutputs.
   */
-  bool GetNodeProvidesGraphOutput(const Node& node) const {
+  bool NodeProducesGraphOutput(const Node& node) const {
     auto end_outputs = graph_outputs_.cend();
     for (auto output_def : node.OutputDefs()) {
       if (std::find(graph_outputs_.cbegin(), end_outputs, output_def) != end_outputs) {

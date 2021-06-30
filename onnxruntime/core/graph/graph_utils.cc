@@ -323,7 +323,7 @@ bool CanRemoveNode(const Graph& graph, const Node& node, const logging::Logger& 
   // This would allow removal of a node that is providing a graph output, as that output name would come from updating
   // the upstream node. This should also enable removal if CanUpdateImplicitInputNameInSubgraphs returns false.
 
-  if (graph.GetNodeProvidesGraphOutput(node)) {
+  if (graph.NodeProducesGraphOutput(node)) {
     return false;
   }
 
@@ -762,7 +762,7 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
     // Each eligible node in the subgraph must have less than one output edge and no output should be
     // the graph output
     const Node& cur_node = *graph.GetNode(cur_node_index);
-    if (cur_node.GetOutputEdgesCount() > 1 || graph.GetNodeProvidesGraphOutput(cur_node)) {
+    if (cur_node.GetOutputEdgesCount() > 1 || graph.NodeProducesGraphOutput(cur_node)) {
       continue;
     }
 

@@ -31,7 +31,7 @@ static bool CheckNode(Graph& graph, const Node& node, const std::string& op_name
          node.GetExecutionProviderType() == provider &&
          IsSupportedDataType(node) &&
          (!require_single_output || node.GetOutputEdgesCount() == 1) &&
-         !graph.GetNodeProvidesGraphOutput(node);
+         !graph.NodeProducesGraphOutput(node);
 }
 
 MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
