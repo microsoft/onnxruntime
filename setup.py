@@ -156,7 +156,7 @@ try:
                         subprocess.run(args, check=True, stdout=subprocess.PIPE)
                     self._rewrite_ld_preload(to_preload)
             _bdist_wheel.run(self)
-            if is_manylinux:
+            if is_manylinux and not rocm_version:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
                 logger.info('repairing %s for manylinux1', file)
                 try:
@@ -440,7 +440,7 @@ if enable_training:
                         if not cudart_versions or len(cudart_versions) == 0
                         else "found multiple cudart libraries")
 
-            if rocm_version:
+            elif rocm_version:
                 f.write("rocm_version = '{}'\n".format(rocm_version))
 
     save_build_and_package_info(package_name, version_number, cuda_version, rocm_version)
