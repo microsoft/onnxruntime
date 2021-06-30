@@ -128,7 +128,7 @@ stages:
                   --build_wheel \
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
-                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-$(GccVersion)/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_cuda_architectures }}' \
+                  --cmake_extra_defines cmake_extra_defines PYTHON_INCLUDE_DIR=$(PythonManylinuxIncludeDir) PYTHON_LIBRARY=$(PythonManylinuxLibDir) CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-$(GccVersion)/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_cuda_architectures }}' \
                   --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion) ;
           workingDirectory: $(Build.SourcesDirectory)
 
