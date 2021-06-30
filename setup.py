@@ -75,6 +75,8 @@ elif parse_arg_remove_boolean(sys.argv, '--use_armnn'):
 
 # Extra files such as EULA and ThirdPartyNotices
 extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md"]
+if rocm_version:
+    extra += ['ROCmNotices.txt']
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -132,15 +134,12 @@ try:
                         f.write('_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split('.')[0], library))
 
         def run(self):
-            global extra
             if is_manylinux:
                 source = 'onnxruntime/capi/onnxruntime_pybind11_state.so'
                 dest = 'onnxruntime/capi/onnxruntime_pybind11_state_manylinux1.so'
                 logger.info('copying %s -> %s', source, dest)
                 copyfile(source, dest)
                 to_preload = []
-                if rocm_version:
-                    extra += ['ROCmNotices.txt']
                 dest = 'onnxruntime/capi/libonnxruntime_providers_cuda.so'
                 if path.isfile(dest):
                     result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
