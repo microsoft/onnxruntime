@@ -39,7 +39,7 @@ static Node* GetTransposeNodeFromOutput(Graph& graph, NodeArg& node_arg) {
   }
 
   // if the node has Graph output, skip it too
-  if (graph.GetNodeProvidesGraphOutput(*trans_node)) {
+  if (graph.NodeProducesGraphOutput(*trans_node)) {
     return nullptr;
   }
 

@@ -133,7 +133,7 @@ bool ConvMulFusion::SatisfyCondition(const Graph& graph, const Node& node, const
     return false;
   }
 
-  if (graph.GetNodeProvidesGraphOutput(node)) {
+  if (graph.NodeProducesGraphOutput(node)) {
     return false;
   }
 

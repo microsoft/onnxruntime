@@ -164,7 +164,7 @@ size_t NchwcTransformerImpl::RemoveOutputEdges(Node& node) {
   }
   // Bias the edge count to handle the case of a node that produces a graph
   // output.
-  if (graph_.GetNodeProvidesGraphOutput(node)) {
+  if (graph_.NodeProducesGraphOutput(node)) {
     output_edges_count++;
   }
   return output_edges_count;
@@ -1145,7 +1145,7 @@ void NchwcTransformerImpl::TrackTransposeFromNhwc(Node& node) {
 
   // Verify that the node does not produce a graph output and produces output
   // for a single node.
-  if (graph_.GetNodeProvidesGraphOutput(node) || node.GetOutputEdgesCount() != 1) {
+  if (graph_.NodeProducesGraphOutput(node) || node.GetOutputEdgesCount() != 1) {
     return;
   }
 

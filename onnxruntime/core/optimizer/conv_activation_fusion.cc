@@ -96,7 +96,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
-    if (graph.GetNodeProvidesGraphOutput(*node)) {
+    if (graph.NodeProducesGraphOutput(*node)) {
       continue;
     }
 
