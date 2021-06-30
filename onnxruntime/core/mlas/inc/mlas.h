@@ -527,11 +527,11 @@ struct MLAS_GEMM_U8X8_SHAPE_PARAMS {
     size_t N = 0;
     size_t K = 0;
     bool BIsSigned = false;
+    CBLAS_TRANSPOSE TransA = CblasNoTrans;
+    CBLAS_TRANSPOSE TransB = CblasNoTrans;
 };
 
 struct MLAS_GEMM_U8X8_DATA_PARAMS {
-    CBLAS_TRANSPOSE TransA = CblasNoTrans;
-    CBLAS_TRANSPOSE TransB = CblasNoTrans;
     const uint8_t* A = nullptr;
     size_t lda = 0;
     uint8_t ZeroPointA = 0;

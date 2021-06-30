@@ -100,7 +100,30 @@ MlasGemmU8X8CopyPackA(
 
 template<typename KernelType>
 void
+MlasGemmU8X8TransposePackA(
+    typename KernelType::PackedAType* D,
+    const uint8_t* A,
+    size_t lda,
+    size_t CountM,
+    size_t CountK,
+    int32_t* RowSumBuffer
+);
+
+template<typename KernelType>
+void
 MlasGemmU8X8CopyPackB(
+    typename KernelType::PackedBType* D,
+    const uint8_t* B,
+    size_t ldb,
+    size_t CountN,
+    size_t CountK,
+    int32_t* ColumnSumBuffer,
+    bool BIsSigned
+);
+
+template<typename KernelType>
+void
+MlasGemmU8X8TransposePackB(
     typename KernelType::PackedBType* D,
     const uint8_t* B,
     size_t ldb,
@@ -179,8 +202,11 @@ Return Value:
     const size_t ldb = Data->ldb;
     const size_t ldc = Data->ldc;
 
-    const uint8_t* A = Data->A + RangeStartM * lda;
-    const uint8_t* B = (const uint8_t*)Data->B + RangeStartN;
+    bool IsATrans = Data->TransA != CblasNoTrans;
+    bool IsBTrans = Data->TransB != CblasNoTrans;
+
+    const uint8_t* A = Data->A + RangeStartM * (IsATrans ? 1 : lda);
+    const uint8_t* B = (const uint8_t*)Data->B + RangeStartN * (IsBTrans ? ldb : 1);
     int32_t* C = Data->C + RangeStartM * ldc + RangeStartN;
     const uint8_t* PackedZeroPointB = Data->PerColumnZeroPoints ?
         Data->ZeroPointB + RangeStartN : nullptr;
@@ -192,7 +218,7 @@ Return Value:
     // Try to use a GEMV kernel if supported by this kernel type.
     //
 
-    if ((RangeCountM == 1) &&
+    if ((RangeCountM == 1) && !IsATrans && !IsBTrans &&
         (ZeroPointA == 0) && (PackedZeroPointB == nullptr) && (ZeroPointB == 0) &&
         (Data->OutputProcessor == nullptr)) {
         if (MlasGemmU8X8TryGemvKernel<KernelType>(A, B, ldb, C, K, RangeCountN, Shape->BIsSigned)) {
@@ -247,14 +273,25 @@ Return Value:
             // Copy a panel of matrix B to a local packed buffer.
             //
 
-            MlasGemmU8X8CopyPackB<KernelType>(
-                PanelB,
-                B + n,
-                ldb,
-                CountN,
-                CountK,
-                ColumnSumBuffer,
-                Shape->BIsSigned);
+            if (IsBTrans) {
+                MlasGemmU8X8TransposePackB<KernelType>(
+                    PanelB,
+                    B + n * ldb,
+                    ldb,
+                    CountN,
+                    CountK,
+                    ColumnSumBuffer,
+                    Shape->BIsSigned);
+            } else {
+                MlasGemmU8X8CopyPackB<KernelType>(
+                    PanelB,
+                    B + n,
+                    ldb,
+                    CountN,
+                    CountK,
+                    ColumnSumBuffer,
+                    Shape->BIsSigned);
+            }
 
             MlasGemmU8X8ScaleSumBuffer(ColumnSumBuffer, CountN, -ZeroPointA);
 
@@ -273,13 +310,23 @@ Return Value:
                 // Copy a panel of matrix A to a local packed buffer.
                 //
 
-                MlasGemmU8X8CopyPackA<KernelType>(
-                    PanelA,
-                    A + m * lda,
-                    lda,
-                    CountM,
-                    CountK,
-                    RowSumBuffer);
+                if (IsATrans) {
+                    MlasGemmU8X8TransposePackA<KernelType>(
+                        PanelA,
+                        A + m,
+                        lda,
+                        CountM,
+                        CountK,
+                        RowSumBuffer);
+                } else {
+                    MlasGemmU8X8CopyPackA<KernelType>(
+                        PanelA,
+                        A + m * lda,
+                        lda,
+                        CountM,
+                        CountK,
+                        RowSumBuffer);
+                }
 
                 //
                 // Apply the global depth value constant without the ZeroPointB scaling from:
@@ -348,8 +395,8 @@ Return Value:
             }
         }
 
-        A += CountK;
-        B += CountK * ldb;
+        A += CountK * (IsATrans ? lda : 1);
+        B += CountK * (IsBTrans ? 1 : ldb);
     }
 }
 
@@ -404,7 +451,9 @@ Return Value:
     const size_t lda = Data->lda;
     const size_t ldc = Data->ldc;
 
-    const uint8_t* A = Data->A + RangeStartM * lda;
+    bool IsATrans = Shape->TransA != CblasNoTrans;
+
+    const uint8_t* A = Data->A + RangeStartM * (IsATrans ? 1 : lda);
     const uint8_t* PackedB = (const uint8_t*)Data->B;
     int32_t* C = Data->C + RangeStartM * ldc + RangeStartN;
     const uint8_t* PackedZeroPointB = Data->PerColumnZeroPoints ?
@@ -492,13 +541,23 @@ Return Value:
                 // Copy a panel of matrix A to a local packed buffer.
                 //
 
-                MlasGemmU8X8CopyPackA<KernelType>(
-                    PanelA,
-                    A + m * lda,
-                    lda,
-                    CountM,
-                    CountK,
-                    RowSumBuffer);
+                if (IsATrans) {
+                    MlasGemmU8X8TransposePackA<KernelType>(
+                        PanelA,
+                        A + m,
+                        lda,
+                        CountM,
+                        CountK,
+                        RowSumBuffer);
+                } else {
+                    MlasGemmU8X8CopyPackA<KernelType>(
+                        PanelA,
+                        A + m * lda,
+                        lda,
+                        CountM,
+                        CountK,
+                        RowSumBuffer);
+                }
 
                 //
                 // Apply the global depth value constant without the ZeroPointB scaling from:
@@ -567,7 +626,7 @@ Return Value:
             }
         }
 
-        A += CountK;
+        A += CountK * (IsATrans ? lda : 1);
         PackedB = (const uint8_t*)PackedB + AlignedN * CountK;
     }
 }
