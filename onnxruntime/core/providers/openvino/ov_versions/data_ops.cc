@@ -851,6 +851,7 @@ void DataOps::populate_op_mode_supported() {
                                if (device_id_.find("MYRIAD") != std::string::npos) {
                                  const auto& input_arg = node->InputDefs()[1];
                                  auto shape = input_arg->Shape();
+                                 //Reshape op with empty dim is Rejected for Myriad
                                  if (shape != nullptr) {
                                    for (const auto& dim : input_arg->Shape()->dim()) {
                                      if (utils::HasDimValue(dim) && dim.dim_value() == 0)
@@ -889,6 +890,7 @@ void DataOps::populate_op_mode_supported() {
                                  auto updates_shape = input_arg->Shape();
                                  const auto& output_arg = node->OutputDefs()[0];
                                  auto out_shape = output_arg->Shape();
+                                 //If updates attribute dim value greater than output_shape dim value, we reject
                                  if(node->InputDefs()[2]->Name() == "updates")
                                  {
                                   size_t updates_size = updates_shape->dim_size();
