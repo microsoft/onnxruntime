@@ -56,14 +56,15 @@ struct Value : Ort::Value {
 
   template <typename T>
   static Ort::Value CreateTensor(T* p_data, size_t p_data_element_count, const std::vector<int64_t>& shape);
-  static Ort::Value CreateTensor(void* p_data, size_t p_data_byte_count, const std::vector<int64_t>& shape, ONNXTensorElementDataType type);
+  static Ort::Value CreateTensor(void* p_data, size_t p_data_byte_count, const std::vector<int64_t>& shape,
+                                 ONNXTensorElementDataType type);
 
   template <typename T>
   static Ort::Value CreateTensor(const std::vector<int64_t>& shape);
   static Ort::Value CreateTensor(const std::vector<int64_t>& shape, ONNXTensorElementDataType type);
 };
 
-}
-}
+}  // namespace Experimental
+}  // namespace Ort
 
 #include "experimental_onnxruntime_cxx_inline.h"

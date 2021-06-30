@@ -66,7 +66,8 @@ class RewriteRule {
       @param[in] node The Node to apply the rewrite to.
       @param[out] rule_effect Enum to indicate if and how the graph was modified as a result of the rule application.
       @returns Status indicating success or providing error information */
-  common::Status CheckConditionAndApply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const {
+  common::Status CheckConditionAndApply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect,
+                                        const logging::Logger& logger) const {
     return SatisfyCondition(graph, node, logger) ? Apply(graph, node, rule_effect, logger) : Status::OK();
   }
 
@@ -84,6 +85,7 @@ class RewriteRule {
   /** This is the actual body of the rule that performs the graph transformation. The transformation happens in-place. 
       The return-value of node may be different from the input-value due to rewriting.
       The value of "rule_effect" indicates whether and how the graph was modified by the rule. */
-  virtual common::Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const = 0;
+  virtual common::Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect,
+                               const logging::Logger& logger) const = 0;
 };
 }  // namespace onnxruntime

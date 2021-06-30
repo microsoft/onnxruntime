@@ -104,8 +104,8 @@ class OpKernel {
   // Please refer to MatMulIntegerToFloatBase for a complete example
   // @param prepacked_buffers: The pre-packed buffers to be used by this kernel for the provided input index
   //                           (Sometimes a single constant initializer may have multiple pre-packed buffers associated
-  //                            with it and it upto the kernel developer to store it in any order of their choice in PrePack()
-  //                            and must use the same order for retrieval in UseSharedPrePackedBuffers().
+  //                            with it and it upto the kernel developer to store it in any order of their choice in
+  //                            PrePack() and must use the same order for retrieval in UseSharedPrePackedBuffers().
   // @param input_idx: The input index of the tensor in this kernel
   // @param used_shared_buffers: Boolean flag set by the kernel implementation indicating
   // that the provided weight has been used by the kernel.

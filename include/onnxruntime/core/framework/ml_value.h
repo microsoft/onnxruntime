@@ -45,13 +45,15 @@ struct OrtValue {
 
   template <typename T>
   const T& Get() const {
-    ORT_ENFORCE(onnxruntime::DataTypeImpl::GetType<T>() == type_, onnxruntime::DataTypeImpl::GetType<T>(), " != ", type_);
+    ORT_ENFORCE(onnxruntime::DataTypeImpl::GetType<T>() == type_,
+                onnxruntime::DataTypeImpl::GetType<T>(), " != ", type_);
     return *static_cast<T*>(data_.get());
   }
 
   template <typename T>
   T* GetMutable() {
-    ORT_ENFORCE(onnxruntime::DataTypeImpl::GetType<T>() == type_, onnxruntime::DataTypeImpl::GetType<T>(), " != ", type_);
+    ORT_ENFORCE(onnxruntime::DataTypeImpl::GetType<T>() == type_,
+                onnxruntime::DataTypeImpl::GetType<T>(), " != ", type_);
     return static_cast<T*>(data_.get());
   }
 
@@ -124,4 +126,3 @@ inline onnxruntime::SparseTensor* OrtValue::GetMutable<onnxruntime::SparseTensor
   ORT_ENFORCE(IsSparseTensor(), "Trying to get a SparseTensor, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
   return static_cast<onnxruntime::SparseTensor*>(data_.get());
 }
-

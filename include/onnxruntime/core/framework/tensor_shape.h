@@ -130,7 +130,8 @@ class TensorShape : private std::vector<int64_t> {
   }
 
   static const TensorShape& ReinterpretBaseType(const std::vector<int64_t>& dimensions) {
-    static_assert(sizeof(TensorShape) == sizeof(std::vector<int64_t>), "Size of TensorShape prevents safe casting from vector");
+    static_assert(sizeof(TensorShape) == sizeof(std::vector<int64_t>),
+                  "Size of TensorShape prevents safe casting from vector");
     return *static_cast<const TensorShape*>(&dimensions);
   }
 };

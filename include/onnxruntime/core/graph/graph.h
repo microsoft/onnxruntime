@@ -204,7 +204,8 @@ class Node {
 
 #if !defined(ORT_MINIMAL_BUILD)
   /**
-  Helper to iterate through the container returned by #MutableInputDefs() or #MutableOutputDefs() and call the provided function.
+  Helper to iterate through the container returned by #MutableInputDefs() or #MutableOutputDefs() and call the provided
+  function.
   @param node_args Collection of NodeArgs returned by #MutableInputDefs() or #MutableOutputDefs()
   @param func Function to call for each valid NodeArg in the node_args. The function is called with the NodeArg
               and the index number in the container.
@@ -356,7 +357,8 @@ class Node {
   Graph* GetMutableGraphAttribute(const std::string& attr_name);
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-  /** Checks if the Node contains at least one subgraph (this is the case for control flow operators, such as If, Scan, Loop).
+  /** Checks if the Node contains at least one subgraph
+      (this is the case for control flow operators, such as If, Scan, Loop).
   @returns true if the Node contains a subgraph.
   */
   bool ContainsSubgraph() const {
@@ -661,8 +663,8 @@ class Graph {
 
   /** Return true if "node_arg" is a input or an initializer. Otherwise, returns false. */
   bool IsInputsIncludingInitializers(const NodeArg* node_arg) const noexcept {
-    return std::find(graph_inputs_including_initializers_.begin(),
-                     graph_inputs_including_initializers_.end(), node_arg) != graph_inputs_including_initializers_.end();
+    return std::find(graph_inputs_including_initializers_.begin(), graph_inputs_including_initializers_.end(),
+                     node_arg) != graph_inputs_including_initializers_.end();
   }
 
   /** Gets the Graph inputs that are initializers

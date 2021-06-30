@@ -237,7 +237,8 @@ class ThreadPoolProfiler {
   void LogEnd(ThreadPoolEvent);  //called in main thread to calculate and save the time elapsed from last start point
   void LogEndAndStart(ThreadPoolEvent);
   void LogStartAndCoreAndBlock(std::ptrdiff_t block_size);
-  void LogCoreAndBlock(std::ptrdiff_t block_size);  //called in main thread to log core and block size for task breakdown
+  void LogCoreAndBlock(std::ptrdiff_t block_size);  // called in main thread to log core and block size 
+                                                    // for task breakdown
   void LogThreadId(int thread_idx);                 //called in child thread to log its id
   void LogRun(int thread_idx);                      //called in child thread to log num of run
   std::string DumpChildThreadStat();                //return all child statitics collected so far
@@ -280,7 +281,8 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
   // Start/end a parallel section, within which calls to
   // RunInParallelSection may be made.  Parallel sections are
   // non-nesting.
-  virtual std::unique_ptr<ThreadPoolParallelSection, void(*)(ThreadPoolParallelSection*)> AllocateParallelSection() = 0;
+  virtual std::unique_ptr<ThreadPoolParallelSection, void (*)(ThreadPoolParallelSection*)>
+  AllocateParallelSection() = 0;
   virtual void StartParallelSection(ThreadPoolParallelSection &ps) = 0;
   virtual void EndParallelSection(ThreadPoolParallelSection &ps) = 0;
 

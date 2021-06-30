@@ -26,7 +26,7 @@ struct OrtArenaCfg {
         initial_growth_chunk_size_bytes(initial_growth_chunk_size_bytes) {}
 
   size_t max_mem;                       // use 0 to allow ORT to choose the default
-  int arena_extend_strategy;            // use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
+  int arena_extend_strategy;  // use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
   int initial_chunk_size_bytes;         // use -1 to allow ORT to choose the default
   int max_dead_bytes_per_chunk;         // use -1 to allow ORT to choose the default
   int initial_growth_chunk_size_bytes;  // use -1 to allow ORT to choose the default
@@ -75,7 +75,8 @@ class IAllocator {
    * \param out Total size required after any alignment is applied
    * \return true, successful. false, overflow
    */
-  static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept ORT_MUST_USE_RESULT;
+  static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment,
+                                               size_t* out) noexcept ORT_MUST_USE_RESULT;
 
   /**
    * https://cwe.mitre.org/data/definitions/190.html

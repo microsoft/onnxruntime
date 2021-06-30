@@ -187,8 +187,9 @@ typedef OrtStatus* OrtStatusPtr;
 // __VA_ARGS__ on Windows and Linux are different
 #define ORT_API(RETURN_TYPE, NAME, ...) RETURN_TYPE ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
 
-#define ORT_API_STATUS(NAME, ...) \
-  _Success_(return == 0) _Check_return_ _Ret_maybenull_ OrtStatusPtr ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION ORT_MUST_USE_RESULT
+#define ORT_API_STATUS(NAME, ...)                                                                   \
+  _Success_(return == 0) _Check_return_ _Ret_maybenull_ OrtStatusPtr ORT_API_CALL NAME(__VA_ARGS__) \
+      NO_EXCEPTION ORT_MUST_USE_RESULT
 
 // XXX: Unfortunately, SAL annotations are known to not work with function pointers
 #define ORT_API2_STATUS(NAME, ...) \
@@ -255,12 +256,15 @@ typedef enum OrtAllocatorType {
 
 /**
  * memory types for allocator, exec provider specific types should be extended in each provider
- * Whenever this struct is updated, please also update the MakeKey function in onnxruntime/core/framework/execution_provider.cc
-*/
+ * Whenever this struct is updated, please also update the MakeKey function in
+ * onnxruntime/core/framework/execution_provider.cc
+ */
 typedef enum OrtMemType {
   OrtMemTypeCPUInput = -2,              // Any CPU memory used by non-CPU execution provider
-  OrtMemTypeCPUOutput = -1,             // CPU accessible memory outputted by non-CPU execution provider, i.e. CUDA_PINNED
-  OrtMemTypeCPU = OrtMemTypeCPUOutput,  // temporary CPU accessible memory allocated by non-CPU execution provider, i.e. CUDA_PINNED
+  OrtMemTypeCPUOutput = -1,             // CPU accessible memory outputted by non-CPU execution provider,
+                                        // i.e. CUDA_PINNED
+  OrtMemTypeCPU = OrtMemTypeCPUOutput,  // temporary CPU accessible memory allocated by non-CPU execution provider,
+                                        //  i.e. CUDA_PINNED
   OrtMemTypeDefault = 0,                // the default allocator for execution provider
 } OrtMemType;
 
@@ -278,10 +282,12 @@ typedef struct OrtCUDAProviderOptions {
   OrtCudnnConvAlgoSearch cudnn_conv_algo_search;  // cudnn conv algo search option
 
   size_t gpu_mem_limit;  // default cuda memory limitation to maximum finite value of size_t.
-                         // (will be overridden by "max_mem" value used while creating `arena_cfg` if `arena_cfg` is provided)
+                         // (will be overridden by "max_mem" value used while creating `arena_cfg` if `arena_cfg` is
+                         // provided)
 
   int arena_extend_strategy;  // default area extend strategy to KNextPowerOfTwo.
-                              // (will be overridden by "arena_extend_strategy" value used while creating `arena_cfg` if `arena_cfg` is provided)
+                              // (will be overridden by "arena_extend_strategy" value used while creating `arena_cfg` if
+                              // `arena_cfg` is provided)
 
   int do_copy_in_default_stream;
   int has_user_compute_stream;
@@ -312,7 +318,8 @@ typedef struct OrtTensorRTProviderOptions {
   int trt_fp16_enable;                          // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
   int trt_int8_enable;                          // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
   const char* trt_int8_calibration_table_name;  // TensorRT INT8 calibration table name.
-  int trt_int8_use_native_calibration_table;    // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
+  int trt_int8_use_native_calibration_table;    // use native TensorRT generated calibration table. Default 0 = false,
+                                                // nonzero = true
   int trt_dla_enable;                           // enable DLA. Default 0 = false, nonzero = true
   int trt_dla_core;                             // DLA core number. Default 0
   int trt_dump_subgraphs;                       // dump TRT subgraph. Default 0 = false, nonzero = true
@@ -320,7 +327,8 @@ typedef struct OrtTensorRTProviderOptions {
   const char* trt_engine_cache_path;            // specify engine cache path
   int trt_engine_decryption_enable;             // enable engine decryption. Default 0 = false, nonzero = true
   const char* trt_engine_decryption_lib_path;   // specify engine decryption library path
-  int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
+  int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false,
+                                                //                                                nonzero = true
 } OrtTensorRTProviderOptions;
 
 /// <summary>
@@ -328,7 +336,13 @@ typedef struct OrtTensorRTProviderOptions {
 /// </summary>
 typedef struct OrtOpenVINOProviderOptions {
 #ifdef __cplusplus
-  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{}, num_of_threads{}, use_compiled_network{}, blob_dump_path{} {}
+  OrtOpenVINOProviderOptions()
+      : device_type{},
+        enable_vpu_fast_compile{},
+        device_id{},
+        num_of_threads{},
+        use_compiled_network{},
+        blob_dump_path{} {}
 #endif
   const char* device_type;                // CPU_FP32, GPU_FP32, GPU_FP16, MYRIAD_FP16, VAD-M_FP16 or VAD-F_FP32
   unsigned char enable_vpu_fast_compile;  // 0 = false, nonzero = true
@@ -343,7 +357,8 @@ typedef struct OrtApi OrtApi;
 
 struct OrtApiBase {
   const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;  // Pass in ORT_API_VERSION
-  // nullptr will be returned if the version is unsupported, for example when using a runtime older than this header file
+  // nullptr will be returned if the version is unsupported, for example
+  // when using a runtime older than this header file
 
   const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;
 };
@@ -472,12 +487,12 @@ struct OrtApi {
   ORT_API2_STATUS(AddCustomOpDomain, _Inout_ OrtSessionOptions* options, _In_ OrtCustomOpDomain* custom_op_domain);
 
   /*
-     * Loads a DLL named 'library_path' and looks for this entry point:
-     *		OrtStatus* RegisterCustomOps(OrtSessionOptions * options, const OrtApiBase* api);
-     * It then passes in the provided session options to this function along with the api base.
-     * The handle to the loaded library is returned in library_handle. It can be freed by the caller after all sessions using the passed in
-     * session options are destroyed, or if an error occurs and it is non null.
-  */
+   * Loads a DLL named 'library_path' and looks for this entry point:
+   *		OrtStatus* RegisterCustomOps(OrtSessionOptions * options, const OrtApiBase* api);
+   * It then passes in the provided session options to this function along with the api base.
+   * The handle to the loaded library is returned in library_handle. It can be freed by the caller after all sessions
+   * using the passed in session options are destroyed, or if an error occurs and it is non null.
+   */
   ORT_API2_STATUS(RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path,
                   void** library_handle);
 
@@ -680,8 +695,8 @@ struct OrtApi {
   // Please note that this is a non-arena based allocator.
   ORT_API2_STATUS(GetAllocatorWithDefaultOptions, _Outptr_ OrtAllocator** out);
 
-  // Override symbolic dimensions (by specific denotation strings) with actual values if known at session initialization time to enable
-  // optimizations that can take advantage of fixed values (such as memory planning, etc)
+  // Override symbolic dimensions (by specific denotation strings) with actual values if known at session initialization
+  // time to enable optimizations that can take advantage of fixed values (such as memory planning, etc)
   ORT_API2_STATUS(AddFreeDimensionOverride, _Inout_ OrtSessionOptions* options, _In_ const char* dim_denotation,
                   _In_ int64_t dim_value);
 
@@ -865,10 +880,10 @@ struct OrtApi {
   // OrtMapTypeInfo Accessors
 
   /**
-    * GetMapKeyType
-	 * This api augments get the key type of a map. Key types are restricted to being scalar types and use ONNXTensorElementDataType.
-	 * This is used by WinML to support model reflection APIs.
-    */
+   * GetMapKeyType
+   * This api augments get the key type of a map. Key types are restricted to being scalar types and use
+   * ONNXTensorElementDataType. This is used by WinML to support model reflection APIs.
+   */
   ORT_API2_STATUS(GetMapKeyType, _In_ const OrtMapTypeInfo* map_type_info, _Out_ enum ONNXTensorElementDataType* out);
 
   /**
@@ -891,19 +906,21 @@ struct OrtApi {
   ORT_CLASS_RELEASE(SequenceTypeInfo);
 
   /**
-   * \param out is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
-   * Profiling is turned ON automatically if enabled for the particular session by invoking EnableProfiling()
-   * on the SessionOptions instance used to create the session.
+   * \param out is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing
+   * it. Profiling is turned ON automatically if enabled for the particular session by invoking EnableProfiling() on the
+   * SessionOptions instance used to create the session.
    */
   ORT_API2_STATUS(SessionEndProfiling, _In_ OrtSession* sess, _Inout_ OrtAllocator* allocator, _Outptr_ char** out);
 
   /**
-   * \param out is a pointer to the newly created object. The pointer should be freed by calling ReleaseModelMetadata after use.
+   * \param out is a pointer to the newly created object. The pointer should be freed by calling ReleaseModelMetadata
+   * after use.
    */
   ORT_API2_STATUS(SessionGetModelMetadata, _In_ const OrtSession* sess, _Outptr_ OrtModelMetadata** out);
 
   /**
-   * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
+   * \param value  is set to a null terminated string allocated using 'allocator'. 
+   *               The caller is responsible for freeing it.
    */
   ORT_API2_STATUS(ModelMetadataGetProducerName, _In_ const OrtModelMetadata* model_metadata,
                   _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
@@ -914,8 +931,8 @@ struct OrtApi {
   ORT_API2_STATUS(ModelMetadataGetDescription, _In_ const OrtModelMetadata* model_metadata,
                   _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
   /**
-   * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing it.
-   * 'value' will be a nullptr if the given key is not found in the custom metadata map.
+   * \param value  is set to a null terminated string allocated using 'allocator'. The caller is responsible for freeing
+   * it. 'value' will be a nullptr if the given key is not found in the custom metadata map.
    */
   ORT_API2_STATUS(ModelMetadataLookupCustomMetadataMap, _In_ const OrtModelMetadata* model_metadata,
                   _Inout_ OrtAllocator* allocator, _In_ const char* key, _Outptr_result_maybenull_ char** value);
@@ -949,7 +966,8 @@ struct OrtApi {
    * 'keys' will be a nullptr if custom metadata map is empty.
    */
   ORT_API2_STATUS(ModelMetadataGetCustomMetadataMapKeys, _In_ const OrtModelMetadata* model_metadata,
-                  _Inout_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*num_keys) char*** keys, _Out_ int64_t* num_keys);
+                  _Inout_ OrtAllocator* allocator, _Outptr_result_buffer_maybenull_(*num_keys) char*** keys,
+                  _Out_ int64_t* num_keys);
 
   // Override symbolic dimensions (by specific name strings) with actual values
   // if known at session initialization time to enable optimizations that can
@@ -990,7 +1008,8 @@ struct OrtApi {
      * \param s_len element length, get it from OrtGetStringTensorElementLength.
      * \param index offset of element of tensor to return.
      */
-  ORT_API2_STATUS(GetStringTensorElement, _In_ const OrtValue* value, size_t s_len, size_t index, _Out_writes_bytes_all_(s_len) void* s);
+  ORT_API2_STATUS(GetStringTensorElement, _In_ const OrtValue* value, size_t s_len, size_t index,
+                  _Out_writes_bytes_all_(s_len) void* s);
 
   /**
      * \param value - A tensor created from OrtCreateTensor... function.
@@ -1022,7 +1041,8 @@ struct OrtApi {
   // Release instance of OrtAllocator obtained from CreateAllocator API
   ORT_CLASS_RELEASE(Allocator);
 
-  ORT_API2_STATUS(RunWithBinding, _Inout_ OrtSession* sess, _In_ const OrtRunOptions* run_options, _In_ const OrtIoBinding* binding_ptr);
+  ORT_API2_STATUS(RunWithBinding, _Inout_ OrtSession* sess, _In_ const OrtRunOptions* run_options,
+                  _In_ const OrtIoBinding* binding_ptr);
 
   // Creates an IoBinding instance that allows one to bind pre-allocated OrtValues
   // to input names. Thus if you want to use a raw on device buffer as input or output
@@ -1055,48 +1075,53 @@ struct OrtApi {
 
   /**
    * The function will bind the OrtValue to a device which specification is contained within OrtMemoryInfo
-   * You can either create an instance of OrtMemoryInfo with a device id or obtain one from the allocator that you are created/using
-   * This is useful when one or more outputs have dynamic shapes and, it is hard to pre-allocated and bind a chunk of
-   * memory within OrtValue ahead of time.
+   * You can either create an instance of OrtMemoryInfo with a device id or obtain one from the allocator that you are
+   * created/using This is useful when one or more outputs have dynamic shapes and, it is hard to pre-allocated and bind
+   * a chunk of memory within OrtValue ahead of time.
    *
    * \param binding_ptr - an instance of OrtIoBinding created by CreateIoBinding()
    * \param name - name for the model output
    * \param  mem_info_ptr - OrtMemoryInfo
    * \return OrtStatus instance on error which the caller is responsible to free or nullptr on success
    */
-  ORT_API2_STATUS(BindOutputToDevice, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name, _In_ const OrtMemoryInfo* val_ptr);
+  ORT_API2_STATUS(BindOutputToDevice, _Inout_ OrtIoBinding* binding_ptr, _In_ const char* name,
+                  _In_ const OrtMemoryInfo* val_ptr);
 
   /**
-    * The function returns the names of the outputs in the order they were bound. This is useful after running the model
-    * with bound outputs because the returned names are in order in which output OrtValues are returned. This API is optional
-    * to use. If you knew the order of outputs and its names you used for binding you would not need to use this API.
-    *
-    * \param  binding_ptr - a ptr to an instance of OrtIoBinding created obtained from CreateIoBinding()
-    * \param  allocator - a ptr to an instance of OrtAllocator obtained with CreateAllocator() or GetAllocatorWithDefaultOptions()
-    *                      the specified allocator will be used to allocate continuous buffers for output strings and lengths.
-    * \param buffer - pointer to a continuous buffer of non-zero terminated UTF-8 encoded strings. The number of strings stored is returned count parameter.
-    *                 this buffer will be allocated with the specified allocator and must be freed after it is no longer needed.
-    * \param lengths - a pointer to a continuous buffer of size_t lengths of strings returned in the buffer. The number of items is returned
-    *                  in the count. This buffer is allocated with the specified allocator and must be freed after it is no longer needed.
-    * \para count - is the number of strings returned. If the instance of OrtIoBiding has no bound outputs, zero is returned,
-    *              no memory allocation is performed and buffer and lengths are nullptr on return.
-    */
+   * The function returns the names of the outputs in the order they were bound. This is useful after running the model
+   * with bound outputs because the returned names are in order in which output OrtValues are returned. This API is
+   * optional to use. If you knew the order of outputs and its names you used for binding you would not need to use this
+   * API.
+   *
+   * \param binding_ptr - a ptr to an instance of OrtIoBinding created obtained from CreateIoBinding()
+   * \param allocator - a ptr to an instance of OrtAllocator obtained with CreateAllocator() or
+   *                    GetAllocatorWithDefaultOptions()
+   *                    the specified allocator will be used to allocate continuous buffers for output
+   *                    strings and lengths.
+   * \param buffer - pointer to a continuous buffer of non-zero terminated UTF-8 encoded strings.
+   *                 The number of strings stored is returned count parameter. this buffer will be allocated with the
+   *                 specified allocator and must be freed after it is no longer needed.
+   * \param lengths - a pointer to a continuous buffer of size_t lengths of strings returned in the buffer.
+   *                  The number of items is returned in the count. This buffer is allocated with the specified
+   *                  allocator and must be freed after it is no longer needed.
+   * \param count - is the number of strings returned. If the instance of OrtIoBiding has no bound outputs,
+   *                zero is returned, no memory allocation is performed and buffer and lengths are nullptr on return.
+   */
   ORT_API2_STATUS(GetBoundOutputNames, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
                   _Out_ char** buffer, _Out_writes_all_(count) size_t** lengths, _Out_ size_t* count);
 
   /**
-    * The function returns an array of pointers to individually allocated OrtValues that contain results of a model execution with RunWithBinding()
-    * The array contains the same number of OrtValues and they are in the same order as they were bound with BindOutput()
-    * or BindOutputToDevice().
-    * The returned OrtValues must be individually released after they are no longer needed.
-    * The array is allocated using the specified instance of the allocator and must be freed using the same allocator after
-    * all the OrtValues contained therein are individually released.
-    *
-    * \param binding_ptr - instance of OrtIoBidning
-    * \param allocator - instance of allocator to allocate output array
-    * \param output - pointer to the allocated buffer. Returns nullptr if no outputs.
-    * \param output_count - pointer to the number of OrtValues returned. Zero if no outputs.
-    */
+   * The function returns an array of pointers to individually allocated OrtValues that contain results of a model
+   * execution with RunWithBinding() The array contains the same number of OrtValues and they are in the same order as
+   * they were bound with BindOutput() or BindOutputToDevice(). The returned OrtValues must be individually released
+   * after they are no longer needed. The array is allocated using the specified instance of the allocator and must be
+   * freed using the same allocator after all the OrtValues contained therein are individually released.
+   *
+   * \param binding_ptr - instance of OrtIoBidning
+   * \param allocator - instance of allocator to allocate output array
+   * \param output - pointer to the allocated buffer. Returns nullptr if no outputs.
+   * \param output_count - pointer to the number of OrtValues returned. Zero if no outputs.
+   */
   ORT_API2_STATUS(GetBoundOutputValues, _In_ const OrtIoBinding* binding_ptr, _In_ OrtAllocator* allocator,
                   _Out_writes_all_(output_count) OrtValue*** output, _Out_ size_t* output_count);
 
@@ -1107,17 +1132,17 @@ struct OrtApi {
 
   /**
    * Provides element-level access into a tensor.
-   * \param location_values a pointer to an array of index values that specify an element's location in the tensor data blob
-   * \param location_values_count length of location_values
-   * \param out a pointer to the element specified by location_values
-   * e.g.
-   * Given a tensor with overall shape [3,224,224], an element at
-   * location [2,150,128] can be accessed directly.
+   * \param location_values a pointer to an array of index values that specify an element's location 
+   *                        in the tensor data blob
+   * \param location_values_count length of location_values \param out a pointer to the element specified by
+   *                               location_values e.g. Given a tensor with overall shape [3,224,224], an element at 
+   *                               location [2,150,128] can be accessed directly.
    *
    * This function only works for numeric tensors.
    * This is a no-copy method whose pointer is only valid until the backing OrtValue is free'd.
    */
-  ORT_API2_STATUS(TensorAt, _Inout_ OrtValue* value, const int64_t* location_values, size_t location_values_count, _Outptr_ void** out);
+  ORT_API2_STATUS(TensorAt, _Inout_ OrtValue* value, const int64_t* location_values, size_t location_values_count,
+                  _Outptr_ void** out);
 
   /**
    * Creates an allocator instance and registers it with the env to enable
@@ -1182,8 +1207,9 @@ struct OrtApi {
    *
    * \param out should be freed by `ReleaseEnv` after use
    */
-  ORT_API2_STATUS(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function, _In_opt_ void* logger_param, OrtLoggingLevel logging_level,
-                  _In_ const char* logid, _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out);
+  ORT_API2_STATUS(CreateEnvWithCustomLoggerAndGlobalThreadPools, OrtLoggingFunction logging_function,
+                  _In_opt_ void* logger_param, OrtLoggingLevel logging_level, _In_ const char* logid,
+                  _In_ const struct OrtThreadingOptions* tp_options, _Outptr_ OrtEnv** out);
 
   /**
    * Append CUDA execution provider to the session options
@@ -1201,31 +1227,33 @@ struct OrtApi {
 
   /**
    * Append OpenVINO execution provider to the session options
-   * If OpenVINO is not available (due to the OpenVINO provider shared library or its dependencies not being installed), this function will fail.
+   * If OpenVINO is not available (due to the OpenVINO provider shared library or its dependencies not being installed),
+   * this function will fail.
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_OpenVINO,
                   _In_ OrtSessionOptions* options, _In_ const OrtOpenVINOProviderOptions* provider_options);
 
   /**
    * Use this API to configure the global thread pool options to be used in the call to CreateEnvWithGlobalThreadPools.
-   * When this API is called, flush-to-zero and denormal-as-zero are applied to threads in both intra and inter global thread pool.
-   * Note that an alternative way not using this option at runtime is to train and export a model without denormals
-   * and that's recommended because turning this option on may hurt model accuracy.
+   * When this API is called, flush-to-zero and denormal-as-zero are applied to threads in both intra and inter global
+   * thread pool. Note that an alternative way not using this option at runtime is to train and export a model without
+   * denormals and that's recommended because turning this option on may hurt model accuracy.
    */
   ORT_API2_STATUS(SetGlobalDenormalAsZero, _Inout_ OrtThreadingOptions* tp_options);
 
   /**
-  * (Deprecated) Use `CreateArenaCfgV2` instead
-  * Use this API to create the configuration of an arena that can eventually be used to define
-  * an arena based allocator's behavior
-  * \param max_mem - use 0 to allow ORT to choose the default
-  * \param arena_extend_strategy -  use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo, 1 = kSameAsRequested
+   * (Deprecated) Use `CreateArenaCfgV2` instead
+   * Use this API to create the configuration of an arena that can eventually be used to define
+   * an arena based allocator's behavior
+   * \param max_mem - use 0 to allow ORT to choose the default
+  * \param arena_extend_strategy - use -1 to allow ORT to choose the default, 0 = kNextPowerOfTwo,
+  *                                1 = kSameAsRequested
   * \param initial_chunk_size_bytes - use -1 to allow ORT to choose the default
   * \param max_dead_bytes_per_chunk - use -1 to allow ORT to choose the default
   * \param out - a pointer to an OrtArenaCfg instance
   * \return a nullptr in case of success or a pointer to an OrtStatus instance in case of failure
-  * See docs/C_API.md for details on what the following parameters mean and how to choose these values
-  */
+   * docs/C_API.md for details on what the following parameters mean and how to choose these values
+   */
   ORT_API2_STATUS(CreateArenaCfg, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
                   int max_dead_bytes_per_chunk, _Outptr_ OrtArenaCfg** out);
 
@@ -1308,7 +1336,8 @@ struct OrtApi {
   * \param arena_config_keys - keys to configure the arena
   * \param arena_config_values - values to configure the arena
   * \param num_keys - number of keys passed in
-  * Supported keys are (See docs/C_API.md for details on what the following parameters mean and how to choose these values.):
+  * Supported keys are (See docs/C_API.md for details on what the following parameters mean 
+  * and how to choose these values.):
   * "max_mem": Maximum memory that can be allocated by the arena based allocator.
      Use 0 for ORT to pick the best value. Default is 0.
   * "arena_extend_strategy": 0 = kNextPowerOfTwo, 1 = kSameAsRequested.
@@ -1368,7 +1397,8 @@ struct OrtApi {
      * \out - created session instance
      */
   ORT_API2_STATUS(CreateSessionWithPrepackedWeightsContainer, _In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path,
-                  _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
+                  _In_ const OrtSessionOptions* options,
+                  _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
                   _Outptr_ OrtSession** out);
 
   /**
@@ -1387,59 +1417,67 @@ struct OrtApi {
      */
   ORT_API2_STATUS(CreateSessionFromArrayWithPrepackedWeightsContainer, _In_ const OrtEnv* env,
                   _In_ const void* model_data, size_t model_data_length,
-                  _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
+                  _In_ const OrtSessionOptions* options,
+                  _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
                   _Outptr_ OrtSession** out);
 
   /**
    * Append TensorRT execution provider to the session options with TensorRT provider options.
    * If TensorRT is not available (due to a non TensorRT enabled build), this function will return failure.
    * Note: this API is slightly different than SessionOptionsAppendExecutionProvider_TensorRT.
-   * SessionOptionsAppendExecutionProvider_TensorRT takes struct OrtTensorRTProviderOptions which is open to user as argument,
-   * but this API takes opaque struct OrtTensorRTProviderOptionsV2 which must be created by CreateTensorRTProviderOptions.
-   * User needs to instantiate OrtTensorRTProviderOptions as well as allocate/release buffers for some members of OrtTensorRTProviderOptions.
-   * However, for using OrtTensorRTProviderOptionsV2, CreateTensorRTProviderOptions and ReleaseTensorRTProviderOptions will do the memory allocation and release for you. 
+   * SessionOptionsAppendExecutionProvider_TensorRT takes struct OrtTensorRTProviderOptions which is open to user as
+   * argument, but this API takes opaque struct OrtTensorRTProviderOptionsV2 which must be created by
+   * CreateTensorRTProviderOptions. User needs to instantiate OrtTensorRTProviderOptions as well as allocate/release
+   * buffers for some members of OrtTensorRTProviderOptions. However, for using OrtTensorRTProviderOptionsV2,
+   * CreateTensorRTProviderOptions and ReleaseTensorRTProviderOptions will do the memory allocation and release for you.
    *
-   * \param options - OrtSessionOptions instance 
-   * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance 
+   * \param options - OrtSessionOptions instance
+   * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_TensorRT_V2,
                   _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options);
 
   /**
-   * Use this API to create the configuration of a TensorRT Execution Provider which is an instance of OrtTensorRTProviderOptionsV2.
+   * Use this API to create the configuration of a TensorRT Execution Provider which is an instance of
+   * OrtTensorRTProviderOptionsV2.
    *
    * \param out - pointer to the pointer of TensorRT EP provider options instance.
    */
   ORT_API2_STATUS(CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptionsV2** out);
 
   /**
-  * Use this API to set appropriate configuration knobs of a TensorRT Execution Provider.
-  *
-  * Please reference to https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#c-api-example
-  * to know the available keys and values. Key should be in string format of the member of OrtTensorRTProviderOptions and value should be its related range.
-  * For example, key="trt_max_workspace_size" and value="2147483648"
-  *
-  * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance
-  * \param provider_options_keys - array of UTF-8 null-terminated string for provider options keys
-  * \param provider_options_values - array of UTF-8 null-terminated string for provider options values
-  * \param num_keys - number of keys
-  */
+   * Use this API to set appropriate configuration knobs of a TensorRT Execution Provider.
+   *
+   * Please reference to
+   * https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#c-api-example to know
+   * the available keys and values. Key should be in string format of the member of OrtTensorRTProviderOptions and value
+   * should be its related range. For example, key="trt_max_workspace_size" and value="2147483648"
+   *
+   * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance
+   * \param provider_options_keys - array of UTF-8 null-terminated string for provider options keys
+   * \param provider_options_values - array of UTF-8 null-terminated string for provider options values
+   * \param num_keys - number of keys
+   */
   ORT_API2_STATUS(UpdateTensorRTProviderOptions, _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options,
-                 _In_reads_(num_keys) const char* const* provider_options_keys,
-                 _In_reads_(num_keys) const char* const* provider_options_values,
-                 _In_ size_t num_keys);
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
 
   /**
-  * Get serialized TensorRT provider options string.
-  *
-  * For example, "trt_max_workspace_size=2147483648;trt_max_partition_iterations=10;trt_int8_enable=1;......" 
-  *
-  * \param tensorrt_options - OrTensorRTProviderOptionsV2 instance 
-  * \param allocator - a ptr to an instance of OrtAllocator obtained with CreateAllocator() or GetAllocatorWithDefaultOptions()
-  *                      the specified allocator will be used to allocate continuous buffers for output strings and lengths.
-  * \param ptr - is a UTF-8 null terminated string allocated using 'allocator'. The caller is responsible for using the same allocator to free it.
-  */
-  ORT_API2_STATUS(GetTensorRTProviderOptionsAsString, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
+   * Get serialized TensorRT provider options string.
+   *
+   * For example, "trt_max_workspace_size=2147483648;trt_max_partition_iterations=10;trt_int8_enable=1;"
+   *
+   * \param tensorrt_options - OrTensorRTProviderOptionsV2 instance
+   * \param allocator - a pointer to an instance of OrtAllocator obtained with CreateAllocator() or
+   *                    GetAllocatorWithDefaultOptions().
+   *                    the specified allocator will be used to allocate continuous buffers 
+   *                    for output strings and lengths.
+   * \param ptr - is a UTF-8 null terminated string allocated using 'allocator'. The caller is
+   *              responsible for using the same allocator to free it.
+   */
+  ORT_API2_STATUS(GetTensorRTProviderOptionsAsString, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options,
+                  _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 
   /**
   * Use this API to release the instance of OrtTensorRTProviderV2.
@@ -1493,8 +1531,10 @@ struct OrtCustomOp {
   void(ORT_API_CALL* KernelDestroy)(_In_ void* op_kernel);
 
   // Returns the characteristics of the input & output tensors
-  OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetInputCharacteristic)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
-  OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetOutputCharacteristic)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
+  OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetInputCharacteristic)(_In_ const struct OrtCustomOp* op,
+                                                                             _In_ size_t index);
+  OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetOutputCharacteristic)(_In_ const struct OrtCustomOp* op,
+                                                                              _In_ size_t index);
 };
 
 #ifdef __cplusplus

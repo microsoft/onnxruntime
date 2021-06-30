@@ -94,7 +94,8 @@ constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<BFloat16
   // kernel implementations.
   //
   //  1) If you need to handle all of the primitive tensor contained datatypes, the best choice would be macros
-  //     DispatchOnTensorType or DispatchOnTensorTypeWithReturn. Use inline wrappers so your function can be invoked as function<T>().
+  //     DispatchOnTensorType or DispatchOnTensorTypeWithReturn.
+  //     Use inline wrappers so your function can be invoked as function<T>().
   //  2) if you have a few types, use Tensor.IsDataType<T>()/IsDataTypeString() or use utils::IsPrimitiveDataType<T>()
   //     if you have a standalone MLDatatType with a sequence of if/else statements.
   //  3) For something in between, we suggest to use CallDispatcher pattern.

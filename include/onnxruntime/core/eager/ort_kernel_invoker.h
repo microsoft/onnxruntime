@@ -22,10 +22,11 @@ namespace onnxruntime {
 
 class ORTInvoker {
  public:
-  ORTInvoker(std::unique_ptr<IExecutionProvider> execution_provider, 
-             const logging::Logger& logger,
-             const IOnnxRuntimeOpSchemaRegistryList& custom_op_registries) : 
-      execution_provider_(std::move(execution_provider)), logger_(logger), custom_op_registries_(custom_op_registries) {
+  ORTInvoker(std::unique_ptr<IExecutionProvider> execution_provider, const logging::Logger& logger,
+             const IOnnxRuntimeOpSchemaRegistryList& custom_op_registries)
+      : execution_provider_(std::move(execution_provider)),
+        logger_(logger),
+        custom_op_registries_(custom_op_registries) {
     if (!execution_provider_) {
     ORT_THROW("Execution provider is nullptr");
     }

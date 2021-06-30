@@ -20,9 +20,9 @@ struct GraphTransformerConfiguration {
     enum class Strategy {
       None = 0,
       InsertAndReduce = 1,
-      FloodFill = 2,                   /* Propagate FP16 Cast operations up and FP32 operations down */
-      RemoveInputOutputUpDownCasts = 4 /* If all the floatingpoint inputs of a node are casted to FP32 and all the floatingpoint outputs
-                                          are casted to FP16. Then remove all input and output casts. */
+      FloodFill = 2, /* Propagate FP16 Cast operations up and FP32 operations down */
+      RemoveInputOutputUpDownCasts = 4 /* If all the floating point inputs of a node are cast to FP32 and all the
+                                          floating point outputs are cast to FP16, remove all input and output casts */
     };
     using Strategy_t = std::underlying_type<Strategy>::type;
     friend constexpr Strategy operator|(const Strategy s1, const Strategy s2) {
@@ -65,11 +65,15 @@ struct GraphTransformerConfiguration {
 };
 
 // The following declarations are required to refer to these operators in pybind11.
-constexpr GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy operator|(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
-                                                                                           GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy);
-constexpr GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy operator&(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
-                                                                                           GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy);
-constexpr bool operator==(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy, GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy);
-constexpr bool operator!=(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy, GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy);
+constexpr GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy operator|(
+    GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
+    GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy);
+constexpr GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy operator&(
+    GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
+    GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy);
+constexpr bool operator==(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
+                          GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy);
+constexpr bool operator!=(GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy,
+                          GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy);
 
 }  // namespace onnxruntime

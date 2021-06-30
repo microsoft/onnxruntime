@@ -2,7 +2,8 @@
 // Licensed under the MIT License.
 
 // Do not include this file directly. Please include "onnxruntime_cxx_api.h" instead.
-// If interested in trying out features of the new experimental C++ API, include "experimental_onnxruntime_cxx_api.h" instead.
+// If interested in trying out features of the new experimental C++ API,
+// include "experimental_onnxruntime_cxx_api.h" instead.
 //
 // These are the inline implementations of the C++ header APIs. They're in this separate file as to not clutter
 // the main C++ file with implementation details.
@@ -26,31 +27,57 @@ inline void ThrowOnError(OrtStatus* status) {
 template <typename T>
 struct TypeToTensorType;
 template <>
-struct TypeToTensorType<float> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+struct TypeToTensorType<float> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+};
 template <>
-struct TypeToTensorType<Float16_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16; };
+struct TypeToTensorType<Float16_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+};
 template <>
-struct TypeToTensorType<BFloat16_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16; };
+struct TypeToTensorType<BFloat16_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16;
+};
 template <>
-struct TypeToTensorType<double> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE; };
+struct TypeToTensorType<double> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
+};
 template <>
-struct TypeToTensorType<int8_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8; };
+struct TypeToTensorType<int8_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
+};
 template <>
-struct TypeToTensorType<int16_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16; };
+struct TypeToTensorType<int16_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;
+};
 template <>
-struct TypeToTensorType<int32_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32; };
+struct TypeToTensorType<int32_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
+};
 template <>
-struct TypeToTensorType<int64_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64; };
+struct TypeToTensorType<int64_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+};
 template <>
-struct TypeToTensorType<uint8_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8; };
+struct TypeToTensorType<uint8_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
+};
 template <>
-struct TypeToTensorType<uint16_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16; };
+struct TypeToTensorType<uint16_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16;
+};
 template <>
-struct TypeToTensorType<uint32_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32; };
+struct TypeToTensorType<uint32_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32;
+};
 template <>
-struct TypeToTensorType<uint64_t> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64; };
+struct TypeToTensorType<uint64_t> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;
+};
 template <>
-struct TypeToTensorType<bool> { static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL; };
+struct TypeToTensorType<bool> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
+};
 
 inline MemoryAllocation::MemoryAllocation(OrtAllocator* allocator, void* p, size_t size)
     : allocator_(allocator), p_(p), size_(size) {
@@ -290,8 +317,10 @@ inline void IoBinding::ClearBoundOutputs() {
   GetApi().ClearBoundOutputs(p_);
 }
 
-inline ArenaCfg::ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes, int max_dead_bytes_per_chunk) {
-  ThrowOnError(GetApi().CreateArenaCfg(max_mem, arena_extend_strategy, initial_chunk_size_bytes, max_dead_bytes_per_chunk, &p_));
+inline ArenaCfg::ArenaCfg(size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
+                          int max_dead_bytes_per_chunk) {
+  ThrowOnError(GetApi().CreateArenaCfg(max_mem, arena_extend_strategy,
+                                       initial_chunk_size_bytes, max_dead_bytes_per_chunk, &p_));
 }
 
 inline Env::Env(OrtLoggingLevel logging_level, _In_ const char* logid) {
@@ -303,7 +332,8 @@ inline Env::Env(OrtLoggingLevel logging_level, _In_ const char* logid) {
   }
 }
 
-inline Env::Env(OrtLoggingLevel logging_level, const char* logid, OrtLoggingFunction logging_function, void* logger_param) {
+inline Env::Env(OrtLoggingLevel logging_level, const char* logid, OrtLoggingFunction logging_function,
+                void* logger_param) {
   ThrowOnError(GetApi().CreateEnvWithCustomLogger(logging_function, logger_param, logging_level, logid, &p_));
   if (strcmp(logid, "onnxruntime-node") == 0) {
     ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_NODEJS));
@@ -323,7 +353,8 @@ inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingLevel logging_l
 
 inline Env::Env(const OrtThreadingOptions* tp_options, OrtLoggingFunction logging_function, void* logger_param,
                 OrtLoggingLevel logging_level, _In_ const char* logid) {
-  ThrowOnError(GetApi().CreateEnvWithCustomLoggerAndGlobalThreadPools(logging_function, logger_param, logging_level, logid, tp_options, &p_));
+  ThrowOnError(GetApi().CreateEnvWithCustomLoggerAndGlobalThreadPools(logging_function, logger_param, logging_level,
+                                                                      logid, tp_options, &p_));
   if (strcmp(logid, "onnxruntime-node") == 0) {
     ThrowOnError(GetApi().SetLanguageProjection(p_, OrtLanguageProjection::ORT_PROJECTION_NODEJS));
   } else {
@@ -500,12 +531,14 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_ROCM(const OrtROC
   return *this;
 }
 
-inline SessionOptions& SessionOptions::AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options) {
+inline SessionOptions& SessionOptions::AppendExecutionProvider_TensorRT(
+    const OrtTensorRTProviderOptions& provider_options) {
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_TensorRT(p_, &provider_options));
   return *this;
 }
 
-inline SessionOptions& SessionOptions::AppendExecutionProvider_OpenVINO(const OrtOpenVINOProviderOptions& provider_options) {
+inline SessionOptions& SessionOptions::AppendExecutionProvider_OpenVINO(
+    const OrtOpenVINOProviderOptions& provider_options) {
   ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_OpenVINO(p_, &provider_options));
   return *this;
 }
@@ -516,15 +549,17 @@ inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOpti
 
 inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options,
                         OrtPrepackedWeightsContainer* prepacked_weights_container) {
-  ThrowOnError(GetApi().CreateSessionWithPrepackedWeightsContainer(env, model_path, options, prepacked_weights_container, &p_));
+  ThrowOnError(
+      GetApi().CreateSessionWithPrepackedWeightsContainer(env, model_path, options, prepacked_weights_container, &p_));
 }
 
 inline Session::Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options) {
   ThrowOnError(GetApi().CreateSessionFromArray(env, model_data, model_data_length, options, &p_));
 }
 
-inline std::vector<Value> Session::Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
-                                       const char* const* output_names, size_t output_names_count) {
+inline std::vector<Value> Session::Run(const RunOptions& run_options, const char* const* input_names,
+                                       const Value* input_values, size_t input_count, const char* const* output_names,
+                                       size_t output_names_count) {
   std::vector<Ort::Value> output_values;
   for (size_t i = 0; i < output_names_count; i++)
     output_values.emplace_back(nullptr);
@@ -532,12 +567,15 @@ inline std::vector<Value> Session::Run(const RunOptions& run_options, const char
   return output_values;
 }
 
-inline void Session::Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
-                         const char* const* output_names, Value* output_values, size_t output_count) {
-  static_assert(sizeof(Value) == sizeof(OrtValue*), "Value is really just an array of OrtValue* in memory, so we can reinterpret_cast safely");
+inline void Session::Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values,
+                         size_t input_count, const char* const* output_names, Value* output_values,
+                         size_t output_count) {
+  static_assert(sizeof(Value) == sizeof(OrtValue*),
+                "Value is really just an array of OrtValue* in memory, so we can reinterpret_cast safely");
   auto ort_input_values = reinterpret_cast<const OrtValue**>(const_cast<Value*>(input_values));
   auto ort_output_values = reinterpret_cast<OrtValue**>(output_values);
-  ThrowOnError(GetApi().Run(p_, run_options, input_names, ort_input_values, input_count, output_names, output_count, ort_output_values));
+  ThrowOnError(GetApi().Run(p_, run_options, input_names, ort_input_values, input_count, output_names, output_count,
+                            ort_output_values));
 }
 
 inline void Session::Run(const RunOptions& run_options, const IoBinding& io_binding) {
@@ -739,12 +777,13 @@ inline ONNXType TypeInfo::GetONNXType() const {
 }
 
 template <typename T>
-inline Value Value::CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len) {
+inline Value Value::CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_data_element_count,
+                                 const int64_t* shape, size_t shape_len) {
   return CreateTensor(info, p_data, p_data_element_count * sizeof(T), shape, shape_len, TypeToTensorType<T>::type);
 }
 
-inline Value Value::CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
-                                 ONNXTensorElementDataType type) {
+inline Value Value::CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count,
+                                 const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type) {
   OrtValue* out;
   ThrowOnError(GetApi().CreateTensorWithDataAsOrtValue(info, p_data, p_data_byte_count, shape, shape_len, type, &out));
   return Value{out};
@@ -755,7 +794,8 @@ inline Value Value::CreateTensor(OrtAllocator* allocator, const int64_t* shape, 
   return CreateTensor(allocator, shape, shape_len, TypeToTensorType<T>::type);
 }
 
-inline Value Value::CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type) {
+inline Value Value::CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len,
+                                 ONNXTensorElementDataType type) {
   OrtValue* out;
   ThrowOnError(GetApi().CreateTensorAsOrtValue(allocator, shape, shape_len, type, &out));
   return Value{out};
@@ -817,7 +857,8 @@ inline size_t Value::GetStringTensorElementLength(size_t element_index) const {
   return out;
 }
 
-inline void Value::GetStringTensorContent(void* buffer, size_t buffer_length, size_t* offsets, size_t offsets_count) const {
+inline void Value::GetStringTensorContent(void* buffer, size_t buffer_length, size_t* offsets,
+                                          size_t offsets_count) const {
   ThrowOnError(GetApi().GetStringTensorContent(p_, buffer, buffer_length, offsets, offsets_count));
 }
 
@@ -889,7 +930,8 @@ inline int64_t CustomOpApi::KernelInfoGetAttribute<int64_t>(_In_ const OrtKernel
 }
 
 template <>
-inline std::string CustomOpApi::KernelInfoGetAttribute<std::string>(_In_ const OrtKernelInfo* info, _In_ const char* name) {
+inline std::string CustomOpApi::KernelInfoGetAttribute<std::string>(_In_ const OrtKernelInfo* info,
+                                                                    _In_ const char* name) {
   size_t size = 0;
   std::string out;
 
@@ -963,11 +1005,13 @@ inline size_t CustomOpApi::GetDimensionsCount(_In_ const OrtTensorTypeAndShapeIn
   return out;
 }
 
-inline void CustomOpApi::GetDimensions(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values, size_t dim_values_length) {
+inline void CustomOpApi::GetDimensions(_In_ const OrtTensorTypeAndShapeInfo* info, _Out_ int64_t* dim_values,
+                                       size_t dim_values_length) {
   ThrowOnError(api_.GetDimensions(info, dim_values, dim_values_length));
 }
 
-inline void CustomOpApi::SetDimensions(OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values, size_t dim_count) {
+inline void CustomOpApi::SetDimensions(OrtTensorTypeAndShapeInfo* info, _In_ const int64_t* dim_values,
+                                       size_t dim_count) {
   ThrowOnError(api_.SetDimensions(info, dim_values, dim_count));
 }
 

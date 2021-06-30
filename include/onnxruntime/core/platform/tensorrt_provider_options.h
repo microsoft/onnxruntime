@@ -18,7 +18,8 @@ struct OrtTensorRTProviderOptionsV2 {
   int trt_fp16_enable;                          // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
   int trt_int8_enable;                          // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
   const char* trt_int8_calibration_table_name;  // TensorRT INT8 calibration table name.
-  int trt_int8_use_native_calibration_table;    // use native TensorRT generated calibration table. Default 0 = false, nonzero = true
+  int trt_int8_use_native_calibration_table;    // use native TensorRT generated calibration table. Default 0 = false,
+                                                //                                                    nonzero = true
   int trt_dla_enable;                           // enable DLA. Default 0 = false, nonzero = true
   int trt_dla_core;                             // DLA core number. Default 0
   int trt_dump_subgraphs;                       // dump TRT subgraph. Default 0 = false, nonzero = true
@@ -26,5 +27,6 @@ struct OrtTensorRTProviderOptionsV2 {
   const char* trt_engine_cache_path;            // specify engine cache path
   int trt_engine_decryption_enable;             // enable engine decryption. Default 0 = false, nonzero = true
   const char* trt_engine_decryption_lib_path;   // specify engine decryption library path
-  int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
+  int trt_force_sequential_engine_build;  // force building TensorRT engine sequentially. Default 0 = false,
+                                          //                                                nonzero = true
 };

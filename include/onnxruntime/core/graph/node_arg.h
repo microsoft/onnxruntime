@@ -60,7 +60,9 @@ class NodeArg {
   const ONNX_NAMESPACE::TensorShapeProto* Shape() const;
 
   /** Return an indicator.
-  @returns true if NodeArg is a normal tensor with a non-empty shape or a scalar with an empty shape. Otherwise, returns false. */
+  @returns true if NodeArg is a normal tensor with a non-empty shape or a scalar with an empty shape.
+           Otherwise, returns false. 
+  */
   bool HasTensorOrScalarShape() const;
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -78,14 +80,16 @@ class NodeArg {
                 If false, will be lenient and merge only shape info that can be validly processed.
   @param override_types If true, resolve the two inputs or two outputs type when different
   @returns Success unless there is existing type or shape info that can't be successfully updated. */
-  common::Status UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict, bool override_types, const logging::Logger& logger);
+  common::Status UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& input_type, bool strict, bool override_types,
+                                    const logging::Logger& logger);
 
   /** Validate and merge type [and shape] info from node_arg.
   @param strict If true, the shape update will fail if there are incompatible values.
                 If false, will be lenient and merge only shape info that can be validly processed.
   @param override_types If true, resolve the two inputs or two outputs type when different
   @returns Success unless there is existing type or shape info that can't be successfully updated. */
-  common::Status UpdateTypeAndShape(const NodeArg& node_arg, bool strict, bool override_types, const logging::Logger& logger);
+  common::Status UpdateTypeAndShape(const NodeArg& node_arg, bool strict, bool override_types,
+                                    const logging::Logger& logger);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

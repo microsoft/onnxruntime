@@ -39,7 +39,8 @@ class RuleBasedGraphTransformer : public GraphTransformer {
   /** Gets the list of registered rewrite rules that will be triggered on nodes with the given op type 
       by this rule-based transformer.
       @returns a pointer to the vector containing all the registered rewrite rules. */
-  const std::vector<std::reference_wrapper<const RewriteRule>>* GetRewriteRulesForOpType(const std::string& op_type) const {
+  const std::vector<std::reference_wrapper<const RewriteRule>>* GetRewriteRulesForOpType(
+      const std::string& op_type) const {
     auto rules = op_type_to_rules_.find(op_type);
     return (rules != op_type_to_rules_.cend()) ? &rules->second : nullptr;
   }
