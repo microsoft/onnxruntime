@@ -1682,12 +1682,13 @@ void CreatePybindStateModule(py::module& m) {
 
 #if !defined(ENABLE_TRAINING) && !defined(__APPLE__) && \
     (!defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
+  
+#endif
   Ort::SessionOptions tmp_options;
   if (!InitProvidersSharedLibrary()) {
     const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
     LOGS(default_logger, WARNING) << "Init provider bridge failed.";
   }
-#endif
 
 #ifdef ENABLE_TRAINING
   addObjectMethodsForTraining(m);

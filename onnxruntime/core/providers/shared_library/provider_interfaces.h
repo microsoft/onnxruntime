@@ -692,6 +692,10 @@ struct ProviderHost {
   // AllocatorManager
   virtual void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) = 0;
   virtual AllocatorPtr AllocatorManager__GetAllocator(const AllocatorManager* p, int id, OrtMemType mem_type) = 0;
+  // From cpu/tensor/unsqueeze.h
+  virtual Status UnsqueezeBase__PrepareCompute(const UnsqueezeBase* p, OpKernelContext* ctx, UnsqueezeBase__Prepare& prepare) = 0;
+  // From cpu/tensor/gatherbase.h
+  virtual Status GatherBase__PrepareForCompute(const GatherBase* p, OpKernelContext* context, GatherBase__Prepare& prepare) = 0;
 
 #ifdef USE_CUDA
   // GatherElements
@@ -714,8 +718,6 @@ struct ProviderHost {
   virtual Status ValidateInputs(const Tensor* depth, const Tensor* values) = 0;
   virtual Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, std::vector<int64_t>& output_shape) = 0;
 
-  // From cpu/tensor/unsqueeze.h
-  virtual Status UnsqueezeBase__PrepareCompute(const UnsqueezeBase* p, OpKernelContext* ctx, UnsqueezeBase__Prepare& prepare) = 0;
   // From cpu/tensor/slice.h
   virtual Status SliceBase__PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                               const std::vector<int64_t>& raw_ends,
@@ -749,9 +751,7 @@ struct ProviderHost {
                                               std::vector<int64_t>& split_sizes) = 0;
   // From cpu/tensor/concatbase.h
   virtual Status ConcatBase__PrepareForCompute(const ConcatBase* p, OpKernelContext* ctx, const std::vector<const Tensor*>& input_tensors, Prepare& prepare) = 0;
-  // From cpu/tensor/gatherbase.h
-  virtual Status GatherBase__PrepareForCompute(const GatherBase* p, OpKernelContext* context, GatherBase__Prepare& prepare) = 0;
-
+  
   virtual PhiloxGenerator& PhiloxGenerator__Default() = 0;
 
   virtual Status Einsum__Compute(const Einsum* p, OpKernelContext* context) = 0;
