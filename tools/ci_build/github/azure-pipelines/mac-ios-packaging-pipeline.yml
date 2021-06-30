@@ -2,7 +2,7 @@ trigger: none
 
 parameters:
 - name: IsReleaseBuild
-  displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
+  displayName: Is this a release build? Set this parameter to true if you are doing an Onnx Runtime release.
   type: boolean
   default: false
 
@@ -70,9 +70,37 @@ jobs:
     workingDirectory: "$(Build.BinariesDirectory)/staging/onnxruntime-mobile-objc"
     displayName: "Check onnxruntime-mobile-objc pod"
 
-# build packages - tools/ci_build/github/apple/build_ios_framework.py
-# test - tools/ci_build/github/apple/test_ios_packages.py
-# test - pod lib lint
-# generate Objective-C API documentation
-# archive and upload artifacts
+  - script: |
+      set -e
+      gem install jazzy
+      jazzy --config objectivec/docs/jazzy_config.yaml \
+        --output $(Build.BinariesDirectory)/staging/objc_api_docs \
+        --module-version
+    displayName: "Generate Objective-C API docs"
 
+  - script: |
+      set -e
+
+      cd $(Build.BinariesDirectory)/staging/onnxruntime-mobile-c
+      mv onnxruntime-mobile-c.podspec $(Build.ArtifactStagingDirectory)/onnxruntime-mobile-c.podspec
+      zip -r $(Build.ArtifactStagingDirectory)/onnxruntime-mobile-c.zip *
+
+      cd $(Build.BinariesDirectory)/staging/onnxruntime-mobile-objc
+      mv onnxruntime-mobile-objc.podspec $(Build.ArtifactStagingDirectory)/onnxruntime-mobile-objc.podspec
+      zip -r $(Build.ArtifactStagingDirectory)/onnxruntime-mobile-objc.zip *
+
+      cd $(Build.BinariesDirectory)/staging/objc_api_docs
+      zip -r $(Build.ArtifactStagingDirectory)/objc_api_docs.zip *
+
+      cat > $(Build.ArtifactStagingDirectory)/readme.txt <<EOM
+      Release TODO list:
+      - upload pod zip files to publicly accessible URLs
+      - update podspec sources to refer to those URLs
+      - publish podspecs
+      - update Objective-C API documentation
+      EOM
+    displayName: "Assemble artifacts"
+
+  - publish: $(Build.ArtifactStagingDirectory)
+    artifact: ios_packaging_artifacts
+    displayName: "Publish artifacts"
