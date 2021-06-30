@@ -31,7 +31,7 @@ static bool CheckNode(Graph& graph, const Node& node, const std::string& op_name
          node.GetExecutionProviderType() == provider &&
          IsSupportedDataType(node) &&
          (!require_single_output || node.GetOutputEdgesCount() == 1) &&
-         graph.GetNodeOutputsInGraphOutputs(node).empty();
+         !graph.GetNodeProvidesGraphOutput(node);
 }
 
 MatchResult FastGeluFusion::CheckFirstFormula(Graph& graph, Node& mul1_node,
@@ -146,8 +146,8 @@ MatchResult FastGeluFusion::CheckSecondFormula(Graph& graph, Node& pow1_node,
   if (p_cast1_node != nullptr) {
     Node& cast1_node = *graph.GetNode(p_cast1_node->Index());
     // this is fused Cast node, so expect 2 output edges
-    if (!CheckNode(graph, cast1_node, "Cast", {9, 13}, pow1_node.GetExecutionProviderType(), false)  ||
-      cast1_node.GetOutputEdgesCount() != 2){
+    if (!CheckNode(graph, cast1_node, "Cast", {9, 13}, pow1_node.GetExecutionProviderType(), false) ||
+        cast1_node.GetOutputEdgesCount() != 2) {
       return matchResult;
     }
     const Node* p_pow_node = graph_utils::FirstChildByType(cast1_node, "Pow");
@@ -242,7 +242,7 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
     // if this is second formula and if pow node has Cast parent, expect mul5_node has Cast parent as well
     NodeArg* cast_input_arg = nullptr;
     if (second_formula) {
-      const Node* p_cast1_node = graph_utils::FirstParentByType(node, "Cast");   
+      const Node* p_cast1_node = graph_utils::FirstParentByType(node, "Cast");
       if (p_cast1_node != nullptr) {
         // we've done the node check in second formula for pow node
         Node& cast1_node = *graph.GetNode(p_cast1_node->Index());
@@ -254,11 +254,11 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
         Node& cast3_node = *graph.GetNode(p_cast3_node->Index());
         if (!CheckNode(graph, cast3_node, "Cast", {9, 13}, node.GetExecutionProviderType(), true)) {
           continue;
-        } 
+        }
         // overwrite and continue as usual
-        p_mul5_input_node = graph_utils::FirstParentByType(cast3_node, "Mul");        
-        nodes_to_fuse.push_back(cast3_node);   
-        // keep cast1_node for reuse, its output edges will be adjusted in FinalizeNodeFusion()                         
+        p_mul5_input_node = graph_utils::FirstParentByType(cast3_node, "Mul");
+        nodes_to_fuse.push_back(cast3_node);
+        // keep cast1_node for reuse, its output edges will be adjusted in FinalizeNodeFusion()
       }
     }
 
@@ -275,8 +275,8 @@ Status FastGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
       }
     }
 
-    if (input_index == -1)  continue;
-    // check same parent for both mul6 and pow, with or without cast 
+    if (input_index == -1) continue;
+    // check same parent for both mul6 and pow, with or without cast
     if (cast_input_arg != nullptr) {
       if (mul6_node.InputDefs()[(input_index + 1) % 2]->Name() != cast_input_arg->Name())
         continue;

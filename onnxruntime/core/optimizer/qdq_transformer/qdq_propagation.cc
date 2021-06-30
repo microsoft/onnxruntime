@@ -26,7 +26,7 @@ static bool TryCancelOutDQQPair(Graph& graph, Node& dq_node, Node& q_node) {
   // check if dq_node has only one output edge and,
   // dq_node and q_node output are not graph outputs
   if (!optimizer_utils::CheckOutputEdges(graph, dq_node, 1) ||
-      !graph.GetNodeOutputsInGraphOutputs(q_node).empty()) {
+      graph.GetNodeProvidesGraphOutput(q_node)) {
     return false;
   }
 
