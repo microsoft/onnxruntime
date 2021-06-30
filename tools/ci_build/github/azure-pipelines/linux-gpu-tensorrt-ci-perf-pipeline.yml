@@ -133,7 +133,7 @@ jobs:
       condition: not(eq(variables['Agent.OS'], 'Windows_NT')) # and always()
       continueOnError: true  # continuing on error for this step, since linux build folder is somehow getting permission issue
   
-- job: Linux_CI_GPU_TENSORRT_PERF
+- job: Linux_CI_GPU_TENSORRT_PERF_DASHBOARD
   pool:
     name: Linux-GPU-TensorRT-Perf 
     demands:
