@@ -120,7 +120,7 @@ stages:
               -e DEFAULT_TRAINING_PACKAGE_DEVICE \
               -e BUILD_BUILDNUMBER \
               onnxruntimetraininggpubuild \
-                export LD_LIBRARY_PATH=${PythonManylinuxLibDir}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} && \
+                export LD_LIBRARY_PATH=${PythonManylinuxLibDir}:${LD_LIBRARY_PATH} && \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build \
                   --config Release \
