@@ -1,3 +1,4 @@
+
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -679,6 +680,19 @@ class Graph {
 
   bool IsOutput(const NodeArg* node_arg) const noexcept {
     return std::find(graph_outputs_.begin(), graph_outputs_.end(), node_arg) != graph_outputs_.end();
+  }
+
+  /** Returns true if one or more of the Node outputs are Graph outputs. 
+  @remarks Cheaper than calling GetNodeOutputsInGraphOutputs.
+  */
+  bool NodeProducesGraphOutput(const Node& node) const {
+    auto end_outputs = graph_outputs_.cend();
+    for (auto output_def : node.OutputDefs()) {
+      if (std::find(graph_outputs_.cbegin(), end_outputs, output_def) != end_outputs) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Returns a vector with the indexes of the outputs of the given Node that are also Graph outputs. */

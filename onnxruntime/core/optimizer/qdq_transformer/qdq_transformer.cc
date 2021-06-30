@@ -62,8 +62,8 @@ class QDQTransformerImpl {
       // Add to nodes_to_remove_ directly if it is QuantizeLinear
       if (it == dq_output_edges_count_.end()) {
         nodes_to_remove_.insert(node->Index());
-      } else if (it->second == 0 &&                                     // node has no edges
-                 graph_.GetNodeOutputsInGraphOutputs(*node).empty()) {  // node outputs are not graph outputs
+      } else if (it->second == 0 &&                         // node has no edges
+                 !graph_.NodeProducesGraphOutput(*node)) {  // node outputs are not graph outputs
         nodes_to_remove_.insert(node->Index());
       }
     }
