@@ -1,5 +1,5 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<!-- TODO: 
+-xml version="1.0" encoding="utf-8"?>
+-TODO: 
 1. Find and replace "OrtTraceLoggingProvider" with your component name.
 2. See TODO below to update GUID for your event provider
 -->
