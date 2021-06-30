@@ -147,10 +147,11 @@ jobs:
   - task: DownloadPipelineArtifact@2
     inputs:
       artifact: result 
-  - script: 'dir $(Pipeline.Workspace)\result' 
+  - script: 'whoami'
+  - script: 'icacls $(Pipeline.Workspace)\result\result' 
 
   - ${{ if eq(parameters.PostToDashboard, true) }}:
-      - script: 'python $(Build.SourcesDirectory)\onnxruntime\python\tools\tensorrt\perf\post.py -r $(Pipeline.Workspace)/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" ' 
+      - script: 'python $(Build.SourcesDirectory)\onnxruntime\python\tools\tensorrt\perf\post.py -r $(Pipeline.Workspace)/result/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" ' 
         displayName: 'Post to Dashboard'
         env:
           DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
