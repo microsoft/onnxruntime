@@ -21,7 +21,7 @@ import * as binaryOps from './ops/binary-op';
 // import {WebGLPad} from './ops/pad';
 // import {WebGLAveragePool, WebGLGlobalAveragePool, WebGLGlobalMaxPool, WebGLMaxPool} from './ops/pool';
 // import * as reduceOps from './ops/reduce';
-// import {WebGLReshape} from './ops/reshape';
+import {reshape} from './ops/reshape';
 // import {WebGLResizePacked} from './ops/resize-packed';
 // import {WebGLShape} from './ops/shape';
 // import {WebGLSlice, WebGLSliceV10} from './ops/slice';
@@ -87,7 +87,7 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // ['ReduceSum', '', '1+', () => new reduceOps.WebGLReduceSum()],
   // ['ReduceSumSquare', '', '1+', () => new reduceOps.WebGLReduceSumSquare()],
   ['Relu', '', '6+', unaryOps.relu],
-  // ['Reshape', '', '5+', () => new WebGLReshape()],
+  ['Reshape', '', '5+', () => new reshape()],
   // ['Resize', '', '10', () => new WebGLResizePacked(10)],
   // ['Resize', '', '11+', () => new WebGLResizePacked(11)],
   // ['Shape', '', '1+', () => new WebGLShape()],
