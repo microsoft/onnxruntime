@@ -120,10 +120,6 @@ jobs:
         displayName: 'Prepare Artifacts'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r /home/hcsuser/perf/result/ $(Build.SourcesDirectory)/Artifact'
-      displayName: 'Prepare Artifacts'
-      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
-    
     - task: PublishBuildArtifacts@1
       inputs:
         pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
@@ -152,6 +148,6 @@ jobs:
       env:
         DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
 
-    - script: rd /S /Q $(Agent.BuildDirectory)
-      displayName: Clean build files (Windows)
-      condition: eq(variables['Agent.OS'], 'Windows_NT') # and always()
+  - script: rd /S /Q $(Agent.BuildDirectory)
+    displayName: Clean build files (Windows)
+    condition: eq(variables['Agent.OS'], 'Windows_NT') # and always()
