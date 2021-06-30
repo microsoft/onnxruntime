@@ -417,7 +417,7 @@ with open(requirements_path) as f:
 
 
 if enable_training:
-    def save_build_and_package_info(package_name, version_number, cuda_version):
+    def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version):
         sys.path.append(path.join(path.dirname(__file__), 'onnxruntime', 'python'))
         from onnxruntime_collect_build_info import find_cudart_versions
 
@@ -439,11 +439,11 @@ if enable_training:
                         "did not find any cudart library"
                         if not cudart_versions or len(cudart_versions) == 0
                         else "found multiple cudart libraries")
-            else:
-                # TODO: rocm
-                pass
 
-    save_build_and_package_info(package_name, version_number, cuda_version)
+            if rocm_version:
+                f.write("rocm_version = '{}'\n".format(rocm_version))
+
+    save_build_and_package_info(package_name, version_number, cuda_version, rocm_version)
 
 # Setup
 setup(
