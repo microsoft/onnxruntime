@@ -75,8 +75,6 @@ elif parse_arg_remove_boolean(sys.argv, '--use_armnn'):
 
 # Extra files such as EULA and ThirdPartyNotices
 extra = ["LICENSE", "ThirdPartyNotices.txt", "Privacy.md"]
-if rocm_version:
-    extra += ['ROCmNotices.txt']
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -140,6 +138,7 @@ try:
                 logger.info('copying %s -> %s', source, dest)
                 copyfile(source, dest)
                 to_preload = []
+                # we cannot run patchelf for ROCm because 'import onnxruntime' gives an error due to .so corruption
                 dest = 'onnxruntime/capi/libonnxruntime_providers_cuda.so'
                 if path.isfile(dest):
                     result = subprocess.run(['patchelf', '--print-needed', dest], check=True, stdout=subprocess.PIPE, universal_newlines=True)
@@ -156,6 +155,7 @@ try:
                         subprocess.run(args, check=True, stdout=subprocess.PIPE)
                     self._rewrite_ld_preload(to_preload)
             _bdist_wheel.run(self)
+            # we cannot ship ROCm libraries because will conflict with torch linked libraries
             if is_manylinux and not rocm_version:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
                 logger.info('repairing %s for manylinux1', file)
