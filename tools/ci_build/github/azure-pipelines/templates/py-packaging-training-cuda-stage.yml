@@ -82,7 +82,6 @@ stages:
           Dockerfile: tools/ci_build/github/linux/docker/$(DockerFile)
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
-            --build-arg LD_LIBRARY_PATH_ARG=${PythonManylinuxLibDir}
             --build-arg TORCH_VERSION=$(TorchVersion)
             --build-arg PYTHON_VERSION=$(PythonVersion)
             --build-arg INSTALL_DEPS_EXTRA_ARGS=-tu
@@ -90,7 +89,7 @@ stages:
             --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
             --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-$(GccVersion)/root 
             --build-arg PREPEND_PATH=/opt/rh/devtoolset-$(GccVersion)/root/usr/bin: 
-            --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-$(GccVersion)/root/usr/lib64:/opt/rh/devtoolset-$(GccVersion)/root/usr/lib:/opt/rh/devtoolset-$(GccVersion)/root/usr/lib64/dyninst:/opt/rh/devtoolset-$(GccVersion)/root/usr/lib/dyninst:/usr/local/lib64
+            --build-arg LD_LIBRARY_PATH_ARG=${PythonManylinuxLibDir}:/opt/rh/devtoolset-$(GccVersion)/root/usr/lib64:/opt/rh/devtoolset-$(GccVersion)/root/usr/lib:/opt/rh/devtoolset-$(GccVersion)/root/usr/lib64/dyninst:/opt/rh/devtoolset-$(GccVersion)/root/usr/lib/dyninst:/usr/local/lib64
           Repository: onnxruntimetraininggpubuild
 
       - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdata-storage-key) -s "//orttrainingtestdata.file.core.windows.net/mnist" -d "/mnist"
