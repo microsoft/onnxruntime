@@ -111,10 +111,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
           execution_provider, false /*skip_dequantize_linear*/, compatible_eps, weights_to_train));
       transformers.emplace_back(std::make_unique<ReshapeFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<ConcatSliceElimination>(compatible_eps));
-#if defined(USE_CUDA) || defined(USE_ROCM)
       // only enable this optimization for GPU
-      transformers.emplace_back(std::make_unique<ComputationReductionTransformer>(compatible_eps));
-#endif
+      std::unordered_set<std::string> gpu_execution_provider = {onnxruntime::kCudaExecutionProvider, onnxruntime::kRocmExecutionProvider};
+      transformers.emplace_back(std::make_unique<ComputationReductionTransformer>(gpu_execution_provider));
 
       if (config.gelu_recompute) {
         transformers.emplace_back(std::make_unique<GeluRecompute>());
@@ -127,11 +126,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
             config.number_recompute_layers, compatible_eps));
       }
       if (config.propagate_cast_ops_config.level >= 0) {
-        std::unordered_set<std::string> cuda_execution_provider = {onnxruntime::kCudaExecutionProvider, onnxruntime::kRocmExecutionProvider};
+        
         transformers.emplace_back(std::make_unique<PropagateCastOps>(config.propagate_cast_ops_config.strategy,
                                                                              static_cast<size_t>(config.propagate_cast_ops_config.level),
                                                                              config.propagate_cast_ops_config.allow,
-                                                                             cuda_execution_provider));
+                                                                             gpu_execution_provider));
       }
     } break;
 
