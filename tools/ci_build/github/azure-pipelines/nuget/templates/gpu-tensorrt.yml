@@ -34,8 +34,8 @@ jobs:
   variables:
     CUDA_VERSION: '11.1'
   steps:
-    - template: templates/set-version-number-variables-step.yml
-    - template: templates/get-docker-image-steps.yml
+    - template: ../../templates/set-version-number-variables-step.yml
+    - template: ../../templates/get-docker-image-steps.yml
       parameters:
         Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_1_tensorrt7_2
         Context: tools/ci_build/github/linux/docker
