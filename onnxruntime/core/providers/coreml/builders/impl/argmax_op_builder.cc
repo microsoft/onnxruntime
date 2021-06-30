@@ -85,7 +85,7 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
         NodeAttrHelper helper(it->GetNode());
         const auto cast_to_type = helper.Get("to", ONNX_NAMESPACE::TensorProto::UNDEFINED);
         if (cast_to_type == ONNX_NAMESPACE::TensorProto::INT32) {
-          LOGS(logger, VERBOSE) << "Argmax has both cast and other downstream nodes is not supported.";
+          LOGS(logger, VERBOSE) << "Argmax has both cast and other downstream nodes.";
           return false;
         }
       }
