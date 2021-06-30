@@ -144,7 +144,7 @@ jobs:
     - Agent.Name -equals cus-cpu-52wc
   
   steps:
-  - download: results
+  - download: current
     artifact: result
   - ${{ if eq(parameters.PostToDashboard, true) }}:
       - script: 'python C:\Users\jclient\Desktop\post.py -r result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" ' 
