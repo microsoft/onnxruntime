@@ -96,12 +96,12 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
-    if (!graph.GetNodeOutputsInGraphOutputs(*node).empty()) {
+    if (graph.GetNodeProvidesGraphOutput(*node)) {
       continue;
     }
 
     if (node->GetExecutionProviderType() == onnxruntime::kCudaExecutionProvider) {
-      if (node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type() != 
+      if (node->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type() !=
           ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
         continue;
       }
@@ -125,7 +125,7 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         if (last_node.GetExecutionProviderType() != node->GetExecutionProviderType()) {
           continue;
         }
-        if (graph_utils::IsSupportedOptypeVersionAndDomain(last_node, "Relu", {6, 13, 14}) && 
+        if (graph_utils::IsSupportedOptypeVersionAndDomain(last_node, "Relu", {6, 13, 14}) &&
             next_node.GetOutputEdgesCount() == 1) {
           Node& conv_node = *node;
           Node& add_node = *graph.GetNode(next_node.Index());

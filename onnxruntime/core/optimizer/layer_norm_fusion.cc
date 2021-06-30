@@ -79,7 +79,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_node, "ReduceMean", {1, 11, 13}) ||
         !graph_utils::IsSupportedProvider(reduce_mean_node, GetCompatibleExecutionProviders()) ||
         (reduce_mean_node.GetOutputEdgesCount() != 1 && reduce_mean_node.GetOutputEdgesCount() != 2) ||
-        !graph.GetNodeOutputsInGraphOutputs(reduce_mean_node).empty() ||
+        graph.GetNodeProvidesGraphOutput(reduce_mean_node) ||
         !IsSupportedDataType(reduce_mean_node)) {
       continue;
     }
@@ -377,7 +377,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12, 13}) ||
         !graph_utils::IsSupportedProvider(pow_node, GetCompatibleExecutionProviders()) ||
         !optimizer_utils::CheckOutputEdges(graph, pow_node, 1) ||
-        !graph.GetNodeOutputsInGraphOutputs(pow_node).empty() ||
+        graph.GetNodeProvidesGraphOutput(pow_node) ||
         !IsSupportedDataType(pow_node)) {
       continue;
     }

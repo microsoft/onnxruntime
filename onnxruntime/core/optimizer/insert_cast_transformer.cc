@@ -94,7 +94,7 @@ static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::
   //    and is assigned to the CPU EP (we have fp32 implementations of all kernels so forcing to fp32 is safe)
   if (node.GetInputEdgesCount() > 0 &&
       !node.ContainsSubgraph() &&
-      graph.GetNodeOutputsInGraphOutputs(node).empty() &&
+      !graph.GetNodeProvidesGraphOutput(node) &&
       node.GetExecutionProviderType() == kCpuExecutionProvider) {
     do {
       // find the number of fp16 inputs as we need to make sure they're all coming from nodes that will be cast
