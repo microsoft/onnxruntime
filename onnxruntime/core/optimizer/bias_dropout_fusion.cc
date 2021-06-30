@@ -25,7 +25,7 @@ void FuseResidualAddIfAny(Graph& graph, const Node& dropout_node,
   // To be able to fuse the residual Add,
   // the Dropout's output must not be a graph output and
   // there must be only one consumer of the Dropout's first output.
-  if (dropout_consumers_count < 2 && !graph.GetNodeProvidesGraphOutput(dropout_node)) {
+  if (dropout_consumers_count < 2 && !graph.NodeProducesGraphOutput(dropout_node)) {
     for (auto last_node_itr = dropout_node.OutputNodesBegin(); last_node_itr != dropout_node.OutputNodesEnd(); ++last_node_itr) {
       const Node& last_node = (*last_node_itr);
 
@@ -139,7 +139,7 @@ Status BiasDropoutFusion::ApplyImpl(Graph& graph, bool& modified, int graph_leve
       continue;
     }
 
-    if (graph.GetNodeProvidesGraphOutput(node)) {
+    if (graph.NodeProducesGraphOutput(node)) {
       continue;
     }
 
