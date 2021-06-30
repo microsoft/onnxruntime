@@ -18,6 +18,12 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/erf.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/compute.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/quantize.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_avx2.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_default.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_neon.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_sse.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_type.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_neon.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qladd.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qlmul.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qpostprocessor.cpp
