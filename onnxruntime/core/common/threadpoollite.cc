@@ -6,10 +6,10 @@ namespace onnxruntime {
 namespace concurrency {
 
 ThreadPoolLite::ThreadPoolLite(Env*,
-                                 const ThreadOptions& options,
-                                 const NAME_CHAR_TYPE*,
-                                 int num_threads,
-                                 bool) : profiler_(num_threads - 1, ORT_TSTR("ThreadPoolLite")) {
+                               const ThreadOptions& options,
+                               const NAME_CHAR_TYPE*,
+                               int num_threads,
+                               bool) : profiler_(num_threads - 1, ORT_TSTR("ThreadPoolLite")) {
   num_sub_threads_ = num_threads - 1;
   slots_.assign(num_threads - 1, {});
   set_denormal_as_zero_ = options.set_denormal_as_zero;
@@ -22,7 +22,7 @@ ThreadPoolLite::ThreadPoolLite(Env*,
   }
 #else
   for (int i = 0; i < num_sub_threads_; ++i) {
-    sub_threads_.emplace_back(&ThreadPoolLite::MainLoop, this, i);
+    sub_threads_.emplace_back(&ThreadPoolLite::ThreadLoop, this, i);
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     CPU_SET(i, &cpuset);
@@ -97,8 +97,8 @@ void ThreadPoolLite::ParallelForImpl(const SchdFn& schd_fn, std::ptrdiff_t block
   profiler_.LogEnd(ThreadPoolProfiler::WAIT);
 }
 
-void ThreadPoolLite::Schedule(SchdFn) {
-  ORT_ENFORCE(false);
+void ThreadPoolLite::Schedule(SchdFn schd_fn) {
+  schd_fn();
 }
 
 void ThreadPoolLite::StartProfiling() {

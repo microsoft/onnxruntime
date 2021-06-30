@@ -29,7 +29,7 @@ class ThreadPoolLite : public ThreadPool {
   ThreadPoolLite& operator=(const ThreadPoolLite&) = delete;
   ThreadPoolLite(ThreadPoolLite&&) = default;
   ThreadPoolLite& operator=(ThreadPoolLite&&) = default;
-  virtual ~ThreadPoolLite();
+  ~ThreadPoolLite();
 
   int NumThreads() const override { return static_cast<int>(sub_threads_.size()); }
   void ParallelFor(std::ptrdiff_t, double, const Fn&) override;
