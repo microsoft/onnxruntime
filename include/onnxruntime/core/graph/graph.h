@@ -681,6 +681,19 @@ class Graph {
     return std::find(graph_outputs_.begin(), graph_outputs_.end(), node_arg) != graph_outputs_.end();
   }
 
+  /** Returns true if one or more of the Node outputs are Graph outputs. 
+  @remarks Cheaper than calling GetNodeOutputsInGraphOutputs.
+  */
+  bool GetNodeProvidesGraphOutput(const Node& node) const {
+    auto end_outputs = graph_outputs_.cend();
+    for (auto output_def : node.OutputDefs()) {
+      if (std::find(graph_outputs_.cbegin(), end_outputs, output_def) != end_outputs) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /** Returns a vector with the indexes of the outputs of the given Node that are also Graph outputs. */
   std::vector<int> GetNodeOutputsInGraphOutputs(const Node& node) const {
     int output_idx = 0;

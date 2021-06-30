@@ -177,7 +177,7 @@ bool ConvBNFusion::SatisfyCondition(const Graph& graph, const Node& node, const 
     }
   }
 
-  if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
+  if (graph.GetNodeProvidesGraphOutput(node)) {
     return false;
   }
 
