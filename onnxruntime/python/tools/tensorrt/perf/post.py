@@ -132,7 +132,7 @@ def get_status(status, model_group):
 def get_database_cert(): 
     cert = 'BaltimoreCyberTrustRoot.crt.pem'
     if not os.path.exists(cert):
-        p = subprocess.run(["wget", "https://cacerts.digicert.com/DigiCertGlobalRootG2.crt.pem", "-O", cert], check=True)
+        p = subprocess.run(["wget", "https://www.digicert.com/CACerts/BaltimoreCyberTrustRoot.crt.pem", "-O", cert], check=True)
     return cert 
 
 def write_table(engine, table, table_name): 
@@ -177,15 +177,15 @@ def main():
             os.chdir(result_file)
     
         print('writing failures over time to database')
-        write_table(engine, fail, 'ep_model_fails')
+        #write_table(engine, fail, 'ep_model_fails')
         print('writing memory to database')
-        write_table(engine, memory, 'ep_model_memory')
+        #write_table(engine, memory, 'ep_model_memory')
         print('writing latency to database')
-        write_table(engine, latency, 'ep_model_latency')
+        #write_table(engine, latency, 'ep_model_latency')
         print('writing status to database')
-        write_table(engine, status, 'ep_models_status')
+        #write_table(engine, status, 'ep_models_status')
         print('writing latency over time to database')
-        insert_latency(args.commit_hash, args.report_url, latency)
+        #insert_latency(args.commit_hash, args.report_url, latency)
 
     except BaseException as e: 
         print(str(e))
