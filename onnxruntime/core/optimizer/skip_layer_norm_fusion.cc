@@ -173,8 +173,8 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
       if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
           CheckSecondAdd(graph, *p_add2, ln_node.GetExecutionProviderType()) &&
-          !graph.GetNodeProvidesGraphOutput(*p_add1) &&
-          !graph.GetNodeProvidesGraphOutput(*p_add2)) {
+          !graph.NodeProducesGraphOutput(*p_add1) &&
+          !graph.NodeProducesGraphOutput(*p_add2)) {
         matched_format = Format::Format1;
       }
     }
@@ -191,8 +191,8 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
         if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
             CheckSecondAdd(graph, *p_add2, ln_node.GetExecutionProviderType()) &&
-            !graph.GetNodeProvidesGraphOutput(*p_add1) &&
-            !graph.GetNodeProvidesGraphOutput(*p_add2)) {
+            !graph.NodeProducesGraphOutput(*p_add1) &&
+            !graph.NodeProducesGraphOutput(*p_add2)) {
           matched_format = Format::Format2;
         }
       }
@@ -207,7 +207,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
         p_add1 = const_cast<Node*>(&edges[0]->GetNode());
 
         if (CheckFirstAdd(*p_add1, ln_node.GetExecutionProviderType()) &&
-            graph.GetNodeOutputsInGraphOutputs(*p_add1).empty()) {
+            !graph.NodeProducesGraphOutput(*p_add1)) {
           matched_format = Format::Format3;
         }
       }

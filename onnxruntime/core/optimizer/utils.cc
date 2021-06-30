@@ -267,7 +267,7 @@ int32_t IndexOfNodeOutput(const Node& node, const NodeArg& node_arg) {
 }
 
 bool CheckOutputEdges(const Graph& graph, const Node& node, size_t expected_output_edges) {
-  if (graph.GetNodeProvidesGraphOutput(node)) {
+  if (graph.NodeProducesGraphOutput(node)) {
     return false;
   }
 
