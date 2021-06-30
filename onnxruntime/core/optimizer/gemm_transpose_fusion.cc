@@ -83,7 +83,7 @@ bool GemmTransposeFusion::SatisfyCondition(const Graph& graph, const Node& node,
   for (auto node_it = node.InputNodesBegin(); node_it != node.InputNodesEnd(); ++node_it) {
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*node_it, "Transpose", {1, 13}) &&
         node_it->GetOutputEdgesCount() == 1 &&
-        !graph.GetNodeProvidesGraphOutput(*node_it) &&
+        !graph.NodeProducesGraphOutput(*node_it) &&
         // Make sure the two nodes do not span execution providers.
         node_it->GetExecutionProviderType() == node.GetExecutionProviderType()) {
       return true;
@@ -94,7 +94,7 @@ bool GemmTransposeFusion::SatisfyCondition(const Graph& graph, const Node& node,
   // by the rule (AB)' = B'A' provided that C is missing
   // Supported for Opset >=11 as earlier opsets have C as a required input
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Gemm", {11, 13}) ||
-      graph.GetNodeProvidesGraphOutput(node) ||
+      graph.NodeProducesGraphOutput(node) ||
       // verify that C is missing
       node.InputDefs().size() > 2) {
     return false;

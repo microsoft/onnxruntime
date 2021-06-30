@@ -76,7 +76,7 @@ Status BiasGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, 
       continue;
     }
 
-    if (graph.GetNodeProvidesGraphOutput(node)) {
+    if (graph.NodeProducesGraphOutput(node)) {
       continue;
     }
 
