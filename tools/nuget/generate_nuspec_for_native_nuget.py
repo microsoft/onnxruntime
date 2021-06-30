@@ -185,8 +185,8 @@ def generate_files(list, args):
     is_dml_package = args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML'
     is_windowsai_package = args.package_name == 'Microsoft.AI.MachineLearning'
 
-    includes_cuda = is_cuda_gpu_package or is_tensorrt_package or
-                    is_cpu_package  # Why does the CPU package ship the cuda provider headers?
+    # Why does the CPU package ship the cuda provider headers?
+    includes_cuda = is_cuda_gpu_package or is_tensorrt_package or is_cpu_package
     includes_winml = is_windowsai_package
     includes_directml = (is_dml_package or is_windowsai_package) and not args.is_store_build and (
         args.target_architecture == 'x64' or args.target_architecture == 'x86')
