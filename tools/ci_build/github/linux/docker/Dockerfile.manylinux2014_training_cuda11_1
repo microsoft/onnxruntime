@@ -17,6 +17,7 @@ ENV DEVTOOLSET_ROOTPATH /opt/rh/devtoolset-8/root
 ENV PATH $DEVTOOLSET_ROOTPATH/usr/bin:$PATH
 ENV LD_LIBRARY_PATH $DEVTOOLSET_ROOTPATH/usr/lib64:$DEVTOOLSET_ROOTPATH/usr/lib:$DEVTOOLSET_ROOTPATH/usr/lib64/dyninst:$DEVTOOLSET_ROOTPATH/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
 ENV PKG_CONFIG_PATH /usr/local/lib/pkgconfig
+ENV LD_LIBRARY_PATH=${LD_LIBRARY_PATH_ARG}
 
 COPY manylinux2014_build_scripts /manylinux2014_build_scripts
 RUN bash /manylinux2014_build_scripts/build.sh 8 && rm -r manylinux2014_build_scripts && yum downgrade  -y glibc-2.17-317.el7 glibc-common-2.17-317.el7 glibc-devel-2.17-317.el7 glibc-headers-2.17-317.el7
