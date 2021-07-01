@@ -26,9 +26,10 @@ class TrainingManager(GraphExecutionManager):
     def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager):
         super().__init__(model, debug_options, fallback_manager)
         self._export_mode = torch.onnx.TrainingMode.TRAINING
+        self._cache = None
 
     @staticmethod
-    def execution_session_run_forward(execution_session, onnx_model, *inputs):
+    def execution_session_run_forward(execution_session, onnx_model, cache, cache_names, cache_start, *inputs):
         """Runs the forward graph on execution_session with given model inputs and device"""
 
         # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
@@ -44,7 +45,15 @@ class TrainingManager(GraphExecutionManager):
         forward_outputs = C.OrtValueVector()
         # Run and return module outputs.
         execution_session.run_forward(forward_inputs, forward_outputs, state)
-        user_outputs = tuple(_utils._ortvalue_to_torch_tensor(forward_output) for forward_output in forward_outputs)
+
+        user_outputs = []
+        for i in range(len(forward_outputs)):
+            if i < cache_start:
+                user_outputs.append(_utils._ortvalue_to_torch_tensor(forward_outputs[i]))
+            elif cache !=None:
+                cache.insert(cache_names[i-cache_start], forward_outputs[i])
+
+        user_outputs = tuple(user_outputs)
 
         output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
         run_info = _RunStateInfo(state, output_info)
@@ -269,7 +278,8 @@ class TrainingManager(GraphExecutionManager):
             C.OrtDevice(get_ort_device_type(self._device.type),
                         C.OrtDevice.default_memory(),
                         _utils.get_device_index(self._device)
-                        )] * len(self._graph_info.user_output_names)
+                        )] * (len(self._graph_info.user_output_names) + 
+                              len(self._graph_info.frontier_node_arg_map))
 
         bw_fetches_names = [output.name for output in self._onnx_models.optimized_model.graph.output]
         bw_outputs_device_info = [
