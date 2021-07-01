@@ -53,7 +53,24 @@ IF NOT errorlevel 0 (
 IF "%DotNetDefineConstants"=="" (
     %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
 ) ELSE (
-    %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore -p:DefineConstants="%DotNetDefineConstants"
+    %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore -p:DefineConstants=%DotNetDefineConstants%
+)
+
+SET PackageName="Microsoft.ML.OnnxRuntime.TensorRT"
+@echo %PackageName%
+@echo %CurrentOnnxRuntimeVersion%
+%dn% clean test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj
+%dn% restore test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --configfile .\Nuget.CSharp.config --no-cache --packages test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages --source https://api.nuget.org/v3/index.json --source  %LocalNuGetRepo%
+
+IF "%DotNetDefineConstants"=="" (
+    %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
+) ELSE (
+    %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore -p:DefineConstants=%DotNetDefineConstants%
+)
+
+IF NOT errorlevel 0 (
+    @echo "Failed to restore nuget packages for the test project"
+    EXIT 1
 )
 IF NOT errorlevel 0 (
     @echo "Failed to build or execute the end-to-end test"
