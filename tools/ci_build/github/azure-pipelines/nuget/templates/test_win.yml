@@ -69,7 +69,7 @@ jobs:
 
   - script: |
      @echo "Running Runtest.bat"
-     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x64 $(NuGetPackageVersionNumber)
+     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest_tensorrt.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x64 $(NuGetPackageVersionNumber)
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .Net Core x64'
 
