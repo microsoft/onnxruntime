@@ -8,8 +8,6 @@
 #include "core/graph/constants.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/sparse_tensor.h"
-#include "core/framework/sparse_cooformat_rep.h"
-#include "core/framework/sparse_csrcformat_rep.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/sparse_utils.h"
 #include "core/framework/data_transfer.h"
@@ -32,6 +30,12 @@ using namespace onnxruntime::common;
 
 namespace onnxruntime {
 namespace test {
+
+template <typename T>
+inline int64_t vector_len(const std::vector<T>& v) {
+  return static_cast<int64_t>(v.size());
+}
+
 
 // This file contains sample implementations of several ops with sparse-tensor inputs/outputs.
 // Each op is implemented as a struct with the following signature:
@@ -128,13 +132,13 @@ This operator constructs a sparse tensor from three tensors that provide a COO
 
       SparseTensor* output = ctx->OutputSparse(0, shape);
       ORT_ENFORCE(output != nullptr);
-      SparseCooFormatRep* output_rep = nullptr;
-      const bool linearized_indices = indices.Shape().NumDimensions() == 1;
-      ORT_ENFORCE(output->RepBuilder<SparseCooBuilder>().Create(linearized_indices, static_cast<size_t>(nnz), output_rep).IsOK());
-
-      memcpy(output_rep->MutableValues().MutableData<int64_t>(), values.Data<int64_t>(), values.SizeInBytes());
-      memcpy(output_rep->MutableIndices().MutableData<int64_t>(), indices.Data<int64_t>(), indices.SizeInBytes());
-
+      const auto& dtm = Info().GetDataTransferManager();
+      const auto* data_transfer = dtm.GetDataTransfer(OrtDevice(), output->Location().device);
+      ORT_ENFORCE(data_transfer != nullptr, "Can not find corresponding data transfer");
+      ORT_THROW_IF_ERROR(output->MakeCooData(*data_transfer, OrtMemoryInfo(),
+                                             static_cast<size_t>(val_shape.Size()),
+                                             values.DataRaw(),
+                                             indices.DataAsSpan<int64_t>()));
       return Status::OK();
     }
   };
@@ -192,23 +196,22 @@ This operator applies the Abs op element-wise to the input sparse-tensor.
       const auto nnz = input->NumValues();
       const auto& shape = input->Shape();
 
+      auto input_coo_view = input->AsCoo();
       // Allocate/get output-tensor:
       SparseTensor* output = ctx->OutputSparse(0, shape);
+      auto output_mutator = output->MakeCooData(nnz, static_cast<size_t>(input_coo_view.Index().Shape().Size()));
 
-      const auto* input_rep = input->GetRep<SparseCooFormatRep>();
-      SparseCooFormatRep* output_rep = nullptr;
-      const bool linearized_indices = input_rep->Indices().Shape().NumDimensions() == 1;
-      ORT_ENFORCE(output->RepBuilder<SparseCooBuilder>().Create(linearized_indices, nnz, output_rep).IsOK());
       // compute output values:
-      auto* output_values = output_rep->MutableValues().MutableData<int64_t>();
+      auto* output_values = output_mutator.Values().MutableData<int64_t>();
+
       for (size_t i = 0; i < nnz; ++i)
         output_values[i] = std::abs(input_values[i]);
 
       // Currently, there is no way to share the indices/shape between two sparse-tensors.
       // So, we copy indices/shape from input to output.
       // TODO: Extend allocation-planner to enable such sharing.
-      const auto& input_indices = input_rep->Indices();
-      memcpy(output_rep->MutableIndices().MutableData<int64_t>(), input_indices.Data<int64_t>(), input_indices.SizeInBytes());
+      const auto& input_indices = input_coo_view.Index();
+      memcpy(output_mutator.Index().MutableData<int64_t>(), input_indices.Data<int64_t>(), input_indices.SizeInBytes());
       return Status::OK();
     }
   };
@@ -528,6 +531,8 @@ TEST(SparseCrcsFormatTests, Test1) {
   //    36, 37, 38, 39, 40, 41, 0, 0, 0,
   //    42, 43, 44, 45, 46, 47, 0, 0, 0,
   //    48, 49, 50, 51, 52, 53, 0, 0, 0};
+  auto* cpu_provider = TestCPUExecutionProvider();
+  auto cpu_transfer = cpu_provider->GetDataTransfer();
 
   TensorShape dense_shape{9, 9};
 
@@ -541,6 +546,8 @@ TEST(SparseCrcsFormatTests, Test1) {
       36, 37, 38, 39, 40, 41,
       42, 43, 44, 45, 46, 47,
       48, 49, 50, 51, 52, 53};
+
+  TensorShape values_shape{vector_len(values)};
 
   // Row major
   std::vector<int64_t> inner_indices = {
@@ -557,57 +564,49 @@ TEST(SparseCrcsFormatTests, Test1) {
   ASSERT_EQ(values.size(), inner_indices.size());
 
   std::vector<int64_t> outer_indices = {
-      0, 5, 11, 17, 23, 29, 35, 41, 47};
+      0, 5, 11, 17, 23, 29, 35, 41, 47, 53};
 
-  ASSERT_EQ(9U, outer_indices.size());
+  ASSERT_EQ(9U + 1U, outer_indices.size());
 
   // Test owning instance
   auto default_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+
   SparseTensor tensor_alloc(DataTypeImpl::GetType<float>(), dense_shape, default_allocator);
   ASSERT_TRUE(tensor_alloc.OwnsBuffer());
   ASSERT_EQ(tensor_alloc.Shape(), dense_shape);
 
-  SparseCsrcFormatRep* rep = nullptr;
-  ASSERT_TRUE(tensor_alloc.RepBuilder<SparseCsrcBuilder>().Create(SparseCsrcFormatRep::kRowMajor,
-                                                                  values.size(),
-                                                                  inner_indices.size(),
-                                                                  outer_indices.size(),
-                                                                  rep)
-                  .IsOK());
-  ASSERT_NE(rep, nullptr);
+  ASSERT_STATUS_OK(tensor_alloc.MakeCsrData(*cpu_transfer, OrtMemoryInfo(),
+                                            values.size(), values.data(),
+                                            gsl::make_span(inner_indices),
+                                            gsl::make_span(outer_indices)));
+
   ASSERT_EQ(values.size(), tensor_alloc.NumValues());
-  memcpy(rep->MutableValues().MutableData<float>(), values.data(), values.size() * sizeof(float));
+  ASSERT_EQ(0, memcmp(tensor_alloc.Values().Data<float>(), values.data(), tensor_alloc.Values().SizeInBytes()));
   {
-    Tensor& inner = rep->MutableInner();
-    Tensor& outer = rep->MutableOuter();
-    ASSERT_EQ(inner.Shape().Size(), static_cast<int64_t>(inner_indices.size()));
-    ASSERT_EQ(outer.Shape().Size(), static_cast<int64_t>(outer_indices.size()));
-    memcpy(inner.MutableData<int64_t>(), inner_indices.data(), inner_indices.size() * sizeof(int64_t));
-    memcpy(outer.MutableData<int64_t>(), outer_indices.data(), outer_indices.size() * sizeof(int64_t));
+    auto csr_view = tensor_alloc.AsCsr();
+    const Tensor& inner = csr_view.Inner();
+    const Tensor& outer = csr_view.Outer();
+    ASSERT_EQ(inner.Shape().Size(), vector_len(inner_indices));
+    ASSERT_EQ(outer.Shape().Size(), vector_len(outer_indices));
+    ASSERT_EQ(0, memcmp(inner.Data<int64_t>(), inner_indices.data(), inner.SizeInBytes()));
+    ASSERT_EQ(0, memcmp(outer.Data<int64_t>(), outer_indices.data(), outer.SizeInBytes()));
   }
 
   OrtMemoryInfo mem_info;
-  SparseTensor tensor_wrap(DataTypeImpl::GetType<float>(), dense_shape, mem_info);
+  SparseTensor tensor_wrap(DataTypeImpl::GetType<float>(), dense_shape, {vector_len(values)}, values.data(), mem_info);
   ASSERT_FALSE(tensor_wrap.OwnsBuffer());
   ASSERT_EQ(tensor_wrap.Shape(), dense_shape);
-
-  ASSERT_STATUS_OK(tensor_wrap.RepBuilder<SparseCsrcBuilder>().Create(SparseCsrcFormatRep::kRowMajor,
-                                                                      values.size(),
-                                                                      inner_indices.size(),
-                                                                      outer_indices.size(),
-                                                                      values.data(),
-                                                                      inner_indices.data(),
-                                                                      outer_indices.data()));
+  ASSERT_STATUS_OK(tensor_wrap.UseCsrIndices(gsl::make_span(inner_indices), gsl::make_span(outer_indices)));
 
   ASSERT_EQ(values.size(), tensor_wrap.NumValues());
   ASSERT_EQ(0, memcmp(tensor_alloc.Values().Data<float>(), tensor_wrap.Values().Data<float>(), values.size() * sizeof(float)));
-  const auto* alloc_read = tensor_alloc.GetRep<SparseCsrcFormatRep>();
-  const auto* wrap_read = tensor_wrap.GetRep<SparseCsrcFormatRep>();
-  ASSERT_EQ(0, memcmp(alloc_read->Inner().Data<int64_t>(),
-                      wrap_read->Inner().Data<int64_t>(),
+  auto csr_alloc = tensor_alloc.AsCsr();
+  auto csr_wrap = tensor_wrap.AsCsr();
+  ASSERT_EQ(0, memcmp(csr_alloc.Inner().Data<int64_t>(),
+                      csr_wrap.Inner().Data<int64_t>(),
                       inner_indices.size() * sizeof(int64_t)));
-  ASSERT_EQ(0, memcmp(alloc_read->Outer().Data<int64_t>(),
-                      wrap_read->Outer().Data<int64_t>(),
+  ASSERT_EQ(0, memcmp(csr_alloc.Outer().Data<int64_t>(),
+                      csr_wrap.Outer().Data<int64_t>(),
                       outer_indices.size() * sizeof(int64_t)));
 }
 
@@ -1215,14 +1214,6 @@ TEST(SparseTensorConversionTests, TestDenseToSparseConversion) {
 template <class T>
 using SparseMatrixRowMajor = Eigen::SparseMatrix<T, Eigen::RowMajor, int64_t>;
 
-//nnz: 2
-//Storage type size is: 4
-
-template <typename T>
-inline int64_t vector_len(const std::vector<T>& v) {
-  return static_cast<int64_t>(v.size());
-}
-
 TEST(SparseTensorConversionTests, CsrConversion) {
   auto* cpu_provider = TestCPUExecutionProvider();
   auto cpu_allocator = cpu_provider->GetAllocator(0, OrtMemTypeDefault);
@@ -1259,19 +1250,19 @@ TEST(SparseTensorConversionTests, CsrConversion) {
     // test where both src and destination are on CPU
     SparseTensor dst;
     ASSERT_STATUS_OK(sparse_utils::DenseTensorToSparseCsr(dtm, dense_cpu_src, cpu_allocator, cpu_allocator, dst));
-    ASSERT_EQ(dst.FormatFlags(), SparseFormatFlags::kCsrc);
+    ASSERT_EQ(dst.Format(), SparseFormat::kCsrc);
     ASSERT_EQ(dense_cpu_src.DataType(), dst.DataType());
     ASSERT_EQ(dense_cpu_src.Shape(), dst.Shape());
     ASSERT_EQ(dst.NumValues(), expected_values.size());
     auto values = dst.Values().DataAsSpan<int32_t>();
     ASSERT_TRUE(std::equal(expected_values.cbegin(), expected_values.cend(), values.cbegin(), values.cend()));
 
-    const auto* rep = dst.GetRep<SparseCsrcFormatRep>();
-    auto inner = rep->Inner().DataAsSpan<int64_t>();
+    auto csr_view = dst.AsCsr();
+    auto inner = csr_view.Inner().DataAsSpan<int64_t>();
     ASSERT_EQ(expected_inner.size(), inner.size());
     ASSERT_TRUE(std::equal(expected_inner.cbegin(), expected_inner.cend(), inner.cbegin(), inner.cend()));
 
-    auto outer = rep->Outer().DataAsSpan<int64_t>();
+    auto outer = csr_view.Outer().DataAsSpan<int64_t>();
     ASSERT_EQ(expected_outer.size(), outer.size());
     ASSERT_TRUE(std::equal(expected_outer.cbegin(), expected_outer.cend(), outer.cbegin(), outer.cend()));
 
@@ -1292,19 +1283,19 @@ TEST(SparseTensorConversionTests, CsrConversion) {
     Tensor str_cpu_src(DataTypeImpl::GetType<std::string>(), dense_shape, dense_data_str.data(), cpu_allocator->Info());
     SparseTensor dst;
     ASSERT_STATUS_OK(sparse_utils::DenseTensorToSparseCsr(dtm, str_cpu_src, cpu_allocator, cpu_allocator, dst));
-    ASSERT_EQ(dst.FormatFlags(), SparseFormatFlags::kCsrc);
+    ASSERT_EQ(dst.Format(), SparseFormat::kCsrc);
     ASSERT_EQ(str_cpu_src.DataType(), dst.DataType());
     ASSERT_EQ(str_cpu_src.Shape(), dst.Shape());
     ASSERT_EQ(dst.NumValues(), expected_values_str.size());
     auto values = dst.Values().DataAsSpan<std::string>();
     ASSERT_TRUE(std::equal(expected_values_str.cbegin(), expected_values_str.cend(), values.cbegin(), values.cend()));
 
-    const auto* rep = dst.GetRep<SparseCsrcFormatRep>();
-    auto inner = rep->Inner().DataAsSpan<int64_t>();
+    auto csr_view = dst.AsCsr();
+    auto inner = csr_view.Inner().DataAsSpan<int64_t>();
     ASSERT_EQ(expected_inner.size(), inner.size());
     ASSERT_TRUE(std::equal(expected_inner.cbegin(), expected_inner.cend(), inner.cbegin(), inner.cend()));
 
-    auto outer = rep->Outer().DataAsSpan<int64_t>();
+    auto outer = csr_view.Outer().DataAsSpan<int64_t>();
     ASSERT_EQ(expected_outer.size(), outer.size());
     ASSERT_TRUE(std::equal(expected_outer.cbegin(), expected_outer.cend(), outer.cbegin(), outer.cend()));
 
@@ -1352,13 +1343,13 @@ TEST(SparseTensorConversionTests, CsrConversion) {
     Tensor dense_cpu_src_all_zeros(DataTypeImpl::GetType<int32_t>(), dense_shape, dense_data_all_zeros.data(), cpu_allocator->Info());
     SparseTensor sparse_dst;
     ASSERT_STATUS_OK(sparse_utils::DenseTensorToSparseCsr(dtm, dense_cpu_src_all_zeros, cpu_allocator, cuda_allocator, sparse_dst));
-    ASSERT_EQ(sparse_dst.FormatFlags(), SparseFormatFlags::kCsrc);
+    ASSERT_EQ(sparse_dst.Format(), SparseFormat::kCsrc);
     ASSERT_EQ(dense_cpu_src.DataType(), sparse_dst.DataType());
     ASSERT_EQ(dense_cpu_src.Shape(), sparse_dst.Shape());
-    const SparseCsrcFormatRep* rep = sparse_dst.GetRep<SparseCsrcFormatRep>();
-    auto inner_indices = rep->Inner().DataAsSpan<int64_t>();
+    auto csr_view = sparse_dst.AsCsr();
+    auto inner_indices = csr_view.Inner().DataAsSpan<int64_t>();
     ASSERT_TRUE(inner_indices.empty());
-    auto outer_indices = rep->Outer().DataAsSpan<int64_t>();
+    auto outer_indices = csr_view.Outer().DataAsSpan<int64_t>();
     ASSERT_TRUE(outer_indices.empty());
 
     Tensor gpu_dense_dst;
@@ -1411,15 +1402,15 @@ TEST(SparseTensorConversionTests, CooConversion) {
     // test where both src and destination are on CPU. Linear index.
     SparseTensor dst;
     ASSERT_STATUS_OK(sparse_utils::DenseTensorToSparseCoo(dtm, dense_cpu_src, cpu_allocator, cpu_allocator, true, dst));
-    ASSERT_EQ(dst.FormatFlags(), SparseFormatFlags::kCoo);
+    ASSERT_EQ(dst.Format(), SparseFormat::kCoo);
     ASSERT_EQ(dense_cpu_src.DataType(), dst.DataType());
     ASSERT_EQ(dense_cpu_src.Shape(), dst.Shape());
     ASSERT_EQ(dst.NumValues(), expected_values.size());
     auto values = dst.Values().DataAsSpan<int32_t>();
     ASSERT_TRUE(std::equal(expected_values.cbegin(), expected_values.cend(), values.cbegin(), values.cend()));
-    const SparseCooFormatRep* rep = dst.GetRep<SparseCooFormatRep>();
-    ASSERT_EQ(rep->Indices().Shape().GetDims().size(), 1U);
-    auto indices = rep->Indices().DataAsSpan<int64_t>();
+    auto coo_view = dst.AsCoo();
+    ASSERT_EQ(coo_view.Index().Shape().GetDims().size(), 1U);
+    auto indices = coo_view.Index().DataAsSpan<int64_t>();
     ASSERT_EQ(indices.size(), expected_linear_indices.size());
     ASSERT_TRUE(std::equal(indices.cbegin(), indices.cend(), expected_linear_indices.cbegin(), expected_linear_indices.cend()));
 
@@ -1439,16 +1430,16 @@ TEST(SparseTensorConversionTests, CooConversion) {
     Tensor dense_cpu_str(DataTypeImpl::GetType<std::string>(), dense_shape, dense_data_str.data(), cpu_allocator->Info());
     SparseTensor dst;
     ASSERT_STATUS_OK(sparse_utils::DenseTensorToSparseCoo(dtm, dense_cpu_str, cpu_allocator, cpu_allocator, true, dst));
-    ASSERT_EQ(dst.FormatFlags(), SparseFormatFlags::kCoo);
+    ASSERT_EQ(dst.Format(), SparseFormat::kCoo);
     ASSERT_EQ(dense_cpu_str.DataType(), dst.DataType());
     ASSERT_EQ(dense_cpu_str.Shape(), dst.Shape());
     ASSERT_EQ(dst.NumValues(), expected_values_str.size());
 
     auto values = dst.Values().DataAsSpan<std::string>();
     ASSERT_TRUE(std::equal(expected_values_str.cbegin(), expected_values_str.cend(), values.cbegin(), values.cend()));
-    const SparseCooFormatRep* rep = dst.GetRep<SparseCooFormatRep>();
-    ASSERT_EQ(rep->Indices().Shape().GetDims().size(), 1U);
-    auto indices = rep->Indices().DataAsSpan<int64_t>();
+    auto coo_view = dst.AsCoo();
+    ASSERT_EQ(coo_view.Index().Shape().GetDims().size(), 1U);
+    auto indices = coo_view.Index().DataAsSpan<int64_t>();
     ASSERT_EQ(indices.size(), expected_linear_indices.size());
     ASSERT_TRUE(std::equal(indices.cbegin(), indices.cend(), expected_linear_indices.cbegin(), expected_linear_indices.cend()));
 
@@ -1467,16 +1458,16 @@ TEST(SparseTensorConversionTests, CooConversion) {
     // test where both src and destination are on CPU. 2-D index
     SparseTensor dst;
     ASSERT_STATUS_OK(sparse_utils::DenseTensorToSparseCoo(dtm, dense_cpu_src, cpu_allocator, cpu_allocator, false, dst));
-    ASSERT_EQ(dst.FormatFlags(), SparseFormatFlags::kCoo);
+    ASSERT_EQ(dst.Format(), SparseFormat::kCoo);
     ASSERT_EQ(dense_cpu_src.DataType(), dst.DataType());
     ASSERT_EQ(dense_cpu_src.Shape(), dst.Shape());
     ASSERT_EQ(dst.NumValues(), expected_values.size());
     auto values = dst.Values().DataAsSpan<int32_t>();
     ASSERT_TRUE(std::equal(expected_values.cbegin(), expected_values.cend(), values.cbegin(), values.cend()));
 
-    const SparseCooFormatRep* rep = dst.GetRep<SparseCooFormatRep>();
-    ASSERT_EQ(rep->Indices().Shape().GetDims().size(), 2U);
-    auto indices = rep->Indices().DataAsSpan<int64_t>();
+    auto coo_view = dst.AsCoo();
+    ASSERT_EQ(coo_view.Index().Shape().GetDims().size(), 2U);
+    auto indices = coo_view.Index().DataAsSpan<int64_t>();
     ASSERT_EQ(indices.size(), expected_2d_indices.size());
     ASSERT_TRUE(std::equal(indices.cbegin(), indices.cend(), expected_2d_indices.cbegin(), expected_2d_indices.cend()));
 
@@ -1502,12 +1493,12 @@ TEST(SparseTensorConversionTests, CooConversion) {
     // test where source is on GPU and destination is on GPU
     SparseTensor sparse_dst;
     ASSERT_STATUS_OK(sparse_utils::DenseTensorToSparseCoo(dtm, dense_cpu_src, cpu_allocator, cuda_allocator, false, sparse_dst));
-    ASSERT_EQ(sparse_dst.FormatFlags(), SparseFormatFlags::kCoo);
+    ASSERT_EQ(sparse_dst.Format(), SparseFormat::kCoo);
     ASSERT_EQ(dense_cpu_src.DataType(), sparse_dst.DataType());
     ASSERT_EQ(dense_cpu_src.Shape(), sparse_dst.Shape());
-    const SparseCooFormatRep* rep = sparse_dst.GetRep<SparseCooFormatRep>();
-    ASSERT_EQ(rep->Indices().Shape().GetDims().size(), 2U);
-    auto indices = rep->Indices().DataAsSpan<int64_t>();
+    auto coo_view = sparse_dst.AsCoo();
+    ASSERT_EQ(coo_view.Index().Shape().GetDims().size(), 2U);
+    auto indices = coo_view.Index().DataAsSpan<int64_t>();
     ASSERT_EQ(indices.size(), expected_2d_indices.size());
 
     Tensor gpu_dense_dst;
@@ -1527,12 +1518,12 @@ TEST(SparseTensorConversionTests, CooConversion) {
     Tensor dense_cpu_src_all_zeros(DataTypeImpl::GetType<int32_t>(), dense_shape, dense_data_all_zeros.data(), cpu_allocator->Info());
     SparseTensor sparse_dst;
     ASSERT_STATUS_OK(sparse_utils::DenseTensorToSparseCoo(dtm, dense_cpu_src_all_zeros, cpu_allocator, cuda_allocator, false, sparse_dst));
-    ASSERT_EQ(sparse_dst.FormatFlags(), SparseFormatFlags::kCoo);
+    ASSERT_EQ(sparse_dst.Format(), SparseFormat::kCoo);
     ASSERT_EQ(dense_cpu_src.DataType(), sparse_dst.DataType());
     ASSERT_EQ(dense_cpu_src.Shape(), sparse_dst.Shape());
-    const SparseCooFormatRep* rep = sparse_dst.GetRep<SparseCooFormatRep>();
-    ASSERT_EQ(rep->Indices().Shape().GetDims().size(), 2U);
-    auto indices = rep->Indices().DataAsSpan<int64_t>();
+    auto coo_view = sparse_dst.AsCoo();
+    ASSERT_EQ(coo_view.Index().Shape().GetDims().size(), 2U);
+    auto indices = coo_view.Index().DataAsSpan<int64_t>();
     ASSERT_TRUE(indices.empty());
 
     Tensor gpu_dense_dst;

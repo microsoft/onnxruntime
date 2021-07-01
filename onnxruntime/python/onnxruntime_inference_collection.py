@@ -733,26 +733,36 @@ class SparseTensor:
         '''
         return self._tensor.values()
 
-    def as_coo_rep(self):
+    def as_coo_view(self):
         '''
         The method will return coo representation of the sparse tensor which will enable
-        querying COO indices. If the instance does not contain COO format, it will throw.
+        querying COO indices. If the instance did not contain COO format, it would throw.
         You can query coo indices as:
-          coo_indices = sparse_tensor.as_coo_rep().indices()
+          coo_indices = sparse_tensor.as_coo_view().indices()
           which will return a numpy array that is backed by the native memory
         '''
         return self._tensor.get_coo_data()
 
-    def as_csrc_rep(self):
+    def as_csrc_view(self):
         '''
         The method will return CSR(C) representation of the sparse tensor which will enable
-        querying CRS(C) indices. If the instance does not contain CSR(C) format, it will throw.
+        querying CRS(C) indices. If the instance dit not contain CSR(C) format, it would throw.
         You can query indices as:
-          inner_ndices = sparse_tensor.as_csrc_rep().inner()
-          outer_ndices = sparse_tensor.as_csrc_rep().outer()
+          inner_ndices = sparse_tensor.as_csrc_view().inner()
+          outer_ndices = sparse_tensor.as_csrc_view().outer()
           returning numpy arrays backed by the native memory
         '''
         return self._tensor.get_csrc_data()
+
+    def as_blocksparse_view(self):
+        '''
+        The method will return coo representation of the sparse tensor which will enable
+        querying BlockSparse indices. If the instance did not contain BlockSparse format, it would throw.
+        You can query coo indices as:
+          block_sparse_indices = sparse_tensor.as_blocksparse_view().indices()
+          which will return a numpy array that is backed by the native memory
+        '''
+        return self._tensor.get_blocksparse_data()
 
     def to_cuda(self, ort_device):
         '''

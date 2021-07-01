@@ -97,6 +97,26 @@ void DefaultFree(void* p) {
 #endif
 }
 
+void ConstructStrings(void* p_data, int64_t elements) {
+  auto* ptr = static_cast<std::string*>(p_data);
+  for (int64_t i = 0; i < elements; ++i) {
+    new (ptr + i) std::string();
+  }
+}
+
+
+void ReleaseTensorBuffer(const AllocatorPtr& allocator, bool is_string, void* p_data, int64_t elements) {
+  // if current buffer contains strings, need to explicitly call string(s)
+  // __dtor(s).
+  if (is_string) {
+    using string = std::string;
+    auto* ptr = static_cast<std::string*>(p_data);
+    for (int64_t i = 0; i < elements; i++)
+      ptr[i].~string();
+  }
+  allocator->Free(p_data);
+}
+
 bool ProviderIsCpuBased(const std::string& provider_type) {
   return provider_type == onnxruntime::kCpuExecutionProvider ||
          provider_type == onnxruntime::kDnnlExecutionProvider ||
@@ -141,7 +161,7 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
     for (auto iter = source_tensor_seq.begin(); iter != source_tensor_seq.end(); ++iter) {
       tensors.emplace_back(iter->DataType(), onnxruntime::TensorShape(iter->Shape()), allocator);
     }
-    target_tensor_seq->SetElements(std::move(tensors)); 
+    target_tensor_seq->SetElements(std::move(tensors));
     auto ml_tensor_seq = DataTypeImpl::GetType<TensorSeq>();
     target_mlvalue.Init(target_tensor_seq.release(), ml_tensor_seq, ml_tensor_seq->GetDeleteFunc());
   } else {
@@ -168,12 +188,12 @@ const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info) 
   return required_provider_type;
 }
 
+namespace {
 template <class T, class Batch>
 Status BatchOrCopyHelper(const SessionState& session_state,
                          const OrtValue& source_mlvalue,
                          OrtValue& target_mlvalue, Batch* copy_batch = nullptr) {
-
- const auto& source_tensor = source_mlvalue.Get<T>();
+  const auto& source_tensor = source_mlvalue.Get<T>();
   T* p_output_tensor = target_mlvalue.GetMutable<T>();
 
   if (copy_batch != nullptr) {
@@ -183,8 +203,9 @@ Status BatchOrCopyHelper(const SessionState& session_state,
   }
   return Status::OK();
 }
+}  // namespace
 
-// Copy MLValue. Uses DataTransferManager for device copy if necessary. If copy_pairs is provided,
+// Copy MLValue. Uses DataTransferManager for device copy if necessary. If copy_tensor_pairs/copy_sparse_pairs is provided,
 // src/dst pairs that need a device copy are added to copy_pairs so copying can be batches by the DataTransferManager
 // implementation for performance reasons.
 static Status BatchOrCopyMLValue(const SessionState& session_state,
@@ -207,7 +228,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
 
   if (source_mlvalue.IsTensor()) {
     ORT_RETURN_IF_ERROR(BatchOrCopyHelper<Tensor>(session_state, source_mlvalue, target_mlvalue, copy_tensor_pairs));
-  } else if(source_mlvalue.IsSparseTensor()) {
+  } else if (source_mlvalue.IsSparseTensor()) {
     ORT_RETURN_IF_ERROR(BatchOrCopyHelper<SparseTensor>(session_state, source_mlvalue, target_mlvalue, copy_sparse_pairs));
   } else if (source_mlvalue.IsTensorSequence()) {
     const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
@@ -232,7 +253,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
       }
       ++source_iter;
       ++target_iter;
-    }//while
+    }  //while
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported OrtValue type to copy between device.");
   }
@@ -502,7 +523,9 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
 
   MLValueCopyInfo copy_info;
   ORT_RETURN_IF_ERROR(CalculateStaticCopyInfoForFeed(session_state, input_name, copy_info));
-  copy_info.source_device = (orig_mlvalue.IsTensor()) ? orig_mlvalue.Get<Tensor>().Location().device : orig_mlvalue.Get<SparseTensor>().Location().device;
+  copy_info.source_device = (orig_mlvalue.IsTensor())
+                                ? orig_mlvalue.Get<Tensor>().Location().device
+                                : orig_mlvalue.Get<SparseTensor>().Location().device;
 
   return BatchOrCopyMLValue(session_state, copy_info, orig_mlvalue, new_mlvalue);
 }

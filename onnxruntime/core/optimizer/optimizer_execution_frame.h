@@ -24,12 +24,12 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
          const InitializedTensorSet& initialized_tensor_set,
          const Path& model_path,
          const IExecutionProvider& execution_provider,
-         std::function<bool(const std::string&)> is_sparse_initializer_func);
+         const std::function<bool(const std::string&)>& is_sparse_initializer_func);
     Info(const std::vector<const Node*>& nodes,
          const std::unordered_map<std::string, OrtValue>& initialized_tensor_set,
          const Path& model_path,
          const IExecutionProvider& execution_provider,
-         std::function<bool(const std::string&)> is_sparse_initializer_func);
+         const std::function<bool(const std::string&)>& is_sparse_initializer_func);
     ~Info() {
       for (auto& kvp : deleter_for_initialized_tensors_) {
         kvp.second.f(kvp.second.param);
@@ -82,7 +82,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     std::unordered_map<int, OrtCallback> deleter_for_initialized_tensors_;
     std::unique_ptr<NodeIndexInfo> node_index_info_;
     const IExecutionProvider& execution_provider_;
-    std::function<bool(const std::string&)> is_sparse_initializer_func_;
+    const std::function<bool(const std::string&)>& is_sparse_initializer_func_;
 
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Info);
   };

@@ -4,7 +4,6 @@
 #include "core/framework/execution_frame.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
-#include "core/framework/sparse_cooformat_rep.h"
 #include "core/graph/model.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
@@ -509,8 +508,8 @@ TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
     EXPECT_THAT(result.Shape().GetDims(), ::testing::ContainerEq(dense_shape));
     ASSERT_EQ(result.NumValues(), 3U);
     EXPECT_THAT(result.Values().DataAsSpan<float>(), ::testing::ContainerEq(gsl::make_span(expected_values)));
-    const SparseCooFormatRep* rep = result.GetRep<SparseCooFormatRep>();
-    EXPECT_THAT(rep->Indices().DataAsSpan<int64_t>(), ::testing::ContainerEq(gsl::make_span(expected_linear_indices)));
+    auto coo_view = result.AsCoo();
+    EXPECT_THAT(coo_view.Index().DataAsSpan<int64_t>(), ::testing::ContainerEq(gsl::make_span(expected_linear_indices)));
   }
 }
 

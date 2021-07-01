@@ -157,9 +157,9 @@ inline const ONNX_NAMESPACE::TensorShapeProto& GetShape(const ONNX_NAMESPACE::Ty
     return type_proto.tensor_type().shape();
   }
   if (HasSparseTensorType(type_proto) && HasShape(type_proto.sparse_tensor_type())) {
-    type_proto.sparse_tensor_type().shape();
+    return type_proto.sparse_tensor_type().shape();
   }
-  ORT_ENFORCE(false, "TypeProto must have shape for this to run");
+  ORT_THROW("TypeProto must have shape for this to run");
 }
 
 inline bool HasRawData(const ONNX_NAMESPACE::TensorProto& ten_proto) {

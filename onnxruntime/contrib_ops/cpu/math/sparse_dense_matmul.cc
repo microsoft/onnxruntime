@@ -1,8 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/framework/sparse_cooformat_rep.h"
-#include "core/framework/sparse_csrcformat_rep.h"
+#include "core/framework/sparse_tensor.h"
 #include "core/providers/cpu/math/gemm_matmul_common.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/math.h"
@@ -81,10 +80,11 @@ struct SparseToDenseCsr {
     const auto& a_dims = A.Shape().GetDims();
     const auto& b_dims = B.Shape().GetDims();
     const auto& out_dims = output.Shape().GetDims();
-    const SparseCsrcFormatRep* rep = A.GetRep<SparseCsrcFormatRep>();
+    auto csr_view = A.AsCsr();
+
     ConstSparseMatrixMap<T> map_A(a_dims[0], a_dims[1], A.NumValues(),
-                                  rep->Outer().Data<int64_t>(),
-                                  rep->Inner().Data<int64_t>(),
+                                  csr_view.Outer().Data<int64_t>(),
+                                  csr_view.Inner().Data<int64_t>(),
                                   A.Values().Data<T>());
     ConstEigenMatrixMapRowMajor<T> map_B(B.Data<T>(), b_dims[0], b_dims[1]);
     EigenMatrixMapRowMajor<T> output_map(output.MutableData<T>(), out_dims[0], out_dims[1]);
@@ -114,12 +114,12 @@ struct SparseToDenseCoo {
     const auto& out_dims = output.Shape().GetDims();
     const auto nnz = A.NumValues();
 
-    const SparseCooFormatRep* rep = A.GetRep<SparseCooFormatRep>();
     auto a_values = A.Values().DataAsSpan<T>();
-    const auto& ind_dims = rep->Indices().Shape().GetDims();
+    auto coo_view = A.AsCoo();
+    const auto& ind_dims = coo_view.Index().Shape().GetDims();
     ORT_RETURN_IF_NOT(ind_dims.size() == 2, "COO indicies must be 2-D");
 
-    ConstEigenMatrixMapRowMajor<int64_t> a_indicies_map(rep->Indices().Data<int64_t>(), ind_dims[0], ind_dims[1]);
+    ConstEigenMatrixMapRowMajor<int64_t> a_indicies_map(coo_view.Index().Data<int64_t>(), ind_dims[0], ind_dims[1]);
     ConstEigenMatrixMapRowMajor<T> map_b(B.Data<T>(), b_dims[0], b_dims[1]);
     EigenMatrixMapRowMajor<T> output_map(output.MutableData<T>(), out_dims[0], out_dims[1]);
     output_map.setZero();
@@ -178,21 +178,21 @@ Status SparseToDenseMatMul::Compute(OpKernelContext* ctx) const {
   // I am not expecting to do the below in every kernel but this is a reference
   // implementation to show the expectations.
   ComputeCtx compute_ctx{trans_a_attr_ != 0, trans_b_attr_ != 0, alpha_attr_};
-  if (IsSet(A->FormatFlags(), SparseFormatFlags::kCoo)) {
-    const SparseCooFormatRep* rep = A->GetRep<SparseCooFormatRep>();
-    const auto num_dims = rep->Indices().Shape().NumDimensions();
+  if (A->Format() == SparseFormat::kCoo) {
+    auto coo_view = A->AsCoo();
+    const auto num_dims = coo_view.Index().Shape().NumDimensions();
     ORT_RETURN_IF_NOT(num_dims == 2, "Expecting COO 2-D indices shape");
-    ORT_RETURN_IF_NOT(A->Values().Shape().Size() * 2 == rep->Indices().Shape().Size(), "Expecting 2xValues == indices");
+    ORT_RETURN_IF_NOT(A->Values().Shape().Size() * 2 == coo_view.Index().Shape().Size(), "Expecting 2xValues == indices");
     auto status = t_disp.InvokeRet<Status, SparseToDenseCoo>(compute_ctx, *A, *B, *output);
     ORT_RETURN_IF_ERROR(status);
 // Eigen has a bug in x86 where it calculates reallocation size as -1
 // and throws bad_alloc
 #if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__)
-  } else if (IsSet(A->FormatFlags(), SparseFormatFlags::kCsrc)) {
-    const SparseCsrcFormatRep* rep = A->GetRep<SparseCsrcFormatRep>();
-    ORT_RETURN_IF_NOT(A->Values().Shape().Size() == rep->Inner().Shape().Size(),
+  } else if (A->Format() == SparseFormat::kCsrc) {
+    auto csr_view = A->AsCsr();
+    ORT_RETURN_IF_NOT(A->Values().Shape().Size() == csr_view.Inner().Shape().Size(),
                       "Expecting the same number NNZ == size of Inner indices");
-    ORT_RETURN_IF_NOT((A_shape.GetDims()[0] + 1) == rep->Outer().Shape().Size(), "Outer size must be M + 1");
+    ORT_RETURN_IF_NOT((A_shape.GetDims()[0] + 1) == csr_view.Outer().Shape().Size(), "Outer size must be M + 1");
     t_disp.Invoke<SparseToDenseCsr>(compute_ctx, *A, *B, *output);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Currently support only COO and CSR(x64) formats");

@@ -21,8 +21,6 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/framework/TensorSeq.h"
-#include "core/framework/sparse_cooformat_rep.h"
-#include "core/framework/sparse_csrcformat_rep.h"
 #include <core/session/onnxruntime_cxx_api.h>
 
 using namespace onnxruntime;
@@ -263,30 +261,28 @@ std::pair<COMPARE_RESULT, std::string> CompareSparseTensors(const SparseTensor& 
                      "Expected dense shape: ", expected.Shape(),
                      " Actual: ", actual.Shape());
 
-  TEST_RETURN_IF_NOT(actual.FormatFlags() == expected.FormatFlags(), COMPARE_RESULT::TYPE_MISMATCH,
-                     "Expected sparse format", expected.FormatFlags(),
-                     " actual: ", actual.FormatFlags());
+  TEST_RETURN_IF_NOT(actual.Format() == expected.Format(), COMPARE_RESULT::TYPE_MISMATCH,
+                     "Expected sparse format", expected.Format(),
+                     " actual: ", actual.Format());
 
   TEST_RETURN_IF_ERROR(CompareTwoTensors(actual.Values(), expected.Values(),
                                          per_sample_tolerance, relative_per_sample_tolerance, post_processing),
                        "While comparing sparse values");
 
-  if (IsSet(actual.FormatFlags(), SparseFormatFlags::kCoo)) {
-    const SparseCooFormatRep* actual_rep = actual.GetRep<SparseCooFormatRep>();
-    const SparseCooFormatRep* expected_rep = expected.GetRep<SparseCooFormatRep>();
+  if (actual.Format() == SparseFormat::kCoo) {
+    auto actual_view = actual.AsCoo();
+    auto expected_view = expected.AsCoo();
 
-    TEST_RETURN_IF_ERROR(CompareTwoTensors(actual_rep->Indices(), expected_rep->Indices(),
+    TEST_RETURN_IF_ERROR(CompareTwoTensors(actual_view.Index(), expected_view.Index(),
                                            per_sample_tolerance, relative_per_sample_tolerance, post_processing),
                          "Comparing COO indices");
-  } else if (IsSet(actual.FormatFlags(), SparseFormatFlags::kCsrc)) {
-    const SparseCsrcFormatRep* actual_rep = actual.GetRep<SparseCsrcFormatRep>();
-    const SparseCsrcFormatRep* expected_rep = expected.GetRep<SparseCsrcFormatRep>();
-    TEST_RETURN_IF_NOT(actual_rep->Major() != expected_rep->Major(), COMPARE_RESULT::TYPE_MISMATCH,
-                       "Expecting major: ", expected_rep->Major(), " Got: ", actual_rep->Major());
-    TEST_RETURN_IF_ERROR(CompareTwoTensors(actual_rep->Inner(), expected_rep->Inner(),
+  } else if (actual.Format() == SparseFormat::kCsrc) {
+    auto actual_view = actual.AsCsr();
+    auto expected_view = expected.AsCsr();
+    TEST_RETURN_IF_ERROR(CompareTwoTensors(actual_view.Inner(), expected_view.Inner(),
                                            per_sample_tolerance, relative_per_sample_tolerance, post_processing),
                          "Comparing Csr(c) inner indices");
-    TEST_RETURN_IF_ERROR(CompareTwoTensors(actual_rep->Outer(), expected_rep->Outer(),
+    TEST_RETURN_IF_ERROR(CompareTwoTensors(actual_view.Outer(), expected_view.Outer(),
                                            per_sample_tolerance, relative_per_sample_tolerance, post_processing),
                          "Comparing Csr(c) outer indices");
   }

@@ -954,7 +954,7 @@ inline std::vector<MLFloat16> FloatsToMLFloat16s(const std::vector<float>& f) {
   return m;
 }
 
-inline CheckParams make_params(const OpTester::Data& d) {
+inline CheckParams MakeCheckParams(const OpTester::Data& d) {
   return CheckParams{d.sort_output_, d.absolute_error_, d.relative_error_};
 }
 

@@ -19,7 +19,6 @@ Status Memcpy::Compute(OpKernelContext* ctx) const {
     retval = Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
 
     if (!retval.IsOK()) {
-      // XXX: Can LOGS really log something that is on device?
       LOGS(ctx->Logger(), ERROR) << MakeString(retval.ErrorMessage(),
                                                " Copying ", Node().InputDefs()[0]->Name(),
                                                " to ", Node().OutputDefs()[0]->Name(),
@@ -37,7 +36,7 @@ Status Memcpy::Compute(OpKernelContext* ctx) const {
                                                " Input shape:", X->Shape(), " Output shape:", Y->Shape());
     }
   } else {
-    ORT_NOT_IMPLEMENTED("Input type no supported: ", DataTypeImpl::ToString(input_type_0));
+    ORT_NOT_IMPLEMENTED("Input type not supported: ", DataTypeImpl::ToString(input_type_0));
   }
 
   return retval;

@@ -129,6 +129,7 @@ void ConvertToCoo(gsl::span<const T> input_span,
 /// It manifests itself as Status Message: std::bad_alloc or Status Message: bad allocation
 /// due to this piece of code in Eigen
 /// The size is 19 but the allocated size is 18, after std::min realloc_size is -1 which causes it to throw.
+/// wasm (nodejs) is built on 32-bit and thus is also affected.
 /*
 void resize(Index size, double reserveSizeFactor = 0) {
   if (m_allocatedSize < size) {

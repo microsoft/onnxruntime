@@ -7,8 +7,6 @@
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/data_types_internal.h"
-#include "core/framework/sparse_cooformat_rep.h"
-#include "core/framework/sparse_csrcformat_rep.h"
 #include "core/session/inference_session.h"
 #include "core/graph/model_load_utils.h"
 #include "gmock/gmock.h"
@@ -364,7 +362,7 @@ void Check(const OpTester::Data& expected_data, const Tensor& output_tensor,
                               BFloat16>
       t_disp(output_tensor.GetElementType());
 
-  t_disp.Invoke<TensorCheck>(expected_data.data_.Get<Tensor>(), output_tensor, provider_type, make_params(expected_data));
+  t_disp.Invoke<TensorCheck>(expected_data.data_.Get<Tensor>(), output_tensor, provider_type, MakeCheckParams(expected_data));
 }
 
 // Check for non tensor types
@@ -399,7 +397,7 @@ void Check<TensorSeq>(const OpTester::Data& expected_data,
       << " provider_type: " << provider_type;
 
   // now check the contents of the tensors
-  CheckParams check_params = make_params(expected_data);
+  CheckParams check_params = MakeCheckParams(expected_data);
 
   auto element_type = exp_seq.DataType()->AsPrimitiveDataType()->GetDataType();
   utils::MLTypeCallDispatcher<bool, float, double, uint8_t, uint16_t, uint32_t, uint64_t,
@@ -596,12 +594,9 @@ void OpTester::AddSparseCooTensorData(std::vector<Data>& data,
   ORT_ENFORCE(dims.size() == 2U, "Expecting a 2-D dense shape");
   ORT_ENFORCE((nnz == indices.size() || 2 * nnz == indices.size()), "Expecting indices to have either nnz or (2 * nnz) length");
   auto p_tensor = MakeSparseTensor(data_type, dims);
-  // linear index is 1-D index, otherwise 2-D index
-  const bool is_linear_index = (nnz == indices.size());
-  SparseCooFormatRep* rep;
-  ORT_THROW_IF_ERROR(p_tensor->RepBuilder<SparseCooBuilder>().Create(is_linear_index, nnz, rep));
-  CopyDataToTensor(values, rep->MutableValues());
-  CopyDataToTensor(indices.as_bytes(), rep->MutableIndices());
+  auto mutator = p_tensor->MakeCooData(nnz, indices.size());
+  CopyDataToTensor(values, mutator.Values());
+  CopyDataToTensor(indices.as_bytes(), mutator.Index());
 
   NodeArg node_arg = MakeSparseNodeArg(dtype, name, dims, dim_params);
   AddSparseTensorData(data, std::move(node_arg), std::move(p_tensor), check_params);
@@ -621,12 +616,11 @@ void OpTester::AddSparseCooTensorStrings(std::vector<Data>& data,
   auto p_tensor = MakeSparseTensor(data_type, dims);
   // linear index is 1-D index, otherwise 2-D index
   const bool is_linear_index = (nnz == indices.size());
-  SparseCooFormatRep* rep;
-  ORT_THROW_IF_ERROR(p_tensor->RepBuilder<SparseCooBuilder>().Create(is_linear_index, nnz, rep));
-  auto mutable_values = rep->MutableValues().MutableDataAsSpan<std::string>();
+  auto mutator = p_tensor->MakeCooData(nnz, indices.size());
+  auto mutable_values = mutator.Values().MutableDataAsSpan<std::string>();
   ORT_ENFORCE(values.size() == mutable_values.size(), "Must allocate space for values");
   std::copy(values.cbegin(), values.cend(), mutable_values.begin());
-  CopyDataToTensor(indices.as_bytes(), rep->MutableIndices());
+  CopyDataToTensor(indices.as_bytes(), mutator.Index());
   NodeArg node_arg = MakeSparseNodeArg(dtype, name, dims, dim_params);
   AddSparseTensorData(data, std::move(node_arg), std::move(p_tensor), CheckParams());
 }
@@ -647,12 +641,10 @@ void OpTester::AddSparseCsrTensorData(std::vector<Data>& data,
   ORT_ENFORCE(nnz == inner_indices.size(), "Expecting the same number of inner_indices as nnz");
   auto p_tensor = MakeSparseTensor(data_type, dims);
 
-  SparseCsrcFormatRep* rep;
-  ORT_THROW_IF_ERROR(p_tensor->RepBuilder<SparseCsrcBuilder>().Create(
-      SparseCsrcFormatRep::kRowMajor, nnz, inner_indices.size(), outer_indices.size(), rep));
-  CopyDataToTensor(values, rep->MutableValues());
-  CopyDataToTensor(inner_indices.as_bytes(), rep->MutableInner());
-  CopyDataToTensor(outer_indices.as_bytes(), rep->MutableOuter());
+  auto mutator = p_tensor->MakeCsrData(nnz, inner_indices.size(), outer_indices.size());
+  CopyDataToTensor(values, mutator.Values());
+  CopyDataToTensor(inner_indices.as_bytes(), mutator.Inner());
+  CopyDataToTensor(outer_indices.as_bytes(), mutator.Outer());
 
   NodeArg node_arg = MakeSparseNodeArg(dtype, name, dims, dim_params);
   AddSparseTensorData(data, std::move(node_arg), std::move(p_tensor), check_params);
@@ -673,15 +665,12 @@ void OpTester::AddSparseCsrTensorStrings(std::vector<Data>& data,
   ORT_ENFORCE(nnz == inner_indices.size(), "Expecting the same number of inner_indices as nnz");
   auto p_tensor = MakeSparseTensor(data_type, dims);
 
-  SparseCsrcFormatRep* rep;
-  ORT_THROW_IF_ERROR(p_tensor->RepBuilder<SparseCsrcBuilder>().Create(
-                                                  SparseCsrcFormatRep::kRowMajor, nnz, inner_indices.size(), outer_indices.size(), rep));
-
-  auto mutable_values = rep->MutableValues().MutableDataAsSpan<std::string>();
+  auto mutator = p_tensor->MakeCsrData(nnz, inner_indices.size(), outer_indices.size());
+  auto mutable_values = mutator.Values().MutableDataAsSpan<std::string>();
   ORT_ENFORCE(values.size() == mutable_values.size(), "Must allocate space for values");
   std::copy(values.cbegin(), values.cend(), mutable_values.begin());
-  CopyDataToTensor(inner_indices.as_bytes(), rep->MutableInner());
-  CopyDataToTensor(outer_indices.as_bytes(), rep->MutableOuter());
+  CopyDataToTensor(inner_indices.as_bytes(), mutator.Inner());
+  CopyDataToTensor(outer_indices.as_bytes(), mutator.Outer());
   NodeArg node_arg = MakeSparseNodeArg(dtype, name, dims, dim_params);
   AddSparseTensorData(data, std::move(node_arg), std::move(p_tensor), CheckParams());
 }

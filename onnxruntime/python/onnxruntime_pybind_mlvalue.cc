@@ -79,13 +79,15 @@ static TensorShape GetArrayShape(PyArrayObject* pyObject) {
   const int ndim = PyArray_NDIM(pyObject);
   const npy_intp* npy_dims = PyArray_DIMS(pyObject);
   auto span = gsl::make_span(npy_dims, ndim);
-  TensorShape shape(span.cbegin(), span.cend());
+  std::vector<int64_t> dims(span.cbegin(), span.cend());
+  TensorShape shape(std::move(dims));
   return shape;
 }
 
 TensorShape GetShape(const py::array& arr) {
   auto span = gsl::make_span(arr.shape(), arr.ndim());
-  TensorShape shape(span.cbegin(), span.cend());
+  std::vector<int64_t> dims(span.cbegin(), span.cend());
+  TensorShape shape(std::move(dims));
   return shape;
 }
 
@@ -160,7 +162,7 @@ AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
 
 std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {
   // Using default stream
-  return GetProviderInfo_CUDA()->CreateGPUDataTransfer(nullptr);
+  return GetProviderInfo_CUDA().CreateGPUDataTransfer(nullptr);
 }
 
 #endif

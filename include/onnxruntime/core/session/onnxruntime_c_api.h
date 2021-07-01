@@ -131,7 +131,7 @@ typedef enum ONNXType {
   ONNX_TYPE_SPARSETENSOR,
 } ONNXType;
 
-// This types are synced with internal
+// These types are synced with internal
 // SparseFormatFlags but are not exposed
 // as flags
 typedef enum OrtSparseFormat {

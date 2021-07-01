@@ -911,7 +911,7 @@ class TestInferenceSession(unittest.TestCase):
         # Get Data View on a numeric type.
         values_ret = sparse_tensor.values()
         self.assertFalse(values_ret.flags.writeable)
-        indices_ret = sparse_tensor.as_coo_rep().indices()
+        indices_ret = sparse_tensor.as_coo_view().indices()
         self.assertFalse(indices_ret.flags.writeable)
         # Run GC to test that values_ret still exhibits expected data
         gc.collect()
@@ -923,7 +923,7 @@ class TestInferenceSession(unittest.TestCase):
         sparse_tensor = ort_value.as_sparse_tensor()
         values_ret = sparse_tensor.values()
         self.assertFalse(values_ret.flags.writeable)
-        indices_ret = sparse_tensor.as_coo_rep().indices()
+        indices_ret = sparse_tensor.as_coo_view().indices()
         self.assertFalse(indices_ret.flags.writeable)
         gc.collect()
 
@@ -939,7 +939,7 @@ class TestInferenceSession(unittest.TestCase):
         str_values_ret = str_sparse_tensor.values()
         self.assertTrue(np.array_equal(str_values, str_values_ret))
         # Check indices
-        str_indices_ret = str_sparse_tensor.as_coo_rep().indices()
+        str_indices_ret = str_sparse_tensor.as_coo_view().indices()
         gc.collect()
         self.assertFalse(str_indices_ret.flags.writeable)
         self.assertTrue(np.array_equal(indices, str_indices_ret))
@@ -980,8 +980,8 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(sparse_tensor.device_name(), 'cpu')
 
         # Test CSR(C) indices
-        inner_indices_ret = sparse_tensor.as_csrc_rep().inner()
-        outer_indices_ret = sparse_tensor.as_csrc_rep().outer()
+        inner_indices_ret = sparse_tensor.as_csrc_view().inner()
+        outer_indices_ret = sparse_tensor.as_csrc_view().outer()
         self.assertFalse(inner_indices_ret.flags.writeable)
         self.assertFalse(outer_indices_ret.flags.writeable)
         gc.collect()

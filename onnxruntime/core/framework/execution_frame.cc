@@ -263,11 +263,11 @@ void IExecutionFrame::Init(const std::vector<int>& feed_mlvalue_idxs, const std:
           dest.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
         }
 
-        // Outputting Coo format bc initializers are Constant nodes are stored in COO format.
+        // Outputting Coo format bc initializers are Constant nodes are not stored in COO format.
         AllocatorPtr allocator = GetAllocator(src.Location());
-        constexpr bool linear_coo_index_true = true;
+        constexpr bool has_linear_coo_index = true;
         ORT_THROW_IF_ERROR(sparse_utils::DenseTensorToSparseCoo(GetDataTransferManager(), src,
-                                                                cpu_allocator, allocator, linear_coo_index_true,
+                                                                cpu_allocator, allocator, has_linear_coo_index,
                                                                 *dest.GetMutable<SparseTensor>()));
       } else {
         if (!dest.IsAllocated()) {
