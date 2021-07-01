@@ -15,7 +15,7 @@ ENV LANG en_US.UTF-8
 ENV LANGUAGE en_US.UTF-8
 ENV DEVTOOLSET_ROOTPATH /opt/rh/devtoolset-8/root
 ENV PATH $DEVTOOLSET_ROOTPATH/usr/bin:$PATH
-ENV LD_LIBRARY_PATH $DEVTOOLSET_ROOTPATH/usr/lib64:$DEVTOOLSET_ROOTPATH/usr/lib:$DEVTOOLSET_ROOTPATH/usr/lib64/dyninst:$DEVTOOLSET_ROOTPATH/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
+ENV LD_LIBRARY_PATH ${LD_LIBRARY_PATH_ARG}:$DEVTOOLSET_ROOTPATH/usr/lib64:$DEVTOOLSET_ROOTPATH/usr/lib:$DEVTOOLSET_ROOTPATH/usr/lib64/dyninst:$DEVTOOLSET_ROOTPATH/usr/lib/dyninst:/usr/local/lib64:/usr/local/lib
 ENV PKG_CONFIG_PATH /usr/local/lib/pkgconfig
 
 COPY manylinux2014_build_scripts /manylinux2014_build_scripts
