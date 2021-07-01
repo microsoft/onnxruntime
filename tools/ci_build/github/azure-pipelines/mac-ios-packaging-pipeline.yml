@@ -26,14 +26,16 @@ jobs:
 
   - script: |
       BASE_VERSION=$(cat VERSION_NUMBER)
+      IS_RELEASE_BUILD=$(echo "${{ parameters.IsReleaseBuild }}" | tr "[:upper:]" "[:lower:]")
 
-      if [[ "${{ parameters.IsReleaseBuild }}" == "true" ]]; then
-        VERSION=$BASE_VERSION
+      if [[ "${IS_RELEASE_BUILD}" == "true" ]]; then
+        VERSION=${BASE_VERSION}
       else
         VERSION="${BASE_VERSION}-dev"
       fi
 
       echo "##vso[task.setvariable variable=ORT_POD_VERSION]${VERSION}"
+      echo "Version number: ${VERSION}"
     displayName: "Set version number"
 
   - script: |
@@ -96,7 +98,7 @@ jobs:
       cd $(Build.BinariesDirectory)/staging/objc_api_docs
       zip -r $(Build.ArtifactStagingDirectory)/objc_api_docs.zip *
 
-      cat > $(Build.ArtifactStagingDirectory)/readme.txt <<EOM
+      cat > $(Build.ArtifactStagingDirectory)/readme.txt <<'EOM'
       Release TODO list:
       - upload pod zip files to publicly accessible URLs
       - update podspec sources to refer to those URLs
