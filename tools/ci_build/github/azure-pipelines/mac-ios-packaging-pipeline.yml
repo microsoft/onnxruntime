@@ -80,7 +80,7 @@ jobs:
       gem install jazzy
       jazzy --config objectivec/docs/jazzy_config.yaml \
         --output $(Build.BinariesDirectory)/staging/objc_api_docs \
-        --module-version
+        --module-version ${ORT_POD_VERSION}
     displayName: "Generate Objective-C API docs"
 
   - script: |
