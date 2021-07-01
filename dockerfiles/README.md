@@ -24,7 +24,7 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 |-------------------|---------------------------------------|---------------------------------------|-------------------------|
 | Source (CPU)      | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0, :v0.5.0, v0.5.1, :v1.0.0, :v1.2.0, :v1.3.0, :v1.4.0, :v1.5.2 | :latest |
 | CUDA (GPU)        | mcr.microsoft.com/azureml/onnxruntime | :v0.4.0-cuda10.0-cudnn7, :v0.5.0-cuda10.1-cudnn7, :v0.5.1-cuda10.1-cudnn7, :v1.0.0-cuda10.1-cudnn7, :v1.2.0-cuda10.1-cudnn7, :v1.3.0-cuda10.1-cudnn7, :v1.4.0-cuda10.1-cudnn7, :v1.5.2-cuda10.2-cudnn8 | :latest-cuda            |
-| OpenVino          | mcr.microsoft.com/azureml/onnxruntime | :v1.6.0-openvino-2021.1.110, :v1.7.0-openvino-2021.2.200 | :latest-openvino |
+| OpenVino          | hub.docker.com/repository/docker/openvino/onnxruntime_ep_ubuntu18 | :2021.3 | :latest |
 | OpenVino (VAD-M)  | mcr.microsoft.com/azureml/onnxruntime | :v0.5.0-openvino-r1.1-vadm, :v1.0.0-openvino-r1.1-vadm, :v1.4.0-openvino-2020.3.194-vadm, :v1.5.2-openvino-2020.4.287-vadm | :latest-openvino-vadm |
 | OpenVino (MYRIAD) | mcr.microsoft.com/azureml/onnxruntime | :v0.5.0-openvino-r1.1-myriad, :v1.0.0-openvino-r1.1-myriad, :v1.3.0-openvino-2020.2.120-myriad, :v1.4.0-openvino-2020.3.194-myriad, :v1.5.2-openvino-2020.4.287-myriad | :latest-openvino-myriad |
 | OpenVino (CPU)    | mcr.microsoft.com/azureml/onnxruntime | :v1.0.0-openvino-r1.1-cpu, :v1.3.0-openvino-2020.2.120-cpu, :v1.4.0-openvino-2020.3.194-cpu, :v1.5.2-openvino-2020.4.287-cpu | :latest-openvino-cpu    |
@@ -87,12 +87,10 @@ Use `docker pull` with any of the images and tags below to pull an image and try
 
 **Ubuntu 18.04, Python & C# Bindings**
 
-### **1. Using MCR container images**
+### **1. Using pre-built container images for Python API**
 
-*Note: ONNX Runtime 1.7 will be the last release that will publish MCR container images. Please switch to using PyPi packages or bulding from Dockefile section below from ONNX Runtime 1.8 onwards.*
-
-The unified MCR container image can be used to run an application on any of the target accelerators. In order to select the target accelerator, the application should explicitly specifiy the choice using the *device_type*  configuration option for OpenVINO Execution provider. Refer to [OpenVINO EP runtime configuration documentation](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/OpenVINO-ExecutionProvider.md#runtime-configuration-options) for details on specifying this option in the application code. 
-If the *device_type* runtime config option is not explicitly specified, CPU will be chosen as the hardware target execution.
+The unified container image from [Dockerhub](https://hub.docker.com/repository/docker/openvino/onnxruntime_ep_ubuntu18) can be used to run an application on any of the target accelerators. In order to select the target accelerator, the application should explicitly specifiy the choice using the `device_type`  configuration option for OpenVINO Execution provider. Refer to [OpenVINO EP runtime configuration documentation](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/OpenVINO-ExecutionProvider.md#runtime-configuration-options) for details on specifying this option in the application code. 
+If the `device_type` runtime config option is not explicitly specified, CPU will be chosen as the hardware target execution.
 ### **2. Building from Dockerfile**
 
 1. Build the onnxruntime image for one of the accelerators supported below.
