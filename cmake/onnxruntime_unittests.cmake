@@ -1158,7 +1158,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
   # limit to only test on windows first, due to a runtime path issue on linux
   if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
-                                    AND NOT onnxruntime_ENABLE_TRAINING
                                     AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
                                     AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
                                     AND NOT onnxruntime_BUILD_WEBASSEMBLY
@@ -1175,7 +1174,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared)
     target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
     target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
-    target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
+    target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${ORTTRAINING_ROOT})
     if(APPLE)
       set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/exported_symbols.lst")
     elseif(UNIX)
