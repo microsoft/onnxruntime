@@ -7,6 +7,7 @@ SETLOCAL EnableDelayedExpansion
 SET TargetFramework=netcoreapp2.1
 SET TargetArch=x64
 SET dn="C:\Program Files\dotnet\dotnet"
+SET DotNetDefineConstants=""
 
 SET LocalNuGetRepo=%1
 IF NOT "%2"=="" (SET TargetFramework=%2)
@@ -16,6 +17,8 @@ IF NOT "%4"=="" (
 ) ELSE (
     echo "Usage: runtest.bat LocalNuGetRepoPath TargetFramework TargetArch NuGetPackageVersion"
 )
+
+IF NOT "%5"=="" (SET DotNetDefineConstants=%5)
 
 IF "%TargetArch%"=="x64" (
   SET RuntimeIdentifier=win-x64
@@ -46,8 +49,11 @@ IF NOT errorlevel 0 (
     EXIT 1
 )
 
-%dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore -t
-%dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
+IF "%DotNetDefineConstants"=="" (
+    %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
+) ELSE (
+    %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore -p:DefineConstants="%DotNetDefineConstants"
+)
 IF NOT errorlevel 0 (
     @echo "Failed to build or execute the end-to-end test"
     EXIT 1
