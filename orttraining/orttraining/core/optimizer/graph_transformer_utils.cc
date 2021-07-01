@@ -114,7 +114,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       std::unordered_set<std::string> core_execution_provider = {onnxruntime::kCpuExecutionProvider, 
                                                                  onnxruntime::kCudaExecutionProvider, 
                                                                  onnxruntime::kRocmExecutionProvider};
-      transformers.emplace_back(std::make_unique<ComputationReductionTransformer>(compatible_eps));
+      transformers.emplace_back(std::make_unique<ComputationReductionTransformer>(core_execution_provider));
 
       if (config.gelu_recompute) {
         transformers.emplace_back(std::make_unique<GeluRecompute>());
