@@ -46,15 +46,9 @@ struct ROCMExecutionProviderInfo {
 
   static ROCMExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const ROCMExecutionProviderInfo& info);
-
-  bool operator==(const ROCMExecutionProviderInfo& other) const;
 };
-}  // namespace onnxruntime
 
-namespace std {
-using onnxruntime::ROCMExecutionProviderInfo;
-template <>
-struct hash<ROCMExecutionProviderInfo> {
+struct ROCMExecutionProviderInfoHash {
   size_t operator()(const ROCMExecutionProviderInfo& info) const {
     return static_cast<size_t>(info.device_id) ^
            info.gpu_mem_limit ^
@@ -64,4 +58,18 @@ struct hash<ROCMExecutionProviderInfo> {
            (static_cast<size_t>(info.has_user_compute_stream) << 22);
   }
 };
-}  // namespace std
+
+struct ROCMExecutionProviderInfoEqual {
+  bool operator()(const ROCMExecutionProviderInfo& lhs, const ROCMExecutionProviderInfo& rhs) const {
+    return lhs.device_id == rhs.device_id &&
+           lhs.gpu_mem_limit == rhs.gpu_mem_limit &&
+           lhs.arena_extend_strategy == rhs.arena_extend_strategy &&
+           lhs.miopen_conv_exhaustive_search == rhs.miopen_conv_exhaustive_search &&
+           lhs.do_copy_in_default_stream == rhs.do_copy_in_default_stream &&
+           lhs.has_user_compute_stream == rhs.has_user_compute_stream &&
+           lhs.user_compute_stream == rhs.user_compute_stream &&
+           // lhs.default_memory_arena_cfg == rhs.default_memory_arena_cfg &&
+           lhs.external_allocator_info == rhs.external_allocator_info;
+  }
+};
+}  // namespace onnxruntime

@@ -52,15 +52,9 @@ struct CUDAExecutionProviderInfo {
 
   static CUDAExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const CUDAExecutionProviderInfo& info);
-
-  bool operator==(const CUDAExecutionProviderInfo& other) const;
 };
-}  // namespace onnxruntime
 
-namespace std {
-using onnxruntime::CUDAExecutionProviderInfo;
-template <>
-struct hash<CUDAExecutionProviderInfo> {
+struct CUDAExecutionProviderInfoHash {
   size_t operator()(const CUDAExecutionProviderInfo& info) const {
     return static_cast<size_t>(info.device_id) ^
            info.gpu_mem_limit ^
@@ -70,4 +64,19 @@ struct hash<CUDAExecutionProviderInfo> {
            (static_cast<size_t>(info.has_user_compute_stream) << 22);
   }
 };
-}  // namespace std
+
+struct CUDAExecutionProviderInfoEqual {
+  bool operator()(const CUDAExecutionProviderInfo& lhs, const CUDAExecutionProviderInfo& rhs) const {
+    return lhs.device_id == rhs.device_id &&
+           lhs.gpu_mem_limit == rhs.gpu_mem_limit &&
+           lhs.arena_extend_strategy == rhs.arena_extend_strategy &&
+           lhs.cudnn_conv_algo_search == rhs.cudnn_conv_algo_search &&
+           lhs.do_copy_in_default_stream == rhs.do_copy_in_default_stream &&
+           lhs.has_user_compute_stream == rhs.has_user_compute_stream &&
+           lhs.user_compute_stream == rhs.user_compute_stream &&
+           // lhs.default_memory_arena_cfg == rhs.default_memory_arena_cfg &&
+           lhs.external_allocator_info == rhs.external_allocator_info;
+  }
+};
+
+}  // namespace onnxruntime

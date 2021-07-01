@@ -90,16 +90,4 @@ ProviderOptions ROCMExecutionProviderInfo::ToProviderOptions(const ROCMExecution
   return options;
 }
 
-bool ROCMExecutionProviderInfo::operator==(const ROCMExecutionProviderInfo& other) const {
-  return device_id == other.device_id &&
-         gpu_mem_limit == other.gpu_mem_limit &&
-         arena_extend_strategy == other.arena_extend_strategy &&
-         miopen_conv_exhaustive_search == other.miopen_conv_exhaustive_search &&
-         do_copy_in_default_stream == other.do_copy_in_default_stream &&
-         has_user_compute_stream == other.has_user_compute_stream &&
-         user_compute_stream == other.user_compute_stream &&
-         // default_memory_arena_cfg == other.default_memory_arena_cfg &&
-         external_allocator_info == other.external_allocator_info;
-}
-
 }  // namespace onnxruntime

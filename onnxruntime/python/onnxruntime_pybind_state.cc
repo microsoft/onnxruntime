@@ -311,7 +311,9 @@ static inline void RegisterCudaExecutionProvider(InferenceSession* sess, const P
 #ifdef ENABLE_TRAINING
     // For training, CUDA EPs are created per device
     // Multiple ORTModule instances will share the CUDA EP for the same physical device
-    static std::unordered_map<CUDAExecutionProviderInfo, std::shared_ptr<IExecutionProvider>> cuda_eps;
+    static std::unordered_map<CUDAExecutionProviderInfo, std::shared_ptr<IExecutionProvider>,
+                              CUDAExecutionProviderInfoHash, CUDAExecutionProviderInfoEqual>
+        cuda_eps;
     if (cuda_eps.find(info) == cuda_eps.end()) {
       auto cuda_ep_factory = cuda_provider_info->CreateExecutionProviderFactory(info);
       cuda_eps[info] = std::move(cuda_ep_factory->CreateProvider());
@@ -352,7 +354,9 @@ static inline void RegisterRocmExecutionProvider(InferenceSession* sess, const P
 #ifdef ENABLE_TRAINING
   // For training, Rocm EPs are created per device
   // Multiple ORTModule instances will share the EP for the same physical device
-  static std::unordered_map<ROCMExecutionProviderInfo, std::shared_ptr<IExecutionProvider>> rocm_eps;
+  static std::unordered_map<ROCMExecutionProviderInfo, std::shared_ptr<IExecutionProvider>,
+                            ROCMExecutionProviderInfoHash, ROCMExecutionProviderInfoEqual>
+      rocm_eps;
   if (rocm_eps.find(info) == rocm_eps.end()) {
     auto rocm_ep_factory = onnxruntime::CreateExecutionProviderFactory_ROCM(info);
     rocm_eps[info] = std::move(rocm_ep_factory->CreateProvider());
