@@ -39,7 +39,7 @@ assemble_and_upload_pod() {
     --account-name ${STORAGE_ACCOUNT_NAME} --container-name ${STORAGE_ACCOUNT_CONTAINER_NAME} \
     --file ${ARTIFACTS_STAGING_DIR}/${POD_ARCHIVE_BASENAME} --name ${POD_ARCHIVE_BASENAME}
 
-  sed -i -e "s|file:///http_source_placeholder|${STORAGE_URL_PREFIX}/${POD_ARCHIVE_BASENAME}|" \
+  sed -i "" -e "s|file:///http_source_placeholder|${STORAGE_URL_PREFIX}/${POD_ARCHIVE_BASENAME}|" \
     ${ARTIFACTS_STAGING_DIR}/${PODSPEC_BASENAME}
 
   popd

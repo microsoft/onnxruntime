@@ -6,7 +6,7 @@ parameters:
 
 jobs:
 - job: IosPackaging
-  displayName: "iOS Packaging Pipeline"
+  displayName: "iOS Packaging"
 
   pool:
     vmImage: "macOS-10.15"
@@ -88,8 +88,9 @@ jobs:
       azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
       scriptType: 'bash'
       scriptLocation: 'scriptPath'
-      scriptPath: 'tools/ci_build/github/apple/assemble_artifacts.sh'
+      scriptPath: 'tools/ci_build/github/apple/assemble_ios_packaging_artifacts.sh'
       arguments: '"$(Build.BinariesDirectory)/staging" "$(Build.ArtifactStagingDirectory)" "$(ORT_POD_VERSION)"'
+    displayName: "Assemble artifacts"
 
   - publish: $(Build.ArtifactStagingDirectory)
     artifact: ios_packaging_artifacts
