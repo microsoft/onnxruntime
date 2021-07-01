@@ -121,24 +121,24 @@ jobs:
      #copy $(Build.BinariesDirectory)\nuget-artifact\*.nupkg $(Build.ArtifactStagingDirectory)
     #displayName: 'Bundle Native NuGet and other binaries'
 
-  - template: ../../templates/esrp_nuget.yml
-    parameters:
-      DisplayName: 'ESRP - sign NuGet package'
-      FolderPath: '$(Build.ArtifactStagingDirectory)'
-      DoEsrp: ${{ parameters.DoEsrp }}
+  #- template: ../../templates/esrp_nuget.yml
+    #parameters:
+      #DisplayName: 'ESRP - sign NuGet package'
+      #FolderPath: '$(Build.ArtifactStagingDirectory)'
+      #DoEsrp: ${{ parameters.DoEsrp }}
 
-  - template: ../../templates/validate-nuget.yml
-    parameters:
-      NugetPath: '$(Build.ArtifactStagingDirectory)'
-      NugetPackage: 'Microsoft.ML.OnnxRuntime.TensorRT*nupkg'
-      PlatformsSupported: 'win-x64,linux-x64'
-      VerifyNugetSigning: ${{ parameters.DoEsrp }}
+  #- template: ../../templates/validate-nuget.yml
+    #parameters:
+      #NugetPath: '$(Build.ArtifactStagingDirectory)'
+      #NugetPackage: 'Microsoft.ML.OnnxRuntime.TensorRT*nupkg'
+      #PlatformsSupported: 'win-x64,linux-x64'
+      #VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
-  - task: PublishPipelineArtifact@0
-    displayName: 'Publish Pipeline NuGet Artifact'
-    inputs:
-      artifactName: 'drop-signed-nuget'
-      targetPath: '$(Build.ArtifactStagingDirectory)'
+  #- task: PublishPipelineArtifact@0
+    #displayName: 'Publish Pipeline NuGet Artifact'
+    #inputs:
+      #artifactName: 'drop-signed-nuget'
+      #targetPath: '$(Build.ArtifactStagingDirectory)'
 
 - template: test_win.yml
   parameters:
