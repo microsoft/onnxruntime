@@ -46,6 +46,7 @@ IF NOT errorlevel 0 (
     EXIT 1
 )
 
+%dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore -t
 %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
 IF NOT errorlevel 0 (
     @echo "Failed to build or execute the end-to-end test"
