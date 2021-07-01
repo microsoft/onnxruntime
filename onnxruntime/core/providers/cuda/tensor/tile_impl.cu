@@ -58,15 +58,46 @@ __global__ void _TileMemcpyKernel(
 }
 
 template <typename T>
+__global__ void _TileMemcpyKernel_opt(
+    const T* input_data,
+    const size_t num_input_elements,
+    T* output_data,
+    const size_t N,
+    const size_t num_per_thread) {
+  CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(index_of_input, num_input_elements)
+  auto input_val = input_data[index_of_input];
+  for (size_t i = 0; i < num_per_thread; i++) {
+    auto index_of_output = index_of_input + num_input_elements * i;
+    output_data[index_of_output] = input_val;
+  }
+}
+
+template <typename T>
 void TileMemcpyImpl(
     cudaStream_t stream,
     const T* input_data,
     const size_t num_input_elements,
     T* output_data,
     const size_t num_output_elements) {
-  int blocksPerGrid = (int)(ceil(static_cast<float>(num_output_elements) / GridDim::maxThreadsPerBlock));
-  _TileMemcpyKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-      input_data, num_input_elements, output_data, (CUDA_LONG)num_output_elements);
+  auto can_be_divided = ((num_output_elements / num_input_elements) * num_input_elements) == num_output_elements;
+  ORT_ENFORCE(can_be_divided,
+              "output shape must be multiple times of input shape,"
+              "while output shape is ",
+              num_output_elements, " and input shape is ", num_input_elements);
+  // each block has 256 threads, total block will be ceil(num_input / 256) >> namely, each thread takes care one input element
+  // each cuda thread processes num_output/num_input output data elements
+  int blocks = (int)(ceil(static_cast<float>(num_input_elements) / GridDim::maxThreadsPerBlock));
+  auto num_per_thread = num_output_elements / num_input_elements;
+  // GPU SMs is 100 around, so 128 should be enough blocks to occupy all SMs
+  if (blocks >= 128) {
+    std::cout << "used\n\n\n";
+    _TileMemcpyKernel_opt<<<blocks, GridDim::maxThreadsPerBlock, 0, stream>>>(
+        input_data, num_input_elements, output_data, (CUDA_LONG)num_output_elements, num_per_thread);
+  } else {
+    int blocksPerGrid = (int)(ceil(static_cast<float>(num_output_elements) / GridDim::maxThreadsPerBlock));
+    _TileMemcpyKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+        input_data, num_input_elements, output_data, (CUDA_LONG)num_output_elements);
+  }
 }
 
 template <typename T>
