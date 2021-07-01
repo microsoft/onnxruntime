@@ -3,7 +3,8 @@
 
 import {InferenceSession} from 'onnxruntime-common';
 
-import {allocWasmString, iterateExtraOptions} from './options-utils';
+import {iterateExtraOptions} from './options-utils';
+import {allocWasmString} from './string-utils';
 import {getInstance} from './wasm-factory';
 
 export const setRunOptions = (options: InferenceSession.RunOptions): [number, number[]] => {

@@ -78,46 +78,51 @@ Status QLinearMatMul::Compute(OpKernelContext* ctx) const {
     output_scales[i] = (a_scale_data * b_scale_data[i] / y_scale_data);
   }
 
-  AllocatorPtr alloc;
-  ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
-  auto gemm_output_data = alloc->Alloc(SafeInt<size_t>(sizeof(int32_t)) *
-                                       static_cast<size_t>(helper.M()) * static_cast<size_t>(helper.N()));
-  BufferUniquePtr gemm_output_buffer(gemm_output_data, BufferDeleter(alloc));
-  auto* gemm_output = static_cast<int32_t*>(gemm_output_buffer.get());
-
+  const size_t num_gemms = helper.OutputOffsets().size();
   MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape;
   gemm_shape.M = static_cast<size_t>(helper.M());
   gemm_shape.N = static_cast<size_t>(helper.N());
   gemm_shape.K = static_cast<size_t>(helper.K());
   gemm_shape.BIsSigned = b_is_signed;
 
-  MLAS_GEMM_U8X8_DATA_PARAMS gemm_params;
-  gemm_params.lda = gemm_shape.K;
-  gemm_params.ZeroPointA = *a_offset->template Data<uint8_t>();
-  gemm_params.ldb = gemm_shape.N;
-  gemm_params.C = gemm_output;
-  gemm_params.ldc = gemm_shape.N;
-  gemm_params.BIsPacked = bool(packed_b_);
-  gemm_params.PerColumnZeroPoints = !IsScalarOr1ElementVector(b_offset);
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
+  auto gemm_output_data = alloc->Alloc(SafeInt<size_t>(gemm_shape.M) *
+      gemm_shape.N * sizeof(int32_t) * num_gemms);
+  BufferUniquePtr gemm_output_buffer(gemm_output_data, BufferDeleter(alloc));
+  auto* gemm_output = static_cast<int32_t*>(gemm_output_buffer.get());
+
+
+  std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> gemm_params(num_gemms);
+  std::vector<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR> requant_procs;
+  requant_procs.reserve(num_gemms);
 
   auto b_zp_data = static_cast<const uint8_t*>(b_offset->DataRaw());
-  for (size_t i = 0; i < helper.OutputOffsets().size(); i++) {
-    gemm_params.A = a->template Data<uint8_t>() + helper.LeftOffsets()[i];
-    gemm_params.B = b_data + helper.RightOffsets()[i];
-    gemm_params.ZeroPointB = b_zp_data + helper.RightZeroPointOffsets()[i];
+  for (size_t i = 0; i < num_gemms; i++) {
+    gemm_params[i].A = a->template Data<uint8_t>() + helper.LeftOffsets()[i];
+    gemm_params[i].lda = gemm_shape.K;
+    gemm_params[i].ZeroPointA = *a_offset->template Data<uint8_t>();
 
-    MlasGemm(gemm_shape, gemm_params, ctx->GetOperatorThreadPool());
+    gemm_params[i].B = b_data + helper.RightOffsets()[i];
+    gemm_params[i].ldb = gemm_shape.N;
+    gemm_params[i].BIsPacked = bool(packed_b_);
+    gemm_params[i].ZeroPointB = b_zp_data + helper.RightZeroPointOffsets()[i];
 
-    //TODO!! consider making this a post processor, so that we can parallize this loop
-    MlasRequantizeOutput(gemm_output,
-                         y->template MutableData<uint8_t>() + helper.OutputOffsets()[i],
-                         nullptr,
-                         static_cast<size_t>(helper.M()),
-                         static_cast<size_t>(helper.N()),
-                         output_scales.data() + helper.RightScaleOffsets()[i],
-                         output_scales.size() > 1,
-                         *y_offset->template Data<uint8_t>());
+    gemm_params[i].C = gemm_output + (gemm_shape.M * gemm_shape.N * i);
+    gemm_params[i].ldc = gemm_shape.N;
+
+    gemm_params[i].PerColumnZeroPoints = !IsScalarOr1ElementVector(b_offset);
+
+    requant_procs.emplace_back(y->template MutableData<uint8_t>() + helper.OutputOffsets()[i],
+                               static_cast<size_t>(helper.N()),
+                               nullptr,
+                               output_scales.data() + helper.RightScaleOffsets()[i],
+                               output_scales.size() > 1,
+                               *y_offset->template Data<uint8_t>());
+    gemm_params[i].OutputProcessor = &(requant_procs[i]);
   }
+
+  MlasGemmBatch(gemm_shape, gemm_params.data(), num_gemms, ctx->GetOperatorThreadPool());
 
   return Status::OK();
 }

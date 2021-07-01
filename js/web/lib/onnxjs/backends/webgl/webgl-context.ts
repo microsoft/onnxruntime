@@ -176,7 +176,9 @@ export class WebGLContext {
     gl.shaderSource(shader, shaderSource);
     gl.compileShader(shader);
     if (gl.getShaderParameter(shader, gl.COMPILE_STATUS) === false) {
-      throw new Error(`Failed to compile shader: ${gl.getShaderInfoLog(shader)}`);
+      throw new Error(`Failed to compile shader: ${gl.getShaderInfoLog(shader)}
+Shader source:
+${shaderSource}`);
     }
     return shader;
   }

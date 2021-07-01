@@ -32,6 +32,7 @@
 #include "core/optimizer/matmul_scale_fusion.h"
 #include "core/optimizer/nchwc_transformer.h"
 #include "core/optimizer/nhwc_transformer.h"
+#include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
@@ -69,6 +70,7 @@ std::vector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<EliminateDropout>());
       rules.push_back(std::make_unique<ExpandElimination>());
       rules.push_back(std::make_unique<CastElimination>());
+      rules.push_back(std::make_unique<NoopElimination>());
       rules.push_back(std::make_unique<DivMulFusion>());
       rules.push_back(std::make_unique<FuseReluClip>());
       rules.push_back(std::make_unique<GemmTransposeFusion>());

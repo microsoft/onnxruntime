@@ -60,6 +60,7 @@ Options:
 
  --wasm-number-threads         Set the WebAssembly number of threads
  --wasm-init-timeout           Set the timeout for WebAssembly backend initialization, in milliseconds
+ --wasm-enable-simd            Set whether to enable SIMD
  --webgl-context-id            Set the WebGL context ID (webgl/webgl2)
  --webgl-matmul-max-batch-size Set the WebGL matmulMaxBatchSize
  --webgl-texture-cache-mode    Set the WebGL texture cache mode (initializerOnly/full)
@@ -251,7 +252,11 @@ function parseWasmFlags(args: minimist.ParsedArgs): Env.WebAssemblyFlags {
   if (typeof initTimeout !== 'undefined' && typeof initTimeout !== 'number') {
     throw new Error('Flag "wasm-init-timeout" must be a number value');
   }
-  return {numThreads, initTimeout};
+  const simd = args['wasm-enable-simd'];
+  if (typeof simd !== 'undefined' && typeof simd !== 'boolean') {
+    throw new Error('Flag "wasm-enable-simd" must be a boolean value');
+  }
+  return {numThreads, initTimeout, simd};
 }
 
 function parseWebglOptions(_args: minimist.ParsedArgs): InferenceSession.WebGLExecutionProviderOption {

@@ -24,7 +24,7 @@ NS_ASSUME_NONNULL_BEGIN
  * @param tensorData The tensor data.
  * @param elementType The tensor element data type.
  * @param shape The tensor shape.
- * @param[out] error Optional error information set if an error occurs.
+ * @param error Optional error information set if an error occurs.
  * @return The instance, or nil if an error occurs.
  */
 - (nullable instancetype)initWithTensorData:(NSMutableData*)tensorData
@@ -35,7 +35,7 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * Gets the type information.
  *
- * @param[out] error Optional error information set if an error occurs.
+ * @param error Optional error information set if an error occurs.
  * @return The type information, or nil if an error occurs.
  */
 - (nullable ORTValueTypeInfo*)typeInfoWithError:(NSError**)error;
@@ -44,7 +44,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Gets the tensor type and shape information.
  * This assumes that the value is a tensor.
  *
- * @param[out] error Optional error information set if an error occurs.
+ * @param error Optional error information set if an error occurs.
  * @return The tensor type and shape information, or nil if an error occurs.
  */
 - (nullable ORTTensorTypeAndShapeInfo*)tensorTypeAndShapeInfoWithError:(NSError**)error;
@@ -53,7 +53,12 @@ NS_ASSUME_NONNULL_BEGIN
  * Gets the tensor data.
  * This assumes that the value is a tensor.
  *
- * @param[out] error Optional error information set if an error occurs.
+ * This returns the value's underlying data directly, not a copy of it.
+ * The memory's lifetime may be tied to this value, i.e., if it was allocated
+ * by ORT. On the other hand, the memory's lifetime is independent of the value
+ * if the value was created with user-provided data.
+ *
+ * @param error Optional error information set if an error occurs.
  * @return The tensor data, or nil if an error occurs.
  */
 - (nullable NSMutableData*)tensorDataWithError:(NSError**)error;

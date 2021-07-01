@@ -8,7 +8,7 @@ import copy
 import inspect
 import torch
 import warnings
-
+import gc
 
 class _OutputIdentityOp(torch.autograd.Function):
     '''Internal class used to prepend Identity ops in model's outputs
@@ -175,13 +175,20 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
 
 
 def deepcopy_model_input(*inputs, **kwargs):
-    sample_inputs_copy = [model_input.data if isinstance(model_input, torch.Tensor) else model_input
-                          for model_input in inputs]
+    def extract_tensor(value):
+        if isinstance(value, torch.Tensor):
+            if value.requires_grad:
+                return value.data.requires_grad_()
+            else:
+                return value.data
+        else:
+            return value
+    sample_inputs_copy = [extract_tensor(value) for value in inputs]
     sample_inputs_copy = copy.deepcopy(tuple(sample_inputs_copy))
 
     sample_kwargs_copy = {}
-    for name, model_input in kwargs.items():
-        sample_kwargs_copy[name] = model_input.data if isinstance(model_input, torch.Tensor) else model_input
+    for name, value in kwargs.items():
+        sample_kwargs_copy[name] = extract_tensor(value)
     sample_kwargs_copy = copy.deepcopy(sample_kwargs_copy)
 
     return sample_inputs_copy, sample_kwargs_copy
@@ -284,7 +291,7 @@ def _extract_schema(data):
     elif isinstance(data, torch.Tensor):
         return _TensorStub(dtype=str(data.dtype), shape_dims=len(data.size()))
 
-    if isinstance(data, abc.Sequence):
+    if isinstance(data, abc.Sequence) and not isinstance(data, str):
         sequence_type = type(data)
         data = list(data)
         for idx in range(len(data)):
@@ -460,12 +467,14 @@ def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs):
     module.eval()
     output_names = None
     output_dynamic_axes = None
+    is_deepcopy = False
     with torch.no_grad():
         # Deepcopy inputs, since input values may change after model run.
         sample_inputs_copy, sample_kwargs_copy = deepcopy_model_input(*inputs, **kwargs)
         try:
             # Deepcopy model, in case model is stateful and changes after model run.
             model_copy = copy.deepcopy(module)
+            is_deepcopy = True
         except Exception:
             model_copy = module
             warnings.warn("This model cannot be deep copied (or pickled), "
@@ -478,6 +487,9 @@ def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs):
         output_names, output_dynamic_axes = _parse_outputs_and_extract_names_and_dynamic_axes(sample_outputs)
     if is_train_mode:
         module.train()
-
+    output_schema = _extract_schema(sample_outputs)
+    if is_deepcopy:
+        del model_copy
+        gc.collect()
     # Return output names, output dynamic axes and output schema
-    return output_names, output_dynamic_axes, _extract_schema(sample_outputs)
+    return output_names, output_dynamic_axes, output_schema

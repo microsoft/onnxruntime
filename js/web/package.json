@@ -16,6 +16,8 @@
   "scripts": {
     "prepare": "tsc",
     "build": "node ./script/build",
+    "build:doc": "node ./script/generate-operator-md",
+    "pull:wasm": "node ./script/pull-prebuilt-wasm-artifacts",
     "test": "node ./script/prepare-test-data && node ./script/test-runner-cli",
     "test:e2e": "node ./test/e2e/run",
     "prepack": "node ./script/prepack"
@@ -45,6 +47,7 @@
     "electron": "^12.0.2",
     "fs-extra": "^9.1.0",
     "globby": "^11.0.3",
+    "jszip": "^3.6.0",
     "karma": "^6.3.2",
     "karma-browserstack-launcher": "^1.6.0",
     "karma-chai": "^0.1.0",

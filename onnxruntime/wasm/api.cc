@@ -26,20 +26,20 @@ OrtErrorCode CheckStatus(OrtStatusPtr status) {
 #define CHECK_STATUS(ORT_API_NAME, ...) \
   CheckStatus(Ort::GetApi().ORT_API_NAME(__VA_ARGS__))
 
-#define RETURN_ERROR_CODE_IF_ERROR(ORT_API_NAME, ...)                       \
-  do {                                                                      \
-    int error_code = CHECK_STATUS(ORT_API_NAME, __VA_ARGS__);               \
-    if (error_code != ORT_OK) {                                             \
-      return error_code;                                                    \
-    }                                                                       \
+#define RETURN_ERROR_CODE_IF_ERROR(ORT_API_NAME, ...)         \
+  do {                                                        \
+    int error_code = CHECK_STATUS(ORT_API_NAME, __VA_ARGS__); \
+    if (error_code != ORT_OK) {                               \
+      return error_code;                                      \
+    }                                                         \
   } while (false)
 
 // TODO: This macro can be removed when we changed all APIs to return a status code.
-#define RETURN_NULLPTR_IF_ERROR(ORT_API_NAME, ...)                          \
-  do {                                                                      \
-    if (CHECK_STATUS(ORT_API_NAME, __VA_ARGS__) != ORT_OK) {                \
-      return nullptr;                                                       \
-    }                                                                       \
+#define RETURN_NULLPTR_IF_ERROR(ORT_API_NAME, ...)           \
+  do {                                                       \
+    if (CHECK_STATUS(ORT_API_NAME, __VA_ARGS__) != ORT_OK) { \
+      return nullptr;                                        \
+    }                                                        \
   } while (false)
 
 int OrtInit(int num_threads, int logging_level) {
@@ -107,8 +107,8 @@ OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
 }
 
 int OrtAddSessionConfigEntry(OrtSessionOptions* session_options,
-  const char* config_key,
-  const char* config_value) {
+                             const char* config_key,
+                             const char* config_value) {
   return CHECK_STATUS(AddSessionConfigEntry, session_options, config_key, config_value);
 }
 
@@ -132,7 +132,8 @@ OrtSession* OrtCreateSession(void* data, size_t data_length, OrtSessionOptions* 
 
   OrtSession* session = nullptr;
   return (CHECK_STATUS(CreateSessionFromArray, g_env, data, data_length, session_options, &session) == ORT_OK)
-             ? session : nullptr;
+             ? session
+             : nullptr;
 }
 
 void OrtReleaseSession(OrtSession* session) {
@@ -155,7 +156,8 @@ char* OrtGetInputName(OrtSession* session, size_t index) {
 
   char* input_name = nullptr;
   return (CHECK_STATUS(SessionGetInputName, session, index, allocator, &input_name) == ORT_OK)
-             ? input_name : nullptr;
+             ? input_name
+             : nullptr;
 }
 
 char* OrtGetOutputName(OrtSession* session, size_t index) {
@@ -164,7 +166,8 @@ char* OrtGetOutputName(OrtSession* session, size_t index) {
 
   char* output_name = nullptr;
   return (CHECK_STATUS(SessionGetOutputName, session, index, allocator, &output_name) == ORT_OK)
-             ? output_name : nullptr;
+             ? output_name
+             : nullptr;
 }
 
 void OrtFree(void* ptr) {
@@ -180,36 +183,55 @@ OrtValue* OrtCreateTensor(int data_type, void* data, size_t data_length, size_t*
     shapes[i] = dims[i];
   }
 
-  OrtMemoryInfo* memoryInfo = nullptr;
-  RETURN_NULLPTR_IF_ERROR(CreateCpuMemoryInfo, OrtDeviceAllocator, OrtMemTypeDefault, &memoryInfo);
+  if (data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
+    OrtAllocator* allocator = nullptr;
+    RETURN_NULLPTR_IF_ERROR(GetAllocatorWithDefaultOptions, &allocator);
 
-  OrtValue* value = nullptr;
-  int error_code = CHECK_STATUS(CreateTensorWithDataAsOrtValue, memoryInfo, data, data_length,
-              dims_length > 0 ? shapes.data() : nullptr, dims_length,
-              static_cast<ONNXTensorElementDataType>(data_type), &value);
+    OrtValue* value = nullptr;
+    RETURN_NULLPTR_IF_ERROR(CreateTensorAsOrtValue, allocator,
+                            dims_length > 0 ? shapes.data() : nullptr, dims_length,
+                            ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING, &value);
 
-  Ort::GetApi().ReleaseMemoryInfo(memoryInfo);
-  return (error_code == ORT_OK) ? value : nullptr;
+    const char* const* strings = reinterpret_cast<const char* const*>(data);
+    RETURN_NULLPTR_IF_ERROR(FillStringTensor, value, strings, data_length / sizeof(const char*));
+
+    return value;
+  } else {
+    OrtMemoryInfo* memoryInfo = nullptr;
+    RETURN_NULLPTR_IF_ERROR(CreateCpuMemoryInfo, OrtDeviceAllocator, OrtMemTypeDefault, &memoryInfo);
+
+    OrtValue* value = nullptr;
+    int error_code = CHECK_STATUS(CreateTensorWithDataAsOrtValue, memoryInfo, data, data_length,
+                                  dims_length > 0 ? shapes.data() : nullptr, dims_length,
+                                  static_cast<ONNXTensorElementDataType>(data_type), &value);
+
+    Ort::GetApi().ReleaseMemoryInfo(memoryInfo);
+    return (error_code == ORT_OK) ? value : nullptr;
+  }
 }
 
 int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dims, size_t* dims_length) {
-#define RELEASE_AND_RETURN_ERROR_CODE_IF_ERROR(ORT_API_NAME, ...)           \
-  do {                                                                      \
-    int error_code = CHECK_STATUS(ORT_API_NAME, __VA_ARGS__);               \
-    if (error_code != ORT_OK) {                                             \
-      if (info != nullptr) {                                                \
-        Ort::GetApi().ReleaseTensorTypeAndShapeInfo(info);                  \
-      }                                                                     \
-      if (allocator != nullptr && p_dims != nullptr) {                      \
-        allocator->Free(allocator, p_dims);                                 \
-      }                                                                     \
-      return error_code;                                                    \
-    }                                                                       \
+#define RELEASE_AND_RETURN_ERROR_CODE_IF_ERROR(ORT_API_NAME, ...) \
+  do {                                                            \
+    int error_code = CHECK_STATUS(ORT_API_NAME, __VA_ARGS__);     \
+    if (error_code != ORT_OK) {                                   \
+      if (info != nullptr) {                                      \
+        Ort::GetApi().ReleaseTensorTypeAndShapeInfo(info);        \
+      }                                                           \
+      if (allocator != nullptr && p_dims != nullptr) {            \
+        allocator->Free(allocator, p_dims);                       \
+      }                                                           \
+      if (allocator != nullptr && p_string_data != nullptr) {     \
+        allocator->Free(allocator, p_string_data);                \
+      }                                                           \
+      return error_code;                                          \
+    }                                                             \
   } while (false)
 
   OrtTensorTypeAndShapeInfo* info = nullptr;
   OrtAllocator* allocator = nullptr;
   size_t* p_dims = nullptr;
+  void* p_string_data = nullptr;
 
   RETURN_ERROR_CODE_IF_ERROR(GetTensorTypeAndShape, tensor, &info);
 
@@ -232,6 +254,42 @@ int OrtGetTensorData(OrtValue* tensor, int* data_type, void** data, size_t** dim
     p_dims[i] = static_cast<size_t>(shape[i]);
   }
   *dims = p_dims;
+
+  if (type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
+    size_t num_elements;
+    RELEASE_AND_RETURN_ERROR_CODE_IF_ERROR(GetTensorShapeElementCount, info, &num_elements);
+
+    // NOTE: ORT C-API does not expose an interface for users to get string raw data directly. There is always a copy.
+    //       we can use the tensor raw data because it is type of "std::string *", which is very starightforward to
+    //       implement and can also save memory usage. However, this approach depends on the Tensor's implementation
+    //       details. So we have to copy the string content here.
+
+    size_t string_data_length;
+    RELEASE_AND_RETURN_ERROR_CODE_IF_ERROR(GetStringTensorDataLength, tensor, &string_data_length);
+
+    // The buffer contains following data:
+    //  - a sequence of pointers to (const char*), size = num_elements * sizeof(const char*).
+    //  - followed by a raw buffer to store string content, size = string_data_length + 1.
+    static_assert(sizeof(const char*) == sizeof(size_t), "size of a pointer and a size_t value should be the same.");
+
+    size_t string_data_offset = num_elements * sizeof(const char*);
+    size_t buf_size = string_data_offset + string_data_length;
+    p_string_data = allocator->Alloc(allocator, buf_size + 1);
+    void* p_string_content = reinterpret_cast<char*>(p_string_data) + string_data_offset;
+
+    size_t* p_offsets = reinterpret_cast<size_t*>(p_string_data);
+    RELEASE_AND_RETURN_ERROR_CODE_IF_ERROR(GetStringTensorContent, tensor, p_string_content, string_data_length, p_offsets, num_elements);
+
+    // replace offsets by pointers
+    const char** p_c_strs = reinterpret_cast<const char**>(p_offsets);
+    for (size_t i = 0; i < num_elements; i++) {
+      p_c_strs[i] = reinterpret_cast<const char*>(p_string_content) + p_offsets[i];
+    }
+
+    // put null at the last char
+    reinterpret_cast<char*>(p_string_data)[buf_size] = '\0';
+    *data = p_string_data;
+  }
 
   Ort::GetApi().ReleaseTensorTypeAndShapeInfo(info);
   return ORT_OK;
@@ -267,8 +325,8 @@ OrtRunOptions* OrtCreateRunOptions(size_t log_severity_level,
 }
 
 int OrtAddRunConfigEntry(OrtRunOptions* run_options,
-  const char* config_key,
-  const char* config_value) {
+                         const char* config_key,
+                         const char* config_value) {
   return CHECK_STATUS(AddRunConfigEntry, run_options, config_key, config_value);
 }
 

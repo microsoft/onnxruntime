@@ -25,9 +25,15 @@ set(mlas_common_srcs
 )
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
-  file(GLOB_RECURSE mlas_platform_srcs
-    "${ONNXRUNTIME_ROOT}/core/mlas/lib/wasm/*.cpp"
-  )
+  if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+    file(GLOB_RECURSE mlas_platform_srcs
+      "${ONNXRUNTIME_ROOT}/core/mlas/lib/wasm_simd/*.cpp"
+    )
+  else()
+    file(GLOB_RECURSE mlas_platform_srcs
+      "${ONNXRUNTIME_ROOT}/core/mlas/lib/wasm/*.cpp"
+    )
+  endif()
 elseif(MSVC)
   if(onnxruntime_target_platform STREQUAL "ARM64")
     set(mlas_platform_preprocess_srcs
@@ -196,6 +202,29 @@ else()
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/power/SgemmKernelPower.cpp
     )
+    check_cxx_compiler_flag("-mcpu=power10" HAS_POWER10)
+    if(HAS_POWER10)
+      set(CMAKE_REQUIRED_FLAGS "-mcpu=power10")
+      check_cxx_source_compiles("
+        #include <altivec.h>
+        int main() {
+          __vector_quad acc0;
+          __builtin_mma_xxsetaccz (&acc0);
+          return 0;
+        }"
+        COMPILES_P10
+      )
+      if(COMPILES_P10)
+        set(mlas_platform_srcs_power10
+          ${ONNXRUNTIME_ROOT}/core/mlas/lib/power/SgemmKernelPOWER10.cpp
+        )
+        set_source_files_properties(${mlas_platform_srcs_power10} PROPERTIES COMPILE_FLAGS "-O2 -mcpu=power10")
+        set(mlas_platform_srcs
+          ${mlas_platform_srcs}
+          ${mlas_platform_srcs_power10}
+        )
+      endif()
+    endif()
   elseif(X86)
     enable_language(ASM)
 
@@ -357,5 +386,5 @@ onnxruntime_add_static_library(onnxruntime_mlas ${mlas_common_srcs} ${mlas_platf
 target_include_directories(onnxruntime_mlas PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}/core/mlas/lib)
 set_target_properties(onnxruntime_mlas PROPERTIES FOLDER "ONNXRuntime")
 if (WIN32)
-  target_compile_options(onnxruntime_mlas PRIVATE "/wd6385")
+  target_compile_options(onnxruntime_mlas PRIVATE "/wd6385" "/wd4127")
 endif()

@@ -19,7 +19,7 @@ done
 
 DEVICE_TYPE=${DEVICE_TYPE:=Normal}
 
-#Download a file from internet
+# Download a file from internet
 function GetFile {
   local uri=$1
   local path=$2

@@ -24,7 +24,7 @@ class BatchNormalizationOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 
   // BatchNormalization opset 6- has unsupported attributes
@@ -78,7 +78,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 
 // Operator support related
 
-bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                                     const logging::Logger& logger) const {
   if (node.OutputDefs().size() != 1) {
     LOGS(logger, VERBOSE) << "Your onnx model may be in training mode, please export "
@@ -111,6 +111,7 @@ bool BatchNormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& 
   const auto& b_name = input_defs[2]->Name();
   const auto& mean_name = input_defs[3]->Name();
   const auto& var_name = input_defs[4]->Name();
+  const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
   if (!Contains(initializers, scale_name)) {
     LOGS(logger, VERBOSE) << "Scale of BN must be a constant initializer";
     return false;

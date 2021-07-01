@@ -43,7 +43,8 @@ std::unique_ptr<IExecutionProvider> GetExecutionProvider(const std::string& prov
 void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
                                      double per_sample_tolerance,
                                      double relative_per_sample_tolerance,
-                                     const bool need_cpu_cast) {
+                                     const bool need_cpu_cast,
+                                     const std::unordered_map<std::string, int>& extra_domain_to_version) {
 #ifndef NDEBUG
   run_called_ = true;
 #endif
@@ -51,7 +52,7 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
   std::unique_ptr<IExecutionProvider> target_execution_provider = GetExecutionProvider(target_provider_type);
   ASSERT_TRUE(target_execution_provider != nullptr) << "provider_type " << target_provider_type << " is not supported.";
 
-  auto p_model = BuildGraph();
+  auto p_model = BuildGraph(extra_domain_to_version);
   auto& graph = p_model->MainGraph();
 
   Status status;
@@ -75,7 +76,7 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
   }
 
   // Hookup the inputs and outputs
-  std::unordered_map<std::string, MLValue> feeds;
+  std::unordered_map<std::string, OrtValue> feeds;
   std::vector<std::string> output_names;
   FillFeedsAndOutputNames(feeds, output_names);
 
@@ -109,7 +110,7 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
   run_options.run_tag = op_;
   run_options.run_log_verbosity_level = 1;
 
-  std::vector<MLValue> cpu_fetches;
+  std::vector<OrtValue> cpu_fetches;
   status = cpu_session_object.Run(run_options, feeds, output_names, &cpu_fetches);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
   if (!status.IsOK()) {
@@ -119,7 +120,7 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
 
   // run with target provider
   // build the graph again as the cpu graph may be with casts
-  auto p_tp_model = BuildGraph();
+  auto p_tp_model = BuildGraph(extra_domain_to_version);
   auto& tp_graph = p_tp_model->MainGraph();
 
   status = tp_graph.Resolve();
@@ -148,7 +149,7 @@ void CompareOpTester::CompareWithCPU(const std::string& target_provider_type,
     return;
   }
 
-  std::vector<MLValue> target_fetches;
+  std::vector<OrtValue> target_fetches;
   status = target_session_object.Run(run_options, feeds, output_names, &target_fetches);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 

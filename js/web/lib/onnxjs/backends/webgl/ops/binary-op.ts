@@ -10,6 +10,8 @@ import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, WebGLOperator} from '../types';
 
 export class WebGLBinaryOp extends BinaryOp implements WebGLOperator {
+  private usePackedTexture?: boolean;
+
   constructor(
       typeConstraint: readonly Tensor.DataType[], protected glslFunc: GlslValueFunction, opType?: string,
       resultType?: Tensor.DataType) {
@@ -19,27 +21,42 @@ export class WebGLBinaryOp extends BinaryOp implements WebGLOperator {
     return inferenceHandler.run(this, inputs);
   }
   createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
-    const inputLayouts = handler.session.pack ?
+    const isBroadcast = !ShapeUtil.areEqual(inputs[0].dims, inputs[1].dims);
+    const outputShape = isBroadcast ? BroadcastUtil.calcShape(inputs[0].dims, inputs[1].dims, false) : inputs[0].dims;
+    if (!outputShape) {
+      throw new Error('Can\'t perform binary op on the given tensors');
+    }
+
+    if (this.usePackedTexture === undefined) {
+      this.usePackedTexture = handler.session.pack;
+    }
+
+    const inputLayouts = this.usePackedTexture ?
         inputs.map(t => handler.getOrCreateTextureLayout(t, 4, true, t.dims, true)) :
         inputs.map(t => handler.getOrCreateTextureLayout(t));
-    const ouputLayout = handler.session.pack ?
-        handler.createTextureLayoutFromShape(inputs[0].dims, 4, inputs[0].dims, {isPacked: true, reverseWH: true}) :
+    let outputLayout = this.usePackedTexture ?
+        handler.createTextureLayoutFromShape(inputs[0].dims, 4, outputShape, {isPacked: true, reverseWH: true}) :
         handler.createTextureLayoutFromShape(inputs[0].dims);
+    const glsl = getGlsl(handler.session.backend.glContext.version);
 
-    const isBroadcast = !ShapeUtil.areEqual(inputs[0].dims, inputs[1].dims);
     if (isBroadcast) {
-      const outputShape = BroadcastUtil.calcShape(inputs[0].dims, inputs[1].dims, false);
-      if (!outputShape) {
-        throw new Error('Can\'t perform binary op on the given tensors');
-      }
       const outputRank = outputShape.length;
       const aRank = inputs[0].dims.length !== 0 ? inputs[0].dims.length : 1;
       const bRank = inputs[1].dims.length !== 0 ? inputs[1].dims.length : 1;
       const aBcast = inputs[0].dims.length !== 0 ? 'bcastIndices_A(indices, aindices);' : 'aindices[0] = 0;';
       const bBcast = inputs[1].dims.length !== 0 ? 'bcastIndices_B(indices, bindices);' : 'bindices[0] = 0;';
 
-      // TODO: for packed tensors, we need to implement logic to caculate textCoords for broadcast tensor
-      const shaderSource = `
+      const shaderSource = this.usePackedTexture ? `
+      ${this.glslFunc.body}
+      void main() {
+      vec4 a = getAAtOutCoords();
+      vec4 b = getBAtOutCoords();
+
+      vec4 result = ${this.glslFunc.name}(a, b);
+
+      ${glsl.output} = result;
+    }` :
+                                                   `
       ${this.glslFunc.body}
       float process(int indices[${outputRank}]) {
         int aindices[${aRank}];
@@ -48,20 +65,20 @@ export class WebGLBinaryOp extends BinaryOp implements WebGLOperator {
         ${bBcast}
         return ${this.glslFunc.name}(_A(aindices), _B(bindices));
     }`;
-      const outputLayout = handler.session.pack ?
+      outputLayout = this.usePackedTexture ?
           handler.createTextureLayoutFromShape(outputShape, 4, outputShape, {isPacked: true, reverseWH: true}) :
           handler.createTextureLayoutFromShape(outputShape);
 
       return {
+        hasMain: this.usePackedTexture,
         inputLayouts,
         outputLayout,
         samplers: ['A', 'B'],
         shaderSource,
-        expectPackedInputs: handler.session.pack,
-        expectPackedOutputs: handler.session.pack
+        expectPackedInputs: this.usePackedTexture,
+        expectPackedOutputs: this.usePackedTexture
       };
     }
-    const glsl = getGlsl(handler.session.backend.glContext.version);
     const shaderSource = `
     ${this.glslFunc.body}
     void main() {
@@ -71,11 +88,12 @@ export class WebGLBinaryOp extends BinaryOp implements WebGLOperator {
       ${glsl.output} = result;
     }
     `;
-    if (handler.session.pack) {
+
+    if (this.usePackedTexture) {
       return {
         hasMain: true,
         inputLayouts,
-        outputLayout: ouputLayout,
+        outputLayout,
         samplers: ['A', 'B'],
         shaderSource,
         expectPackedInputs: true,
@@ -92,7 +110,7 @@ export class WebGLBinaryOp extends BinaryOp implements WebGLOperator {
     }
   }
   createRunData(handler: WebGLInferenceHandler, programInfo: ProgramInfo, inputs: Tensor[]): RunData {
-    const inputTDs = handler.session.pack ?
+    const inputTDs = this.usePackedTexture ?
         inputs.map((t) => handler.getOrCreateTextureData(t, handler.getOrCreateTextureLayout(t, 1, false, [], true))) :
         inputs.map((t, i) => handler.getOrCreateTextureData(t, programInfo.inputLayouts[i]));
     return {
@@ -159,7 +177,7 @@ export function glslEqual(): GlslValueFunction {
     return float(a == b);
   }
   vec4 ${name}(vec4 v1, vec4 v2) {
-    return vec4( v1 == v2 );
+    return vec4(equal(v1, v2));
   }
   `;
   return {body, name, type: FunctionType.ValueBased};

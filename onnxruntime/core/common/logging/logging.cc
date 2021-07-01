@@ -120,8 +120,11 @@ LoggingManager::~LoggingManager() {
   if (owns_default_logger_) {
     // lock mutex to reset DefaultLoggerManagerInstance() and free default logger from this instance.
     std::lock_guard<OrtMutex> guard(DefaultLoggerMutex());
-
+#if ((__cplusplus >= 201703L) || (defined(_MSVC_LANG) && (_MSVC_LANG >= 201703L)))
+    DefaultLoggerManagerInstance().store(nullptr, std::memory_order_release);
+#else
     DefaultLoggerManagerInstance().store(nullptr, std::memory_order::memory_order_release);
+#endif
 
     delete s_default_logger_;
     s_default_logger_ = nullptr;

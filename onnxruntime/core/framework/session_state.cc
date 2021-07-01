@@ -53,22 +53,12 @@ AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noe
 }
 
 AllocatorPtr SessionState::GetAllocator(OrtDevice device) const noexcept {
-  AllocatorPtr result;
-
-  using AllocatorEntry = std::map<OrtMemoryInfo, std::function<AllocatorPtr(int id, OrtMemType mem_type)>,
-                                  OrtMemoryInfoLessThanIgnoreAllocType>::const_reference;
-
-  auto entry = std::find_if(allocators_.cbegin(), allocators_.cend(),
-                            [device](AllocatorEntry& entry) {
-                              return entry.first.device == device &&
-                                     entry.first.mem_type == OrtMemTypeDefault;
-                            });
-
-  if (entry != allocators_.cend()) {
-    result = entry->second(device.Id(), OrtMemTypeDefault);
+  for (const auto& iter : allocators_) {
+    if (iter.first.device == device) {
+      return iter.second(device.Id(), iter.first.mem_type);
+    }
   }
-
-  return result;
+  return nullptr;
 }
 
 void SessionState::CreateGraphInfo() {

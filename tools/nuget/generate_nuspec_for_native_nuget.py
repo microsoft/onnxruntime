@@ -25,7 +25,7 @@ def parse_arguments():
     parser.add_argument("--is_release_build", required=False, default=None, type=str,
                         help="Flag indicating if the build is a release build. Accepted values: true/false.")
     parser.add_argument("--execution_provider", required=False, default='None', type=str,
-                        choices=['dnnl', 'openvino', 'tensorrt', 'None'],
+                        choices=['cuda', 'dnnl', 'openvino', 'tensorrt', 'None'],
                         help="The selected execution provider for this build.")
 
     return parser.parse_args()
@@ -47,7 +47,15 @@ def generate_owners(list, owners):
     list.append('<owners>' + owners + '</owners>')
 
 
-def generate_description(list, description):
+def generate_description(list, package_name):
+    description = ''
+
+    if package_name == 'Microsoft.AI.MachineLearning':
+        description = 'This package contains Windows ML binaries.'
+    elif 'Microsoft.ML.OnnxRuntime' in package_name:  # This is a Microsoft.ML.OnnxRuntime.* package
+        description = 'This package contains native shared library artifacts ' \
+                      'for all supported platforms of ONNX Runtime.'
+
     list.append('<description>' + description + '</description>')
 
 
@@ -153,8 +161,7 @@ def generate_metadata(list, args):
     generate_version(metadata_list, args.package_version)
     generate_authors(metadata_list, 'Microsoft')
     generate_owners(metadata_list, 'Microsoft')
-    generate_description(metadata_list, 'This package contains native shared library artifacts '
-                                        'for all supported platforms of ONNX Runtime.')
+    generate_description(metadata_list, args.package_name)
     generate_copyright(metadata_list, '\xc2\xa9 ' + 'Microsoft Corporation. All rights reserved.')
     generate_tags(metadata_list, 'ONNX ONNX Runtime Machine Learning')
     generate_icon_url(metadata_list, 'https://go.microsoft.com/fwlink/?linkid=2049168')
@@ -230,6 +237,9 @@ def generate_files(list, args):
     # Process headers
     files_list.append('<file src=' + '"' + os.path.join(args.sources_path,
                                                         'include\\onnxruntime\\core\\session\\onnxruntime_*.h') +
+                      '" target="build\\native\\include" />')
+    files_list.append('<file src=' + '"' + os.path.join(args.sources_path,
+                                                        'include\\onnxruntime\\core\\framework\\provider_options.h') +
                       '" target="build\\native\\include" />')
     files_list.append('<file src=' + '"' +
                       os.path.join(args.sources_path,
@@ -359,7 +369,7 @@ def generate_files(list, args):
                           nuget_dependencies['openvino_ep_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
 
-    if args.execution_provider == "cuda":
+    if args.execution_provider == "cuda" or is_cuda_gpu_package:
         files_list.append('<file src=' + '"' + os.path.join(args.native_build_path,
                           nuget_dependencies['providers_shared_lib']) +
                           runtimes_target + args.target_architecture + '\\native" />')
