@@ -111,7 +111,6 @@ If the `device_type` runtime config option is not explicitly specified, CPU will
   | <code>GPU_FP32</code> |Intel<sup></sup> Integrated Graphics |
   | <code>GPU_FP16</code> | Intel<sup></sup> Integrated Graphics |
   | <code>MYRIAD_FP16</code> | Intel<sup></sup> Movidius<sup>TM</sup> USB sticks |
-  | <code>VAD-M_FP16</code> | Intel<sup></sup> Vision Accelerator Design based on Movidius<sup>TM</sup> MyriadX VPUs |
   | <code>HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above |
   | <code>MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>,<DEVICE_TYPE_3>...</code> | All Intel<sup>®</sup> silicons mentioned above | 
 
@@ -119,12 +118,12 @@ If the `device_type` runtime config option is not explicitly specified, CPU will
 
   HETERO:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>..
   MULTI:<DEVICE_TYPE_1>,<DEVICE_TYPE_2>..
-  The <DEVICE_TYPE> can be any of these devices from this list ['CPU','GPU','MYRIAD','FPGA','HDDL']
+  The <DEVICE_TYPE> can be any of these devices from this list ['CPU','GPU','MYRIAD']
 
   A minimum of two DEVICE_TYPE'S should be specified for a valid HETERO or Multi-Device Build.
 
   Example:
-  HETERO:MYRIAD,CPU  HETERO:HDDL,GPU,CPU  MULTI:MYRIAD,GPU,CPU
+  HETERO:MYRIAD,CPU  HETERO:GPU,CPU  MULTI:MYRIAD,GPU,CPU
 
 *This is the hardware accelerator target that is enabled by **default** in the container image. After building the container image for one default target, the application may explicitly choose a different target at run time with the same container by using the [Dynamic device selction API](https://github.com/microsoft/onnxruntime/blob/master/docs/execution_providers/OpenVINO-ExecutionProvider.md#dynamic-device-selection).*
 
@@ -164,34 +163,6 @@ If the `device_type` runtime config option is not explicitly specified, CPU will
     docker run -it --rm --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb onnxruntime-myriad:latest
 
     ```
-
-### OpenVINO on VAD-M Accelerator Version
-
-1. Download OpenVINO **Full package** for version **2021.3** for Linux on host machine from [this link](https://software.intel.com/en-us/openvino-toolkit/choose-download) and install it with the help of instructions from [this link](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux.html)
-
-2. Install the drivers on the host machine according to the reference in [here](https://docs.openvinotoolkit.org/latest/_docs_install_guides_installing_openvino_linux_ivad_vpu.html)
-
-3. Build the docker image from the DockerFile in this repository.
-     ```
-      docker build --rm -t onnxruntime-vadm --build-arg DEVICE=VAD-M_FP16 -f <Dockerfile> .
-     ```
-4. Run hddldaemon on the host in a separate terminal session using the following steps: 
-    - Initialize the OpenVINO environment.
-      ```
-        source <openvino_install_directory>/bin/setupvars.sh
-      ```
-    - Edit the hddl_service.config file from $HDDL_INSTALL_DIR/config/hddl_service.config and change the field “bypass_device_number” to 8.
-    - Restart the hddl daemon for the changes to take effect.
-     ```
-      $HDDL_INSTALL_DIR/bin/hddldaemon
-     ```
-    - Note that if OpenVINO was installed with root permissions, this file has to be changed with the same permissions.
-5. Run the docker image by mounting the device drivers
-    ```
-    docker run -it --rm --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb --mount type=bind,source=/var/tmp,destination=/var/tmp --device /dev/ion:/dev/ion  onnxruntime-vadm:latest
-
-    ```
-
 ### OpenVINO on HETERO or Multi-Device Build
 
 1. Build the docker image from the DockerFile in this repository.
