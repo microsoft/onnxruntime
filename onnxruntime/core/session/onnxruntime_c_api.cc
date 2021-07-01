@@ -35,6 +35,11 @@
 #include "abi_session_options_impl.h"
 #include "core/framework/TensorSeq.h"
 #include "core/platform/ort_mutex.h"
+
+#ifdef ENABLE_EXTENSION_CUSTOM_OPS
+#include "ortcustomops.h"
+#endif
+
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #endif
@@ -400,6 +405,21 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions
     return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Entry point RegisterCustomOps not found in library");
 
   return RegisterCustomOps(options, OrtGetApiBase());
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::EnableOrtCustomOps, _Inout_ OrtSessionOptions* options) {
+  API_IMPL_BEGIN
+
+  if (options) {
+#ifdef ENABLE_EXTENSION_CUSTOM_OPS
+  return RegisterCustomOps(options, OrtGetApiBase());
+#else
+  return OrtApis::CreateStatus(ORT_FAIL, "EnableOrtCustomOps: Custom operators in onnxruntime-extensions are not enabled");
+#endif
+  }
+  return nullptr;
+
   API_IMPL_END
 }
 
@@ -2275,6 +2295,7 @@ static constexpr OrtApi ort_api_1_to_9 = {
     &OrtApis::UpdateTensorRTProviderOptions,
     &OrtApis::GetTensorRTProviderOptionsAsString,
     &OrtApis::ReleaseTensorRTProviderOptions,
+    &OrtApis::EnableOrtCustomOps,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
