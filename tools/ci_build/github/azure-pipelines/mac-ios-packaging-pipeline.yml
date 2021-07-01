@@ -84,26 +84,7 @@ jobs:
     displayName: "Generate Objective-C API docs"
 
   - bash: |
-      set -e
-
-      cd $(Build.BinariesDirectory)/staging/onnxruntime-mobile-c
-      mv onnxruntime-mobile-c.podspec $(Build.ArtifactStagingDirectory)/onnxruntime-mobile-c.podspec
-      zip -r $(Build.ArtifactStagingDirectory)/onnxruntime-mobile-c.zip *
-
-      cd $(Build.BinariesDirectory)/staging/onnxruntime-mobile-objc
-      mv onnxruntime-mobile-objc.podspec $(Build.ArtifactStagingDirectory)/onnxruntime-mobile-objc.podspec
-      zip -r $(Build.ArtifactStagingDirectory)/onnxruntime-mobile-objc.zip *
-
-      cd $(Build.BinariesDirectory)/staging/objc_api_docs
-      zip -r $(Build.ArtifactStagingDirectory)/objc_api_docs.zip *
-
-      cat > $(Build.ArtifactStagingDirectory)/readme.txt <<'EOM'
-      Release TODO list:
-      - upload pod zip files to publicly accessible URLs
-      - update podspec sources to refer to those URLs
-      - publish podspecs
-      - update Objective-C API documentation
-      EOM
+      TODO...
     displayName: "Assemble artifacts"
 
   - publish: $(Build.ArtifactStagingDirectory)
