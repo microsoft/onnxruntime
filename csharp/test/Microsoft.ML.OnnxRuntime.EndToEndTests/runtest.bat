@@ -50,7 +50,7 @@ IF NOT errorlevel 0 (
     EXIT 1
 )
 
-IF "%DotNetDefineConstants"=="" (
+IF "%DotNetDefineConstants%"=="" (
     %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
 ) ELSE (
     %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore -p:DefineConstants=%DotNetDefineConstants%
@@ -62,7 +62,7 @@ SET PackageName="Microsoft.ML.OnnxRuntime.TensorRT"
 %dn% clean test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj
 %dn% restore test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --configfile .\Nuget.CSharp.config --no-cache --packages test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages --source https://api.nuget.org/v3/index.json --source  %LocalNuGetRepo%
 
-IF "%DotNetDefineConstants"=="" (
+IF "%DotNetDefineConstants%"=="" (
     %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
 ) ELSE (
     %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore -p:DefineConstants=%DotNetDefineConstants%
