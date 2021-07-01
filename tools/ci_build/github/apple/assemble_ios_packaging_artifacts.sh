@@ -21,7 +21,7 @@ ORT_POD_VERSION=${3:?${USAGE_TEXT}}
 
 STORAGE_ACCOUNT_NAME="onnxruntimepackages"
 STORAGE_ACCOUNT_CONTAINER_NAME="ortmobilestore"
-STORAGE_URL_PREFIX="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${STORAGE_ACCOUNT_CONTAINER_NAME}/"
+STORAGE_URL_PREFIX="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/${STORAGE_ACCOUNT_CONTAINER_NAME}"
 
 assemble_and_upload_pod() {
   local POD_NAME=${1:?"Expected pod name as first argument."}
