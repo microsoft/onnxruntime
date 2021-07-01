@@ -5,6 +5,7 @@
 
 from . import _utils, _io, _logger, torch_cpp_extensions as _cpp_ext
 from ._custom_autograd_function_exporter import _post_process_after_export
+from ._graph_execution_interface import GraphExecutionInterface
 from onnxruntime.training.ortmodule import ONNX_OPSET_VERSION
 
 from onnxruntime.capi import _pybind_state as C
@@ -30,7 +31,7 @@ class RunStateInfo(object):
         self.state = state
         self.output_info = output_info
 
-class GraphExecutionManager(ABC):
+class GraphExecutionManager(GraphExecutionInterface):
     def __init__(self, module):
         """Manages building and execution of onnx graphs
 
@@ -41,8 +42,9 @@ class GraphExecutionManager(ABC):
         the onnx graph, and ExecutionAgent to run the onnx graph.
         """
 
+        super(GraphExecutionManager, self).__init__(module._original_module)
+
         # Original and flattened (tranformed) output module
-        self._original_module = module._original_module
         self._flattened_module = module
 
         # Exported model
@@ -125,6 +127,12 @@ class GraphExecutionManager(ABC):
 
         # WIP feature to enable caching in Gradient accumulation scenario.
         self._enable_grad_acc_optimization = False
+
+    def _validate_module_type(self, module):
+        """Raises a TypeError if the module is not a torch.nn.Module"""
+
+        if not isinstance(module, torch.nn.Module):
+            raise TypeError(f"ORTModule only supports torch.nn.Module as input. {type(module)} is not supported.")
 
     @staticmethod
     def execution_session_run_forward(execution_session, onnx_model, device, *inputs):

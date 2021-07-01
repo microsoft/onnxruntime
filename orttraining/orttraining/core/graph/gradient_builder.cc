@@ -1836,5 +1836,21 @@ IMPLEMENT_GRADIENT_BUILDER(GetPadGradient) {
                               NodeDef("Pad", {GO(0), IA("Neg_pads")}, {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetScatterNDGradient) {
+  std::vector<NodeDef> result;
+  if (IsGradientRequiredForSrcNodeInput(0)) {
+    result.emplace_back(NodeDef("Shape", {I(2)}, {IA("Shape_updates")}));
+    result.emplace_back(NodeDef("ConstantOfShape", {IA("Shape_updates")}, {IA("Zero_Shape_updates")},
+                                {MakeAttribute("value", ScalarTensorProtoByElemType(0.0f, IElemType(0)))}));
+    result.emplace_back(NodeDef("ScatterND", {GO(0), I(1), IA("Zero_Shape_updates")}, {GI(0)}));
+  }
+
+  if (IsGradientRequiredForSrcNodeInput(2)) {
+    result.emplace_back(NodeDef("GatherND", {GO(0), I(1)}, {GI(2)}));
+  }
+
+  return result;
+}
+
 }  // namespace training
 }  // namespace onnxruntime
