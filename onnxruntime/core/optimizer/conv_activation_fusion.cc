@@ -121,6 +121,9 @@ Status ConvActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         graph_utils::FinalizeNodeFusion(graph, {conv_node, act_node}, fused_conv);
         modified = true;
       } else if (graph_utils::IsSupportedOptypeVersionAndDomain(next_node, "Add", {6, 7, 13, 14})) {
+        if (next_node.GetOutputEdgesCount() == 0) {
+          continue;
+        }
         const auto& last_node = *(next_node.OutputNodesBegin());
         if (last_node.GetExecutionProviderType() != node->GetExecutionProviderType()) {
           continue;
