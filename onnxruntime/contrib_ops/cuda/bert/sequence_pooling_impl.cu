@@ -54,11 +54,11 @@ __global__ void SequencePoolingKernel(const T* input, const int64_t* sentence_le
 
   if (sentence_lengthes[seq_id_per_batch + offset] == 0) {
     output[output_offset] = 0;
-  } else if (seq_id_per_batch + 1 < 256 && sentence_lengthes[seq_id_per_batch + 1 + offset] == 0) {
+  } else if (seq_id_per_batch == 255) {
     output[output_offset] = 0;
   } else {
     T local_max = (T)0;
-    const int sequence_length = sentence_lengthes_prefixsum[seq_id_per_batch] - past_sequence_length;
+    const int sequence_length = sentence_lengthes[seq_id_per_batch + offset];
 
     for (int i = 0; i < sequence_length; ++i) {
       if (i == 0) {
