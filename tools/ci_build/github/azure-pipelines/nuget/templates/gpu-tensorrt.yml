@@ -70,75 +70,75 @@ jobs:
         #condition : 'succeeded'
     #- template: ../../templates/clean-agent-build-directory-step.yml
 
-#- job: NuGet_Packaging
-  #workspace:
-    #clean: all
-  #pool: 'onnxruntime-gpu-winbuild'
-  #dependsOn:
-  #- Windows_CI_GPU_TENSORRT_Dev
-  #- Linux_CI_GPU_TENSORRT_Dev
-  #condition: succeeded()
-  #steps:
-  #- task: DownloadPipelineArtifact@0
-    #displayName: 'Download Pipeline Artifact - NuGet TENSORRT'
-    #inputs:
-      #artifactName: 'drop-nuget'
-      #targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+- job: NuGet_Packaging
+  workspace:
+    clean: all
+  pool: 'onnxruntime-gpu-winbuild'
+  dependsOn:
+  - Windows_CI_GPU_TENSORRT_Dev
+  - Linux_CI_GPU_TENSORRT_Dev
+  condition: succeeded()
+  steps:
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - NuGet TENSORRT'
+    inputs:
+      artifactName: 'drop-nuget'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-  #- task: DownloadPipelineArtifact@0
-    #displayName: 'Download Pipeline Artifact - Linux'
-    #inputs:
-      #artifactName: 'drop-linux'
-      #targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Linux'
+    inputs:
+      artifactName: 'drop-linux'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-  #- script: |
-     #pushd $(Build.BinariesDirectory)\nuget-artifact
-     #dir
-     #powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
-     #powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
-     #set PATH=%CD%;%PATH%
-     #SETLOCAL EnableDelayedExpansion
-     #FOR /R %%i IN (*.nupkg) do (
-         #set filename=%%~ni
-         #IF NOT "!filename:~25,7!"=="Managed" (
-             #rename %%~ni.nupkg %%~ni.zip
-             #unzip %%~ni.zip -d %%~ni
-             #del /Q %%~ni.zip
-             #unzip linux-x64.zip -d linux-x64
-             #mkdir %%~ni\runtimes\linux-x64
-             #mkdir %%~ni\runtimes\linux-x64\native
-             #move linux-x64\linux-x64\libonnxruntime.so %%~ni\runtimes\linux-x64\native\libonnxruntime.so
-             #move linux-x64\linux-x64\libonnxruntime_providers_shared.so %%~ni\runtimes\linux-x64\native\libonnxruntime_providers_shared.so
-             #move linux-x64\linux-x64\libonnxruntime_providers_cuda.so %%~ni\runtimes\linux-x64\native\libonnxruntime_providers_cuda.so
-             #move linux-x64\linux-x64\libonnxruntime_providers_tensorrt.so %%~ni\runtimes\linux-x64\native\libonnxruntime_providers_tensorrt.so
-             #pushd %%~ni
-             #zip -r ..\%%~ni.zip .
-             #popd
-             #move %%~ni.zip %%~ni.nupkg
-         #)
-     #)
-     #popd
-     #copy $(Build.BinariesDirectory)\nuget-artifact\*.nupkg $(Build.ArtifactStagingDirectory)
-    #displayName: 'Bundle Native NuGet and other binaries'
+  - script: |
+     pushd $(Build.BinariesDirectory)\nuget-artifact
+     dir
+     powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
+     powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
+     set PATH=%CD%;%PATH%
+     SETLOCAL EnableDelayedExpansion
+     FOR /R %%i IN (*.nupkg) do (
+         set filename=%%~ni
+         IF NOT "!filename:~25,7!"=="Managed" (
+             rename %%~ni.nupkg %%~ni.zip
+             unzip %%~ni.zip -d %%~ni
+             del /Q %%~ni.zip
+             unzip linux-x64.zip -d linux-x64
+             mkdir %%~ni\runtimes\linux-x64
+             mkdir %%~ni\runtimes\linux-x64\native
+             move linux-x64\linux-x64\libonnxruntime.so %%~ni\runtimes\linux-x64\native\libonnxruntime.so
+             move linux-x64\linux-x64\libonnxruntime_providers_shared.so %%~ni\runtimes\linux-x64\native\libonnxruntime_providers_shared.so
+             move linux-x64\linux-x64\libonnxruntime_providers_cuda.so %%~ni\runtimes\linux-x64\native\libonnxruntime_providers_cuda.so
+             move linux-x64\linux-x64\libonnxruntime_providers_tensorrt.so %%~ni\runtimes\linux-x64\native\libonnxruntime_providers_tensorrt.so
+             pushd %%~ni
+             zip -r ..\%%~ni.zip .
+             popd
+             move %%~ni.zip %%~ni.nupkg
+         )
+     )
+     popd
+     copy $(Build.BinariesDirectory)\nuget-artifact\*.nupkg $(Build.ArtifactStagingDirectory)
+    displayName: 'Bundle Native NuGet and other binaries'
 
-  #- template: ../../templates/esrp_nuget.yml
-    #parameters:
-      #DisplayName: 'ESRP - sign NuGet package'
-      #FolderPath: '$(Build.ArtifactStagingDirectory)'
-      #DoEsrp: ${{ parameters.DoEsrp }}
+  - template: ../../templates/esrp_nuget.yml
+    parameters:
+      DisplayName: 'ESRP - sign NuGet package'
+      FolderPath: '$(Build.ArtifactStagingDirectory)'
+      DoEsrp: ${{ parameters.DoEsrp }}
 
-  #- template: ../../templates/validate-nuget.yml
-    #parameters:
-      #NugetPath: '$(Build.ArtifactStagingDirectory)'
-      #NugetPackage: 'Microsoft.ML.OnnxRuntime.TensorRT*nupkg'
-      #PlatformsSupported: 'win-x64,linux-x64'
-      #VerifyNugetSigning: ${{ parameters.DoEsrp }}
+  - template: ../../templates/validate-nuget.yml
+    parameters:
+      NugetPath: '$(Build.ArtifactStagingDirectory)'
+      NugetPackage: 'Microsoft.ML.OnnxRuntime.TensorRT*nupkg'
+      PlatformsSupported: 'win-x64,linux-x64'
+      VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
-  #- task: PublishPipelineArtifact@0
-    #displayName: 'Publish Pipeline NuGet Artifact'
-    #inputs:
-      #artifactName: 'drop-signed-nuget'
-      #targetPath: '$(Build.ArtifactStagingDirectory)'
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline NuGet Artifact'
+    inputs:
+      artifactName: 'drop-signed-nuget'
+      targetPath: '$(Build.ArtifactStagingDirectory)'
 
 - template: test_win.yml
   parameters:
