@@ -56,10 +56,8 @@ def _build_for_ios_sysroot(build_config, intermediates_dir, base_build_command, 
             '--build_dir=' + build_dir_current_arch
         ]
 
-        print(build_command)
-
         # the actual build process for current arch
-        # subprocess.run(build_command, shell=False, check=True, cwd=REPO_DIR)
+        subprocess.run(build_command, shell=False, check=True, cwd=REPO_DIR)
 
         # get the compiled lib path
         framework_dir = os.path.join(
@@ -111,6 +109,7 @@ def _build_package(args):
         framework_dir = _build_for_ios_sysroot(
             build_config, intermediates_dir, base_build_command, sysroot, build_settings['build_osx_archs'][sysroot])
         framework_dirs.append(framework_dir)
+        # podspec for each sysroot are the same, pick one of them
         if not podspec_path:
             podspec_path = os.path.join(os.path.dirname(framework_dir), 'onnxruntime-mobile-c.podspec')
 
@@ -131,7 +130,6 @@ def _build_package(args):
     for framework_dir in framework_dirs:
         build_xcframework_cmd.extend(['-framework', framework_dir])
 
-    print(build_xcframework_cmd)
     subprocess.run(build_xcframework_cmd, shell=False, check=True, cwd=REPO_DIR)
 
 
