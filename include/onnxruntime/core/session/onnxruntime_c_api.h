@@ -176,6 +176,7 @@ ORT_RUNTIME_CLASS(ThreadPoolParams);
 ORT_RUNTIME_CLASS(ThreadingOptions);
 ORT_RUNTIME_CLASS(ArenaCfg);
 ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
+ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -198,6 +199,7 @@ typedef OrtStatus* OrtStatusPtr;
   _Success_(return == 0) _Check_return_ _Ret_maybenull_ OrtStatusPtr ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
 
 #define ORT_CLASS_RELEASE(X) void(ORT_API_CALL * Release##X)(_Frees_ptr_opt_ Ort##X * input)
+#define ORT_CLASS_RELEASE2(X) void(ORT_API_CALL * Release##X)(_Frees_ptr_opt_ Ort##X##V2 * input)
 
 // When passing in an allocator to any ORT function, be sure that the allocator object
 // is not destroyed until the last allocated object using it is freed.
@@ -1241,7 +1243,7 @@ struct OrtApi {
   ORT_API2_STATUS(ModelMetadataGetGraphDescription, _In_ const OrtModelMetadata* model_metadata,
                   _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
   /**
-   * Append TensorRT execution provider to the session options
+   * Append TensorRT execution provider to the session options with TensorRT provider options. 
    * If TensorRT is not available (due to a non TensorRT enabled build), this function will return failure.
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_TensorRT,
@@ -1387,6 +1389,62 @@ struct OrtApi {
                   _In_ const void* model_data, size_t model_data_length,
                   _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
                   _Outptr_ OrtSession** out);
+
+  /**
+   * Append TensorRT execution provider to the session options with TensorRT provider options.
+   * If TensorRT is not available (due to a non TensorRT enabled build), this function will return failure.
+   * Note: this API is slightly different than SessionOptionsAppendExecutionProvider_TensorRT.
+   * SessionOptionsAppendExecutionProvider_TensorRT takes struct OrtTensorRTProviderOptions which is open to user as argument,
+   * but this API takes opaque struct OrtTensorRTProviderOptionsV2 which must be created by CreateTensorRTProviderOptions.
+   * User needs to instantiate OrtTensorRTProviderOptions as well as allocate/release buffers for some members of OrtTensorRTProviderOptions.
+   * However, for using OrtTensorRTProviderOptionsV2, CreateTensorRTProviderOptions and ReleaseTensorRTProviderOptions will do the memory allocation and release for you. 
+   *
+   * \param options - OrtSessionOptions instance 
+   * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance 
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_TensorRT_V2,
+                  _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options);
+
+  /**
+   * Use this API to create the configuration of a TensorRT Execution Provider which is an instance of OrtTensorRTProviderOptionsV2.
+   *
+   * \param out - pointer to the pointer of TensorRT EP provider options instance.
+   */
+  ORT_API2_STATUS(CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptionsV2** out);
+
+  /**
+  * Use this API to set appropriate configuration knobs of a TensorRT Execution Provider.
+  *
+  * Please reference to https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#c-api-example
+  * to know the available keys and values. Key should be in string format of the member of OrtTensorRTProviderOptions and value should be its related range.
+  * For example, key="trt_max_workspace_size" and value="2147483648"
+  *
+  * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance
+  * \param provider_options_keys - array of UTF-8 null-terminated string for provider options keys
+  * \param provider_options_values - array of UTF-8 null-terminated string for provider options values
+  * \param num_keys - number of keys
+  */
+  ORT_API2_STATUS(UpdateTensorRTProviderOptions, _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options,
+                 _In_reads_(num_keys) const char* const* provider_options_keys,
+                 _In_reads_(num_keys) const char* const* provider_options_values,
+                 _In_ size_t num_keys);
+
+  /**
+  * Get serialized TensorRT provider options string.
+  *
+  * For example, "trt_max_workspace_size=2147483648;trt_max_partition_iterations=10;trt_int8_enable=1;......" 
+  *
+  * \param tensorrt_options - OrTensorRTProviderOptionsV2 instance 
+  * \param allocator - a ptr to an instance of OrtAllocator obtained with CreateAllocator() or GetAllocatorWithDefaultOptions()
+  *                      the specified allocator will be used to allocate continuous buffers for output strings and lengths.
+  * \param ptr - is a UTF-8 null terminated string allocated using 'allocator'. The caller is responsible for using the same allocator to free it.
+  */
+  ORT_API2_STATUS(GetTensorRTProviderOptionsAsString, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
+
+  /**
+  * Use this API to release the instance of OrtTensorRTProviderV2.
+  */
+  ORT_CLASS_RELEASE2(TensorRTProviderOptions);
 };
 
 /*

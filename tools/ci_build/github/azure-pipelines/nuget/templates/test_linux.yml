@@ -1,6 +1,5 @@
 parameters:
   AgentPool: 'Linux-CPU'
-  TestGPU: 'false'
 
 jobs:
 - job: NuGet_Test_Linux
@@ -32,48 +31,25 @@ jobs:
     parameters:
       packageFolder: '$(Build.BinariesDirectory)/nuget-artifact'
 
-  - ${{ if eq(parameters['TestGPU'], 'false') }}:
-    - template: ../../templates/get-docker-image-steps.yml
-      parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
-        Context: tools/ci_build/github/linux/docker
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimecpubuild
+  - task: CmdLine@2
+    displayName: 'Create symlink for test models'
+    inputs:
+      script: |     
+         ln -sf /data/models $(Build.BinariesDirectory)
 
-    - script: |
-       set -e -x
-       $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest-docker.sh \
-         $(Build.SourcesDirectory) \
-         $(Build.BinariesDirectory) \
-         nuget-artifact \
-         $(NuGetPackageVersionNumber) \
-         onnxruntimecpubuild \
-         true
-      displayName: 'Run Package Test (x64) on CentOS7'
-      env:
-        OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
-
-
-  - ${{ if eq(parameters['TestGPU'], 'true') }}:
-    - template: ../../templates/get-docker-image-steps.yml
-      parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11
-        Context: tools/ci_build/github/linux/docker
-        DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg BASEIMAGE=nvcr.io/nvidia/cuda:11.1-cudnn8-devel-centos7 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-9/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-9/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-9/root/usr/lib64:/opt/rh/devtoolset-9/root/usr/lib:/opt/rh/devtoolset-9/root/usr/lib64/dyninst:/opt/rh/devtoolset-9/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
-        Repository: onnxruntimecuda11build
-
-    - script: |
-       set -e -x
-       $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest-docker-gpu.sh \
-         $(Build.SourcesDirectory) \
-         $(Build.BinariesDirectory) \
-         nuget-artifact \
-         $(NuGetPackageVersionNumber) \
-         onnxruntimecuda11build
-      displayName: 'Run Package Test GPU (x64)'
-      env:
-        OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
-
+  - task: Bash@3
+    displayName: 'Run Package Test'
+    inputs:
+      targetType: filePath
+      filePath: '$(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh'
+      arguments: '$(Build.BinariesDirectory)/nuget-artifact $(NuGetPackageVersionNumber)'
+      workingDirectory: $(Build.BinariesDirectory)
+    env:
+      OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
+      DisableContribOps: $(DisableContribOps)
+      DisableMlOps: $(DisableMlOps)
+      IsReleaseBuild: $(IsReleaseBuild)
+        
   - template: ../../templates/component-governance-component-detection-steps.yml
     parameters :
       condition : 'always'

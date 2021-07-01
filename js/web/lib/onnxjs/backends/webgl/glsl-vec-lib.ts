@@ -19,8 +19,7 @@ export class VecGlslLib extends GlslLib {
     return {...this.binaryVecFunctions(), ...this.copyVec(), ...this.setVecItem(), ...this.getVecItem()};
   }
   protected binaryVecFunctions(): {[name: string]: GlslLibRoutine} {
-    const outputLayout = this.context.programInfo.outputLayout;
-    const rank = outputLayout.shape.length;
+    const rank = this.context.programInfo.output.dims.length;
     const nameOp: {[name: string]: string} = {add: '+=', sub: '-=', mul: '*=', div: '/='};
     const result: {[name: string]: GlslLibRoutine} = {};
     for (const name in nameOp) {
@@ -42,8 +41,7 @@ export class VecGlslLib extends GlslLib {
     return result;
   }
   protected copyVec(): {[name: string]: GlslLibRoutine} {
-    const outputLayout = this.context.programInfo.outputLayout;
-    const rank = outputLayout.shape.length;
+    const rank = this.context.programInfo.output.dims.length;
     let assignmentBlock = '';
     for (let i = 0; i < rank; ++i) {
       assignmentBlock += `
@@ -59,8 +57,7 @@ export class VecGlslLib extends GlslLib {
   }
 
   protected setVecItem(): {[name: string]: GlslLibRoutine} {
-    const outputLayout = this.context.programInfo.outputLayout;
-    const rank = outputLayout.shape.length;
+    const rank = this.context.programInfo.output.dims.length;
     let block = `
         if(index < 0)
             index =${rank} + index;
@@ -85,8 +82,7 @@ export class VecGlslLib extends GlslLib {
     return {setVecItem: new GlslLibRoutine(body)};
   }
   protected getVecItem(): {[name: string]: GlslLibRoutine} {
-    const outputLayout = this.context.programInfo.outputLayout;
-    const rank = outputLayout.shape.length;
+    const rank = this.context.programInfo.output.dims.length;
     let block = `
         if(index < 0)
             index = ${rank} + index;

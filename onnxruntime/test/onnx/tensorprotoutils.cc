@@ -69,7 +69,7 @@ static void UnpackTensorWithRawData(const void* raw_data, size_t raw_data_length
     ORT_CXX_API_THROW(MakeString("UnpackTensor: the pre-allocated size does not match the raw data size, expected ",
                                  expected_size_in_bytes, ", got ", raw_data_length),
                       OrtErrorCode::ORT_FAIL);
-  if (endian::native != endian::little) {
+  if constexpr(endian::native != endian::little) {
     ORT_CXX_API_THROW("UnpackTensorWithRawData only handles little-endian native byte order for now.",
                       OrtErrorCode::ORT_NOT_IMPLEMENTED);
   }

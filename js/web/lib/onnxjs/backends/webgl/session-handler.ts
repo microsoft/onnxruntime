@@ -26,8 +26,6 @@ export class WebGLSessionHandler implements SessionHandler {
   pack2unpackMap: Map<Tensor.Id, Tensor.Id>;
   unpack2packMap: Map<Tensor.Id, Tensor.Id>;
   initializers: Set<Tensor.Id>;
-  packOpCache: Map<string, WebGLOperator>;
-  unpackOpCache: Map<string, WebGLOperator>;
   pack?: boolean;
 
   constructor(public readonly backend: WebGLBackend, public readonly context: Session.Context) {
@@ -38,8 +36,6 @@ export class WebGLSessionHandler implements SessionHandler {
         {reuseTextures: backend.textureCacheMode === 'full'});
     this.packedTextureDataCache = new Map();
     this.unpackedTextureDataCache = new Map();
-    this.packOpCache = new Map();
-    this.unpackOpCache = new Map();
     this.pack = backend.pack;
     this.pack2unpackMap = new Map();
     this.unpack2packMap = new Map();

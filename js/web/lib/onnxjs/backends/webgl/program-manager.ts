@@ -3,6 +3,7 @@
 
 import {env} from 'onnxruntime-common';
 import {Logger, Profiler} from '../../instrument';
+import {GlslTensorMetadata} from './glsl-definitions';
 
 import {GlslPreprocessor} from './glsl-preprocessor';
 import {getVertexShaderSource} from './glsl-source';
@@ -62,9 +63,9 @@ export class ProgramManager {
     }
     this.repo.forEach(a => this.glContext.deleteProgram(a.program));
   }
-  build(programInfo: ProgramInfo): Artifact {
+  build(programInfo: ProgramInfo, inputs: GlslTensorMetadata[]): Artifact {
     return this.profiler.event('backend', 'ProgramManager.build', () => {
-      const preprocessor = new GlslPreprocessor(this.glContext, programInfo);
+      const preprocessor = new GlslPreprocessor(this.glContext, programInfo, inputs, this.textureLayoutStrategy);
       const fragScript = preprocessor.preprocess();
       const program = this.compile(fragScript);
       const artifact = {

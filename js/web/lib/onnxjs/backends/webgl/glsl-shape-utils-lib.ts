@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {ShapeUtil} from '../../util';
 import {GlslContext, GlslLib, GlslLibRoutine} from './glsl-definitions';
 
 /**
@@ -25,10 +26,10 @@ export class ShapeUtilsGlslLib extends GlslLib {
   }
   protected bcastIndex(): {[name: string]: GlslLibRoutine} {
     const programInfo = this.context.programInfo;
-    const outputRank = programInfo.outputLayout.shape.length;
+    const outputRank = programInfo.output.dims.length;
     const result: {[name: string]: GlslLibRoutine} = {};
-    this.context.programInfo.samplers.forEach((name, i) => {
-      const shape = programInfo.inputLayouts[i].shape;
+    this.context.programInfo.inputNames.forEach((name, i) => {
+      const shape = this.context.inputMetadata[i].dims;
       if (shape.length <= outputRank) {
         const rank = shape.length;
         const dimOffset = outputRank - rank;
@@ -51,10 +52,10 @@ export class ShapeUtilsGlslLib extends GlslLib {
   }
   protected bcastMatmulIndex(): {[name: string]: GlslLibRoutine} {
     const programInfo = this.context.programInfo;
-    const outputRank = programInfo.outputLayout.shape.length;
+    const outputRank = programInfo.output.dims.length;
     const result: {[name: string]: GlslLibRoutine} = {};
-    this.context.programInfo.samplers.forEach((name, i) => {
-      const shape = programInfo.inputLayouts[i].shape;
+    this.context.programInfo.inputNames.forEach((name, i) => {
+      const shape = this.context.inputMetadata[i].dims;
       if (!(shape.length < 2 || shape.length > outputRank)) {
         const rank = shape.length;
         const dimOffset = outputRank - rank;
@@ -78,11 +79,10 @@ export class ShapeUtilsGlslLib extends GlslLib {
     return result;
   }
   protected indicesToOffset(): {[name: string]: GlslLibRoutine} {
-    const programInfo = this.context.programInfo;
     const result: {[name: string]: GlslLibRoutine} = {};
-    this.context.programInfo.samplers.forEach((name, i) => {
-      const shape = programInfo.inputLayouts[i].shape;
-      const strides = programInfo.inputLayouts[i].strides;
+    this.context.programInfo.inputNames.forEach((name, i) => {
+      const shape = this.context.inputMetadata[i].dims;
+      const strides = ShapeUtil.computeStrides(shape);
       const rank = shape.length;
       let funcName = `indicesToOffset_${name}`;
       result[funcName] = new GlslLibRoutine(ShapeUtilsGlslLib.indexToOffsetSingle(funcName, rank, strides));
@@ -108,11 +108,10 @@ export class ShapeUtilsGlslLib extends GlslLib {
       `;
   }
   protected offsetToIndices(): {[name: string]: GlslLibRoutine} {
-    const programInfo = this.context.programInfo;
     const result: {[name: string]: GlslLibRoutine} = {};
-    this.context.programInfo.samplers.forEach((name, i) => {
-      const shape = programInfo.inputLayouts[i].shape;
-      const strides = programInfo.inputLayouts[i].strides;
+    this.context.programInfo.inputNames.forEach((name, i) => {
+      const shape = this.context.inputMetadata[i].dims;
+      const strides = ShapeUtil.computeStrides(shape);
       const rank = shape.length;
       let funcName = `offsetToIndices_${name}`;
       result[funcName] = new GlslLibRoutine(ShapeUtilsGlslLib.offsetToIndicesSingle(funcName, rank, strides));
@@ -139,10 +138,9 @@ export class ShapeUtilsGlslLib extends GlslLib {
       `;
   }
   protected incrementIndices(): {[name: string]: GlslLibRoutine} {
-    const programInfo = this.context.programInfo;
     const result: {[name: string]: GlslLibRoutine} = {};
-    this.context.programInfo.samplers.forEach((name, i) => {
-      const shape = programInfo.inputLayouts[i].shape;
+    this.context.programInfo.inputNames.forEach((name, i) => {
+      const shape = this.context.inputMetadata[i].dims;
       const rank = shape.length;
       const funcName = `incrementIndices_${name}`;
       let shapeInit = '';

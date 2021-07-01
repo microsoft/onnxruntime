@@ -1,10 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {GlslContext, GlslLib, GlslLibRoutineNode, TopologicalSortGlslRoutines} from './glsl-definitions';
+import * as glsl from './glsl-definitions';
+import {GlslContext, GlslLib, GlslLibRoutineNode} from './glsl-definitions';
 import {replaceInlines} from './glsl-function-inliner';
 import {glslRegistry} from './glsl-registered-libs';
 import {getDefaultFragShaderMain, getFragShaderPreamble} from './glsl-source';
+import {TextureLayoutStrategy} from './texture-layout-strategy';
 import {ProgramInfo, VariableInfo} from './types';
 import {WebGLContext} from './webgl-context';
 
@@ -21,8 +23,10 @@ export class GlslPreprocessor {
   readonly libs: {[name: string]: GlslLib} = {};
   readonly glslLibRoutineDependencyGraph: {[routineName: string]: GlslLibRoutineNode} = {};
 
-  constructor(glContext: WebGLContext, programInfo: ProgramInfo) {
-    this.context = new GlslContext(glContext, programInfo);
+  constructor(
+      glContext: WebGLContext, programInfo: ProgramInfo, inputs: glsl.GlslTensorMetadata[],
+      textureLayoutStrategy: TextureLayoutStrategy) {
+    this.context = new GlslContext(glContext, programInfo, inputs, textureLayoutStrategy);
 
     // construct GlslLibs
     Object.keys(glslRegistry).forEach((name: string) => {
@@ -68,14 +72,14 @@ export class GlslPreprocessor {
     // append main() function
     if (!this.context.programInfo.hasMain) {
       source = `${source}
-      ${getDefaultFragShaderMain(this.context.glContext.version, programInfo.outputLayout.shape.length)}`;
+      ${getDefaultFragShaderMain(this.context.glContext.version, programInfo.output.dims.length)}`;
     }
     // replace inlines
     source = replaceInlines(source);
 
     // concat final source string
     return `${getFragShaderPreamble(this.context.glContext.version)}
-    ${this.getUniforms(programInfo.samplers, programInfo.variables)}
+    ${this.getUniforms(programInfo.inputNames, programInfo.variables)}
     ${this.getImports(source)}
     ${source}`;
   }
@@ -108,7 +112,7 @@ export class GlslPreprocessor {
       }
     });
 
-    return TopologicalSortGlslRoutines.returnOrderedNodes(nodes);
+    return glsl.TopologicalSortGlslRoutines.returnOrderedNodes(nodes);
   }
 
   protected getUniforms(samplers?: string[], variables?: VariableInfo[]): string {

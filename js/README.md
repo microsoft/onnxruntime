@@ -362,7 +362,15 @@ By default, ONNX Runtime React Native leverages ONNX Runtime Mobile package with
         xcodebuild test -workspace OnnxruntimeModule.xcworkspace -scheme OnnxruntimeModuleTest -destination 'platform=iOS Simulator,name=iPhone 11,OS=14.5'
         ```
 
-4. Test an example for Android and iOS. In Windows, open Android Emulator first. From `<ORT_ROOT>/js/react_native`
+4. Test an example for Android and iOS. In Windows, open Android Emulator first.
+
+   `debug.keystore` must be generated ahead for Android example.
+
+    ```sh
+    keytool -genkey -v -keystore <ORT_ROOT>/js/react_native/example/android/app/debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
+    ```
+
+    From `<ORT_ROOT>/js/react_native,
 
     ```sh
     yarn bootstrap

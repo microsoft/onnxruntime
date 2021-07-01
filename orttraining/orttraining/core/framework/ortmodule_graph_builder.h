@@ -27,6 +27,7 @@ struct OrtModuleGraphBuilderConfiguration {
   // Graph configuration.
   bool use_invertible_layernorm_grad = false;
   bool build_gradient_graph = true;
+  bool enable_caching = false;
 
   // Graph transformer configuration
   TrainingGraphTransformerConfiguration graph_transformer_config{};
@@ -60,6 +61,8 @@ struct GraphInfo {
   std::vector<size_t> module_output_indices_requires_save_for_backward{};
   // Names of module outputs' gradient
   std::vector<std::string> module_output_gradient_name{};
+
+  std::unordered_map<std::string, std::string> frontier_node_arg_map{};
 };
 
 class OrtModuleGraphBuilder {
@@ -107,6 +110,10 @@ class OrtModuleGraphBuilder {
 
   // Build gradient graph.
   Status BuildGradientGraph(const std::unordered_set<std::string>& x_node_arg_names);
+
+  // Get the "frontier" tensors- the the output of series of operations 
+  // that only depend on the param values, eg Casting a param
+  void GetFrontierTensors();
 
   // Handle user outputs and output grads.
   void HandleOutputsAndGrads();
