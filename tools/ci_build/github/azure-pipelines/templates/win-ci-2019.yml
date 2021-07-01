@@ -164,10 +164,10 @@ jobs:
             command: test
             projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests\Microsoft.ML.OnnxRuntime.Tests.csproj'
             configuration: '$(BuildConfig)'
-            - ${{ if eq(parameters.DotNetDefineConstants, '') }}:
-              arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
-            - ${{ if ne(parameters.DotNetDefineConstants, '') }}:
-              arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }} -p:DefineConstants=${{ parameters.DotNetDefineConstants }}'
+          - ${{ if eq(parameters.DotNetDefineConstants, '') }}:
+            arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
+          - ${{ if ne(parameters.DotNetDefineConstants, '') }}:
+            arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }} -p:DefineConstants=${{ parameters.DotNetDefineConstants }}'
             workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
       - ${{ if eq(parameters.RunTests, true) }}:
