@@ -5,7 +5,7 @@ import {expect} from 'chai';
 import {env} from 'onnxruntime-common';
 import {Backend, InferenceHandler, resolveBackend, SessionHandler} from '../../../../lib/onnxjs/backend';
 import {WebGLInferenceHandler} from '../../../../lib/onnxjs/backends/webgl/inference-handler';
-import {WebGLReshapePacked} from '../../../../lib/onnxjs/backends/webgl/ops/reshape-packed';
+import {createPackedReshapeProgramInfo} from '../../../../lib/onnxjs/backends/webgl/ops/reshape-packed';
 import {Profiler} from '../../../../lib/onnxjs/instrument';
 import {Tensor} from '../../../../lib/onnxjs/tensor';
 
@@ -126,8 +126,6 @@ describe('#UnitTest# - reshape - packed', () => {
         return;
       }
 
-      const op = new WebGLReshapePacked();
-
       const elementCount = testData.elementCount;
       const inputTensorShape = testData.inputShape;
       const outputTensorShape = testData.outputShape;
@@ -141,15 +139,11 @@ describe('#UnitTest# - reshape - packed', () => {
           new Tensor([outputTensorShape.length], 'int32', undefined, undefined, new Int32Array(outputTensorShape));
 
       // compile shader code
-      const programInfo =
-          op.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, [inputTensorA, inputTensorB]);
-
-      const artifact = webglInferenceHandler.session.programManager.build(programInfo);
-      webglInferenceHandler.session.programManager.setArtifact(op, artifact);
+      const programInfo = createPackedReshapeProgramInfo(inferenceHandler! as WebGLInferenceHandler, inputTensorA, inputTensorB);
 
       // run kernal and get output
-      const resultTensor = webglInferenceHandler.run(op, [inputTensorA, inputTensorB]);
-      const result = resultTensor[0].data;
+      const resultTensor = webglInferenceHandler.executeProgram(programInfo, inputTensorA);
+      const result = resultTensor.tensor.data;
 
       webglInferenceHandler.session.textureManager.glContext.checkError();
       // verify result.
