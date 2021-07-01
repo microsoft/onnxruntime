@@ -57,6 +57,7 @@ def main():
     variable_substitutions = {
         "VERSION": args.pod_version,
         "IOS_DEPLOYMENT_TARGET": framework_info["IOS_DEPLOYMENT_TARGET"],
+        "LICENSE_FILE": '"LICENSE"',
     }
 
     podspec_template = _script_dir / "onnxruntime-mobile-c.podspec.template"
