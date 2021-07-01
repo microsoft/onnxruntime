@@ -22,7 +22,7 @@ jobs:
       pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
     displayName: "Install Python requirements"
 
-  - script: |
+  - bash: |
       BASE_VERSION=$(cat VERSION_NUMBER)
       IS_RELEASE_BUILD=$(echo "${{ parameters.IsReleaseBuild }}" | tr "[:upper:]" "[:lower:]")
 
@@ -75,7 +75,7 @@ jobs:
     workingDirectory: "$(Build.BinariesDirectory)/staging/onnxruntime-mobile-objc"
     displayName: "Check onnxruntime-mobile-objc pod"
 
-  - script: |
+  - bash: |
       set -e
       gem install jazzy
       jazzy --config objectivec/docs/jazzy_config.yaml \
@@ -83,7 +83,7 @@ jobs:
         --module-version ${ORT_POD_VERSION}
     displayName: "Generate Objective-C API docs"
 
-  - script: |
+  - bash: |
       set -e
 
       cd $(Build.BinariesDirectory)/staging/onnxruntime-mobile-c

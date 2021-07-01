@@ -40,11 +40,11 @@ def gen_file_from_template(template_file: pathlib.Path, output_file: pathlib.Pat
         output.write(content)
 
 
-def copy_repo_relative_patterns_to_dir(patterns: list[str], dest_dir: pathlib.Path):
+def copy_repo_relative_to_dir(patterns: list[str], dest_dir: pathlib.Path):
     '''
-    Copies files to a directory.
-    The files are relative to the repo root, and the repo root-relative
-    intermediate directory structure is maintained.
+    Copies file paths relative to the repo root to a directory.
+    The given paths or path patterns are relative to the repo root, and the
+    repo root-relative intermediate directory structure is maintained.
 
     :param patterns The paths or path patterns relative to the repo root.
     :param dest_dir The destination directory.
@@ -58,5 +58,11 @@ def copy_repo_relative_patterns_to_dir(patterns: list[str], dest_dir: pathlib.Pa
 
 
 def load_framework_info(framework_info_file: pathlib.Path):
+    '''
+    Loads framework info from a file.
+
+    :param framework_info_file The framework info file path.
+    :return The framework info values.
+    '''
     with open(framework_info_file, mode="r") as framework_info:
         return json.load(framework_info)

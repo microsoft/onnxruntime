@@ -13,7 +13,7 @@ sys.path.append(str(_script_dir.parent))
 
 
 from package_assembly_utils import (  # noqa: E402
-    copy_repo_relative_patterns_to_dir, gen_file_from_template, load_framework_info)
+    copy_repo_relative_to_dir, gen_file_from_template, load_framework_info)
 
 
 # these variables contain paths or path patterns that are relative to the repo root
@@ -84,7 +84,7 @@ def main():
         print("Warning: staging directory already exists", file=sys.stderr)
 
     # copy the necessary files to the staging directory
-    copy_repo_relative_patterns_to_dir(
+    copy_repo_relative_to_dir(
         [license_file] + source_files + test_source_files + test_resource_files,
         staging_dir)
 

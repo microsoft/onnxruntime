@@ -14,7 +14,7 @@ sys.path.append(str(_script_dir.parent))
 
 
 from package_assembly_utils import (  # noqa: E402
-    copy_repo_relative_patterns_to_dir, gen_file_from_template, load_framework_info)
+    copy_repo_relative_to_dir, gen_file_from_template, load_framework_info)
 
 
 def parse_args():
@@ -50,7 +50,7 @@ def main():
     # copy the necessary files to the staging directory
     framework_dir = args.framework_dir.resolve()
     shutil.copytree(framework_dir, staging_dir / framework_dir.name, dirs_exist_ok=True)
-    copy_repo_relative_patterns_to_dir(["LICENSE"], staging_dir)
+    copy_repo_relative_to_dir(["LICENSE"], staging_dir)
 
     # generate the podspec file from the template
 

@@ -10,7 +10,7 @@ Pod::Spec.new do |s|
   s.homepage         = 'https://github.com/microsoft/onnxruntime'
   s.license          = { :type => 'MIT', :file => @LICENSE_FILE@ }
   s.author           = { "ONNX Runtime" => "onnxruntime@microsoft.com" }
-  s.source           = { :http => "file:///placeholder" }
+  s.source           = { :http => "file:///http_source_placeholder" }
   s.ios.deployment_target = '@IOS_DEPLOYMENT_TARGET@'
   s.preserve_paths = [ @LICENSE_FILE@ ]
   s.default_subspec = "Core"
