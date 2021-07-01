@@ -82,10 +82,14 @@ jobs:
         --output $(Build.BinariesDirectory)/staging/objc_api_docs \
         --module-version ${ORT_POD_VERSION}
     displayName: "Generate Objective-C API docs"
-
-  - bash: |
-      TODO...
-    displayName: "Assemble artifacts"
+  
+  - task: AzureCLI@2
+    inputs:
+      azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+      scriptType: 'bash'
+      scriptLocation: 'scriptPath'
+      scriptPath: 'tools/ci_build/github/apple/assemble_artifacts.sh'
+      arguments: '"$(Build.BinariesDirectory)/staging" "$(Build.ArtifactStagingDirectory)" "$(ORT_POD_VERSION)"'
 
   - publish: $(Build.ArtifactStagingDirectory)
     artifact: ios_packaging_artifacts
