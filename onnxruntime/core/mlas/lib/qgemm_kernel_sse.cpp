@@ -139,7 +139,7 @@ MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_SSE>(
 
 MLAS_FORCEINLINE
 void
-MlasTranspose8x8Block(
+MlasGemmU8X8TransposePackA8x8Sse(
     const uint8_t* Input,
     size_t InputStride,
     typename MLAS_GEMM_U8X8_KERNEL_SSE::PackedAType* Output,
@@ -238,7 +238,7 @@ MlasGemmU8X8TransposePackA<MLAS_GEMM_U8X8_KERNEL_SSE>(
         typename MLAS_GEMM_U8X8_KERNEL_SSE::PackedAType* d = D;
         while (m >= 8) {
             __m128i RowSum8x8 = ZeroVector;
-            MlasTranspose8x8Block(a, lda, d, AlignedCountK, RowSum8x8);
+            MlasGemmU8X8TransposePackA8x8Sse(a, lda, d, AlignedCountK, RowSum8x8);
 
             __m128i RowSum = _mm_loadu_epi32(sum);
             _mm_storeu_si128((__m128i*)sum, _mm_add_epi32(RowSum, _mm_unpacklo_epi8(RowSum8x8, ZeroVector)));
