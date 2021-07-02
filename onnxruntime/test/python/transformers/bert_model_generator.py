@@ -14,14 +14,14 @@ import numpy as np
 
 
 def float_tensor(name: str, shape: List[int], random=False, val = 1.0):
-    low = 0.0
-    high = 9.0
+    low = -0.1
+    high = 0.1
     total_elements = 1
     for x in shape:
         total_elements *= x
     #weights = [np.random.uniform(low, high) for _ in range(total_elements)] if random else [val] * total_elements
     weights = [np.random.uniform(low, high) for _ in range(total_elements)]
-    weights = [x // 1 for x in weights]
+    #weights = [x // 1 for x in weights]
     return helper.make_tensor(name, TensorProto.FLOAT, shape, weights)
 
 

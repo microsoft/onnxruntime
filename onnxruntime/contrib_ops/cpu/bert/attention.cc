@@ -15,6 +15,9 @@ using onnxruntime::concurrency::ThreadPool;
 namespace onnxruntime {
 namespace contrib {
 
+//#define PRINT_PREPACK
+//#define PRINT_COMPUTE
+
 template <typename T>
 class Attention : public OpKernel, public AttentionCPUBase {
  public:
@@ -243,14 +246,13 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
                              /*out*/ bool& is_packed,
                              /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
-  /*
-  prepacked_weights = nullptr;
-  if (input_idx == 10000) {
-      std::cout << weights.Shape() <<std::endl;
-  }
-
-  return Status::OK();
-  */
+  
+  //prepacked_weights = nullptr;
+  //if (input_idx == 10000) {
+  //    std::cout << weights.Shape() <<std::endl;
+  //}
+  //
+  //return Status::OK();
 
   if (1 != input_idx) {
     return Status::OK();
@@ -264,13 +266,14 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
 
   const auto* weights_data = weights.Data<T>();
 
-  //
-  //for (int64_t i = 0; i < weights_dims[0]; i++) {
-  //  for (int64_t j = 0; j < weights_dims[1]; j++) {
-  //    std::cout << weights_data[i * weights_dims[1] + j] << ",";
-  //  }
-  //  std::cout << std::endl;
-  //}
+#ifdef PRINT_PREPACK
+  for (int64_t i = 0; i < weights_dims[0]; i++) {
+    for (int64_t j = 0; j < weights_dims[1]; j++) {
+      std::cout << weights_data[i * weights_dims[1] + j] << ",";
+    }
+    std::cout << std::endl;
+  }
+#endif
 
   const size_t input_hidden_size = static_cast<size_t>(weights_dims[0]);
   const size_t hidden_size_x3 = static_cast<size_t>(weights_dims[1]);
@@ -296,7 +299,9 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
     size_t loop_len = static_cast<size_t>(2) * num_heads_;
     size_t qk_packed_weights_data_size = qk_packed_weights_size_ * loop_len;  // The same size would be computed by AllocArray() below
     auto* packed_weights_data = static_cast<uint8_t*>(alloc->AllocArray(qk_packed_weights_size_, loop_len));
+#ifdef PRINT_PREPACK
     auto* packed_weights_data_float = reinterpret_cast<float*> (packed_weights_data);
+#endif
     memset(packed_weights_data, 0, qk_packed_weights_data_size);
     qk_packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
 
@@ -305,7 +310,8 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
       packed_weights_data += qk_packed_weights_size_;
       weights_data += qk_head_size;
     }
-/*
+    
+#ifdef PRINT_PREPACK
     std::cout<<"Printing from 'qk packed data' packed_weights_data_float:"<<std::endl;
     for (size_t i = 0; i < loop_len; i++) {
       size_t st = qk_packed_weights_size_/(sizeof(float)/sizeof(uint8_t));
@@ -317,7 +323,8 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
       }
       std::cout << std::endl;
     }
-    */
+#endif
+
     v_packed_weights_size_ = MlasGemmPackBSize(v_head_size, input_hidden_size);
     if (v_packed_weights_size_ == 0) {
       return Status::OK();
@@ -326,7 +333,9 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
     loop_len = static_cast<size_t>(1) * num_heads_;
     size_t v_packed_weights_data_size = v_packed_weights_size_ * loop_len;  // The same size would be computed by AllocArray() below
     auto* packed_weights_data_2 = static_cast<uint8_t*>(alloc->AllocArray(v_packed_weights_size_, loop_len));
+#ifdef PRINT_PREPACK
     auto* packed_weights_data_2_float = reinterpret_cast<float*>(packed_weights_data_2);
+#endif
     memset(packed_weights_data_2, 0, v_packed_weights_data_size);
     v_packed_weights_ = BufferUniquePtr(packed_weights_data_2, BufferDeleter(alloc));
 
@@ -335,7 +344,8 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
       packed_weights_data_2 += v_packed_weights_size_;
       weights_data += v_head_size;
     }
-/*
+
+#ifdef PRINT_PREPACK
     std::cout<<"Printing from 'v packed data' packed_weights_data_float:"<<std::endl;
     for (size_t i = 0; i < loop_len; i++) {
       size_t st = v_packed_weights_size_/(sizeof(float)/sizeof(uint8_t));
@@ -347,7 +357,8 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
       }
       std::cout << std::endl;
     }
-    */
+#endif
+    
     bool share_prepacked_weights = (prepacked_weights != nullptr);
     if (share_prepacked_weights) {
       prepacked_weights->buffers_.push_back(std::move(qk_packed_weights_));
@@ -371,12 +382,16 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
       return Status::OK();
     }
 
+#ifdef PRINT_PREPACK
     std::cout<<"Packed weight size:"<<packed_weights_size_<<std::endl;
+#endif
 
     const size_t loop_len = static_cast<size_t>(3) * num_heads_;
     size_t packed_weights_data_size = packed_weights_size_ * loop_len;  // The same size would be computed by AllocArray() below
     auto* packed_weights_data = static_cast<uint8_t*>(alloc->AllocArray(packed_weights_size_, loop_len));
+#ifdef PRINT_PREPACK
     auto* packed_weights_data_float = reinterpret_cast<float*> (packed_weights_data);
+#endif
     // Initialize memory to 0 as there could be some padding associated with pre-packed
     // buffer memory and we don not want it uninitialized and generate different hashes
     // if and when we try to cache this pre-packed buffer for sharing between sessions.
@@ -386,19 +401,20 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
     for (size_t i = 0; i < loop_len; i++) {
       MlasGemmPackB(CblasNoTrans, head_size, input_hidden_size, weights_data, hidden_size_x3, packed_weights_data);
 
-      auto* packed_weights_data_temp = reinterpret_cast<float*> (packed_weights_data);
-      for (size_t j = 0; j < packed_weights_size_; j++) {
-          if (j % hidden_size == 0) {
-            std::cout<< std::endl;
-          }
-          std::cout << packed_weights_data_temp[j] << ",";
-      }
-      std::cout<<std::endl;
+      //auto* packed_weights_data_temp = reinterpret_cast<float*> (packed_weights_data);
+      //for (size_t j = 0; j < packed_weights_size_; j++) {
+      //    if (j % hidden_size == 0) {
+      //      std::cout<< std::endl;
+      //    }
+      //    std::cout << packed_weights_data_temp[j] << ",";
+      //}
+      //std::cout<<std::endl;
 
       packed_weights_data += packed_weights_size_;
       weights_data += head_size;
     }
 
+#ifdef PRINT_PREPACK
     std::cout<<"Printing from packed_weights_data_float:"<<std::endl;
     for (size_t i = 0; i < loop_len; i++) {
       size_t st = packed_weights_size_/(sizeof(float)/sizeof(uint8_t));
@@ -410,6 +426,7 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
       }
       std::cout << std::endl;
     }
+#endif
 
     bool share_prepacked_weights = (prepacked_weights != nullptr);
     if (share_prepacked_weights) {
@@ -553,43 +570,95 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         const int head_index = static_cast<int>((i / 3) % num_heads_);
         const int qkv_index = static_cast<int>(i % 3);
 
-        int input_offset = batch_index * sequence_length * input_hidden_size;
-
-        //int weights_offset = qkv_index * hidden_size + head_index * head_size;
-        int weights_offset = 0; 
-        if (qkv_index == 1) {
-          weights_offset += q_hidden_size;
-        }
-        if (qkv_index == 2) {
-          weights_offset += q_hidden_size + k_hidden_size;
-        }
-
-        if (qkv_index == 0 || qkv_index == 1) {
-          weights_offset += head_index * qk_head_size;
-        } else {
-          weights_offset += head_index * v_head_size;
-        }
-
-        T* qkv_dest = QKV[qkv_index];
-        // int qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
+        int input_offset = 0;
+        int weights_offset = 0;
+        T *qkv_dest = nullptr;
         int qkv_offset = 0;
-        if (qkv_index <= 1) {
-          qkv_offset += (batch_index * num_heads_ + head_index) * (sequence_length * qk_head_size);
-        } else if (qkv_index == 2) {
-          qkv_offset += (batch_index * num_heads_ + head_index) * (sequence_length * v_head_size);
-        }
 
-        // TODO!! memcpy here makes it not worthwhile to use Gemm batch. Possible to post process?
-        // broadcast 3NH -> (3.B.N.S.H)
-        const T* broadcast_data_src = bias_data + weights_offset;
-        T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;
-        for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
-          if (qkv_index <= 1) {
-            memcpy(broadcast_data_dest, broadcast_data_src, qk_head_size * sizeof(T));
-            broadcast_data_dest += qk_head_size;
+        if (qkv_hidden_sizes_.size() == 0) {
+          input_offset = batch_index * sequence_length * input_hidden_size;
+          weights_offset = qkv_index * hidden_size + head_index * head_size;
+          qkv_dest = QKV[qkv_index];
+          qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
+          
+          // TODO!! memcpy here makes it not worthwhile to use Gemm batch. Possible to post process?
+          // broadcast 3NH -> (3.B.N.S.H)
+          const T* broadcast_data_src = bias_data + weights_offset;
+          T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;
+#ifdef PRINT_COMPUTE
+          if (qkv_index == 2) {
+            std::cout<<"\nadd for v_hidden_size:"<<std::endl;
+            for (int i100 = 0; i100 < v_head_size; i100++) {             
+              std::cout<<broadcast_data_src[i100]<<",";
+            }
+            std::cout<<std::endl;
+          }  
+#endif
+          for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
+            memcpy(broadcast_data_dest, broadcast_data_src, head_size * sizeof(T));
+            broadcast_data_dest += head_size;
+          }
+        }
+        else {
+          input_offset = batch_index * sequence_length * input_hidden_size;
+          weights_offset = 0; 
+          int bias_offset = 0;
+          if (qkv_index == 1) {
+            weights_offset += q_hidden_size;
+            bias_offset += q_hidden_size;
+          }
+          
+          if (qkv_index == 2) {
+            bias_offset += q_hidden_size + k_hidden_size;
+          }
+          
+          if (qkv_index == 0 || qkv_index == 1) {
+            weights_offset += head_index * qk_head_size;
           } else {
-            memcpy(broadcast_data_dest, broadcast_data_src, v_head_size * sizeof(T));
-            broadcast_data_dest += v_head_size;
+            if (qk_packed_weights_ == nullptr){
+              weights_offset += q_hidden_size + k_hidden_size;
+            }
+            weights_offset += head_index * v_head_size;
+          }
+          
+          qkv_dest = QKV[qkv_index];
+          qkv_offset = 0;
+          if (qkv_index <= 1) {
+            qkv_offset += (batch_index * num_heads_ + head_index) * (sequence_length * qk_head_size);
+            bias_offset += head_index * qk_head_size;
+          } else if (qkv_index == 2) {
+            qkv_offset += (batch_index * num_heads_ + head_index) * (sequence_length * v_head_size);
+            bias_offset += head_index * v_head_size;
+          }
+          
+          // TODO!! memcpy here makes it not worthwhile to use Gemm batch. Possible to post process?
+          // broadcast 3NH -> (3.B.N.S.H)
+          const T* broadcast_data_src = bias_data + bias_offset;
+          T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;
+#ifdef PRINT_COMPUTE
+          if (qkv_index == 2) {
+              std::cout<<"\nadd for v_hidden_size:"<<std::endl;
+              for (int i100 = 0; i100 < v_head_size; i100++) {             
+                std::cout<<broadcast_data_src[i100]<<",";
+              }
+              std::cout<<std::endl;
+          }
+          else {
+              std::cout<<"\nadd for qk_hidden_size:"<<std::endl;
+              for (int i100 = 0; i100 < qk_head_size; i100++) {             
+                std::cout<<broadcast_data_src[i100]<<",";
+              }
+              std::cout<<std::endl;
+          }
+#endif
+          for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
+            if (qkv_index <= 1) {
+              memcpy(broadcast_data_dest, broadcast_data_src, qk_head_size * sizeof(T));
+              broadcast_data_dest += qk_head_size;
+            } else {
+              memcpy(broadcast_data_dest, broadcast_data_src, v_head_size * sizeof(T));
+              broadcast_data_dest += v_head_size;
+            }
           }
         }
 
@@ -599,20 +668,27 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         // C: QKV[qkv_index] (3xBxNxSxH)        (3.B.N.)S x H         S x H
         if (packed_weights_ || qk_packed_weights_) {
           uint8_t* packed_weight;
-          if (qkv_hidden_sizes_.size() != 0) {
+          int head_size_passed_in = head_size;
+          if (qkv_hidden_sizes_.size() == 0) {
+            packed_weight = static_cast<uint8_t*>(packed_weights_.get()) + packed_weights_size_ * (weights_offset / head_size);
+          } else {
             if (qkv_index <= 1) {
               packed_weight = static_cast<uint8_t*>(qk_packed_weights_.get()) + qk_packed_weights_size_ * (weights_offset / qk_head_size);
+              head_size_passed_in = qk_head_size;
             } else {
               packed_weight = static_cast<uint8_t*>(v_packed_weights_.get()) + v_packed_weights_size_ * (weights_offset / v_head_size);
+              head_size_passed_in = v_head_size;
             }
-          } else {
-            packed_weight = static_cast<uint8_t*>(packed_weights_.get()) + packed_weights_size_ * (weights_offset / head_size);
           }
-
+#ifdef PRINT_COMPUTE
+          std::cout<<"QKV index:"<< qkv_index << ",head_index:" << head_index << ",weights_offset:" << weights_offset<< ",head_size_passed_in:"<< head_size_passed_in<< std::endl;
+          std::cout<<"v:qk"<<v_packed_weights_size_ <<":"<<qk_packed_weights_size_<<std::endl;
+          std::cout<<reinterpret_cast<float*>(packed_weight)[0]<<std::endl;
+#endif
           MlasGemm(
                 CblasNoTrans,               // TransA = no
                 sequence_length,            // M      = S
-                head_size,                  // N      = H
+                head_size_passed_in,                  // N      = H
                 input_hidden_size,          // K      = D
                 1.0f,                       // alpha
                 input_data + input_offset,  // A
@@ -620,7 +696,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                 packed_weight,              // B
                 1.0f,                       // beta
                 qkv_dest + qkv_offset,      // C
-                head_size,                  // ldc
+                head_size_passed_in,                  // ldc
                 nullptr);                   // use single-thread
         } else {
           int head_size_passed_in = 0;
@@ -654,24 +730,26 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     });
   }
 
-  //std::cout << "Q values:" << std::endl;
-  //for (int i = 0; i < batch_size * sequence_length * q_hidden_size; i++) {
-  //  std::cout << Q[i] << ",";
-  //}
-  //std::cout << std::endl;
-  //
-  //std::cout << "K values:" << std::endl;
-  //for (int i = 0; i < batch_size * sequence_length * k_hidden_size; i++) {
-  //  std::cout << K[i] << ",";
-  //}
-  //std::cout << std::endl;
-  //
-  //std::cout << "V values:" << std::endl;
-  //for (int i = 0; i < batch_size * sequence_length * v_hidden_size; i++) {
-  //  std::cout << V[i] << ",";
-  //}
-  //std::cout << std::endl;
-  //
+#ifdef PRINT_COMPUTE
+  std::cout << "\nQ values:" << std::endl;
+  for (int i = 0; i < batch_size * sequence_length * q_hidden_size; i++) {
+    std::cout << Q[i] << ",";
+  }
+  std::cout << std::endl;
+  
+  std::cout << "K values:" << std::endl;
+  for (int i = 0; i < batch_size * sequence_length * k_hidden_size; i++) {
+    std::cout << K[i] << ",";
+  }
+  std::cout << std::endl;
+  
+  std::cout << "V values:" << std::endl;
+  for (int i = 0; i < batch_size * sequence_length * v_hidden_size; i++) {
+    std::cout << V[i] << ",";
+  }
+  std::cout << std::endl;
+#endif
+
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q, K, V, mask_index, past, output,
                         batch_size, sequence_length,
