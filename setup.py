@@ -294,7 +294,7 @@ if enable_training:
     package_name = 'onnxruntime-training'
 
     # we want put default training packages to pypi. pypi does not accept package with a local version.
-    if not default_training_package_device:
+    if (not default_training_package_device) or nightly_build:
         def get_torch_version():
             try:
                 import torch
