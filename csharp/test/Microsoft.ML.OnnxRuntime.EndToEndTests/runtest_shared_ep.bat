@@ -9,7 +9,7 @@ SET TargetArch=x64
 SET dn="C:\Program Files\dotnet\dotnet"
 SET CurrentOnnxRuntimeVersion=""
 SET ORTEP=""
-SET DotNetDefineConstants=""
+SET DefineConstants=""
 
 SET LocalNuGetRepo=%1
 IF NOT "%2"=="" (SET TargetFramework=%2)
@@ -48,7 +48,7 @@ IF EXIST test\Microsoft.ML.OnnxRuntime.EndToEndTests\obj RMDIR /S /Q test\Micros
 @echo %PackageName%
 @echo %CurrentOnnxRuntimeVersion%
 %dn% clean test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj
-%dn% add test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj package Microsoft.ML.OnnxRuntime.Managed -v %CurrentOnnxRuntimeVersion% --source  %LocalNuGetRepo%
+%dn% add test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj package Microsoft.ML.OnnxRuntime.Managed -v %CurrentOnnxRuntimeVersion% --source %LocalNuGetRepo% --source https://api.nuget.org/v3/index.json
 %dn% restore test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --configfile .\Nuget.CSharp.config --no-cache --packages test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages --source https://api.nuget.org/v3/index.json --source  %LocalNuGetRepo%
 
 IF NOT errorlevel 0 (
@@ -59,7 +59,7 @@ IF NOT errorlevel 0 (
 IF "%DotNetDefineConstants%"=="" (
     %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
 ) ELSE (
-    %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore -p:DefineConstants=%DotNetDefineConstants%
+    %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore -p:DefineConstants=%DefineConstants%
 )
 
 IF NOT errorlevel 0 (
