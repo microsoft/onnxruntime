@@ -36,7 +36,6 @@ FROM openvino/ubuntu18_runtime:${OPENVINO_VERSION}
 ENV DEBIAN_FRONTEND noninteractive
 
 USER root
-RUN . ${INTEL_OPENVINO_DIR}/bin/setupvars.sh
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER
