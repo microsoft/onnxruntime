@@ -170,6 +170,7 @@ struct OpKernelInfo;
 struct PrimitiveDataTypeBase;
 struct Tensor;
 struct TensorSeq;
+struct OptionalValue;
 
 class UnsqueezeBase;
 class SliceBase;

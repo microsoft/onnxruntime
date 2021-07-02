@@ -13,6 +13,7 @@
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/framework/callback.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/optional_value.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 
 namespace onnxruntime {
@@ -145,15 +146,24 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
   }
 
   if (ml_type->IsTensorSequenceType()) {
-    auto element_type = ml_type->AsSequenceTensorBase()->GetElementType();
+    auto element_type = ml_type->AsSequenceTensorType()->GetElementType();
     auto p_sequence = std::make_unique<TensorSeq>(element_type);
     auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
     ort_value.Init(p_sequence.release(), ml_tensor_sequence, ml_tensor_sequence->GetDeleteFunc());
     return Status::OK();
   }
 
+  if (ml_type->IsOptionalType()) {
+    // element will be either a Tensor or a TensorSeq
+    auto element = ml_type->AsOptionalType()->GetElementType();
+    auto ort_value_element = std::make_unique<OptionalValue>(element);
+    auto ort_value_type = DataTypeImpl::GetType<OptionalValue>();
+    ort_value.Init(ort_value_element.release(), ort_value_type, ort_value_type->GetDeleteFunc());
+    return Status::OK();
+  }
+
   if (!ml_type->IsTensorType()) {
-    assert(ml_type->AsNonTensorTypeBase() != nullptr);
+    assert(ml_type->AsNonTensorType() != nullptr);
     const NonTensorTypeBase* non_tensor_type = static_cast<const NonTensorTypeBase*>(ml_type);
     auto creator = non_tensor_type->GetCreateFunc();
     ort_value.Init(creator(), non_tensor_type, non_tensor_type->GetDeleteFunc());

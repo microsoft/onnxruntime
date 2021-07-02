@@ -105,6 +105,8 @@ template <>
 MLDataType DataTypeImpl::GetType<Tensor>() { return Provider_GetHost()->DataTypeImpl__GetType_Tensor(); }
 template <>
 MLDataType DataTypeImpl::GetType<TensorSeq>() { return Provider_GetHost()->DataTypeImpl__GetType_TensorSeq(); }
+template <>
+MLDataType DataTypeImpl::GetType<OptionalValue>() { return Provider_GetHost()->DataTypeImpl__GetType_OptionalValue(); }
 MLDataType DataTypeImpl::GetTypeFromOnnxType(int onnx_type) { return Provider_GetHost()->DataTypeImpl__GetTypeFromOnnxType(onnx_type); }
 template <>
 MLDataType DataTypeImpl::GetType<bool>() { return Provider_GetHost()->DataTypeImpl__GetType_bool(); }
@@ -484,7 +486,7 @@ Status ATenOpBase::Compute(OpKernelContext* p_ctx) const { return g_host->ATenOp
 Status Group::Compute(OpKernelContext* context) const { return g_host->contrib__Group__Compute(this, context); }
 Status PassThrough::Compute(OpKernelContext* context) const { return g_host->contrib__PassThrough__Compute(this, context); }
 Status YieldOp::Compute(OpKernelContext* context) const { return g_host->contrib__YieldOp__Compute(this, context); }
-}
+}  // namespace contrib
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 namespace contrib {

@@ -124,4 +124,3 @@ inline onnxruntime::SparseTensor* OrtValue::GetMutable<onnxruntime::SparseTensor
   ORT_ENFORCE(IsSparseTensor(), "Trying to get a SparseTensor, but got: ", onnxruntime::DataTypeImpl::ToString(type_));
   return static_cast<onnxruntime::SparseTensor*>(data_.get());
 }
-

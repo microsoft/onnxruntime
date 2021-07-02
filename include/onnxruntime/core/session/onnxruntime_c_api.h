@@ -128,6 +128,7 @@ typedef enum ONNXType {
   ONNX_TYPE_MAP,
   ONNX_TYPE_OPAQUE,
   ONNX_TYPE_SPARSETENSOR,
+  ONNX_TYPE_OPTIONAL
 } ONNXType;
 
 typedef enum OrtLoggingLevel {
@@ -1425,9 +1426,9 @@ struct OrtApi {
   * \param num_keys - number of keys
   */
   ORT_API2_STATUS(UpdateTensorRTProviderOptions, _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options,
-                 _In_reads_(num_keys) const char* const* provider_options_keys,
-                 _In_reads_(num_keys) const char* const* provider_options_values,
-                 _In_ size_t num_keys);
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
 
   /**
   * Get serialized TensorRT provider options string.

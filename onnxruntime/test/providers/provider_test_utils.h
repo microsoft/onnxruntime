@@ -194,8 +194,6 @@ struct SequenceTensorTypeProto {
     MLDataType dt = DataTypeImpl::GetTensorType<ElemType>();
     const auto* elem_proto = dt->GetTypeProto();
     proto.mutable_sequence_type()->mutable_elem_type()->CopyFrom(*elem_proto);
-    auto* tensor_type = proto.mutable_sequence_type()->mutable_elem_type()->mutable_tensor_type();
-    tensor_type->set_elem_type(TypeToDataType<ElemType>());
   }
   ONNX_NAMESPACE::TypeProto proto;
 };
@@ -207,6 +205,22 @@ struct SequenceTensorType {
 
 template <typename ElemType>
 const SequenceTensorTypeProto<ElemType> SequenceTensorType<ElemType>::s_sequence_tensor_type_proto;
+
+template <typename ElemType>
+struct OptionalTypeProto {
+  OptionalTypeProto(const TTypeProto<ElemType>& tensor_proto) {
+    proto.mutable_optional_type()->mutable_elem_type()->CopyFrom(tensor_proto.proto);
+  }
+  ONNX_NAMESPACE::TypeProto proto;
+};
+
+template <typename ElemType>
+struct OptionalType {
+  static const OptionalTypeProto<ElemType> s_optional_type_proto;
+};
+
+template <typename ElemType>
+const OptionalTypeProto<ElemType> OptionalType<ElemType>::s_optional_type_proto;
 
 // To use OpTester:
 //  1. Create one with the op name
@@ -257,19 +271,27 @@ class OpTester {
   // bool and we can't get the raw data out. So those cases must use an initializer_list
   template <typename T>
   void AddInput(const char* name, const std::vector<int64_t>& dims, const std::initializer_list<T>& values,
-                bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr) {
-    AddData(input_data_, name, dims, values.begin(), values.size(), is_initializer, false, dim_params);
+                bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr,
+                bool is_optional_tensor = false) {
+    AddData(input_data_, name, dims, values.begin(), values.size(), is_initializer,
+            false, dim_params, 0.0f, 0.0f, is_optional_tensor);
   }
 
   template <typename T>
   void AddInput(const char* name, const std::vector<int64_t>& dims, const std::vector<T>& values,
-                bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr) {
-    AddData(input_data_, name, dims, values.data(), values.size(), is_initializer, false, dim_params);
+                bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr,
+                bool is_optional_tensor = false) {
+    AddData(input_data_, name, dims, values.data(), values.size(), is_initializer,
+            false, dim_params, 0.0f, 0.0f, is_optional_tensor);
   }
 
   template <typename T>
-  void AddInput(const char* name, const std::vector<int64_t>& dims, const T* p_values, const size_t size, bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr) {
-    AddData(input_data_, name, dims, p_values, size, is_initializer, false, dim_params);
+  void AddInput(const char* name, const std::vector<int64_t>& dims, const T* p_values,
+                const size_t size, bool is_initializer = false,
+                const std::vector<std::string>* dim_params = nullptr,
+                bool is_optional_tensor = false) {
+    AddData(input_data_, name, dims, p_values, size, is_initializer, false,
+            dim_params, 0.0f, 0.0f, is_optional_tensor);
   }
 
   // Add other registered types, possibly experimental
@@ -539,7 +561,7 @@ class OpTester {
   void AddData(std::vector<Data>& data, const char* name, const std::vector<int64_t>& dims, const T* values,
                int64_t values_count, bool is_initializer = false, bool sort_output = false,
                const std::vector<std::string>* dim_params = nullptr,
-               float rel_error = 0.0f, float abs_error = 0.0f) {
+               float rel_error = 0.0f, float abs_error = 0.0f, bool is_optional_tensor = false) {
     ORT_TRY {
       TensorShape shape{dims};
       ORT_ENFORCE(shape.Size() == values_count, values_count, " input values doesn't match tensor size of ",
@@ -560,10 +582,13 @@ class OpTester {
       }
 
       TTypeProto<T> type_proto(add_shape_to_tensor_data_ ? &dims_for_proto : nullptr);
+      OptionalTypeProto<T> optional_proto(type_proto);
+
       OrtValue value;
       value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(),
                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-      auto node_arg = NodeArg(name, &type_proto.proto);
+      auto node_arg = NodeArg(name, !is_optional_tensor ? &type_proto.proto : &optional_proto.proto);
+
       if (dim_params && !(dim_params->empty()) && add_shape_to_tensor_data_) {
         // If dim_params presents, configure node_arg's dim value based on dim_params, which supports symbolic dim and dim broadcast.
         auto& dim_params_data = *dim_params;
@@ -596,7 +621,11 @@ class OpTester {
       }
 
       data.push_back(Data(std::move(node_arg), std::move(value), std::move(rel), std::move(abs), sort_output));
-      if (is_initializer) initializer_index_.push_back(data.size() - 1);
+
+      // Optional values cannot be initializers
+      if (is_initializer && !is_optional_tensor) {
+        initializer_index_.push_back(data.size() - 1);
+      }
     }
     ORT_CATCH(const std::exception& ex) {
       ORT_HANDLE_EXCEPTION([&]() {

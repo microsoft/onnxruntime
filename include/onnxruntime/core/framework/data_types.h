@@ -116,7 +116,7 @@ class DataTypeImpl {
     return nullptr;
   }
 
-  virtual const SequenceTensorTypeBase* AsSequenceTensorBase() const {
+  virtual const SequenceTensorTypeBase* AsSequenceTensorType() const {
     return nullptr;
   }
 
@@ -129,7 +129,7 @@ class DataTypeImpl {
     return nullptr;
   }
 
-  virtual const NonTensorTypeBase* AsNonTensorTypeBase() const {
+  virtual const NonTensorTypeBase* AsNonTensorType() const {
     return nullptr;
   }
 
@@ -168,8 +168,7 @@ class DataTypeImpl {
 
   static const TensorTypeBase* TensorTypeFromONNXEnum(int type);
   static const SparseTensorTypeBase* SparseTensorTypeFromONNXEnum(int type);
-  static const NonTensorTypeBase* SequenceTensorTypeFromONNXEnum(int type);
-  static const OptionalTypeBase* OptionalTypeFromONNXEnum(int type);
+  static const SequenceTensorTypeBase* SequenceTensorTypeFromONNXEnum(int type);
 
   static const char* ToString(MLDataType type);
   static std::vector<std::string> ToString(const std::vector<MLDataType>& types);
@@ -387,7 +386,7 @@ void CopyMutableOptionalElement(const ONNX_NAMESPACE::TypeProto&,
 template <typename T>
 struct SetOptionalType {
   static void Set(ONNX_NAMESPACE::TypeProto& proto) {
-    // T is not a primitive type - it is an ORT type
+    // T is not a primitive type - it is an ORT type (Tensor or TensorSeq)
     MLDataType dt = GetMLDataType<T, false>::Get();
     const auto* elem_proto = dt->GetTypeProto();
 #ifdef ORT_NO_RTTI
@@ -587,7 +586,7 @@ template <typename T>
 class OptionalType : public OptionalTypeBase {
  public:
   static_assert(data_types_internal::IsOptionalType<T>::value,
-                "Requires one of the optional types: Tensor or TensorSeq");
+                "Requires one of the supported types: Tensor or TensorSeq");
 
   static MLDataType Type();
 
@@ -597,7 +596,9 @@ class OptionalType : public OptionalTypeBase {
   }
 
  private:
-  OptionalType() {}
+  OptionalType() {
+    data_types_internal::SetOptionalType<T>::Set(this->mutable_type_proto());
+  }
 };
 
 /**
@@ -632,7 +633,7 @@ class NonTensorTypeBase : public DataTypeImpl {
 
   const ONNX_NAMESPACE::TypeProto* GetTypeProto() const override;
 
-  const NonTensorTypeBase* AsNonTensorTypeBase() const override {
+  const NonTensorTypeBase* AsNonTensorType() const override {
     return this;
   }
 
@@ -773,7 +774,7 @@ class SequenceTensorTypeBase : public DataTypeImpl {
     return true;
   }
 
-  const SequenceTensorTypeBase* AsSequenceTensorBase() const override {
+  const SequenceTensorTypeBase* AsSequenceTensorType() const override {
     return this;
   }
 

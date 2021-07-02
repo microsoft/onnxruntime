@@ -1164,10 +1164,10 @@ common::Status InferenceSession::Initialize() {
     onnxruntime::Graph& graph = model_->MainGraph();
 #ifdef DISABLE_EXTERNAL_INITIALIZERS
     const InitializedTensorSet& initializers = graph.GetAllInitializedTensors();
-    for (const auto& it: initializers) {
+    for (const auto& it : initializers) {
       if (utils::HasExternalData(*it.second)) {
         return common::Status(common::ONNXRUNTIME, common::FAIL,
-                  "Initializer tensors with external data is not allowed.");
+                              "Initializer tensors with external data is not allowed.");
       }
     }
 #endif
@@ -1499,7 +1499,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
                                " is not expected to be of type tensor sequence.");
       }
-      auto expected_element_type = expected_type->AsSequenceTensorBase()->GetElementType();
+      auto expected_element_type = expected_type->AsSequenceTensorType()->GetElementType();
       auto input_element_type = input_ml_value.Get<TensorSeq>().DataType();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "seq"));
     } else {

@@ -1700,7 +1700,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateOpaqueValue, _In_z_ const char* domain_name, 
   MLDataType ml_type = DataTypeImpl::GetDataType(dtype);
   ORT_ENFORCE(ml_type != nullptr,
               "Specified domain and type names combination does not refer to a registered opaque type");
-  const auto* non_tensor_base = ml_type->AsNonTensorTypeBase();
+  const auto* non_tensor_base = ml_type->AsNonTensorType();
   ORT_ENFORCE(non_tensor_base != nullptr, "Opaque type is not a non_tensor type!!!");
   std::unique_ptr<OrtValue> ort_val(new OrtValue);
   non_tensor_base->FromDataContainer(data_container, data_container_size, *ort_val);
@@ -1717,7 +1717,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetOpaqueValue, _In_ const char* domain_name, _In_ 
   MLDataType ml_type = DataTypeImpl::GetDataType(dtype);
   ORT_ENFORCE(ml_type != nullptr,
               "Specified domain and type names combination does not refer to a registered opaque type");
-  const auto* non_tensor_base = ml_type->AsNonTensorTypeBase();
+  const auto* non_tensor_base = ml_type->AsNonTensorType();
   ORT_ENFORCE(non_tensor_base != nullptr, "Opaque type is not a non_tensor type!!!");
   non_tensor_base->ToDataContainer(*in, data_container_size, data_container);
   API_IMPL_END

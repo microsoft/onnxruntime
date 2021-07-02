@@ -10,7 +10,7 @@
 #include "core/framework/sparse_tensor.h"
 #include "core/framework/tensor.h"
 #include "core/framework/TensorSeq.h"
-#include "core/framework/OptionalType.h"
+#include "core/framework/optional_value.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/util/math.h"
 
@@ -59,7 +59,7 @@ MLDataType DataTypeImpl::GetType<TensorSeq>() {
 }
 
 template <>
-MLDataType DataTypeImpl::GetType<Optional>() {
+MLDataType DataTypeImpl::GetType<OptionalValue>() {
   return OptionalTypeBase::Type();
 }
 
@@ -376,11 +376,25 @@ bool TensorTypeBase::IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) c
     return true;
   }
 
-  if (type_proto.value_case() != TypeProto::ValueCase::kTensorType) {
+  // Optional types may be holding tensors as well - so allow downstream checks
+  // for Optional as well.
+  if (type_proto.value_case() != TypeProto::ValueCase::kTensorType &&
+      type_proto.value_case() != TypeProto::ValueCase::kOptionalType) {
     return false;
   }
 
-  return data_types_internal::IsCompatible(thisProto->tensor_type(), type_proto.tensor_type());
+  if (type_proto.value_case() == TypeProto::ValueCase::kTensorType) {
+    return data_types_internal::IsCompatible(thisProto->tensor_type(), type_proto.tensor_type());
+  }
+
+  if (type_proto.value_case() == TypeProto::ValueCase::kOptionalType) {
+    if (type_proto.optional_type().elem_type().value_case() == TypeProto::ValueCase::kTensorType) {
+      return data_types_internal::IsCompatible(thisProto->tensor_type(),
+                                               type_proto.optional_type().elem_type().tensor_type());
+    }
+  }
+
+  return false;
 }
 
 MLDataType TensorTypeBase::Type() {
@@ -457,7 +471,25 @@ bool SequenceTensorTypeBase::IsCompatible(const ONNX_NAMESPACE::TypeProto& type_
   ORT_ENFORCE(thisProto->value_case() == TypeProto::ValueCase::kSequenceType);
   ORT_ENFORCE(utils::HasElemType(thisProto->sequence_type()));
 
-  return data_types_internal::IsCompatible(thisProto->sequence_type(), type_proto.sequence_type());
+  // Optional types may be holding tensors as well - so allow downstream checks
+  // for Optional as well.
+  if (type_proto.value_case() != TypeProto::ValueCase::kSequenceType &&
+      type_proto.value_case() != TypeProto::ValueCase::kOptionalType) {
+    return false;
+  }
+
+  if (type_proto.value_case() == TypeProto::ValueCase::kSequenceType) {
+    return data_types_internal::IsCompatible(thisProto->sequence_type(), type_proto.sequence_type());
+  }
+
+  if (type_proto.value_case() == TypeProto::ValueCase::kOptionalType) {
+    if (type_proto.optional_type().elem_type().value_case() == TypeProto::ValueCase::kSequenceType) {
+      return data_types_internal::IsCompatible(thisProto->sequence_type(),
+                                               type_proto.optional_type().elem_type().sequence_type());
+    }
+  }
+
+  return false;
 }
 
 size_t SequenceTensorTypeBase::Size() const {
@@ -508,11 +540,11 @@ bool OptionalTypeBase::IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto)
 }
 
 size_t OptionalTypeBase::Size() const {
-  return sizeof(Optional);
+  return sizeof(OptionalValue);
 }
 
 DeleteFunc OptionalTypeBase::GetDeleteFunc() const {
-  return &Delete<Optional>;
+  return &Delete<OptionalValue>;
 }
 
 const ONNX_NAMESPACE::TypeProto* OptionalTypeBase::GetTypeProto() const {
@@ -860,71 +892,71 @@ const TensorTypeBase* DataTypeImpl::TensorTypeFromONNXEnum(int type) {
   }
 }
 
-const NonTensorTypeBase* DataTypeImpl::SequenceTensorTypeFromONNXEnum(int type) {
+const SequenceTensorTypeBase* DataTypeImpl::SequenceTensorTypeFromONNXEnum(int type) {
   switch (type) {
     case TensorProto_DataType_FLOAT:
-      return DataTypeImpl::GetSequenceTensorType<float>()->AsNonTensorTypeBase();
+      return DataTypeImpl::GetSequenceTensorType<float>()->AsSequenceTensorType();
     case TensorProto_DataType_BOOL:
-      return DataTypeImpl::GetSequenceTensorType<bool>()->AsNonTensorTypeBase();
+      return DataTypeImpl::GetSequenceTensorType<bool>()->AsSequenceTensorType();
     case TensorProto_DataType_INT32:
-      return DataTypeImpl::GetSequenceTensorType<int32_t>()->AsNonTensorTypeBase();
+      return DataTypeImpl::GetSequenceTensorType<int32_t>()->AsSequenceTensorType();
     case TensorProto_DataType_DOUBLE:
-      return DataTypeImpl::GetSequenceTensorType<double>()->AsNonTensorTypeBase();
+      return DataTypeImpl::GetSequenceTensorType<double>()->AsSequenceTensorType();
     case TensorProto_DataType_STRING:
-      return DataTypeImpl::GetSequenceTensorType<std::string>()->AsNonTensorTypeBase();
+      return DataTypeImpl::GetSequenceTensorType<std::string>()->AsSequenceTensorType();
     case TensorProto_DataType_UINT8:
-      return DataTypeImpl::GetSequenceTensorType<uint8_t>()->AsNonTensorTypeBase();
+      return DataTypeImpl::GetSequenceTensorType<uint8_t>()->AsSequenceTensorType();
     case TensorProto_DataType_UINT16:
-      return DataTypeImpl::GetSequenceTensorType<uint16_t>()->AsNonTensorTypeBase();
+      return DataTypeImpl::GetSequenceTensorType<uint16_t>()->AsSequenceTensorType();
     case TensorProto_DataType_INT8:
-      return DataTypeImpl::GetSequenceTensorType<int8_t>()->AsNonTensorTypeBase();
+      return DataTypeImpl::GetSequenceTensorType<int8_t>()->AsSequenceTensorType();
     case TensorProto_DataType_INT16:
-      return DataTypeImpl::GetSequenceTensorType<int16_t>()->AsNonTensorTypeBase();
+      return DataTypeImpl::GetSequenceTensorType<int16_t>()->AsSequenceTensorType();
     case TensorProto_DataType_INT64:
-      return DataTypeImpl::GetSequenceTensorType<int64_t>()->AsNonTensorTypeBase();
+      return DataTypeImpl::GetSequenceTensorType<int64_t>()->AsSequenceTensorType();
     case TensorProto_DataType_UINT32:
-      return DataTypeImpl::GetSequenceTensorType<uint32_t>()->AsNonTensorTypeBase();
+      return DataTypeImpl::GetSequenceTensorType<uint32_t>()->AsSequenceTensorType();
     case TensorProto_DataType_UINT64:
-      return DataTypeImpl::GetSequenceTensorType<uint64_t>()->AsNonTensorTypeBase();
+      return DataTypeImpl::GetSequenceTensorType<uint64_t>()->AsSequenceTensorType();
     case TensorProto_DataType_FLOAT16:
-      return DataTypeImpl::GetSequenceTensorType<MLFloat16>()->AsNonTensorTypeBase();
+      return DataTypeImpl::GetSequenceTensorType<MLFloat16>()->AsSequenceTensorType();
     case TensorProto_DataType_BFLOAT16:
-      return DataTypeImpl::GetSequenceTensorType<BFloat16>()->AsNonTensorTypeBase();
+      return DataTypeImpl::GetSequenceTensorType<BFloat16>()->AsSequenceTensorType();
     default:
-      ORT_NOT_IMPLEMENTED("tensor type ", type, " is not supported");
+      ORT_NOT_IMPLEMENTED("sequence tensor type ", type, " is not supported");
   }
 }
 
 const SparseTensorTypeBase* DataTypeImpl::SparseTensorTypeFromONNXEnum(int type) {
   switch (type) {
     case TensorProto_DataType_FLOAT:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<float>());
+      return DataTypeImpl::GetSparseTensorType<float>()->AsSparseTensorType();
     case TensorProto_DataType_BOOL:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<bool>());
+      return DataTypeImpl::GetSparseTensorType<bool>()->AsSparseTensorType();
     case TensorProto_DataType_INT32:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<int32_t>());
+      return DataTypeImpl::GetSparseTensorType<int32_t>()->AsSparseTensorType();
     case TensorProto_DataType_DOUBLE:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<double>());
+      return DataTypeImpl::GetSparseTensorType<double>()->AsSparseTensorType();
     // case TensorProto_DataType_STRING:
-    // return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<std::string>());
+    // return DataTypeImpl::GetSparseTensorType<std::string>()->AsSparseTensorType();
     case TensorProto_DataType_UINT8:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<uint8_t>());
+      return DataTypeImpl::GetSparseTensorType<uint8_t>()->AsSparseTensorType();
     case TensorProto_DataType_UINT16:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<uint16_t>());
+      return DataTypeImpl::GetSparseTensorType<uint16_t>()->AsSparseTensorType();
     case TensorProto_DataType_INT8:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<int8_t>());
+      return DataTypeImpl::GetSparseTensorType<int8_t>()->AsSparseTensorType();
     case TensorProto_DataType_INT16:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<int16_t>());
+      return DataTypeImpl::GetSparseTensorType<int16_t>()->AsSparseTensorType();
     case TensorProto_DataType_INT64:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<int64_t>());
+      return DataTypeImpl::GetSparseTensorType<int64_t>()->AsSparseTensorType();
     case TensorProto_DataType_UINT32:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<uint32_t>());
+      return DataTypeImpl::GetSparseTensorType<uint32_t>()->AsSparseTensorType();
     case TensorProto_DataType_UINT64:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<uint64_t>());
+      return DataTypeImpl::GetSparseTensorType<uint64_t>()->AsSparseTensorType();
     case TensorProto_DataType_FLOAT16:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<MLFloat16>());
+      return DataTypeImpl::GetSparseTensorType<MLFloat16>()->AsSparseTensorType();
     case TensorProto_DataType_BFLOAT16:
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<BFloat16>());
+      return DataTypeImpl::GetSparseTensorType<BFloat16>()->AsSparseTensorType();
     default:
       ORT_NOT_IMPLEMENTED("sparse tensor type ", type, " is not supported");
   }
@@ -1075,7 +1107,7 @@ namespace utils {
 ContainerChecker::ContainerChecker(MLDataType ml_type) {
   using namespace ONNX_NAMESPACE;
   using namespace data_types_internal;
-  auto base_type = ml_type->AsNonTensorTypeBase();
+  auto base_type = ml_type->AsNonTensorType();
   if (base_type == nullptr) {
     types_.emplace_back(ContainerType::kUndefined,
                         TensorProto_DataType_UNDEFINED);
@@ -1102,6 +1134,10 @@ ContainerChecker::ContainerChecker(MLDataType ml_type) {
           types_.emplace_back(ContainerType::kSequence, TensorProto_DataType_UNDEFINED);
           type_proto = &type_proto->sequence_type().elem_type();
           break;
+        case TypeProto::ValueCase::kOptionalType:
+          types_.emplace_back(ContainerType::kOptional, TensorProto_DataType_UNDEFINED);
+          type_proto = &type_proto->optional_type().elem_type();
+          break;
         case TypeProto::ValueCase::kOpaqueType:
           // We do not handle this and terminate here
           types_.emplace_back(ContainerType::kOpaque,
@@ -1116,7 +1152,7 @@ ContainerChecker::ContainerChecker(MLDataType ml_type) {
 }
 
 bool IsOpaqueType(MLDataType ml_type, const char* domain, const char* name) {
-  auto base_type = ml_type->AsNonTensorTypeBase();
+  auto base_type = ml_type->AsNonTensorType();
   if (base_type == nullptr) {
     return false;
   }
