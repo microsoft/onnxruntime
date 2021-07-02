@@ -7,7 +7,6 @@ SETLOCAL EnableDelayedExpansion
 SET TargetFramework=netcoreapp2.1
 SET TargetArch=x64
 SET dn="C:\Program Files\dotnet\dotnet"
-SET DotNetDefineConstants=""
 
 SET LocalNuGetRepo=%1
 IF NOT "%2"=="" (SET TargetFramework=%2)
@@ -17,8 +16,6 @@ IF NOT "%4"=="" (
 ) ELSE (
     echo "Usage: runtest.bat LocalNuGetRepoPath TargetFramework TargetArch NuGetPackageVersion"
 )
-
-IF NOT "%5"=="" (SET DotNetDefineConstants=%5)
 
 IF "%TargetArch%"=="x64" (
   SET RuntimeIdentifier=win-x64
@@ -40,7 +37,6 @@ IF EXIST test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages RMDIR /S /Q test\M
 IF EXIST test\Microsoft.ML.OnnxRuntime.EndToEndTests\bin RMDIR /S /Q test\Microsoft.ML.OnnxRuntime.EndToEndTests\bin
 IF EXIST test\Microsoft.ML.OnnxRuntime.EndToEndTests\obj RMDIR /S /Q test\Microsoft.ML.OnnxRuntime.EndToEndTests\obj
 
-@echo %PackageName%
 @echo %CurrentOnnxRuntimeVersion%
 %dn% clean test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj
 %dn% restore test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --configfile .\Nuget.CSharp.config --no-cache --packages test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages --source https://api.nuget.org/v3/index.json --source  %LocalNuGetRepo%
@@ -50,28 +46,7 @@ IF NOT errorlevel 0 (
     EXIT 1
 )
 
-IF "%DotNetDefineConstants%"=="" (
-    %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
-) ELSE (
-    %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore -p:DefineConstants=%DotNetDefineConstants%
-)
-
-SET PackageName="Microsoft.ML.OnnxRuntime.TensorRT"
-@echo %PackageName%
-@echo %CurrentOnnxRuntimeVersion%
-%dn% clean test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj
-%dn% restore test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --configfile .\Nuget.CSharp.config --no-cache --packages test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages --source https://api.nuget.org/v3/index.json --source  %LocalNuGetRepo%
-
-IF "%DotNetDefineConstants%"=="" (
-    %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
-) ELSE (
-    %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore -p:DefineConstants=%DotNetDefineConstants%
-)
-
-IF NOT errorlevel 0 (
-    @echo "Failed to restore nuget packages for the test project"
-    EXIT 1
-)
+%dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
 IF NOT errorlevel 0 (
     @echo "Failed to build or execute the end-to-end test"
     EXIT 1

@@ -38,6 +38,9 @@ IF "%ORTEP%"=="TensorRT" (
   SET DefineConstants="USE_TENSORRT"
 )
 
+@echo %DefineConstants
+SET DefineConstants="USE_TENSORRT"
+
 REM Update if CUDA lib paths if set
 SET PATH=%CUDA_PATH%\bin;%CUDNN_PATH%\bin;%PATH%
 
