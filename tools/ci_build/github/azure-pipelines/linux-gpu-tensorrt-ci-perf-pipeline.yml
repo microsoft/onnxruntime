@@ -55,7 +55,6 @@ parameters:
   type: object
   default: 
     - "onnx-zoo-models"
-    - "many-models"
     - "partner-models"
 
 jobs: 
