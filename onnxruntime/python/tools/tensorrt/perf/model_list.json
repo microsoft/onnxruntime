@@ -6,52 +6,16 @@
         "test_data_path": "./mobilenetv2-7/"
     },
     {
-        "model_name": "resnet18-v1-7",
-        "working_directory": "./onnx-zoo-models/resnet18-v1-7/",
-        "model_path": "./resnet18-v1-7/resnet18-v1-7.onnx",
-        "test_data_path": "./resnet18-v1-7/"
-    },
-    {
-        "model_name": "resnet34-v1-7",
-        "working_directory": "./onnx-zoo-models/resnet34-v1-7/",
-        "model_path": "./resnet34-v1-7/resnet34-v1-7.onnx",
-        "test_data_path": "./resnet34-v1-7/"
-    },
-    {
         "model_name": "resnet50-v1-7",
         "working_directory": "./onnx-zoo-models/resnet50-v1-7/",
         "model_path": "./resnet50v1/resnet50-v1-7.onnx",
         "test_data_path": "./resnet50v1/"
     },
     {
-        "model_name": "resnet101-v1-7",
-        "working_directory": "./onnx-zoo-models/resnet101-v1-7/",
-        "model_path": "./resnet101v1/resnet101-v1-7.onnx",
-        "test_data_path": "./resnet101v1/"
-    },
-    {
-        "model_name": "resnet152-v1-7",
-        "working_directory": "./onnx-zoo-models/resnet152-v1-7/",
-        "model_path": "./resnet152v1/resnet152-v1-7.onnx",
-        "test_data_path": "./resnet152v1/"
-    },
-    {
         "model_name": "resnet18-v2-7",
         "working_directory": "./onnx-zoo-models/resnet18-v2-7/",
         "model_path": "./resnet18v2/resnet18-v2-7.onnx",
         "test_data_path": "./resnet18v2/"
-    },
-    {
-        "model_name": "resnet34-v2-7",
-        "working_directory": "./onnx-zoo-models/resnet34-v2-7/",
-        "model_path": "./resnet34v2/resnet34-v2-7.onnx",
-        "test_data_path": "./resnet34v2/"
-    },
-    {
-        "model_name": "resnet50-v2-7",
-        "working_directory": "./onnx-zoo-models/resnet50-v2-7/",
-        "model_path": "./resnet50v2/resnet50-v2-7.onnx",
-        "test_data_path": "./resnet50v2/"
     },
     {
         "model_name": "resnet101-v2-7",
@@ -64,12 +28,6 @@
         "working_directory": "./onnx-zoo-models/resnet152-v2-7/",
         "model_path": "./resnet152v2/resnet152-v2-7.onnx",
         "test_data_path": "./resnet152v2/"
-    },
-    {
-        "model_name": "squeezenet1.1-7",
-        "working_directory": "./onnx-zoo-models/squeezenet1.1-7/",
-        "model_path": "./squeezenet1.1/squeezenet1.1.onnx",
-        "test_data_path": "./squeezenet1.1/"
     },
     {
         "model_name": "vgg16-7",
@@ -88,24 +46,6 @@
         "working_directory": "./onnx-zoo-models/bvlcalexnet-9/",
         "model_path": "./bvlc_alexnet/model.onnx",
         "test_data_path": "./bvlc_alexnet/"
-    },
-    {
-        "model_name": "googlenet-9",
-        "working_directory": "./onnx-zoo-models/googlenet-9/",
-        "model_path": "./bvlc_googlenet/model.onnx",
-        "test_data_path": "./bvlc_googlenet/"
-    },
-    {
-        "model_name": "caffenet-9",
-        "working_directory": "./onnx-zoo-models/densenet-9/",
-        "model_path": "./densenet121/model.onnx",
-        "test_data_path": "./densenet121/"
-    },
-    {
-        "model_name": "inception-v1-9",
-        "working_directory": "./onnx-zoo-models/inception-v1-9/",
-        "model_path": "./inception_v1/model.onnx",
-        "test_data_path": "./inception_v1/"
     },
     {
         "model_name": "inception-v2-9",
@@ -130,12 +70,6 @@
         "working_directory": "./onnx-zoo-models/mnist-8/",
         "model_path": "./mnist/model.onnx",
         "test_data_path": "./mnist/"
-    },
-    {
-        "model_name": "tinyyolov2-8",
-        "working_directory": "./onnx-zoo-models/tinyyolov2-8/",
-        "model_path": "./tiny_yolov2/Model.onnx",
-        "test_data_path": "./tiny_yolov2/"
     },
     {
         "model_name": "ssd-10",
@@ -192,12 +126,6 @@
         "test_data_path": "./ResNet101_DUC_HDC/"
     },
     {
-        "model_name": "emotion-ferplus-8",
-        "working_directory": "./onnx-zoo-models/emotion-ferplus-8/",
-        "model_path": "./emotion_ferplus/model.onnx",
-        "test_data_path": "./emotion_ferplus/"
-    },
-    {
         "model_name": "bertsquad-10",
         "working_directory": "./onnx-zoo-models/bertsquad-10/",
         "model_path": "./bertsquad-10/bertsquad10.onnx",
@@ -214,11 +142,5 @@
         "working_directory": "./onnx-zoo-models/zfnet512-9/",
         "model_path": "./zfnet512/model.onnx",
         "test_data_path": "./zfnet512/"
-    },
-    {
-        "model_name": "arcfaceresnet100-8",
-        "working_directory": "./onnx-zoo-models/arcfaceresnet100-8/",
-        "model_path": "./resnet100/resnet100.onnx",
-        "test_data_path": "./resnet100/"
     }
 ]
