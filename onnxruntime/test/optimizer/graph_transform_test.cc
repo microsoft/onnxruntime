@@ -700,7 +700,7 @@ TEST_F(GraphTransformationTests, FuseCudaConvAddReluIdentity) {
   ASSERT_TRUE(op_to_count["Identity"] == 1); //Identity remains
 }
 
-//Conv->Add be left intact since there is no Relu follows
+//Conv->Add will be left intact since there is no Relu follows
 TEST_F(GraphTransformationTests, FuseCudaConvAdd) {
   auto model_uri = MODEL_FOLDER "fusion/conv_add.onnx";
   std::shared_ptr<Model> p_model;
