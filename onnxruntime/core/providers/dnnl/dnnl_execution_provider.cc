@@ -288,6 +288,31 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
 
       auto temp_index = node_index + 1;
       if (temp_index < graph_viewer.MaxNodeIndex()) {
+        // The current subgraph can consist of any number of OnnxRuntime nodes as long as there is a single output
+        // The subgraph is built by walking the nodes in index order which does not always match topological order.
+        // Check 1: make sure all output nodes (topologically) are supported by Dnnl
+        // Check 2: make sure the next node (index order) is supported by Dnnl and
+        //          that its inputs are the output of another Dnnl node in current sub-graph this check is required
+        //          due to the fact that the subgraph is built by walking the nodes in index order.
+        // Check 3: if there is a branch check that the branch will rejoin so there is a single output from the sub-graph
+        //
+        // Note: The order the checks are run is important.
+
+        // Check 1
+        if (!sub_var.subgraph_node_indexes.empty()) {
+          // loop through the output nodes
+          //   if any output node is **not** a Dnnl node create subgraph
+          for (auto next_node = node->OutputNodesBegin(); next_node != node->OutputNodesEnd(); ++next_node) {
+            if (!opManager_.IsOpTypeAvalible(next_node->OpType())) {
+              CreateMetaDef(graph_viewer, *subgraph_attributes, subgraph_ptr, sub_var, result);
+              subgraph_ptr = std::make_shared<ort_dnnl::Subgraph>(ort_dnnl::Subgraph(graph_name));
+              subgraph_attributes->clear();
+              output_to_source_node_map.clear();
+              break;
+            }
+          }
+        }
+        // Check 2
         if (!sub_var.subgraph_node_indexes.empty()) {
           // if next node is Dnnl node and if it's input is not output of current node
           //   if next node input is output of any of the nodes in sub-graph continue
@@ -301,9 +326,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
           if (opManager_.IsOpTypeAvalible(next_node->OpType())) {
             const auto& next_node_inputs = next_node->InputDefs();
             bool input_from_subgraph = true;
-            size_t inputs_count = 1;
-            if (next_node->OpType() == "Sum")
-              inputs_count = next_node_inputs.size();
+            size_t inputs_count = next_node_inputs.size();
             for (size_t i = 0; i < inputs_count; i++) {
               auto in = next_node_inputs[i];
               auto itr = std::find(sub_var.outputs.begin(), sub_var.outputs.end(), in->Name());
@@ -313,12 +336,13 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
             }
             if (input_from_subgraph == false) {
               CreateMetaDef(graph_viewer, *subgraph_attributes, subgraph_ptr, sub_var, result);
-              subgraph_attributes->clear();
               subgraph_ptr = std::make_shared<ort_dnnl::Subgraph>(ort_dnnl::Subgraph(graph_name));
+              subgraph_attributes->clear();
               output_to_source_node_map.clear();
             }
           }
         }
+        // Check 3
         if (!sub_var.subgraph_node_indexes.empty()) {
           if (node->GetOutputEdgesCount() > 1) {
             // If current node has branches
@@ -351,6 +375,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
                 break_loop = true;
               }
             }
+
             if (create_subgraph) {
               CreateMetaDef(graph_viewer, *subgraph_attributes, subgraph_ptr, sub_var, result);
               subgraph_ptr = std::make_shared<ort_dnnl::Subgraph>(ort_dnnl::Subgraph(graph_name));

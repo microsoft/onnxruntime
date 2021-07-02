@@ -44,12 +44,12 @@ void ConvertData(const vector<vector<float>>& images,
                  size_t total_shard = 1) {
   for (size_t i = 0; i < images.size(); ++i) {
     if (i % total_shard == shard_index) {
-      MLValue imageMLValue;
+      OrtValue imageMLValue;
       TrainingUtil::CreateCpuMLValue(image_dims, images[i], &imageMLValue);
-      MLValue labelMLValue;
+      OrtValue labelMLValue;
       TrainingUtil::CreateCpuMLValue(label_dims, labels[i], &labelMLValue);
 
-      data_set.AddData(make_unique<vector<MLValue>>(vector<MLValue>{imageMLValue, labelMLValue}));
+      data_set.AddData(make_unique<vector<OrtValue>>(vector<OrtValue>{imageMLValue, labelMLValue}));
     }
   }
 }

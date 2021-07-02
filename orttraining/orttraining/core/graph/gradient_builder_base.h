@@ -210,14 +210,19 @@ class GradientBuilderBase {
   }
 
   template <typename T>
-  static NodeDef ConstantScalarNode(T value, std::vector<int64_t> shape, const std::string& arg_name) {
+  static ONNX_NAMESPACE::TensorProto ScalarTensorProto(T value, std::vector<int64_t> shape) {
     ORT_ENFORCE(shape.size() == 0 || (shape.size() == 1 && shape[0] == 1));
-
     auto t_proto = ONNX_NAMESPACE::ToTensor<T>(value);
     for (auto dim : shape) {
       t_proto.add_dims(dim);
     }
 
+    return t_proto;
+  }
+
+  template <typename T>
+  static NodeDef ConstantScalarNode(T value, std::vector<int64_t> shape, const std::string& arg_name) {
+    auto t_proto = ScalarTensorProto(value, shape);
     return NodeDef("Constant",
                    {},
                    {ArgDef(arg_name, nullptr)},
@@ -235,6 +240,18 @@ class GradientBuilderBase {
     }
 
     return ConstantScalarNode(value, {1}, arg_name);
+  }
+
+  static ONNX_NAMESPACE::TensorProto ScalarTensorProtoByElemType(float value, int elem_type) {
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      return ScalarTensorProto(MLFloat16(math::floatToHalf(value)), {1});
+    }
+
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
+      return ScalarTensorProto(BFloat16(value), {1});
+    }
+
+    return ScalarTensorProto(value, {1});
   }
 
   static NodeDef ZeroConstantNode(int elem_type) {

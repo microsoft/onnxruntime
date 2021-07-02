@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/language_interop_ops/torch/torch_proxy.h"
-#include "core/dlpack/python_common.h"
-#include "core/dlpack/dlpack_python.h"
+#include "orttraining/core/framework/torch/python_common.h"
+#include "orttraining/core/framework/torch/dlpack_python.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
 #include "core/language_interop_ops/torch/refcount_tracker.h"
@@ -174,7 +174,7 @@ void InvokeRunner(
     ORT_ENFORCE(Py_REFCNT(dl_tensor_pointer) == 1, "Ref count of dl_tensor_pointer should be 1.");
     // Todo: be noted we did not pass whether tensor is bool or not.
     // Currently we assume we don't pass boolean data.
-    returned_ortvalues.push_back(dlpack::FromDlpack(dl_tensor_pointer, false));
+    returned_ortvalues.push_back(training::framework::torch::FromDlpack(dl_tensor_pointer, false));
   }
 }
 
@@ -211,7 +211,7 @@ PythonObjectPtr CreatePythonCallArguments(
   // Tensor inputs to call autograd.Function.apply or autograd.Function.backward.
   for (size_t i = 0; i < tensor_args.size(); ++i) {
     // Wrap with DLPack, then transfer to Python for its release.
-    PyObject* dl_tensor = dlpack::ToDlpack(tensor_args[i]);
+    PyObject* dl_tensor = training::framework::torch::ToDlpack(tensor_args[i]);
     Ort_PyTuple_SetItem_NoIncref(args.get(), num_control_args + tensor_indices[i], dl_tensor,
                                  "dltensor");
   }

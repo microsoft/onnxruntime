@@ -54,6 +54,11 @@ LATENCY_FILE = ".latency_map"
 METRICS_FILE = ".metrics_map"
 MEMORY_FILE = './temp_memory.csv'
 
+def split_and_sort_output(string_list):
+    string_list = string_list.split("\n")
+    string_list.sort()
+    return string_list
+
 def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     logger.info("running standalone trt")
     model_path = "--onnx=" + model_path
@@ -75,12 +80,11 @@ def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     logger.info(shapes_arg)
 
     result = {}
-
-    if fp16:
-        out = get_output([trtexec, model_path, "--fp16", "--percentile=90", "--explicitBatch", shapes_arg])
-    else:
-        out = get_output([trtexec, model_path, "--percentile=90", "--explicitBatch", shapes_arg])
-
+    command = [trtexec, model_path, "--percentile=90", "--explicitBatch", shapes_arg]
+    if fp16: 
+        command.extend(["--fp16"])
+    out = get_output(command)
+    
     tmp = out.split("\n")
     target_list = []
     for t in tmp:
@@ -103,12 +107,7 @@ def run_trt_standalone(trtexec, model_path, ort_inputs, all_inputs_shape, fp16):
     logger.info(result)
     return result
 
-def get_trtexec_path(): 
-    trtexec_options = get_output(["find", "/", "-name", "trtexec"])
-    trtexec_path = re.search(r'.*/workspace/.*/bin/trtexec', trtexec_options).group()
-    return trtexec_path
-
-def get_latency_result(runtimes, batch_size, mem_mb=None):
+def get_latency_result(runtimes, batch_size):
     latency_ms = sum(runtimes) / float(len(runtimes)) * 1000.0
     latency_variance = numpy.var(runtimes, dtype=numpy.float64) * 1000.0
     throughput = batch_size * (1000.0 / latency_ms)
@@ -122,8 +121,6 @@ def get_latency_result(runtimes, batch_size, mem_mb=None):
         "average_latency_ms": "{:.2f}".format(latency_ms),
         "QPS": "{:.2f}".format(throughput),
     }
-    if mem_mb:
-        result.update({"memory":mem_mb})
     return result
 
 
@@ -178,7 +175,6 @@ def get_trtexec_pid(df, python_pid):
 def get_max_memory(trtexec): 
     df = pd.read_csv(MEMORY_FILE)
     pid = df['pid'].iloc[0]
-    
     if trtexec: 
         pid = get_trtexec_pid(df, pid) 
     
@@ -187,14 +183,20 @@ def get_max_memory(trtexec):
     return max_mem
 
 def start_memory_tracking(): 
+    logger.info("starting memory tracking process")
     p = subprocess.Popen(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv", "-l", "1", "-f", MEMORY_FILE])
     return p
 
-def end_memory_tracking(p, trtexec): 
+def end_memory_tracking(p, trtexec, success): 
+    logger.info("terminating memory tracking process")
     p.terminate()
     p.wait()
-    mem_usage = get_max_memory(trtexec) 
-    os.remove(MEMORY_FILE)
+    p.kill()
+    mem_usage = None
+    if success:
+        mem_usage = get_max_memory(trtexec) 
+    if os.path.exists(MEMORY_FILE):
+        os.remove(MEMORY_FILE)
     return mem_usage
 
 def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_times, batch_size):
@@ -214,30 +216,20 @@ def inference_ort(args, name, session, ep, ort_inputs, result_template, repeat_t
             logger.info(sess_outputs)
 
         try:
-            if args.track_memory and track_ep_memory(ep): 
-
-                p = start_memory_tracking()            
-                runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
-                mem_usage = end_memory_tracking(p, False)
-            else: 
-                runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
-
-            runtimes += runtime
-
+            runtime = timeit.repeat(lambda: session.run(sess_outputs, sess_inputs), number=1, repeat=repeat_times)
+            runtimes += runtime[1:] # remove warmup
+        
         except Exception as e:
             logger.error(e)
             return None
 
     logger.info(runtimes)
-    runtimes[:] = runtimes[1:]
-    logger.info(runtimes)
 
     result = {}
     result.update(result_template)
     result.update({"io_binding": False})
-    latency_result = get_latency_result(runtimes, batch_size, mem_usage)
+    latency_result = get_latency_result(runtimes, batch_size)
     result.update(latency_result)
-    logger.info(result)
     return result
 
 def inference_ort_and_get_prediction(name, session, ort_inputs):
@@ -289,11 +281,8 @@ def get_acl_version():
 #######################################################################################################################################
 def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
     logger.info("Parsing test data in {} ...".format(path))
-    p1 = subprocess.Popen(["find", path, "-name", "test_data*", "-type", "d"], stdout=subprocess.PIPE)
-    p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
-    stdout, sterr = p2.communicate()
-    stdout = stdout.decode("ascii").strip()
-    test_data_set_dir = stdout.split("\n")
+    output = get_output(["find", path, "-name", "test_data*", "-type", "d"])
+    test_data_set_dir = split_and_sort_output(output)
     logger.info(test_data_set_dir)
 
     inputs = []
@@ -310,11 +299,8 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
         os.chdir(test_data_dir)
 
         # load inputs
-        p1 = subprocess.Popen(["find", ".", "-name", "input*"], stdout=subprocess.PIPE)
-        p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
-        stdout, sterr = p2.communicate()
-        stdout = stdout.decode("ascii").strip()
-        input_data = stdout.split("\n")
+        output = get_output(["find", ".", "-name", "input*"])
+        input_data = split_and_sort_output(output)
         logger.info(input_data)
 
         input_data_pb = []
@@ -322,14 +308,10 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
             tensor = onnx.TensorProto()
             with open(data, 'rb') as f:
                 tensor.ParseFromString(f.read())
-
                 tensor_to_array = numpy_helper.to_array(tensor)
-
                 if data_type == "fp16" and tensor_to_array.dtype == np.dtype(np.float32):
                     tensor_to_array = tensor_to_array.astype(np.float16)
                 input_data_pb.append(tensor_to_array)
-
-                # print(np.array(input_data_pb[-1]).shape)
                 if not shape_flag:
                     all_inputs_shape.append(input_data_pb[-1].shape)
                 logger.info(all_inputs_shape[-1])
@@ -337,14 +319,11 @@ def load_onnx_model_zoo_test_data(path, all_inputs_shape, data_type="fp32"):
         logger.info('Loaded {} inputs successfully.'.format(len(inputs)))
 
         # load outputs
-        p1 = subprocess.Popen(["find", ".", "-name", "output*"], stdout=subprocess.PIPE)
-        p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
-        stdout, sterr = p2.communicate()
-        stdout = stdout.decode("ascii").strip()
-        output_data = stdout.split("\n")
-        logger.info(output_data)
+        output = get_output(["find", ".", "-name", "output*"])
+        output_data = split_and_sort_output(output)
 
         if len(output_data) > 0 and output_data[0] != '':
+            logger.info(output_data)
             output_data_pb = []
             for data in output_data:
                 tensor = onnx.TensorProto()
@@ -469,7 +448,7 @@ def remove_profiling_files(path):
     for f in files:
         if "custom_test_data" in f:
             continue
-        subprocess.Popen(["sudo","rm","-rf", f], stdout=subprocess.PIPE)
+        subprocess.Popen(["rm","-rf", f], stdout=subprocess.PIPE)
 
 
 def update_fail_report(fail_results, model, ep, e_type, e):
@@ -654,9 +633,11 @@ def get_cuda_version():
     version = re.search(r'CUDA Version: \d\d\.\d', nvidia_strings).group(0) 
     return version
     
-def get_trt_version():
-    nvidia_strings = get_output(["dpkg", "-l"])
-    version = re.search(r'nvinfer.*\d\.\d\.\d\-\d', nvidia_strings).group(0)
+def get_trt_version(workspace):
+    libnvinfer = get_output(["find", workspace, "-name", "libnvinfer.so.*"])
+    nvinfer = re.search(r'.*libnvinfer.so.*', libnvinfer).group(0)
+    trt_strings = get_output(["nm", "-D", nvinfer])
+    version = re.search(r'tensorrt_version.*', trt_strings).group(0)
     return version
  
 def get_linux_distro(): 
@@ -694,10 +675,10 @@ def get_gpu_info():
     infos = re.findall('NVIDIA.*', info)
     return infos
 
-def get_system_info():
+def get_system_info(workspace):
     info = {}
     info["cuda"] = get_cuda_version()
-    info["trt"] = get_trt_version()
+    info["trt"] = get_trt_version(workspace)
     info["linux_distro"] = get_linux_distro()
     info["cpu_info"] = get_cpu_info()
     info["gpu_info"] = get_gpu_info()
@@ -706,10 +687,8 @@ def get_system_info():
     return info
 
 def find_model_path(path):
-    p1 = subprocess.Popen(["find", path, "-name", "*.onnx"], stdout=subprocess.PIPE)
-    stdout, sterr = p1.communicate()
-    stdout = stdout.decode("ascii").strip()
-    model_path = stdout.split("\n")
+    output = get_output(["find", "-L", path, "-name", "*.onnx"])
+    model_path = split_and_sort_output(output)
     logger.info(model_path)
 
     if model_path == ['']:
@@ -729,23 +708,16 @@ def find_model_path(path):
     return target_model_path[0]
 
 def find_model_directory(path):
-    p1 = subprocess.Popen(["find", path, "-maxdepth", "1", "-mindepth", "1", "-name", "*", "-type", "d"], stdout=subprocess.PIPE)
-    stdout, sterr = p1.communicate()
-    stdout = stdout.decode("ascii").strip()
-    model_dir = stdout.split("\n")
-    # print(model_dir)
-
+    output = get_output(["find", "-L", path, "-maxdepth", "1", "-mindepth", "1", "-name", "*", "-type", "d"])
+    model_dir = split_and_sort_output(output)
     if model_dir == ['']:
         return None
 
     return model_dir
 
 def find_test_data_directory(path):
-    p1 = subprocess.Popen(["find", path, "-maxdepth", "1", "-name", "test_data*", "-type", "d"], stdout=subprocess.PIPE)
-    p2 = subprocess.Popen(["sort"], stdin=p1.stdout, stdout=subprocess.PIPE)
-    stdout, sterr = p2.communicate()
-    stdout = stdout.decode("ascii").strip()
-    test_data_dir = stdout.split("\n")
+    output = get_output(["find", "-L", path, "-maxdepth", "1", "-name", "test_data*", "-type", "d"])
+    test_data_dir = split_and_sort_output(output)
     logger.info(test_data_dir)
 
     if test_data_dir == ['']:
@@ -783,7 +755,7 @@ def parse_models_info_from_directory(path, models):
 def parse_models_info_from_file(root_dir, path, models):
 
     # default working directory
-    root_working_directory = root_dir
+    root_working_directory = root_dir + 'perf/'
 
     with open(path) as f:
         data = json.load(f)
@@ -806,7 +778,7 @@ def parse_models_info_from_file(root_dir, path, models):
                 if os.path.isabs(row['working_directory']):
                     model['working_directory'] = row['working_directory']
                 else:
-                    model['working_directory'] = os.path.join(root_working_directory + row['working_directory'])
+                    model['working_directory'] = os.path.join(root_working_directory, row['working_directory'])
             else:
                 logger.error('Model path must be provided in models_info.json')
                 raise
@@ -831,15 +803,16 @@ def parse_models_info_from_file(root_dir, path, models):
 
 
 def convert_model_from_float_to_float16(model_path):
-    # from onnxmltools.utils.float16_converter import convert_float_to_float16
     from onnxmltools.utils import load_model, save_model
     from float16 import convert_float_to_float16
 
-    onnx_model = load_model(model_path)
-    new_onnx_model = convert_float_to_float16(onnx_model)
-    save_model(new_onnx_model, 'new_fp16_model_by_trt_perf.onnx')
+    new_model_path = os.path.join(os.getcwd(), "new_fp16_model_by_trt_perf.onnx")
+    if not os.path.exists(new_model_path):
+        onnx_model = load_model(model_path)
+        new_onnx_model = convert_float_to_float16(onnx_model)
+        save_model(new_onnx_model, 'new_fp16_model_by_trt_perf.onnx')
 
-    return os.path.join(os.getcwd(), "new_fp16_model_by_trt_perf.onnx")
+    return new_model_path
 
 def get_test_data(fp16, test_data_dir, all_inputs_shape):
     inputs = []
@@ -854,25 +827,25 @@ def get_test_data(fp16, test_data_dir, all_inputs_shape):
     return inputs, ref_outputs
 
 def create_session(model_path, providers, session_options):
-
     logger.info(model_path)
     try:
         session = onnxruntime.InferenceSession(model_path, providers=providers, sess_options=session_options)
-
         return session
-    except:
-        logger.info("Use symbolic_shape_infer.py")
+    except Exception as e:
+        if "shape inference" in str(e):
+            logger.info("Using model from symbolic_shape_infer.py")
 
+            new_model_path = model_path[:].replace(".onnx", "_new_by_trt_perf.onnx")
+            exec = os.environ["SYMBOLIC_SHAPE_INFER"]
 
-    new_model_path = model_path[:].replace(".onnx", "_new_by_trt_perf.onnx")
-    exec = os.environ["SYMBOLIC_SHAPE_INFER"]
-    logger.info(exec)
-
-    if not os.path.exists(new_model_path):
-        subprocess.run("python3 " + exec +" --input " + model_path + " --output " + new_model_path + " --auto_merge", shell=True, check=True)
-    session = onnxruntime.InferenceSession(new_model_path, providers=providers, sess_options=session_options)
-
-    return session
+            if not os.path.exists(new_model_path):
+                p = subprocess.run("python3 " + exec + " --input " + model_path + " --output " + new_model_path + " --auto_merge", shell=True, check=True, )
+                logger.info(p) 
+            
+            session = onnxruntime.InferenceSession(new_model_path, providers=providers, sess_options=session_options)
+            return session
+        else:
+            raise Exception(e) 
 
 def run_onnxruntime(args, models):
 
@@ -923,23 +896,25 @@ def run_onnxruntime(args, models):
         # iterate ep
         #######################
         for ep in ep_list:
-
             if skip_ep(name, ep, model_to_fail_ep):
                 continue
-
-            ep_ = ep_to_provider_list[ep][0]
-            if (ep_ not in onnxruntime.get_available_providers()):
-                logger.error("No {} support".format(ep_))
-                continue
+            
+            if standalone_trt not in ep:
+                ep_ = ep_to_provider_list[ep][0]
+                if (ep_ not in onnxruntime.get_available_providers()):
+                    logger.error("No {} support".format(ep_))
+                    continue
 
             model_path = model_info["model_path"]
             test_data_dir = model_info["test_data_path"]
 
-            if ep == cuda_fp16:
-                logger.info("[Initialize]  model = {}, ep = {} ,FP16 = True ...".format(name, ep))
-                fp16 = True
-                os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1"
-
+            fp16 = False
+            os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1" if "fp16" in ep else "0"
+            logger.info("[Initialize]  model = {}, ep = {} ...".format(name, ep))
+           
+            # use float16.py for cuda fp16 only
+            if "cuda_fp16" in ep: 
+                
                 # handle model
                 if "model_path_fp16" in model_info:
                     model_path = model_info["model_path_fp16"]
@@ -947,7 +922,7 @@ def run_onnxruntime(args, models):
                 else:
                     try:
                         model_path = convert_model_from_float_to_float16(model_path)
-
+                        fp16 = True
                     except Exception as e:
                         logger.error(e)
                         update_fail_model_map(model_to_fail_ep, name, ep, 'script error', e)
@@ -956,23 +931,9 @@ def run_onnxruntime(args, models):
                 # handle test data
                 if "test_data_path_fp16" in model_info:
                     test_data_dir = model_info["test_data_path_fp16"]
-                    inputs, ref_outputs = get_test_data(False, test_data_dir, all_inputs_shape)
-                else:
-                    inputs, ref_outputs = get_test_data(True, test_data_dir, all_inputs_shape)
+                    fp16 = False 
             
-            elif ep == trt_fp16:
-                logger.info("[Initialize]  model = {}, ep = {} ,FP16 = True ...".format(name, ep))
-                fp16 = True
-                os.environ["ORT_TENSORRT_FP16_ENABLE"] = "1"
-
-                inputs, ref_outputs = get_test_data(False, test_data_dir, all_inputs_shape)
-            else:
-                logger.info("[Initialize]  model = {}, ep = {} ,FP16 = False ...".format(name, ep))
-                fp16 = False
-                os.environ["ORT_TENSORRT_FP16_ENABLE"] = "0"
-
-                inputs, ref_outputs = get_test_data(False, test_data_dir, all_inputs_shape)
-
+            inputs, ref_outputs = get_test_data(fp16, test_data_dir, all_inputs_shape)
 
             # generate random input data
             if args.input_data == "random":
@@ -984,80 +945,92 @@ def run_onnxruntime(args, models):
             if args.running_mode == 'benchmark':
                 logger.info("\n----------------------------- benchmark -------------------------------------")
 
+                # resolve providers to create session
+                if standalone_trt in ep: 
+                    providers = ep_to_provider_list[trt]
+                else: 
+                    providers = ep_to_provider_list[ep]
+
                 options = onnxruntime.SessionOptions()
                 options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
 
+                
                 # create onnxruntime inference session
                 try:
-                    sess = create_session(model_path, ep_to_provider_list[ep], options)
+                    sess = create_session(model_path, providers, options)
 
                 except Exception as e:
                     logger.error(e)
+                    update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
                     continue
-
-                logger.info("start to inference {} with {} ...".format(name, ep))
-                logger.info(sess.get_providers())
-
-                if sess:
-                    logger.info("Model inputs nodes:")
-                    for input_meta in sess.get_inputs():
-                        logger.info(input_meta)
-                    logger.info("Model outputs nodes:")
-                    for output_meta in sess.get_outputs():
-                        logger.info(output_meta)
-
-                batch_size = 1
-                result_template = {
-                    "engine": "onnxruntime",
-                    "version": onnxruntime.__version__,
-                    "device": ep,
-                    "fp16": fp16,
-                    "io_binding": False,
-                    "model_name": name,
-                    "inputs": len(sess.get_inputs()),
-                    "batch_size": batch_size,
-                    "sequence_length": 1,
-                    "datetime": str(datetime.now()),}
-                    
-                if trt in ep and args.trtexec:
-                    
-                    # get standalone TensorRT perf
+                
+                # memory tracking variables 
+                p = None # keep track of process to kill upon error
+                mem_usage = None
+         
+                # get standalone TensorRT perf
+                if standalone_trt in ep and args.trtexec: 
+                    trtexec = True 
                     try: 
-                        ep = standalone_trt_fp16 if fp16 else standalone_trt
-                        
                         if args.track_memory: 
                             p = start_memory_tracking()            
                             result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
-                            mem_usage = end_memory_tracking(p, True)
-                            if result and mem_usage: 
-                                result["memory"] = mem_usage
-
+                            mem_usage = end_memory_tracking(p, trtexec, True)
                         else: 
                             result = run_trt_standalone(args.trtexec, model_path, sess.get_inputs(), all_inputs_shape, fp16)
                     except Exception as e: 
                         logger.error(e)
+                        if args.track_memory:
+                            end_memory_tracking(p, trtexec, False)
                         update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
                         continue
 
-                else: 
-                    result = inference_ort(args, name, sess, ep, inputs, result_template, args.test_times, batch_size)
-                
-                if result:
+                # inference with onnxruntime ep
+                else:         
+                    logger.info("start to inference {} with {} ...".format(name, ep))
+                    logger.info(sess.get_providers())
 
+                    if sess:
+                        logger.info("Model inputs nodes:")
+                        for input_meta in sess.get_inputs():
+                            logger.info(input_meta)
+                        logger.info("Model outputs nodes:")
+                        for output_meta in sess.get_outputs():
+                            logger.info(output_meta)
+
+                    batch_size = 1
+                    result_template = {
+                        "engine": "onnxruntime",
+                        "version": onnxruntime.__version__,
+                        "device": ep,
+                        "fp16": fp16,
+                        "io_binding": False,
+                        "model_name": name,
+                        "inputs": len(sess.get_inputs()),
+                        "batch_size": batch_size,
+                        "sequence_length": 1,
+                        "datetime": str(datetime.now()),}
+                     
+                    if args.track_memory and track_ep_memory(ep): 
+                        trtexec = False
+                        p = start_memory_tracking()            
+                        result = inference_ort(args, name, sess, ep, inputs, result_template, args.test_times, batch_size)
+                        success = True if result else False
+                        mem_usage = end_memory_tracking(p, trtexec, success)
+                    else: 
+                        result = inference_ort(args, name, sess, ep, inputs, result_template, args.test_times, batch_size)
+                if result:
                     latency_result[ep] = {}
                     latency_result[ep]["average_latency_ms"] = result["average_latency_ms"]
                     latency_result[ep]["latency_90_percentile"] = result["latency_90_percentile"]
-                    if "memory" in result: 
-                        mem_usage = result.pop("memory")
+                    if mem_usage: 
                         latency_result[ep]["memory"] = mem_usage
 
                     if not args.trtexec: # skip standalone
                         success_results.append(result)
 
                     model_to_latency[name] = copy.deepcopy(latency_result)
-
                 logger.info("---------------------------- benchmark [end] ----------------------------------\n")
-
 
 
             elif args.running_mode == 'validate':
@@ -1072,7 +1045,6 @@ def run_onnxruntime(args, models):
                 # create onnxruntime inference session
                 try:
                     sess = create_session(model_path, ep_to_provider_list[ep], options)
-
                 except Exception as e:
                     logger.error(e)
                     update_fail_model_map(model_to_fail_ep, name, ep, 'runtime error', e)
@@ -1179,8 +1151,6 @@ def output_details(results, csv_filename):
         for result in results:
             csv_writer.writerow(result)
 
-    logger.info(f"Detail results are saved to csv file: {csv_filename}")
-
 def output_fail(model_to_fail_ep, csv_filename):
 
     with open(csv_filename, mode="w", newline='') as csv_file:
@@ -1197,8 +1167,6 @@ def output_fail(model_to_fail_ep, csv_filename):
                 result["error type"] = ep_info["error_type"]
                 result["error message"] = ep_info["error_message"]
                 csv_writer.writerow(result)
-
-    logger.info(f"Failing results are saved to csv file: {csv_filename}")
     
 def read_success_from_file(success_file):
     success_results = []
@@ -1549,8 +1517,6 @@ def parse_arguments():
     
     parser.add_argument("-c", "--comparison", required=False, default="cuda_trt", choices=["cuda_trt", "acl"], help="EPs to compare: CPU vs. CUDA vs. TRT or CPU vs. ACL")
 
-    parser.add_argument("-d", "--working_dir", required=False, default="./", help="Perf folder path")
-    
     parser.add_argument("-m", "--model_source", required=False, default="model_list.json", help="Model source: (1) model list file (2) model directory.")
 
     parser.add_argument("-r", "--running_mode", required=False, default="benchmark", choices=["validate", "benchmark"], help="Testing mode.")
@@ -1559,9 +1525,13 @@ def parse_arguments():
 
     parser.add_argument("-o", "--perf_result_path", required=False, default="result", help="Directory for perf result.")
     
+    parser.add_argument("-w", "--workspace", required=False, default="/", help="Workspace to find tensorrt and perf script (with models if parsing with model file)")
+    
     parser.add_argument("--track_memory", required=False, default=True, help="Track CUDA and TRT Memory Usage")
 
     parser.add_argument("--ep", required=False, default=None, help="Specify ORT Execution Provider.")
+    
+    parser.add_argument("--ep_list", nargs="+", required=False, default=None, help="Specify ORT Execution Providers list.")
 
     parser.add_argument("--fp16", required=False, default=True, action="store_true", help="Inlcude Float16 into benchmarking.")
 
@@ -1599,7 +1569,7 @@ def setup_logger(verbose):
 def parse_models_helper(args, models): 
     if ".json" in args.model_source:
         logger.info("Parsing model information from file ...")
-        parse_models_info_from_file(args.working_dir, args.model_source, models)
+        parse_models_info_from_file(args.workspace, args.model_source, models)
     else:
         logger.info("Parsing model information from directory ...")
         parse_models_info_from_directory(args.model_source, models)
@@ -1608,16 +1578,13 @@ def main():
     args = parse_arguments()
     setup_logger(False)
     pp = pprint.PrettyPrinter(indent=4)
-
+    
     logger.info("\n\nStart perf run ...\n")
 
     models = {}
     parse_models_helper(args, models)
 
-    if not os.path.exists("symbolic_shape_infer.py"):
-        p1 = subprocess.Popen(["sudo", "wget", "https://raw.githubusercontent.com/microsoft/onnxruntime/master/onnxruntime/python/tools/symbolic_shape_infer.py"])
-        p1.wait()
-    os.environ["SYMBOLIC_SHAPE_INFER"] = os.path.join(os.getcwd(), "symbolic_shape_infer.py")
+    os.environ["SYMBOLIC_SHAPE_INFER"] = os.path.join(os.getcwd(), "../../symbolic_shape_infer.py")
 
     perf_start_time = datetime.now()
     success_results, model_to_latency, model_to_fail_ep, model_to_metrics = run_onnxruntime(args, models)
@@ -1659,7 +1626,7 @@ def main():
         logger.info("=========== Models/EPs latency ===========")
         logger.info("==========================================")
         add_improvement_information(model_to_latency)
-        pp.pprint(model_to_latency)
+        pretty_print(pp, model_to_latency)
         write_map_to_file(model_to_latency, LATENCY_FILE)
         if args.write_test_result:
             csv_filename = args.benchmark_latency_csv if args.benchmark_latency_csv else f"benchmark_latency_{time_stamp}.csv"
@@ -1675,24 +1642,13 @@ def main():
         logger.info("\n=========================================")
         logger.info("========== Models/EPs metrics  ==========")
         logger.info("=========================================")
-        pp.pprint(model_to_metrics)
+        pretty_print(pp, model_to_metrics)
         write_map_to_file(model_to_metrics, METRICS_FILE)
 
         if args.write_test_result:
             csv_filename = args.benchmark_metrics_csv if args.benchmark_metrics_csv else f"benchmark_metrics_{time_stamp}.csv"
             csv_filename = os.path.join(path, csv_filename)
             output_metrics(model_to_metrics, csv_filename)
-
-    if False:
-        logger.info("\n===========================================")
-        logger.info("=========== System information  ===========")
-        logger.info("===========================================")
-        info = get_system_info()
-        pp.pprint(info)
-        csv_filename = args.benchmark_fail_csv if args.benchmark_fail_csv else f"system_info_csv{time_stamp}.csv"
-        csv_filename = os.path.join(path, csv_filename)
-        output_system_info(info, csv_filename)
-
 
 if __name__ == "__main__":
     main()

@@ -1810,11 +1810,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
 
   std::vector<ArgDef> output_args;
   for (int i = 0; i < GetSrcNodeInputSize(); ++i) {
-    // output_args[i] is typed to output_types[i].
-    if (output_tensor_types.at(i) == 9) {
-      output_args.push_back(ArgDef());
-    } else {
+    if (output_tensor_requires_grads[i]) {
       output_args.push_back(GI(i));
+    } else {
+      output_args.push_back(ArgDef());
     }
   }
 
@@ -1838,6 +1837,22 @@ IMPLEMENT_GRADIENT_BUILDER(GetPadGradient) {
 
   return std::vector<NodeDef>{NodeDef("Neg", {I(1)}, {IA("Neg_pads")}),
                               NodeDef("Pad", {GO(0), IA("Neg_pads")}, {GI(0)})};
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetScatterNDGradient) {
+  std::vector<NodeDef> result;
+  if (IsGradientRequiredForSrcNodeInput(0)) {
+    result.emplace_back(NodeDef("Shape", {I(2)}, {IA("Shape_updates")}));
+    result.emplace_back(NodeDef("ConstantOfShape", {IA("Shape_updates")}, {IA("Zero_Shape_updates")},
+                                {MakeAttribute("value", ScalarTensorProtoByElemType(0.0f, IElemType(0)))}));
+    result.emplace_back(NodeDef("ScatterND", {GO(0), I(1), IA("Zero_Shape_updates")}, {GI(0)}));
+  }
+
+  if (IsGradientRequiredForSrcNodeInput(2)) {
+    result.emplace_back(NodeDef("GatherND", {GO(0), I(1)}, {GI(2)}));
+  }
+
+  return result;
 }
 
 }  // namespace training

@@ -229,7 +229,7 @@ TEST_F(OptimizerGraphBuilderTest, ZeroSplitInitialOptimizerState) {
   std::vector<int64_t> param_dims = {784, 128};
   int64_t num_ele = std::accumulate(param_dims.begin(), param_dims.end(), static_cast<int64_t>(1), std::multiplies<int64_t>());
 
-  MLValue mlValue;
+  OrtValue mlValue;
   std::vector<float> init_value(num_ele);
   std::iota(init_value.begin(), init_value.end(), static_cast<float>(0));
 
