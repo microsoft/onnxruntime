@@ -801,13 +801,14 @@ class SymbolicShapeInference:
                     vi.CopyFrom(subgraph.output[i_out])
                     vi.name = node.output[i_out]
                 else:
-                    for d1, d2 in zip(vi.type.tensor_type.shape.dim,
-                                      subgraph.output[i_out].type.tensor_type.shape.dim):
-                        # there might be cases that d1 and d2 needs merge
-                        if d1 != d2:
-                            s1 = get_dim_from_type_proto(d1)
-                            s2 = get_dim_from_type_proto(d2)
-                            self._add_suggested_merge([s1, s2])
+                    for di, ds in enumerate(zip(vi.type.tensor_type.shape.dim,
+                                                subgraph.output[i_out].type.tensor_type.shape.dim)):
+                        # The two branches have different dimension in the output shapes
+                        # create a new symbolic dimension
+                        if ds[0] != ds[1]:
+                            new_dim = onnx.TensorShapeProto.Dimension()
+                            new_dim.dim_param = self._new_symbolic_dim_from_output(node, i_out, di)
+                            vi.type.tensor_type.shape.dim[di].CopyFrom(new_dim)
                 # pass on sympy data from subgraph, if cond is constant
                 if cond is not None and i_sub == (0 if cond > 0 else 1):
                     if subgraph.output[i_out].name in subgraph_infer.sympy_data_:
