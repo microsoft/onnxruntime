@@ -40,12 +40,14 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   coreml_argmax->set_removedim(removedim);
 
   // There are two cases here:
-  // 1. Special Case (ArgMax-Cast), we fuse the Argmax's output/Cast's input
+  // 1. Special Case (ArgMax-Cast(from int64 to int32)), we fuse the Argmax's output/Cast's input
   // (We still have this special case here because CoreML model does not have Cast)
   // 2. Otherwise, we add Argmax layer normally
   if (node.GetOutputEdgesCount() == 1) {
     auto it = node.OutputEdgesBegin();
     const auto* succ_node(graph_viewer.GetNode(it->GetNode().Index()));
+    // If Argmax's successive node is a Cast from int64 to int32 output 
+    // The 'cast to' type is checked in operater supported related, omit the check here
     if (succ_node->OpType() == "Cast") {
       // Skip the cast's input/argmax's output
       *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
@@ -70,7 +72,7 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
   NodeAttrHelper helper(node);
   const auto select_last_index = helper.Get("select_last_index", 0);
   if (select_last_index != 0) {
-    LOGS(logger, VERBOSE) << "selected_last_index for ArgMax is not supported";
+    LOGS(logger, VERBOSE) << "select_last_index for ArgMax is not supported";
     return false;
   }
 
