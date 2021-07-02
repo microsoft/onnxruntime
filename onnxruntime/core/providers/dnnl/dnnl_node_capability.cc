@@ -209,4 +209,48 @@ bool DnnlMatMulIntegerNodeCapability::IsDimensionSupported(const Node* node) con
   return true;
 }
 
+// DnnlSumNodeCapability class
+//-------------------------------------
+bool DnnlSumNodeCapability::Supported(const Node* node) const {
+  if (!IsTypeSupported(node)) return false;
+  if (!IsDimensionSupported(node)) return false;
+  return true;
+}
+
+// OneDNN version of Sum does not support Numpy style broadcasting.
+// If the dimentions of all inputs do not match return false
+bool DnnlSumNodeCapability::IsDimensionSupported(const Node* node) const {
+  auto node_inputs = node->InputDefs();
+  // find first non-null shape
+  const ONNX_NAMESPACE::TensorShapeProto *data_0_shape = nullptr;
+  for (auto input : node_inputs) {
+    data_0_shape = input->Shape();
+    if (data_0_shape != nullptr) {
+      break;
+    }
+  }
+  // if all input shapes are null accept the 'Sum'
+  if (data_0_shape == nullptr) {
+    return true;
+  }
+  // assume first shape was not nullptr and start at index 1
+  // even if fist shape was nullptr this will just compare a shape with itself
+  for (size_t i = 1; i < node_inputs.size(); ++i) {
+    if (node_inputs[i]->Shape() == nullptr) {
+      continue;
+    }
+    if (data_0_shape->dim_size() != node_inputs[i]->Shape()->dim_size()) {
+      return false;
+    }
+    for (int j = 0; j < data_0_shape->dim_size(); ++j) {
+      if (data_0_shape->dim(j).dim_value() != node_inputs[i]->Shape()->dim(j).dim_value()) {
+        return false;
+      }
+    }
+  }
+  return true;
+
+}
+
+
 }  // namespace onnxruntime

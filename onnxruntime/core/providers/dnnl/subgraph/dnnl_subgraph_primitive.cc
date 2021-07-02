@@ -7,6 +7,7 @@
 #include "dnnl_matmul_integer.h"
 #include "dnnl_pool.h"
 #include "dnnl_relu.h"
+#include "dnnl_sum.h"
 
 namespace onnxruntime {
 namespace ort_dnnl {
@@ -165,6 +166,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlMatMulInteger().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Relu") {
       DnnlRelu().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Sum") {
+      DnnlSum().CreatePrimitive(*this, node);
     } else {
       throw std::invalid_argument("not supported");
     }

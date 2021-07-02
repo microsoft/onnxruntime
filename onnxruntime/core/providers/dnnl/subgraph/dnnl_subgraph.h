@@ -37,6 +37,7 @@ class DnnlNode {
   std::string Name();
   std::string OpType();
   DnnlTensor Input(int index);
+  size_t InputCount();
   DnnlTensor Output(int index);
   size_t OutputCount();
   const NodeAttributes& Attributes();

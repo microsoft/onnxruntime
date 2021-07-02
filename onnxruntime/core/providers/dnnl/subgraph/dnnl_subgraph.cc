@@ -110,6 +110,10 @@ DnnlTensor DnnlNode::Input(int index) {
   return DnnlTensor("");
 }
 
+size_t DnnlNode::InputCount() {
+  return onnx_node_->InputDefs().size();
+}
+
 DnnlTensor DnnlNode::Output(int index) {
   auto def = onnx_node_->OutputDefs()[index];
   return DnnlTensor(def);

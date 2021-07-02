@@ -159,4 +159,23 @@ class DnnlMatMulIntegerNodeCapability : public DnnlDefaultNodeCapability {
   bool IsDimensionSupported(const Node* node) const;
 };
 
+/**
+ * Decide if aSum op is supported by DnnlExecutionProvider
+ * OneDNN does not support Numpy-style broadcasting for 'Sum'
+ */
+class DnnlSumNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  // OneDNN reports support for sum of type f32, f16, bf16, i8 and u8
+  // Onnx reports support for float, float16, bfloat16, and double
+  // Onnxruntime only has unittests for float and double.
+  // To enable float16 and bfloat16 we will should add tests to verify those data types.
+  DnnlSumNodeCapability() : DnnlDefaultNodeCapability({"float"/*, "float16", "bfloat16", "int8", "uint8"*/}) {}
+
+  bool Supported(const Node* node) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node) const;
+};
+
+
 }  // namespace onnxruntime
