@@ -3065,7 +3065,7 @@ Return true if all elements are true and false otherwise.
           1,
           "inputs",
           "There are 2*N inputs: "
-          "  N gradient inputs(as inputs of autograd.Function.backward) + "
+          "  N gradient inputs (as inputs of autograd.Function.backward) + "
           "  N forward run activations of autograd.Function.apply."
           "The N forward run inputs are used as control dependency between PythonOpGrad and PythonOp",
           "T",
