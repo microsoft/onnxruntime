@@ -26,48 +26,48 @@ jobs:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-#- job: 'Linux_CI_GPU_TENSORRT_Dev'
-  #workspace:
-    #clean: all
-  #timeoutInMinutes:  120
-  #pool: 'Onnxruntime-Linux-GPU'
-  #variables:
-    #CUDA_VERSION: '11.1'
-  #steps:
-    #- template: ../../templates/set-version-number-variables-step.yml
-    #- template: ../../templates/get-docker-image-steps.yml
-      #parameters:
-        #Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_1_tensorrt7_2
-        #Context: tools/ci_build/github/linux/docker
-        #DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-9/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-9/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-9/root/usr/lib64:/opt/rh/devtoolset-9/root/usr/lib:/opt/rh/devtoolset-9/root/usr/lib64/dyninst:/opt/rh/devtoolset-9/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
-        #Repository: onnxruntimecuda111trt72build
-    #- task: CmdLine@2
-      #inputs:
-        #script: |
-          #mkdir -p $HOME/.onnx
-          #docker run --gpus all -e CC=/opt/rh/devtoolset-9/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-9/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
-          #--volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecuda111trt72build \
-          #/bin/bash -c "/opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync --parallel --build_shared_lib --use_tensorrt --cuda_version=$(CUDA_VERSION) --cuda_home=/usr/local/cuda-$(CUDA_VERSION) --cudnn_home=/usr --tensorrt_home=/usr --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-9/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80' && cd /build/Release && make install DESTDIR=/build/linux-x64"
-        #workingDirectory: $(Build.SourcesDirectory)
-    #- script: |
-       #set -e -x
-       #mv $(Build.BinariesDirectory)/linux-x64/usr/local/lib64 $(Build.BinariesDirectory)/linux-x64/linux-x64
-       #cd $(Build.BinariesDirectory)/linux-x64
-       #zip -r linux-x64.zip linux-x64
-       #cp $(Build.BinariesDirectory)/linux-x64/linux*.zip $(Build.ArtifactStagingDirectory)
-       #mkdir $(Build.ArtifactStagingDirectory)/testdata
-       #cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
-       #ls -al $(Build.ArtifactStagingDirectory)
-      #displayName: 'Create Artifacts'
-    #- task: PublishPipelineArtifact@0
-      #displayName: 'Publish Pipeline Artifact'
-      #inputs:
-        #artifactName: 'drop-linux'
-        #targetPath: '$(Build.ArtifactStagingDirectory)'
-    #- template: ../../templates/component-governance-component-detection-steps.yml
-      #parameters :
-        #condition : 'succeeded'
-    #- template: ../../templates/clean-agent-build-directory-step.yml
+- job: 'Linux_CI_GPU_TENSORRT_Dev'
+  workspace:
+    clean: all
+  timeoutInMinutes:  120
+  pool: 'Onnxruntime-Linux-GPU'
+  variables:
+    CUDA_VERSION: '11.1'
+  steps:
+    - template: ../../templates/set-version-number-variables-step.yml
+    - template: ../../templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_1_tensorrt7_2
+        Context: tools/ci_build/github/linux/docker
+        DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-9/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-9/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-9/root/usr/lib64:/opt/rh/devtoolset-9/root/usr/lib:/opt/rh/devtoolset-9/root/usr/lib64/dyninst:/opt/rh/devtoolset-9/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimecuda111trt72build
+    - task: CmdLine@2
+      inputs:
+        script: |
+          mkdir -p $HOME/.onnx
+          docker run --gpus all -e CC=/opt/rh/devtoolset-9/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-9/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
+          --volume /data/models:/build/models:ro --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecuda111trt72build \
+          /bin/bash -c "/opt/python/cp37-cp37m/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release --skip_submodule_sync --parallel --build_shared_lib --use_tensorrt --cuda_version=$(CUDA_VERSION) --cuda_home=/usr/local/cuda-$(CUDA_VERSION) --cudnn_home=/usr --tensorrt_home=/usr --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-9/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80' && cd /build/Release && make install DESTDIR=/build/linux-x64"
+        workingDirectory: $(Build.SourcesDirectory)
+    - script: |
+       set -e -x
+       mv $(Build.BinariesDirectory)/linux-x64/usr/local/lib64 $(Build.BinariesDirectory)/linux-x64/linux-x64
+       cd $(Build.BinariesDirectory)/linux-x64
+       zip -r linux-x64.zip linux-x64
+       cp $(Build.BinariesDirectory)/linux-x64/linux*.zip $(Build.ArtifactStagingDirectory)
+       mkdir $(Build.ArtifactStagingDirectory)/testdata
+       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
+       ls -al $(Build.ArtifactStagingDirectory)
+      displayName: 'Create Artifacts'
+    - task: PublishPipelineArtifact@0
+      displayName: 'Publish Pipeline Artifact'
+      inputs:
+        artifactName: 'drop-linux'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+    - template: ../../templates/component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'
+    - template: ../../templates/clean-agent-build-directory-step.yml
 
 - job: NuGet_Packaging
   workspace:
@@ -75,7 +75,7 @@ jobs:
   pool: 'onnxruntime-gpu-winbuild'
   dependsOn:
   - Windows_CI_GPU_TENSORRT_Dev
-  #- Linux_CI_GPU_TENSORRT_Dev
+  - Linux_CI_GPU_TENSORRT_Dev
   condition: succeeded()
   steps:
   - task: DownloadPipelineArtifact@0
@@ -84,41 +84,41 @@ jobs:
       artifactName: 'drop-nuget'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-  #- task: DownloadPipelineArtifact@0
-    #displayName: 'Download Pipeline Artifact - Linux'
-    #inputs:
-      #artifactName: 'drop-linux'
-      #targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Linux'
+    inputs:
+      artifactName: 'drop-linux'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-  #- script: |
-     #pushd $(Build.BinariesDirectory)\nuget-artifact
-     #dir
-     #powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
-     #powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
-     #set PATH=%CD%;%PATH%
-     #SETLOCAL EnableDelayedExpansion
-     #FOR /R %%i IN (*.nupkg) do (
-         #set filename=%%~ni
-         #IF NOT "!filename:~25,7!"=="Managed" (
-             #rename %%~ni.nupkg %%~ni.zip
-             #unzip %%~ni.zip -d %%~ni
-             #del /Q %%~ni.zip
-             #unzip linux-x64.zip -d linux-x64
-             #mkdir %%~ni\runtimes\linux-x64
-             #mkdir %%~ni\runtimes\linux-x64\native
-             #move linux-x64\linux-x64\libonnxruntime.so %%~ni\runtimes\linux-x64\native\libonnxruntime.so
-             #move linux-x64\linux-x64\libonnxruntime_providers_shared.so %%~ni\runtimes\linux-x64\native\libonnxruntime_providers_shared.so
-             #move linux-x64\linux-x64\libonnxruntime_providers_cuda.so %%~ni\runtimes\linux-x64\native\libonnxruntime_providers_cuda.so
-             #move linux-x64\linux-x64\libonnxruntime_providers_tensorrt.so %%~ni\runtimes\linux-x64\native\libonnxruntime_providers_tensorrt.so
-             #pushd %%~ni
-             #zip -r ..\%%~ni.zip .
-             #popd
-             #move %%~ni.zip %%~ni.nupkg
-         #)
-     #)
-     #popd
-     #copy $(Build.BinariesDirectory)\nuget-artifact\*.nupkg $(Build.ArtifactStagingDirectory)
-    #displayName: 'Bundle Native NuGet and other binaries'
+  - script: |
+     pushd $(Build.BinariesDirectory)\nuget-artifact
+     dir
+     powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/unzip.exe -OutFile unzip.exe"
+     powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
+     set PATH=%CD%;%PATH%
+     SETLOCAL EnableDelayedExpansion
+     FOR /R %%i IN (*.nupkg) do (
+         set filename=%%~ni
+         IF NOT "!filename:~25,7!"=="Managed" (
+             rename %%~ni.nupkg %%~ni.zip
+             unzip %%~ni.zip -d %%~ni
+             del /Q %%~ni.zip
+             unzip linux-x64.zip -d linux-x64
+             mkdir %%~ni\runtimes\linux-x64
+             mkdir %%~ni\runtimes\linux-x64\native
+             move linux-x64\linux-x64\libonnxruntime.so %%~ni\runtimes\linux-x64\native\libonnxruntime.so
+             move linux-x64\linux-x64\libonnxruntime_providers_shared.so %%~ni\runtimes\linux-x64\native\libonnxruntime_providers_shared.so
+             move linux-x64\linux-x64\libonnxruntime_providers_cuda.so %%~ni\runtimes\linux-x64\native\libonnxruntime_providers_cuda.so
+             move linux-x64\linux-x64\libonnxruntime_providers_tensorrt.so %%~ni\runtimes\linux-x64\native\libonnxruntime_providers_tensorrt.so
+             pushd %%~ni
+             zip -r ..\%%~ni.zip .
+             popd
+             move %%~ni.zip %%~ni.nupkg
+         )
+     )
+     popd
+     copy $(Build.BinariesDirectory)\nuget-artifact\*.nupkg $(Build.ArtifactStagingDirectory)
+    displayName: 'Bundle Native NuGet and other binaries'
 
   - template: ../../templates/esrp_nuget.yml
     parameters:
@@ -145,10 +145,10 @@ jobs:
     Skipx86Tests: 'true'
     DotNetDefineConstants: 'USE_TENSORRT'
 
-#- template: test_linux.yml
-  #parameters:
-    #AgentPool : 'Onnxruntime-Linux-GPU'
-    #TestGPU : 'true'
+- template: test_linux.yml
+  parameters:
+    AgentPool : 'Onnxruntime-Linux-GPU'
+    TestGPU : 'true'
 
 #- job: Publish_NuGet_Package_And_Report
   #workspace:
