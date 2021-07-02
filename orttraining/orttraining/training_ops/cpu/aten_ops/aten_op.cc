@@ -108,7 +108,7 @@ template <typename T>
 std::vector<T> GetCpuArrayArgument(OpKernelContext* p_ctx, size_t index) {
   const Tensor* tensor = p_ctx->Input<Tensor>(static_cast<int>(index));
   ORT_ENFORCE(tensor->Shape().NumDimensions() == 1, "Array argument tensor must be a vector tensor.");
-  size_t length = static_cast<size_t>(tensor->Shape()[0]);
+  size_t length = static_cast<size_t>(tensor->Shape().Size());
   const T* data = tensor->template Data<T>();
   std::vector<T> result;
   result.assign(data, data + length);

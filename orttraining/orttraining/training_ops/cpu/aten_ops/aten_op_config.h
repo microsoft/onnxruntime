@@ -5,7 +5,6 @@
 
 #include <vector>
 #include <string>
-#include <tuple>
 #include <unordered_map>
 
 namespace onnxruntime {
@@ -51,6 +50,15 @@ struct ArgumentConfig {
       : kind(_kind), name(_name), is_cpu_tensor(_is_cpu_tensor), is_optional(_is_optional) {}
 };
 
+struct BackwardInputSourceConfig {
+  BackwardInputSourceKind kind;
+  size_t index;
+  std::string transform_func;
+
+  BackwardInputSourceConfig(BackwardInputSourceKind _kind, size_t _index, std::string _transform_func)
+      : kind(_kind), index(_index), transform_func(_transform_func) {}
+};
+
 // TODO: need to support default attribute value.
 struct ATenOperatorConfig {
   std::string op_name;
@@ -60,7 +68,7 @@ struct ATenOperatorConfig {
   // Backward ATen Op's argument configs.
   std::vector<ArgumentConfig> backward_argument_configs;
   // The source config of inputs of com.microsoft::ATenOpGrad.
-  std::vector<std::tuple<BackwardInputSourceKind, size_t, std::string>> backward_input_source_configs;
+  std::vector<BackwardInputSourceConfig> backward_input_source_configs;
   // The output type infer config of outputs of com.microsoft::ATenOp.
   std::vector<std::pair<OutputTypeInferKind, int>> forward_output_type_infer_configs;
   // The mapping between com.microsoft::ATenOpGrad's outputs and com.microsoft::ATenOp's inputs,

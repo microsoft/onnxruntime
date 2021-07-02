@@ -283,14 +283,14 @@ ATenOperatorConfig Parse(const std::string& forward_function_str, const std::str
       }
       if (forward_arguments_name_to_index.find(name) != forward_arguments_name_to_index.end()) {
         config.backward_input_source_configs.emplace_back(
-            std::make_tuple(FORWARD_INPUT, forward_arguments_name_to_index.at(name), transform_func));
+            BackwardInputSourceConfig(FORWARD_INPUT, forward_arguments_name_to_index.at(name), transform_func));
       } else if (forward_returns_name_to_index.find(name) != forward_returns_name_to_index.end()) {
         config.backward_input_source_configs.emplace_back(
-            std::make_tuple(FORWARD_OUTPUT, forward_returns_name_to_index.at(name), transform_func));
+            BackwardInputSourceConfig(FORWARD_OUTPUT, forward_returns_name_to_index.at(name), transform_func));
       } else if (forward_returns_name_to_index.find(name.substr(5UL)) != forward_returns_name_to_index.end()) {
         // Output gradient has "grad_" prefix.
         config.backward_input_source_configs.emplace_back(
-            std::make_tuple(GRAD_OUTPUT, forward_returns_name_to_index.at(name.substr(5UL)), transform_func));
+            BackwardInputSourceConfig(GRAD_OUTPUT, forward_returns_name_to_index.at(name.substr(5UL)), transform_func));
       } else {
         ORT_ENFORCE(false, "Argument ", name, " is not forward input, output or output gradient.");
       }

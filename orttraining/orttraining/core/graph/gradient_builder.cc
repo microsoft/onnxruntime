@@ -1700,19 +1700,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
   std::vector<ArgDef> output_args;
 
   for (const auto& config : op_config.backward_input_source_configs) {
-    size_t index = std::get<1>(config);
-    std::string transorm_func = std::get<2>(config);
-    switch (std::get<0>(config)) {
-      case contrib::aten_ops::GRAD_OUTPUT:
-        input_args.emplace_back(HandleATenOpGradInput(GO(index), transorm_func, result));
-        break;
-      case contrib::aten_ops::FORWARD_INPUT:
-        input_args.emplace_back(HandleATenOpGradInput(I(index), transorm_func, result));
-        break;
-      case contrib::aten_ops::FORWARD_OUTPUT:
-        input_args.emplace_back(HandleATenOpGradInput(O(index), transorm_func, result));
-        break;
-    }
+    ArgDef source_arg_def = config.kind == contrib::aten_ops::GRAD_OUTPUT     ? GO(config.index)
+                            : config.kind == contrib::aten_ops::FORWARD_INPUT ? I(config.index)
+                                                                              : O(config.index);
+    input_args.emplace_back(HandleATenOpGradInput(source_arg_def, config.transform_func, result));
   }
 
   for (size_t index : op_config.gradient_input_indices) {

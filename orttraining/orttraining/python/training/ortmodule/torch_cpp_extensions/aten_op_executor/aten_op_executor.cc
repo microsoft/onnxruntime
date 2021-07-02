@@ -22,19 +22,13 @@ class ATenOperatorCache {
 
   const ATenOperator& GetOperator(const std::string& op_name) {
     if (ops_.find(op_name) == ops_.end()) {
-      auto& ops = torch::jit::getAllOperatorsFor(torch::jit::Symbol::fromQualString(op_name));
-      bool found = false;
+      // Some op name can get multiple ops with different overload names,
+      // we are using the one with empty overload name.
+      c10::OperatorName full_name(op_name, "");
+      auto op = torch::jit::findOperatorFor(full_name);
+      TORCH_INTERNAL_ASSERT(op);
       ATenOperator aten_op;
-      for (auto op : ops) {
-        // Some op name can get multiple ops with different overload names,
-        // we are using the one without overload name.
-        if (op->schema().overload_name() == "") {
-          aten_op.op = op;
-          found = true;
-          break;
-        }
-      }
-      TORCH_INTERNAL_ASSERT(found);
+      aten_op.op = op;
       const auto& schema = aten_op.op->schema();
       aten_op.argument_size = schema.arguments().size();
       for (const auto& argument : schema.arguments()) {

@@ -20,11 +20,22 @@ void CompareArgumentConfigs(const std::vector<ArgumentConfig>& configs, const st
   }
 }
 
+void CompareBackwardInputSourceConfigs(const std::vector<BackwardInputSourceConfig>& configs,
+                                       const std::vector<BackwardInputSourceConfig>& others) {
+  EXPECT_TRUE(configs.size() == others.size());
+  for (size_t i = 0; i < configs.size(); i++) {
+    const auto& config = configs[i];
+    const auto& other = others[i];
+    EXPECT_TRUE(config.kind == other.kind && config.index == other.index &&
+                config.transform_func == other.transform_func);
+  }
+}
+
 void Compare(const ATenOperatorConfig& config, const ATenOperatorConfig& other) {
   EXPECT_TRUE(config.op_name == other.op_name && config.backward_op_name == other.backward_op_name);
   CompareArgumentConfigs(config.forward_argument_configs, other.forward_argument_configs);
   CompareArgumentConfigs(config.backward_argument_configs, other.backward_argument_configs);
-  EXPECT_TRUE(config.backward_input_source_configs == other.backward_input_source_configs);
+  CompareBackwardInputSourceConfigs(config.backward_input_source_configs, other.backward_input_source_configs);
   EXPECT_TRUE(config.forward_output_type_infer_configs == other.forward_output_type_infer_configs);
   EXPECT_TRUE(config.gradient_input_indices == other.gradient_input_indices);
   EXPECT_TRUE(config.default_int_values == other.default_int_values);
@@ -56,8 +67,8 @@ TEST(ATenOpConfigTest, ValidATenOpConfig) {
     expected.backward_argument_configs.emplace_back(ArgumentConfig(INT, "p", false, false));
     expected.backward_argument_configs.emplace_back(ArgumentConfig(FLOAT, "d", false, false));
     expected.backward_argument_configs.emplace_back(ArgumentConfig(FLOAT, "e", false, false));
-    expected.backward_input_source_configs.emplace_back(std::make_tuple(GRAD_OUTPUT, 0UL, ""));
-    expected.backward_input_source_configs.emplace_back(std::make_tuple(FORWARD_INPUT, 1UL, ""));
+    expected.backward_input_source_configs.emplace_back(BackwardInputSourceConfig(GRAD_OUTPUT, 0UL, ""));
+    expected.backward_input_source_configs.emplace_back(BackwardInputSourceConfig(FORWARD_INPUT, 1UL, ""));
     expected.forward_output_type_infer_configs.emplace_back(std::make_pair(PROPAGATE_FROM_INPUT, 0));
     expected.gradient_input_indices.emplace_back(0UL);
     expected.default_int_values["p"] = -1;
@@ -81,9 +92,9 @@ TEST(ATenOpConfigTest, ValidATenOpConfig) {
     expected.backward_argument_configs.emplace_back(ArgumentConfig(TENSOR, "grad_r1", false, false));
     expected.backward_argument_configs.emplace_back(ArgumentConfig(TENSOR, "grad_r2", false, false));
     expected.backward_argument_configs.emplace_back(ArgumentConfig(TENSOR, "r2", false, false));
-    expected.backward_input_source_configs.emplace_back(std::make_tuple(GRAD_OUTPUT, 0UL, ""));
-    expected.backward_input_source_configs.emplace_back(std::make_tuple(GRAD_OUTPUT, 1UL, ""));
-    expected.backward_input_source_configs.emplace_back(std::make_tuple(FORWARD_OUTPUT, 1UL, ""));
+    expected.backward_input_source_configs.emplace_back(BackwardInputSourceConfig(GRAD_OUTPUT, 0UL, ""));
+    expected.backward_input_source_configs.emplace_back(BackwardInputSourceConfig(GRAD_OUTPUT, 1UL, ""));
+    expected.backward_input_source_configs.emplace_back(BackwardInputSourceConfig(FORWARD_OUTPUT, 1UL, ""));
     expected.forward_output_type_infer_configs.emplace_back(std::make_pair(PROPAGATE_FROM_INPUT, 0));
     expected.forward_output_type_infer_configs.emplace_back(std::make_pair(CONCRETE_TYPE, 1));
     expected.gradient_input_indices.emplace_back(0UL);
@@ -104,7 +115,7 @@ TEST(ATenOpConfigTest, ValidATenOpConfig) {
     expected.backward_argument_configs.emplace_back(ArgumentConfig(TENSOR, "grad_output", false, false));
     expected.backward_argument_configs.emplace_back(ArgumentConfig(BOOL_ARRAY, "flags", false, false));
     expected.backward_argument_configs.emplace_back(ArgumentConfig(FLOAT_ARRAY, "es", false, true));
-    expected.backward_input_source_configs.emplace_back(std::make_tuple(GRAD_OUTPUT, 0UL, ""));
+    expected.backward_input_source_configs.emplace_back(BackwardInputSourceConfig(GRAD_OUTPUT, 0UL, ""));
     expected.forward_output_type_infer_configs.emplace_back(std::make_pair(PROPAGATE_FROM_INPUT, 0));
     expected.gradient_input_indices.emplace_back(0UL);
     expected.default_int_array_values["axes"] = {-1, 0, 1};
@@ -128,10 +139,10 @@ TEST(ATenOpConfigTest, ValidATenOpConfig) {
     expected.backward_argument_configs.emplace_back(ArgumentConfig(INT_ARRAY, "weight.sizes()", true, false));
     expected.backward_argument_configs.emplace_back(ArgumentConfig(INT, "output.size(0)", true, false));
     expected.backward_argument_configs.emplace_back(ArgumentConfig(FLOAT, "delta", true, false));
-    expected.backward_input_source_configs.emplace_back(std::make_tuple(GRAD_OUTPUT, 0UL, ""));
-    expected.backward_input_source_configs.emplace_back(std::make_tuple(FORWARD_INPUT, 0UL, "sizes()"));
-    expected.backward_input_source_configs.emplace_back(std::make_tuple(FORWARD_OUTPUT, 0UL, "size(0)"));
-    expected.backward_input_source_configs.emplace_back(std::make_tuple(FORWARD_INPUT, 1UL, ""));
+    expected.backward_input_source_configs.emplace_back(BackwardInputSourceConfig(GRAD_OUTPUT, 0UL, ""));
+    expected.backward_input_source_configs.emplace_back(BackwardInputSourceConfig(FORWARD_INPUT, 0UL, "sizes()"));
+    expected.backward_input_source_configs.emplace_back(BackwardInputSourceConfig(FORWARD_OUTPUT, 0UL, "size(0)"));
+    expected.backward_input_source_configs.emplace_back(BackwardInputSourceConfig(FORWARD_INPUT, 1UL, ""));
     expected.forward_output_type_infer_configs.emplace_back(std::make_pair(PROPAGATE_FROM_INPUT, 0));
     expected.gradient_input_indices.emplace_back(0UL);
     Compare(config, expected);
