@@ -84,11 +84,11 @@ jobs:
       artifactName: 'drop-nuget'
       targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
-  - task: DownloadPipelineArtifact@0
-    displayName: 'Download Pipeline Artifact - Linux'
-    inputs:
-      artifactName: 'drop-linux'
-      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+  #- task: DownloadPipelineArtifact@0
+    #displayName: 'Download Pipeline Artifact - Linux'
+    #inputs:
+      #artifactName: 'drop-linux'
+      #targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
   #- script: |
      #pushd $(Build.BinariesDirectory)\nuget-artifact
