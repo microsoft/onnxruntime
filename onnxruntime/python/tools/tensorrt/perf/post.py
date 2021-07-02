@@ -177,15 +177,15 @@ def main():
             os.chdir(result_file)
     
         print('writing failures over time to database')
-        #write_table(engine, fail, 'ep_model_fails')
+        write_table(engine, fail, 'ep_model_fails')
         print('writing memory to database')
-        #write_table(engine, memory, 'ep_model_memory')
+        write_table(engine, memory, 'ep_model_memory')
         print('writing latency to database')
-        #write_table(engine, latency, 'ep_model_latency')
+        write_table(engine, latency, 'ep_model_latency')
         print('writing status to database')
-        #write_table(engine, status, 'ep_models_status')
+        write_table(engine, status, 'ep_models_status')
         print('writing latency over time to database')
-        #insert_latency(args.commit_hash, args.report_url, latency)
+        insert_latency(args.commit_hash, args.report_url, latency)
 
     except BaseException as e: 
         print(str(e))
