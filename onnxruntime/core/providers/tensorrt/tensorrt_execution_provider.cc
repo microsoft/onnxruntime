@@ -539,6 +539,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                                          "TensorRT EP could not open shared library from " + engine_decryption_lib_path_));
     }
     engine_decryption_ = (int (*)(const char*, char*, size_t*))LIBFUNC(handle, "decrypt");
+    engine_encryption_ = (int (*)(const char*, char*, size_t*))LIBFUNC(handle, "encrypt");
   }
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT provider options: "
                         << "device_id: " << device_id_
@@ -1294,8 +1295,17 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
         }
         if (engine_cache_enable_) {
           nvinfer1::IHostMemory* serializedModel = trt_engine->serialize();
-          std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
-          file.write(reinterpret_cast<char*>(serializedModel->data()), serializedModel->size());
+          size_t engine_size = serializedModel->size();
+          if (engine_decryption_enable_) {
+            // Encrypt engine
+            if (!engine_decryption_(engine_cache_path.c_str(), reinterpret_cast<char*>(serializedModel->data()), &engine_size)) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                                     "TensorRT EP could not call engine encryption function encrypt");
+            }
+		  } else {
+            std::ofstream file(engine_cache_path, std::ios::binary | std::ios::out);
+            file.write(reinterpret_cast<char*>(serializedModel->data()), engine_size);
+          }
           serializedModel->destroy();
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + engine_cache_path;
         }
