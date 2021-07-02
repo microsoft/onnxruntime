@@ -59,7 +59,7 @@ IF NOT errorlevel 0 (
     EXIT 1
 )
 
-IF "%DotNetDefineConstants%"=="" (
+IF "%DefineConstants%"=="" (
     %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
 ) ELSE (
     %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore /p:DefineConstants=%DefineConstants%
