@@ -179,7 +179,7 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
             T subtotal = Dequantize<T2>(input_word_embedding[i],
                                         word_embedding_scale_data,
                                         word_embedding_zero_point_data) +
-                         Dequantize<T2>(input_position_embedding[i],
+              Dequantize<T2>(input_position_embedding[i],
                                         position_embedding_scale_data,
                                         position_embedding_zero_point_data);
             if (segment_embedding_data != nullptr) {
@@ -335,14 +335,71 @@ template <typename T>
 QEmbedLayerNorm<T>::QEmbedLayerNorm(const OpKernelInfo& op_kernel_info)
     : EmbedLayerNormBase(op_kernel_info), has_cached_lookup_table_(false) {
 
-  // Try and get a constant thing
-  const Tensor* word_embeddings_scale = nullptr;
-  bool found = op_kernel_info.TryGetConstantInput(8, &word_embeddings_scale);
-  if (found) {
+  const Tensor* tensor_word_embeddings_scale = nullptr;
+  const Tensor* tensor_position_embeddings_scale = nullptr;
+  const Tensor* tensor_segment_embeddings_scale = nullptr;
 
-    // Cool do something.
+  const Tensor* tensor_word_embeddings_zero_point = nullptr;
+  const Tensor* tensor_position_embeddings_zero_point = nullptr;
+  const Tensor* tensor_segment_embeddings_zero_point = nullptr;
+
+  bool has_segment = true;
+
+  // TODO - cleanup and move this stuff elsewhere.
+  // TODO - drop early returns.
+  if (!op_kernel_info.TryGetConstantInput(8, &tensor_word_embeddings_scale)) {
+    return;
   }
-}
+  if (!op_kernel_info.TryGetConstantInput(9, &tensor_position_embeddings_scale)) {
+    return;
+  }
+  if (!op_kernel_info.TryGetConstantInput(10, &tensor_position_embeddings_scale)) {
+    has_segment = false;
+  }
+
+  if (!op_kernel_info.TryGetConstantInput(13, &tensor_word_embeddings_zero_point)) {
+    return;
+  }
+  if (!op_kernel_info.TryGetConstantInput(14, &tensor_position_embeddings_zero_point)) {
+    return;
+  }
+  if (has_segment && !op_kernel_info.TryGetConstantInput(14, &tensor_segment_embeddings_zero_point)) {
+    return;
+  }
+
+  // Now calculate the scale here.
+  const float word_embeddings_scale = *(tensor_word_embeddings_scale->Data<float>());
+  const float position_embeddings_scale = *(position_embeddings_scale->Data<float>());
+  const float segment_embeddings_scale = has_segment ? *(tensor_segment_embeddings_scale->Data<float>()) : 0.f;
+
+  const uint8_t word_embeddings_zero_point = *(tensor_word_embeddings_zero_point->template Data<uint8_t>());
+  const uint8_t position_embeddings_zero_point = *(tensor_position_embeddings_zero_point->template Data<uint8_t>());
+  const uint8_t segment_embeddings_zero_point =
+    has_segment ? *(tensor_segment_embeddings_zero_point->template Data<uint8_t>()) : 0;
+
+  const float normalized_scale = std::max(segment_embeddings_scale,
+                                          std::max(word_embeddings_scale, position_embeddings_scale));
+
+  word_embedding_lookup_table_.resize(kLookupTableSize);  // XXX should this be 255?
+
+  // Real multiplier is:
+  float normalized_word_embeddings_scale = word_embeddings_scale / normalized_scale;
+  float normalized_position_embeddings_scale = position_embeddings_scale / normalized_scale;
+  float normalized_segment_embeddings_scale =
+      has_segment ? segment_embeddings_scale / normalized_scale : 0.0f; 
+
+  // TODO: Cleanup the lookup table build to have a default implementation here:
+  const auto transform_word_embeddings = [=](float v) -> float { return v; };
+
+  // zero ZP since everything is scaled?
+
+
+  //
+  // TODO(kreeger): left off right here. I don't like the qlinear_lookups. I could make everything
+  // accumulate to int32_t - but that requires some re-write of the existing logic. Might make sense
+  // to implement an actual quant library.
+  //
+} 
 
 template <typename T>
 Status QEmbedLayerNorm<T>::Compute(OpKernelContext* context) const {

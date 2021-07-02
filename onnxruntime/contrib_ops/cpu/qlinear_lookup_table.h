@@ -32,6 +32,14 @@ void QlinearBuildLookupTable(uint8_t* table,
                              const Tensor* tensor_y_zero_point,
                              const LookupTableScalarTransformer& value_transformer);
 
+template <typename T>
+void QlinearBuildLookupTable(uint8_t* table,
+                             const float tensor_x_scale,
+                             const T tensor_x_zero_point,
+                             const float tensor_y_scale,
+                             const T tensor_y_zero_point,
+                             const LookupTableScalarTransformer& value_transformer);
+
 void QLinearLookupTableTransform(const uint8_t* x, const uint8_t* table, uint8_t* y, size_t n);
 
 template <typename T>

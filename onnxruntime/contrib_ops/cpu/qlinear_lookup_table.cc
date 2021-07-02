@@ -36,6 +36,23 @@ void QLinearLookupTableTransform(const uint8_t* x, const uint8_t* table, uint8_t
 
 template <typename T>
 void QlinearBuildLookupTable(uint8_t* table,
+                             const float x_scale,
+                             const T x_zero_point,
+                             const float y_scale,
+                             const T y_zero_point,
+                             const LookupTableArrayTransformer& array_values_transformer) {
+  float dequantized_input[256];
+  float dequantized_output[256];
+  for (int i = 0; i < 256; ++i) {
+    T x = static_cast<T>(i);
+    dequantized_input[i] = X_scale * (static_cast<int>(x) - static_cast<int>(X_zero_point));
+  }
+  array_values_transformer(dequantized_input, dequantized_output, 256);
+  MlasQuantizeLinear(dequantized_output, (T*)table, 256, Y_scale, Y_zero_point);
+}
+
+template <typename T>
+void QlinearBuildLookupTable(uint8_t* table,
                              const Tensor* tensor_x_scale,
                              const Tensor* tensor_x_zero_point,
                              const Tensor* tensor_y_scale,
@@ -51,18 +68,30 @@ void QlinearBuildLookupTable(uint8_t* table,
               "QlinearBuildLookupTable : input Y_zero_point must be a scalar or 1D tensor of size 1");
 
   const float X_scale = *(tensor_x_scale->Data<float>());
-  const T X_zero_point = (tensor_x_zero_point == nullptr) ? static_cast<T>(0) : *(tensor_x_zero_point->template Data<T>());
+  const T X_zero_point =
+      (tensor_x_zero_point == nullptr) ? static_cast<T>(0) : *(tensor_x_zero_point->template Data<T>());
   const float Y_scale = *(tensor_y_scale->Data<float>());
-  const T Y_zero_point = (tensor_y_zero_point == nullptr) ? static_cast<T>(0) : *(tensor_y_zero_point->template Data<T>());
+  const T Y_zero_point =
+      (tensor_y_zero_point == nullptr) ? static_cast<T>(0) : *(tensor_y_zero_point->template Data<T>());
 
-  float dequantized_input[256];
-  float dequantized_output[256];
-  for (int i = 0; i < 256; ++i) {
-    T x = static_cast<T>(i);
-    dequantized_input[i] = X_scale * (static_cast<int>(x) - static_cast<int>(X_zero_point));
-  }
-  array_values_transformer(dequantized_input, dequantized_output, 256);
-  MlasQuantizeLinear(dequantized_output, (T*)table, 256, Y_scale, Y_zero_point);
+  QlinearBuildLookupTable(table, X_scale, X_zero_point, Y_scale, Y_zero_point, array_values_transformer);
+}
+
+template <typename T>
+void QlinearBuildLookupTable(uint8_t* table,
+                             const float x_scale,
+                             const T x_zero_point,
+                             const float y_scale,
+                             const T y_zero_point,
+                             const LookupTableScalarTransformer& value_transformer) {
+  LookupTableArrayTransformer array_values_transformer =
+      [&value_transformer](const float* input, float* output, size_t length) {
+        for (size_t i = 0; i < length; ++i) {
+          *output++ = value_transformer(*input++);
+        }
+      };
+  return QlinearBuildLookupTable<T>(table, x_scale, x_zero_point,
+                                    y_scale, y_zero_point, array_values_transformer);
 }
 
 template <typename T>
