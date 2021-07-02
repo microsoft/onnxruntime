@@ -1543,12 +1543,17 @@ class SymbolicShapeInference:
                 out_type_kind = out_type.WhichOneof('value')
                 # only TensorProto and SparseTensorProto have shape
                 if out_type_kind != 'tensor_type' and out_type_kind != 'sparse_tensor_type':
-                    print('  {}: non-tensor'.format(node.output[i_o]))
+                    if self.verbose_ > 2 and out_type_kind == 'sequence_type':
+                        print('  {}: {} sequence of {}'.format(
+                                node.output[i_o],
+                                onnx.TensorProto.DataType.Name(vi.type.sequence_type.elem_type.tensor_type.elem_type),
+                                str(get_shape_from_type_proto(vi.type.sequence_type.elem_type))))
                     continue
                 out_shape = get_shape_from_type_proto(vi.type)
                 out_type_undefined = out_type.tensor_type.elem_type == onnx.TensorProto.UNDEFINED
                 if self.verbose_ > 2:
-                    print('  {}: {} {}'.format(node.output[i_o], str(out_shape), vi.type.tensor_type.elem_type))
+                    print('  {}: {} {}'.format(node.output[i_o], str(out_shape),
+                                               onnx.TensorProto.DataType.Name(vi.type.tensor_type.elem_type)))
                     if node.output[i_o] in self.sympy_data_:
                         print('  Sympy Data: ' + str(self.sympy_data_[node.output[i_o]]))
 
