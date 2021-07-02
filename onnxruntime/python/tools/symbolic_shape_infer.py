@@ -363,9 +363,14 @@ class SymbolicShapeInference:
                 ]
 
             # run single node inference with self.known_vi_ shapes
+            def make_named_value_info(name):
+                vi = onnx.ValueInfoProto()
+                vi.name = name
+                return vi
+
             tmp_graph = helper.make_graph(
                 [node], 'tmp', [self.known_vi_[i] for i in node.input if i],
-                [helper.make_tensor_value_info(i, onnx.TensorProto.UNDEFINED, None) for i in node.output], initializers)
+                [make_named_value_info(i) for i in node.output], initializers)
 
             self.tmp_mp_.graph.CopyFrom(tmp_graph)
             self.tmp_mp_ = shape_inference.infer_shapes(self.tmp_mp_)
@@ -796,10 +801,13 @@ class SymbolicShapeInference:
                     vi.CopyFrom(subgraph.output[i_out])
                     vi.name = node.output[i_out]
                 else:
-                    assert all([
-                        d1 == d2 for d1, d2 in zip(vi.type.tensor_type.shape.dim,
-                                                   subgraph.output[i_out].type.tensor_type.shape.dim)
-                    ])
+                    for d1, d2 in zip(vi.type.tensor_type.shape.dim,
+                                      subgraph.output[i_out].type.tensor_type.shape.dim):
+                        # there might be cases that d1 and d2 needs merge
+                        if d1 != d2:
+                            s1 = get_dim_from_type_proto(d1)
+                            s2 = get_dim_from_type_proto(d2)
+                            self._add_suggested_merge([s1, s2])
                 # pass on sympy data from subgraph, if cond is constant
                 if cond is not None and i_sub == (0 if cond > 0 else 1):
                     if subgraph.output[i_out].name in subgraph_infer.sympy_data_:
@@ -1276,13 +1284,16 @@ class SymbolicShapeInference:
         self._pass_on_sympy_data(node)
 
     def _infer_Tile(self, node):
-        repeats_value = self._get_value(node, 1)
-        input_sympy_shape = self._get_sympy_shape(node, 0)
+        repeats_value = self._try_get_value(node, 1)
         new_sympy_shape = []
-        for i, d in enumerate(input_sympy_shape):
-            new_dim = d * repeats_value[i]
-            new_sympy_shape.append(new_dim)
-        self._update_computed_dims(new_sympy_shape)
+        if repeats_value:
+            input_sympy_shape = self._get_sympy_shape(node, 0)
+            for i, d in enumerate(input_sympy_shape):
+                new_dim = d * repeats_value[i]
+                new_sympy_shape.append(new_dim)
+            self._update_computed_dims(new_sympy_shape)
+        else:
+            new_sympy_shape = self._new_symbolic_shape(self._get_shape_rank(node, 0), node)
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(
             helper.make_tensor_value_info(node.output[0], vi.type.tensor_type.elem_type,
@@ -1441,6 +1452,33 @@ class SymbolicShapeInference:
         self.tmp_mp_.CopyFrom(self.out_mp_)
         self.tmp_mp_.graph.ClearField('initializer')
 
+        # compute prerequesite for node for topological sort
+        # node with subgraphs may have dependency on implicit inputs, which will affect topological sort
+        prereq_for_node = {} # map from node to all its inputs, including implicit ones in subgraph
+        def get_prereq(node):
+            names = set(i for i in node.input if i)
+            subgraphs = []
+            if 'If' == node.op_type:
+                subgraphs = [get_attribute(node, 'then_branch'), get_attribute(node, 'else_branch')]
+            elif node.op_type in ['Loop', 'Scan']:
+                subgraphs = [get_attribute(node, 'body')]
+            for g in subgraphs:
+                g_outputs_and_initializers = {i.name for i in g.initializer}
+                g_prereq = set()
+                for n in g.node:
+                    g_outputs_and_initializers.update(n.output)
+                for n in g.node:
+                    g_prereq.update([i for i in get_prereq(n) if i not in g_outputs_and_initializers])
+                names.update(g_prereq)
+                # remove subgraph inputs from g_prereq since those are local-only
+                for i in g.input:
+                    if i.name in names:
+                        names.remove(i.name)
+            return names
+
+        for n in self.tmp_mp_.graph.node:
+            prereq_for_node[n.output[0]] = get_prereq(n)
+
         # topological sort nodes, note there might be dead nodes so we check if all graph outputs are reached to terminate
         sorted_nodes = []
         sorted_known_vi = set([i.name for i in list(self.out_mp_.graph.input) + list(self.out_mp_.graph.initializer)])
@@ -1451,7 +1489,7 @@ class SymbolicShapeInference:
             while not all([o.name in sorted_known_vi for o in self.out_mp_.graph.output]):
                 old_sorted_nodes_len = len(sorted_nodes)
                 for node in self.out_mp_.graph.node:
-                    if (node.output[0] not in sorted_known_vi) and all([i in sorted_known_vi for i in node.input if i]):
+                    if (node.output[0] not in sorted_known_vi) and all([i in sorted_known_vi for i in prereq_for_node[node.output[0]] if i]):
                         sorted_known_vi.update(node.output)
                         sorted_nodes.append(node)
                 if old_sorted_nodes_len == len(sorted_nodes) and not all(
@@ -1504,6 +1542,7 @@ class SymbolicShapeInference:
                 out_type_kind = out_type.WhichOneof('value')
                 # only TensorProto and SparseTensorProto have shape
                 if out_type_kind != 'tensor_type' and out_type_kind != 'sparse_tensor_type':
+                    print('  {}: non-tensor'.format(node.output[i_o]))
                     continue
                 out_shape = get_shape_from_type_proto(vi.type)
                 out_type_undefined = out_type.tensor_type.elem_type == onnx.TensorProto.UNDEFINED
