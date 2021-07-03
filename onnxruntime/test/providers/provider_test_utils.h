@@ -318,10 +318,11 @@ class OpTester {
   }
 
   /*
-  * Use this API to add an input *edge* to the node/op being tested that won't have any data passed into.
+  * Use this API to add an input *edge* to the node/op being tested that won't 
+  * have any data passed into.
   * Such an edge will have the qualifier OpSchema::Optional in the schema.
-  * This is exposed to ensure the op kernel implementations can be tested to handle presence of such
-  * "data-less" optional edges.
+  * This is exposed to ensure the op kernel implementations can be tested to handle 
+  * presence/absence of such "data-less" optional edges.
   */
   template <typename T>
   void AddDataLessInput() {
@@ -353,11 +354,11 @@ class OpTester {
   }
 
   /*
-  * Use this API to add an output *edge* to the node/op being tested that won't shouldn't have any 
+  * Use this API to add an output *edge* to the node/op being tested that shouldn't have any 
   * data produced into.
   * Such an edge will have the qualifier OpSchema::Optional in the schema.
-  * This is exposed to ensure the op kernel implementations can be tested to handle presence of such
-  * "data-less" optional edges.
+  * This is exposed to ensure the op kernel implementations can be tested to handle 
+  * presence/absence of such "data-less" optional edges.
   */
   template <typename T>
   void AddDataLessOutput() {
