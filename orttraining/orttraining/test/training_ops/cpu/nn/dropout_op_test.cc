@@ -74,7 +74,7 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
     mask_buffer = std::make_unique<bool[]>(input_size);
     t.AddOutput<bool>("mask", input_shape, mask_buffer.get(), input_size);
   } else {
-    t.AddMissingOptionalOutput<bool>();
+    t.AddDataLessOutput<bool>();
   }
 
   auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
