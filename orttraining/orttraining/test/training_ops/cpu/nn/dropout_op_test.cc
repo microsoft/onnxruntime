@@ -27,7 +27,9 @@ using namespace onnxruntime::test;
 namespace {
 constexpr auto k_dropout_opset_version = 12;
 
-enum TrainingMode { TrainingFalse, TrainingTrue, NoTraining };
+enum TrainingMode { TrainingFalse,
+                    TrainingTrue,
+                    NoTraining };
 
 void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape, float ratio = -1.0f,
                     TrainingMode training_mode = TrainingTrue, bool use_float16_ratio = false) {
@@ -44,9 +46,9 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
 
   if (ratio == -1.0f) {
     if (use_float16_ratio) {
-      t.AddMissingOptionalInput<MLFloat16>();
+      t.AddDataLessInput<MLFloat16>();
     } else {
-      t.AddMissingOptionalInput<float>();
+      t.AddDataLessInput<float>();
     }
     // set ratio to default value
     ratio = 0.5f;
@@ -183,9 +185,9 @@ void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, boo
   if (!default_ratio) {
     test.AddInput<float>("ratio", {1}, ratio_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddDataLessInput<float>();
   }
-  
+
   test.AddInput<bool>("training_mode", {}, {true});
   test.AddOutput<float>("dx", input_shape.GetDims(), dx_data);
   test.Run();

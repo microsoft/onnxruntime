@@ -565,7 +565,7 @@ void run_lamb_test_with_baseline(
   test.AddInput<bool>("update_signal", {1}, {do_update});
   test.AddInput<T2>("loss_scale", {}, {loss_scale});
   if (p_g_norm == nullptr) {
-    test.AddMissingOptionalInput<T2>();
+    test.AddDataLessInput<T2>();
   } else {
     test.AddInput<T2>("gradient_norm", {}, {T2(*p_g_norm)});
   }
@@ -573,7 +573,7 @@ void run_lamb_test_with_baseline(
   if (step > 0) {
     test.AddInput<int64_t>("Step", {}, {step});
   } else {
-    test.AddMissingOptionalInput<int64_t>();
+    test.AddDataLessInput<int64_t>();
   }
   test.AddInput<T2>("W", shape, w);
   test.AddInput<T3>("G", shape, g);
@@ -582,7 +582,7 @@ void run_lamb_test_with_baseline(
   if (!w_half.empty()) {
     test.AddInput<MLFloat16>("FP16_W", shape, w_half);
   } else {
-    test.AddMissingOptionalInput<MLFloat16>();
+    test.AddDataLessInput<MLFloat16>();
   }
 
   test.AddAttribute("alpha", std::vector<float>(1, alpha));
@@ -675,7 +675,7 @@ void run_multi_tensor_lamb_test_with_baseline(
   test.AddInput<bool>("update_signal", {}, {do_update});
   test.AddInput<T2>("loss_scale", {}, {loss_scale});
   if (p_g_norm == nullptr) {
-    test.AddMissingOptionalInput<T2>();
+    test.AddDataLessInput<T2>();
   } else {
     test.AddInput<float>("gradient_norm", {}, {T2(*p_g_norm)});
   }
@@ -684,7 +684,7 @@ void run_multi_tensor_lamb_test_with_baseline(
     test.AddInput<int64_t>("Step", {}, {step});
     test.AddOutput<int64_t>("Step_Out", {}, {do_update ? step + 1 : step});
   } else {
-    test.AddMissingOptionalInput<int64_t>();
+    test.AddDataLessInput<int64_t>();
     test.AddMissingOptionalOutput<int64_t>();
   }
   for (int i = 0; i < group_count; ++i) {
@@ -706,7 +706,7 @@ void run_multi_tensor_lamb_test_with_baseline(
     if (!w_halfs.empty() && !w_halfs[i].empty()) {
       test.AddInput<MLFloat16>(w_fp16_name.c_str(), shapes[i], w_halfs[i]);
     } else {
-      test.AddMissingOptionalInput<MLFloat16>();
+      test.AddDataLessInput<MLFloat16>();
     }
 
     if (!w_news.empty() && !w_news[i].empty()) {
@@ -1641,6 +1641,6 @@ TEST(OptimizerTest, LambOptimizerMultiTensorRatio) {
       step, loss_scale, &scaled_g_norm);
 }
 #endif
-}
+}  // namespace
 }  // namespace test
 }  // namespace onnxruntime
