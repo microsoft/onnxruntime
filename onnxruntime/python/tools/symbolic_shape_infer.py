@@ -607,7 +607,7 @@ class SymbolicShapeInference:
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, new_shape))
 
-    def fuse_tensor_type(self, node, out_idx, dst_tensor_type, src_tensor_type):
+    def _fuse_tensor_type(self, node, out_idx, dst_tensor_type, src_tensor_type):
         ''' 
         update dst_tensor_type to be compatible with src_tensor_type when dimension mismatches
         create a new symbolic dimension for node/out_idx/mismatch dim id in dst_tensor_type
@@ -828,9 +828,9 @@ class SymbolicShapeInference:
                     vi.name = node.output[i_out]
                 else:
                     if is_sequence(vi):
-                        self.fuse_tensor_type(node, i_out, vi.type.sequence_type.elem_type.tensor_type, subgraph.output[i_out].type.sequence_type.elem_type.tensor_type)
+                        self._fuse_tensor_type(node, i_out, vi.type.sequence_type.elem_type.tensor_type, subgraph.output[i_out].type.sequence_type.elem_type.tensor_type)
                     else:
-                        self.fuse_tensor_type(node, i_out, vi.type.tensor_type, subgraph.output[i_out].type.tensor_type)
+                        self._fuse_tensor_type(node, i_out, vi.type.tensor_type, subgraph.output[i_out].type.tensor_type)
 
                 # pass on sympy data from subgraph, if cond is constant
                 if cond is not None and i_sub == (0 if as_scalar(cond) > 0 else 1):
@@ -1123,7 +1123,7 @@ class SymbolicShapeInference:
         vi_out_seq = self.known_vi_[node.output[0]]
         vi_out_seq.CopyFrom(vi_seq)
         vi_out_seq.name = node.output[0]
-        self.fuse_tensor_type(node, 0, vi_out_seq.type.sequence_type.elem_type.tensor_type, vi_tensor.type.tensor_type)
+        self._fuse_tensor_type(node, 0, vi_out_seq.type.sequence_type.elem_type.tensor_type, vi_tensor.type.tensor_type)
 
     def _infer_Shape(self, node):
         self.sympy_data_[node.output[0]] = self._get_sympy_shape(node, 0)
