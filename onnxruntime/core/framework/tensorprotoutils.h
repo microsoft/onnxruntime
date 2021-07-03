@@ -118,7 +118,6 @@ inline bool HasTensorType(const ONNX_NAMESPACE::TypeProto& type_proto) {
 
 inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_Tensor& ten_proto) {
   return ten_proto.elem_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
-  ;
 }
 
 inline bool HasShape(const ONNX_NAMESPACE::TypeProto_Tensor& ten_proto) {

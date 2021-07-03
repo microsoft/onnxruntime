@@ -16,15 +16,6 @@ namespace onnxruntime {
 namespace cuda {
 
 namespace {
-// std::make_reverse_iterator is not implemented in older versions of GCC
-#if !defined(__GNUC__) || __GNUC__ >= 5
-using std::make_reverse_iterator;
-#else
-template <typename It>
-std::reverse_iterator<It> make_reverse_iterator(It it) {
-  return std::reverse_iterator<It>(it);
-}
-#endif
 
 // gets min and max of single contiguous range of axes if available
 optional<std::pair<int64_t, int64_t>> GetMinAndMaxContiguousAxes(
@@ -73,12 +64,12 @@ optional<std::pair<int64_t, int64_t>> GetMinAndMaxContiguousAxes(
   }
 
   // expand axes over surrounding dimensions with value of 1
-  const int64_t min_axis = [&dims, &axes, &is_dim_one]() {
+  const int64_t min_axis = [&dims, &axes, &is_dim_one]() -> int64_t {
     const auto& min_given_axis = axes.front();
     // note that std::reverse_iterator(it) refers to the element at (it-1)
     // it -> reverse it: element offset of -1
     const auto before_min_given_axis_rit =
-        make_reverse_iterator(dims.begin() + min_given_axis);
+        std::make_reverse_iterator(dims.begin() + min_given_axis);
     const auto before_min_axis_rit =
         std::find_if_not(before_min_given_axis_rit, dims.rend(), is_dim_one);
     // reverse it -> it: element offset of +1

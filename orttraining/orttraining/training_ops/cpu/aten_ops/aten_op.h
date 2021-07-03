@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/framework/op_kernel.h"
+#include "orttraining/training_ops/cpu/aten_ops/aten_op_config.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -18,7 +19,7 @@ class ATenOpBase : public OpKernel {
   std::string op_name_;
 
   // The values in the array are the tensor-type argument indices of Aten Op.
-  std::vector<size_t> tensor_argument_indices_;
+  std::vector<std::pair<size_t, aten_ops::ArgumentKind>> tensor_argument_indices_;
 
   // The size_t value below are the argument indices of the ATen Op.
   std::vector<std::pair<size_t, int64_t>> int_arguments_;

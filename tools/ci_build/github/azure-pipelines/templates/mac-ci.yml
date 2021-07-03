@@ -19,6 +19,7 @@ jobs:
   variables:
     BuildCommand: ${{ parameters.BuildCommand }}
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
+    MACOSX_DEPLOYMENT_TARGET: '10.13'
   steps:
     - checkout: self
       ${{ if ne(parameters.SubmoduleCheckoutMode, '') }}:
@@ -34,12 +35,10 @@ jobs:
     - script: |
         set -e
         pushd .
-        brew install libomp ninja
-        export CMAKE_GENERATOR=Ninja
         cd $(Build.SourcesDirectory)/cmake/external/protobuf
         cmake ./cmake -DCMAKE_INSTALL_PREFIX=$(Build.BinariesDirectory)/protobuf -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo
-        ninja -j $(getconf _NPROCESSORS_ONLN)
-        ninja install
+        make -j $(getconf _NPROCESSORS_ONLN)
+        make install
         popd
         export PATH=$(Build.BinariesDirectory)/protobuf/bin:$PATH
         export ONNX_ML=1

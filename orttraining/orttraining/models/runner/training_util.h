@@ -117,7 +117,7 @@ class TrainingUtil {
   template <typename T>
   static void CreateCpuMLValue(const std::vector<int64_t>& dims,
                                const std::vector<T>& value,
-                               MLValue* p_mlvalue,
+                               OrtValue* p_mlvalue,
                                AllocatorPtr alloc = nullptr) {
     TensorShape shape(dims);
     assert(shape.Size() == static_cast<int64_t>(value.size()));
@@ -136,7 +136,7 @@ class TrainingUtil {
 
   template <typename T>
   static void CreateCpuMLScalar(const T value,
-                                MLValue* p_mlvalue,
+                                OrtValue* p_mlvalue,
                                 AllocatorPtr alloc = nullptr) {
     // Scalar has empty shape.
     TensorShape shape;

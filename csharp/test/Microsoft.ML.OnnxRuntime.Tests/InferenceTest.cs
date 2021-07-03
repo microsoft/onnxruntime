@@ -186,10 +186,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Assert.Equal("CPUExecutionProvider", providers[providers.Length - 1]);
 
 # if USE_CUDA
-            Assert.True(Array.Exists(providers, provider => provider == "CUDAExecutionProvider"););
+            Assert.True(Array.Exists(providers, provider => provider == "CUDAExecutionProvider"));
 #endif
 # if USE_ROCM
-            Assert.True(Array.Exists(providers, provider => provider == "ROCMExecutionProvider"););
+            Assert.True(Array.Exists(providers, provider => provider == "ROCMExecutionProvider"));
 #endif
 
         }
@@ -257,6 +257,74 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 {
                     validateRunResults(results);
                 }
+            }
+        }
+
+        [Fact]
+        private void TestTensorRTProviderOptions()
+        {
+            string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
+            string calTablePath = "squeezenet_calibration.flatbuffers";
+            string enginePath = "./";
+            string engineDecrptLibPath = "engine_decryp";
+
+            using (var cleanUp = new DisposableListTest<IDisposable>())
+            {
+                var trtProviderOptions = new OrtTensorRTProviderOptions();
+                cleanUp.Add(trtProviderOptions);
+
+                var providerOptionsDict = new Dictionary<string, string>();
+                providerOptionsDict["device_id"] = "0";
+                providerOptionsDict["trt_fp16_enable"] = "1";
+                providerOptionsDict["trt_int8_enable"] = "1";
+                providerOptionsDict["trt_int8_calibration_table_name"] = calTablePath;
+                providerOptionsDict["trt_engine_cache_enable"] = "1";
+                providerOptionsDict["trt_engine_cache_path"] = enginePath;
+                providerOptionsDict["trt_engine_decryption_enable"] = "0";
+                providerOptionsDict["trt_engine_decryption_lib_path"] = engineDecrptLibPath;
+                trtProviderOptions.UpdateOptions(providerOptionsDict);
+
+                var resultProviderOptionsDict = new Dictionary<string, string>();
+                ProviderOptionsValueHelper.StringToDict(trtProviderOptions.GetOptions(), resultProviderOptionsDict);
+
+                // test provider options configuration
+                string value;
+                value = resultProviderOptionsDict["device_id"];
+                Assert.Equal("0", value);
+                value = resultProviderOptionsDict["trt_fp16_enable"];
+                Assert.Equal("1", value);
+                value = resultProviderOptionsDict["trt_int8_enable"];
+                Assert.Equal("1", value);
+                value = resultProviderOptionsDict["trt_int8_calibration_table_name"];
+                Assert.Equal(calTablePath, value);
+                value = resultProviderOptionsDict["trt_engine_cache_enable"];
+                Assert.Equal("1", value);
+                value = resultProviderOptionsDict["trt_engine_cache_path"];
+                Assert.Equal(enginePath, value);
+                value = resultProviderOptionsDict["trt_engine_decryption_enable"];
+                Assert.Equal("0", value);
+                value = resultProviderOptionsDict["trt_engine_decryption_lib_path"];
+                Assert.Equal(engineDecrptLibPath, value);
+
+                // test correctness of provider options
+                SessionOptions options = SessionOptions.MakeSessionOptionWithTensorrtProvider(trtProviderOptions);
+                cleanUp.Add(options);
+
+                var session = new InferenceSession(modelPath, options);
+                cleanUp.Add(session);
+
+                var inputMeta = session.InputMetadata;
+                var container = new List<NamedOnnxValue>();
+                float[] inputData = LoadTensorFromFile(@"bench.in"); // this is the data for only one input tensor for this model
+                foreach (var name in inputMeta.Keys)
+                {
+                    Assert.Equal(typeof(float), inputMeta[name].ElementType);
+                    Assert.True(inputMeta[name].IsTensor);
+                    var tensor = new DenseTensor<float>(inputData, inputMeta[name].Dimensions);
+                    container.Add(NamedOnnxValue.CreateFromTensor<float>(name, tensor));
+                }
+
+                session.Run(container);
             }
         }
 #endif
@@ -836,6 +904,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_batchnorm_epsilon_training_mode", "opset14 version not implemented yet"},
                 { "test_batchnorm_example", "opset14 version not implemented yet"},
                 { "test_batchnorm_example_training_mode", "opset14 version not implemented yet"},
+                { "test_bernoulli", "random generator"},
+                { "test_bernoulli_seed", "random generator"},
+                { "test_bernoulli_double", "random generator"},
             };
 
             // The following models fails on nocontribops win CI
