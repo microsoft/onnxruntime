@@ -54,6 +54,10 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   // From cpu/tensor/unsqueeze.h (direct)
   Status UnsqueezeBase__PrepareCompute(const UnsqueezeBase* p, OpKernelContext* ctx, UnsqueezeBase__Prepare& prepare) override { return p->UnsqueezeBase::PrepareCompute(ctx, reinterpret_cast<UnsqueezeBase::Prepare&>(prepare)); }
 
+  // NonMaxSuppressionBase (direct)
+  Status NonMaxSuppressionBase__PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) override { return NonMaxSuppressionBase::PrepareCompute(ctx, pc); }
+  Status NonMaxSuppressionBase__GetThresholdsFromInputs(const PrepareContext& pc, int64_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold) override { return NonMaxSuppressionBase::GetThresholdsFromInputs(pc, max_output_boxes_per_class, iou_threshold, score_threshold); }
+
 #ifdef USE_CUDA
   // From cpu/tensor/size.h (direct)
   Status Size__Compute(const Size* p, OpKernelContext* context) override { return p->Size::Compute(context); }
@@ -82,10 +86,6 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
 
   // ROI (direct)
   Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_ptr, const Tensor* batch_indices_ptr) override { return onnxruntime::CheckROIAlignValidInput(X_ptr, rois_ptr, batch_indices_ptr); }
-
-  // NonMaxSuppressionBase (direct)
-  Status NonMaxSuppressionBase__PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) override { return NonMaxSuppressionBase::PrepareCompute(ctx, pc); }
-  Status NonMaxSuppressionBase__GetThresholdsFromInputs(const PrepareContext& pc, int64_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold) override { return NonMaxSuppressionBase::GetThresholdsFromInputs(pc, max_output_boxes_per_class, iou_threshold, score_threshold); }
 
   // From onehot.h (direct)
   Status ValidateInputs(const Tensor* depth, const Tensor* values) override { return onnxruntime::ValidateInputs(depth, values); }
@@ -182,6 +182,6 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
 #endif
 } provider_host_cpu_;
 
-ProviderHostCPU& GetProviderHostCPU() { return provider_host_cpu_; }
+ProviderHostCPU& GetProviderHostCPU() NO_EXCEPTION { return provider_host_cpu_; }
 
 }  // namespace onnxruntime

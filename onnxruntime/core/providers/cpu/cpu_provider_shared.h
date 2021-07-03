@@ -13,10 +13,15 @@ class SliceOp__PrepareForComputeMetadata;  // Directly maps to SliceOp::PrepareF
 class UnsqueezeBase__Prepare;              // Directly maps to UnsqueezeBase::Prepare
 
 struct ProviderHostCPU {
+
   // From cpu/tensor/gatherbase.h
   virtual Status GatherBase__PrepareForCompute(const GatherBase* p, OpKernelContext* context, GatherBase__Prepare& prepare) = 0;
   // From cpu/tensor/unsqueeze.h
   virtual Status UnsqueezeBase__PrepareCompute(const UnsqueezeBase* p, OpKernelContext* ctx, UnsqueezeBase__Prepare& prepare) = 0;
+
+  // NonMaxSuppresionBase
+  virtual Status NonMaxSuppressionBase__PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) = 0;
+  virtual Status NonMaxSuppressionBase__GetThresholdsFromInputs(const PrepareContext& pc, int64_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold) = 0;
 
 #ifdef USE_CUDA
 
@@ -45,10 +50,6 @@ struct ProviderHostCPU {
 
   // ROI
   virtual Status CheckROIAlignValidInput(const Tensor* X_ptr, const Tensor* rois_ptr, const Tensor* batch_indices_ptr) = 0;
-
-  // NonMaxSuppresionBase
-  virtual Status NonMaxSuppressionBase__PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) = 0;
-  virtual Status NonMaxSuppressionBase__GetThresholdsFromInputs(const PrepareContext& pc, int64_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold) = 0;
 
   // From onehot.h
   virtual Status ValidateInputs(const Tensor* depth, const Tensor* values) = 0;
