@@ -2892,8 +2892,8 @@ Return true if all elements are true and false otherwise.
           AttributeProto::STRING)
       .Attr(
           "input_requires_grads",
-          "Flags to indicate whether the torch.autograd.apply's inputs (including both tensor"
-          " and non-tensor inputs) has gradient",
+          "Flags to indicate whether the torch.autograd.apply's inputs require gradients (including flags for both tensor"
+          " and non-tensor inputs)",
           AttributeProto::INTS)
       // Input Pytorch tensors.
       .Attr(
@@ -3091,17 +3091,17 @@ Return true if all elements are true and false otherwise.
           static_cast<int64_t>(0))
       .Attr(
           "output_tensor_types",
-          "Output types of autograd.Function.backward outputs(including only tensor outputs).",
+          "Output types of autograd.Function.backward outputs (including only tensor outputs).",
           AttributeProto::INTS,
           false)
       .Attr(
           "output_tensor_ranks",
-          "Output ranks of autograd.Function.backward outputs(including only tensor outputs).",
+          "Output ranks of autograd.Function.backward outputs (including only tensor outputs).",
           AttributeProto::INTS,
           false)
       .Attr(
           "output_tensor_requires_grads",
-          "Flags to indicate which outputs(including only tensor outputs) has gradient.",
+          "Flags to indicate which outputs have gradients (including only tensor outputs).",
           AttributeProto::INTS)
       .Attr(
           "output_convention",
