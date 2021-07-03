@@ -658,6 +658,7 @@ TEST_F(GraphTransformationTests, NotWhereFusion) {
 }
 
 #if defined(USE_CUDA) && !defined(DISABLE_CONTRIB_OPS)
+// Conv->Add->Relu will be transformed to FusedConv
 TEST_F(GraphTransformationTests, FuseCudaConvAddRelu) {
   auto model_uri = MODEL_FOLDER "fusion/conv_add_relu.onnx";
   std::shared_ptr<Model> p_model;
@@ -673,9 +674,50 @@ TEST_F(GraphTransformationTests, FuseCudaConvAddRelu) {
   graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(), TransformerLevel::Level2);
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Add"] == 0);
-  ASSERT_TRUE(op_to_count["Relu"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0); //Add removed from graph
+  ASSERT_TRUE(op_to_count["Relu"] == 0); //Relu removed from graph
 }
+
+//Conv->Add->Relu will be left intact since there is Identity depend on Add
+TEST_F(GraphTransformationTests, FuseCudaConvAddReluIdentity) {
+  auto model_uri = MODEL_FOLDER "fusion/conv_add_relu_identity.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  for (auto& node : p_model->MainGraph().Nodes()) {
+    node.SetExecutionProviderType(kCudaExecutionProvider);
+  }
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 1);
+  ASSERT_TRUE(op_to_count["Relu"] == 1);
+  ASSERT_TRUE(op_to_count["Identity"] == 1);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(), TransformerLevel::Level2);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 1); //Add remains
+  ASSERT_TRUE(op_to_count["Relu"] == 1); //Relu remains
+  ASSERT_TRUE(op_to_count["Identity"] == 1); //Identity remains
+}
+
+//Conv->Add will be left intact since there is no Relu follows
+TEST_F(GraphTransformationTests, FuseCudaConvAdd) {
+  auto model_uri = MODEL_FOLDER "fusion/conv_add.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  for (auto& node : p_model->MainGraph().Nodes()) {
+    node.SetExecutionProviderType(kCudaExecutionProvider);
+  }
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 1);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  graph_transformation_mgr.Register(std::make_unique<ConvActivationFusion>(), TransformerLevel::Level2);
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 1); //Add remains, no transform applied to the graph
+}
+
 #endif
 
 #ifndef DISABLE_CONTRIB_OPS
