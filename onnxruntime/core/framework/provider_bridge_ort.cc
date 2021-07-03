@@ -31,7 +31,6 @@
 #include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
 #include "core/language_interop_ops/torch/refcount_tracker.h"
 #endif
-
 #endif
 
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL)
@@ -457,8 +456,8 @@ struct ProviderHostImpl : ProviderHost {
 
   // DataTypeImpl (wrapped)
   MLDataType DataTypeImpl__GetType_Tensor() override { return DataTypeImpl::GetType<Tensor>(); }
-  MLDataType DataTypeImpl__GetType_TensorSeq () override { return DataTypeImpl::GetType<TensorSeq>(); }
-  MLDataType DataTypeImpl__GetTypeFromOnnxType (int onnx_type) override { return DataTypeImpl::TensorTypeFromONNXEnum(onnx_type)->GetElementType(); }
+  MLDataType DataTypeImpl__GetType_TensorSeq() override { return DataTypeImpl::GetType<TensorSeq>(); }
+  MLDataType DataTypeImpl__GetTypeFromOnnxType(int onnx_type) override { return DataTypeImpl::TensorTypeFromONNXEnum(onnx_type)->GetElementType(); }
   MLDataType DataTypeImpl__GetType_bool() override { return DataTypeImpl::GetType<bool>(); }
   MLDataType DataTypeImpl__GetType_int8() override { return DataTypeImpl::GetType<int8_t>(); }
   MLDataType DataTypeImpl__GetType_uint8() override { return DataTypeImpl::GetType<uint8_t>(); }
@@ -941,7 +940,7 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA() {
 }
 
 ProviderInfo_CUDA& GetProviderInfo_CUDA() {
-  if(auto* info = TryGetProviderInfo_CUDA())
+  if (auto* info = TryGetProviderInfo_CUDA())
     return *info;
 
   ORT_THROW("CUDA Provider not available, can't get interface for it");
@@ -1098,7 +1097,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRT
   (*out)->trt_dla_enable = false;
   (*out)->trt_dla_core = false;
   (*out)->trt_dump_subgraphs = false;
-  (*out)->trt_engine_cache_enable= false;
+  (*out)->trt_engine_cache_enable = false;
   (*out)->trt_engine_cache_path = nullptr;
   (*out)->trt_engine_decryption_enable = false;
   (*out)->trt_engine_decryption_lib_path = nullptr;
