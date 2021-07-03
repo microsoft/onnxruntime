@@ -25,7 +25,22 @@ def get_dim_from_type_proto(dim):
 
 
 def get_shape_from_type_proto(type_proto):
-    return [get_dim_from_type_proto(d) for d in type_proto.tensor_type.shape.dim]
+    if type_proto.tensor_type.HasField('shape'):
+        return [get_dim_from_type_proto(d) for d in type_proto.tensor_type.shape.dim]
+    else:
+        return None # note no shape is different from shape without dim (scalar)
+
+
+def is_sequence(vi):
+    vi_cls_type = vi.type.WhichOneof('value')
+    assert vi_cls_type in ['tensor_type', 'sequence_type']
+    return vi_cls_type == 'sequence_type'
+
+
+def make_named_value_info(name):
+    vi = onnx.ValueInfoProto()
+    vi.name = name
+    return vi
 
 
 def get_shape_from_sympy_shape(sympy_shape):
@@ -125,6 +140,7 @@ class SymbolicShapeInference:
             'Round': self._pass_on_shape_and_type,
             'Scan': self._infer_Scan,
             'ScatterElements': self._infer_ScatterElements,
+            'SequenceInsert': self._infer_SequenceInsert,
             'Shape': self._infer_Shape,
             'Size': self._infer_Size,
             'Slice': self._infer_Slice,
@@ -363,11 +379,6 @@ class SymbolicShapeInference:
                 ]
 
             # run single node inference with self.known_vi_ shapes
-            def make_named_value_info(name):
-                vi = onnx.ValueInfoProto()
-                vi.name = name
-                return vi
-
             tmp_graph = helper.make_graph(
                 [node], 'tmp', [self.known_vi_[i] for i in node.input if i],
                 [make_named_value_info(i) for i in node.output], initializers)
@@ -397,7 +408,7 @@ class SymbolicShapeInference:
         tmp_graph = helper.make_graph(
             list(subgraph.node), 'tmp',
             list(subgraph.input) + [self.known_vi_[i] for i in subgraph_implicit_input],
-            [helper.make_tensor_value_info(i.name, onnx.TensorProto.UNDEFINED, None) for i in subgraph.output])
+            [make_named_value_info(i.name) for i in subgraph.output])
         tmp_graph.initializer.extend([i for i in self.out_mp_.graph.initializer if i.name in subgraph_implicit_input])
         tmp_graph.initializer.extend(subgraph.initializer)
         self.tmp_mp_.graph.CopyFrom(tmp_graph)
@@ -595,6 +606,21 @@ class SymbolicShapeInference:
             output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, new_shape))
+
+    def fuse_tensor_type(self, node, out_idx, dst_tensor_type, src_tensor_type):
+        ''' 
+        update dst_tensor_type to be compatible with src_tensor_type when dimension mismatches
+        create a new symbolic dimension for node/out_idx/mismatch dim id in dst_tensor_type
+        '''
+        assert dst_tensor_type.elem_type == src_tensor_type.elem_type
+        if dst_tensor_type.HasField('shape'):
+            for di, ds in enumerate(zip(dst_tensor_type.shape.dim, src_tensor_type.shape.dim)):
+                if ds[0] != ds[1]:
+                    new_dim = onnx.TensorShapeProto.Dimension()
+                    new_dim.dim_param = str(self._new_symbolic_dim_from_output(node, out_idx, di))
+                    dst_tensor_type.shape.dim[di].CopyFrom(new_dim)
+        else:
+            dst_tensor_type.CopyFrom(src_tensor_type)
 
     def _infer_ArrayFeatureExtractor(self, node):
         data_shape = self._get_shape(node, 0)
@@ -801,16 +827,13 @@ class SymbolicShapeInference:
                     vi.CopyFrom(subgraph.output[i_out])
                     vi.name = node.output[i_out]
                 else:
-                    for di, ds in enumerate(zip(vi.type.tensor_type.shape.dim,
-                                                subgraph.output[i_out].type.tensor_type.shape.dim)):
-                        # The two branches have different dimension in the output shapes
-                        # create a new symbolic dimension
-                        if ds[0] != ds[1]:
-                            new_dim = onnx.TensorShapeProto.Dimension()
-                            new_dim.dim_param = self._new_symbolic_dim_from_output(node, i_out, di)
-                            vi.type.tensor_type.shape.dim[di].CopyFrom(new_dim)
+                    if is_sequence(vi):
+                        self.fuse_tensor_type(node, i_out, vi.type.sequence_type.elem_type.tensor_type, subgraph.output[i_out].type.sequence_type.elem_type.tensor_type)
+                    else:
+                        self.fuse_tensor_type(node, i_out, vi.type.tensor_type, subgraph.output[i_out].type.tensor_type)
+
                 # pass on sympy data from subgraph, if cond is constant
-                if cond is not None and i_sub == (0 if cond > 0 else 1):
+                if cond is not None and i_sub == (0 if as_scalar(cond) > 0 else 1):
                     if subgraph.output[i_out].name in subgraph_infer.sympy_data_:
                         self.sympy_data_[vi.name] = subgraph_infer.sympy_data_[subgraph.output[i_out].name]
 
@@ -829,6 +852,7 @@ class SymbolicShapeInference:
             vi = self.known_vi_[node.output[i]]
             vi.CopyFrom(subgraph.output[i + 1])  # first subgraph output is condition, not in node output
             if i >= num_loop_carried:
+                assert not is_sequence(vi) # TODO: handle loop accumulation in sequence_type
                 subgraph_vi_dim = subgraph.output[i + 1].type.tensor_type.shape.dim
                 vi.type.tensor_type.shape.ClearField('dim')
                 vi_dim = vi.type.tensor_type.shape.dim
@@ -1091,6 +1115,15 @@ class SymbolicShapeInference:
         vi.CopyFrom(
             helper.make_tensor_value_info(node.output[0], self.known_vi_[node.input[0]].type.tensor_type.elem_type,
                                           data_shape))
+
+    def _infer_SequenceInsert(self, node):
+        # workaround bug in onnx's shape inference
+        vi_seq = self.known_vi_[node.input[0]]
+        vi_tensor = self.known_vi_[node.input[1]]
+        vi_out_seq = self.known_vi_[node.output[0]]
+        vi_out_seq.CopyFrom(vi_seq)
+        vi_out_seq.name = node.output[0]
+        self.fuse_tensor_type(node, 0, vi_out_seq.type.sequence_type.elem_type.tensor_type, vi_tensor.type.tensor_type)
 
     def _infer_Shape(self, node):
         self.sympy_data_[node.output[0]] = self._get_sympy_shape(node, 0)
@@ -1436,7 +1469,9 @@ class SymbolicShapeInference:
                 if get_dim_from_type_proto(input_dims[i_dim]) is None:
                     # some models use None for symbolic dim in input, replace it with a string
                     input_dims[i_dim].dim_param = self._new_symbolic_dim(i.name, i_dim)
-            self.input_symbols_.update([d for d in get_shape_from_type_proto(i.type) if type(d) == str])
+            input_shape = get_shape_from_type_proto(i.type)
+            if input_shape:
+                self.input_symbols_.update([d for d in input_shape if type(d) == str])
 
         for s in self.input_symbols_:
             if s in self.suggested_merge_:
