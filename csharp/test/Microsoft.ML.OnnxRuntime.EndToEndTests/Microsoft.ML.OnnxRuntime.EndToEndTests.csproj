@@ -27,12 +27,11 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.8.0" />
     <PackageReference Include="xunit" Version="2.4.0" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.4.0" />
-    <PackageReference Include="$(PackageName)" Version="$(CurrentOnnxRuntimeVersion)"/>
-    <PackageReference Include="Microsoft.ML.OnnxRuntime.TensorRT" Version="$(CurrentOnnxRuntimeVersion)"/>
+    <PackageReference Include="$(PackageName)" Version="$(CurrentOnnxRuntimeVersion)" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="$(MSBuildThisFileDirectory)..\Microsoft.ML.OnnxRuntime.Tests\InferenceTest.cs"/>
-    <Compile Include="$(MSBuildThisFileDirectory)..\Microsoft.ML.OnnxRuntime.Tests\OnnxMl.cs"/>
+    <Compile Include="$(MSBuildThisFileDirectory)..\Microsoft.ML.OnnxRuntime.Tests\InferenceTest.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)..\Microsoft.ML.OnnxRuntime.Tests\OnnxMl.cs" />
 
     <!-- Works in CI builds-->
     <None Include="$(OnnxRuntimeBuildDirectory)\testdata\testdata\custom_op*.dll;$(OnnxRuntimeBuildDirectory)\testdata\testdata\custom_op*.pdb;$(OnnxRuntimeBuildDirectory)\testdata\testdata\libcustom*.so;$(OnnxRuntimeBuildDirectory)\testdata\testdata\libcustom*.dylib">
