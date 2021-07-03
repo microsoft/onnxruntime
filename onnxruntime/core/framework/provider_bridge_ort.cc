@@ -81,7 +81,7 @@ namespace onnxruntime {
 
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
-ProviderHostCPU& GetProviderHostCPU() NO_EXCEPTION;
+ProviderHostCPU* GetProviderHostCPU() NO_EXCEPTION;
 
 struct TensorShapeProto_Dimension_Iterator_Impl : TensorShapeProto_Dimension_Iterator {
   TensorShapeProto_Dimension_Iterator_Impl(google::protobuf::internal::RepeatedPtrIterator<const onnx::TensorShapeProto_Dimension>&& v) : v_{std::move(v)} {}
@@ -770,7 +770,7 @@ struct ProviderHostImpl : ProviderHost {
 #endif
 #endif
 
-  ProviderHostCPU& GetProviderHostCPU() override { return onnxruntime::GetProviderHostCPU(); }
+  ProviderHostCPU& GetProviderHostCPU() override { return *onnxruntime::GetProviderHostCPU(); }
 } provider_host_;
 
 struct ProviderSharedLibrary {
