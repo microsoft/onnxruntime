@@ -1464,12 +1464,16 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
     auto expected_type = iter->second.ml_data_type;
     auto& input_ml_value = feeds.at(i);
     if (input_ml_value.IsTensor()) {
-      // check for type
-      if (!expected_type->IsTensorType()) {
+      if (!expected_type->IsTensorType() &&
+          !(expected_type->IsOptionalType() &&
+            expected_type->AsOptionalType()->GetElementType()->IsTensorType())) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
                                " is not expected to be of type tensor.");
       }
-      auto expected_element_type = expected_type->AsTensorType()->GetElementType();
+
+      // check for type
+      auto expected_element_type = expected_type->IsTensorType() ? expected_type->AsTensorType()->GetElementType()
+                                                                 : expected_type->AsOptionalType()->GetElementType()->AsTensorType()->GetElementType();
       auto input_element_type = input_ml_value.Get<Tensor>().DataType();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "tensor"));
 

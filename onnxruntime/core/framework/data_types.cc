@@ -689,8 +689,24 @@ ORT_REGISTER_SEQ(VectorMapStringToFloat);
 ORT_REGISTER_SEQ(VectorMapInt64ToFloat);
 #endif
 
-ORT_REGISTER_OPTIONAL_TYPE(Tensor)
-ORT_REGISTER_OPTIONAL_TYPE(TensorSeq)
+#define ORT_REGISTER_OPTIONAL_ORT_TYPE(ORT_TYPE)     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int32_t);     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, float);       \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, bool);        \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, std::string); \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int8_t);      \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint8_t);     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint16_t);    \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int16_t);     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, int64_t);     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, double);      \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint32_t);    \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, uint64_t);    \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, MLFloat16);   \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, BFloat16);
+
+ORT_REGISTER_OPTIONAL_ORT_TYPE(Tensor)
+ORT_REGISTER_OPTIONAL_ORT_TYPE(TensorSeq)
 
 // Used for Tensor Proto registrations
 #define REGISTER_TENSOR_PROTO(TYPE, reg_fn)                  \
@@ -705,10 +721,10 @@ ORT_REGISTER_OPTIONAL_TYPE(TensorSeq)
     reg_fn(mltype);                                                  \
   }
 
-#define REGISTER_OPTIONAL_PROTO(TYPE, reg_fn)                  \
-  {                                                            \
-    MLDataType mltype = DataTypeImpl::GetOptionalType<TYPE>(); \
-    reg_fn(mltype);                                            \
+#define REGISTER_OPTIONAL_PROTO(ORT_TYPE, TYPE, reg_fn)                  \
+  {                                                                      \
+    MLDataType mltype = DataTypeImpl::GetOptionalType<ORT_TYPE, TYPE>(); \
+    reg_fn(mltype);                                                      \
   }
 
 #define REGISTER_SPARSE_TENSOR_PROTO(TYPE, reg_fn)                 \
@@ -786,6 +802,25 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_ONNX_PROTO(VectorMapStringToFloat, reg_fn);
   REGISTER_ONNX_PROTO(VectorMapInt64ToFloat, reg_fn);
 #endif
+
+#define REGISTER_OPTIONAL_PROTO_ORT_TYPE(ORT_TYPE, reg_fn) \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int32_t, reg_fn);      \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, float, reg_fn);        \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, bool, reg_fn);         \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, std::string, reg_fn);  \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int8_t, reg_fn);       \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint8_t, reg_fn);      \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint16_t, reg_fn);     \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int16_t, reg_fn);      \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, int64_t, reg_fn);      \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, double, reg_fn);       \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint32_t, reg_fn);     \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint64_t, reg_fn);     \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, MLFloat16, reg_fn);    \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, BFloat16, reg_fn);
+
+  REGISTER_OPTIONAL_PROTO_ORT_TYPE(Tensor, reg_fn);
+  REGISTER_OPTIONAL_PROTO_ORT_TYPE(TensorSeq, reg_fn);
 }
 }  // namespace data_types_internal
 

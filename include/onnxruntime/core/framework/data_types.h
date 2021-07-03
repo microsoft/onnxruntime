@@ -154,7 +154,7 @@ class DataTypeImpl {
   template <typename elemT>
   static MLDataType GetSparseTensorType();
 
-  template <typename T>
+  template <typename T, typename elemT>
   static MLDataType GetOptionalType();
 
   /**
@@ -308,7 +308,7 @@ struct IsSparseTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, u
 /// Tells if the specified type is one of ORT types
 /// that can be contained within an optional struct.
 template <typename T>
-struct IsOptionalType : public IsAnyOf<T, Tensor, TensorSeq> {
+struct IsOptionalOrtType : public IsAnyOf<T, Tensor, TensorSeq> {
 };
 
 /// This template's Get() returns a corresponding MLDataType
@@ -383,12 +383,21 @@ struct SetSequenceType {
 void CopyMutableOptionalElement(const ONNX_NAMESPACE::TypeProto&,
                                 ONNX_NAMESPACE::TypeProto&);
 
-template <typename T>
+template <typename T, typename elemT>
 struct SetOptionalType {
   static void Set(ONNX_NAMESPACE::TypeProto& proto) {
-    // T is not a primitive type - it is an ORT type (Tensor or TensorSeq)
-    MLDataType dt = GetMLDataType<T, false>::Get();
-    const auto* elem_proto = dt->GetTypeProto();
+    const onnx::TypeProto* elem_proto = nullptr;
+    if (std::is_same<T, Tensor>::value) {
+      MLDataType dt = DataTypeImpl::GetTensorType<elemT>();
+      elem_proto = dt->GetTypeProto();
+    } else if (std::is_same<T, TensorSeq>::value) {
+      MLDataType dt = DataTypeImpl::GetSequenceTensorType<elemT>();
+      elem_proto = dt->GetTypeProto();
+    } else {
+      // Will not reach here
+      ORT_ENFORCE(false, "Unsupproted type for optional type");
+    }
+
 #ifdef ORT_NO_RTTI
     ORT_ENFORCE(elem_proto != nullptr, "expected a registered ORT type");
 #else
@@ -582,22 +591,31 @@ class OptionalTypeBase : public DataTypeImpl {
   Impl* impl_;
 };
 
-template <typename T>
+template <typename T, typename elemT>
 class OptionalType : public OptionalTypeBase {
  public:
-  static_assert(data_types_internal::IsOptionalType<T>::value,
+  static_assert(data_types_internal::IsOptionalOrtType<T>::value,
                 "Requires one of the supported types: Tensor or TensorSeq");
+
+  static_assert(data_types_internal::IsTensorContainedType<elemT>::value,
+                "Requires one of the tensor fundamental types");
 
   static MLDataType Type();
 
-  // Doesn't return primitive type, returns an ORT type: Tensor or TensorSeq
   MLDataType GetElementType() const override {
-    return DataTypeImpl::GetType<T>();
+    if (std::is_same<T, Tensor>::value) {
+      return DataTypeImpl::GetTensorType<elemT>();
+    } else if (std::is_same<T, Tensor>::value) {
+      return DataTypeImpl::GetSequenceTensorType<elemT>();
+    } else {
+      // Will not reach here
+      ORT_ENFORCE(false, "Unsupported optional type");
+    }
   }
 
  private:
   OptionalType() {
-    data_types_internal::SetOptionalType<T>::Set(this->mutable_type_proto());
+    data_types_internal::SetOptionalType<T, elemT>::Set(this->mutable_type_proto());
   }
 };
 
@@ -816,6 +834,9 @@ class SequenceTensorTypeBase : public DataTypeImpl {
 template <typename TensorElemType>
 class SequenceTensorType : public SequenceTensorTypeBase {
  public:
+  static_assert(data_types_internal::IsTensorContainedType<TensorElemType>::value,
+                "Requires one of the tensor fundamental types");
+
   static MLDataType Type();
 
   /// Return a MLDataType representing the element-type
@@ -961,15 +982,15 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
     return SparseTensorType<ELEM_TYPE>::Type();               \
   }
 
-#define ORT_REGISTER_OPTIONAL_TYPE(TYPE)             \
-  template <>                                        \
-  MLDataType OptionalType<TYPE>::Type() {            \
-    static OptionalType<TYPE> optional_type;         \
-    return &optional_type;                           \
-  }                                                  \
-  template <>                                        \
-  MLDataType DataTypeImpl::GetOptionalType<TYPE>() { \
-    return OptionalType<TYPE>::Type();               \
+#define ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, TYPE)             \
+  template <>                                                  \
+  MLDataType OptionalType<ORT_TYPE, TYPE>::Type() {            \
+    static OptionalType<ORT_TYPE, TYPE> optional_type;         \
+    return &optional_type;                                     \
+  }                                                            \
+  template <>                                                  \
+  MLDataType DataTypeImpl::GetOptionalType<ORT_TYPE, TYPE>() { \
+    return OptionalType<ORT_TYPE, TYPE>::Type();               \
   }
 
 #if !defined(DISABLE_ML_OPS)

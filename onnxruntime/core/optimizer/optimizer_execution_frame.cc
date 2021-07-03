@@ -153,15 +153,6 @@ Status OptimizerExecutionFrame::CreateNodeOutputMLValueImpl(OrtValue& ort_value,
     return Status::OK();
   }
 
-  if (ml_type->IsOptionalType()) {
-    // element will be either a Tensor or a TensorSeq
-    auto element = ml_type->AsOptionalType()->GetElementType();
-    auto ort_value_element = std::make_unique<OptionalValue>(element);
-    auto ort_value_type = DataTypeImpl::GetType<OptionalValue>();
-    ort_value.Init(ort_value_element.release(), ort_value_type, ort_value_type->GetDeleteFunc());
-    return Status::OK();
-  }
-
   if (!ml_type->IsTensorType()) {
     assert(ml_type->AsNonTensorType() != nullptr);
     const NonTensorTypeBase* non_tensor_type = static_cast<const NonTensorTypeBase*>(ml_type);

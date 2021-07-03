@@ -197,6 +197,14 @@ const TensorShapeProto* NodeArg::Shape() const {
       }
       return nullptr;
     }
+    case TypeProto::kOptionalType: {
+      // Store shape only for optional types that are tensors
+      if (type->optional_type().elem_type().has_tensor_type() &&
+          utils::HasShape(type->optional_type().elem_type().tensor_type())) {
+        return &(type->optional_type().elem_type().tensor_type().shape());
+      }
+      return nullptr;
+    }
     case TypeProto::kSequenceType:
     case TypeProto::kMapType:
     case TypeProto::kOpaqueType:
