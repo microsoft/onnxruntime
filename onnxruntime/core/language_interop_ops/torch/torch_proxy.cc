@@ -174,13 +174,12 @@ void InvokeRunner(
     if (dl_tensor_pointer == Py_None) {
       OrtValue empty_ort_value;
       returned_ortvalues.push_back(empty_ort_value);
-      continue;
+    } else {
+      ORT_ENFORCE(Py_REFCNT(dl_tensor_pointer) == 1, "Ref count of dl_tensor_pointer should be 1.");
+      // Todo (pengwa): be noted we did not pass whether tensor is bool or not.
+      // Currently we assume we don't pass boolean data.
+      returned_ortvalues.push_back(training::framework::torch::FromDlpack(dl_tensor_pointer, false));
     }
-
-    ORT_ENFORCE(Py_REFCNT(dl_tensor_pointer) == 1, "Ref count of dl_tensor_pointer should be 1.");
-    // Todo: be noted we did not pass whether tensor is bool or not.
-    // Currently we assume we don't pass boolean data.
-    returned_ortvalues.push_back(training::framework::torch::FromDlpack(dl_tensor_pointer, false));
   }
 }
 

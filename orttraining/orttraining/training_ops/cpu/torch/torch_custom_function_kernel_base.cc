@@ -28,13 +28,16 @@ std::vector<OrtValue> CreateOrtValueArgs(OpKernelContext* context,
 
 void PythonOpBase::Init(const OpKernelInfo& info) {
   ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
-  inplace_ = info.GetAttrOrDefault("inplace", static_cast<int64_t>(0));
+  ORT_THROW_IF_ERROR(info.GetAttr("inplace", &inplace_));
+
   is_training_mode_ = static_cast<bool>(info.GetAttrOrDefault("training_mode", static_cast<int64_t>(0)));
-  ORT_THROW_IF_ERROR(info.GetAttr("input_convention", &input_convention));
-  input_requires_grads_ = info.GetAttrsOrDefault("input_requires_grads", std::vector<int64_t>());
+  ORT_THROW_IF_ERROR(info.GetAttr("input_convention", &input_convention_));
+
+  ORT_THROW_IF_ERROR(info.GetAttrs("input_requires_grads", input_requires_grads_));
+  ORT_ENFORCE(input_requires_grads_.size() == input_convention_.size());
 
   // Input tensors.
-  input_tensor_types_ = info.GetAttrsOrDefault("input_tensor_types", std::vector<int64_t>());
+  ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_tensor_types_));
 
   ORT_ENFORCE(input_tensor_types_.size() == info.node().InputDefs().size());
 
@@ -68,10 +71,15 @@ void PythonOpBase::Init(const OpKernelInfo& info) {
   input_pointer_scalar_positions_ = info.GetAttrsOrDefault("input_pointer_scalar_positions", std::vector<int64_t>());
 
   ORT_ENFORCE(input_pointer_scalars_.size() == input_pointer_scalar_positions_.size());
+  auto non_tensor_input_count = input_int_scalars_.size() + input_float_scalars_.size() +
+                                input_int_tuple_positions_.size() + input_float_tuple_positions_.size() +
+                                input_pointer_scalars_.size();
+  ORT_ENFORCE(non_tensor_input_count + input_tensor_types_.size() == input_convention_.size(),
+              "Total input (tensor + non-tensor) count did not match.");
 
   // Output tensors.
-  output_tensor_types_ = info.GetAttrsOrDefault("output_tensor_types", std::vector<int64_t>());
-  output_tensor_requires_grads_ = info.GetAttrsOrDefault("output_tensor_requires_grads", std::vector<int64_t>());
+  ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_tensor_types_));
+  ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_requires_grads", output_tensor_requires_grads_));
 
   CreateConstArgs();
   CreateArgPositions();
@@ -224,18 +232,19 @@ void PythonOpBase::SetOtherOutputs(OpKernelContext* context, std::vector<OrtValu
 void PythonOpGradBase::Init(const OpKernelInfo& info) {
   ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
   ORT_THROW_IF_ERROR(info.GetAttr("inplace", &inplace_));
+  ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_tensor_types_));
   ORT_THROW_IF_ERROR(info.GetAttr("output_convention", &output_convention_));
   ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_tensor_types_));
   output_tensor_requires_grads_ = info.GetAttrsOrDefault("output_tensor_requires_grads", std::vector<int64_t>());
   ORT_ENFORCE(output_tensor_types_.size() == output_tensor_requires_grads_.size(), "backward tensor output count mismatch");
 
-  // Exclude context and forward activations from inputs
-  const size_t tensor_input_count = (info.node().InputDefs().size() - 1) / 2;
-  SetPositions(tensor_input_count);
+  SetPositions();
 }
 
 void PythonOpGradBase::RunBackward(OpKernelContext* context,
                                    std::vector<OrtValue>& returned_ortvalues) const {
+  // Todo (pengwa): this is fragile once we added more inputs, re-visist this
+  // for more robustness.
   auto args = CreateOrtValueArgs(context, 1, (context->InputCount() - 1) / 2);
   // This is called "const" because that's how Pytorch calls all non-tensor inputs.
   const Tensor* context_id_tensor = context->Input<Tensor>(0);
@@ -274,7 +283,7 @@ void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue
   ORT_ENFORCE(tensor_output_index == ctx_internal->OutputCount(), "backward tensor output count mismatch.");
 }
 
-void PythonOpGradBase::SetPositions(size_t tensor_input_count) {
+void PythonOpGradBase::SetPositions() {
   ORT_ENFORCE(const_arg_positions_.size() == 0);
   ORT_ENFORCE(arg_positions_.size() == 0);
 
@@ -283,7 +292,7 @@ void PythonOpGradBase::SetPositions(size_t tensor_input_count) {
   const_arg_positions_ = {0};
 
   // The rest inputs are just Pytorch tensors.
-  arg_positions_.resize(tensor_input_count);
+  arg_positions_.resize(input_tensor_types_.size());
   for (size_t i = 0; i < arg_positions_.size(); ++i) {
     // i-th tensor is the (i+1)-th input of autograd.Function.backward.
     arg_positions_.at(i) = static_cast<int64_t>(i) + 1;
