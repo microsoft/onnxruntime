@@ -53,6 +53,7 @@ IF EXIST test\Microsoft.ML.OnnxRuntime.EndToEndTests\obj RMDIR /S /Q test\Micros
 %dn% clean test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj
 
 %dn% add test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj package Microsoft.ML.OnnxRuntime.Managed --no-restore -v %CurrentOnnxRuntimeVersion%
+%dn% add test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj package Microsoft.ML.OnnxRuntime.TensorRT --no-restore -v %CurrentOnnxRuntimeVersion%
 
 %dn% restore test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --configfile .\Nuget.CSharp.config --no-cache --packages test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages --source https://api.nuget.org/v3/index.json --source  %LocalNuGetRepo%
 
@@ -60,6 +61,9 @@ IF NOT errorlevel 0 (
     @echo "Failed to restore nuget packages for the test project"
     EXIT 1
 )
+
+dir test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages\
+dir test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages\microsoft.ml.onnxruntime.tensorrt\%CurrentOnnxRuntimeVersion%\runtimes\win-x64\native\
 
 %dn% list test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj package
 
