@@ -1681,6 +1681,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
+  std::vector<NodeDef> result;
   const auto& src_attrs = SrcNodeAttributes();
   std::vector<AttributeProto> attrs;
   ORT_ENFORCE(utils::HasString(src_attrs.at("name")));
@@ -1699,18 +1700,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
   std::vector<ArgDef> output_args;
 
   for (const auto& config : op_config.backward_input_source_configs) {
-    size_t index = config.second;
-    switch (config.first) {
-      case contrib::aten_ops::GRAD_OUTPUT:
-        input_args.emplace_back(GO(index));
-        break;
-      case contrib::aten_ops::FORWARD_INPUT:
-        input_args.emplace_back(I(index));
-        break;
-      case contrib::aten_ops::FORWARD_OUTPUT:
-        input_args.emplace_back(O(index));
-        break;
-    }
+    ArgDef source_arg_def = config.kind == contrib::aten_ops::GRAD_OUTPUT     ? GO(config.index)
+                            : config.kind == contrib::aten_ops::FORWARD_INPUT ? I(config.index)
+                                                                              : O(config.index);
+    input_args.emplace_back(HandleATenOpGradInput(source_arg_def, config.transform_func, result));
   }
 
   for (size_t index : op_config.gradient_input_indices) {
@@ -1724,7 +1717,8 @@ IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
   }
 
   attrs.emplace_back(MakeAttribute("output_types", grad_output_types));
-  return std::vector<NodeDef>{NodeDef(OpDef{"ATenOpGrad", kMSDomain, 1}, input_args, output_args, attrs)};
+  result.emplace_back(NodeDef(OpDef{"ATenOpGrad", kMSDomain, 1}, input_args, output_args, attrs));
+  return result;
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {

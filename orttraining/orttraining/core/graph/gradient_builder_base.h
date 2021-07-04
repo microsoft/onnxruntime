@@ -294,6 +294,9 @@ class GradientBuilderBase {
 
   const std::string& NodeName() const { return node_->Name(); }
 
+  ArgDef HandleATenOpGradInput(const ArgDef& source_arg_def, const std::string& transform_func,
+                               std::vector<NodeDef>& output) const;
+
  private:
   friend class GradientGraphBuilder;
 
