@@ -46,8 +46,10 @@ jobs:
     displayName: 'Download Pipeline Artifact'
     inputs:
       source: 'specific'
-      project: '#20210702.7 code refactor'
-      pipeline: 'Nuget GPU TensorRT'
+      project: 'Lotus'
+      pipeline: '963'
+      runVersion: 'specific'
+      runId: '163134'
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
 
@@ -55,8 +57,10 @@ jobs:
     displayName: 'Download Pipeline Artifact - testdata'
     inputs:
       source: 'specific'
-      project: '#20210702.7 code refactor'
-      pipeline: 'Nuget GPU TensorRT'
+      project: 'Lotus'
+      pipeline: '963'
+      runVersion: 'specific'
+      runId: '163134'
       artifactName: 'drop-nuget'
       targetPath: '$(Build.BinariesDirectory)\testdata'
 
