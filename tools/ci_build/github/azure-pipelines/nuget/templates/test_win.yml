@@ -1,5 +1,5 @@
 parameters:
-  AgentPool : 'Win-CPU'
+  AgentPool : 'Win-GPU'
   Skipx86Tests: 'false'
 
 jobs:
