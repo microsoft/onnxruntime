@@ -1401,7 +1401,7 @@ class SymbolicShapeInference:
     def _infer_Tile(self, node):
         repeats_value = self._try_get_value(node, 1)
         new_sympy_shape = []
-        if repeats_value:
+        if repeats_value is not None:
             input_sympy_shape = self._get_sympy_shape(node, 0)
             for i, d in enumerate(input_sympy_shape):
                 new_dim = d * repeats_value[i]
@@ -1548,14 +1548,17 @@ class SymbolicShapeInference:
             input_shape = get_shape_from_value_info(i)
             if input_shape is None:
                 continue
+
             if is_sequence(i.type):
                 input_dims = i.type.sequence_type.elem_type.tensor_type.shape.dim
             else:
                 input_dims = i.type.tensor_type.shape.dim
+
             for i_dim, dim in enumerate(input_shape):
                 if dim is None:
                     # some models use None for symbolic dim in input, replace it with a string
                     input_dims[i_dim].dim_param = str(self._new_symbolic_dim(i.name, i_dim))
+
             if input_shape:
                 self.input_symbols_.update([d for d in input_shape if type(d) == str])
 
