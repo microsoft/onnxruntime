@@ -43,7 +43,10 @@ def get_shape_from_value_info(vi):
     if cls_type is None:
         return None
     if is_sequence(vi.type):
-        return get_shape_from_type_proto(vi.type.sequence_type.elem_type)
+        if 'tensor_type' == vi.type.sequence_type.elem_type.WhichOneof('value'):
+            return get_shape_from_type_proto(vi.type.sequence_type.elem_type)
+        else:
+            return None
     else:
         return get_shape_from_type_proto(vi.type)
 
@@ -887,26 +890,27 @@ class SymbolicShapeInference:
 
         self._onnx_infer_subgraph(node, subgraph)
 
-        # check subgraph input/output for shape changes
+        # check subgraph input/output for shape changes in loop carried variables
         # for tensor_type, create new symbolic dim when changing, i.e., output = Concat(input, a)
         # for sequence_type, propagate from output to input
         need_second_infer = False
-        for i,so in enumerate(subgraph.output):
+        for i_out in range(1,num_loop_carried + 1):
+            so = subgraph.output[i_out]
             so_shape = get_shape_from_value_info(so)
             if is_sequence(so.type):
                 if so_shape and None in so_shape:
                     # copy shape from output to input
                     # note that loop input is [loop_len, cond, input_0, input_1, ...]
                     # while loop output is [cond, output_0, output_1, ...]
-                    subgraph.input[i+1].type.sequence_type.elem_type.CopyFrom(so.type.sequence_type.elem_type)
+                    subgraph.input[i_out+1].type.sequence_type.elem_type.CopyFrom(so.type.sequence_type.elem_type)
                     need_second_infer = True
             else:
-                si = subgraph.input[i+1]
+                si = subgraph.input[i_out+1]
                 si_shape = get_shape_from_value_info(si)
                 for di, dims in enumerate(zip(si_shape, so_shape)):
                     if dims[0] != dims[1]:
                         new_dim = onnx.TensorShapeProto.Dimension()
-                        new_dim.dim_param = str(self._new_symbolic_dim_from_output(node, i, di))
+                        new_dim.dim_param = str(self._new_symbolic_dim_from_output(node, i_out, di))
                         si.type.tensor_type.shape.dim[di].CopyFrom(new_dim)
                         so.type.tensor_type.shape.dim[di].CopyFrom(new_dim)
                         need_second_infer = True
@@ -937,7 +941,7 @@ class SymbolicShapeInference:
         self._compute_matmul_shape(node, onnx.TensorProto.INT32)
 
     def _infer_NonMaxSuppression(self, node):
-        selected = self._new_symbolic_dim_from_output(node)
+        selected = str(self._new_symbolic_dim_from_output(node))
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, [selected, 3]))
 
@@ -1189,7 +1193,7 @@ class SymbolicShapeInference:
         # need to create new symbolic dimension if sequence shape has None:
         seq_shape = self._get_shape(node, 0)
         vi = self.known_vi_[node.output[0]]
-        if seq_shape:
+        if seq_shape is not None:
             for di, d in enumerate(seq_shape):
                 if d is not None:
                     continue
@@ -1559,8 +1563,7 @@ class SymbolicShapeInference:
                     # some models use None for symbolic dim in input, replace it with a string
                     input_dims[i_dim].dim_param = str(self._new_symbolic_dim(i.name, i_dim))
 
-            if input_shape:
-                self.input_symbols_.update([d for d in input_shape if type(d) == str])
+            self.input_symbols_.update([d for d in input_shape if type(d) == str])
 
         for s in self.input_symbols_:
             if s in self.suggested_merge_:
@@ -1665,13 +1668,22 @@ class SymbolicShapeInference:
                 vi = self.known_vi_[node.output[i_o]]
                 out_type = vi.type
                 out_type_kind = out_type.WhichOneof('value')
-                # only TensorProto and SparseTensorProto have shape
-                if out_type_kind != 'tensor_type' and out_type_kind != 'sparse_tensor_type':
-                    if self.verbose_ > 2 and out_type_kind == 'sequence_type':
-                        print('  {}: sequence of {} {}'.format(
-                                node.output[i_o], str(get_shape_from_value_info(vi)),
-                                onnx.TensorProto.DataType.Name(vi.type.sequence_type.elem_type.tensor_type.elem_type)))
+
+                # do not process shape for non-tensors
+                if out_type_kind not in ['tensor_type', 'sparse_tensor_type', None]:
+                    if self.verbose_ > 2:
+                        if out_type_kind == 'sequence_type':
+                            seq_cls_type = out_type.sequence_type.elem_type.WhichOneof('value')
+                            if 'tensor_type' == seq_cls_type:
+                                print('  {}: sequence of {} {}'.format(
+                                        node.output[i_o], str(get_shape_from_value_info(vi)),
+                                        onnx.TensorProto.DataType.Name(vi.type.sequence_type.elem_type.tensor_type.elem_type)))
+                            else:
+                                print('  {}: sequence of {}'.format(node.output[i_o], seq_cls_type))
+                        else:
+                            print('  {}: {}'.format(node.output[i_o], out_type_kind))
                     continue
+
                 out_shape = get_shape_from_value_info(vi)
                 out_type_undefined = out_type.tensor_type.elem_type == onnx.TensorProto.UNDEFINED
                 if self.verbose_ > 2:
@@ -1680,7 +1692,7 @@ class SymbolicShapeInference:
                     if node.output[i_o] in self.sympy_data_:
                         print('  Sympy Data: ' + str(self.sympy_data_[node.output[i_o]]))
 
-                if None in out_shape or out_type_undefined:
+                if (out_shape is not None and None in out_shape) or out_type_undefined:
                     if self.auto_merge_:
                         if node.op_type in [
                                 'Add', 'Sub', 'Mul', 'Div', 'MatMul', 'MatMulInteger', 'MatMulInteger16', 'Concat',
@@ -1720,7 +1732,7 @@ class SymbolicShapeInference:
 
                     # create new dynamic dims for ops not handled by symbolic shape inference
                     if self.run_ == False and not node.op_type in self.dispatcher_ and not known_aten_op:
-                        is_unknown_op = (out_type_undefined and len(out_shape) == 0)
+                        is_unknown_op = out_type_undefined and (out_shape is None or len(out_shape) == 0)
                         if is_unknown_op:
                             # unknown op to ONNX, maybe from higher opset or other domain
                             # only guess the output rank from input 0 when using guess_output_rank option
