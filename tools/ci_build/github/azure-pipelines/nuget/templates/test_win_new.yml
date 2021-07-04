@@ -9,6 +9,7 @@ jobs:
   pool: ${{ parameters.AgentPool }}
   condition: succeeded()
   variables:
+    EnvSetupScript: setup_env_trt.bat
   - name: OnnxRuntimeBuildDirectory
     value: '$(Build.BinariesDirectory)'
   - name: SKIPNONPACKAGETESTS

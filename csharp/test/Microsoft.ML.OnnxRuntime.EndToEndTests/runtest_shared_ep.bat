@@ -67,7 +67,7 @@ dir test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages\microsoft.ml.onnxruntim
 
 %dn% list test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj package
 
-%dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore /p:DefineConstants=%DefineConstants%
+%dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore
 %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore /p:DefineConstants=%DefineConstants% --filter "FullyQualifiedName=Microsoft.ML.OnnxRuntime.Tests.InferenceTest.CanRunInferenceOnAModelWithTensorRT"
 %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore /p:DefineConstants=%DefineConstants% --filter "FullyQualifiedName=Microsoft.ML.OnnxRuntime.Tests.InferenceTest.TestTensorRTProviderOptions" 
 
