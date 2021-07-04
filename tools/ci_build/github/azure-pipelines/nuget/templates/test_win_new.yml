@@ -9,13 +9,14 @@ jobs:
   pool: ${{ parameters.AgentPool }}
   condition: succeeded()
   variables:
-    EnvSetupScript: setup_env_trt.bat
   - name: OnnxRuntimeBuildDirectory
     value: '$(Build.BinariesDirectory)'
   - name: SKIPNONPACKAGETESTS
     value: 'ON'
   - name: runCodesignValidationInjection
     value: false
+  - name: EnvSetupScript
+    value: setup_env_trt.bat
 
   steps:
   - task: UsePythonVersion@0
@@ -32,7 +33,7 @@ jobs:
   - task: BatchScript@1
     displayName: 'setup env'
     inputs:
-      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_cuda_11.bat'
+      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_trt.bat'
       modifyEnvironment: true
       workingFolder: '$(Build.BinariesDirectory)'
 
