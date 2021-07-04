@@ -1,5 +1,5 @@
 parameters:
-  AgentPool : 'Win-GPU'
+  AgentPool : 'onnxruntime-gpu-winbuild'
   Skipx86Tests: 'false'
 
 jobs:
