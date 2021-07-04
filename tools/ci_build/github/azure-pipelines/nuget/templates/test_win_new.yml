@@ -42,7 +42,7 @@ jobs:
       arguments: 'amd64'
       modifyEnvironment: true
   
-  - task: DownloadPipelineArtifact@0
+  - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact'
     inputs:
       source: 'specific'
@@ -53,7 +53,7 @@ jobs:
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
 
-  - task: DownloadPipelineArtifact@0
+  - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - testdata'
     inputs:
       source: 'specific'
