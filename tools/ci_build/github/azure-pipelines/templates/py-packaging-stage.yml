@@ -234,7 +234,6 @@ stages:
         clean: all
       pool: AMD-GPU
       steps:
-      - template: set-python-manylinux-variables-step.yml
       - template: get-docker-image-steps.yml
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_rocm
