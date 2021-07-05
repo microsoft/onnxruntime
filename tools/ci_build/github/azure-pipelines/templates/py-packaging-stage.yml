@@ -247,7 +247,6 @@ stages:
             --build-arg PREPEND_PATH=/opt/rh/devtoolset-9/root/usr/bin: 
             --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-9/root/usr/lib64:/opt/rh/devtoolset-9/root/usr/lib:/opt/rh/devtoolset-9/root/usr/lib64/dyninst:/opt/rh/devtoolset-9/root/usr/lib/dyninst:/usr/local/lib64
           Repository: onnxruntimetrainingrocmbuild
-        displayName: 'Create or fetch image defining ROCm build environment'
  
     - job: ROCM_training_wheels
       timeoutInMinutes: 180
