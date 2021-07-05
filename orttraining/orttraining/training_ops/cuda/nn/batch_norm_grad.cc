@@ -50,8 +50,8 @@ Status BatchNormalizationGrad<T, T1, T2>::ComputeInternal(OpKernelContext* ctx) 
   auto dScale_data = reinterpret_cast<CudaT1*>(ctx->Output(1, channel_shape)->template MutableData<T1>());
   auto dBias_data = reinterpret_cast<CudaT1*>(ctx->Output(2, channel_shape)->template MutableData<T1>());
 
-  const auto alpha = std::is_same<T, MLFloat16>::value ? Consts<float>::One : Consts<CudaT>::One;
-  const auto beta = std::is_same<T, MLFloat16>::value ? Consts<float>::Zero : Consts<CudaT>::Zero;
+  const auto alpha = Consts<CudaT>::One;
+  const auto beta = Consts<CudaT>::Zero;
 
   CudnnTensor input_tensor, scale_bias_tensor;
   vector<int64_t> new_dims;
@@ -60,7 +60,7 @@ Status BatchNormalizationGrad<T, T1, T2>::ComputeInternal(OpKernelContext* ctx) 
   // for fp16 input, `scale_bias_tensor` will have a float type; otherwise it will be the same as input type.
   ORT_RETURN_IF_ERROR(scale_bias_tensor.Set(input_tensor, cudnn_batch_norm_mode_));
 
-  const int64_t C = input_shape.GetDims()[1];
+  const int64_t C = new_dims[1];
   auto p_scale = reinterpret_cast<const void*>(Scale_data);
   auto p_saved_mean = reinterpret_cast<const void*>(saved_mean_data);
   auto p_saved_inv_std = reinterpret_cast<const void*>(saved_inv_std_data);

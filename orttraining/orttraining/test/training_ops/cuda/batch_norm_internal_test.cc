@@ -125,7 +125,8 @@ static void TestBatchNormInternal(bool test_double = false, bool T_is_half = fal
       test.AddOutput<float>("saved_inv_std", channel_dims, saved_inv_std);
     }
   }
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(CudaKernelTest, BNInternalBasic) { // float case
@@ -148,12 +149,42 @@ TEST(CudaKernelTest, BNInternalHalfFloatFloat) { // half X/Y, float scale/B & me
   TestBatchNormInternal(false, true);
 }
 
-TEST(CudaKernelTest, BNInternal3DInput) {
-  TestBatchNormInternal(false, false, false, false, {2, 2, 4}); // float case, 3d input
+TEST(CudaKernelTest, BNInternal3DInput) { // float case, 3d input
+  TestBatchNormInternal(false, false, false, false, {2, 2, 4});
 }
 
-TEST(CudaKernelTest, BNInternal5DInput) {
-  TestBatchNormInternal(false, false, false, false, {2, 2, 2, 2, 1}); // float case, 5d input
+TEST(CudaKernelTest, BNInternal5DInput) { // float case, 5d input
+  TestBatchNormInternal(false, false, false, false, {2, 2, 2, 1, 2});
+}
+
+TEST(CudaKernelTest, BNInternal1DInput) { // float case, 1d input
+  OpTester test("BatchNormInternal", 1, kMSDomain);
+  float epsilon = 1e-05f;
+  float momentum = 0.1f;
+  test.AddAttribute("epsilon", epsilon);
+  test.AddAttribute("momentum", momentum);
+
+  std::vector<int64_t> input_output_dims{16};
+  std::vector<int64_t> channel_dims{1};
+
+  test.AddInput<float>("X", input_output_dims,
+                       {-0.2953f, 0.1180f, 1.0973f, -0.1931f, -0.1999f, -0.0237f, 1.5181f, 0.0076f,
+                        -1.0830f, -1.5433f, 0.4327f, -0.9813f, 0.7875f, -0.4080f, -2.3144f, 1.5493f});
+  test.AddInput<float>("scale", channel_dims, {1.0f});
+  test.AddInput<float>("B", channel_dims, {0.0f});
+  test.AddInput<float>("mean", channel_dims, {1.0f});
+  test.AddInput<float>("var", channel_dims, {1.0f});
+
+  test.AddOutput<float>("Y", input_output_dims,
+                        {-0.1948f, 0.2086f, 1.1646f, -0.0951f, -0.1017f, 0.0703f, 1.5754f, 0.1009f,
+                         -0.9638f, -1.4131f, 0.5158f, -0.8645f, 0.8622f, -0.3049f, -2.1659f, 1.6059f});
+  test.AddOutput<float>("running_mean", channel_dims, {0.0139f});
+  test.AddOutput<float>("running_var", channel_dims, {1.1074f});
+  test.AddOutput<float>("saved_mean", channel_dims, {-0.0957f});
+  test.AddOutput<float>("saved_inv_std", channel_dims, {0.9762f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 }  // namespace test

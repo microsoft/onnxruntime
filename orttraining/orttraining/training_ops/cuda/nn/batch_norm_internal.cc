@@ -57,8 +57,8 @@ Status BatchNormInternal<T, T1, T2>::ComputeInternal(OpKernelContext* p_op_kerne
 
   auto y_data = reinterpret_cast<CudaT*>(Y->template MutableData<T>());
 
-  const auto alpha = std::is_same<T, MLFloat16>::value ? Consts<float>::One : Consts<CudaT>::One;
-  const auto beta = std::is_same<T, MLFloat16>::value ? Consts<float>::Zero : Consts<CudaT>::Zero;
+  const auto alpha = Consts<CudaT>::One;
+  const auto beta = Consts<CudaT>::Zero;
 
   CudnnTensor data_desc, bn_tensor_desc;
   vector<int64_t> new_dims;
@@ -80,7 +80,7 @@ Status BatchNormInternal<T, T1, T2>::ComputeInternal(OpKernelContext* p_op_kerne
   auto p_saved_inv_std = reinterpret_cast<void*>(saved_inv_std_data);
 
 
-  const int64_t C = x_shape.GetDims()[1];
+  const int64_t C = new_dims[1];
   IAllocatorUniquePtr<float> p_f_scale, p_f_B, p_f_running_mean, p_f_running_var, p_f_saved_mean, p_f_saved_inv_std;
 
   if (std::is_same<T1, MLFloat16>::value) {
