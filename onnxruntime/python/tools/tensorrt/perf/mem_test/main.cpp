@@ -9,24 +9,24 @@
 
 std::unique_ptr<OrtTensorRTProviderOptions> get_default_trt_provider_options() {
   auto tensorrt_options = std::make_unique<OrtTensorRTProviderOptions>();
-  tensorrt_options.get()->device_id = 0;
-  tensorrt_options.get()->has_user_compute_stream = 0;
-  tensorrt_options.get()->user_compute_stream = nullptr;
-  tensorrt_options.get()->trt_max_partition_iterations = 1000;
-  tensorrt_options.get()->trt_min_subgraph_size = 1;
-  tensorrt_options.get()->trt_max_workspace_size = 1 << 30;
-  tensorrt_options.get()->trt_fp16_enable = false;
-  tensorrt_options.get()->trt_int8_enable = false;
-  tensorrt_options.get()->trt_int8_calibration_table_name = "";
-  tensorrt_options.get()->trt_int8_use_native_calibration_table = false;
-  tensorrt_options.get()->trt_dla_enable = false;
-  tensorrt_options.get()->trt_dla_core = 0;
-  tensorrt_options.get()->trt_dump_subgraphs = false;
-  tensorrt_options.get()->trt_engine_cache_enable = false;
-  tensorrt_options.get()->trt_engine_cache_path = "";
-  tensorrt_options.get()->trt_engine_decryption_enable = false;
-  tensorrt_options.get()->trt_engine_decryption_lib_path = "";
-  tensorrt_options.get()->trt_force_sequential_engine_build = false;
+  tensorrt_options->device_id = 0;
+  tensorrt_options->has_user_compute_stream = 0;
+  tensorrt_options->user_compute_stream = nullptr;
+  tensorrt_options->trt_max_partition_iterations = 1000;
+  tensorrt_options->trt_min_subgraph_size = 1;
+  tensorrt_options->trt_max_workspace_size = 1 << 30;
+  tensorrt_options->trt_fp16_enable = false;
+  tensorrt_options->trt_int8_enable = false;
+  tensorrt_options->trt_int8_calibration_table_name = "";
+  tensorrt_options->trt_int8_use_native_calibration_table = false;
+  tensorrt_options->trt_dla_enable = false;
+  tensorrt_options->trt_dla_core = 0;
+  tensorrt_options->trt_dump_subgraphs = false;
+  tensorrt_options->trt_engine_cache_enable = false;
+  tensorrt_options->trt_engine_cache_path = "";
+  tensorrt_options->trt_engine_decryption_enable = false;
+  tensorrt_options->trt_engine_decryption_lib_path = "";
+  tensorrt_options->trt_force_sequential_engine_build = false;
 
   return tensorrt_options;
 }
@@ -49,10 +49,10 @@ void run_ort_trt2() {
 
   auto tensorrt_options = get_default_trt_provider_options();
 
-  tensorrt_options.get()->trt_engine_cache_enable = true;
-  tensorrt_options.get()->trt_int8_enable = true;
-  tensorrt_options.get()->trt_fp16_enable = true;
-  tensorrt_options.get()->trt_int8_calibration_table_name = calib_table;
+  tensorrt_options->trt_engine_cache_enable = true;
+  tensorrt_options->trt_int8_enable = true;
+  tensorrt_options->trt_fp16_enable = true;
+  tensorrt_options->trt_int8_calibration_table_name = calib_table;
 
   session_options.AppendExecutionProvider_TensorRT(*tensorrt_options.get());
   printf("Runing ORT TRT EP with:\n\tengine cache enabled\n\tfp16 enabled if supports\n\tint8 enabled if supports\n\tint8 calibration table provided\n");
