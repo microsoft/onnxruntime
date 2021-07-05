@@ -61,13 +61,13 @@ if [ $DEVICE_TYPE = "gpu" ]; then
       else
         ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements-torch${TORCH_VERSION}_rocm.txt}
         ${PYTHON_EXE} -m pip install fairscale
-	      # remove triton requirement from getting triggered in requirements-sparse_attn.txt
+	# remove triton requirement from getting triggered in requirements-sparse_attn.txt
         git clone https://github.com/ROCmSoftwarePlatform/DeepSpeed
         cd DeepSpeed &&\
           rm requirements/requirements-sparse_attn.txt &&\
           ${PYTHON_EXE} setup.py bdist_wheel &&\
           ${PYTHON_EXE} -m pip install dist/deepspeed*.whl &&\
-	      cd ..
+	  cd .. && rm -fr DeepSpeed
       fi
     fi
   fi
