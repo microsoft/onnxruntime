@@ -319,7 +319,7 @@ if enable_training:
             # removing '.' to make Cuda version number in the same form as Pytorch.
             rocm_version = rocm_version.replace('.', '')
             if torch_version:
-                local_version = '+torch' + torch_version + '.'\
+                local_version = '+rocm42patches.torch' + torch_version + '.'\
                     + 'rocm' + rocm_version
             else:
                 local_version = '+rocm' + rocm_version

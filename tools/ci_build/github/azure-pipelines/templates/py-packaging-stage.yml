@@ -267,9 +267,6 @@ stages:
               --volume $(Build.BinariesDirectory):/build \
               --workdir /onnxruntime_src \
               --entrypoint $(PythonManylinuxDir)/bin/python3 \
-              -e NVIDIA_VISIBLE_DEVICES=all \
-              -e NIGHTLY_BUILD \
-              -e BUILD_BUILDNUMBER \
               --user onnxruntimedev \
               onnxruntimetrainingrocmbuild \
                 /onnxruntime_src/tools/ci_build/build.py \
