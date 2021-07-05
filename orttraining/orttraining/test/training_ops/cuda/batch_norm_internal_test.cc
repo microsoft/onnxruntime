@@ -16,6 +16,7 @@ namespace test {
 
 using namespace onnxruntime::test;
 
+#ifdef USE_CUDA
 static void TestBatchNormInternal(bool test_double = false, bool T_is_half = false,
                                   bool T1_is_half = false, bool T2_is_half = false,
                                   const std::vector<int64_t>& input_output_dims = {2, 2, 2, 2}) {
@@ -129,7 +130,6 @@ static void TestBatchNormInternal(bool test_double = false, bool T_is_half = fal
            {kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
-#ifdef USE_CUDA
 TEST(CudaKernelTest, BNInternalBasic) { // float case
   TestBatchNormInternal();
 }
