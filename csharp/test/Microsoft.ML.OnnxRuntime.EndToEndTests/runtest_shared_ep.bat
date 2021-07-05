@@ -8,7 +8,7 @@ SET TargetFramework=netcoreapp2.1
 SET TargetArch=x64
 SET dn="C:\Program Files\dotnet\dotnet"
 SET CurrentOnnxRuntimeVersion=""
-SET ORTEP=""
+SET OrtEp=""
 SET DefineConstants=""
 
 SET LocalNuGetRepo=%1
@@ -16,9 +16,9 @@ IF NOT "%2"=="" (SET TargetFramework=%2)
 IF NOT "%3"=="" (SET TargetArch=%3)
 IF NOT "%4"=="" (SET CurrentOnnxRuntimeVersion=%4)
 IF NOT "%5"=="" (
-    SET ORTEP=%5
+    SET OrtEp=%5
 ) ELSE (
-    echo "Usage: runtest_shared_ep.bat LocalNuGetRepoPath TargetFramework TargetArch NuGetPackageVersion ORTExecutionProvier"
+    echo "Usage: runtest_shared_ep.bat LocalNuGetRepoPath TargetFramework TargetArch NuGetPackageVersion OrtExecutionProvier"
 )
 
 IF "%TargetArch%"=="x64" (
@@ -32,14 +32,11 @@ IF "%TargetArch%"=="x86" (
   SET PlatformTarget=x86
 )
 
-ECHO Target Framework is %TargetFramework%
-
-IF "%ORTEP%"=="TensorRT" (
+IF "%OrtEp%"=="TensorRT" (
   SET DefineConstants="USE_TENSORRT"
 )
 
-@echo %DefineConstants
-SET DefineConstants="USE_TENSORRT"
+ECHO Target Framework is %TargetFramework%
 
 REM Update if CUDA lib paths if set
 SET PATH=%CUDA_PATH%\bin;%CUDNN_PATH%\bin;%PATH%
@@ -53,7 +50,6 @@ IF EXIST test\Microsoft.ML.OnnxRuntime.EndToEndTests\obj RMDIR /S /Q test\Micros
 %dn% clean test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj
 
 %dn% add test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj package Microsoft.ML.OnnxRuntime.Managed --no-restore -v %CurrentOnnxRuntimeVersion%
-%dn% add test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj package Microsoft.ML.OnnxRuntime.TensorRT --no-restore -v %CurrentOnnxRuntimeVersion%
 
 %dn% restore test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --configfile .\Nuget.CSharp.config --no-cache --packages test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages --source https://api.nuget.org/v3/index.json --source  %LocalNuGetRepo%
 
@@ -62,10 +58,10 @@ IF NOT errorlevel 0 (
     EXIT 1
 )
 
-dir test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages\
-dir test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages\microsoft.ml.onnxruntime.tensorrt\%CurrentOnnxRuntimeVersion%\runtimes\win-x64\native\
 
 %dn% list test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj package
+
+dir test\Microsoft.ML.OnnxRuntime.EndToEndTests\packages\
 
 %dn% test test\Microsoft.ML.OnnxRuntime.EndToEndTests\Microsoft.ML.OnnxRuntime.EndToEndTests.csproj --no-restore /p:DefineConstants=%DefineConstants%
 
