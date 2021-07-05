@@ -18,16 +18,16 @@ jobs:
     NugetArtifact: $(Build.BinariesDirectory)\nuget-artifact
     ${{ if eq(parameters.SharedEps, '') }}:
       RunTestScript: test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat
-      NetCoreX64Args: ${{ variables.NugetArtifact }} netcoreapp2.1 x64 $(NuGetPackageVersionNumber)
-      NetCoreX86Args: ${{ variables.NugetArtifact }} netcoreapp2.1 x86 $(NuGetPackageVersionNumber)
-      NetFrameworkX64Args: ${{ variables.NugetArtifact }} net461 x64 $(NuGetPackageVersionNumber)
-      NetFrameworkX86Args: ${{ variables.NugetArtifact }} net461 x86 $(NuGetPackageVersionNumber)
+      DotNetCoreX64Args: ${{ variables.NugetArtifact }} netcoreapp2.1 x64 $(NuGetPackageVersionNumber)
+      DotNetCoreX86Args: ${{ variables.NugetArtifact }} netcoreapp2.1 x86 $(NuGetPackageVersionNumber)
+      DotNetFrameworkX64Args: ${{ variables.NugetArtifact }} net461 x64 $(NuGetPackageVersionNumber)
+      DotNetFrameworkX86Args: ${{ variables.NugetArtifact }} net461 x86 $(NuGetPackageVersionNumber)
     ${{ if ne(parameters.SharedEps, '') }}:
       RunTestScript: test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest_shared_ep.bat
-      NetCoreX64Args: ${{ variables.NugetArtifact }} netcoreapp2.1 x64 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
-      NetCoreX86Args: ${{ variables.NugetArtifact }} netcoreapp2.1 x86 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
-      NetFrameworkX64Args: ${{ variables.NugetArtifact }} net461 x64 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
-      NetFrameworkX86Args: ${{ variables.NugetArtifact }} net461 x86 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
+      DotNetCoreX64Args: ${{ variables.NugetArtifact }} netcoreapp2.1 x64 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
+      DotNetCoreX86Args: ${{ variables.NugetArtifact }} netcoreapp2.1 x86 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
+      DotNetFrameworkX64Args: ${{ variables.NugetArtifact }} net461 x64 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
+      DotNetFrameworkX86Args: ${{ variables.NugetArtifact }} net461 x86 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
 
   steps:
   - task: UsePythonVersion@0
@@ -54,40 +54,18 @@ jobs:
       filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
       arguments: 'amd64'
       modifyEnvironment: true
-
-  - task: DownloadPipelineArtifact@2
+  
+  - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact'
     inputs:
-      source: 'specific'
-      project: 'Lotus'
-      pipeline: '963'
-      runVersion: 'specific'
-      runId: '163134'
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
 
-  - task: DownloadPipelineArtifact@2
+  - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - testdata'
     inputs:
-      source: 'specific'
-      project: 'Lotus'
-      pipeline: '963'
-      runVersion: 'specific'
-      runId: '163134'
       artifactName: 'drop-nuget'
       targetPath: '$(Build.BinariesDirectory)\testdata'
-  
-  #- task: DownloadPipelineArtifact@0
-    #displayName: 'Download Pipeline Artifact'
-    #inputs:
-      #artifactName: 'drop-signed-nuget'
-      #targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
-
-  #- task: DownloadPipelineArtifact@0
-    #displayName: 'Download Pipeline Artifact - testdata'
-    #inputs:
-      #artifactName: 'drop-nuget'
-      #targetPath: '$(Build.BinariesDirectory)\testdata'
 
   - template: get-nuget-package-version-as-variable.yml
     parameters:
@@ -102,14 +80,14 @@ jobs:
 
   - script: |
      @echo "Running Runtest.bat"
-     ${{ variables.RunTestScript }} ${{ variables.NetCoreX64Args}}
+     ${{ variables.RunTestScript }} ${{ variables.DotNetCoreX64Args}}
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .Net Core x64'
 
   - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
       - script: |
          @echo "Running Runtest.bat"
-         ${{ variables.RunTestScript }} ${{ variables.NetCoreX86Args}}
+         ${{ variables.RunTestScript }} ${{ variables.DotNetCoreX86Args}}
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
         displayName: 'Run End to End Test (C#) .Net Core x86'
 
@@ -117,14 +95,14 @@ jobs:
 
   - script: |
      @echo "Running Runtest.bat"
-     ${{ variables.RunTestScript }} ${{ variables.NetFrameworkX64Args}}
+     ${{ variables.RunTestScript }} ${{ variables.DotNetFrameworkX64Args}}
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .NetFramework x64'
 
   - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
       - script: |
          @echo "Running Runtest.bat"
-         ${{ variables.RunTestScript }} ${{ variables.NetFrameworkX86Args}}
+         ${{ variables.RunTestScript }} ${{ variables.DotNetFrameworkX86Args}}
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
         displayName: 'Run End to End Test (C#) .NetFramework x86'
         enabled: false

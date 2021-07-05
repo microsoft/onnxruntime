@@ -151,46 +151,62 @@ jobs:
     AgentPool : 'Onnxruntime-Linux-GPU'
     TestGPU : 'true'
 
-#- job: Publish_NuGet_Package_And_Report
-  #workspace:
-    #clean: all
-  #pool: 'Win-CPU-2021'
-  #variables:
-  #- name: GDN_CODESIGN_TARGETDIRECTORY
-    #value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
-  #condition: and (succeeded(), and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
-  #dependsOn:
-  #- NuGet_Test_Win
-  #- NuGet_Test_Linux
-  #steps:
-  #- template: ../../templates/set-version-number-variables-step.yml
+- job: Publish_NuGet_Package_And_Report
+  workspace:
+    clean: all
+  pool: 'Win-CPU-2021'
+  variables:
+  - name: GDN_CODESIGN_TARGETDIRECTORY
+    value: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
+  condition: and (succeeded(), and (${{ parameters.DoEsrp }}, eq(variables['Build.SourceBranch'], 'refs/heads/master')))
+  dependsOn:
+  - NuGet_Test_Win
+  - NuGet_Test_Linux
+  steps:
+  - template: ../../templates/set-version-number-variables-step.yml
 
-  #- task: DownloadPipelineArtifact@0
-    #displayName: 'Download Pipeline Artifact - Signed NuGet Package'
-    #inputs:
-      #artifactName: 'drop-signed-nuget'
-      #targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - Signed NuGet Package'
+    inputs:
+      artifactName: 'drop-signed-nuget'
+      targetPath: $(Build.BinariesDirectory)/nuget-artifact/final-package
 
-  #- template: get-nuget-package-version-as-variable.yml
-    #parameters:
-      #packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
+  - template: get-nuget-package-version-as-variable.yml
+    parameters:
+      packageFolder: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
 
-  #- task: DotNetCoreCLI@2
-    #displayName: 'Copy Signed Native NuGet Package to Internal NuGet Feed'
-    #condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
-    #inputs:
-      #command: 'push'
-      #searchPatternPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.TensorRT.$(NuGetPackageVersionNumber).nupkg'
-      #feedPublish: 'OnnxRuntime'
+  - task: DotNetCoreCLI@2
+    displayName: 'Copy Signed Native NuGet Package to Internal NuGet Feed'
+    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
+    inputs:
+      command: 'push'
+      searchPatternPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.TensorRT.$(NuGetPackageVersionNumber).nupkg'
+      feedPublish: 'OnnxRuntime'
 
-  #- task: NuGetCommand@2
-    #displayName: 'Copy Signed Native NuGet Package to ORT-NIGHTLY'
-    #condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
-    #inputs:
-      #command: 'push'
-      #packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.TensorRT.$(NuGetPackageVersionNumber).nupkg'
-      #publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
+  - task: DotNetCoreCLI@2
+    displayName: 'Copy Signed Managed NuGet Package to Internal NuGet Feed'
+    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
+    inputs:
+      command: 'push'
+      searchPatternPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.Managed.$(NuGetPackageVersionNumber).nupkg'
+      feedPublish: 'OnnxRuntime'
 
-  #- template: ../../templates/component-governance-component-detection-steps.yml
-    #parameters :
-      #condition : 'always'
+  - task: NuGetCommand@2
+    displayName: 'Copy Signed Native NuGet Package to ORT-NIGHTLY'
+    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
+    inputs:
+      command: 'push'
+      packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.TensorRT.$(NuGetPackageVersionNumber).nupkg'
+      publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
+
+  - task: NuGetCommand@2
+    displayName: 'Copy Signed Managed NuGet Package to ORT-NIGHTLY'
+    condition: ne(variables['IsReleaseBuild'], 'true') # release build has a different package naming scheme
+    inputs:
+      command: 'push'
+      packagesToPush: '$(Build.BinariesDirectory)/nuget-artifact/final-package/Microsoft.ML.OnnxRuntime.Managed.$(NuGetPackageVersionNumber).nupkg'
+      publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
+
+  - template: ../../templates/component-governance-component-detection-steps.yml
+    parameters :
+      condition : 'always'
