@@ -129,6 +129,7 @@ static void TestBatchNormInternal(bool test_double = false, bool T_is_half = fal
            {kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
+#ifdef USE_CUDA
 TEST(CudaKernelTest, BNInternalBasic) { // float case
   TestBatchNormInternal();
 }
@@ -186,6 +187,7 @@ TEST(CudaKernelTest, BNInternal1DInput) { // float case, 1d input
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kCpuExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
+#endif // USE_CUDA
 
 }  // namespace test
 } // namespace contrib
