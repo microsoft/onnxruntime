@@ -239,14 +239,28 @@ stages:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_rocm
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: >-
+            --build-arg TORCH_VERSION=1.8.1
             --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
             --build-arg BUILD_UID=$(id -u)
             --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
             --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-9/root 
             --build-arg PREPEND_PATH=/opt/rh/devtoolset-9/root/usr/bin: 
             --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-9/root/usr/lib64:/opt/rh/devtoolset-9/root/usr/lib:/opt/rh/devtoolset-9/root/usr/lib64/dyninst:/opt/rh/devtoolset-9/root/usr/lib/dyninst:/usr/local/lib64
-          Repository: onnxruntimetrainingrocmbuild
- 
+          Repository: onnxruntimetrainingrocmbuild-torch1.8.1
+       - template: get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_rocm
+          Context: tools/ci_build/github/linux/docker
+          DockerBuildArgs: >-
+            --build-arg TORCH_VERSION=1.9.0
+            --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
+            --build-arg BUILD_UID=$(id -u)
+            --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
+            --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-9/root 
+            --build-arg PREPEND_PATH=/opt/rh/devtoolset-9/root/usr/bin: 
+            --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-9/root/usr/lib64:/opt/rh/devtoolset-9/root/usr/lib:/opt/rh/devtoolset-9/root/usr/lib64/dyninst:/opt/rh/devtoolset-9/root/usr/lib/dyninst:/usr/local/lib64
+          Repository: onnxruntimetrainingrocmbuild-torch1.9.0
+
     - job: ROCM_training_wheels
       timeoutInMinutes: 180
       displayName: 'Build ROCm wheels (inside container)'
@@ -303,11 +317,10 @@ stages:
               --volume $(Build.BinariesDirectory):/build \
               --workdir /onnxruntime_src \
               --entrypoint $(PythonManylinuxDir)/bin/python3 \
-              -e NVIDIA_VISIBLE_DEVICES=all \
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
               --user onnxruntimedev \
-              onnxruntimetrainingrocmbuild \
+              onnxruntimetrainingrocmbuild-torch$(TorchVersion) \
                 /onnxruntime_src/tools/ci_build/build.py \
                   --config Release \
                   --use_rocm \
@@ -362,7 +375,7 @@ stages:
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
             --user onnxruntimedev \
-            onnxruntimetrainingrocmbuild \
+            onnxruntimetrainingrocmbuild-torch$(TorchVersion) \
                /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh
         displayName: 'Run onnxruntime unit tests (in container)'
       
@@ -385,7 +398,7 @@ stages:
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
             --user onnxruntimedev \
-            onnxruntimetrainingrocmbuild \
+            onnxruntimetrainingrocmbuild-torch$(TorchVersion) \
               orttraining/tools/ci_test/run_batch_size_test.py \
                 --binary_dir /build/Release \
                 --model_root training_e2e_test_data/models \
@@ -412,7 +425,7 @@ stages:
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
             --user onnxruntimedev \
-            onnxruntimetrainingrocmbuild \
+            onnxruntimetrainingrocmbuild-torch$(TorchVersion) \
               orttraining/tools/ci_test/run_bert_perf_test.py \
                 --binary_dir /build/Release \
                 --model_root training_e2e_test_data/models \
@@ -440,7 +453,7 @@ stages:
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
             --user onnxruntimedev \
-            onnxruntimetrainingrocmbuild \
+            onnxruntimetrainingrocmbuild-torch$(TorchVersion) \
               orttraining/tools/ci_test/run_convergence_test.py \
                 --binary_dir /build/Release \
                 --model_root training_e2e_test_data/models \
@@ -479,7 +492,7 @@ stages:
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
               -e PythonManylinuxDir=$(PythonManylinuxdir) \
-              onnxruntimetrainingrocmbuild \
+              onnxruntimetrainingrocmbuild-torch$(TorchVersion) \
                 /onnxruntime_src/tools/ci_build/github/pai/wrap_rocm_python_doc_publisher.sh
           workingDirectory: $(Build.SourcesDirectory)
 
