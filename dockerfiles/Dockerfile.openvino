@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 #--------------------------------------------------------------------------
 
-ARG OPENVINO_VERSION=2021.3
+ARG OPENVINO_VERSION=2021.4
 
 # Build stage
 FROM openvino/ubuntu18_runtime:${OPENVINO_VERSION} AS builder
@@ -14,13 +14,14 @@ ENV DEBIAN_FRONTEND noninteractive
 
 ARG DEVICE=CPU_FP32 
 ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
-ARG ONNXRUNTIME_BRANCH=master
+ARG ONNXRUNTIME_BRANCH=v1.8.0
 
 ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/share
 ENV ngraph_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/ngraph/cmake
 
 USER root
-RUN apt update; apt install -y git protobuf-compiler libprotobuf-dev
+RUN apt update; apt install -y git protobuf-compiler libprotobuf-dev unattended-upgrades && \
+    unattended-upgrade
 RUN git clone --recursive -b ${ONNXRUNTIME_BRANCH} ${ONNXRUNTIME_REPO} 
 RUN /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh
 RUN ln -s cmake-* cmake-dir
@@ -36,6 +37,8 @@ FROM openvino/ubuntu18_runtime:${OPENVINO_VERSION}
 ENV DEBIAN_FRONTEND noninteractive
 
 USER root
+COPY --from=builder /home/openvino/onnxruntime/build/Linux/Release/dist/*.whl ./
+RUN python3 -m pip install ./*.whl && rm ./*.whl
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
 RUN adduser --uid $BUILD_UID $BUILD_USER
@@ -46,5 +49,3 @@ USER ${BUILD_USER}
 ENV PATH=${WORKDIR_PATH}/miniconda/bin:${WORKDIR_PATH}/cmake-dir/bin:$PATH
 ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64
 ENV LD_LIBRARY_PATH=/opt/intel/opencl:${INTEL_OPENVINO_DIR}/inference_engine/external/gna/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/mkltiny_lnx/lib:$INTEL_OPENVINO_DIR/deployment_tools/ngraph/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/omp/lib:${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/lib:${IE_PLUGINS_PATH}:${LD_LIBRARY_PATH}
-COPY --from=builder /home/openvino/onnxruntime/build/Linux/Release/dist/*.whl ./
-RUN python3 -m pip install ./*.whl && rm ./*.whl
