@@ -11,8 +11,7 @@ variables:
   TESTONGPU: 'ON'
 
 jobs: 
-- template: templates/test_win.yml
+- template: templates/gpu-tensorrt.yml
   parameters:
     AgentPool : 'onnxruntime-gpu-winbuild'
     DoEsrp: 'true'
-    SharedEps: TensorRT 

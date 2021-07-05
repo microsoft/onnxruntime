@@ -1,6 +1,7 @@
 parameters:
   AgentPool : 'Win-CPU'
   Skipx86Tests: 'false'
+  EnvSetupScript: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_cuda_11.bat'
 
 jobs:
 - job: NuGet_Test_Win
@@ -8,13 +9,12 @@ jobs:
     clean: all
   pool: ${{ parameters.AgentPool }}
   dependsOn:
-  #- NuGet_Packaging
+  - NuGet_Packaging
   condition: succeeded()
   variables:
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     SKIPNONPACKAGETESTS: 'ON'
     runCodesignValidationInjection: false
-    EnvSetupScript: setup_env_trt.bat
     NugetArtifact: $(Build.BinariesDirectory)\nuget-artifact
     ${{ if eq(parameters.SharedEps, '') }}:
       RunTestScript: test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat
@@ -44,7 +44,7 @@ jobs:
   - task: BatchScript@1
     displayName: 'setup env'
     inputs:
-      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_trt.bat'
+      filename: ${{ parameters.EnvSetupScript }} 
       modifyEnvironment: true
       workingFolder: '$(Build.BinariesDirectory)'
 
