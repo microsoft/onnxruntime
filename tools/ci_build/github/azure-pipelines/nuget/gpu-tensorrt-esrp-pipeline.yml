@@ -15,4 +15,4 @@ jobs:
   parameters:
     AgentPool : 'onnxruntime-gpu-winbuild'
     DoEsrp: 'true'
-    SharedEps: TENSORRT 
+    SharedEps: TensorRT 
