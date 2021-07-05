@@ -13,11 +13,11 @@ jobs:
     SKIPNONPACKAGETESTS: 'ON'
     runCodesignValidationInjection: false
     EnvSetupScript: setup_env_trt.bat
-  ${{ if eq(${{ parameters.SharedEps }}, '') }}:
+  ${{ if eq(parameters.SharedEps, '') }}:
     RunTestScript: runtest.bat
     RunTestScriptX64Args: $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x64 $(NuGetPackageVersionNumber)
     RunTestScriptX86Args: $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x86 $(NuGetPackageVersionNumber)
-  ${{ if ne(${{ parameters.SharedEps }}, '') }}:
+  ${{ if ne(parameters.SharedEps, '') }}:
     RunTestScript: runtest_shared_ep.bat
     RunTestScriptX64Args: $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x64 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
     RunTestScriptX86Args: $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x86 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
