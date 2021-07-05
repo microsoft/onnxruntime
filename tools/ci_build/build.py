@@ -350,6 +350,11 @@ def parse_arguments():
     parser.add_argument(
         "--emsdk_version", default="2.0.23", help="Specify version of emsdk")
 
+    # Enable onnxruntime-extensions
+    parser.add_argument(
+        "--enable_onnxruntime_extensions", action='store_true',
+        help="Enable custom operators in onnxruntime-extensions")
+
     # Arguments needed by CI
     parser.add_argument(
         "--cmake_path", default="cmake", help="Path to the CMake program.")
@@ -668,11 +673,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         # of them to get the best compatibility.
         "-DPython_EXECUTABLE=" + sys.executable,
         "-DPYTHON_EXECUTABLE=" + sys.executable,
-        "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
-        "-Donnxruntime_CUDA_VERSION=" + (args.cuda_version if args.use_cuda else ""),
         "-Donnxruntime_ROCM_VERSION=" + (args.rocm_version if args.use_rocm else ""),
-        "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
-        "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
         "-Donnxruntime_USE_FEATURIZERS=" + ("ON" if args.use_featurizers else "OFF"),
         "-Donnxruntime_USE_MIMALLOC_STL_ALLOCATOR=" + (
             "ON" if args.use_mimalloc == "stl" or args.use_mimalloc == "all" else "OFF"),
@@ -759,8 +760,13 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
+        # enable custom operators in onnxruntime-extensions
+        "-Donnxruntime_ENABLE_EXTENSION_CUSTOM_OPS=" + ("ON" if args.enable_onnxruntime_extensions else "OFF"),
     ]
-
+    if args.use_cuda:
+        cmake_args += ["-Donnxruntime_USE_CUDA=ON", "-Donnxruntime_CUDA_VERSION=" + args.cuda_version,
+                       "-Donnxruntime_CUDA_HOME="+cudnn_home,
+                       "-Donnxruntime_CUDNN_HOME="+cudnn_home]
     if args.enable_msvc_static_runtime:
         cmake_args += ["-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>",
                        "-DONNX_USE_MSVC_STATIC_RUNTIME=ON",
@@ -1516,11 +1522,16 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'quantization'],
                                    cwd=cwd, dll_path=dll_path)
                     if args.enable_transformers_tool_test:
-                        required = {
-                            'numpy==1.19.2', 'coloredlogs==15.0', 'tf2onnx==1.8.5', 'transformers==4.6.1',
-                            'torch==1.8.1', 'tensorflow==2.5.0', 'onnxconverter-common==1.8.1', 'psutil'}
-                        run_subprocess([sys.executable, '-m', 'pip', 'install', *required])
+                        import numpy
+                        numpy_init_version = numpy.__version__
+                        run_subprocess([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'],
+                                       cwd=SCRIPT_DIR)
                         run_subprocess([sys.executable, '-m', 'pytest', 'transformers'], cwd=cwd)
+                        # Restore initial environment
+                        run_subprocess([sys.executable, '-m', 'pip', 'uninstall', '-r', 'requirements.txt', '-y'],
+                                       cwd=SCRIPT_DIR)
+                        # Restore initial numpy version in case other tests use it
+                        run_subprocess([sys.executable, '-m', 'pip', 'install', 'numpy==' + numpy_init_version])
 
                 if not args.disable_ml_ops:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_backend_mlops.py'],
@@ -1587,16 +1598,6 @@ def build_python_wheel(
         args = [sys.executable, os.path.join(source_dir, 'setup.py'),
                 'bdist_wheel']
 
-        # We explicitly override the platform tag in the name of the generated build wheel
-        # so that we can install the wheel on Mac OS X versions 10.12+.
-        # Without this explicit override, we will something like this while building on MacOS 10.14 -
-        # [WARNING] MACOSX_DEPLOYMENT_TARGET is set to a lower value (10.12)
-        # than the version on which the Python interpreter was compiled (10.14) and will be ignored.
-        # Since we need to support 10.12+, we explicitly override the platform tag.
-        # See PR #3626 for more details
-        if is_macOS():
-            args += ['-p', 'macosx_10_12_x86_64']
-
         # Any combination of the following arguments can be applied
         if nightly_build:
             args.append('--nightly_build')
@@ -1613,7 +1614,8 @@ def build_python_wheel(
         if use_tensorrt:
             args.append('--use_tensorrt')
         elif use_cuda:
-            args.append('--use_cuda')
+            # The following line assumes no other EP is enabled
+            args.append('--wheel_name_suffix=gpu')
             if cuda_version:
                 args.append('--cuda_version={}'.format(cuda_version))
         elif use_rocm:

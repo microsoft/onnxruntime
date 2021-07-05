@@ -64,7 +64,7 @@ public class MNISTDataHandler extends ReactContextBaseJavaModule {
   @ReactMethod
   public void getLocalModelPath(Promise promise) {
     try {
-      String modelPath = copyFile(reactContext, "mnist.onnx");
+      String modelPath = copyFile(reactContext, "mnist.ort");
       promise.resolve(modelPath);
     } catch (Exception e) {
       promise.reject("Can't get a mdoel", e);
@@ -111,7 +111,6 @@ public class MNISTDataHandler extends ReactContextBaseJavaModule {
   // returns cooked data formatted as input of a model by promise.
   private WritableMap preprocess(String uri) throws Exception {
     final int batchSize = 1;
-    final int channelSize = 1;
     final int imageHeight = 28;
     final int imageWidth = 28;
 
@@ -127,8 +126,7 @@ public class MNISTDataHandler extends ReactContextBaseJavaModule {
     // Resize bitmap to 28x28
     bitmap = Bitmap.createScaledBitmap(bitmap, imageWidth, imageHeight, false);
 
-    ByteBuffer imageByteBuffer =
-        ByteBuffer.allocate(imageHeight * imageWidth * channelSize * 4).order(ByteOrder.nativeOrder());
+    ByteBuffer imageByteBuffer = ByteBuffer.allocate(imageHeight * imageWidth * 4).order(ByteOrder.nativeOrder());
     FloatBuffer imageFloatBuffer = imageByteBuffer.asFloatBuffer();
     for (int h = 0; h < imageHeight; ++h) {
       for (int w = 0; w < imageWidth; ++w) {
@@ -145,7 +143,6 @@ public class MNISTDataHandler extends ReactContextBaseJavaModule {
 
     WritableArray dims = Arguments.createArray();
     dims.pushInt(batchSize);
-    dims.pushInt(channelSize);
     dims.pushInt(imageHeight);
     dims.pushInt(imageWidth);
     inputTensorMap.putArray("dims", dims);
@@ -158,7 +155,7 @@ public class MNISTDataHandler extends ReactContextBaseJavaModule {
     String data = Base64.encodeToString(imageByteBuffer.array(), Base64.DEFAULT);
     inputTensorMap.putString("data", data);
 
-    inputDataMap.putMap("Input3", inputTensorMap);
+    inputDataMap.putMap("flatten_2_input", inputTensorMap);
 
     return inputDataMap;
   }
@@ -167,7 +164,7 @@ public class MNISTDataHandler extends ReactContextBaseJavaModule {
   private WritableMap postprocess(ReadableMap result) throws Exception {
     String detectionResult = "";
 
-    ReadableMap outputTensor = result.getMap("Plus214_Output_0");
+    ReadableMap outputTensor = result.getMap("Identity");
 
     String outputData = outputTensor.getString("data");
     FloatBuffer buffer =
@@ -177,24 +174,16 @@ public class MNISTDataHandler extends ReactContextBaseJavaModule {
       dataArray.add((double)buffer.get());
     }
 
-    final double max = Collections.max(dataArray);
-    double total = 0.0f;
-    for (int i = 0; i < dataArray.size(); ++i) {
-      dataArray.set(i, Math.exp((double)dataArray.get(i) - max));
-      total += dataArray.get(i);
-    }
-    double[] softmax = new double[dataArray.size()];
     int argmax = 0;
     double maxValue = 0;
     for (int i = 0; i < dataArray.size(); ++i) {
-      softmax[i] = dataArray.get(i) / total;
-      if (softmax[i] > maxValue) {
-        maxValue = softmax[i];
+      if (dataArray.get(i) > maxValue) {
+        maxValue = dataArray.get(i);
         argmax = i;
       }
     }
 
-    if (max == 0) {
+    if (maxValue == 0) {
       detectionResult = "No match";
     } else {
       detectionResult = "I guess, it's " + argmax;

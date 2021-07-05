@@ -50,7 +50,6 @@ def test_GeLU():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -93,7 +92,6 @@ def test_MegatronF():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -189,7 +187,6 @@ def test_InplaceUpdateInputAsOutputNotRequireGrad():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -238,7 +235,6 @@ def test_InplaceUpdateInputNotAsOutputNotRequireGrad():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -293,7 +289,6 @@ def test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -340,7 +335,6 @@ def test_InplaceUpdateInputAsOutputRequireGrad():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -396,7 +390,6 @@ def test_InplaceUpdateInputNotAsOutputRequireGrad():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -454,7 +447,6 @@ def test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -501,7 +493,6 @@ def test_EvalTest():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -566,7 +557,6 @@ def test_TwoOutputFunction():
                 device=torch.cuda.current_device(),
                 dtype=torch.float))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -632,7 +622,6 @@ def test_InnerModuleCall():
             self.use_ort = use_ort
             self.bias = Parameter(torch.FloatTensor([1.0] * dim).to(device))
 
-            # Always initialize bias to zero.
             with torch.no_grad():
                 self.bias.uniform_()
 
@@ -660,3 +649,57 @@ def test_InnerModuleCall():
     result_ort = get_inner_module_call_result(x.detach(), 'cpu', True)
     result_pth = get_inner_module_call_result(x.detach(), 'cpu', False)
     compare_tensor_list(result_ort, result_pth)
+
+
+def test_Share_Input():
+    class TwoOutputFunction(torch.autograd.Function):
+        @staticmethod
+        # bias is an optional argument
+        def forward(ctx, x, y):
+            ctx.save_for_backward(x, y)
+            w = x + y
+            z = x * y
+            return w, z
+
+        @staticmethod
+        def backward(ctx, dw, dz):
+            x, y = ctx.saved_tensors
+            dx = dw * 1.0 + dz * y
+            dy = dw * 1.0 + dz * x
+            return dx, dy
+
+    class TwoOutputModel(torch.nn.Module):
+        def __init__(self, output_size):
+            super(TwoOutputModel, self).__init__()
+            self.fun = TwoOutputFunction.apply
+            self.bias = Parameter(torch.empty(
+                output_size,
+                device=torch.cuda.current_device(),
+                dtype=torch.float))
+
+            with torch.no_grad():
+                self.bias.uniform_()
+
+        def forward(self, x):
+            a, b = self.fun(x, self.bias)
+            c, d = self.fun(x, self.bias)
+            return a + b + c + d
+
+    output_size = 2
+
+    def model_builder():
+        return TwoOutputModel(output_size)
+
+    def input_generator():
+        return torch.randn(output_size, dtype=torch.float)
+
+    def input_generator_with_requires_grad():
+        return torch.randn(output_size, dtype=torch.float).requires_grad_()
+
+    # generate a label that have same shape as forward output.
+    label_input = torch.ones([output_size])
+
+    # Test multi-input and multi-output custom function.
+    run_training_test_and_compare(model_builder, input_generator, label_input)
+
+    run_training_test_and_compare(model_builder, input_generator_with_requires_grad, label_input)

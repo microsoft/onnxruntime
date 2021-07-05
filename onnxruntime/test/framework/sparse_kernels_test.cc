@@ -347,13 +347,13 @@ class SparseTensorTests : public testing::Test {
     node.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
   }
 
-  MLValue Constant(const std::vector<int64_t>& elts) {
+  OrtValue Constant(const std::vector<int64_t>& elts) {
     const std::vector<int64_t> shape{static_cast<int64_t>(elts.size())};
     return Constant(elts, shape);
   }
 
-  MLValue Constant(const std::vector<int64_t>& elts, const std::vector<int64_t>& shape) {
-    MLValue mlvalue;
+  OrtValue Constant(const std::vector<int64_t>& elts, const std::vector<int64_t>& shape) {
+    OrtValue mlvalue;
     CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), shape, elts, &mlvalue);
     return mlvalue;
   }
@@ -368,7 +368,7 @@ class SparseTensorTests : public testing::Test {
     feeds[arg->Name()] = Constant(value, shape);
   }
 
-  void ExpectEq(MLValue val1, MLValue val2) {
+  void ExpectEq(OrtValue val1, OrtValue val2) {
     // Restricted to case where val1 and val2 are int64_t tensors
     auto& tensor1 = val1.Get<Tensor>();
     auto& tensor2 = val2.Get<Tensor>();
@@ -380,7 +380,7 @@ class SparseTensorTests : public testing::Test {
     }
   }
 
-  void ExpectEq(MLValue val1, const std::vector<int64_t>& data2) {
+  void ExpectEq(OrtValue val1, const std::vector<int64_t>& data2) {
     // Restricted to case where val1 is an int64_t tensor
     auto& tensor1 = val1.Get<Tensor>();
     EXPECT_EQ(static_cast<uint64_t>(tensor1.Shape().Size()), data2.size());
@@ -391,7 +391,7 @@ class SparseTensorTests : public testing::Test {
   }
 
   std::vector<std::string> output_names;
-  std::vector<MLValue> expected_output;
+  std::vector<OrtValue> expected_output;
 
   void ExpectOutput(NodeArg* arg, const std::vector<int64_t>& value) {
     output_names.push_back(arg->Name());
@@ -400,7 +400,7 @@ class SparseTensorTests : public testing::Test {
 
   void RunTest() {
     RunOptions run_options;
-    std::vector<MLValue> fetches;
+    std::vector<OrtValue> fetches;
 
     EXPECT_TRUE(session_object.Run(run_options, feeds, output_names, &fetches).IsOK());
 

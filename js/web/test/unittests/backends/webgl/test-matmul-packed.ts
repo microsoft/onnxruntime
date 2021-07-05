@@ -7,6 +7,7 @@ import {env} from 'onnxruntime-common';
 import {Backend, InferenceHandler, resolveBackend, SessionHandler} from '../../../../lib/onnxjs/backend';
 import {WebGLInferenceHandler} from '../../../../lib/onnxjs/backends/webgl/inference-handler';
 import {WebGLMatMulPacked} from '../../../../lib/onnxjs/backends/webgl/ops/matmul-pack';
+import {TextureData} from '../../../../lib/onnxjs/backends/webgl/types';
 import {Profiler} from '../../../../lib/onnxjs/instrument';
 import {Tensor} from '../../../../lib/onnxjs/tensor';
 import {ShapeUtil} from '../../../../lib/onnxjs/util';
@@ -129,6 +130,19 @@ function getTestData(): TestData[] {
       rawInputA: new Float32Array([1, 2, 4, 5, 3, 0, 6, 0, 1, 2, 4, 5, 3, 0, 6, 0]),
       rawInputB: new Float32Array([1, 2, 3, 4, 5, 6, 0, 0]),
     },
+    {
+      elementCountA: 12,
+      elementCountB: 6,
+      inputShapeA: [1, 2, 2, 3],
+      inputShapeB: [1, 1, 1, 3, 2],
+      outputShape: [1, 1, 2, 2, 2],
+      inputTextureShapeA: [2, 2],
+      inputTextureShapeB: [1, 2],
+      outputTextureShape: [2, 1],
+      expectedOutput: new Float32Array([22, 28, 49, 64, 22, 28, 49, 64]),
+      rawInputA: new Float32Array([1, 2, 4, 5, 3, 0, 6, 0, 1, 2, 4, 5, 3, 0, 6, 0]),
+      rawInputB: new Float32Array([1, 2, 3, 4, 5, 6, 0, 0]),
+    },
   ];
 }
 
@@ -173,6 +187,9 @@ describe('#UnitTest# - packed matmul - Tensor matmul', () => {
       const inputDataB = createAscendingArray(elementCountB);
       const inputTensorA = new Tensor(inputTensorShapeA, 'float32', undefined, undefined, inputDataA);
       const inputTensorB = new Tensor(inputTensorShapeB, 'float32', undefined, undefined, inputDataB);
+      const biasTensor = testData.biasValue ?
+          new Tensor([1], 'float32', undefined, undefined, new Float32Array([testData.biasValue])) :
+          undefined;
 
       // manually creat packed texture from inputTensor, and insert in cache
       const gl = webglInferenceHandler.session.textureManager.glContext.gl;
@@ -184,6 +201,12 @@ describe('#UnitTest# - packed matmul - Tensor matmul', () => {
       const webglTextureB = createTextureFromArray(
           webglInferenceHandler.session.textureManager.glContext, testData.rawInputB ? testData.rawInputB : inputDataB,
           gl.RGBA, inputTextureShapeB[0], inputTextureShapeB[1]);
+
+      const webglTextureBias = biasTensor && testData.biasValue ?
+          createTextureFromArray(
+              webglInferenceHandler.session.textureManager.glContext, new Float32Array([testData.biasValue, 0, 0, 0]),
+              gl.RGBA, 1, 1) :
+          undefined;
 
       webglInferenceHandler.session.textureManager.glContext.checkError();
       const packedShapeA = inputTextureShapeA;
@@ -212,15 +235,25 @@ describe('#UnitTest# - packed matmul - Tensor matmul', () => {
         texture: webglTextureB!
       };
 
+      const packedShapeBias = [1];
       webglInferenceHandler.setTextureData(inputTensorA.dataId, textureDataA, true);
       webglInferenceHandler.setTextureData(inputTensorB.dataId, textureDataB, true);
+      if (biasTensor && webglTextureBias) {
+        const textureDataBias: TextureData = {
+          width: 1,
+          height: 1,
+          channels: 4 as const,
+          isPacked: true,
+          shape: packedShapeBias,
+          strides: ShapeUtil.computeStrides(packedShapeBias),
+          unpackedShape: [1],
+          tensor: biasTensor,
+          texture: webglTextureBias
+        };
 
-      const inputList = testData.biasValue ?
-          [
-            inputTensorA, inputTensorB,
-            new Tensor([1], 'float32', undefined, undefined, new Float32Array([testData.biasValue]))
-          ] :
-          [inputTensorA, inputTensorB];
+        webglInferenceHandler.setTextureData(biasTensor.dataId, textureDataBias, true);
+      }
+      const inputList = biasTensor ? [inputTensorA, inputTensorB, biasTensor] : [inputTensorA, inputTensorB];
 
       // compile shader code
       const programInfo = op.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, inputList);
@@ -237,14 +270,20 @@ describe('#UnitTest# - packed matmul - Tensor matmul', () => {
       // verify result.
       const expectedOutput = testData.expectedOutput;
       expect(result).to.not.equal(null);
-      let batchMultiplier = 1;
+      let batchMultiplierA = 1;
+      let batchMultiplierB = 1;
+
       if (testData.inputShapeA.length > 2) {
-        batchMultiplier = testData.inputShapeA[0];
+        for (let i = 0; i < testData.inputShapeA.length - 2; i++) {
+          batchMultiplierA *= testData.inputShapeA[i];
+        }
       }
       if (testData.inputShapeB.length > 2) {
-        batchMultiplier = Math.max(batchMultiplier, testData.inputShapeB[0]);
+        for (let i = 0; i < testData.inputShapeB.length - 2; i++) {
+          batchMultiplierB *= testData.inputShapeB[i];
+        }
       }
-
+      const batchMultiplier = Math.max(batchMultiplierA, batchMultiplierB);
       expect(result).to.have.lengthOf(
           batchMultiplier * testData.inputShapeA[testData.inputShapeA.length - 2] *
           testData.inputShapeB[testData.inputShapeB.length - 1]);

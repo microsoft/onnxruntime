@@ -3,8 +3,9 @@
 
 #import "OnnxruntimeModule.h"
 #import "TensorHelper.h"
-#import "onnxruntime_cxx_api.h"
+
 #import <XCTest/XCTest.h>
+#import <onnxruntime/onnxruntime_cxx_api.h>
 
 @interface OnnxruntimeModuleTest : XCTestCase
 
@@ -14,7 +15,7 @@
 
 - (void)testOnnxruntimeModule {
   NSBundle *bundle = [NSBundle bundleForClass:[OnnxruntimeModuleTest class]];
-  NSString *dataPath = [bundle pathForResource:@"test_types_FLOAT" ofType:@"pb"];
+  NSString *dataPath = [bundle pathForResource:@"test_types_float" ofType:@"ort"];
 
   OnnxruntimeModule *onnxruntimeModule = [OnnxruntimeModule new];
 

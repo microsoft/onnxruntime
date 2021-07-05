@@ -5,7 +5,7 @@
 #define TensorHelper_h
 
 #import <Foundation/Foundation.h>
-#import "onnxruntime_cxx_api.h"
+#import <onnxruntime/onnxruntime_cxx_api.h>
 
 @interface TensorHelper : NSObject
 
