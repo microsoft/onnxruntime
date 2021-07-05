@@ -124,7 +124,7 @@ jobs:
   - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
       - script: |
          @echo "Running Runtest.bat"
-        ${{ variables.RunTestScript }} ${{ variables.NetFrameworkX86Args}}
+         ${{ variables.RunTestScript }} ${{ variables.NetFrameworkX86Args}}
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
         displayName: 'Run End to End Test (C#) .NetFramework x86'
         enabled: false
