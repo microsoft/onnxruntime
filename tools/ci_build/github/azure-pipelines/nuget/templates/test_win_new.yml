@@ -9,14 +9,18 @@ jobs:
   pool: ${{ parameters.AgentPool }}
   condition: succeeded()
   variables:
-  - name: OnnxRuntimeBuildDirectory
-    value: '$(Build.BinariesDirectory)'
-  - name: SKIPNONPACKAGETESTS
-    value: 'ON'
-  - name: runCodesignValidationInjection
-    value: false
-  - name: EnvSetupScript
-    value: setup_env_trt.bat
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+    SKIPNONPACKAGETESTS: 'ON'
+    runCodesignValidationInjection: false
+    EnvSetupScript: setup_env_trt.bat
+  ${{ if eq(${{ parameters.SharedEps }}, '') }}:
+    RunTestScript: runtest.bat
+    RunTestScriptX64Args: $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x64 $(NuGetPackageVersionNumber)
+    RunTestScriptX86Args: $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x86 $(NuGetPackageVersionNumber)
+  ${{ if ne(${{ parameters.SharedEps }}, '') }}:
+    RunTestScript: runtest_shared_ep.bat
+    RunTestScriptX64Args: $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x64 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
+    RunTestScriptX86Args: $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x86 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
 
   steps:
   - task: UsePythonVersion@0
@@ -79,8 +83,7 @@ jobs:
 
   - script: |
      @echo "Running Runtest.bat"
-     #test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x64 $(NuGetPackageVersionNumber)
-     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest_shared_ep.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x64 $(NuGetPackageVersionNumber) "TensorRT"
+     ${{ parameters.RunTestScript }} ${{ parameters.RunTestScriptX64Args }}
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .Net Core x64'
 
@@ -96,7 +99,7 @@ jobs:
   - script: |
      @echo "Running Runtest.bat"
      #test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x64 $(NuGetPackageVersionNumber)
-     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest_shared_ep.bat $(Build.BinariesDirectory)\nuget-artifact net461 x64 $(NuGetPackageVersionNumber) "TensorRT"
+     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest_shared_ep.bat $(Build.BinariesDirectory)\nuget-artifact net461 x64 $(NuGetPackageVersionNumber) TensorRT
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .NetFramework x64'
 

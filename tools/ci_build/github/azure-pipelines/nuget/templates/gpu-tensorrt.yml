@@ -143,7 +143,7 @@ jobs:
   parameters:
     AgentPool : 'onnxruntime-gpu-winbuild'
     Skipx86Tests: 'true'
-    DotNetDefineConstants: 'USE_TENSORRT'
+    SharedEps: TENSORRT 
 
 - template: test_linux.yml
   parameters:
