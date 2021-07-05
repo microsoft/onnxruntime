@@ -14,11 +14,11 @@ jobs:
     runCodesignValidationInjection: false
     EnvSetupScript: setup_env_trt.bat
     ${{ if eq(parameters.SharedEps, '') }}:
-      RunTestScript: runtest.bat
+      RunTestScript: test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat
       RunTestScriptX64Args: $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x64 $(NuGetPackageVersionNumber)
       RunTestScriptX86Args: $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x86 $(NuGetPackageVersionNumber)
     ${{ if ne(parameters.SharedEps, '') }}:
-      RunTestScript: runtest_shared_ep.bat
+      RunTestScript: test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest_shared_ep.bat
       RunTestScriptX64Args: $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x64 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
       RunTestScriptX86Args: $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x86 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
 
