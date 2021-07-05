@@ -143,7 +143,7 @@ jobs:
   parameters:
     AgentPool : 'onnxruntime-gpu-winbuild'
     Skipx86Tests: 'true'
-    SharedEps: TENSORRT 
+    SharedEps: TensorRT 
 
 - template: test_linux.yml
   parameters:

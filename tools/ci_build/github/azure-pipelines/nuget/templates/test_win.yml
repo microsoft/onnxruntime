@@ -1,5 +1,5 @@
 parameters:
-  AgentPool : 'onnxruntime-gpu-winbuild'
+  AgentPool : 'Win-CPU'
   Skipx86Tests: 'false'
 
 jobs:
@@ -11,12 +11,23 @@ jobs:
   - NuGet_Packaging
   condition: succeeded()
   variables:
-  - name: OnnxRuntimeBuildDirectory
-    value: '$(Build.BinariesDirectory)'
-  - name: SKIPNONPACKAGETESTS
-    value: 'ON'
-  - name: runCodesignValidationInjection
-    value: false
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+    SKIPNONPACKAGETESTS: 'ON'
+    runCodesignValidationInjection: false
+    EnvSetupScript: setup_env_trt.bat
+    NugetArtifact: $(Build.BinariesDirectory)\nuget-artifact
+    ${{ if eq(parameters.SharedEps, '') }}:
+      RunTestScript: test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat
+      NetCoreX64Args: ${{ variables.NugetArtifact }} netcoreapp2.1 x64 $(NuGetPackageVersionNumber)
+      NetCoreX86Args: ${{ variables.NugetArtifact }} netcoreapp2.1 x86 $(NuGetPackageVersionNumber)
+      NetFrameworkX64Args: ${{ variables.NugetArtifact }} net461 x64 $(NuGetPackageVersionNumber)
+      NetFrameworkX86Args: ${{ variables.NugetArtifact }} net461 x86 $(NuGetPackageVersionNumber)
+    ${{ if ne(parameters.SharedEps, '') }}:
+      RunTestScript: test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest_shared_ep.bat
+      NetCoreX64Args: ${{ variables.NugetArtifact }} netcoreapp2.1 x64 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
+      NetCoreX86Args: ${{ variables.NugetArtifact }} netcoreapp2.1 x86 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
+      NetFrameworkX64Args: ${{ variables.NugetArtifact }} net461 x64 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
+      NetFrameworkX86Args: ${{ variables.NugetArtifact }} net461 x86 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
 
   steps:
   - task: UsePythonVersion@0
@@ -43,18 +54,40 @@ jobs:
       filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
       arguments: 'amd64'
       modifyEnvironment: true
-  
-  - task: DownloadPipelineArtifact@0
+
+  - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact'
     inputs:
+      source: 'specific'
+      project: 'Lotus'
+      pipeline: '963'
+      runVersion: 'specific'
+      runId: '163134'
       artifactName: 'drop-signed-nuget'
       targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
 
-  - task: DownloadPipelineArtifact@0
+  - task: DownloadPipelineArtifact@2
     displayName: 'Download Pipeline Artifact - testdata'
     inputs:
+      source: 'specific'
+      project: 'Lotus'
+      pipeline: '963'
+      runVersion: 'specific'
+      runId: '163134'
       artifactName: 'drop-nuget'
       targetPath: '$(Build.BinariesDirectory)\testdata'
+  
+  #- task: DownloadPipelineArtifact@0
+    #displayName: 'Download Pipeline Artifact'
+    #inputs:
+      #artifactName: 'drop-signed-nuget'
+      #targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
+
+  #- task: DownloadPipelineArtifact@0
+    #displayName: 'Download Pipeline Artifact - testdata'
+    #inputs:
+      #artifactName: 'drop-nuget'
+      #targetPath: '$(Build.BinariesDirectory)\testdata'
 
   - template: get-nuget-package-version-as-variable.yml
     parameters:
@@ -69,15 +102,14 @@ jobs:
 
   - script: |
      @echo "Running Runtest.bat"
-     #test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x64 $(NuGetPackageVersionNumber)
-     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest_shared_ep.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x64 $(NuGetPackageVersionNumber) "TensorRT"
+     ${{ variables.RunTestScript }} ${{ variables.NetCoreX64Args}}
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .Net Core x64'
 
   - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
       - script: |
          @echo "Running Runtest.bat"
-         test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp2.1 x86 $(NuGetPackageVersionNumber)
+         ${{ variables.RunTestScript }} ${{ variables.NetCoreX86Args}}
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
         displayName: 'Run End to End Test (C#) .Net Core x86'
 
@@ -85,15 +117,14 @@ jobs:
 
   - script: |
      @echo "Running Runtest.bat"
-     #test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x64 $(NuGetPackageVersionNumber)
-     test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest_shared_ep.bat $(Build.BinariesDirectory)\nuget-artifact net461 x64 $(NuGetPackageVersionNumber) "TensorRT"
+     ${{ variables.RunTestScript }} ${{ variables.NetFrameworkX64Args}}
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
     displayName: 'Run End to End Test (C#) .NetFramework x64'
 
   - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
       - script: |
          @echo "Running Runtest.bat"
-         test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x86 $(NuGetPackageVersionNumber)
+        ${{ variables.RunTestScript }} ${{ variables.NetFrameworkX86Args}}
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
         displayName: 'Run End to End Test (C#) .NetFramework x86'
         enabled: false

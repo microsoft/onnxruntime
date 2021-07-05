@@ -11,7 +11,7 @@ variables:
   TESTONGPU: 'ON'
 
 jobs: 
-- template: templates/test_win_new.yml
+- template: templates/test-win.yml
   parameters:
     AgentPool : 'onnxruntime-gpu-winbuild'
     DoEsrp: 'true'
