@@ -8,7 +8,7 @@ jobs:
     clean: all
   pool: ${{ parameters.AgentPool }}
   dependsOn:
-  - NuGet_Packaging
+  #- NuGet_Packaging
   condition: succeeded()
   variables:
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
