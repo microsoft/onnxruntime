@@ -2823,3 +2823,88 @@ def test_input_with_string_exception():
     with pytest.raises(TypeError) as ex_info:
         _ = model(torch.randn(1, 2), 'hello')
     assert "ORTModule does not support the following model data type <class 'str'>" in str(ex_info.value)
+
+def test_ortmodule_list_input():
+    class ListNet(torch.nn.Module):
+        def __init__(self):
+            super(ListNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
+
+        def forward(self, batch):
+            a = batch[0]
+            b = batch[1]
+            return self.dummy + a + b
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = ListNet().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    x = [torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device)]
+    y = copy.deepcopy(x)
+
+    _test_helpers.assert_values_are_close(pt_model(x), ort_model(y))
+
+def test_ortmodule_list_input_with_unused_values():
+    class ListNet(torch.nn.Module):
+        def __init__(self):
+            super(ListNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
+
+        def forward(self, batch):
+            a = batch[0]
+            b = batch[1]
+            return self.dummy + b
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = ListNet().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    x = [torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device)]
+    y = copy.deepcopy(x)
+
+    _test_helpers.assert_values_are_close(pt_model(x), ort_model(y))
+
+def test_ortmodule_list_input_with_none_values():
+    class ListNet(torch.nn.Module):
+        def __init__(self):
+            super(ListNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
+
+        def forward(self, batch):
+            a = batch[0] if batch[0] is not None else torch.FloatTensor([2]).cuda()
+            b = batch[1]
+            return self.dummy + a + b
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = ListNet().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    x = [None, torch.randn(N, D_in, device=device)]
+    y = copy.deepcopy(x)
+
+    _test_helpers.assert_values_are_close(pt_model(x), ort_model(y))
+
+def test_ortmodule_nested_list_input():
+    class ListNet(torch.nn.Module):
+        def __init__(self):
+            super(ListNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
+
+        def forward(self, batch):
+            a = batch[0]
+            b = batch[1][0]
+            c = batch[1][1]
+            d = batch[2][0]
+            e = batch[2][1][0]
+            return self.dummy + a + b + c + d + e
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = ListNet().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    x = [torch.randn(N, D_in, device=device),
+        [torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device)],
+        [torch.randn(N, D_in, device=device), [torch.randn(N, D_in, device=device)]]]
+    y = copy.deepcopy(x)
+
+    _test_helpers.assert_values_are_close(pt_model(x), ort_model(y))
