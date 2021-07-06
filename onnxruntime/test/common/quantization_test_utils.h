@@ -8,6 +8,7 @@
 #include <cmath>
 #include <vector>
 
+// TODO(kreeger): Drop this file and use quantization.h.
 namespace onnxruntime {
 namespace test {
 

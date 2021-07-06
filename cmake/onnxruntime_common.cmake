@@ -22,6 +22,8 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/telemetry.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.h"
     "${ONNXRUNTIME_ROOT}/core/platform/logging/make_platform_default_log_sink.cc"
+    "$(ONNXRUNTIME_ROOT}/core/quantization/*.h"
+    "$(ONNXRUNTIME_ROOT}/core/quantization/*.cc"
 )
 
 if(WIN32)
