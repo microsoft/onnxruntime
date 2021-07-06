@@ -2,8 +2,11 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, Union
+from dataclasses import dataclass
 
 from . import _utils, _io
+from ._io import _TensorStub
 from ._graph_execution_manager import GraphExecutionManager, RunStateInfo
 from ._execution_agent import TrainingAgent
 
@@ -14,6 +17,147 @@ import onnx
 import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
+ModuleOutputSchema = Union[_TensorStub, Sequence["ModuleOutputSchema"], Dict[Any, "ModuleOutputSchema"]]
+
+@dataclass(frozen=True)
+class TrainingManagerContext:
+    execution_agent: TrainingAgent
+    optimized_onnx_model: onnx.ModelProto
+    graph_info: C.GraphInfo
+    input_info: _io._InputInfo
+    graph_initializer_names_to_train: Set[str]
+    graph_initializers: List[torch.Tensor]
+    module_output_schema: Optional[ModuleOutputSchema]
+    named_buffers: Iterable[Tuple[str, torch.Tensor]]
+    device: torch.device
+
+    def create_ort_module_function_and_run_forward(
+        self, *inputs, **kwargs
+    ):
+        
+        class _ORTModuleFunction(torch.autograd.Function):
+            '''Use a custom torch.autograd.Function to associate self.backward_graph as the
+            gradient implementation for self.forward_graph.'''
+
+            @staticmethod
+            def forward(ctx, *inputs):
+                '''Performs forward pass based on user input and PyTorch initializer
+
+                Autograd Function's apply() doesn't support keyword arguments,
+                so `*inputs` has all the arguments - keyword arguments converted
+                to positional/keywords during `TrainingManager.forward`.
+
+                Module outputs are returned to the user
+                '''
+
+                user_outputs, ctx.run_info = TrainingManager.execution_session_run_forward(self.execution_agent,
+                                                                                        self.optimized_onnx_model,
+                                                                                        self.device,
+                                                                                        *inputs)
+
+                # Disable materializing grads then None object will not be
+                # converted to a tensor filled with zeros prior to calling backward.
+                # Save shape, device and type info to ctx for materializing tensor in backward if output grad is None.
+                ctx.set_materialize_grads(False)
+
+                # Mark the outputs tensors needed in backward computation
+                # ORT is NOT relying on save_for_backward() to actually save the tensor, 
+                # as this tensor is also kept in ORT's PartialGraphState
+                # This call is to invoke pytorch's version check to detect the potential inplace corruption
+                for idx in self.graph_info.module_output_indices_requires_save_for_backward:
+                    ctx.save_for_backward(user_outputs[idx])
+
+                return user_outputs
+
+            @staticmethod
+            def backward(ctx, *grad_outputs):
+                '''Performs backward pass based on grad wrt module output'''
+
+                assert ctx.run_info is not None, 'forward() or __call__() methods must be called before backward()'
+                _utils._check_same_device(self.device, "Input argument to backward", *grad_outputs)
+
+                # Unpack saved_tensor to trigger version detection that catches inplace corruption
+                _ = ctx.saved_tensors
+
+                # Use IO binding
+                # Push user output grads to ONNX backend.
+                backward_inputs = C.OrtValueVector()
+                # Preallocate length of the vector. And then delete as required towards the end.
+                backward_inputs.reserve(len(grad_outputs))
+                for idx, grad_output in enumerate(grad_outputs):
+                    if idx in self.graph_info.output_grad_indices_non_differentiable:
+                        assert grad_output is None, "ORT found the {}-th module output '{}' is " \
+                                                    "non-differentiable according to the onnx graph. " \
+                                                    "However, the gradient value is still provided by " \
+                                                    "PyTorch's autograd engine." \
+                                                    .format(idx, self.graph_info.user_output_names[idx])
+                        continue
+
+                    if grad_output is None:
+                        shape, device, dtype = ctx.run_info.output_info[idx]
+                        if idx in self.graph_info.output_grad_indices_require_full_shape:
+                            grad_output = torch.zeros(shape, device=device, dtype=dtype)
+                        else:
+                            grad_output = torch.tensor(0., device=device, dtype=dtype)
+                    elif not grad_output.is_contiguous():
+                        grad_output = grad_output.contiguous()
+                    backward_inputs.push_back(to_dlpack(grad_output), grad_output.dtype == torch.bool)
+                backward_inputs.shrink_to_fit()
+
+                # Run and get results
+                backward_outputs = C.OrtValueVector()
+                self.execution_agent.run_backward(backward_inputs, backward_outputs, ctx.run_info.state)
+                # Destroy the state immediately (as opposed to be at the mercy of garbage collector) so it does not
+                # affect peak memory usage in a subsequent graph run.
+                del ctx.run_info.state
+                # Return input and initializer gradients
+                num_user_input_grads = len(self.input_info.require_grad_names)
+                results = []
+                require_grad_names_set = set(self.input_info.require_grad_names)
+                require_grad_names_index = 0
+                for input_name in self.graph_info.user_input_names:
+                    # Append to the results the backward output for each input that required grad
+                    if input_name in require_grad_names_set:
+                        results.append(_utils._torch_tensor_from_dl_pack(
+                            backward_outputs.dlpack_at(require_grad_names_index),
+                            backward_outputs[require_grad_names_index]))
+                        require_grad_names_index += 1
+                    else:
+                        # input_name is not found in the self._input_info.require_grad_names list
+                        # Append None to results for each input that did not require grad
+                        results.append(None)
+
+                # Append gradients of initializer to results
+                # Go over each initializer, check if it required grad and append to results accordingly
+                initializer_index = num_user_input_grads
+                for initializer_name in self.graph_info.initializer_names:
+                    if initializer_name in self.graph_initializer_names_to_train:
+                        results.append(_utils._torch_tensor_from_dl_pack(
+                            backward_outputs.dlpack_at(initializer_index),
+                            backward_outputs[initializer_index]))
+                        initializer_index += 1
+                    else:
+                        results.append(None)
+
+                return tuple(results)
+
+        return _io.unflatten_user_output(
+            # module_output_schema is updated in _export_model()
+            self.module_output_schema,
+            _ORTModuleFunction.apply(
+                *_io._combine_input_buffers_initializers(
+                    # graph_initializers is updated in _initialize_graph_builder()
+                    self.graph_initializers,
+                    # graph_info is updated in _build_graph()                    
+                    self.graph_info.user_input_names,
+                    # input_info is updated in _export_model()
+                    self.input_info,
+                    self.named_buffers,
+                    inputs,
+                    kwargs,
+                    self.device)
+            )
+        )
 
 class TrainingManager(GraphExecutionManager):
     """Concrete instance of GraphExecutionManager that is able to manage the training model
@@ -60,10 +204,21 @@ class TrainingManager(GraphExecutionManager):
         Finally, we instantiate the ONNX Runtime InferenceSession.
         '''
 
-        # Exporting module to ONNX for the first time
-        build_gradient_graph = self._export_model(*inputs, **kwargs)
-        if build_gradient_graph:
-            # If model was exported, then initialize the graph builder
+        build_graph = self._is_export_model_required(*inputs, **kwargs)
+        if build_graph:
+            # Exporting module to ONNX
+            # Updates:
+            #  - self._onnx_model
+            #  - self._input_info
+            #  - self._module_output_schema
+            self._export_model(*inputs, **kwargs)
+
+            # If model was exported, then initialize the graph builder.
+            # Updates:
+            #  - self._graph_builder
+            #  - self._graph_initializer_names
+            #  - self._graph_initializer_names_to_train
+            #  - self._graph_initializers
             self._initialize_graph_builder(training=True)
 
         input_info = _io.parse_inputs_for_onnx_export(self._module_parameters,
@@ -74,10 +229,13 @@ class TrainingManager(GraphExecutionManager):
         # Reinitialize graph builder if the inputs or initializers requiring gradient have changed.
         # Order of or operation is important here because we always need to call
         # _reinitialize_graph_builder irrespective of the value of build_gradient_graph.
-        build_gradient_graph = self._reinitialize_graph_builder(input_info) or build_gradient_graph
+        build_gradient_graph = build_graph or self._reinitialize_graph_builder(input_info)
 
         # Build the gradient graph
         if build_gradient_graph:
+            # Updates:
+            #  - self._optimized_onnx_model
+            #  - self._graph_info
             self._build_graph()
 
         device = _utils.get_device_from_module(self._original_module) or \
@@ -89,124 +247,20 @@ class TrainingManager(GraphExecutionManager):
             self._device = device
         if create_execution_session:
             # Create execution session creates the training_session
+            # Updates self._execution_agent
             self._create_execution_agent()
 
-        class _ORTModuleFunction(torch.autograd.Function):
-            '''Use a custom torch.autograd.Function to associate self.backward_graph as the
-            gradient implementation for self.forward_graph.'''
-
-            @staticmethod
-            def forward(ctx, *inputs):
-                '''Performs forward pass based on user input and PyTorch initializer
-
-                Autograd Function's apply() doesn't support keyword arguments,
-                so `*inputs` has all the arguments - keyword arguments converted
-                to positional/keywords during `TrainingManager.forward`.
-
-                Module outputs are returned to the user
-                '''
-
-                user_outputs, ctx.run_info = TrainingManager.execution_session_run_forward(self._execution_agent,
-                                                                                           self._optimized_onnx_model,
-                                                                                           self._device,
-                                                                                           *inputs)
-
-                # Disable materializing grads then None object will not be
-                # converted to a tensor filled with zeros prior to calling backward.
-                # Save shape, device and type info to ctx for materializing tensor in backward if output grad is None.
-                ctx.set_materialize_grads(False)
-
-                # Mark the outputs tensors needed in backward computation
-                # ORT is NOT relying on save_for_backward() to actually save the tensor, 
-                # as this tensor is also kept in ORT's PartialGraphState
-                # This call is to invoke pytorch's version check to detect the potential inplace corruption
-                for idx in self._graph_info.module_output_indices_requires_save_for_backward:
-                    ctx.save_for_backward(user_outputs[idx])
-
-                return user_outputs
-
-            @staticmethod
-            def backward(ctx, *grad_outputs):
-                '''Performs backward pass based on grad wrt module output'''
-
-                assert ctx.run_info is not None, 'forward() or __call__() methods must be called before backward()'
-                _utils._check_same_device(self._device, "Input argument to backward", *grad_outputs)
-
-                # Unpack saved_tensor to trigger version detection that catches inplace corruption
-                _ = ctx.saved_tensors
-
-                # Use IO binding
-                # Push user output grads to ONNX backend.
-                backward_inputs = C.OrtValueVector()
-                # Preallocate length of the vector. And then delete as required towards the end.
-                backward_inputs.reserve(len(grad_outputs))
-                for idx, grad_output in enumerate(grad_outputs):
-                    if idx in self._graph_info.output_grad_indices_non_differentiable:
-                        assert grad_output is None, "ORT found the {}-th module output '{}' is " \
-                                                    "non-differentiable according to the onnx graph. " \
-                                                    "However, the gradient value is still provided by " \
-                                                    "PyTorch's autograd engine." \
-                                                    .format(idx, self._graph_info.user_output_names[idx])
-                        continue
-
-                    if grad_output is None:
-                        shape, device, dtype = ctx.run_info.output_info[idx]
-                        if idx in self._graph_info.output_grad_indices_require_full_shape:
-                            grad_output = torch.zeros(shape, device=device, dtype=dtype)
-                        else:
-                            grad_output = torch.tensor(0., device=device, dtype=dtype)
-                    elif not grad_output.is_contiguous():
-                        grad_output = grad_output.contiguous()
-                    backward_inputs.push_back(to_dlpack(grad_output), grad_output.dtype == torch.bool)
-                backward_inputs.shrink_to_fit()
-
-                # Run and get results
-                backward_outputs = C.OrtValueVector()
-                self._execution_agent.run_backward(backward_inputs, backward_outputs, ctx.run_info.state)
-                # Destroy the state immediately (as opposed to be at the mercy of garbage collector) so it does not
-                # affect peak memory usage in a subsequent graph run.
-                del ctx.run_info.state
-                # Return input and initializer gradients
-                num_user_input_grads = len(self._input_info.require_grad_names)
-                results = []
-                require_grad_names_set = set(self._input_info.require_grad_names)
-                require_grad_names_index = 0
-                for input_name in self._graph_info.user_input_names:
-                    # Append to the results the backward output for each input that required grad
-                    if input_name in require_grad_names_set:
-                        results.append(_utils._torch_tensor_from_dl_pack(
-                            backward_outputs.dlpack_at(require_grad_names_index),
-                            backward_outputs[require_grad_names_index]))
-                        require_grad_names_index += 1
-                    else:
-                        # input_name is not found in the self._input_info.require_grad_names list
-                        # Append None to results for each input that did not require grad
-                        results.append(None)
-
-                # Append gradients of initializer to results
-                # Go over each initializer, check if it required grad and append to results accordingly
-                initializer_index = num_user_input_grads
-                for initializer_name in self._graph_info.initializer_names:
-                    if initializer_name in self._graph_initializer_names_to_train:
-                        results.append(_utils._torch_tensor_from_dl_pack(
-                            backward_outputs.dlpack_at(initializer_index),
-                            backward_outputs[initializer_index]))
-                        initializer_index += 1
-                    else:
-                        results.append(None)
-
-                return tuple(results)
-
-        return _io.unflatten_user_output(self._module_output_schema,
-                                        _ORTModuleFunction.apply(
-                                            *_io._combine_input_buffers_initializers(
-                                                self._graph_initializers,
-                                                self._graph_info.user_input_names,
-                                                self._input_info,
-                                                self._flattened_module.named_buffers(),
-                                                inputs,
-                                                kwargs,
-                                                self._device)))
+        return TrainingManagerContext(
+            self._execution_agent,
+            self._optimized_onnx_model,
+            self._graph_info,
+            self._input_info,
+            self._graph_initializer_names_to_train,
+            self._graph_initializers,
+            self._module_output_schema,
+            self._flattened_module.named_buffers(),
+            self._device
+        ).create_ort_module_function_and_run_forward(*inputs, **kwargs)
 
     def _build_graph(self):
         """Build an optimized gradient graph using the module_graph_builder"""
