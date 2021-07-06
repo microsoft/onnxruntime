@@ -139,10 +139,11 @@ describe('#UnitTest# - reshape - packed', () => {
           new Tensor([outputTensorShape.length], 'int32', undefined, undefined, new Int32Array(outputTensorShape));
 
       // compile shader code
-      const programInfo = createPackedReshapeProgramInfo(inferenceHandler! as WebGLInferenceHandler, inputTensorA, inputTensorB);
+      const programInfo =
+          createPackedReshapeProgramInfo(inferenceHandler! as WebGLInferenceHandler, inputTensorA, inputTensorB);
 
       // run kernal and get output
-      const resultTensor = webglInferenceHandler.executeProgram(programInfo, inputTensorA);
+      const resultTensor = webglInferenceHandler.executeProgram(programInfo, [inputTensorA]);
       const result = resultTensor.tensor.data;
 
       webglInferenceHandler.session.textureManager.glContext.checkError();

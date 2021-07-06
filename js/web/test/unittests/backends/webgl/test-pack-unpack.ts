@@ -241,11 +241,10 @@ describe('#UnitTest# - pack - Tensor pack', () => {
         }
 
         // compile shader code
-        //const programInfo = op.createProgramInfo(inferenceHandler! as WebGLInferenceHandler, [inputTensor]);
         const programInfo = createPackProgramInfo(inferenceHandler! as WebGLInferenceHandler, inputTensor);
 
         // run kernal and get output
-        const resultTextureData = webglInferenceHandler.executeProgram(programInfo, inputTensor);
+        const resultTextureData = webglInferenceHandler.executeProgram(programInfo, [inputTensor]);
         const gl = webglInferenceHandler.session.textureManager.glContext.gl;
         const resultDataBuffer =
             createArrayFromTexture(gl, resultTextureData.texture, outputTextureShape[1], outputTextureShape[0]);
@@ -312,7 +311,7 @@ describe('#UnitTest# - unpack - Tensor unpack', () => {
       const programInfo = createUnpackProgramInfo(inferenceHandler! as WebGLInferenceHandler, inputTensor);
 
       // run kernal and get output
-      const resultTextureData = webglInferenceHandler.executeProgram(programInfo, inputTensor);
+      const resultTextureData = webglInferenceHandler.executeProgram(programInfo, [inputTensor]);
       const result = resultTextureData.tensor.data;
 
       const resultDataBuffer = createArrayFromTexture(gl, webglTexture!, inputTextureShape[0], inputTextureShape[1]);
@@ -354,8 +353,8 @@ describe('#UnitTest# - pack-unpack round trip', () => {
       const inputTensor = new Tensor(inputTensorShape, 'float32', undefined, undefined, inputData);
 
       // compile pack shader code
-      let packProgramInfo = createPackProgramInfo(inferenceHandler! as WebGLInferenceHandler, inputTensor);
-      const packResultData = webglInferenceHandler.executeProgram(packProgramInfo, inputTensor);
+      const packProgramInfo = createPackProgramInfo(inferenceHandler! as WebGLInferenceHandler, inputTensor);
+      const packResultData = webglInferenceHandler.executeProgram(packProgramInfo, [inputTensor]);
 
       // create unpack kernel
 
@@ -364,7 +363,7 @@ describe('#UnitTest# - pack-unpack round trip', () => {
           createPackProgramInfo(inferenceHandler! as WebGLInferenceHandler, packResultData.tensor);
 
       // run unpack kernal and get output
-      const unpackResultData = webglInferenceHandler.executeProgram(unpackProgramInfo, inputTensor);
+      const unpackResultData = webglInferenceHandler.executeProgram(unpackProgramInfo, [inputTensor]);
 
 
       const resultData = unpackResultData.tensor.data;

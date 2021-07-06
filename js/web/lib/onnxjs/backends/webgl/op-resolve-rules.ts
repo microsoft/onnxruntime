@@ -87,7 +87,7 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // ['ReduceSum', '', '1+', () => new reduceOps.WebGLReduceSum()],
   // ['ReduceSumSquare', '', '1+', () => new reduceOps.WebGLReduceSumSquare()],
   ['Relu', '', '6+', unaryOps.relu],
-  ['Reshape', '', '5+', () => new reshape()],
+  ['Reshape', '', '5+', reshape],
   // ['Resize', '', '10', () => new WebGLResizePacked(10)],
   // ['Resize', '', '11+', () => new WebGLResizePacked(11)],
   // ['Shape', '', '1+', () => new WebGLShape()],
