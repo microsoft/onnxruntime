@@ -61,9 +61,11 @@ class InferenceManager(GraphExecutionManager):
         Finally, we instantiate the ONNX Runtime InferenceSession through the InferenceAgent.
         '''
 
-        # Exporting module to ONNX for the first time
-        build_graph = self._export_model(*inputs, **kwargs)
+        build_graph = self._is_export_model_required(*inputs, **kwargs)
         if build_graph:
+            # Exporting module to ONNX for the first time or when input schema changed
+            self._export_model(*inputs, **kwargs)
+
             # If model was exported, then initialize the graph builder
             self._initialize_graph_builder(training=False)
 
@@ -71,8 +73,7 @@ class InferenceManager(GraphExecutionManager):
             if self._save_onnx:
                 onnx.save(self._onnx_model, self._save_onnx_prefix + '_exported_inference_model.onnx')
 
-        # Build the inference graph
-        if build_graph:
+            # Build the inference graph
             self._build_graph()
 
         module_device = _utils.get_device_from_module(self._original_module)

@@ -205,23 +205,21 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         return session_options, providers, provider_options
 
-    def _export_model(self, *inputs, **kwargs):
-        # 1. Set the self._device from the user module
-        # 2. Verify input schema matches schema used on previous model export
-        # 3. Export the user model under self._export_training_flag mode
-        # Return True if the model needed to be exported, False if no export was required.
+    def _input_schema_changed(self, *inputs, **kwargs):
+        schema = _io._extract_schema({'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
+        return schema != self._input_info.schema
 
+    def _is_export_model_required(self, *inputs, **kwargs):
+        """ Verify input schema matches schema used on previous model export """
         # Note: Model is only exported when:
         #       1. Model has never been exported before.
         #       2. Model input schema has changed (changes in inputs requiring gradient, shape, boolean inputs values change, etc)
         #       Model is not re-exported when the model parameters change. This can happen when the model is a stateful model,
         #       or the user explicitly changed model parameters after the onnx export.
+        return not self._onnx_model or self._input_schema_changed(*inputs, **kwargs)
 
-        schema = _io._extract_schema({'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
-        if self._onnx_model and schema == self._input_info.schema:
-            # All required models have already been exported previously
-            return False
-
+    def _export_model(self, *inputs, **kwargs):
+        # Set the self._device from the user module
         self._set_device_from_module(inputs, kwargs)
         self._onnx_model = self._get_exported_model(*inputs, **kwargs)
         _cpp_ext._load_aten_op_executor_cpp_extension_if_needed(self._onnx_model, self._loglevel < _logger.LogLevel.WARNING)
@@ -231,7 +229,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         if self._run_symbolic_shape_infer:
             self._onnx_model = SymbolicShapeInference.infer_shapes(self._onnx_model, auto_merge=True, guess_output_rank=True)
 
-        return True
 
     def _get_exported_model(self, *inputs, **kwargs):
         '''Exports PyTorch `self._flattened_module` to ONNX for inferencing or training, using `*inputs` as input
