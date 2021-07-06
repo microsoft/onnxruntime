@@ -1,3 +1,5 @@
+# TODO: Remove pinned version of Pillow of 8.2.0 when 8.3.0 release regression issue https://github.com/python-pillow/Pillow/issues/5571 is resolved
+Pillow==8.2.0
 # transformers requires sklearn
 --pre
 -f https://download.pytorch.org/whl/rocm4.2/torch_stable.html
