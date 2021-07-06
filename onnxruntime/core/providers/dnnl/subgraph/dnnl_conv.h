@@ -10,18 +10,6 @@
 namespace onnxruntime {
 namespace ort_dnnl {
 
-namespace {
-
-// Rounds a up to the next highest multiple of b, which is power-of-2. User must be careful
-// to ensure that there is no overflow or underflow in the calculation
-// of divUp.
-template <typename T, T b>
-constexpr T roundUpPow2(T a) {
-  return (a + (b - 1)) & (~(b - 1));
-}
-
-}  // namespace
-
 // helper function
 template <bool ForceSymmetricAutoPadding>
 Status ComputePadAndOutputShape(
@@ -54,7 +42,7 @@ Status ComputePadAndOutputShape(
         // make sure padding is symmetric
         if (ForceSymmetricAutoPadding) {
           // Round up to the next highest multiple of b, which is power-of-2.
-          pad_needed = (pad_needed + (2 - 1)) & (~(2 - 1))
+          pad_needed = (pad_needed + (2 - 1)) & (~(2 - 1));
         }
 
         if (pad_type == AutoPadType::SAME_LOWER) {
