@@ -59,18 +59,16 @@ if [ $DEVICE_TYPE = "gpu" ]; then
         # Due to a [bug on DeepSpeed](https://github.com/microsoft/DeepSpeed/issues/663), we install it separately through ortmodule/stage2/requirements.txt
         ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage2\/requirements.txt}
       else
-        ${PYTHON_EXE} -m pip install \
-          --pre -f https://download.pytorch.org/whl/nightly/rocm4.2/torch_nightly.html \
-          torch torchvision torchtext
         ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements-torch${TORCH_VERSION}_rocm.txt}
         ${PYTHON_EXE} -m pip install fairscale
-	      # remove triton requirement from getting triggered in requirements-sparse_attn.txt
-        git clone https://github.com/ROCmSoftwarePlatform/DeepSpeed
-        cd DeepSpeed &&\
-          rm requirements/requirements-sparse_attn.txt &&\
-          ${PYTHON_EXE} setup.py bdist_wheel &&\
-          ${PYTHON_EXE} -m pip install dist/deepspeed*.whl &&\
-	      cd ..
+	# remove DeepSpeed until it's required for testing purposes
+	# remove triton requirement from getting triggered in requirements-sparse_attn.txt
+        # git clone https://github.com/ROCmSoftwarePlatform/DeepSpeed
+        # cd DeepSpeed &&\
+        #   rm requirements/requirements-sparse_attn.txt &&\
+        #   ${PYTHON_EXE} setup.py bdist_wheel &&\
+        #   ${PYTHON_EXE} -m pip install dist/deepspeed*.whl &&\
+ 	#   cd .. && rm -fr DeepSpeed
       fi
     fi
   fi
