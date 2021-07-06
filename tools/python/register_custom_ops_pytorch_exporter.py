@@ -37,17 +37,9 @@ def register_custom_op(is_ortmodule=False):
     register_custom_op_symbolic('::tril', tril, _onnx_opset_version)
 
     if is_ortmodule:
-        @parse_args('v', 'v', 'i', 'b', 'b')
         def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
-            custom_attributes_json = (
-                '{'
-                f'"padding_idx":{str(padding_idx)},'
-                f'"scale_grad_by_freq":{str(scale_grad_by_freq).lower()},'
-                f'"sparse":{str(sparse).lower()}'
-                '}'
-            )
-            output = g.op("com.microsoft::ATenOp", weight, indices, name_s='aten::embedding',
-                          custom_attributes_json_s=custom_attributes_json)
+            output = g.op("com.microsoft::ATenOp", weight, indices, padding_idx, scale_grad_by_freq, sparse,
+                          name_s='aten::embedding')
             indices_shape = _get_tensor_sizes(indices)
             if indices_shape is not None and hasattr(weight.type(), 'with_sizes'):
                 output_type = weight.type().with_sizes(indices_shape + [_get_tensor_dim_size(weight, 1)])
@@ -84,35 +76,21 @@ def register_custom_op(is_ortmodule=False):
 
         register_custom_op_symbolic('::nll_loss', nll_loss, _onnx_opset_version)
 
-        @parse_args('v', 'is', 'is', 'is', 'is', 'b')
         def max_pool2d(g, self, kernel_size, stride, padding, dilation, ceil_mode):
-            custom_attributes_json = (
-                '{'
-                f'"kernel_size":{str(kernel_size)},'
-                f'"stride":{str(stride)},'
-                f'"padding":{str(padding)},'
-                f'"dilation":{str(dilation)},'
-                f'"ceil_mode":{str(ceil_mode).lower()}'
-                '}'
-            )
-            return g.op("com.microsoft::ATenOp", self, name_s='aten::max_pool2d_with_indices',
-                        custom_attributes_json_s=custom_attributes_json, outputs=2)[0]
+            return g.op("com.microsoft::ATenOp", self, kernel_size, stride, padding, dilation, ceil_mode,
+                        name_s='aten::max_pool2d_with_indices', outputs=2)[0]
 
         register_custom_op_symbolic('::max_pool2d', max_pool2d, _onnx_opset_version)
 
-        @parse_args('v', 'i', 'i', 'i')
         def unfold(g, input, dimension, size, step):
-            custom_attributes_json = (
-                '{'
-                f'"dimension":{str(dimension)},'
-                f'"size":{str(size)},'
-                f'"step":{str(step)}'
-                '}'
-            )
-            return g.op("com.microsoft::ATenOp", input, name_s='aten::unfold',
-                        custom_attributes_json_s=custom_attributes_json)
+            return g.op("com.microsoft::ATenOp", input, dimension, size, step, name_s='aten::unfold')
 
         register_custom_op_symbolic('::unfold', unfold, _onnx_opset_version)
+
+        def argmax(g, input, dim, keepdim):
+            return g.op("com.microsoft::ATenOp", input, dim, keepdim, name_s='aten::argmax')
+
+        register_custom_op_symbolic('::argmax', argmax, _onnx_opset_version)
 
 
 def unregister_custom_op():
