@@ -14,7 +14,6 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/TensorSeq.h"
-#include "core/framework/optional_value.h"
 #include "core/framework/utils.h"
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
@@ -584,14 +583,6 @@ static Status AllocateTensorSequence(OrtValue& ort_value) {
   return Status::OK();
 }
 
-static Status AllocateOptionalValue(OrtValue& ort_value, MLDataType type) {
-  auto ml_optional = DataTypeImpl::GetType<OptionalValue>();
-  auto ml_optional_value = std::make_unique<OptionalValue>(type);
-  ort_value.Init(ml_optional_value.release(), ml_optional, ml_optional->GetDeleteFunc());
-
-  return Status::OK();
-}
-
 static Status AllocateSparseTensor(OrtValue& mlvalue, const DataTypeImpl& ml_type, AllocatorPtr allocator,
                                    const TensorShape& shape, size_t nnz, bool create_fence,
                                    const SessionState& session_state) {
@@ -691,7 +682,15 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
   } else if (ml_type->IsTensorSequenceType()) {
     return AllocateTensorSequence(ort_value);
   } else if (ml_type->IsOptionalType()) {
-    return AllocateOptionalValue(ort_value, ml_type);
+    AllocKind alloc_kind = per_alloc_plan.alloc_kind;
+    if (alloc_kind == AllocKind::kReuse) {
+      int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
+      ort_value = GetMutableMLValue(reuse_mlvalue_index);
+    }
+
+    // No action needed to "allocate" optional types if not re-using another OrtValue.
+    // They are "allocated" within the ops based on the "runtime" type and shape.
+    return Status::OK();
   } else {
     return AllocateTraditionalMLValue(ort_value, *static_cast<const NonTensorTypeBase*>(ml_type));
   }

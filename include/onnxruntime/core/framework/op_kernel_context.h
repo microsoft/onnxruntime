@@ -30,6 +30,10 @@ class OpKernelContext {
     return GetInputMLValue(index);
   }
 
+  OrtValue* GetOutputOrtValue(int index) {
+    return GetOrCreateOutputMLValue(index);
+  }
+
   template <typename T>
   const T* Input(int index) const {
     const OrtValue* p_ml_value = GetInputMLValue(index);

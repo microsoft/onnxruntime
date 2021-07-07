@@ -375,26 +375,11 @@ bool TensorTypeBase::IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) c
   if (&type_proto == thisProto) {
     return true;
   }
-
-  // Optional types may be holding tensors as well - so allow downstream checks
-  // for Optional as well.
-  if (type_proto.value_case() != TypeProto::ValueCase::kTensorType &&
-      type_proto.value_case() != TypeProto::ValueCase::kOptionalType) {
+  if (type_proto.value_case() != TypeProto::ValueCase::kTensorType) {
     return false;
   }
 
-  if (type_proto.value_case() == TypeProto::ValueCase::kTensorType) {
-    return data_types_internal::IsCompatible(thisProto->tensor_type(), type_proto.tensor_type());
-  }
-
-  if (type_proto.value_case() == TypeProto::ValueCase::kOptionalType) {
-    if (type_proto.optional_type().elem_type().value_case() == TypeProto::ValueCase::kTensorType) {
-      return data_types_internal::IsCompatible(thisProto->tensor_type(),
-                                               type_proto.optional_type().elem_type().tensor_type());
-    }
-  }
-
-  return false;
+  return data_types_internal::IsCompatible(thisProto->tensor_type(), type_proto.tensor_type());
 }
 
 MLDataType TensorTypeBase::Type() {
@@ -471,25 +456,11 @@ bool SequenceTensorTypeBase::IsCompatible(const ONNX_NAMESPACE::TypeProto& type_
   ORT_ENFORCE(thisProto->value_case() == TypeProto::ValueCase::kSequenceType);
   ORT_ENFORCE(utils::HasElemType(thisProto->sequence_type()));
 
-  // Optional types may be holding tensors as well - so allow downstream checks
-  // for Optional as well.
-  if (type_proto.value_case() != TypeProto::ValueCase::kSequenceType &&
-      type_proto.value_case() != TypeProto::ValueCase::kOptionalType) {
+  if (type_proto.value_case() != TypeProto::ValueCase::kSequenceType) {
     return false;
   }
 
-  if (type_proto.value_case() == TypeProto::ValueCase::kSequenceType) {
-    return data_types_internal::IsCompatible(thisProto->sequence_type(), type_proto.sequence_type());
-  }
-
-  if (type_proto.value_case() == TypeProto::ValueCase::kOptionalType) {
-    if (type_proto.optional_type().elem_type().value_case() == TypeProto::ValueCase::kSequenceType) {
-      return data_types_internal::IsCompatible(thisProto->sequence_type(),
-                                               type_proto.optional_type().elem_type().sequence_type());
-    }
-  }
-
-  return false;
+  return data_types_internal::IsCompatible(thisProto->sequence_type(), type_proto.sequence_type());
 }
 
 size_t SequenceTensorTypeBase::Size() const {
@@ -1039,6 +1010,18 @@ std::vector<MLDataType> GetTensorTypesFromTypeList() {
 }
 
 template <typename... ElementTypes>
+struct GetOptionalTensorTypesImpl {
+  std::vector<MLDataType> operator()() const {
+    return {DataTypeImpl::GetOptionalType<Tensor, ElementTypes>()...};
+  }
+};
+
+template <typename L>
+std::vector<MLDataType> GetOptionalTensorTypesFromTypeList() {
+  return boost::mp11::mp_apply<GetOptionalTensorTypesImpl, L>{}();
+}
+
+template <typename... ElementTypes>
 struct GetSequenceTensorTypesImpl {
   std::vector<MLDataType> operator()() const {
     return {DataTypeImpl::GetSequenceTensorType<ElementTypes>()...};
@@ -1049,6 +1032,19 @@ template <typename L>
 std::vector<MLDataType> GetSequenceTensorTypesFromTypeList() {
   return boost::mp11::mp_apply<GetSequenceTensorTypesImpl, L>{}();
 }
+
+template <typename... ElementTypes>
+struct GetOptionalSequenceTensorTypesImpl {
+  std::vector<MLDataType> operator()() const {
+    return {DataTypeImpl::GetOptionalType<TensorSeq, ElementTypes>()...};
+  }
+};
+
+template <typename L>
+std::vector<MLDataType> GetOptionalSequenceTensorTypesFromTypeList() {
+  return boost::mp11::mp_apply<GetOptionalSequenceTensorTypesImpl, L>{}();
+}
+
 }  // namespace
 
 const std::vector<MLDataType>& DataTypeImpl::AllFixedSizeTensorExceptHalfTypes() {
@@ -1121,6 +1117,18 @@ const std::vector<MLDataType>& DataTypeImpl::AllTensorAndSequenceTensorTypes() {
       }();
 
   return all_tensor_and_sequence_types;
+}
+
+const std::vector<MLDataType>& DataTypeImpl::AllOptionalTypes() {
+  static std::vector<MLDataType> all_optional_types =
+      []() {
+        auto temp = GetOptionalTensorTypesFromTypeList<element_type_lists::All>();
+        const auto& seq = GetOptionalSequenceTensorTypesFromTypeList<element_type_lists::All>();
+        temp.insert(temp.end(), seq.begin(), seq.end());
+        return temp;
+      }();
+
+  return all_optional_types;
 }
 
 // helper to stream. expected to only be used for error output, so any typeid lookup

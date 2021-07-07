@@ -12,16 +12,18 @@ namespace contrib {
 class Optional final : public OpKernel {
  public:
   explicit Optional(const OpKernelInfo& info) : OpKernel(info) {
-    // if (info.GetAttr<onnx::TypeProto>("type", &type_proto_).IsOK()) {
-    //   type_available_ = true;
-    // }
+    const auto* attr = info.TryGetAttribute("type");
+
+    if (attr) {
+      ORT_ENFORCE(attr->has_tp(), "Optional op must have a TypeProto in the 'type' attribute if the attribute is present");
+      type_proto_ = &attr->tp();
+    }
   }
 
   common::Status Compute(OpKernelContext* context) const override;
 
  private:
-  onnx::TypeProto type_proto_;
-  bool type_available_ = false;
+  const onnx::TypeProto* type_proto_ = nullptr;
 };
 
 class OptionalHasElement final : public OpKernel {
