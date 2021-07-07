@@ -144,3 +144,4 @@ bool HasNeuralEngine(const logging::Logger& logger) {
 
 }  // namespace coreml
 }  // namespace onnxruntime
+
