@@ -28,6 +28,7 @@ Abstract:
 #pragma once
 
 #include "mlasi.h"
+#include "qgemm_kernel_type.h"
 
 template<typename KernelType>
 MLAS_FORCEINLINE
