@@ -101,7 +101,7 @@ def call_python_forward_function(
         elif isinstance(result, tuple) or isinstance(result, list):
             ctx = extract_context(result)
             wrapped = [ctx]
-            wrapped.extend(list(to_dlpack(value) for value in result))
+            wrapped.extend(list(to_dlpack(value) if value is not None else None for value in result))
             # Inside the returned list, first element is context and the rest
             # are DLPack tensors.
             return wrapped
@@ -157,11 +157,14 @@ def call_python_backward_function(
         if isinstance(result, torch.Tensor):
             return [to_dlpack(result)]
         elif isinstance(result, tuple) or isinstance(result, list):
-            return [to_dlpack(value) for value in result if value is not None]
+            return [to_dlpack(value) if value is not None else None for value in result]
         else:
             raise Exception('Unsupported returned type: ', type(result))
 
     try:
+        # Backward inputs should not require gradients.
+        assert all(grad_flag == 0 for grad_flag in requires_grad_flags)
+
         # Prepare inputs for calling Python function.
         wrapped_args = list(wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace, is_training_mode, arg)
                             for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, args))

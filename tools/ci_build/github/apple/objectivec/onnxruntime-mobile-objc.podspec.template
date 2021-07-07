@@ -1,17 +1,17 @@
 Pod::Spec.new do |s|
   s.name             = 'onnxruntime-mobile-objc'
   s.version          = '@VERSION@'
-  s.summary          = 'ONNX Runtime Objective-C Pod'
+  s.summary          = 'ONNX Runtime Mobile Objective-C Pod'
 
   s.description      = <<-DESC
-    Preview pod for the ONNX Runtime Objective-C API.
+    A pod for the ONNX Runtime Mobile Objective-C API.
                        DESC
 
   s.homepage         = 'https://github.com/microsoft/onnxruntime'
   s.license          = { :type => 'MIT', :file => @LICENSE_FILE@ }
   s.author           = { "ONNX Runtime" => "onnxruntime@microsoft.com" }
-  s.source           = { :http => "@SOURCE_HTTP@" }
-  s.ios.deployment_target = '11.0'
+  s.source           = { :http => "file:///http_source_placeholder" }
+  s.ios.deployment_target = '@IOS_DEPLOYMENT_TARGET@'
   s.preserve_paths = [ @LICENSE_FILE@ ]
   s.default_subspec = "Core"
 
