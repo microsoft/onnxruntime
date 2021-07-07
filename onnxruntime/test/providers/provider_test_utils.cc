@@ -615,7 +615,6 @@ void OpTester::AddSparseCooTensorStrings(std::vector<Data>& data,
   ORT_ENFORCE((nnz == indices.size() || 2 * nnz == indices.size()), "Expecting indices to have either nnz or (2 * nnz) length");
   auto p_tensor = MakeSparseTensor(data_type, dims);
   // linear index is 1-D index, otherwise 2-D index
-  const bool is_linear_index = (nnz == indices.size());
   auto mutator = p_tensor->MakeCooData(nnz, indices.size());
   auto mutable_values = mutator.Values().MutableDataAsSpan<std::string>();
   ORT_ENFORCE(values.size() == mutable_values.size(), "Must allocate space for values");

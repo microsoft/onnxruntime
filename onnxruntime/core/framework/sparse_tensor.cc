@@ -227,7 +227,7 @@ SparseTensor::CooMutator SparseTensor::MakeCooData(size_t values_count, size_t i
     const auto index_size = index_count * sizeof(int64_t);
     const auto required_buffer_size = CalculateRequiredBufferSize(gsl::narrow<int64_t>(data_size),
                                                                   gsl::narrow<int64_t>(index_size));
-    ORT_THROW_IF_ERROR(AllocateBuffer(required_buffer_size, num_values));
+    ORT_THROW_IF_ERROR(AllocateBuffer(required_buffer_size, values_count));
   }
   values_ = Tensor(DataType(), values_shape, p_data_, Location());
   InitCooIndex(index_shape, reinterpret_cast<int64_t*>(IndicesStart()));
@@ -354,7 +354,7 @@ SparseTensor::BlockSparseMutator SparseTensor::MakeBlockSparseData(const TensorS
     const auto index_size = index_shape.Size() * sizeof(int32_t);
     const auto required_buffer_size = CalculateRequiredBufferSize(gsl::narrow<int64_t>(data_size),
                                                                   gsl::narrow<int64_t>(index_size));
-    ORT_THROW_IF_ERROR(AllocateBuffer(required_buffer_size, data_size / ml_data_type_->Size()));
+    ORT_THROW_IF_ERROR(AllocateBuffer(required_buffer_size, static_cast<size_t>(data_size / ml_data_type_->Size())));
   }
   values_ = Tensor(DataType(), values_shape, p_data_, Location());
   format_data_.resize(1);
