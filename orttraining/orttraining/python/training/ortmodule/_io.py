@@ -130,6 +130,9 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
     '''
 
     def _expand_inputs(current_input, non_none_inputs):
+        # The exporter handles input lists by expanding them so that each
+        # element of the list is its own input.
+        # ORTModule must match this behavior by also expanding the inputs.
         if isinstance(current_input, abc.Sequence):
             # If the input is a sequence (like a list), expand the list so that
             # each element of the list is an input by itself
