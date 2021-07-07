@@ -17,13 +17,18 @@ namespace test {
  * TODO - doc me.
  */
 template <typename T>
-inline std::vector<T> QuantizeTestVector(const std::vector<float>& data, const float scale, const T zero_point) {
+inline T QuantizeTestValue(const float& value, const float scale, const T zero_point) {
+  quantization::Params<T> params = {scale, zero_point};
+  return quantization::Quantize(value, params);
+}
+
+/**
+ * TODO - doc me.
+ */
+template <typename T>
+inline std::vector<T> QuantizeTestVector(const std::vector<float>& data, const quantization::Params<T>& params) {
   std::vector<T> result;
   result.resize(data.size());
-
-  quantization::Params<T> params;
-  params.scale = scale;
-  params.zero_point = zero_point;
 
   quantization::Quantize(data, result, params);
   return result;
@@ -33,15 +38,20 @@ inline std::vector<T> QuantizeTestVector(const std::vector<float>& data, const f
  * TODO - doc me.
  */
 template <typename T>
-inline std::vector<T> QuantizeLinearTestVector(const std::vector<float>& data, float& out_scale, T& out_zero_point) {
+inline std::vector<T> QuantizeTestVector(const std::vector<float>& data, const float scale, const T zero_point) {
+  quantization::Params<T> params = {scale, zero_point};
+  return QuantizeTestVector(data, params);
+}
+
+/**
+ * TODO - doc me.
+ */
+template <typename T>
+inline std::vector<T> QuantizeLinearTestVector(const std::vector<float>& data, quantization::Params<T>& out_params) {
   std::vector<T> result;
   result.resize(data.size());
 
-  quantization::Params<T> params = quantization::QuantizeLinear(data, result);
-
-  out_scale = params.scale;
-  out_zero_point = params.zero_point;
-
+  out_params = quantization::QuantizeLinear(data, result);
   return result;
 }
 

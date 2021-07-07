@@ -98,14 +98,14 @@ CalculateAvgPoolNchwU8(
             }
           }
           if (kernel_offset >= 0) {
-            y_value_sum += Dequantize<uint8_t>(xbc[kernel_offset], x_scale, static_cast<uint8_t>(x_zero_point));
+            y_value_sum += QuantizeTestValue<uint8_t>(xbc[kernel_offset], x_scale, static_cast<uint8_t>(x_zero_point));
             ++count;
           } else {
             count += count_include_pad ? 1 : 0;
           }
         }
         auto y_offset = yit.next();
-        auto y_u8 = Quantize<uint8_t>(y_value_sum / count, y_scale, static_cast<uint8_t>(y_zero_point));
+        auto y_u8 = QuantizeTestValue<uint8_t>(y_value_sum / count, y_scale, static_cast<uint8_t>(y_zero_point));
         ybc[y_offset] = y_u8;
       }
     }
@@ -124,7 +124,7 @@ void RunQLinearAveragePoolNchwU8(
     uint8_t x_zero_point = 128;
     RandomValueGenerator random{};
     std::vector<float> x_data_fp32 = random.Uniform<float>(x_dims, -0.5f, 0.5f);
-    std::vector<uint8_t> x_data = Quantize<uint8_t>(x_data_fp32, x_scale, x_zero_point);
+    std::vector<uint8_t> x_data = QuantizeTestVector<uint8_t>(x_data_fp32, x_scale, x_zero_point);
 
     float y_scale = 1.0f / 255.0f;
     uint8_t y_zero_point = x_y_same_zero_point ? x_zero_point : 100;
@@ -219,7 +219,7 @@ void RunQLinearAveragePoolNhwcU8(
   uint8_t x_zero_point = 128;
   RandomValueGenerator random{};
   std::vector<float> x_data_fp32 = random.Uniform<float>(x_dims, -0.5f, 0.5f);
-  std::vector<uint8_t> x_data = Quantize<uint8_t>(x_data_fp32, x_scale, x_zero_point);
+  std::vector<uint8_t> x_data = QuantizeTestVector<uint8_t>(x_data_fp32, x_scale, x_zero_point);
 
   float y_scale = 1.0f / 255.0f;
   uint8_t y_zero_point = 100;
