@@ -34,7 +34,7 @@ const createBatchNormalizationProgramInfo =
     (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[],
      attributes: BatchNormalizationAttributes): ProgramInfo => {
       const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
-      const rank = inputs[0].dims;
+      const rank = inputs[0].dims.length;
       const [scaleWidth, scaleHeight] =
           inferenceHandler.calculateTextureWidthAndHeight(inputs[1].dims, TextureType.unpacked);
       const shaderSource = `
@@ -52,7 +52,7 @@ const createBatchNormalizationProgramInfo =
         inputTypes: [
           TextureType.unpacked, TextureType.unpacked, TextureType.unpacked, TextureType.unpacked, TextureType.unpacked
         ],
-        output: {dims: inputs[0].dims, type: inputs[0].type, textureType: TextureType.packed},
+        output: {dims: inputs[0].dims, type: inputs[0].type, textureType: TextureType.unpacked},
         shaderSource
       };
     };
