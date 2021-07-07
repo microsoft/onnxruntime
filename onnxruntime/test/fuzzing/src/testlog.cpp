@@ -159,5 +159,3 @@ namespace Logger
         return std::wstring{ptr.get()};
     }
 }
-
-
