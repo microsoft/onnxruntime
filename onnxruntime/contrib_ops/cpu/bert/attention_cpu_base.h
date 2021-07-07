@@ -155,15 +155,15 @@ class AttentionCPUBase : public AttentionBase {
     }
 
     if (extra_add_qk_data != nullptr) {
-      int64_t batch_offset = num_heads_*sequence_length*all_sequence_length;
-      int64_t head_offset = sequence_length*all_sequence_length;
-      int64_t seq_len_offset = all_sequence_length;
+      int batch_offset = num_heads_*sequence_length*all_sequence_length;
+      int head_offset = sequence_length*all_sequence_length;
+      int seq_len_offset = all_sequence_length;
 
-      for (size_t i = 0; i < batch_size; i++) {
-        for (size_t j = 0; j < num_heads_; j++) {
-          for (size_t k = 0; k < sequence_length; k++) {
-            for (size_t l = 0; l < all_sequence_length; l++) {
-              int64_t final_offset =  i*batch_offset + j*head_offset + k*seq_len_offset + l;
+      for (int i = 0; i < batch_size; i++) {
+        for (int j = 0; j < num_heads_; j++) {
+          for (int k = 0; k < sequence_length; k++) {
+            for (int l = 0; l < all_sequence_length; l++) {
+              int final_offset =  i*batch_offset + j*head_offset + k*seq_len_offset + l;
               attention_probs[final_offset] += extra_add_qk_data[final_offset];
             }
           }

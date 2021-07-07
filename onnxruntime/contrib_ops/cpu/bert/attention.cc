@@ -119,7 +119,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   } else {
     int qkv_sizes = 0;
 
-    for (int i = 0; i < qkv_hidden_sizes_.size(); i++) {
+    for (size_t i = 0; i < qkv_hidden_sizes_.size(); i++) {
       qkv_sizes += static_cast<int>(qkv_hidden_sizes_[i]);
     }
 
