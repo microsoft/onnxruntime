@@ -15,13 +15,16 @@ namespace onnxruntime {
 namespace test {
 
 template <typename T>
-inline T QuantizeTestValue(const float& value, const float scale, const T zero_point) {
+inline T QuantizeTestValue(const float& value,
+                           const float scale,
+                           const T zero_point) {
   quantization::Params<T> params = {scale, zero_point};
   return quantization::Quantize(value, params);
 }
 
 template <typename T>
-inline std::vector<T> QuantizeTestVector(const std::vector<float>& data, const quantization::Params<T>& params) {
+inline std::vector<T> QuantizeTestVector(const std::vector<float>& data,
+                                         const quantization::Params<T>& params) {
   std::vector<T> result;
   result.resize(data.size());
 
@@ -30,13 +33,16 @@ inline std::vector<T> QuantizeTestVector(const std::vector<float>& data, const q
 }
 
 template <typename T>
-inline std::vector<T> QuantizeTestVector(const std::vector<float>& data, const float scale, const T zero_point) {
+inline std::vector<T> QuantizeTestVector(const std::vector<float>& data,
+                                         const float scale,
+                                         const T zero_point) {
   quantization::Params<T> params = {scale, zero_point};
   return QuantizeTestVector(data, params);
 }
 
 template <typename T>
-inline std::vector<T> QuantizeLinearTestVector(const std::vector<float>& data, quantization::Params<T>& out_params) {
+inline std::vector<T> QuantizeLinearTestVector(const std::vector<float>& data,
+                                               quantization::Params<T>& out_params) {
   std::vector<T> result;
   result.resize(data.size());
 
