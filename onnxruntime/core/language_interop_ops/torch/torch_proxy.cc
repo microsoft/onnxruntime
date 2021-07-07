@@ -171,10 +171,15 @@ void InvokeRunner(
   // first element.
   for (; i < static_cast<size_t>(PyTuple_Size(result_ptr.get())); ++i) {
     PyObject* dl_tensor_pointer = PyTuple_GetItem(result_ptr.get(), i);
-    ORT_ENFORCE(Py_REFCNT(dl_tensor_pointer) == 1, "Ref count of dl_tensor_pointer should be 1.");
-    // Todo: be noted we did not pass whether tensor is bool or not.
-    // Currently we assume we don't pass boolean data.
-    returned_ortvalues.push_back(training::framework::torch::FromDlpack(dl_tensor_pointer, false));
+    if (dl_tensor_pointer == Py_None) {
+      OrtValue empty_ort_value;
+      returned_ortvalues.push_back(empty_ort_value);
+    } else {
+      ORT_ENFORCE(Py_REFCNT(dl_tensor_pointer) == 1, "Ref count of dl_tensor_pointer should be 1.");
+      // Todo (pengwa): be noted we did not pass whether tensor is bool or not.
+      // Currently we assume we don't pass boolean data.
+      returned_ortvalues.push_back(training::framework::torch::FromDlpack(dl_tensor_pointer, false));
+    }
   }
 }
 
@@ -294,7 +299,6 @@ void TorchProxy::Forward(
 
 void TorchProxy::Backward(
     void* callback,
-    const std::vector<int64_t>& requires_grads,
     const std::vector<OrtValue>& tensor_args,
     const std::vector<int64_t>& tensor_indices,
     const std::vector<void*>& obj_args,
@@ -308,6 +312,10 @@ void TorchProxy::Backward(
   // Python-related calls should happen only if guard is alive.
   GilGuard guard;
   auto runner = OrtTorchFunctionPool::GetInstance().GetBackwardRunner();
+
+  // Pass all zero since backward inputs don't require gradients.
+  const auto all_input_count = tensor_args.size() + obj_args.size();
+  const std::vector<int64_t> requires_grads(all_input_count, 0);
   Invoke(
       runner,
       reinterpret_cast<PyObject*>(callback),
