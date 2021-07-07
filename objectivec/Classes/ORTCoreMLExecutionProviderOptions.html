@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <title>ORTGraphOptimizationLevel Enumeration Reference</title>
+    <title>ORTCoreMLExecutionProviderOptions Class Reference</title>
     <link rel="stylesheet" type="text/css" href="../css/jazzy.css" />
     <link rel="stylesheet" type="text/css" href="../css/highlight.css" />
     <meta charset='utf-8'>
@@ -13,8 +13,8 @@
     <script src="../js/jazzy.search.js" defer></script>
   </head>
   <body>
-    <a name="//apple_ref/objc/Enum/ORTGraphOptimizationLevel" class="dashAnchor"></a>
-    <a title="ORTGraphOptimizationLevel Enumeration Reference"></a>
+    <a name="//apple_ref/objc/Class/ORTCoreMLExecutionProviderOptions" class="dashAnchor"></a>
+    <a title="ORTCoreMLExecutionProviderOptions Class Reference"></a>
     <header>
       <div class="content-wrapper">
         <p><a href="../index.html">ONNX Runtime Objective-C API 1.8.1 Docs</a></p>
@@ -30,7 +30,7 @@
       <p id="breadcrumbs">
         <a href="../index.html">ONNX Runtime Objective-C API Reference</a>
         <img id="carat" src="../img/carat.png" />
-        ORTGraphOptimizationLevel Enumeration Reference
+        ORTCoreMLExecutionProviderOptions Class Reference
       </p>
     </div>
     <div class="content-wrapper">
@@ -95,22 +95,20 @@
       <article class="main-content">
         <section>
           <section class="section">
-            <h1>ORTGraphOptimizationLevel</h1>
+            <h1>ORTCoreMLExecutionProviderOptions</h1>
               <div class="declaration">
                 <div class="language">
                   <p class="aside-title">Objective-C</p>
-                  <pre class="highlight objective_c"><code><span class="k">enum</span> <span class="n">ORTGraphOptimizationLevel</span> <span class="o">:</span> <span class="kt">int32_t</span> <span class="p">{}</span></code></pre>
+                  <pre class="highlight objective_c"><code><span class="k">@interface</span> <span class="nc">ORTCoreMLExecutionProviderOptions</span> <span class="p">:</span> <span class="nc">NSObject</span></code></pre>
 
                 </div>
                 <div class="language">
                   <p class="aside-title">Swift</p>
-                  <pre class="highlight swift"><code><span class="kd">enum</span> <span class="kt">ORTGraphOptimizationLevel</span> <span class="p">:</span> <span class="kt">Int32</span></code></pre>
+                  <pre class="highlight swift"><code><span class="kd">class</span> <span class="kt">ORTCoreMLExecutionProviderOptions</span> <span class="p">:</span> <span class="kt">NSObject</span></code></pre>
 
                 </div>
               </div>
-            <p>The ORT graph optimization levels.
-See here for more details:
-<a href="https://www.onnxruntime.ai/docs/resources/graph-optimizations.html">https://www.onnxruntime.ai/docs/resources/graph-optimizations.html</a></p>
+            <p>Options for configuring the CoreML execution provider.</p>
 
           </section>
           <section class="section task-group-section">
@@ -119,9 +117,9 @@ See here for more details:
                 <li class="item">
                   <div>
                     <code>
-                    <a name="/c:@E@ORTGraphOptimizationLevel@ORTGraphOptimizationLevelNone"></a>
-                    <a name="//apple_ref/objc/Case/ORTGraphOptimizationLevelNone" class="dashAnchor"></a>
-                    <a class="token" href="#/c:@E@ORTGraphOptimizationLevel@ORTGraphOptimizationLevelNone">ORTGraphOptimizationLevelNone</a>
+                    <a name="/c:objc(cs)ORTCoreMLExecutionProviderOptions(py)useCPUOnly"></a>
+                    <a name="//apple_ref/objc/Property/useCPUOnly" class="dashAnchor"></a>
+                    <a class="token" href="#/c:objc(cs)ORTCoreMLExecutionProviderOptions(py)useCPUOnly">useCPUOnly</a>
                     </code>
                   </div>
                   <div class="height-container">
@@ -129,18 +127,19 @@ See here for more details:
                     <section class="section">
                       <div class="pointer"></div>
                       <div class="abstract">
-                        
+                        <p>Whether the CoreML execution provider should run on CPU only.</p>
+
                       </div>
                       <div class="declaration">
                         <h4>Declaration</h4>
                         <div class="language">
                           <p class="aside-title">Objective-C</p>
-                          <pre class="highlight objective_c"><code><span class="n">ORTGraphOptimizationLevelNone</span></code></pre>
+                          <pre class="highlight objective_c"><code><span class="k">@property</span> <span class="n">BOOL</span> <span class="n">useCPUOnly</span><span class="p">;</span></code></pre>
 
                         </div>
                         <div class="language">
                           <p class="aside-title">Swift</p>
-                          <pre class="highlight swift"><code><span class="k">case</span> <span class="k">none</span> <span class="o">=</span> <span class="mi">0</span></code></pre>
+                          <pre class="highlight swift"><code><span class="k">var</span> <span class="nv">useCPUOnly</span><span class="p">:</span> <span class="kt">Bool</span> <span class="p">{</span> <span class="k">get</span> <span class="k">set</span> <span class="p">}</span></code></pre>
 
                         </div>
                       </div>
@@ -150,9 +149,9 @@ See here for more details:
                 <li class="item">
                   <div>
                     <code>
-                    <a name="/c:@E@ORTGraphOptimizationLevel@ORTGraphOptimizationLevelBasic"></a>
-                    <a name="//apple_ref/objc/Case/ORTGraphOptimizationLevelBasic" class="dashAnchor"></a>
-                    <a class="token" href="#/c:@E@ORTGraphOptimizationLevel@ORTGraphOptimizationLevelBasic">ORTGraphOptimizationLevelBasic</a>
+                    <a name="/c:objc(cs)ORTCoreMLExecutionProviderOptions(py)enableOnSubgraphs"></a>
+                    <a name="//apple_ref/objc/Property/enableOnSubgraphs" class="dashAnchor"></a>
+                    <a class="token" href="#/c:objc(cs)ORTCoreMLExecutionProviderOptions(py)enableOnSubgraphs">enableOnSubgraphs</a>
                     </code>
                   </div>
                   <div class="height-container">
@@ -160,18 +159,19 @@ See here for more details:
                     <section class="section">
                       <div class="pointer"></div>
                       <div class="abstract">
-                        
+                        <p>Whether the CoreML execution provider is enabled on subgraphs.</p>
+
                       </div>
                       <div class="declaration">
                         <h4>Declaration</h4>
                         <div class="language">
                           <p class="aside-title">Objective-C</p>
-                          <pre class="highlight objective_c"><code><span class="n">ORTGraphOptimizationLevelBasic</span></code></pre>
+                          <pre class="highlight objective_c"><code><span class="k">@property</span> <span class="n">BOOL</span> <span class="n">enableOnSubgraphs</span><span class="p">;</span></code></pre>
 
                         </div>
                         <div class="language">
                           <p class="aside-title">Swift</p>
-                          <pre class="highlight swift"><code><span class="k">case</span> <span class="n">basic</span> <span class="o">=</span> <span class="mi">1</span></code></pre>
+                          <pre class="highlight swift"><code><span class="k">var</span> <span class="nv">enableOnSubgraphs</span><span class="p">:</span> <span class="kt">Bool</span> <span class="p">{</span> <span class="k">get</span> <span class="k">set</span> <span class="p">}</span></code></pre>
 
                         </div>
                       </div>
@@ -181,9 +181,9 @@ See here for more details:
                 <li class="item">
                   <div>
                     <code>
-                    <a name="/c:@E@ORTGraphOptimizationLevel@ORTGraphOptimizationLevelExtended"></a>
-                    <a name="//apple_ref/objc/Case/ORTGraphOptimizationLevelExtended" class="dashAnchor"></a>
-                    <a class="token" href="#/c:@E@ORTGraphOptimizationLevel@ORTGraphOptimizationLevelExtended">ORTGraphOptimizationLevelExtended</a>
+                    <a name="/c:objc(cs)ORTCoreMLExecutionProviderOptions(py)onlyEnableForDevicesWithANE"></a>
+                    <a name="//apple_ref/objc/Property/onlyEnableForDevicesWithANE" class="dashAnchor"></a>
+                    <a class="token" href="#/c:objc(cs)ORTCoreMLExecutionProviderOptions(py)onlyEnableForDevicesWithANE">onlyEnableForDevicesWithANE</a>
                     </code>
                   </div>
                   <div class="height-container">
@@ -191,49 +191,20 @@ See here for more details:
                     <section class="section">
                       <div class="pointer"></div>
                       <div class="abstract">
-                        
+                        <p>Whether the CoreML execution provider is only enabled for devices with Apple
+Neural Engine (ANE).</p>
+
                       </div>
                       <div class="declaration">
                         <h4>Declaration</h4>
                         <div class="language">
                           <p class="aside-title">Objective-C</p>
-                          <pre class="highlight objective_c"><code><span class="n">ORTGraphOptimizationLevelExtended</span></code></pre>
+                          <pre class="highlight objective_c"><code><span class="k">@property</span> <span class="n">BOOL</span> <span class="n">onlyEnableForDevicesWithANE</span><span class="p">;</span></code></pre>
 
                         </div>
                         <div class="language">
                           <p class="aside-title">Swift</p>
-                          <pre class="highlight swift"><code><span class="k">case</span> <span class="n">extended</span> <span class="o">=</span> <span class="mi">2</span></code></pre>
-
-                        </div>
-                      </div>
-                    </section>
-                  </div>
-                </li>
-                <li class="item">
-                  <div>
-                    <code>
-                    <a name="/c:@E@ORTGraphOptimizationLevel@ORTGraphOptimizationLevelAll"></a>
-                    <a name="//apple_ref/objc/Case/ORTGraphOptimizationLevelAll" class="dashAnchor"></a>
-                    <a class="token" href="#/c:@E@ORTGraphOptimizationLevel@ORTGraphOptimizationLevelAll">ORTGraphOptimizationLevelAll</a>
-                    </code>
-                  </div>
-                  <div class="height-container">
-                    <div class="pointer-container"></div>
-                    <section class="section">
-                      <div class="pointer"></div>
-                      <div class="abstract">
-                        
-                      </div>
-                      <div class="declaration">
-                        <h4>Declaration</h4>
-                        <div class="language">
-                          <p class="aside-title">Objective-C</p>
-                          <pre class="highlight objective_c"><code><span class="n">ORTGraphOptimizationLevelAll</span></code></pre>
-
-                        </div>
-                        <div class="language">
-                          <p class="aside-title">Swift</p>
-                          <pre class="highlight swift"><code><span class="k">case</span> <span class="n">all</span> <span class="o">=</span> <span class="mi">3</span></code></pre>
+                          <pre class="highlight swift"><code><span class="k">var</span> <span class="nv">onlyEnableForDevicesWithANE</span><span class="p">:</span> <span class="kt">Bool</span> <span class="p">{</span> <span class="k">get</span> <span class="k">set</span> <span class="p">}</span></code></pre>
 
                         </div>
                       </div>
