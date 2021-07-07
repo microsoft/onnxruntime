@@ -160,6 +160,27 @@ SkipScaleByZeroPointBM4
 // packed matrix A. At the time of this implementation, using a wider 128-bit
 // load didn't affect performance for higher end cores.
 //
+//                                      int8 RHS 4x8 block
+//                           /-----------------------------------------|
+//                           |v0.b[0] ... v0.b[12] v1.b[0] ... v1.b[12]|
+//                           |  ...                              ...   |
+//                           |v0.b[3] ... v0.b[15] v1.b[3] ... v1.b[15]|
+//                           \-----------------------------------------/
+//    int8 LHS 4x4 block
+//  /---------------------\  /-----------------------------------------|
+//  |d4.b[0]  ... d4.b[3] |  |v16.s[0] .. v16.s[3] v17.s[0] .. v17.s[3]|
+//  |d4.b[4]  ... d4.b[7] |  |v18.s[0] .. v18.s[3] v19.s[0] .. v19.s[3]|
+//  |d5.b[0]  ... d5.b[3] |  |v20.s[0] .. v20.s[3] v21.s[0] .. v21.s[3]|
+//  |d5.b[4]  ... d5.b[7] |  |v22.s[0] .. v22.s[3] v23.s[0] .. v23.s[3]|
+//  \---------------------/  \-----------------------------------------/
+
+//  /---------------------\  /-----------------------------------------\
+//  |d6.b[0]  ... d6.b[3] |  |v24.s[0] .. v24.s[3] v25.s[0] .. v25.s[3]|
+//  |d6.b[4]  ... d6.b[7] |  |v26.s[0] .. v26.s[3] v27.s[0] .. v27.s[3]|
+//  |d7.b[0]  ... d7.b[3] |  |v28.s[0] .. v24.s[3] v29.s[0] .. v29.s[3]|
+//  |d7.b[4]  ... d7.b[7] |  |v30.s[0] .. v24.s[3] v31.s[0] .. v31.s[3]|
+//  \---------------------/  \-----------------------------------------/
+//                                  int32 accumulators 8x8 block
 
 ComputeBlockLoopStartM4
         ldr     d4,[x0],#32                 // load packed A0.l
@@ -181,24 +202,24 @@ ComputeBlockLoopM4
         ldur    d7,[x0,#-8]                 // load packed A1.h
         UdotByElement 20, 0, 5, 0
         UdotByElement 22, 0, 5, 1
-        ld1     {v0.16b},[x1],#16           // load packed B0
+        ld1     {v0.16b},[x1],#16           // load packed B0_next4k
         UdotByElement 17, 1, 4, 0
         UdotByElement 19, 1, 4, 1
         sub     x3,x3,#1
         cbz     x3,ComputeBlockLoopFinishM4
-        ldr     d4,[x0],#32                 // load packed A0.l
+        ldr     d4,[x0],#32                 // load packed A0.l for next iteration
         UdotByElement 21, 1, 5, 0
         UdotByElement 23, 1, 5, 1
-        ld1     {v1.16b},[x1],#16           // load packed B1
+        ld1     {v1.16b},[x1],#16           // load packed B1_next4k
         UdotByElement 24, 0, 6, 0
         UdotByElement 26, 0, 6, 1
-        ldur    d5,[x0,#-24]                // load packed A0.h
+        ldur    d5,[x0,#-24]                // load packed A0.h for next iteration
         UdotByElement 28, 0, 7, 0
         UdotByElement 30, 0, 7, 1
-        ld1     {v0.16b},[x1],#16           // load packed B0
+        ld1     {v0.16b},[x1],#16           // load packed B0 for next iteration
         UdotByElement 25, 1, 6, 0
         UdotByElement 27, 1, 6, 1
-        ldur    d6,[x0,#-16]                // load packed A1.l
+        ldur    d6,[x0,#-16]                // load packed A1.l for next iteration
         UdotByElement 29, 1, 7, 0
         UdotByElement 31, 1, 7, 1
         b       ComputeBlockLoopM4
@@ -206,7 +227,7 @@ ComputeBlockLoopM4
 ComputeBlockLoopFinishM4
         UdotByElement 21, 1, 5, 0
         UdotByElement 23, 1, 5, 1
-        ld1     {v1.16b},[x1],#16           // load packed B1
+        ld1     {v1.16b},[x1],#16           // load packed B1_next4k
         UdotByElement 24, 0, 6, 0
         UdotByElement 26, 0, 6, 1
         UdotByElement 28, 0, 7, 0
