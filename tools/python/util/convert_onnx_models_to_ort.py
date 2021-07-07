@@ -21,14 +21,15 @@ def _onnx_model_path_to_ort_model_path(onnx_model_path: pathlib.Path, optimizati
     return onnx_model_path.with_suffix(".{}.ort".format(optimization_level_str))
 
 
-def _create_config_file_from_ort_models(onnx_model_path_or_dir: pathlib.Path, enable_type_reduction: bool):
+def _create_config_file_from_ort_models(onnx_model_path_or_dir: pathlib.Path, optimization_level_str: str,
+                                        enable_type_reduction: bool):
     if onnx_model_path_or_dir.is_dir():
         # model directory
         model_path_or_dir = onnx_model_path_or_dir
         config_path = None  # default path in model directory
     else:
         # single model
-        model_path_or_dir = _onnx_model_path_to_ort_model_path(onnx_model_path_or_dir)
+        model_path_or_dir = _onnx_model_path_to_ort_model_path(onnx_model_path_or_dir, optimization_level_str)
         config_suffix = ".{}".format(
             'required_operators_and_types.config' if enable_type_reduction else 'required_operators.config')
         config_path = model_path_or_dir.with_suffix(config_suffix)
@@ -202,7 +203,7 @@ def convert_onnx_models_to_ort():
     _convert(model_path_or_dir, args.optimization_level, args.use_nnapi, custom_op_library,
              args.save_optimized_onnx_model)
 
-    _create_config_file_from_ort_models(model_path_or_dir, args.enable_type_reduction)
+    _create_config_file_from_ort_models(model_path_or_dir, args.optimization_level, args.enable_type_reduction)
 
 
 if __name__ == '__main__':
