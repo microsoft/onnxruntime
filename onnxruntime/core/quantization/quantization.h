@@ -11,18 +11,18 @@
 namespace onnxruntime {
 namespace quantization {
 
-//
-// Basic quantization params structure.
-//
+/**
+ * @brief Basic quantization params structure.
+ */
 template <typename T>
 struct Params {
   float scale;
   T zero_point;
 };
 
-//
-// Quantizes a given float value with provided quantization params.
-//
+/**
+ * @brief Quantizes a given float value with provided quantization params.
+ */
 template <typename T>
 T Quantize(const float value, const Params<T>& params) {
   constexpr int32_t T_max = std::numeric_limits<T>::max();
@@ -32,9 +32,9 @@ T Quantize(const float value, const Params<T>& params) {
   return static_cast<T>(std::min(std::max(raw, T_min), T_max));
 }
 
-//
-// Quantizes linearly a list of float values with provided quantization params.
-//
+/**
+ * @brief Quantizes linearly a list of float values with provided quantization params.
+ */
 template <typename T>
 void Quantize(const float* data, T* output, const Params<T>& params, size_t size) {
   for (size_t i = 0; i < size; ++i) {
@@ -42,17 +42,19 @@ void Quantize(const float* data, T* output, const Params<T>& params, size_t size
   }
 }
 
-//
-// Quantizes linearly a vector of float values with provided quantization params.
-//
+/**
+ * @brief Quantizes linearly a vector of float values with provided quantization params.
+ */
 template <typename T>
-void Quantize(const std::vector<float>& data, std::vector<T>& output, const Params<T>& params, size_t size) {
-  Quantize(data.data(), output.data(), params, size);
+void Quantize(const std::vector<float>& data, std::vector<T>& output, const Params<T>& params) {
+  // TODO - assert if data.size() != output.size()
+  Quantize(data.data(), output.data(), params, data.size());
 }
 
-//
-// Calculates and returns linear quantization params and value for a given float buffer.
-//
+/**
+ * @brief Calculates and returns linear quantization params for a given float buffer.
+ *        Output buffer is quantized with calculated params.
+ */
 template <typename T>
 Params<T> QuantizeLinear(const float* data, T* output, size_t size) {
   Params<T> params;
@@ -90,25 +92,27 @@ Params<T> QuantizeLinear(const float* data, T* output, size_t size) {
   return params;
 }
 
-//
-// Calculates and returns linear quantization params and value for a given float vector.
-//
+/**
+ * @brief Calculates and returns linear quantization params for a given float vector.
+ *        Output vector is quantized with calculated params.
+ */
 template <typename T>
-Params<T> QuantizeLinear(const std::vector<float>& data, std::vector<T>& output, size_t size) {
-  QuantizeLinear(data, output, size);
+Params<T> QuantizeLinear(const std::vector<float>& data, std::vector<T>& output) {
+  // TODO - assert if data.size() != output.size()
+  return QuantizeLinear(data.data(), output.data(), data.size());
 }
 
-//
-// Dequantizes a value to float with provided quantization params.
-//
+/**
+ * @brief Dequantizes a value to float with provided quantization params.
+ */
 template <typename T>
 float Dequantize(const T value, const Params<T>& params) {
   return static_cast<float>(value - params.zero_point) * params.scale;
 }
 
-//
-// Dequantizes a value buffer value to a float buffer with provided quantization params.
-//
+/**
+ * @brief Dequantizes a value buffer value to a float buffer with provided quantization params.
+ */
 template <typename T>
 void Dequantize(const T* values, float* output, const Params<T>& params, size_t size) {
   for (size_t i = 0; i < size; ++i) {
@@ -116,11 +120,12 @@ void Dequantize(const T* values, float* output, const Params<T>& params, size_t 
   }
 }
 
-//
-// Dequantizes a vector of T values to a float buffer with provided quantization params.
-//
+/**
+ * @brief Dequantizes a vector of T values to a float buffer with provided quantization params.
+ */
 template <typename T>
-void Dequantize(const std::vector<T>& values, std::vector<float>& output, const Params<T>& params, size_t size) {
+void Dequantize(const std::vector<T>& values, std::vector<float>& output, const Params<T>& params) {
+  // TODO - assert if data.size() != output.size()
   Dequantize(values.data(), output.data(), params, size);
 }
 
