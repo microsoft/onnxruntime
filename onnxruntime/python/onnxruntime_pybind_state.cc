@@ -1575,7 +1575,7 @@ void CreatePybindStateModule(py::module& m) {
   addSparseTensorMethods(m);
   addIoBindingMethods(m);
 
-#if !defined(ENABLE_TRAINING) && !defined(__APPLE__) && \
+#if !defined(__APPLE__) && \
     (!defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
   Ort::SessionOptions tmp_options;
   if (!InitProvidersSharedLibrary()) {

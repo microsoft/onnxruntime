@@ -350,6 +350,11 @@ def parse_arguments():
     parser.add_argument(
         "--emsdk_version", default="2.0.23", help="Specify version of emsdk")
 
+    # Enable onnxruntime-extensions
+    parser.add_argument(
+        "--enable_onnxruntime_extensions", action='store_true',
+        help="Enable custom operators in onnxruntime-extensions")
+
     # Arguments needed by CI
     parser.add_argument(
         "--cmake_path", default="cmake", help="Path to the CMake program.")
@@ -755,6 +760,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
+        # enable custom operators in onnxruntime-extensions
+        "-Donnxruntime_ENABLE_EXTENSION_CUSTOM_OPS=" + ("ON" if args.enable_onnxruntime_extensions else "OFF"),
     ]
     if args.use_cuda:
         cmake_args += ["-Donnxruntime_USE_CUDA=ON", "-Donnxruntime_CUDA_VERSION=" + args.cuda_version,
