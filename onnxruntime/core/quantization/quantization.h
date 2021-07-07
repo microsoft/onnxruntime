@@ -12,18 +12,14 @@
 namespace onnxruntime {
 namespace quantization {
 
-/**
- * @brief Basic quantization params structure.
- */
+// Basic quantization params structure.
 template <typename T>
 struct Params {
   float scale;
   T zero_point;
 };
 
-/**
- * @brief Quantizes a given float value with provided quantization params.
- */
+// Quantizes a given float value with provided quantization params.
 template <typename T>
 T Quantize(const float value, const Params<T>& params) {
   T quant_value;
@@ -31,27 +27,21 @@ T Quantize(const float value, const Params<T>& params) {
   return quant_value;
 }
 
-/**
- * @brief Quantizes linearly a list of float values with provided quantization params.
- */
+// Quantizes linearly a list of float values with provided quantization params.
 template <typename T>
 void Quantize(const float* data, T* output, const Params<T>& params, size_t size) {
   MlasQuantizeLinear(data, output, /*N=*/size, params.scale, params.zero_point);
 }
 
-/**
- * @brief Quantizes linearly a vector of float values with provided quantization params.
- */
+// Quantizes linearly a vector of float values with provided quantization params.
 template <typename T>
 void Quantize(const std::vector<float>& data, std::vector<T>& output, const Params<T>& params) {
   // TODO - assert if data.size() != output.size()
   Quantize(data.data(), output.data(), params, data.size());
 }
 
-/**
- * @brief Calculates and returns linear quantization params for a given float buffer.
- *        Output buffer is quantized with calculated params.
- */
+// Calculates and returns linear quantization params for a given float buffer.
+// Output buffer is quantized with calculated params.
 template <typename T>
 Params<T> QuantizeLinear(const float* data, T* output, size_t size) {
   Params<T> params;
@@ -89,27 +79,21 @@ Params<T> QuantizeLinear(const float* data, T* output, size_t size) {
   return params;
 }
 
-/**
- * @brief Calculates and returns linear quantization params for a given float vector.
- *        Output vector is quantized with calculated params.
- */
+// Calculates and returns linear quantization params for a given float vector.
+// Output vector is quantized with calculated params.
 template <typename T>
 Params<T> QuantizeLinear(const std::vector<float>& data, std::vector<T>& output) {
   // TODO - assert if data.size() != output.size()
   return QuantizeLinear(data.data(), output.data(), data.size());
 }
 
-/**
- * @brief Dequantizes a value to float with provided quantization params.
- */
+// Dequantizes a value to float with provided quantization params.
 template <typename T>
 float Dequantize(const T value, const Params<T>& params) {
   return static_cast<float>(value - params.zero_point) * params.scale;
 }
 
-/**
- * @brief Dequantizes a value buffer value to a float buffer with provided quantization params.
- */
+// Dequantizes a value buffer value to a float buffer with provided quantization params.
 template <typename T>
 void Dequantize(const T* values, float* output, const Params<T>& params, size_t size) {
   for (size_t i = 0; i < size; ++i) {
@@ -117,9 +101,7 @@ void Dequantize(const T* values, float* output, const Params<T>& params, size_t 
   }
 }
 
-/**
- * @brief Dequantizes a vector of T values to a float buffer with provided quantization params.
- */
+// Dequantizes a vector of T values to a float buffer with provided quantization params.
 template <typename T>
 void Dequantize(const std::vector<T>& values, std::vector<float>& output, const Params<T>& params) {
   // TODO - assert if data.size() != output.size()
