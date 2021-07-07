@@ -2,29 +2,40 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
-
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
-from onnxruntime.capi.onnxruntime_inference_collection import IOBinding, OrtValue
+from onnxruntime.capi.onnxruntime_inference_collection import IOBinding, get_ort_device_type
 from onnxruntime.capi._pybind_state import TrainingAgent as C_TrainingAgent
 
 from . import _utils
 from ._graph_execution_manager import RunStateInfo
+
+import torch
+from torch.utils.dlpack import to_dlpack
 
 class ExecutionAgentOutput(object):
     def __init__(self, ortvalues, run_id=None):
         self.ortvalues = ortvalues
         self.run_id = run_id
 
+class ExecutionAgent(object):
+    def __init__(self, onnx_model, device):
+        """
+        :param onnx_model: ONNX ModelProto
+        :param device: torch device
+        """
+        self._onnx_model = onnx_model
+        self._device = device
 
-class InferenceAgent(object):
+class InferenceAgent(ExecutionAgent):
     """
     This is the main class used to run an ORTModule model inferencing.
     """
 
     def __init__(self, onnx_model, device, session_options=None, providers=None, provider_options=None):
         """
-        :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
+        :param onnx_model: ONNX ModelProto
+        :param device: torch device
         :param sess_options: session options
         :param providers: Optional sequence of providers in order of decreasing
             precedence. Values can either be provider names or tuples of
@@ -48,14 +59,13 @@ class InferenceAgent(object):
         The list of providers is ordered by precedence. For example ['CUDAExecutionProvider', 'CPUExecutionProvider']
         means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
         """
-        self._onnx_model = onnx_model
-        self._device = device
+        super().__init__(onnx_model, device)
         self._inference_session = None
 
         self.create_inference_agent(onnx_model.SerializeToString(), session_options, providers, provider_options)
 
-    def create_inference_agent(self, path_or_bytes, session_options, providers, provider_options):
-        self._inference_session = onnxruntime.InferenceSession(path_or_bytes, session_options,
+    def create_inference_agent(self, bytes_, session_options, providers, provider_options):
+        self._inference_session = onnxruntime.InferenceSession(bytes_, session_options,
                                                                providers, provider_options)
 
     def io_binding(self):
@@ -115,20 +125,17 @@ class InferenceAgent(object):
         return self._process_outputs(ort_output)
 
 
-class TrainingAgent(object):
+class TrainingAgent(ExecutionAgent):
     """
     This is the main class used to run an ORTModule model training.
     """
 
-    def __init__(self, path_or_bytes, fw_feed_names, fw_outputs_device_info,
-                 bw_fetches_names, bw_outputs_device_info, session_options=None,
+    def __init__(self, onnx_model, device, graph_info, session_options=None,
                  providers=None, provider_options=None):
         """
-        :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
-        :param fw_feed_names: Feed names for foward pass.
-        :param fw_outputs_device_info: Device info for fetches in forward pass.
-        :param bw_fetches_names: Fetch names for backward pass.
-        :param bw_outputs_device_info: Device info for fetches in backward pass.
+        :param onnx_model: ONNX ModelProto
+        :param device: torch device
+        :param graph_info: GraphInfo
         :param sess_options: session options
         :param providers: Optional sequence of providers in order of decreasing
             precedence. Values can either be provider names or tuples of
@@ -152,27 +159,103 @@ class TrainingAgent(object):
         The list of providers is ordered by precedence. For example ['CUDAExecutionProvider', 'CPUExecutionProvider']
         means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
         """
-
-        self._inference_session = onnxruntime.InferenceSession(path_or_bytes, session_options,
+        super().__init__(onnx_model, device)
+        self._graph_info = graph_info
+        self._inference_session = onnxruntime.InferenceSession(onnx_model.SerializeToString(), session_options,
                                                                providers, provider_options)
 
+        fw_feed_names = [input.name for input in onnx_model.graph.input]
+        fw_outputs_device_info = [
+            C.OrtDevice(get_ort_device_type(self._device.type),
+                        C.OrtDevice.default_memory(),
+                        _utils.get_device_index(self._device)
+            )] * len(self._graph_info.user_output_names)
+
+        bw_fetches_names = [output.name for output in onnx_model.graph.output]
+        bw_outputs_device_info = [
+            C.OrtDevice(get_ort_device_type(self._device.type),
+                        C.OrtDevice.default_memory(),
+                        _utils.get_device_index(self._device)
+            )] * len(bw_fetches_names)
         self._training_agent = C_TrainingAgent(self._inference_session._sess, fw_feed_names, fw_outputs_device_info,
                                                bw_fetches_names, bw_outputs_device_info)
 
-    def run_forward(self, feeds, fetches, state):
-        """
-         Compute the forward subgraph for given feeds and fetches.
-         :param feeds: Inputs to the graph run.
-         :param fetches: Outputs of the graph run.
-         :param state: State of the graph that is used for executing partial graph runs.
-        """
-        self._training_agent.run_forward(feeds, fetches, state)
 
-    def run_backward(self, feeds, fetches, state):
-        """
-         Compute the backward subgraph for given feeds and fetches.
-         :param feeds: Inputs to the graph run.
-         :param fetches: Outputs of the graph run.
-         :param state: State of the graph that is used for executing partial graph runs.
-        """
-        self._training_agent.run_backward(feeds, fetches, state)
+
+    def _prepare_forward_inputs(self, inputs):
+        """ Prepare feeds from torch tensors """
+
+        # Assert that the input and model device match
+        _utils._check_same_device(self._device, "Input argument to forward", *inputs)
+        # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
+        #   especially the backward graph outputs.
+        # REVIEW(codemzs): Consolidate Training Agent with InferenceAgent on C++ side to not
+        # have the need for passing IOBinding.
+        forward_inputs = C.OrtValueVector()
+        forward_inputs.reserve(len(inputs))
+        for input in inputs:
+            forward_inputs.push_back(to_dlpack(input), input.dtype == torch.bool)
+
+        return forward_inputs
+
+
+    def _process_forward_outputs(self, forward_outputs, state):
+        user_outputs = tuple(_utils._ortvalue_to_torch_tensor(forward_output) for forward_output in forward_outputs)
+        output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
+        run_info = RunStateInfo(state, output_info)
+        # Return user outputs and forward run information
+        return user_outputs, run_info
+
+
+    def forward(self, *inputs):
+        feeds = self._prepare_forward_inputs(inputs)
+        fetches = C.OrtValueVector()
+        state = C.PartialGraphExecutionState()
+        self._training_agent.run_forward(feeds, fetches, state)
+        return self._process_forward_outputs(fetches, state)
+
+
+    def _prepare_backward_inputs(self, ctx, grad_outputs):
+        _utils._check_same_device(self._device, "Input argument to backward", *grad_outputs)
+
+        # Use IO binding
+        # Push user output grads to ONNX backend.
+        backward_inputs = C.OrtValueVector()
+        # Preallocate length of the vector. And then delete as required towards the end.
+        backward_inputs.reserve(len(grad_outputs))
+        for idx, grad_output in enumerate(grad_outputs):
+            if idx in self._graph_info.output_grad_indices_non_differentiable:
+                assert grad_output is None, "ORT found the {}-th module output '{}' is " \
+                                            "non-differentiable according to the onnx graph. " \
+                                            "However, the gradient value is still provided by " \
+                                            "PyTorch's autograd engine." \
+                                            .format(idx, self._graph_info.user_output_names[idx])
+                continue
+
+            if grad_output is None:
+                shape, device, dtype = ctx.run_info.output_info[idx]
+                if idx in self._graph_info.output_grad_indices_require_full_shape:
+                    grad_output = torch.zeros(shape, device=device, dtype=dtype)
+                else:
+                    grad_output = torch.tensor(0., device=device, dtype=dtype)
+            elif not grad_output.is_contiguous():
+                grad_output = grad_output.contiguous()
+            backward_inputs.push_back(to_dlpack(grad_output), grad_output.dtype == torch.bool)
+        backward_inputs.shrink_to_fit()
+        return backward_inputs
+
+
+    @staticmethod
+    def _process_backward_outputs(backward_outputs):
+        return [
+            _utils._torch_tensor_from_dl_pack(backward_outputs.dlpack_at(i), backward_output)
+            for i, backward_output in enumerate(backward_outputs)
+        ]
+
+
+    def backward(self, ctx, *grad_outputs):
+        backward_inputs = self._prepare_backward_inputs(ctx, grad_outputs)
+        # Run and get results
+        backward_outputs = C.OrtValueVector()
+        self._training_agent.run_backward(backward_inputs, backward_outputs, ctx.run_info.state)
+        return self._process_backward_outputs(backward_outputs)
