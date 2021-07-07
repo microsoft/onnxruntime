@@ -16,8 +16,8 @@ Abstract:
 --*/
 
 #pragma once
-#include "mlasi.h"
 
+#include "mlasi.h"
 
 //
 // Quantized integer matrix/matrix dispatch structure.
@@ -34,7 +34,6 @@ void
     const size_t RangeCountN
     );
 
-
 typedef
 void
 (MLAS_GEMM_U8X8_COPY_PACKB_ROUTINE)(
@@ -47,7 +46,6 @@ void
     bool BIsSigned
     );
 
-
 struct MLAS_GEMM_U8X8_DISPATCH {
     MLAS_GEMM_U8X8_OPERATION* Operation;
     MLAS_GEMM_U8X8_OPERATION* PackedOperation;
@@ -55,7 +53,6 @@ struct MLAS_GEMM_U8X8_DISPATCH {
     size_t PackedK;
     size_t PackedStrideK;
 };
-
 
 MLAS_FORCEINLINE
 const MLAS_GEMM_U8X8_DISPATCH*
