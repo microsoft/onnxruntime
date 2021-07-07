@@ -145,7 +145,7 @@ namespace Logger
     {
         std::mbstate_t ps;
         size_t retVal;
-        size_t length_str = std::strnlen(pStr, MAX_STR_LEN);
+        size_t length_str = std::strnlen(pStr, max_str_len);
         mbsrtowcs_s(&retVal, nullptr, 0, &pStr, length_str, &ps );
         retVal += 1;
         auto ptr = std::make_unique<wchar_t[]>(retVal);

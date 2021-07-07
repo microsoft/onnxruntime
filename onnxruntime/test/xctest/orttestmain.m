@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 #import <UIKit/UIKit.h>
-#define MAX_STR_LEN 2048
+static const size_t max_str_len = 2048
 
 static void set_test_rootdir(const char* image_path){
-    size_t n = strnlen(image_path, MAX_STR_LEN);
+    size_t n = strnlen(image_path, max_str_len);
     for (; n >=0; n--) {
         if (image_path[n] == '/') {
             break;
