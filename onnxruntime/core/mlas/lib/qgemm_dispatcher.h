@@ -6,38 +6,17 @@ Licensed under the MIT License.
 
 Module Name:
 
-    qgemm_data.h
+    qgemm_dispatcher.h
 
 Abstract:
 
-    This module defines common data structure for quantized integer
+    This module defines dispatcher structure and logic for quantized integer
     matrix/matrix multiply operation (QGEMM).
 
 --*/
 
 #pragma once
 #include "mlasi.h"
-
-//
-// Define the parameters to execute segments of a QGEMM operation on worker
-// threads.
-//
-
-struct MLAS_GEMM_U8X8_WORK_BLOCK {
-    ptrdiff_t ThreadCountM;
-    ptrdiff_t ThreadCountN;
-};
-
-//
-// Define the default striding parameters used for the quantized integer
-// matrix/matrix multiply operation.
-//
-
-struct MLAS_GEMM_U8X8_STRIDES {
-    size_t M;
-    size_t N;
-    size_t K;
-};
 
 
 //
@@ -106,31 +85,4 @@ MlasGemmU8X8GetDispatch(
 #endif
 
     return GemmU8X8Dispatch;
-}
-
-
-inline
-void
-MlasGemmU8X8ScaleSumBuffer(
-    int32_t* Output,
-    const int32_t* Input,
-    size_t N,
-    int32_t Scale
-)
-{
-    for (size_t n = 0; n < N; n++) {
-        Output[n] = Input[n] * Scale;
-    }
-}
-
-
-MLAS_FORCEINLINE
-void
-MlasGemmU8X8ScaleSumBuffer(
-    int32_t* SumBuffer,
-    size_t N,
-    int32_t Scale
-)
-{
-    return MlasGemmU8X8ScaleSumBuffer(SumBuffer, SumBuffer, N, Scale);
 }

@@ -21,6 +21,7 @@ Abstract:
     Specialization of MlasGemmU8X8TryGemvKernel is optional.
 
     MlasGemmU8X8Operation and MlasGemmU8X8PackedOperation are shared kernel drivers.
+    MlasGemmU8X8ScaleSumBuffer is a helper function.
 
 --*/
 
@@ -134,6 +135,33 @@ MlasGemmU8X8Kernel(
     const int32_t* ZeroPointB,
     bool ZeroMode
 );
+
+
+inline
+void
+MlasGemmU8X8ScaleSumBuffer(
+    int32_t* Output,
+    const int32_t* Input,
+    size_t N,
+    int32_t Scale
+)
+{
+    for (size_t n = 0; n < N; n++) {
+        Output[n] = Input[n] * Scale;
+    }
+}
+
+
+MLAS_FORCEINLINE
+void
+MlasGemmU8X8ScaleSumBuffer(
+    int32_t* SumBuffer,
+    size_t N,
+    int32_t Scale
+)
+{
+    return MlasGemmU8X8ScaleSumBuffer(SumBuffer, SumBuffer, N, Scale);
+}
 
 
 template<typename KernelType>

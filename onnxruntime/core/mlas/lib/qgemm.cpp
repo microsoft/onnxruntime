@@ -16,7 +16,17 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#include "qgemm_common.h"
+#include "qgemm_dispatcher.h"
+
+//
+// Define the parameters to execute segments of a QGEMM operation on worker
+// threads.
+//
+
+struct MLAS_GEMM_U8X8_WORK_BLOCK {
+    ptrdiff_t ThreadCountM;
+    ptrdiff_t ThreadCountN;
+};
 
 void
 MlasGemmU8X8Threaded(

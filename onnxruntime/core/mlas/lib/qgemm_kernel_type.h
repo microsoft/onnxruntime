@@ -17,7 +17,18 @@ Abstract:
 
 #pragma once
 
-#include "qgemm_common.h"
+#include <cstdint>
+
+//
+// Define the default striding parameters used for the quantized integer
+// matrix/matrix multiply operation.
+//
+
+struct MLAS_GEMM_U8X8_STRIDES {
+    size_t M;
+    size_t N;
+    size_t K;
+};
 
 struct MLAS_GEMM_U8X8_KERNEL_DEFAULT
 {

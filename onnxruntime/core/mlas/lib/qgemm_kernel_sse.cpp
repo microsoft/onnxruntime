@@ -15,6 +15,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#include "qgemm_dispatcher.h"
 #include "qgemm_kernel_protocol.h"
 #include "qgemm_kernel_type.h"
 
