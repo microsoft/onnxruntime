@@ -130,7 +130,7 @@ bool HasNeuralEngine(const logging::Logger& logger) {
   // A12: iPhone XS (11,2), iPad Mini - 5th Gen (11,1)
   // A12X: iPad Pro - 3rd Gen (8,1)
   // For more information, see https://www.theiphonewiki.com/wiki/Models
-  size_t str_len = strnlen(system_info.machine, std::numeric_limits<uint16_t>::max());
+  size_t str_len = strnlen(system_info.machine, MAX_STR_LEN);
   if (str_len > 4 && strncmp("iPad", system_info.machine, 4) == 0) {
     const int major_version = atoi(system_info.machine + 4);
     has_neural_engine = major_version >= 8;  // There are no device between iPad 8 and 11.
