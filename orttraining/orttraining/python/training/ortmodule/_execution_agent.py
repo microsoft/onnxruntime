@@ -8,6 +8,8 @@ from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import IOBinding, OrtValue
 from onnxruntime.capi._pybind_state import TrainingAgent as C_TrainingAgent
 
+from . import _utils
+from ._graph_execution_manager import RunStateInfo
 
 class ExecutionAgentOutput(object):
     def __init__(self, ortvalues, run_id=None):
@@ -20,7 +22,7 @@ class InferenceAgent(object):
     This is the main class used to run an ORTModule model inferencing.
     """
 
-    def __init__(self, path_or_bytes, session_options=None, providers=None, provider_options=None):
+    def __init__(self, onnx_model, device, session_options=None, providers=None, provider_options=None):
         """
         :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
         :param sess_options: session options
@@ -46,10 +48,11 @@ class InferenceAgent(object):
         The list of providers is ordered by precedence. For example ['CUDAExecutionProvider', 'CPUExecutionProvider']
         means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
         """
-
+        self._onnx_model = onnx_model
+        self._device = device
         self._inference_session = None
 
-        self.create_inference_agent(path_or_bytes, session_options, providers, provider_options)
+        self.create_inference_agent(onnx_model.SerializeToString(), session_options, providers, provider_options)
 
     def create_inference_agent(self, path_or_bytes, session_options, providers, provider_options):
         self._inference_session = onnxruntime.InferenceSession(path_or_bytes, session_options,
@@ -60,7 +63,38 @@ class InferenceAgent(object):
 
         return IOBinding(self._inference_session)
 
-    def run_forward(self, iobinding, run_options):
+    def _prepare_inputs(self, inputs):
+        """Runs the forward graph on execution_session with given model inputs and device"""
+
+        # Assert that the input and model device match
+        _utils._check_same_device(self._device, "Input argument to forward", *inputs)
+
+        # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
+        #   especially the backward graph outputs.
+        # REVIEW(codemzs): Consolidate Training Agent with InferenceAgent on C++ side to not
+        # have the need for passing IOBinding.
+        io_binding = IOBinding(self._inference_session)
+
+
+        # Use IO binding
+        _utils._create_iobinding(io_binding, inputs, self._onnx_model, self._device)
+
+        return io_binding
+
+    def _process_outputs(self, ort_output):
+        forward_outputs = ort_output.ortvalues
+        user_outputs = tuple(_utils._ortvalue_to_torch_tensor(forward_output._ortvalue) for forward_output in forward_outputs)
+        state = None
+
+        # Assert that the outputs and model device match
+        _utils._check_same_device(self._device, "Output argument from forward", *user_outputs)
+
+        output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
+        run_info = RunStateInfo(state, output_info)
+        # Return user outputs and forward run information
+        return user_outputs, run_info
+
+    def _run_forward(self, iobinding, run_options):
         """
          Compute the forward graph.
          :param iobinding: the iobinding object that has graph inputs/outputs bind.
@@ -70,6 +104,15 @@ class InferenceAgent(object):
         self._inference_session.run_with_iobinding(iobinding, run_options)
         ortvalues = iobinding.get_outputs()
         return ExecutionAgentOutput(ortvalues)
+
+    def forward(self, *inputs):
+        run_options = C.RunOptions()
+        io_binding = self._prepare_inputs(inputs)
+
+        # Run and return module outputs.
+        ort_output = self._run_forward(io_binding, run_options)
+
+        return self._process_outputs(ort_output)
 
 
 class TrainingAgent(object):
