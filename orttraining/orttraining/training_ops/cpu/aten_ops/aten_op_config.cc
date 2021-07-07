@@ -14,21 +14,21 @@ namespace aten_ops {
 // We use regex to parse the strings, to make the parser simple, it requires some special formats
 // for these function strings, such as spaces in the strings.
 static const std::vector<std::pair<std::string, std::string>> ATEN_FUNCS = {
-    {"aten::embedding(Tensor<T> weight, Tensor<int64> indices, int padding_idx=-1, bool scale_grad_by_freq=False, bool "
-     "sparse=False) -> Tensor<T> result",
-     "aten::embedding_backward(Tensor<T> grad_result, Tensor<int64> indices, Tensor<T> weight, int padding_idx=-1, "
-     "bool scale_grad_by_freq=False, bool sparse=False) -> Tensor<T> grad_weight"},
-    {"aten::max_pool2d_with_indices(Tensor<T> self, int[] kernel_size, int[] stride, int[] padding=[0,0], int[] "
-     "dilation=[1,1], bool ceil_mode=False) -> (Tensor<T> output, Tensor<int64> indices)",
+    {"aten::embedding(Tensor<T> weight, Tensor<int64> indices, int padding_idx=-1, bool scale_grad_by_freq=False, "
+     "bool sparse=False) -> Tensor<T> result",
+     "aten::embedding_backward(Tensor<T> grad_result, Tensor<int64> indices, int<CPU> weight.size(0), "
+     "int padding_idx=-1, bool scale_grad_by_freq=False, bool sparse=False) -> Tensor<T> grad_weight"},
+    {"aten::max_pool2d_with_indices(Tensor<T> self, int[] kernel_size, int[] stride, int[] padding=[0,0], "
+     "int[] dilation=[1,1], bool ceil_mode=False) -> (Tensor<T> output, Tensor<int64> indices)",
      "aten::max_pool2d_with_indices_backward(Tensor<T> grad_output, Tensor<T> self, int[] kernel_size, int[] stride, "
      "int[] padding=[0,0], int[] dilation=[1,1], bool ceil_mode=False, Tensor<int64> indices) -> Tensor<T> grad_self"},
     {"aten::unfold(Tensor<T> self, int dimension, int size, int step) -> Tensor<T> output",
-     "aten::unfold_backward(Tensor<T> grad_output, Tensor<T> self, int dimension, int size, int step) -> Tensor<T> "
-     "grad_self"}};
+     "aten::unfold_backward(Tensor<T> grad_output, int<CPU>[] self.sizes(), int dimension, int size, int step) -> "
+     "Tensor<T> grad_self"}};
 
-const std::regex regex_expr_whole("([a-z0-9:_]+)\\(([A-Za-z0-9_ ,.=+-\\[\\]<>]+)\\) -> \\(?([A-Za-z0-9_ ,<>]+)\\)?");
+const std::regex regex_expr_whole("([a-z0-9:_]+)\\(([A-Za-z0-9_ ,.=+-\\[\\]\\(\\)<>]+)\\) -> \\(?([A-Za-z0-9_ ,<>]+)\\)?");
 const std::regex regex_expr_argument(
-    "(Tensor|int|bool|float)(<([A-Za-z0-9_]+)>)?(\\[\\])?(\\?)? ([a-z0-9_]+)(=([TFa-z0-9,.+-\\[\\]]+))?");
+    "(Tensor|int|bool|float)(<([A-Za-z0-9_]+)>)?(\\[\\])?(\\?)? ([a-z0-9_.\\(\\)]+)(=([TFa-z0-9,.+-\\[\\]]+))?");
 const std::regex regex_expr_comma_space(", ");
 const std::regex regex_expr_comma(",");
 // default constructor = end-of-sequence:
@@ -37,14 +37,16 @@ const std::regex_token_iterator<std::string::iterator> rend;
 struct Argument {
   ArgumentKind type;
   std::string tensor_elem_type;
+  bool is_cpu_tensor;
   bool is_optional;
   std::string name;
   std::string default_value;
 
-  Argument(ArgumentKind _type, const std::string& _tensor_elem_type, bool _is_optional, const std::string& _name,
-           const std::string& _default_value)
+  Argument(ArgumentKind _type, const std::string& _tensor_elem_type, bool _is_cpu_tensor, bool _is_optional,
+           const std::string& _name, const std::string& _default_value)
       : type(_type),
         tensor_elem_type(_tensor_elem_type),
+        is_cpu_tensor(_is_cpu_tensor),
         is_optional(_is_optional),
         name(_name),
         default_value(_default_value) {}
@@ -55,10 +57,11 @@ struct Function {
   std::vector<Argument> arguments;
   std::vector<Argument> returns;
 
-  std::vector<std::tuple<ArgumentKind, std::string, bool>> ToArgumentConfigs() {
-    std::vector<std::tuple<ArgumentKind, std::string, bool>> argument_configs;
+  std::vector<ArgumentConfig> ToArgumentConfigs() {
+    std::vector<ArgumentConfig> argument_configs;
     for (const auto& argument : arguments) {
-      argument_configs.emplace_back(std::make_tuple(argument.type, argument.name, argument.is_optional));
+      argument_configs.emplace_back(
+          ArgumentConfig(argument.type, argument.name, argument.is_cpu_tensor, argument.is_optional));
     }
 
     return argument_configs;
@@ -71,13 +74,18 @@ Argument ParseArgument(const std::string& argument_str) {
               " is not a vaild argument.");
   const auto& type_str = sm_argument.str(1);
   const auto& tensor_elem_type = sm_argument.str(3);
+  bool is_cpu_tensor = tensor_elem_type == "CPU";
   bool is_array = sm_argument.str(4) == "[]";
+  std::string default_value = sm_argument.str(8);
   ArgumentKind type;
   if (type_str == "Tensor") {
-    ORT_ENFORCE(!is_array && tensor_elem_type != "", "Tensor type cannot be an array, and must have element type.");
+    ORT_ENFORCE(!is_array && tensor_elem_type != "" && !is_cpu_tensor,
+                "Tensor type cannot be an array, and must have element type.");
     type = TENSOR;
   } else {
-    ORT_ENFORCE(tensor_elem_type == "", "Non-tensor type should not have element type.");
+    ORT_ENFORCE(tensor_elem_type == "" || is_cpu_tensor, "Non-tensor type should not have element type.");
+    // To make it simple, don't support default value for CPU tensor for now.
+    ORT_ENFORCE(!is_cpu_tensor || default_value == "", "CPU tensor doesn't support default value for now.");
     if (type_str == "int") {
       type = is_array ? INT_ARRAY : INT;
     } else if (type_str == "float") {
@@ -89,7 +97,7 @@ Argument ParseArgument(const std::string& argument_str) {
     }
   }
 
-  return Argument(type, tensor_elem_type, sm_argument.str(5) == "?", sm_argument.str(6), sm_argument.str(8));
+  return Argument(type, tensor_elem_type, is_cpu_tensor, sm_argument.str(5) == "?", sm_argument.str(6), default_value);
 }
 
 Function ParseFunction(const std::string& function_str) {
@@ -261,22 +269,28 @@ ATenOperatorConfig Parse(const std::string& forward_function_str, const std::str
   }
 
   for (const auto& argument : backward_function.arguments) {
-    if (argument.type != TENSOR) {
+    if (argument.type != TENSOR && !argument.is_cpu_tensor) {
       if (argument.default_value != "" && argument_names.find(argument.name) == argument_names.end()) {
         AddDefaultValue(argument.name, argument.type, argument.default_value, config);
       }
     } else {
-      const auto& name = argument.name;
+      std::string name = argument.name;
+      std::string transform_func = "";
+      size_t pos = name.find('.');
+      if (pos != std::string::npos) {
+        transform_func = name.substr(pos + 1);
+        name = name.substr(0, pos);
+      }
       if (forward_arguments_name_to_index.find(name) != forward_arguments_name_to_index.end()) {
         config.backward_input_source_configs.emplace_back(
-            std::make_pair(FORWARD_INPUT, forward_arguments_name_to_index.at(name)));
+            BackwardInputSourceConfig(FORWARD_INPUT, forward_arguments_name_to_index.at(name), transform_func));
       } else if (forward_returns_name_to_index.find(name) != forward_returns_name_to_index.end()) {
         config.backward_input_source_configs.emplace_back(
-            std::make_pair(FORWARD_OUTPUT, forward_returns_name_to_index.at(name)));
+            BackwardInputSourceConfig(FORWARD_OUTPUT, forward_returns_name_to_index.at(name), transform_func));
       } else if (forward_returns_name_to_index.find(name.substr(5UL)) != forward_returns_name_to_index.end()) {
         // Output gradient has "grad_" prefix.
         config.backward_input_source_configs.emplace_back(
-            std::make_pair(GRAD_OUTPUT, forward_returns_name_to_index.at(name.substr(5UL))));
+            BackwardInputSourceConfig(GRAD_OUTPUT, forward_returns_name_to_index.at(name.substr(5UL)), transform_func));
       } else {
         ORT_ENFORCE(false, "Argument ", name, " is not forward input, output or output gradient.");
       }

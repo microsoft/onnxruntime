@@ -125,5 +125,3 @@ inline onnxruntime::SparseTensor* OrtValue::GetMutable<onnxruntime::SparseTensor
   return static_cast<onnxruntime::SparseTensor*>(data_.get());
 }
 
-//TODO: remove the following line
-#define MLValue OrtValue

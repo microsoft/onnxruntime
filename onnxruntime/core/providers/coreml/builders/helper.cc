@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/coreml/builders/helper.h"
+
+#include <algorithm>
 #include <vector>
 
 #ifdef __APPLE__
@@ -8,12 +11,10 @@
 #include <TargetConditionals.h>
 #endif
 
-#include "helper.h"
-#include <core/graph/graph_viewer.h>
-
+#include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"
+#include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/coreml/model/host_utils.h"
-#include "op_builder_factory.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -74,45 +75,34 @@ bool IsInputSupported(const NodeArg& input, const std::string& parent_name, cons
   return true;
 }
 
-std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer, const logging::Logger& logger) {
-  std::vector<std::vector<size_t>> supported_node_groups;
+std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
+                                                  const logging::Logger& logger) {
+  std::unordered_set<const Node*> supported_nodes{};
+
   if (!util::HasRequiredBaseOS()) {
     LOGS(logger, WARNING) << "All ops will fallback to CPU EP, because we do not have supported OS";
-    return supported_node_groups;
+    return supported_nodes;
   }
 
-  for (const auto* input : graph_viewer.GetInputs()) {
-    if (!IsInputSupported(*input, "graph", logger)) {
-      return supported_node_groups;
-    }
+  const auto& graph_inputs = graph_viewer.GetInputs();
+  if (std::any_of(graph_inputs.begin(), graph_inputs.end(),
+                  [&](const NodeArg* input) { return !IsInputSupported(*input, "graph", logger); })) {
+    return supported_nodes;
   }
 
-  std::vector<size_t> supported_node_group;
-  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    auto node_idx = node_indices[i];
-    const auto* node(graph_viewer.GetNode(node_idx));
-    bool supported = IsNodeSupported(*node, graph_viewer, logger);
-    LOGS(logger, VERBOSE) << "Operator type: [" << node->OpType()
-                          << "] index: [" << node_idx
-                          << "] name: [" << node->Name()
+  for (const auto& node : graph_viewer.Nodes()) {
+    const bool supported = IsNodeSupported(node, graph_viewer, logger);
+    LOGS(logger, VERBOSE) << "Operator type: [" << node.OpType()
+                          << "] index: [" << node.Index()
+                          << "] name: [" << node.Name()
                           << "] supported: [" << supported
                           << "]";
     if (supported) {
-      supported_node_group.push_back(node_idx);
-    } else {
-      if (!supported_node_group.empty()) {
-        supported_node_groups.push_back(supported_node_group);
-        supported_node_group.clear();
-      }
+      supported_nodes.insert(&node);
     }
   }
 
-  if (!supported_node_group.empty()) {
-    supported_node_groups.push_back(supported_node_group);
-  }
-
-  return supported_node_groups;
+  return supported_nodes;
 }
 
 bool HasNeuralEngine(const logging::Logger& logger) {

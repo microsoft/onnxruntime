@@ -23,7 +23,7 @@ static void RunOnnxOpsetTypedTest(
   if (mode != "constant")
     test.AddAttribute("mode", mode);
   test.AddInput<T>("data", input_dims, input);
-  if (opset >= 11) {
+  if constexpr (opset >= 11) {
     test.AddInput<int64_t>("pads", {static_cast<int64_t>(pads.size())}, pads);
     test.AddInput<T>("value", {1}, {value});
   } else {
@@ -31,7 +31,7 @@ static void RunOnnxOpsetTypedTest(
     test.AddAttribute("value", static_cast<float>(value));
   }
   test.AddOutput<T>("output", output_dims, output);
-  if (opset >= 11) {
+  if constexpr (opset >= 11) {
     // TensorRT do not yet support opset-11 and builds break on this test, hence exclude the EP
     test.Run(expect, error_msg, {kTensorrtExecutionProvider});
   } else {
