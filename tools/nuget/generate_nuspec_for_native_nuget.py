@@ -47,7 +47,15 @@ def generate_owners(list, owners):
     list.append('<owners>' + owners + '</owners>')
 
 
-def generate_description(list, description):
+def generate_description(list, package_name):
+    description = ''
+
+    if package_name == 'Microsoft.AI.MachineLearning':
+        description = 'This package contains Windows ML binaries.'
+    elif 'Microsoft.ML.OnnxRuntime' in package_name:  # This is a Microsoft.ML.OnnxRuntime.* package
+        description = 'This package contains native shared library artifacts ' \
+                      'for all supported platforms of ONNX Runtime.'
+
     list.append('<description>' + description + '</description>')
 
 
@@ -153,8 +161,7 @@ def generate_metadata(list, args):
     generate_version(metadata_list, args.package_version)
     generate_authors(metadata_list, 'Microsoft')
     generate_owners(metadata_list, 'Microsoft')
-    generate_description(metadata_list, 'This package contains native shared library artifacts '
-                                        'for all supported platforms of ONNX Runtime.')
+    generate_description(metadata_list, args.package_name)
     generate_copyright(metadata_list, '\xc2\xa9 ' + 'Microsoft Corporation. All rights reserved.')
     generate_tags(metadata_list, 'ONNX ONNX Runtime Machine Learning')
     generate_icon_url(metadata_list, 'https://go.microsoft.com/fwlink/?linkid=2049168')

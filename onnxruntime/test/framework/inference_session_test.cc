@@ -68,7 +68,7 @@ struct KernelRegistryAndStatus {
 namespace onnxruntime {
 
 #ifdef USE_CUDA
-ProviderInfo_CUDA* GetProviderInfo_CUDA();
+ProviderInfo_CUDA& GetProviderInfo_CUDA();
 #endif
 
 class FuseAdd : public OpKernel {
@@ -353,7 +353,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
                                                                   cpu_allocator);
 #ifdef USE_CUDA
     cudaStream_t stream = static_cast<cudaStream_t>(gpu_provider->GetComputeStream());
-    st = GetProviderInfo_CUDA()->CreateGPUDataTransfer(stream)->CopyTensor(rtensor, *cpu_tensor.get(), 0);
+    st = GetProviderInfo_CUDA().CreateGPUDataTransfer(stream)->CopyTensor(rtensor, *cpu_tensor.get(), 0);
 #elif USE_ROCM
     hipStream_t stream = static_cast<hipStream_t>(gpu_provider->GetComputeStream());
     st = GPUDataTransfer(stream).CopyTensor(rtensor, *cpu_tensor.get(), 0);

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/dlpack/python_common.h"
+#include "orttraining/core/framework/torch/python_common.h"
 
 #include <iostream>
 #include "core/common/logging/logging.h"

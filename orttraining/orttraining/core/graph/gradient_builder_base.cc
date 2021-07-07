@@ -293,5 +293,29 @@ std::vector<NodeDef> GradientBuilderBase::GetBiasGeluGradNodes(
   return result;
 }
 
+ArgDef GradientBuilderBase::HandleATenOpGradInput(const ArgDef& source_arg_def, const std::string& transform_func,
+                                                  std::vector<NodeDef>& output) const {
+  ArgDef target_arg_def = source_arg_def;
+  if (transform_func == "sizes()") {
+    target_arg_def = IA("Shape_" + source_arg_def.name);
+    output.emplace_back(NodeDef("Shape", {source_arg_def}, {target_arg_def}));
+  } else if (transform_func.find("size(") == 0) {
+    int index = std::stoi(transform_func.substr(5, transform_func.length() - 6));
+    NodeDef index_const_node =
+        ConstantScalarNode(static_cast<int64_t>(index), {1}, Name("Constant_" + std::to_string(index)));
+    ArgDef index_arg_def = index_const_node.output_args[0];
+    output.emplace_back(index_const_node);
+    ArgDef shape_arg_def = IA("Shape_" + source_arg_def.name);
+    target_arg_def = IA("Dim_" + std::to_string(index) + "_" + source_arg_def.name);
+    output.emplace_back(NodeDef("Shape", {source_arg_def}, {shape_arg_def}));
+    output.emplace_back(NodeDef("Gather", {shape_arg_def, index_arg_def}, {target_arg_def},
+                                {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}));
+  } else {
+    ORT_ENFORCE(transform_func == "", "Failed to build gradient graph for ", transform_func);
+  }
+
+  return target_arg_def;
+}
+
 }  // namespace training
 }  // namespace onnxruntime
