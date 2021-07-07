@@ -5,6 +5,7 @@
 
 #include <vector>
 
+// TODO - call mlasQuantizeLinear?
 // TODO - update documentation to use same verbage as quant_utils.py
 // TODO - force types to int8/uint8/int16/int32_t?
 
