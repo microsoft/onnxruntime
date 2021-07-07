@@ -95,6 +95,12 @@ TEST(Quantization, QuantizeLinear_Int8) {
   TestQuantizeLinearVectorAndValues(values, expected_scale, expected_zero_point, expected_values);
 }
 
+TEST(Quantization, Dequantize_Int8) {
+  //
+  // TODO(kreeger): write me!
+  //
+}
+
 //
 // UInt8 Tests:
 //
@@ -132,39 +138,19 @@ TEST(Quantization, QuantizeLinear_UInt8) {
 }
 
 //
-// Int16 Tests:
+// Invalid test state
 //
 
-TEST(Quantization, QuantizeFloat_Int16) {
-  const float x = 24.412f;
-
-  quantization::Params<int16_t> params;
-  params.zero_point = -1;
-  params.scale = 0.0012f;
-
-  int16_t x_i16 = quantization::Quantize(x, params);
-  EXPECT_EQ(x_i16, 20342);
+TEST(Quantization, QuantizeMismatchedVectorSizes) {
+  //
+  // TODO(kreeger): write me!
+  //
 }
 
-TEST(Quantization, QuantizeFloatValues_Int16) {
-  std::vector<float> values = {-2.4f, 3.9f, 10.2f, 4.1f};
-
-  quantization::Params<int16_t> params;
-  params.zero_point = 0;
-  params.scale = 0.0125f;
-
-  std::vector<int16_t> expected = {-192, 312, 816, 328};
-
-  TestQuantizeVectorAndValues(values, params, expected);
-}
-
-TEST(Quantization, QuantizeLinear_Int16) {
-  std::vector<float> values = {-3.412f, -12.42f, 1.032f, 2.32f, 9.8212f};
-  const float expected_scale = 0.000339378952f;
-  const int16_t expected_zero_point = 3828; 
-  std::vector<int16_t> expected_values = {-6226, -32768, 6869, 10664, 32767};
-
-  TestQuantizeLinearVectorAndValues(values, expected_scale, expected_zero_point, expected_values);
+TEST(Quantization, QuantizeLinearMismatchedVectorSizes) {
+  //
+  // TODO(kreeger): write me!
+  //
 }
 
 }  // namespace test

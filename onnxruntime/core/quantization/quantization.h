@@ -3,11 +3,11 @@
 
 #pragma once
 
+#include "core/mlas/inc/mlas.h"
 #include <vector>
 
-// TODO - call mlasQuantizeLinear?
 // TODO - update documentation to use same verbage as quant_utils.py
-// TODO - force types to int8/uint8/int16/int32_t?
+// TODO - restrict types to int8/uint8 for now!
 
 namespace onnxruntime {
 namespace quantization {
@@ -26,11 +26,9 @@ struct Params {
  */
 template <typename T>
 T Quantize(const float value, const Params<T>& params) {
-  constexpr int32_t T_max = std::numeric_limits<T>::max();
-  constexpr int32_t T_min = std::numeric_limits<T>::min();
-
-  int32_t raw = static_cast<int32_t>(std::round(value / params.scale)) + params.zero_point;
-  return static_cast<T>(std::min(std::max(raw, T_min), T_max));
+  T quant_value;
+  MlasQuantizeLinear(&value, &quant_value, /*N=*/1, params.scale, params.zero_point);
+  return quant_value;
 }
 
 /**
@@ -38,9 +36,7 @@ T Quantize(const float value, const Params<T>& params) {
  */
 template <typename T>
 void Quantize(const float* data, T* output, const Params<T>& params, size_t size) {
-  for (size_t i = 0; i < size; ++i) {
-    output[i] = Quantize(data[i], params);
-  }
+  MlasQuantizeLinear(data, output, /*N=*/size, params.scale, params.zero_point);
 }
 
 /**

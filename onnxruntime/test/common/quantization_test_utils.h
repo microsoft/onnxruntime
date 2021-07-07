@@ -8,15 +8,44 @@
 #include <cmath>
 #include <vector>
 
-//
-// TODO(kreeger): Drop this file and use quantization.h.
-//
-
-
+#include "core/quantization/quantization.h"
 
 namespace onnxruntime {
 namespace test {
 
+/**
+ * TODO - doc me.
+ */
+template <typename T>
+inline std::vector<T> QuantizeTestVector(const std::vector<float>& data, const float scale, const T zero_point) {
+  std::vector<T> result;
+  result.resize(data.size());
+
+  quantization::Params<T> params;
+  params.scale = scale;
+  params.zero_point = zero_point;
+
+  quantization::Quantize(data, result, params);
+  return result;
+}
+
+/**
+ * TODO - doc me.
+ */
+template <typename T>
+inline std::vector<T> QuantizeLinearTestVector(const std::vector<float>& data, float& out_scale, T& out_zero_point) {
+  std::vector<T> result;
+  result.resize(data.size());
+
+  quantization::Params<T> params = quantization::QuantizeLinear(data, result);
+
+  out_scale = params.scale;
+  out_zero_point = params.zero_point;
+
+  return result;
+}
+
+  /*
 //
 // Rounds a float to the nearest representable value and returns the nearest integer value as a float.
 //
@@ -96,6 +125,7 @@ inline std::vector<float> Dequantize(const std::vector<Integer>& data, float sca
   }
   return result;
 }
+*/
 
 }  // namespace test
 }  // namespace onnxruntime

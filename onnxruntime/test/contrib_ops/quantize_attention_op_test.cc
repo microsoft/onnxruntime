@@ -11,6 +11,7 @@
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/util/qmath.h"
+#include "core/quantization/quantization.h"
 
 namespace onnxruntime {
 namespace test {
@@ -61,11 +62,20 @@ void RunQAttention(const std::vector<float>& input_data,         // input:      
   QInput input_zero_point = quantize_parameters.input_zero_point;
   QWeight weight_zero_point = quantize_parameters.weight_zero_point;
   if (input_scale != 0.0f) {
-    tester.AddInput<QInput>("input", input_dims, Quantize<QInput>(input_data, input_scale, input_zero_point));
-    tester.AddInput<QWeight>("weight", weights_dims, Quantize<QWeight>(weights_data, weight_scale, weight_zero_point));
+    tester.AddInput<QInput>("input",
+                            input_dims,
+                            QuantizeTestVector<QInput>(input_data, input_scale, input_zero_point));
+    tester.AddInput<QWeight>("weight",
+                             weights_dims,
+                             QuantizeTestVector<QWeight>(weights_data, weight_scale, weight_zero_point));
   } else {
-    tester.AddInput<QInput>("input", input_dims, QuantizeLinear<QInput, ep == EP::CUDA>(input_data, input_scale, input_zero_point));
-    tester.AddInput<QWeight>("weight", weights_dims, QuantizeLinear<QWeight, ep == EP::CUDA>(weights_data, weight_scale, weight_zero_point));
+    // TODO - "symmetric" vs "asymmetric" with |ep == EP::CUDA|.
+    tester.AddInput<QInput>("input",
+                            input_dims,
+                            QuantizeLinearTestVector<QInput, ep == EP::CUDA>(input_data, input_scale, input_zero_point));
+    tester.AddInput<QWeight>("weight",
+                             weights_dims,
+                             QuantizeLinearTestVector<QWeight, ep == EP::CUDA>(weights_data, weight_scale, weight_zero_point));
   }
   if (use_float16) {
     tester.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
@@ -847,9 +857,15 @@ TEST(QAttentionTest, SharedPrepackedWeights) {
   OpTester tester("QAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
 
-  tester.AddInput<uint8_t>("input", input_dims, Quantize<uint8_t>(input_data, /*scale=*/0.1f, /*zero_point=*/128));
-  auto weight_data_converted_to_int = Quantize<uint8_t>(weight_data, /*scale=*/0.1f, /*zero_point=*/128);
-  tester.AddInput<uint8_t>("weight", weights_dims, weight_data_converted_to_int, true);  // Trigger pre-packing
+  tester.AddInput<uint8_t>("input",
+                           input_dims,
+                           QuantizeTestVector<uint8_t>(input_data, /*scale=*/0.1f, /*zero_point=*/128));
+
+  auto weight_data_converted_to_int = QuantizeTestVector<uint8_t>(weight_data, /*scale=*/0.1f, /*zero_point=*/128);
+  tester.AddInput<uint8_t>("weight",
+                           weights_dims,
+                           weight_data_converted_to_int,
+                           /*is_initializer=*/true);  // Trigger pre-packing
 
   tester.AddInput<float>("bias", bias_dims, bias_data);
   tester.AddInput<float>("input_scale", {1}, {0.1f});
