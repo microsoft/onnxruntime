@@ -216,14 +216,14 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Floor", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Where", V_2021_2, {"All"}});
   no_dimension_supported_.push_back({"Range", V_2021_2, {"All"}});
-  no_dimension_supported_.push_back({"ArgMin", V_2021_2, {"Myriad"}});
-  no_dimension_supported_.push_back({"Max", V_2021_2, {"Myriad"}});
-  no_dimension_supported_.push_back({"Add", V_2021_2, {"Myriad"}});
-  no_dimension_supported_.push_back({"Less", V_2021_2, {"Myriad"}});
-  no_dimension_supported_.push_back({"Greater", V_2021_2, {"Myriad"}});
-  no_dimension_supported_.push_back({"Clip", V_2021_2, {"Myriad"}});
-  no_dimension_supported_.push_back({"Resize", V_2021_2, {"Myriad"}});
-  no_dimension_supported_.push_back({"Equal", V_2021_2, {"Myriad"}});
+  no_dimension_supported_.push_back({"ArgMin", V_2021_2, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Max", V_2021_2, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Add", V_2021_2, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Less", V_2021_2, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Greater", V_2021_2, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Clip", V_2021_2, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Resize", V_2021_2, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"Equal", V_2021_2, {"MYRIAD"}});
 
   no_dimension_supported_.push_back({"Unsqueeze", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Squeeze", V_2020_4, {"All"}});
@@ -248,6 +248,9 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"Ceil", V_2021_3, {"MYRIAD"}});
   no_dimension_supported_.push_back({"Loop", V_2021_3, {"MYRIAD"}});
   no_dimension_supported_.push_back({"ReduceMin", V_2021_3, {"MYRIAD"}});
+  no_dimension_supported_.push_back({"QuantizeLinear", V_2021_4, {"All"}});
+  no_dimension_supported_.push_back({"DequantizeLinear", V_2021_4, {"All"}});
+  
 
   subgraph_supported_.push_back({"Mul", V_2020_4, {"All"}});
   subgraph_supported_.push_back({"Transpose", V_2020_4, {"All"}});
@@ -866,7 +869,7 @@ void DataOps::populate_op_mode_supported() {
   {
     UnsupportedOpMode obj = {{V_2021_4},
                              [this](const Node* node, const InitializedTensorSet&) {
-                               if (device_id_.find("GPU") != std::string::npos) {
+                                if (device_id_.find("GPU") != std::string::npos) {
                                  auto output_data_type = node->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
                                  //If the output of Transpose op is INT8 or UINT8, it is rejected for GPU.
                                  if (output_data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8 || 
