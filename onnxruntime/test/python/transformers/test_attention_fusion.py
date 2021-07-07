@@ -16,17 +16,17 @@ from onnxruntime.transformers.optimizer import optimize_model
 
 
 class TestFusion(unittest.TestCase):
-    def test_attention_fusion_temp(self):
+    def test_attention_fusion(self):
         model = create_bert_attention()
         dir = '.'
         model_path = os.path.join(dir, "attention.onnx")
         onnx.save(model, model_path)
         optimized_model = optimize_model(model_path)
         os.remove(model_path)
-        onnx.save(optimized_model.model, os.path.join(dir, "attention_temp.onnx"))
-        # expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models', 'attention_opt.onnx')
-        # expected = onnx.load(expected_model_path)
-        # self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
+
+        expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models', 'attention_opt.onnx')
+        expected = onnx.load(expected_model_path)
+        self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
 
     def test_attention_fusion_pruned_model(self):
         model = create_bert_attention(input_hidden_size=16,
@@ -71,14 +71,12 @@ class TestFusion(unittest.TestCase):
         model_path = os.path.join(dir, "attention_with_varied_qkv.onnx")
         onnx.save(model, model_path)
         optimized_model = optimize_model(model_path)
-        #os.remove(model_path)
-        onnx.save(optimized_model.model, os.path.join(dir, "attention_with_varied_qkv_opt.onnx"))
-        '''
+        os.remove(model_path)
+
         expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models',
                                            'attention_with_varied_qkv_opt.onnx')
         expected = onnx.load(expected_model_path)
         self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
-        '''
 
     def test_3d_attention_fusion_tf2onnx_model(self):
         model = create_tf2onnx_attention_3d()
