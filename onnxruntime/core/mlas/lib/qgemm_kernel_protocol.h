@@ -13,6 +13,15 @@ Abstract:
     This module defines the protocol to implement a kernel of 
     quantized integer matrix/matrix multiply operation (QGEMM).
 
+    To implement a new kernel, there needs to specialize template functions below:
+        MlasGemmU8X8FixupZeroPointB
+        MlasGemmU8X8CopyPackA
+        MlasGemmU8X8CopyPackB
+        MlasGemmU8X8Kernel
+    Specialization of MlasGemmU8X8TryGemvKernel is optional.
+
+    MlasGemmU8X8Operation and MlasGemmU8X8PackedOperation are shared kernel drivers.
+
 --*/
 
 #pragma once

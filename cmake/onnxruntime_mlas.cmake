@@ -22,6 +22,7 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_default.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_neon.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_sse.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_sse41.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_type.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_neon.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qladd.cpp
