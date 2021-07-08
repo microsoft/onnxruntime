@@ -215,7 +215,7 @@ class TrainingAgent(ExecutionAgent):
         return self._process_forward_outputs(fetches, state)
 
 
-    def _process_backward_inputs(self, ctx, grad_outputs):
+    def _process_backward_inputs(self, run_info, grad_outputs):
         _utils._check_same_device(self._device, "Input argument to backward", *grad_outputs)
 
         # Use IO binding
@@ -233,7 +233,7 @@ class TrainingAgent(ExecutionAgent):
                 continue
 
             if grad_output is None:
-                shape, device, dtype = ctx.run_info.output_info[idx]
+                shape, device, dtype = run_info.output_info[idx]
                 if idx in self._graph_info.output_grad_indices_require_full_shape:
                     grad_output = torch.zeros(shape, device=device, dtype=dtype)
                 else:
@@ -253,9 +253,9 @@ class TrainingAgent(ExecutionAgent):
         ]
 
 
-    def backward(self, ctx, *grad_outputs):
-        backward_inputs = self._process_backward_inputs(ctx, grad_outputs)
+    def backward(self, run_info, *grad_outputs):
+        backward_inputs = self._process_backward_inputs(run_info, grad_outputs)
         # Run and get results
         backward_outputs = C.OrtValueVector()
-        self._training_agent.run_backward(backward_inputs, backward_outputs, ctx.run_info.state)
+        self._training_agent.run_backward(backward_inputs, backward_outputs, run_info.state)
         return self._process_backward_outputs(backward_outputs)
