@@ -328,24 +328,8 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     {
       return true;
     }
-  } else if (optype == "Pow") {
-    // we do not have a implementation to support different types of
-    // the input data
-    const auto args = node->InputDefs();
-    const auto& input1_type = args[0]->TypeAsProto();
-    if (input1_type == nullptr) {
-      return true;
-    }
-    auto data_type1 = input1_type->tensor_type().elem_type();
-    const auto& input2_type = args[1]->TypeAsProto();
-    if (input2_type == nullptr) {
-      return true;
-    }
-    auto data_type2 = input2_type->tensor_type().elem_type();
-    if (data_type1 != data_type2) {
-      return true;
-    }
-  } else if (optype == "MaxPool") {
+  }
+  else if (optype == "MaxPool") {
     //MaxPool "indices" output is not currently supported.
     if (node->OutputDefs().size() > 1) {
       return true;
@@ -393,12 +377,8 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     if (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
       return true;
     }
-  } else if (optype == "NonZero") {
-    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {0}, logger, input_nodes))
-    {
-      return true;
-    }
-  } else if (optype == "OneHot") {
+  } 
+  else if (optype == "OneHot") {
     if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
     {
       return true;
@@ -446,6 +426,37 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     const auto& args = node->InputDefs();
     if (args.size() == 2) {
       if (can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
+      {
+        return false;
+      }
+      return true;
+    }
+  } else if (optype == "Resize") {
+    const auto& attributes = node->GetAttributes();
+    const auto ct_attr = attributes.find("coordinate_transformation_mode");
+    if (ct_attr != attributes.end()) {
+      auto ct = ct_attr->second.s();
+      if (ct == "tf_crop_and_resize")
+      {
+        return true;
+      }
+    }
+
+    const auto mode_attr = attributes.find("mode");
+    if (mode_attr != attributes.end()) {
+      auto mode = mode_attr->second.s();
+      if (mode == "cubic")
+      {
+        return true;
+      }
+    }
+
+    const auto& args = node->InputDefs();
+    if (args.size() > 1)
+    {
+      std::vector<std::size_t> indices(args.size() - 1);
+      std::iota(indices.begin(), indices.end(), 1);
+      if (can_eval_node_argument(graph_viewer.GetGraph(), node, indices, logger, input_nodes))
       {
         return false;
       }
@@ -699,10 +710,10 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
       "Div", "Dropout", "Elu", "Equal", "Erf", "Exp", "Expand", "Flatten", "Floor", "GRU", "Gather",
       "GatherElements", "Gemm", "GlobalAveragePool", "GlobalMaxPool", "Greater", "Identity", "ImageScaler",
       "InstanceNormalization", "LRN", "LSTM", "LeakyRelu", "Less", "LessOrEqual", "Log", "LogSoftmax", 
-      "MatMul", "Max", "MaxPool", "Min", "Mul", "Neg", "NonZero", "OneHot", "Or", "Pad", "Pow", "PRelu", 
+      "MatMul", "Max", "MaxPool", "Min", "Mul", "Neg", "NonZero", "Not", "OneHot", "Or", "Pad", "Pow", "PRelu", 
       "QuantizeLinear", "RNN", "Range", "Reciprocal", "ReduceL1", "ReduceL2", "ReduceLogSum", "ReduceLogSumExp", 
-      "ReduceMax", "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "Relu", "Reshape",
-      "Round", "Selu", "Shape", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Split", "Sqrt", "Squeeze",
+      "ReduceMax", "ReduceMean", "ReduceMin", "ReduceProd", "ReduceSum", "ReduceSumSquare", "Relu", "Reshape", "Resize",
+      "Round", "Scatter", "Selu", "Shape", "Sigmoid", "Sign", "Sin", "Sinh", "Slice", "Softmax", "Split", "Sqrt", "Squeeze",
       "Sub", "Sum", "Tan", "Tanh", "Tile", "Transpose", "Unsqueeze", "Where", "Xor"};
   std::vector<NodeIndex> unsupported_nodes_idx;
   for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
@@ -923,6 +934,32 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     AppendNodesToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), inputs, outputs, result);
 
   } else {  // unsupported_nodes_idx.empty()
+    if (!unsupported_nodes.empty())
+    {
+      std::cout << "=======================================" << std::endl;
+      std::cout << "Unsupported_node_num = " << unsupported_nodes.size() << std::endl;
+      for (auto& idx : unsupported_nodes)
+      {
+        auto&& node = graph_viewer.GetNode(idx);
+        std::cout << "idx = " << idx << ", op_type = " << node->OpType() << std::endl;
+      }
+      std::cout << "=======================================" << std::endl;
+    }
+
+    if (unsupported_nodes.size() > 10)
+    {
+      return result;
+    }
+
+    // migraphx cannot handle Loop, If, and SoftmaxCrossEntropyLoss for now,
+    // so if a model contain any of these operators, fall back to CPU
+    std::unordered_set<std::string> vec_ops = {"If", "Loop", "SoftmaxCrossEntropyLoss"};
+    if (std::any_of(unsupported_nodes.begin(), unsupported_nodes.end(), [&](auto i) {
+      return (vec_ops.count(graph_viewer.GetNode(i)->OpType()) > 0);
+    })) {
+      return result;
+    }
+
     auto mgx_clusters = GetPartitionedSubgraphs(graph_viewer.GetNodesInTopologicalOrder(), unsupported_nodes);
 
     // check whether a subgrap should fallback to CPU
@@ -953,8 +990,6 @@ static ONNX_NAMESPACE::ModelProto GetModelProtoFromFusedNode(const onnxruntime::
                            std::vector<ONNX_NAMESPACE::FunctionProto>(), logger};
 
   ONNX_NAMESPACE::ModelProto model_proto = model.ToProto();
-  //model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
   *(model_proto.mutable_graph()) = node_subgraph.ToGraphProto();
 
   auto opset = model_proto.add_opset_import();
