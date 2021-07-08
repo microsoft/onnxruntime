@@ -60,7 +60,7 @@ class ORTModule(torch.nn.Module):
         this reason, the first forward call execution takes longer than subsequent calls.
         Execution is interupted if ONNX Runtime cannot process the model for training.
 
-        args:
+        Args:
             *inputs and **kwargs represent the positional, variable positional, keyword
             and variable keyword arguments defined in the user's PyTorch module's forward
             method. Values can be torch tensors and primitive types.
