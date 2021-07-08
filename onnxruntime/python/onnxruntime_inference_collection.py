@@ -522,7 +522,7 @@ class OrtValue:
     def has_element(self):
         '''
         Returns True if the OrtValue corresponding to an
-		optional type contains an element, else returns False
+        optional type contains an element, else returns False
         '''
         return self._ortvalue.has_element()
 
