@@ -27,8 +27,8 @@ class AttentionCPUBase : public AttentionBase {
                         int batch_size,            // batch size
                         int sequence_length,       // sequence length
                         int qk_head_size,          // qk_head_size
-                        int v_head_size,           // v_head_size
-                        int v_hidden_size,         // v_hidden_size
+                        int v_head_size,           // head_size
+                        int v_hidden_size,         // hidden_size
                         const Tensor* extra_add_qk,// extra add in QK. Its size is BxNxSxS
                         OpKernelContext* context) const {
     AllocatorPtr allocator;
@@ -36,8 +36,6 @@ class AttentionCPUBase : public AttentionBase {
 
     auto* tp = context->GetOperatorThreadPool();
 
-    // TODO is head_size in present relavent at all?
-    // assuming v_head_size as the head till I figure that out..
     int past_sequence_length = 0;
     Tensor* present = GetPresent(context, past, batch_size, v_head_size, sequence_length, past_sequence_length);
 

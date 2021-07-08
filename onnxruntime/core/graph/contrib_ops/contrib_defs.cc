@@ -310,7 +310,6 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
 
     int64_t output_hidden_size = 0;
     if (qkv_hidden_sizes.size() != 0) {
-      // TODO always get it from input the below code gets the dims from input, why not the value??
       output_hidden_size = input_shape.dim(2).dim_value();
     } else {
       output_hidden_size = bias_shape.dim(0).dim_value() / 3;
@@ -328,7 +327,7 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
       auto& extra_add_shape = getInputShape(ctx, extra_add_index);
       auto& extra_add_dims = extra_add_shape.dim();
       if (extra_add_dims.size() != 4) {
-        fail_shape_inference("Extra add should have 4 dimenstions");
+        fail_shape_inference("Extra add input should have 4 dimenstions");
       }
     }
 

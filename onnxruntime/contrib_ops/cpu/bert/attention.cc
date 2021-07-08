@@ -15,9 +15,6 @@ using onnxruntime::concurrency::ThreadPool;
 namespace onnxruntime {
 namespace contrib {
 
-//#define PRINT_PREPACK
-//#define PRINT_COMPUTE
-
 template <typename T>
 class Attention : public OpKernel, public AttentionCPUBase {
  public:
@@ -729,26 +726,6 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
       }
     });
   }
-
-#ifdef PRINT_COMPUTE
-  std::cout << "\nQ values:" << std::endl;
-  for (int i = 0; i < batch_size * sequence_length * q_hidden_size; i++) {
-    std::cout << Q[i] << ",";
-  }
-  std::cout << std::endl;
-  
-  std::cout << "K values:" << std::endl;
-  for (int i = 0; i < batch_size * sequence_length * k_hidden_size; i++) {
-    std::cout << K[i] << ",";
-  }
-  std::cout << std::endl;
-  
-  std::cout << "V values:" << std::endl;
-  for (int i = 0; i < batch_size * sequence_length * v_hidden_size; i++) {
-    std::cout << V[i] << ",";
-  }
-  std::cout << std::endl;
-#endif
 
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q, K, V, mask_index, past, output,
