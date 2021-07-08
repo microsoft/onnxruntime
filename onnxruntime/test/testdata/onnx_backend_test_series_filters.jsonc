@@ -166,7 +166,9 @@
         "^test_pow_types_int", // currently the two inputs with int32 dtype not supported on GPU,
         "^test_neg",
         "^test_convtranspose",
-        "^test_convtranspose_dilations"
+        "^test_convtranspose_dilations",
+        "^test_maxpool_with_argmax_2d_precomputed_strides", //Disabled as it throws segfault
+        "^test_maxpool_with_argmax_2d_precomputed_pads" //Disabled as it throws segfault
     ],
     "current_failing_tests_OPENVINO_CPU_FP32": [
         "^test_operator_permute2",
