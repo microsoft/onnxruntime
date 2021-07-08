@@ -603,7 +603,8 @@ Do not modify directly.*
 |ReduceMean|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
 |||[11, 12]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
-|ReduceMin|*in* data:**T**<br> *out* reduced:**T**|13+|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int8), tensor(uint8)|
+|ReduceMin|*in* data:**T**<br> *out* reduced:**T**|14+|**T** = tensor(int64)|
+|||13|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int8), tensor(uint8)|
 |||12|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32), tensor(int8), tensor(uint8)|
 |||11|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
 |||[1, 10]|**T** = tensor(double), tensor(float), tensor(float16), tensor(int32)|
