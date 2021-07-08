@@ -49,6 +49,9 @@ using VectorMapInt64ToFloat = std::vector<MapInt64ToFloat>;
 
 #endif
 
+using VectorString = std::vector<std::string>;
+using VectorInt64 = std::vector<int64_t>;
+
 // Forward declarations
 class DataTypeImpl;
 class TensorTypeBase;
