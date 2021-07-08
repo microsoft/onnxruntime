@@ -289,6 +289,6 @@ inline std::string ToWideString(const std::string& s) { return s; }
 #define ORT_IF_CONSTEXPR if
 #endif
 
-constexpr size_t max_str_len = 2048;
+constexpr size_t kMaxStrLen = 2048;
 
 }  // namespace onnxruntime
