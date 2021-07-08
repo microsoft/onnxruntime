@@ -62,9 +62,9 @@ by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
  
 ||Official build|Nightly build|
 |---|---|---|
-|PyTorch 1.8.1 (CUDA 10.2)|[**onnxruntime-training**](https://pypi.org/project/onnxruntime-training)|[onnxruntime_nightly_torch181.cu102](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch181.cu102.html)|
+|PyTorch 1.8.1 (CUDA 10.2)|[**onnxruntime_stable_torch181.cu102**](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu102.html)|[onnxruntime_nightly_torch181.cu102](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch181.cu102.html)|
 |PyTorch 1.8.1 (CUDA 11.1)|[**onnxruntime_stable_torch181.cu111**](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu111.html )|[onnxruntime_nightly_torch181.cu111](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch181.cu111.html)|
-|PyTorch 1.9 (CUDA 10.2)|[**onnxruntime_stable_torch190.cu102**](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.cu102.html)|[onnxruntime_nightly_torch190.cu102](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch190.cu102.html)|
+|PyTorch 1.9 (CUDA 10.2)|[**onnxruntime-training**](https://pypi.org/project/onnxruntime-training/)|[onnxruntime_nightly_torch190.cu102](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch190.cu102.html)|
 |PyTorch 1.9 (CUDA 11.1)|[**onnxruntime_stable_torch190.cu111**](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.cu111.html)|[onnxruntime_nightly_torch190.cu111](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch190.cu111.html)|
 |[*Preview*] PyTorch 1.8.1 (ROCm 4.2)|[**onnxruntime_stable_torch181.rocm42**](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.rocm42.html)|[onnxruntime_nightly_torch181.rocm42](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch181.rocm42.html)|
 |[*Preview*] PyTorch 1.9 (ROCm 4.2)|[**onnxruntime_stable_torch190.rocm42**](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.rocm42.html)|[onnxruntime_nightly_torch190.rocm42](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch190.rocm42.html)|
