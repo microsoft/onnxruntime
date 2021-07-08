@@ -33,8 +33,8 @@ void RunQAttention(const std::vector<float>& input_data,
                    const std::vector<float>& bias_data,
                    const std::vector<int32_t>& mask_index_data,
                    const std::vector<float>& output_data,
-                   const quantization::Params<QInput>& input_quant_params,
-                   const quantization::Params<QWeight>& weight_quant_params,
+                   quantization::Params<QInput>& input_quant_params,
+                   quantization::Params<QWeight>& weight_quant_params,
                    int batch_size,
                    int sequence_length,
                    int hidden_size,
@@ -64,26 +64,12 @@ void RunQAttention(const std::vector<float>& input_data,
                              weights_dims,
                              QuantizeTestVector<QWeight>(weights_data, weight_quant_params));
   } else {
-    //if (ep == EP::CUDA) {
-    //  // ep == EP::CUDA == symmetric quantization.
-    //  // What does this mean? Try to get closer to zero? Why was this only in the tests?
-    //} else {
-    //  // Don't use "symmetric" quantization?
-    //}
-    // TODO - "symmetric" vs "asymmetric" with |ep == EP::CUDA|.
-    //tester.AddInput<QInput>("input",
-    //                        input_dims,
-    //                        QuantizeLinearTestVector<QInput, ep == EP::CUDA>(input_data, input_scale, input_zero_point));
-    //tester.AddInput<QWeight>("weight",
-    //                         weights_dims,
-    //                         QuantizeLinearTestVector<QWeight, ep == EP::CUDA>(weights_data, weight_scale, weight_zero_point));
-
     tester.AddInput<QInput>("input",
                             input_dims,
-                            QuantizeTestVector<QInput>(input_data, input_quant_params));
+                            QuantizeLinearTestVector<QInput>(input_data, input_quant_params));
     tester.AddInput<QWeight>("weight",
                             weights_dims,
-                            QuantizeTestVector<QWeight>(weights_data, weight_quant_params));
+                            QuantizeLinearTestVector<QWeight>(weights_data, weight_quant_params));
   }
   if (use_float16) {
     tester.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
@@ -584,10 +570,10 @@ TEST(QAttentionTest, QAttentionUnidirectional_U8S8) {
   std::vector<int32_t> mask_index_data = {};
 
   std::vector<float> output_data = {
-      -0.029270321130752563f, 0.089105717837810516f,
-      0.084381766617298126f, 0.62047165632247925f,
-      0.36089283227920532f, -0.11732138693332672f,
-      -0.029981952160596848f, 0.40998253226280212f};
+      -0.027716159820556641f, 0.091021925210952759f,
+      0.080938525497913361f, 0.61913836002349854f,
+      0.36089283227920532f, -0.11653690040111542f,
+      -0.030121456831693649f, 0.40923327207565308f};
 
   RunQAttentionU8S8(input_data, weight_data, bias_data, mask_index_data, output_data,
                     batch_size, sequence_length, hidden_size, number_of_heads,
