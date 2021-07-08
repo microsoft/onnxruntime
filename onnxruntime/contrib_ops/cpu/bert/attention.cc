@@ -527,44 +527,15 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         const int head_index = static_cast<int>((i / 3) % num_heads_);
         const int qkv_index = static_cast<int>(i % 3);
 
-        int input_offset = 0;
+        int input_offset = batch_index * sequence_length * input_hidden_size;
         int weights_offset = 0;
-        T* qkv_dest = nullptr;
+        int bias_offset = 0;
+        T* qkv_dest = QKV[qkv_index];
+
         int qkv_offset = 0;
         int head_size_passed_in = head_size;
 
-        if (qkv_hidden_sizes_.size() == 0) {
-          input_offset = batch_index * sequence_length * input_hidden_size;
-          weights_offset = qkv_index * hidden_size + head_index * head_size;
-          qkv_dest = QKV[qkv_index];
-          qkv_offset = (batch_index * num_heads_ + head_index) * (sequence_length * head_size);
-
-          // TODO!! memcpy here makes it not worthwhile to use Gemm batch. Possible to post process?
-          // broadcast 3NH -> (3.B.N.S.H)
-          const T* broadcast_data_src = bias_data + weights_offset;
-          T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;
-
-          for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
-            memcpy(broadcast_data_dest, broadcast_data_src, head_size * sizeof(T));
-            broadcast_data_dest += head_size;
-          }
-        } else {
-          input_offset = batch_index * sequence_length * input_hidden_size;
-          qkv_dest = QKV[qkv_index];
-          qkv_offset = 0;
-          weights_offset = 0;
-          int bias_offset = 0;
-
-          if (qkv_index == 1) {
-            bias_offset += q_hidden_size;
-          } else if (qkv_index == 2) {
-            bias_offset += q_hidden_size + k_hidden_size;
-          }
-
-          if (q_packed_weights_ == nullptr) {
-            weights_offset = bias_offset;
-          }
-
+        if (qkv_hidden_sizes_.size() != 0) {
           if (qkv_index == 0) {
             head_size_passed_in = q_head_size;
           } else if (qkv_index == 1) {
@@ -573,19 +544,28 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
             head_size_passed_in = v_head_size;
           }
 
-          qkv_offset += (batch_index * num_heads_ + head_index) * (sequence_length * head_size_passed_in);
+          bias_offset = qkv_index * q_hidden_size;
+
+          if (q_packed_weights_ == nullptr) {
+            weights_offset = bias_offset;
+          }
           bias_offset += head_index * head_size_passed_in;
           weights_offset += head_index * head_size_passed_in;
+        } else {
+          weights_offset = qkv_index * hidden_size + head_index * head_size;
+          bias_offset = weights_offset;
+        }
 
-          // TODO!! memcpy here makes it not worthwhile to use Gemm batch. Possible to post process?
-          // broadcast 3NH -> (3.B.N.S.H)
-          const T* broadcast_data_src = bias_data + bias_offset;
-          T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;
+        qkv_offset += (batch_index * num_heads_ + head_index) * (sequence_length * head_size_passed_in);
 
-          for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
-            memcpy(broadcast_data_dest, broadcast_data_src, head_size_passed_in * sizeof(T));
-            broadcast_data_dest += head_size_passed_in;
-          }
+        // TODO!! memcpy here makes it not worthwhile to use Gemm batch. Possible to post process?
+        // broadcast 3NH -> (3.B.N.S.H)
+        const T* broadcast_data_src = bias_data + bias_offset;
+        T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;
+
+        for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
+          memcpy(broadcast_data_dest, broadcast_data_src, head_size_passed_in * sizeof(T));
+          broadcast_data_dest += head_size_passed_in;
         }
 
         //                   original           transposed            iteration
@@ -620,32 +600,21 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
               head_size_passed_in,        // ldc
               nullptr);                   // use single-thread
         } else {
-          if (qkv_index == 0) {
-            head_size_passed_in = q_head_size;
-          } else if (qkv_index == 1) {
-            head_size_passed_in = k_head_size;
-          } else {
-            head_size_passed_in = v_head_size;
-          }
-
           math::GemmEx<float, ThreadPool>(
-              CblasNoTrans,     // TransA = no
-              CblasNoTrans,     // TransB = no
-              sequence_length,  // M      = S
-              //head_size                     // N      = H
-              head_size_passed_in,            // N      = H
-              input_hidden_size,              // K      = D
-              1.0f,                           // alpha
-              input_data + input_offset,      // A
-              input_hidden_size,              // lda    = D
-              weights_data + weights_offset,  // B
-              //3 * hidden_size,                // ldb    = 3NH
-              q_hidden_size + k_hidden_size + v_hidden_size,
-              1.0f,                   // beta
-              qkv_dest + qkv_offset,  // C
-              //head_size,                    // ldc
-              head_size_passed_in,  // ldc
-              nullptr               // use single-thread
+              CblasNoTrans,                                 // TransA = no
+              CblasNoTrans,                                 // TransB = no
+              sequence_length,                              // M      = S
+              head_size_passed_in,                          // N      = H
+              input_hidden_size,                            // K      = D
+              1.0f,                                         // alpha
+              input_data + input_offset,                    // A
+              input_hidden_size,                            // lda    = D
+              weights_data + weights_offset,                // B
+              q_hidden_size + k_hidden_size + v_hidden_size,// ldb = NH1 + NH2 + NH3
+              1.0f,                                         // beta
+              qkv_dest + qkv_offset,                        // C
+              head_size_passed_in,                          // ldc
+              nullptr                                       // use single-thread
           );
         }
       }
