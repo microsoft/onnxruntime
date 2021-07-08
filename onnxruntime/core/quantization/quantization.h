@@ -31,6 +31,17 @@ class Params {
   T zero_point;
 };
 
+// Returns quantization params from scale and zero point Tensor pointers.
+// Caller is responsible for assuming that both Tensor pointers are of valid 
+// shape and type.
+template <typename T>
+Params<T> GetTensorQuantizationParams(const Tensor* scale_tensor,
+                                      const Tensor* zero_point_tensor) {
+  return Params<T>(
+    *(scale_tensor->template Data<float>()),
+    *(zero_point_tensor->template Data<T>());
+}
+
 // Quantizes a given float value with provided quantization params.
 template <typename T>
 T Quantize(const float value, const Params<T>& params) {

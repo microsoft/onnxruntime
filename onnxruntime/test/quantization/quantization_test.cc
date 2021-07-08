@@ -93,6 +93,12 @@ void TestDequantizeVectorAndValues(const std::vector<T>& values,
 
 }  // namespace
 
+TEST(Quantization, CreateQuantizationParamsFromTensors) {
+  //
+  // TODO(kreeger): write me!
+  //
+}
+
 //
 // Int8 Tests:
 //

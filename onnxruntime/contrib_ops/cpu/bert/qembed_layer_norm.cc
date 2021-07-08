@@ -8,17 +8,13 @@
 #include "embed_layer_norm_helper.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/common.h"
+#include "core/quantization/quantization.h"
 
 namespace onnxruntime {
 namespace contrib {
 
 namespace {
 
-// TODO(kreeger): Drop this when ComputeInternal() is using a lookup table.
-template <typename T>
-inline float Dequantize(T value, float scale, T zero_point) {
-  return static_cast<float>(static_cast<int32_t>(value) - zero_point) * scale;
-}
 
 template <typename T, typename T2>
 Status ComputeInternal(OpKernelContext* context, float epsilon) {
@@ -64,22 +60,22 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
       has_segment_embedding ? static_cast<int>(segment_embedding->Shape()[0]) : 0;
 
   // Grab quantization values:
-  float word_embedding_scale_data = *(word_embedding_scale->template Data<float>());
-  T2 word_embedding_zero_point_data = *(word_embedding_zero_point->template Data<T2>());
-
-  float position_embedding_scale_data = *(position_embedding_scale->template Data<float>());
-  T2 position_embedding_zero_point_data = *(position_embedding_zero_point->template Data<T2>());
-
-  float segment_embedding_scale_data =
-      has_segment_embedding ? *(segment_embedding_scale->template Data<float>()) : 0.0f;
-  T2 segment_embedding_zero_point_data =
-      has_segment_embedding ? *(segment_embedding_zero_point->template Data<T2>()) : 0;
-
-  float gamma_scale_data = *(gamma_scale->template Data<float>());
-  T2 gamma_zero_point_data = *(gamma_zero_point->template Data<T2>());
-
-  float beta_scale_data = *(beta_scale->template Data<float>());
-  T2 beta_zero_point_data = *(beta_zero_point->template Data<T2>());
+  quantization::Params<T2> word_embedding_params =
+      quantization::GetTensorQuantizationParams(word_embedding_scale,
+                                                word_embedding_zero_point);
+  quantization::Params<T2> position_embedding_params =
+      quantization::GetTensorQuantizationParams(position_embedding_scale,
+                                                position_embedding_zero_point);
+  quantization::Params<T2> segment_embedding_params;
+  if (has_segment_embedding) {
+    segment_embedding_params =
+        quantization::GetTensorQuantizationParams(segment_embedding_scale,
+                                                  segment_embedding_zero_point);
+  }
+  quantization::Params<T2> gamma_params =
+      quantization::GetTensorQuantizationParams(gamma_scale, gamma_zero_point);
+  quantization::Params<T2> beta_params =
+      quantization::GetTensorQuantizationParams(beta_scale, beta_zero_point);
 
   // Grab pointers to buffers each Tensor represents:
   const T2* word_embedding_data = word_embedding->template Data<T2>();
