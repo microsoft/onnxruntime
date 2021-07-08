@@ -1448,6 +1448,11 @@ struct OrtApi {
   ORT_CLASS_RELEASE2(TensorRTProviderOptions);
 
   /**
+  * Enable custom operators in onnxruntime-extensions: https://github.com/microsoft/onnxruntime-extensions.git
+  */
+  ORT_API2_STATUS(EnableOrtCustomOps, _Inout_ OrtSessionOptions* options);
+
+  /**
    * \Sets *out to 1 iff an optional type OrtValue has an element, 0 otherwise
    * Use this API to find if the optional type OrtValue is None or not.
    * If the optional type Ortvalue has element, use the OrtValue just like
