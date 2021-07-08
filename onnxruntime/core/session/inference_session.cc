@@ -864,10 +864,15 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   auto mode = saving_model_in_ort_format ? GraphPartitioner::Mode::kAssignOnly
                                          : GraphPartitioner::Mode::kNormal;
 
+  auto start_ = std::chrono::high_resolution_clock::now();
+  std::cout << "partitioner time start " << std::endl;
   // Do partitioning based on execution providers' capability.
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.ExportDll(),
                                                        session_state.GetMutableFuncMgr(), mode));
+  auto end_ = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> duration = end_ - start_;
+  std::cout << "partitioner time cost: " << duration.count() << " s" << std::endl;
 
   // apply transformers except default transformers
   // Default transformers are required for correctness and they are owned and run by inference session
@@ -1248,12 +1253,17 @@ common::Status InferenceSession::Initialize() {
       // add predefined transformers
       AddPredefinedTransformers(graph_transformation_mgr_, session_options_.graph_optimization_level);
 
+      auto start_ = std::chrono::high_resolution_clock::now();
+      std::cout << "transform graph start " << std::endl;
       // apply any transformations to the main graph and any subgraphs
       ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
                                                     execution_providers_, kernel_registry_manager_,
                                                     insert_cast_transformer_,
                                                     *session_state_,
                                                     saving_ort_format));
+      auto end_ = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double> duration = end_ - start_;
+      std::cout << "transform graph time cost: " << duration.count() << " s" << std::endl;
 
       // now that all the transforms are done, call Resolve on the main graph. this will recurse into the subgraphs.
       ORT_RETURN_IF_ERROR_SESSIONID_(graph.Resolve());

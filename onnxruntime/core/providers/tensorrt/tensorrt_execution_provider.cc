@@ -1091,7 +1091,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 
   auto get_capability_end_ = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> get_capability_duration = get_capability_end_ - get_capability_start_;
-  std::cout << "Get capability time cost: " << get_capability_duration.count() << " s\n" << std::endl;
+  std::cout << "Get capability time cost: " << get_capability_duration.count() << " s" << std::endl;
 
   return result;
 }
@@ -1922,7 +1922,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
   }
   auto compile_end_ = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> compile_duration = compile_end_ - compile_start_;
-  std::cout << "compile time cost: " << compile_duration.count() << " s\n" << std::endl;
+  std::cout << "compile time cost: " << compile_duration.count() << " s" << std::endl;
   return Status::OK();
 }
 }  // namespace onnxruntime
