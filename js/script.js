@@ -21,7 +21,7 @@ var ot_opts = {
     // os: getAnchorSelectedOS() || getDefaultSelectedOS(),
     ot_os: 'ot_linux',
     ot_architecture: 'ot_X64',
-    ot_language: 'ot_PyTorch',
+    ot_language: 'ot_PyTorch18',
     ot_hardwareAcceleration: 'ot_CUDA10',
 };
 
@@ -534,20 +534,29 @@ function ot_buildMatcher() {
 
 var ot_validCombos = {
    //linux
-    "ot_linux,ot_PyTorch,ot_X64,ot_CUDA10":
-    "<b>Stable:</b> pip install onnxruntime-training <br/><br/><b>Nightly:</b> pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_cu102.html",
+    "ot_linux,ot_PyTorch18,ot_X64,ot_CUDA10":
+    "<b>Stable:</b> pip install onnxruntime-training <br/><br/><b>Nightly:</b> pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch181.cu102.html",
 
-    "ot_linux,ot_PyTorch,ot_X64,ot_CUDA11":
-    "<b>Stable: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_cu111.html <br/><br/><b>Nightly: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_cu111.html",
+    "ot_linux,ot_PyTorch18,ot_X64,ot_CUDA11":
+    "<b>Stable: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu111.html <br/><br/><b>Nightly: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch181.cu111.html",
 
-    "ot_linux,ot_PyTorch,ot_X64,ot_DefaultCPU":
+    "ot_linux,ot_PyTorch18,ot_X64,ot_DefaultCPU":
     "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
 
-    "ot_linux,ot_PyTorch,ot_X64,ot_AMD":
-    "<b>Stable: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_rocm42.html<br/><br/><b>Nightly: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_rocm42.html",
+    "ot_linux,ot_PyTorch18,ot_X64,ot_AMD":
+    "<b>Stable: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.rocm42.html<br/><br/><b>Nightly: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch181.rocm42.html",
    
-    "ot_linux,ot_PyTorch,ot_X64,ot_DNNL":
+    "ot_linux,ot_PyTorch18,ot_X64,ot_DNNL":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
+   
+    "ot_linux,ot_PyTorch19,ot_X64,ot_CUDA10":
+    "<b>Stable:</b> pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.cu102.html <br/><br/><b>Nightly:</b> pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch190.cu102.html",
+
+    "ot_linux,ot_PyTorch19,ot_X64,ot_CUDA11":
+    "<b>Stable: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.cu111.html <br/><br/><b>Nightly: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch190.cu111.html",
+
+    "ot_linux,ot_PyTorch19,ot_X64,ot_AMD":
+    "<b>Stable: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.rocm42.html<br/><br/><b>Nightly: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch190.rocm42.html",
    
     "ot_linux,ot_C++,ot_X64,ot_CUDA10":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
@@ -556,10 +565,10 @@ var ot_validCombos = {
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
     
     //windows
-    "ot_windows,ot_PyTorch,ot_X64,ot_CUDA10":
+    "ot_windows,ot_PyTorch18,ot_X64,ot_CUDA10":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
 
-    "ot_windows,ot_PyTorch,ot_X64,ot_DefaultCPU":
+    "ot_windows,ot_PyTorch18,ot_X64,ot_DefaultCPU":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
 
     "ot_windows,ot_C++,ot_X64,ot_DefaultCPU":
@@ -569,7 +578,7 @@ var ot_validCombos = {
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
 
     //mac
-    "ot_mac,ot_PyTorch,ot_X64,ot_DefaultCPU":
+    "ot_mac,ot_PyTorch18,ot_X64,ot_DefaultCPU":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
 
     "ot_mac,ot_C++,ot_X64,ot_DefaultCPU":
@@ -601,7 +610,7 @@ function ot_commandMessage(key) {
 
     // //console.log('key- '+key);
     //  var ot_object = {
-    //     "ot_linux,ot_PyTorch,ot_X64,ot_CUDA10":
+    //     "ot_linux,ot_PyTorch18,ot_X64,ot_CUDA10":
     //         "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
 
     //     "ot_linux,ot_TensorFlow,ot_X64,ot_CUDA10":
@@ -888,16 +897,16 @@ var validCombos = {
         "npm install onnxruntime-web",
     
     "android,JS,ARM64,DefaultCPU":
-        "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/tree/master/js#onnxruntime-react-native' target='_blank'>here</a>",
+        "npm install onnxruntime-react-native",
     
     "android,JS,X64,DefaultCPU":
-        "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/tree/master/js#onnxruntime-react-native' target='_blank'>here</a>",
+        "npm install onnxruntime-react-native",
     
     "android,JS,X86,DefaultCPU":
-        "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/tree/master/js#onnxruntime-react-native' target='_blank'>here</a>",
+        "npm install onnxruntime-react-native",
     
     "ios,JS,ARM64,DefaultCPU":
-        "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/tree/master/js#onnxruntime-react-native' target='_blank'>here</a>",
+        "npm install onnxruntime-react-native",
     
     "windows,WinRT,X86,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",

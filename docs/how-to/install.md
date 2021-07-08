@@ -39,6 +39,7 @@ The following build variants are available as officially supported packages. Oth
 |Android|[**com.microsoft.onnxruntime:onnxruntime-mobile**](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime-mobile) ||
 |iOS (C/C++)|CocoaPods: **onnxruntime-mobile-c**||
 |Objective-C|CocoaPods: **onnxruntime-mobile-objc**||
+|React Native|[**onnxruntime-react-native**](https://www.npmjs.com/package/onnxruntime-react-native)||
 |Node.js|[**onnxruntime-node**](https://www.npmjs.com/package/onnxruntime-node)||
 |Web|[**onnxruntime-web**](https://www.npmjs.com/package/onnxruntime-web)||
 
@@ -61,6 +62,9 @@ by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
  
 ||Official build|Nightly build|
 |---|---|---|
-|PyTorch (CUDA 10.2)|[**onnxruntime-training**](https://pypi.org/project/onnxruntime-training)|[onnxruntime_nightly_cu102](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_cu102.html)|
-|PyTorch (CUDA 11.1)|[**onnxruntime_stable_cu111**](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_cu111.html)|[onnxruntime_nightly_cu111](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_cu111.html)|
-|[*Preview*] PyTorch (ROCm 4.2)|[**onnxruntime_stable_rocm42**](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_rocm42.html)|[onnxruntime_nightly_rocm42](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_rocm42.html)|
+|PyTorch 1.8.1 (CUDA 10.2)|[**onnxruntime-training**](https://pypi.org/project/onnxruntime-training)|[onnxruntime_nightly_torch181.cu102](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch181.cu102.html)|
+|PyTorch 1.8.1 (CUDA 11.1)|[**onnxruntime_stable_torch181.cu111**](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu111.html )|[onnxruntime_nightly_torch181.cu111](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch181.cu111.html)|
+|PyTorch 1.9 (CUDA 10.2)|[**onnxruntime_stable_torch190.cu102**](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.cu102.html)|[onnxruntime_nightly_torch190.cu102](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch190.cu102.html)|
+|PyTorch 1.9 (CUDA 11.1)|[**onnxruntime_stable_torch190.cu111**](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.cu111.html)|[onnxruntime_nightly_torch190.cu111](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch190.cu111.html)|
+|[*Preview*] PyTorch 1.8.1 (ROCm 4.2)|[**onnxruntime_stable_torch181.rocm42**](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.rocm42.html)|[onnxruntime_nightly_torch181.rocm42](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch181.rocm42.html)|
+|[*Preview*] PyTorch 1.9 (ROCm 4.2)|[**onnxruntime_stable_torch190.rocm42**](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.rocm42.html)|[onnxruntime_nightly_torch190.rocm42](https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch190.rocm42.html)|
