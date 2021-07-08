@@ -32,14 +32,17 @@ class Params {
 };
 
 // Returns quantization params from scale and zero point Tensor pointers.
-// Caller is responsible for assuming that both Tensor pointers are of valid 
+// Caller is responsible for assuming that both Tensor pointers are of valid
 // shape and type.
 template <typename T>
 Params<T> GetTensorQuantizationParams(const Tensor* scale_tensor,
                                       const Tensor* zero_point_tensor) {
+  static_assert(
+      !std::is_same<T, int8_t>::value || !std::is_same<T, uint8_t>::value,
+      "Only int8_t and uint8_t are supported quantization formats.");
   return Params<T>(
-    *(scale_tensor->template Data<float>()),
-    *(zero_point_tensor->template Data<T>());
+      *(scale_tensor->template Data<float>()),
+      *(zero_point_tensor->template Data<T>()));
 }
 
 // Quantizes a given float value with provided quantization params.

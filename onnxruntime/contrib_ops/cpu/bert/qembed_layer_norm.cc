@@ -61,21 +61,21 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
 
   // Grab quantization values:
   quantization::Params<T2> word_embedding_params =
-      quantization::GetTensorQuantizationParams(word_embedding_scale,
-                                                word_embedding_zero_point);
+      quantization::GetTensorQuantizationParams<T2>(word_embedding_scale,
+                                                    word_embedding_zero_point);
   quantization::Params<T2> position_embedding_params =
-      quantization::GetTensorQuantizationParams(position_embedding_scale,
-                                                position_embedding_zero_point);
+      quantization::GetTensorQuantizationParams<T2>(position_embedding_scale,
+                                                    position_embedding_zero_point);
   quantization::Params<T2> segment_embedding_params;
   if (has_segment_embedding) {
     segment_embedding_params =
-        quantization::GetTensorQuantizationParams(segment_embedding_scale,
-                                                  segment_embedding_zero_point);
+        quantization::GetTensorQuantizationParams<T2>(segment_embedding_scale,
+                                                      segment_embedding_zero_point);
   }
   quantization::Params<T2> gamma_params =
-      quantization::GetTensorQuantizationParams(gamma_scale, gamma_zero_point);
+      quantization::GetTensorQuantizationParams<T2>(gamma_scale, gamma_zero_point);
   quantization::Params<T2> beta_params =
-      quantization::GetTensorQuantizationParams(beta_scale, beta_zero_point);
+      quantization::GetTensorQuantizationParams<T2>(beta_scale, beta_zero_point);
 
   // Grab pointers to buffers each Tensor represents:
   const T2* word_embedding_data = word_embedding->template Data<T2>();
@@ -116,12 +116,14 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
           }
 
           // Grab inputs for the embeddings for the current batch index:
-          const T2* input_word_embedding = word_embedding_data + word_col_index * hidden_size;
+          const T2* input_word_embedding =
+              word_embedding_data + word_col_index * hidden_size;
           const T2* input_position_embedding =
               position_embedding_data + position_col_index * hidden_size;
           const T2* input_segment_embedding = nullptr;
           if (segment_embedding_data != nullptr) {
-            input_segment_embedding = segment_embedding_data + segment_col_index * hidden_size;
+            input_segment_embedding =
+                segment_embedding_data + segment_col_index * hidden_size;
           }
 
           T* output = output_data + (index * hidden_size);
@@ -129,16 +131,13 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
           T sum = static_cast<T>(0);
           for (int i = 0; i < hidden_size; ++i) {
             // TODO(kreeger): Use a table query to improve performance:
-            T subtotal = Dequantize<T2>(input_word_embedding[i],
-                                        word_embedding_scale_data,
-                                        word_embedding_zero_point_data) +
-                         Dequantize<T2>(input_position_embedding[i],
-                                        position_embedding_scale_data,
-                                        position_embedding_zero_point_data);
+            T subtotal = quantization::Dequantize<T2>(input_word_embedding[i],
+                                                      word_embedding_params) +
+                         quantization::Dequantize<T2>(input_position_embedding[i],
+                                                      segment_embedding_params);
             if (segment_embedding_data != nullptr) {
-              subtotal += Dequantize<T2>(input_segment_embedding[i],
-                                         segment_embedding_scale_data,
-                                         segment_embedding_zero_point_data);
+              subtotal += quantization::Dequantize<T2>(input_segment_embedding[i],
+                                                       segment_embedding_params);
             }
             output[i] = subtotal;
             sum += subtotal;
@@ -156,8 +155,8 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
           T e = sqrt(sum / hidden_size + epsilon);
           for (int i = 0; i < hidden_size; i++) {
             // TODO(kreeger): Consider keeping these as int8 or use PrePack()!
-            T cur_gamma = Dequantize<T2>(gamma_data[i], gamma_scale_data, gamma_zero_point_data);
-            T cur_beta = Dequantize<T2>(beta_data[i], beta_scale_data, beta_zero_point_data);
+            T cur_gamma = quantization::Dequantize<T2>(gamma_data[i], gamma_params);
+            T cur_beta = quantization::Dequantize<T2>(beta_data[i], beta_params);
             output[i] = output[i] / e * cur_gamma + cur_beta;
           }
         },
