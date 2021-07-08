@@ -40,8 +40,10 @@ Status ComputePadAndOutputShape(
         *out_dim = (in_dim + pad_needed - dkernel) / stride + 1;
 
         // make sure padding is symmetric
-        if (ForceSymmetricAutoPadding)
-          pad_needed = math::roundUpPow2<int64_t, 2>(pad_needed);
+        if (ForceSymmetricAutoPadding) {
+          // Round up to the next highest multiple of b, which is power-of-2.
+          pad_needed = (pad_needed + (2 - 1)) & (~(2 - 1));
+        }
 
         if (pad_type == AutoPadType::SAME_LOWER) {
           *pad_head = (pad_needed + 1) / 2;

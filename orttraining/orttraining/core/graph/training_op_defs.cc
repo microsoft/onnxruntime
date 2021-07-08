@@ -155,7 +155,7 @@ TensorProto ToDimensionOneTensor(int32_t value) {
 bool BuildContextDependentFunctionBodyNllLossInternal(
     const FunctionBodyBuildContext& ctx,
     const OpSchema& schema,
-    FunctionProto& functionProto) {  
+    FunctionProto& functionProto) {
   if (ctx.getInputType(0) == nullptr) {
     // we cannot create a correct function body without knowing the input type
     return false;
@@ -286,10 +286,10 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
          {MakeAttribute("value", ToDimensionOneFloatTensor(0.0f))}});
     if (!float_input) {
       body.push_back(
-          {{"const_zero_casted"}, 
-          "Cast", 
-          {"const_zero_float"}, 
-          {MakeAttribute("to", static_cast<int64_t>(input_type))}});
+          {{"const_zero_casted"},
+           "Cast",
+           {"const_zero_float"},
+           {MakeAttribute("to", static_cast<int64_t>(input_type))}});
     }
     body.push_back(
         {{"input_gather_element_transform"},
@@ -315,16 +315,16 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
            {MakeAttribute("value", ToDimensionOneFloatTensor(1.0f))}});
       if (!float_input) {
         body.push_back(
-          {{"const_one_casted"}, 
-           "Cast", 
-           {"const_one_float"}, 
-           {MakeAttribute("to", static_cast<int64_t>(input_type))}});
+            {{"const_one_casted"},
+             "Cast",
+             {"const_one_float"},
+             {MakeAttribute("to", static_cast<int64_t>(input_type))}});
       }
       body.push_back(
           {{"weight_gather"},
            "Where",
-           {"squeeze_mask", float_input ? "const_zero_float" : "const_zero_casted", 
-           float_input ? "const_one_float" :"const_one_casted"}});
+           {"squeeze_mask", float_input ? "const_zero_float" : "const_zero_casted",
+            float_input ? "const_one_float" : "const_one_casted"}});
 
     } else {
       body.push_back(
@@ -2887,9 +2887,14 @@ Return true if all elements are true and false otherwise.
           "Name of custom class.",
           AttributeProto::STRING)
       .Attr(
-          "call_convention",
-          "call_convention[i]==c means a non-tensor argument. call_convention[i]==d means a tensor.",
+          "input_convention",
+          "input_convention[i]==c means a non-tensor argument. input_convention[i]==d means a tensor.",
           AttributeProto::STRING)
+      .Attr(
+          "input_requires_grads",
+          "Flags to indicate whether the torch.autograd.apply's inputs require gradients (including flags for both tensor"
+          " and non-tensor inputs)",
+          AttributeProto::INTS)
       // Input Pytorch tensors.
       .Attr(
           "input_tensor_types",
@@ -2898,10 +2903,6 @@ Return true if all elements are true and false otherwise.
       .Attr(
           "input_tensor_ranks",
           "Input tensors' ranks of autograd.Function.apply.",
-          AttributeProto::INTS)
-      .Attr(
-          "input_tensor_requires_grads",
-          "Flags to indicate which inputs has gradient",
           AttributeProto::INTS)
       // Input int scalars.
       .Attr(
@@ -3006,7 +3007,7 @@ Return true if all elements are true and false otherwise.
         ORT_ENFORCE(input_tensor_types_proto, "PythonOp's must have \"input_tensor_types\" attribute.");
         // Check if the inferred input types match those described in the
         // "input_tensor_types" attributes.
-        int64_t input_tensor_types_count = input_tensor_types_proto->ints_size();
+        const int64_t input_tensor_types_count = input_tensor_types_proto->ints_size();
         ORT_ENFORCE(static_cast<size_t>(input_tensor_types_count) == ctx.getNumInputs(),
                     "PythonOp's input list and \"input_tensor_types\" attribute should have the same length.");
         for (auto i = 0; i < input_tensor_types_count; ++i) {
@@ -3031,7 +3032,7 @@ Return true if all elements are true and false otherwise.
         // This is a required field.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOp's must have \"output_tensor_types\" attribute.");
 
-        static size_t rank_count = 0;
+        size_t rank_count = 0;
         // Set inferred output types.
         for (auto i = 1; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
           updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i - 1)));
@@ -3063,8 +3064,10 @@ Return true if all elements are true and false otherwise.
       .Input(
           1,
           "inputs",
-          "Inputs of autograd.Function.backward. There are 2*N inputs: \
-          N gradient inputs + N forward run activations of PythonOp (not including the context).",
+          "There are 2*N inputs: "
+          "  N gradient inputs (as inputs of autograd.Function.backward) + "
+          "  N forward run activations of autograd.Function.apply."
+          "The N forward run inputs are used as control dependency between PythonOpGrad and PythonOp",
           "T",
           OpSchema::Variadic,
           /*is_homogeneous*/ false,
@@ -3083,37 +3086,45 @@ Return true if all elements are true and false otherwise.
           AttributeProto::STRING)
       .Attr(
           "inplace",
-          "Indicate if the output should reuse input memory.",
+          "Indicate if the output should reuse input memory. Todo(pengwa): do we really need it?",
           AttributeProto::INT,
           static_cast<int64_t>(0))
       .Attr(
           "input_tensor_types",
-          "Input types of autograd.Function.backward.",
+          "Input types of autograd.Function.backward (including only tensor inputs)."
+          "This attribute is mostly used for input checks for better robustnes.",
           AttributeProto::INTS,
           false)
       .Attr(
           "input_tensor_ranks",
-          "Input ranks of autograd.Function.backward.",
+          "Input ranks of autograd.Function.backward (including only tensor inputs)."
+          "This attribute is mostly used for input checks for better robustness.",
           AttributeProto::INTS,
           false)
       .Attr(
           "input_tensor_requires_grads",
-          "Flags to indicate which inputs has gradient",
+          "Flags to indicate which inputs have gradients (including only tensor inputs)."
+          "This attribute is mostly used for input checks for better robustness.",
           AttributeProto::INTS)
       .Attr(
           "output_tensor_types",
-          "Output types of autograd.Function.backward.",
+          "Output types of autograd.Function.backward outputs (including only tensor outputs).",
           AttributeProto::INTS,
           false)
       .Attr(
           "output_tensor_ranks",
-          "Output ranks of autograd.Function.backward.",
+          "Output ranks of autograd.Function.backward outputs (including only tensor outputs).",
           AttributeProto::INTS,
           false)
       .Attr(
           "output_tensor_requires_grads",
-          "Flags to indicate which outputs has gradient",
+          "Flags to indicate which outputs have gradients (including only tensor outputs).",
           AttributeProto::INTS)
+      .Attr(
+          "output_convention",
+          "A string inidicating autograd.Function.backward outputs's type."
+          "value 'c' - non-tensor output; value 'd' - tensor output.",
+          AttributeProto::STRING)
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),
@@ -3154,9 +3165,9 @@ Return true if all elements are true and false otherwise.
         ORT_ENFORCE(static_cast<size_t>(output_tensor_types_proto->ints_size()) == ctx.getNumOutputs(),
                     "PythonOpGrad's output list and \"output_tensor_types\" attribute should have the same length.");
         // This is a required field.
-        ORT_ENFORCE(output_tensor_types_proto, "PythonOp's must have \"output_tensor_types\" attribute.");
+        ORT_ENFORCE(output_tensor_types_proto, "PythonOpGrad's must have \"output_tensor_types\" attribute.");
         // Set inferred output types.
-        static size_t rank_count = 0;
+        size_t rank_count = 0;
         for (auto i = 0; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
           updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i)));
           const auto output_tensor_ranks = ctx.getAttribute("output_tensor_ranks");
