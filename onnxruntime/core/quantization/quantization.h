@@ -6,12 +6,18 @@
 #include <vector>
 
 #include "core/common/common.h"
+#include "core/framework/tensor.h"
 #include "core/mlas/inc/mlas.h"
 
 // TODO - update documentation to use same verbage as quant_utils.py
 
 namespace onnxruntime {
 namespace quantization {
+
+#define ORT_STATIC_ASSERT_QUANTIZATION_TYPES(T)                            \
+  static_assert(                                                           \
+      !std::is_same<T, int8_t>::value || !std::is_same<T, uint8_t>::value, \
+      "Only int8_t and uint8_t are supported quantization formats."); 
 
 // Basic quantization params structure.
 template <typename T>
@@ -22,9 +28,7 @@ class Params {
   }
 
   Params(float scale, T zero_point) : scale(scale), zero_point(zero_point) {
-    static_assert(
-        !std::is_same<T, int8_t>::value || !std::is_same<T, uint8_t>::value,
-        "Only int8_t and uint8_t are supported quantization formats.");
+    ORT_STATIC_ASSERT_QUANTIZATION_TYPES(T)
   }
 
   float scale;
@@ -37,9 +41,7 @@ class Params {
 template <typename T>
 Params<T> GetTensorQuantizationParams(const Tensor* scale_tensor,
                                       const Tensor* zero_point_tensor) {
-  static_assert(
-      !std::is_same<T, int8_t>::value || !std::is_same<T, uint8_t>::value,
-      "Only int8_t and uint8_t are supported quantization formats.");
+  ORT_STATIC_ASSERT_QUANTIZATION_TYPES(T)
   return Params<T>(
       *(scale_tensor->template Data<float>()),
       *(zero_point_tensor->template Data<T>()));

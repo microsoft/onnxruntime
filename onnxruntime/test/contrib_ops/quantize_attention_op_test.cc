@@ -868,11 +868,16 @@ TEST(QAttentionTest, SharedPrepackedWeights) {
   OpTester tester("QAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
 
-  tester.AddInput<uint8_t>("input",
-                           input_dims,
-                           QuantizeTestVector<uint8_t>(input_data, /*scale=*/0.1f, /*zero_point=*/128));
+  tester.AddInput<uint8_t>(
+      "input",
+      input_dims,
+      QuantizeTestVector<uint8_t>(
+          input_data,
+          quantization::Params<uint8_t>(/*scale=*/0.1f, /*zero_point=*/128)));
 
-  auto weight_data_converted_to_int = QuantizeTestVector<uint8_t>(weight_data, /*scale=*/0.1f, /*zero_point=*/128);
+  auto weight_data_converted_to_int = QuantizeTestVector<uint8_t>(
+      weight_data,
+      quantization::Params<uint8_t>(/*scale=*/0.1f, /*zero_point=*/128));
   tester.AddInput<uint8_t>("weight",
                            weights_dims,
                            weight_data_converted_to_int,
