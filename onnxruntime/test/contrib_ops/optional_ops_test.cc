@@ -19,6 +19,21 @@ TEST(OptionalOpTest, OptionalTensorCreateFromTensor) {
   test.Run();
 }
 
+TEST(OptionalOpTest, OptionalTensorCreateFromTypeProto) {
+  OpTester test("Optional", 1, onnxruntime::kMSDomain);
+
+  onnx::TypeProto tp;
+  tp.mutable_tensor_type()
+      ->set_elem_type(onnx::TensorProto_DataType::TensorProto_DataType_FLOAT);
+
+  test.AddAttribute<onnx::TypeProto>("type", tp);
+
+  // expected values in nullptr because we expect a "None" output
+  test.AddOptionalTypeTensorOutput<float>("y", {2}, nullptr);
+
+  test.Run();
+}
+
 TEST(OptionalOpTest, OptionalTensorHasElement_True) {
   OpTester test("OptionalHasElement", 1, onnxruntime::kMSDomain);
 
@@ -85,7 +100,8 @@ class OptionalOpTester : public OpTester {
       */
 
     onnx::TypeProto tensor_type_proto;
-    tensor_type_proto.mutable_tensor_type()->set_elem_type(1);
+    tensor_type_proto.mutable_tensor_type()
+        ->set_elem_type(onnx::TensorProto_DataType::TensorProto_DataType_FLOAT);
 
     onnx::TypeProto optional_type_proto;
     optional_type_proto.mutable_optional_type()->mutable_elem_type()->CopyFrom(tensor_type_proto);

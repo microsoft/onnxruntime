@@ -35,7 +35,8 @@ ONNX_OPERATOR_KERNEL_EX(OptionalGetElement, kMSDomain, 1, kCpuExecutionProvider,
                         OptionalGetElement);
 
 static void CloneTensor(AllocatorPtr alloc, const Tensor& tensor_to_be_cloned, OrtValue& clone) {
-  auto tensor = std::make_unique<Tensor>(tensor_to_be_cloned.DataType(), TensorShape(tensor_to_be_cloned.Shape()), alloc);
+  auto tensor = std::make_unique<Tensor>(tensor_to_be_cloned.DataType(),
+                                         TensorShape(tensor_to_be_cloned.Shape()), alloc);
   CopyCpuTensor(&tensor_to_be_cloned, tensor.get());
 
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
@@ -44,14 +45,35 @@ static void CloneTensor(AllocatorPtr alloc, const Tensor& tensor_to_be_cloned, O
              ml_tensor->GetDeleteFunc());
 }
 
-static void CloneSequnceTensor(const OrtValue& /*ort_value_to_be_cloned*/, OrtValue& /* clone*/) {
-  // TODO: Implement
+static void CloneSequnceTensor(AllocatorPtr alloc,
+                               const TensorSeq& sequence_tensor_to_be_cloned,
+                               OrtValue& clone) {
+  auto output_sequence_tensors =
+      std::make_unique<TensorSeq>(sequence_tensor_to_be_cloned.DataType());
+
+  std::vector<Tensor> output_tensors;
+  output_tensors.reserve(sequence_tensor_to_be_cloned.Size());
+
+  auto in_tensor = sequence_tensor_to_be_cloned.begin();
+  for (; in_tensor != sequence_tensor_to_be_cloned.end(); ++in_tensor) {
+    Tensor tmp(in_tensor->DataType(), onnxruntime::TensorShape(in_tensor->Shape()), alloc);
+    CopyCpuTensor(&*in_tensor, &tmp);
+    output_tensors.push_back(std::move(tmp));
+  }
+
+  auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
+  clone.Init(output_sequence_tensors.release(),
+             ml_tensor_sequence,
+             ml_tensor_sequence->GetDeleteFunc());
+
   return;
 }
 
 static bool CheckValidTypeProto(const onnx::TypeProto& tp) {
   // Optional types can currently be Tensors or SequenceTensors only
   // Ensure that the TypeProto holds those types
+
+  // TODO: Should we also ensure that element type for tensor is set ?
   return (tp.has_tensor_type()) ||
          (tp.has_sequence_type() && tp.sequence_type().elem_type().has_tensor_type());
 }
@@ -60,20 +82,24 @@ Status Optional::Compute(OpKernelContext* ctx) const {
   const auto* input_ort_value = ctx->GetInputOrtValue(0);
   auto* output_ort_value = ctx->GetOutputOrtValue(0);
 
-  if (input_ort_value != nullptr) {  // An input was provided by the user
+  // The static allocation planner has deemed that the input can be re-used as the output
+  // Analogy: Checking if data pointers for the input and output Tensors are the same
+  // before proceeding to make the copy.
+  if (output_ort_value->IsAllocated()) {
+    return Status::OK();
+  }
 
-    // The static allocation planner has deemed that the input can be re-used as the output
-    if (output_ort_value->IsAllocated()) {
-      return Status::OK();
-    }
+  if (input_ort_value != nullptr) {  // An input was provided by the user
 
     AllocatorPtr alloc;
     ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
 
     if (input_ort_value->IsTensor()) {
-      CloneTensor(alloc, input_ort_value->Get<Tensor>(), *output_ort_value);
+      CloneTensor(alloc,
+                  input_ort_value->Get<Tensor>(), *output_ort_value);
     } else if (input_ort_value->IsTensorSequence()) {
-      CloneSequnceTensor(*input_ort_value, *output_ort_value);
+      CloneSequnceTensor(alloc,
+                         input_ort_value->Get<TensorSeq>(), *output_ort_value);
     } else {
       // Will not reach here
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only Tensors and Sequence Tensors can be used to construct an Optional type");
@@ -116,15 +142,25 @@ Status OptionalGetElement::Compute(OpKernelContext* ctx) const {
 
     // If the allocation planner had deemed that we re-use the input OrtValue
     // as the output OrtValue, the data pointers in the input_tensor and the
-    // output_tensor will be the same and nthe copy is a no-op.
+    // output_tensor will be the same and the copy is a no-op.
     // CopyCpuTensor() already has such copy optimizations - so
     // just re-ue it.
     CopyCpuTensor(input_tensor, output_tensor);
 
   } else if (input_ort_value->IsTensorSequence()) {
     auto* output_ort_value = ctx->GetOutputOrtValue(0);
-    CloneSequnceTensor(*input_ort_value, *output_ort_value);
 
+    // The static allocation planner has deemed that the input can be re-used as the output
+    // Analogy: Checking if data pointers for the input and output Tensors are the same
+    // before proceeding to make the copy.
+    if (output_ort_value->IsAllocated()) {
+      return Status::OK();
+    }
+
+    AllocatorPtr alloc;
+    ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
+
+    CloneSequnceTensor(alloc, input_ort_value->Get<TensorSeq>(), *output_ort_value);
   } else {
     // Will not reach here
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

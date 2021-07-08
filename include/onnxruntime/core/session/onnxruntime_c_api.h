@@ -1446,6 +1446,16 @@ struct OrtApi {
   * Use this API to release the instance of OrtTensorRTProviderV2.
   */
   ORT_CLASS_RELEASE2(TensorRTProviderOptions);
+
+  /**
+   * \Sets *out to 1 iff an optional type OrtValue has an element, 0 otherwise
+   * Use this API to find if the optional type OrtValue is None or not.
+   * If the optional type Ortvalue has element, use the OrtValue just like
+   * any other OrtValue.
+   * For example, if you get an OrtValue that corresponds to Optional(tensor) and 
+   * if HasElement() returns true, use it as tensor and so on.
+   */
+  ORT_API2_STATUS(HasElement, _In_ const OrtValue* value, _Out_ int* out);
 };
 
 /*

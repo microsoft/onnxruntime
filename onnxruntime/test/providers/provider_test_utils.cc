@@ -685,7 +685,7 @@ std::vector<OrtValue> OpTester::ExecuteModel(
           ort_value.Fence()->BeforeUsingAsInput(
               onnxruntime::kCpuExecutionProvider, 0);
 
-        if (expected_data.def_.Exists()) {          // optional outputs won't exist
+        if (expected_data.def_.Exists()) {          // optional edges won't exist (so skip them)
           if (!expected_data.data_.HasElement()) {  // optional type output (None)
             EXPECT_TRUE(!ort_value.HasElement())
                 << "Expected to see an output of None "

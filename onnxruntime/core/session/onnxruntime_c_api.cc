@@ -779,6 +779,12 @@ ORT_API_STATUS_IMPL(OrtApis::IsTensor, _In_ const OrtValue* value, _Out_ int* ou
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::HasElement, _In_ const OrtValue* value, _Out_ int* out) {
+  auto v = reinterpret_cast<const ::OrtValue*>(value);
+  *out = v->HasElement() ? 1 : 0;
+  return nullptr;
+}
+
 ORT_API_STATUS_IMPL(OrtApis::GetTensorMutableData, _Inout_ OrtValue* value, _Outptr_ void** output) {
   TENSOR_READWRITE_API_BEGIN
   //TODO: test if it's a string tensor
@@ -2275,6 +2281,7 @@ static constexpr OrtApi ort_api_1_to_9 = {
     &OrtApis::UpdateTensorRTProviderOptions,
     &OrtApis::GetTensorRTProviderOptionsAsString,
     &OrtApis::ReleaseTensorRTProviderOptions,
+    &OrtApis::HasElement,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
