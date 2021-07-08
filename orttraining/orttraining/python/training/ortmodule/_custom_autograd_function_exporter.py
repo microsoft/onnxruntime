@@ -3,10 +3,11 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import atexit
 import sys
 import torch
 from torch.onnx import symbolic_helper
-from onnxruntime.capi._pybind_state import register_torch_autograd_function
+from onnxruntime.capi._pybind_state import register_torch_autograd_function, unregister_python_functions
 
 def _export(g, n, *args, **kwargs):
     '''
@@ -178,5 +179,8 @@ def _post_process_enabling_autograd_fallback(exported_model):
         # Sometimes, we find the same functions multiple times, so we skip
         # registrations when their keys already exist.
         register_torch_autograd_function(kclass.__name__, kclass)
+
+    # Unregister all python functions automatically upon normal interpreter termination.
+    atexit.register(unregister_python_functions)
 
     return exported_model
