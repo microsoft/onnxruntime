@@ -133,7 +133,9 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     int qkv_hidden_sizes_sum = static_cast<int>(weights_dims[1]);
     if (qkv_hidden_sizes_sum != qkv_sizes) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "qkv_sizes doesn't match the wights dimension");
-    }   
+    }
+
+    hidden_size = static_cast<int>(qkv_hidden_sizes_[2]);
   }
 
   if (bias_dims[0] != weights_dims[1]) {
@@ -269,7 +271,7 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
                              /*out*/ bool& is_packed,
                              /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
-  
+
   if (1 != input_idx) {
     return Status::OK();
   }
@@ -281,7 +283,6 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
   }
 
   const auto* weights_data = weights.Data<T>();
-
   const size_t input_hidden_size = static_cast<size_t>(weights_dims[0]);
   const size_t hidden_size_x3 = static_cast<size_t>(weights_dims[1]);
 
@@ -349,8 +350,6 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
       return Status::OK();
     }
 
-    // const auto* weights_data = weights.Data<T>();
-
     packed_weights_size_ = MlasGemmPackBSize(head_size, input_hidden_size);
     if (packed_weights_size_ == 0) {
       return Status::OK();
@@ -368,16 +367,6 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
 
     for (size_t i = 0; i < loop_len; i++) {
       MlasGemmPackB(CblasNoTrans, head_size, input_hidden_size, weights_data, hidden_size_x3, packed_weights_data);
-
-      //auto* packed_weights_data_temp = reinterpret_cast<float*> (packed_weights_data);
-      //for (size_t j = 0; j < packed_weights_size_; j++) {
-      //    if (j % hidden_size == 0) {
-      //      std::cout<< std::endl;
-      //    }
-      //    std::cout << packed_weights_data_temp[j] << ",";
-      //}
-      //std::cout<<std::endl;
-
       packed_weights_data += packed_weights_size_;
       weights_data += head_size;
     }
