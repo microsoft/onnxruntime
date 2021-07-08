@@ -41,14 +41,26 @@ inline std::vector<T> QuantizeTestVector(const std::vector<float>& data,
 }
 
 template <typename T>
-inline std::vector<T> QuantizeLinearTestVector(const std::vector<float>& data,
-                                               quantization::Params<T>& out_params) {
+inline std::vector<T> QuantizeLinearTestVector(
+    const std::vector<float>& data,
+    quantization::Params<T>& out_params) {
   std::vector<T> result;
   result.resize(data.size());
 
   out_params = quantization::QuantizeLinear(data, result);
   return result;
 }
+
+//template <typename T>
+//inline std::vector<float> DequantizeTestVector(
+//    const std::vector<T>& data,
+//    const quantization::Params<T>& params) {
+//  std::vector<float> result;
+//  result.resize(data.size());
+//
+//  quantization::Dequantize(data, result, params);
+//  return result;
+//}
 
 }  // namespace test
 }  // namespace onnxruntime

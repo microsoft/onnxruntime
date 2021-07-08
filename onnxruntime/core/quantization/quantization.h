@@ -3,8 +3,10 @@
 
 #pragma once
 
-#include "core/mlas/inc/mlas.h"
 #include <vector>
+
+#include "core/common/common.h"
+#include "core/mlas/inc/mlas.h"
 
 // TODO - update documentation to use same verbage as quant_utils.py
 
@@ -22,7 +24,7 @@ class Params {
   Params(float scale, T zero_point) : scale(scale), zero_point(zero_point) {
     static_assert(
         !std::is_same<T, int8_t>::value || !std::is_same<T, uint8_t>::value,
-        "Only int8_t and uint8_t are supported quantization formats");
+        "Only int8_t and uint8_t are supported quantization formats.");
   }
 
   float scale;
@@ -55,7 +57,8 @@ template <typename T>
 void Quantize(const std::vector<float>& data,
               std::vector<T>& output,
               const Params<T>& params) {
-  // TODO - assert if data.size() != output.size()
+  ORT_ENFORCE(data.size() == output.size(),
+              "Input and output data must have the same length.");
   Quantize(data.data(), output.data(), params, data.size());
 }
 
@@ -102,9 +105,9 @@ Params<T> QuantizeLinear(const float* data, T* output, size_t size) {
 // Output vector is quantized with calculated params.
 template <typename T>
 Params<T> QuantizeLinear(const std::vector<float>& data,
-  std::vector<T>& output) {
-  static_assert(data.size() != output.size(),
-                "Input and output data must have the same length");
+                         std::vector<T>& output) {
+  ORT_ENFORCE(data.size() == output.size(),
+              "Input and output data must have the same length.");
   return QuantizeLinear(data.data(), output.data(), data.size());
 }
 
@@ -132,10 +135,10 @@ template <typename T>
 void Dequantize(const std::vector<T>& values,
                 std::vector<float>& output,
                 const Params<T>& params) {
-  static_assert(data.size() != output.size(),
-                "Input and output data must have the same length");
-  Dequantize(values.data(), output.data(), params, size);
+  ORT_ENFORCE(values.size() == output.size(),
+              "Input and output data must have the same length.");
+  Dequantize(values.data(), output.data(), params, values.size());
 }
 
-}  // namespace quantization 
+}  // namespace quantization
 }  // namespace onnxruntime

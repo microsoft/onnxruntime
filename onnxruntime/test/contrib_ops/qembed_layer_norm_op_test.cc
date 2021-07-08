@@ -34,24 +34,21 @@ static void RunTest(const embedlayernorm::OpData& data,
   std::vector<int64_t> output_dims = {data.batch_size, data.sequence_size, data.hidden_size};
   std::vector<int64_t> mask_index_dims = {data.batch_size};
 
-  //
-  // TODO - left off right here.
-  //
-
-  // TODO - figure out asymmetric vs. symmetric
   quantization::Params<uint8_t> word_embedding_params;
   std::vector<uint8_t> word_embedding_data_quant =
-      QuantizeLinearTestVector<uint8_t>(data.word_embedding_data, word_embedding_params);
+      QuantizeLinearTestVector<uint8_t>(data.word_embedding_data,
+                                        word_embedding_params);
 
   quantization::Params<uint8_t> position_embedding_params;
   std::vector<uint8_t> position_embedding_data_quant =
-      QuantizeLinearTestVector<uint8_t>(data.position_embedding_data, position_embedding_params);
+      QuantizeLinearTestVector<uint8_t>(data.position_embedding_data,
+                                        position_embedding_params);
 
   quantization::Params<uint8_t> segment_embedding_params = {};
   std::vector<uint8_t> segment_embedding_data_quant;
   if (data.has_segment) {
-    segment_embedding_data_quant =
-        QuantizeLinearTestVector<uint8_t>(data.segment_embedding_data, segment_embedding_params);
+    segment_embedding_data_quant = QuantizeLinearTestVector<uint8_t>(
+      data.segment_embedding_data, segment_embedding_params);
   }
 
   quantization::Params<uint8_t> gamma_params;
