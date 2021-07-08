@@ -35,8 +35,8 @@ MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint8_t MlasTranspose4x4BytesAvx[16
 extern "C" {
 
     void
-        MLASCALL
-        MlasGemmU8S8CopyPackAAvx2(
+    MLASCALL
+    MlasGemmU8S8CopyPackAAvx2(
         uint8_t* D,
         const uint8_t* A,
         size_t lda,
@@ -46,8 +46,8 @@ extern "C" {
         );
 
     void
-        MLASCALL
-        MlasGemmU8S8CopyPackBAvx2(
+    MLASCALL
+    MlasGemmU8S8CopyPackBAvx2(
         uint8_t* D,
         const uint8_t* B,
         size_t ldb,
@@ -58,8 +58,8 @@ extern "C" {
         );
 
     void
-        MLASCALL
-        MlasGemmU8U8CopyPackAAvx2(
+    MLASCALL
+    MlasGemmU8U8CopyPackAAvx2(
         int16_t* D,
         const uint8_t* A,
         size_t lda,
@@ -69,8 +69,8 @@ extern "C" {
         );
 
     void
-        MLASCALL
-        MlasGemmU8U8CopyPackBAvx2(
+    MLASCALL
+    MlasGemmU8U8CopyPackBAvx2(
         uint8_t* D,
         const uint8_t* B,
         size_t ldb,
