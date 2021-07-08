@@ -65,7 +65,7 @@ class ORTModule(torch.nn.Module):
             and variable keyword arguments defined in the user's PyTorch module's forward
             method. Values can be torch tensors and primitive types.
 
-        returns:
+        Returns:
             The output as expected from the forward method defined by the user's
             PyTorch module. Output values supported include tensors, nested sequences
             of tensors and nested dictionaries of tensor values.
