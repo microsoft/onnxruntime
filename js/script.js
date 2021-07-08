@@ -536,28 +536,28 @@ function ot_buildMatcher() {
 var ot_validCombos = {
    //linux
     "ot_linux,ot_PyTorch18,ot_X64,ot_CUDA10":
-    "<b>Stable:</b> pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu102.html <br/><br/><b>Nightly:</b> pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch181.cu102.html",
+    "pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu102.html",
 
     "ot_linux,ot_PyTorch18,ot_X64,ot_CUDA11":
-    "<b>Stable: </b>pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu111.html <br/><br/><b>Nightly: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch181.cu111.html",
+    "pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu111.html",
 
     "ot_linux,ot_PyTorch18,ot_X64,ot_DefaultCPU":
     "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
 
     "ot_linux,ot_PyTorch18,ot_X64,ot_AMD":
-    "<b>Stable: </b>pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.rocm42.html<br/><br/><b>Nightly: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch181.rocm42.html",
+    "pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.rocm42.html",
    
     "ot_linux,ot_PyTorch18,ot_X64,ot_DNNL":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
    
     "ot_linux,ot_PyTorch19,ot_X64,ot_CUDA10":
-    "<b>Stable:</b> pip install torch-ort <br/><br/><b>Nightly:</b> pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch190.cu102.html",
+    "pip install torch-ort",
 
     "ot_linux,ot_PyTorch19,ot_X64,ot_CUDA11":
-    "<b>Stable: </b>pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.cu111.html <br/><br/><b>Nightly: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch190.cu111.html",
+    "pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.cu111.html",
 
     "ot_linux,ot_PyTorch19,ot_X64,ot_AMD":
-    "<b>Stable: </b>pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.rocm42.html<br/><br/><b>Nightly: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch190.rocm42.html",
+    "pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.rocm42.html",
    
     "ot_linux,ot_C++,ot_X64,ot_CUDA10":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
