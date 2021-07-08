@@ -12,8 +12,8 @@ from packaging import version
 from onnx import helper, TensorProto
 
 def float_tensor(name: str, shape: List[int], random=False):
-    low = 0.0
-    high = 1.0
+    low = -0.1
+    high = 0.1
     total_elements = 1
     for x in shape:
         total_elements *= x
@@ -107,7 +107,6 @@ def create_bert_attention(input_hidden_size=16,
         float_tensor('add_q_weight', [pruned_qk_hidden_size]),
         float_tensor('add_k_weight', [pruned_qk_hidden_size]),
         float_tensor('add_v_weight', [pruned_v_hidden_size]),
-        float_tensor('add_qk_weight', [1, num_heads, sequence_length, sequence_length], random=True),
         float_tensor('add_qkv_weight', [input_hidden_size]),
         helper.make_tensor('div_weight', TensorProto.FLOAT, [1], [math.sqrt(pruned_qk_head_size)]),
         helper.make_tensor('sub_weight', TensorProto.FLOAT, [1], [1.0]),

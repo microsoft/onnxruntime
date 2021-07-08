@@ -308,9 +308,17 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
     std::vector<int64_t> qkv_hidden_sizes;
     getRepeatedAttribute(ctx, "qkv_hidden_sizes", qkv_hidden_sizes);
 
-    int64_t output_hidden_size = 0;
+    if (hasInputShape(ctx, extra_add_index)) {
+      auto& extra_add_shape = getInputShape(ctx, extra_add_index);
+      auto& extra_add_dims = extra_add_shape.dim();
+      if (extra_add_dims.size() != 4) {
+        fail_shape_inference("Extra add input should have 4 dimenstions");
+      }
+    }
+
+    int64_t output_hidden_size;
     if (qkv_hidden_sizes.size() != 0) {
-      output_hidden_size = input_shape.dim(2).dim_value();
+      output_hidden_size = qkv_hidden_sizes[2];
     } else {
       output_hidden_size = bias_shape.dim(0).dim_value() / 3;
     }
@@ -322,14 +330,6 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
 
     output_shape.mutable_dim(2)->set_dim_value(output_hidden_size);
     updateOutputShape(ctx, 0, output_shape);
-
-    if (hasInputShape(ctx, extra_add_index)) {
-      auto& extra_add_shape = getInputShape(ctx, extra_add_index);
-      auto& extra_add_dims = extra_add_shape.dim();
-      if (extra_add_dims.size() != 4) {
-        fail_shape_inference("Extra add input should have 4 dimenstions");
-      }
-    }
 
     // TODO does the extra output need any changes?
     if (ctx.getNumOutputs() > 1) {

@@ -37,6 +37,8 @@ class AttentionCPUBase : public AttentionBase {
     auto* tp = context->GetOperatorThreadPool();
 
     int past_sequence_length = 0;
+    // TODO when past is not null, the expectation is head_size of all the three components are same, hence,
+    // additional changes are needed to handle Q,K and V different sizes.
     Tensor* present = GetPresent(context, past, batch_size, v_head_size, sequence_length, past_sequence_length);
 
     // Total sequence length including that of past state: S* = S' + S

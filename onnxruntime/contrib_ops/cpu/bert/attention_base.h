@@ -11,7 +11,6 @@ namespace contrib {
 
 class AttentionBase {
  public:
-  Status CheckInputs(const TensorShape & input_shape, const TensorShape & weights_shape, const TensorShape & bias_shape, const Tensor *& mask_index, const Tensor * past, const Tensor * extra_add_qk) const;
 // This check function is specifically used in cuda
   Status CheckInputs(const TensorShape& input_shape,
                      const TensorShape& weights_shape,
@@ -44,7 +43,8 @@ class AttentionBase {
                      const TensorShape& weights_shape,
                      const TensorShape& bias_shape,
                      const Tensor*& mask_index,  // For dummy mask with shape (1, 1) or (batch_size, 1), it will be updated to nullptr.
-                     const Tensor* past) const;
+                     const Tensor* past,
+                     const Tensor *extra_add_qk) const;
 
   int num_heads_;           // number of attention heads
   bool is_unidirectional_;  // whether every token can only attend to previous tokens.

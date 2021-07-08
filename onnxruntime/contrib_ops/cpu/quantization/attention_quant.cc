@@ -158,7 +158,8 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
                                                  weights_shape,
                                                  bias->Shape(),
                                                  mask_index,
-                                                 past_tensor));
+                                                 past_tensor,
+                                                 nullptr));
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");
