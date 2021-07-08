@@ -307,13 +307,13 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
     return status;
   }
 
-  //if (auto status = ortApi->CustomOpDomain_Add(domain, &c_SequencePooling)) {
-  //  return status;
-  //}
-
-  if (auto status = ortApi->CustomOpDomain_Add(domain, &c_SequencePooling16)) {
+  if (auto status = ortApi->CustomOpDomain_Add(domain, &c_SequencePooling)) {
     return status;
   }
+
+  //if (auto status = ortApi->CustomOpDomain_Add(domain, &c_SequencePooling16)) {
+  //  return status;
+  //}
 
   return ortApi->AddCustomOpDomain(options, domain);
 }
