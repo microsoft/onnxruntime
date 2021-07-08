@@ -1508,7 +1508,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                // to feed Optional inputs in the graph.
                // We just won't include anything in the feed and ORT
                // will handle such implicit 'None's internally.
-               if (_.second != py::none()) {
+               if (!_.second.is(py::none())) {
                  OrtValue ml_value;
                  auto px = sess->GetSessionHandle()->GetModelInputs();
                  if (!px.first.IsOK() || !px.second) {
