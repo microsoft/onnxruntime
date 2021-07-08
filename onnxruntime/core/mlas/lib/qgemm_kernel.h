@@ -6,11 +6,11 @@ Licensed under the MIT License.
 
 Module Name:
 
-    qgemm_kernel_protocol.h
+    qgemm_kernel.h
 
 Abstract:
 
-    This module defines the protocol to implement a kernel of 
+    This module defines the set of template functions to implement a kernel of 
     quantized integer matrix/matrix multiply operation (QGEMM).
 
     To implement a new kernel, there needs to specialize template functions below:
@@ -28,7 +28,17 @@ Abstract:
 #pragma once
 
 #include "mlasi.h"
-#include "qgemm_kernel_type.h"
+
+//
+// Define the default striding parameters used for the quantized integer
+// matrix/matrix multiply operation.
+//
+
+struct MLAS_GEMM_U8X8_STRIDES {
+    size_t M;
+    size_t N;
+    size_t K;
+};
 
 template<typename KernelType>
 MLAS_FORCEINLINE

@@ -16,8 +16,7 @@ Abstract:
 
 #include "mlasi.h"
 #include "qgemm_dispatcher.h"
-#include "qgemm_kernel_type.h"
-#include "qgemm_kernel_protocol.h"
+#include "qgemm_kernel.h"
 
 #if defined(MLAS_NEON64_INTRINSICS) || (defined(MLAS_NEON32_INTRINSICS) && !defined(_MSC_VER))
 
@@ -30,8 +29,8 @@ Abstract:
 extern "C" {
 
     size_t
-        MLASCALL
-        MlasGemmU8X8KernelNeon(
+    MLASCALL
+    MlasGemmU8X8KernelNeon(
         const uint8_t* A,
         const uint8_t* B,
         int32_t* C,
@@ -45,6 +44,21 @@ extern "C" {
         bool ZeroMode
         );
 }
+
+struct MLAS_GEMM_U8X8_KERNEL_NEON
+{
+    typedef uint8_t PackedAType;
+    typedef uint8_t PackedBType;
+    typedef uint8_t OffsetBType;
+
+    static constexpr size_t PackedK = 4;
+    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{ 24, 128, 256 };
+    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{ 24, 128, 256 };
+};
+
+constexpr size_t MLAS_GEMM_U8X8_KERNEL_NEON::PackedK;
+constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_NEON::Strides;
+constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides;
 
 template<>
 MLAS_FORCEINLINE

@@ -16,10 +16,22 @@ Abstract:
 
 #include "mlasi.h"
 #include "qgemm_dispatcher.h"
-#include "qgemm_kernel_protocol.h"
-#include "qgemm_kernel_type.h"
+#include "qgemm_kernel.h"
 
 #if defined(MLAS_SSE2_INTRINSICS)
+
+struct MLAS_GEMM_U8X8_KERNEL_SSE
+{
+    typedef int16_t PackedAType;
+    typedef int16_t PackedBType;
+    typedef int8_t OffsetBType;
+
+    static constexpr size_t PackedK = 2;
+    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{ 12, 128, 128 };
+};
+
+constexpr size_t MLAS_GEMM_U8X8_KERNEL_SSE::PackedK;
+constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_SSE::Strides;
 
 template<>
 MLAS_FORCEINLINE

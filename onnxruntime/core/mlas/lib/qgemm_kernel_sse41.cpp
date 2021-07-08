@@ -16,12 +16,26 @@ Abstract:
 
 #include "mlasi.h"
 #include "qgemm_dispatcher.h"
-#include "qgemm_kernel_protocol.h"
-#include "qgemm_kernel_type.h"
+#include "qgemm_kernel.h"
 
 // N.B. MSVC does not require turning on SSE 4.1 intrinsics and the current use
 // for this code is Windows only, so restrict this kernel to that environment.
 #if defined(MLAS_SSE2_INTRINSICS) && defined(_MSC_VER)
+
+struct MLAS_GEMM_U8S8_KERNEL_SSE41
+{
+    typedef uint8_t PackedAType;
+    typedef uint8_t PackedBType;
+    typedef int8_t OffsetBType;
+
+    static constexpr size_t PackedK = 4;
+    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{ 24, 128, 128 };
+    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{ 24, 128, 128 };
+};
+
+constexpr size_t MLAS_GEMM_U8S8_KERNEL_SSE41::PackedK;
+constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8S8_KERNEL_SSE41::Strides;
+constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8S8_KERNEL_SSE41::PackedStrides;
 
 template<>
 void

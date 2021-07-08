@@ -16,8 +16,7 @@ Abstract:
 
 #include "mlasi.h"
 #include "qgemm_dispatcher.h"
-#include "qgemm_kernel_type.h"
-#include "qgemm_kernel_protocol.h"
+#include "qgemm_kernel.h"
 
 #if defined(MLAS_NEON64_INTRINSICS)
 
@@ -44,6 +43,20 @@ extern "C" {
         );
 }
 
+struct MLAS_GEMM_U8X8_KERNEL_UDOT
+{
+    typedef uint8_t PackedAType;
+    typedef uint8_t PackedBType;
+    typedef uint8_t OffsetBType;
+
+    static constexpr size_t PackedK = 8;
+    static constexpr MLAS_GEMM_U8X8_STRIDES Strides{ 24, 128, 256 };
+    static constexpr MLAS_GEMM_U8X8_STRIDES PackedStrides{ 24, 128, 384 };
+};
+
+constexpr size_t MLAS_GEMM_U8X8_KERNEL_UDOT::PackedK;
+constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_UDOT::Strides;
+constexpr MLAS_GEMM_U8X8_STRIDES MLAS_GEMM_U8X8_KERNEL_UDOT::PackedStrides;
 
 template<>
 MLAS_FORCEINLINE
