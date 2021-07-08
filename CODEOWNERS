@@ -10,4 +10,4 @@ onnxruntime/test/python/onnxruntime_test_ort_trainer.py @thiagocrepaldi @tlh20 @
 onnxruntime/test/python/onnxruntime_test_ort_trainer_with_mixed_precision.py @thiagocrepaldi @tlh20 @BowenBao @liqunfu @baijumeswani @SherlockNoMad
 onnxruntime/test/python/onnxruntime_test_training_unit_tests.py @thiagocrepaldi @tlh20 @BowenBao @liqunfu @baijumeswani @SherlockNoMad
 onnxruntime/test/python/onnxruntime_test_training_unittest_utils.py @thiagocrepaldi @tlh20 @BowenBao @liqunfu @baijumeswani @SherlockNoMad
-samples/python/**@thiagocrepaldi @tlh20 @BowenBao @liqunfu @baijumeswani @SherlockNoMad @thiagocrepaldi @tlh20 @BowenBao @liqunfu @baijumeswani @SherlockNoMad
+samples/python/training/** @thiagocrepaldi @tlh20 @BowenBao @liqunfu @baijumeswani @SherlockNoMad
