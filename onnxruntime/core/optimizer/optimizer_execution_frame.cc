@@ -13,7 +13,6 @@
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/framework/callback.h"
 #include "core/framework/TensorSeq.h"
-#include "core/framework/optional_value.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 
 namespace onnxruntime {

@@ -265,7 +265,6 @@ constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorDataType<BFloat16>() {
 template <typename... Types>
 struct TensorElementTypeSetter {
   static void SetTensorElementType(ONNX_NAMESPACE::TypeProto&);
-  static void SetSparseTensorElementType(ONNX_NAMESPACE::TypeProto&);
   static void SetMapKeyType(ONNX_NAMESPACE::TypeProto&);
   static int32_t GetElementType();
 };
@@ -567,9 +566,15 @@ class OptionalTypeBase : public DataTypeImpl {
 
   bool IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const override;
 
-  size_t Size() const override;
+  size_t Size() const override {
+    // should never reach here.
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+  }
 
-  DeleteFunc GetDeleteFunc() const override;
+  DeleteFunc GetDeleteFunc() const override {
+    // should never reach here.
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+  }
 
   const ONNX_NAMESPACE::TypeProto* GetTypeProto() const override;
 

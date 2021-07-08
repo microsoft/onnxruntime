@@ -10,7 +10,6 @@
 #include "core/framework/sparse_tensor.h"
 #include "core/framework/tensor.h"
 #include "core/framework/TensorSeq.h"
-#include "core/framework/optional_value.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/util/math.h"
 
@@ -56,11 +55,6 @@ MLDataType DataTypeImpl::GetType<SparseTensor>() {
 template <>
 MLDataType DataTypeImpl::GetType<TensorSeq>() {
   return SequenceTensorTypeBase::Type();
-}
-
-template <>
-MLDataType DataTypeImpl::GetType<OptionalValue>() {
-  return OptionalTypeBase::Type();
 }
 
 //static bool IsTensorTypeScalar(const ONNX_NAMESPACE::TypeProto_Tensor& tensor_type_proto) {
@@ -508,14 +502,6 @@ bool OptionalTypeBase::IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto)
   ORT_ENFORCE(utils::HasElemType(thisProto->optional_type()));
 
   return data_types_internal::IsCompatible(thisProto->optional_type(), type_proto.optional_type());
-}
-
-size_t OptionalTypeBase::Size() const {
-  return sizeof(OptionalValue);
-}
-
-DeleteFunc OptionalTypeBase::GetDeleteFunc() const {
-  return &Delete<OptionalValue>;
 }
 
 const ONNX_NAMESPACE::TypeProto* OptionalTypeBase::GetTypeProto() const {

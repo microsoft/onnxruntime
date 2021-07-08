@@ -483,7 +483,6 @@ void OpTester::FillFeeds(std::unordered_map<std::string, OrtValue>& feeds) {
     if (std::find(initializer_index_.begin(), initializer_index_.end(), i) ==
             initializer_index_.end() &&
         input_data_[i].def_.Exists() &&
-
         // We don't include optional type OrtValues of None because this is
         // how we expect users to deal with sending through "None"s as graph inputs
         // (i.e.) don't send them through at all

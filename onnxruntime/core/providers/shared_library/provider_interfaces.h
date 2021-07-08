@@ -423,7 +423,6 @@ struct ProviderHost {
   // DataTypeImpl
   virtual MLDataType DataTypeImpl__GetType_Tensor() = 0;
   virtual MLDataType DataTypeImpl__GetType_TensorSeq() = 0;
-  virtual MLDataType DataTypeImpl__GetType_OptionalValue() = 0;
   virtual MLDataType DataTypeImpl__GetTypeFromOnnxType(int) = 0;
   virtual MLDataType DataTypeImpl__GetType_bool() = 0;
   virtual MLDataType DataTypeImpl__GetType_int8() = 0;
@@ -455,7 +454,6 @@ struct ProviderHost {
   virtual const char* DataTypeImpl__ToString(MLDataType type) = 0;
   virtual bool DataTypeImpl__IsTensorType(const DataTypeImpl* p) = 0;
   virtual bool DataTypeImpl__IsTensorSequenceType(const DataTypeImpl* p) = 0;
-  virtual bool DataTypeImpl__IsOptionalType(const DataTypeImpl* p) = 0;
   virtual bool DataTypeImpl__IsSparseTensorType(const DataTypeImpl* p) = 0;
   virtual DeleteFunc DataTypeImpl__GetDeleteFunc(const DataTypeImpl* p) = 0;
   virtual const std::vector<MLDataType>& DataTypeImpl__AllFixedSizeTensorTypes() = 0;
@@ -584,11 +582,9 @@ struct ProviderHost {
   // OpKernelContext
   virtual const Tensor* OpKernelContext__Input_Tensor(const OpKernelContext* p, int index) = 0;
   virtual const TensorSeq* OpKernelContext__Input_TensorSeq(const OpKernelContext* p, int index) = 0;
-  virtual const OptionalValue* OpKernelContext__Input_OptionalValue(const OpKernelContext* p, int index) = 0;
   virtual const Tensor& OpKernelContext__RequiredInput_Tensor(const OpKernelContext* p, int index) = 0;
   virtual Tensor* OpKernelContext__Output_Tensor(OpKernelContext* p, int index) = 0;
   virtual TensorSeq* OpKernelContext__Output_TensorSeq(OpKernelContext* p, int index) = 0;
-  virtual OptionalValue* OpKernelContext__Output_OptionalValue(OpKernelContext* p, int index) = 0;
   virtual Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape) = 0;
   virtual Tensor& OpKernelContext__RequiredOutput(OpKernelContext* p, int index, const TensorShape& shape) = 0;
   virtual MLDataType OpKernelContext__InputType(const OpKernelContext* p, int index) = 0;
@@ -693,11 +689,13 @@ struct ProviderHost {
   virtual const Tensor& TensorSeq__Get(const TensorSeq* p, size_t i) = 0;
   virtual void TensorSeq__Add(TensorSeq* p, Tensor&& tensor) = 0;
 
-  // OptionalValue
-
   // AllocatorManager
   virtual void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) = 0;
   virtual AllocatorPtr AllocatorManager__GetAllocator(const AllocatorManager* p, int id, OrtMemType mem_type) = 0;
+  // From cpu/tensor/unsqueeze.h
+  virtual Status UnsqueezeBase__PrepareCompute(const UnsqueezeBase* p, OpKernelContext* ctx, UnsqueezeBase__Prepare& prepare) = 0;
+  // From cpu/tensor/gatherbase.h
+  virtual Status GatherBase__PrepareForCompute(const GatherBase* p, OpKernelContext* context, GatherBase__Prepare& prepare) = 0;
 
 #ifdef USE_CUDA
   // GatherElements
@@ -720,8 +718,6 @@ struct ProviderHost {
   virtual Status ValidateInputs(const Tensor* depth, const Tensor* values) = 0;
   virtual Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, std::vector<int64_t>& output_shape) = 0;
 
-  // From cpu/tensor/unsqueeze.h
-  virtual Status UnsqueezeBase__PrepareCompute(const UnsqueezeBase* p, OpKernelContext* ctx, UnsqueezeBase__Prepare& prepare) = 0;
   // From cpu/tensor/slice.h
   virtual Status SliceBase__PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                               const std::vector<int64_t>& raw_ends,
@@ -755,9 +751,7 @@ struct ProviderHost {
                                               std::vector<int64_t>& split_sizes) = 0;
   // From cpu/tensor/concatbase.h
   virtual Status ConcatBase__PrepareForCompute(const ConcatBase* p, OpKernelContext* ctx, const std::vector<const Tensor*>& input_tensors, Prepare& prepare) = 0;
-  // From cpu/tensor/gatherbase.h
-  virtual Status GatherBase__PrepareForCompute(const GatherBase* p, OpKernelContext* context, GatherBase__Prepare& prepare) = 0;
-
+  
   virtual PhiloxGenerator& PhiloxGenerator__Default() = 0;
 
   virtual Status Einsum__Compute(const Einsum* p, OpKernelContext* context) = 0;
@@ -1297,7 +1291,6 @@ class DataTypeImpl final {
 
   bool IsTensorType() const { return g_host->DataTypeImpl__IsTensorType(this); }
   bool IsTensorSequenceType() const { return g_host->DataTypeImpl__IsTensorSequenceType(this); }
-  bool IsOptionalType() const { return g_host->DataTypeImpl__IsOptionalType(this); }
   bool IsSparseTensorType() const { return g_host->DataTypeImpl__IsSparseTensorType(this); }
   DeleteFunc GetDeleteFunc() const { return g_host->DataTypeImpl__GetDeleteFunc(this); }
 
@@ -1528,11 +1521,6 @@ inline const TensorSeq* OpKernelContext::Input<TensorSeq>(int index) const {
 }
 
 template <>
-inline const OptionalValue* OpKernelContext::Input<OptionalValue>(int index) const {
-  return g_host->OpKernelContext__Input_OptionalValue(this, index);
-}
-
-template <>
 inline Tensor* OpKernelContext::Output<Tensor>(int index) {
   return g_host->OpKernelContext__Output_Tensor(this, index);
 }
@@ -1540,11 +1528,6 @@ inline Tensor* OpKernelContext::Output<Tensor>(int index) {
 template <>
 inline TensorSeq* OpKernelContext::Output<TensorSeq>(int index) {
   return g_host->OpKernelContext__Output_TensorSeq(this, index);
-}
-
-template <>
-inline OptionalValue* OpKernelContext::Output<OptionalValue>(int index) {
-  return g_host->OpKernelContext__Output_OptionalValue(this, index);
 }
 
 template <>
@@ -1747,8 +1730,6 @@ struct TensorSeq final {
   const Tensor& Get(size_t i) const { return g_host->TensorSeq__Get(this, i); }
   void Add(Tensor&& tensor) { g_host->TensorSeq__Add(this, std::move(tensor)); }
 };
-
-// OptionalValue
 
 template <>
 inline gsl::span<const int64_t> Tensor::DataAsSpan() const { return g_host->Tensor__DataAsSpan_int64(this); }

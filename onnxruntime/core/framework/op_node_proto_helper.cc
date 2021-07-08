@@ -73,6 +73,7 @@ inline constexpr int ArrayTypeToAttributeType<std::string>() {
   return AttributeProto_AttributeType_STRINGS;
 }
 
+
 #define ORT_DEFINE_GET_ATTR(IMPL_T, T, type)                                                       \
   template <>                                                                                      \
   template <>                                                                                      \
@@ -170,7 +171,6 @@ ORT_DEFINE_GET_ATTR_SPECIALIZATIONS(int64_t, i)
 ORT_DEFINE_GET_ATTR_SPECIALIZATIONS(std::string, s)
 ORT_DEFINE_GET_ATTR_SPECIALIZATIONS(TensorProto, t)
 ORT_DEFINE_GET_ATTR_SPECIALIZATIONS(GraphProto, g)
-
 ORT_DEFINE_GET_ATTRS_SPECIALIZATIONS(float, floats)
 ORT_DEFINE_GET_ATTRS_SPECIALIZATIONS(int64_t, ints)
 ORT_DEFINE_GET_ATTRS_SPECIALIZATIONS(std::string, strings)

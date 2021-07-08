@@ -272,23 +272,20 @@ class OpTester {
   template <typename T>
   void AddInput(const char* name, const std::vector<int64_t>& dims, const std::initializer_list<T>& values,
                 bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr) {
-    AddData(input_data_, name, dims, values.begin(), values.size(), is_initializer,
-            false, dim_params, 0.0f, 0.0f);
+    AddData(input_data_, name, dims, values.begin(), values.size(), is_initializer, false, dim_params);
   }
 
   template <typename T>
   void AddInput(const char* name, const std::vector<int64_t>& dims, const std::vector<T>& values,
                 bool is_initializer = false, const std::vector<std::string>* dim_params = nullptr) {
-    AddData(input_data_, name, dims, values.data(), values.size(), is_initializer,
-            false, dim_params, 0.0f, 0.0f);
+    AddData(input_data_, name, dims, values.data(), values.size(), is_initializer, false, dim_params);
   }
 
   template <typename T>
   void AddInput(const char* name, const std::vector<int64_t>& dims, const T* p_values,
                 const size_t size, bool is_initializer = false,
                 const std::vector<std::string>* dim_params = nullptr) {
-    AddData(input_data_, name, dims, p_values, size, is_initializer, false,
-            dim_params, 0.0f, 0.0f);
+    AddData(input_data_, name, dims, p_values, size, is_initializer, false, dim_params);
   }
 
   // Add other registered types, possibly experimental
@@ -586,7 +583,16 @@ class OpTester {
                   shape.Size());
 
       auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-      auto p_tensor = ((values != nullptr) ? std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), shape, allocator) : nullptr);
+      std::unique_ptr<Tensor> p_tensor;
+
+      // If it is an optional tensor type with no values (i.e.) None,
+      // we won't even pass it in to Run() as part of the feeds,
+      // so we don't even have to create a Tensor.
+      // Conversely, if it is an optional tensor type with values,
+      // we pass it in as a regular tensor.
+      if (values != nullptr || !is_optional_type_tensor) {
+        p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), shape, allocator);
+      }
 
       if (p_tensor) {
         auto* data_ptr = p_tensor->template MutableData<T>();
@@ -605,6 +611,8 @@ class OpTester {
       OptionalTypeProto<T> optional_proto(type_proto);
 
       OrtValue value;
+
+      // If p_tensor is nullptr, it is a "None", we won't even include it as part of the feeds.
       value.Init(p_tensor ? p_tensor.release() : nullptr, DataTypeImpl::GetType<Tensor>(),
                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
       auto node_arg = NodeArg(name, !is_optional_type_tensor ? &type_proto.proto : &optional_proto.proto);
