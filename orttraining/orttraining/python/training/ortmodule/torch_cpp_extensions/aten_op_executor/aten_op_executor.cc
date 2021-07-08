@@ -19,10 +19,29 @@ c10::IValue ToListIValue(const DLManagedTensor* dlpack, bool is_optional) {
   TORCH_INTERNAL_ASSERT(dlpack->dl_tensor.ndim == 1);
   const T* p_data = reinterpret_cast<const T*>(dlpack->dl_tensor.data);
   c10::List<T> list_value;
-  for (size_t i = 0; i < dlpack->dl_tensor.shape[0]; i++) {
+  size_t len = static_cast<size_t>(dlpack->dl_tensor.shape[0]);
+  for (size_t i = 0; i < len; i++) {
     list_value.emplace_back(p_data[i]);
   }
   return is_optional ? c10::IValue(c10::optional<c10::List<T>>(list_value)) : c10::IValue(list_value);
+}
+
+c10::IValue Int64ToBoolIValue(const DLManagedTensor* dlpack, bool is_list, bool is_optional) {
+  if (is_list) {
+    TORCH_INTERNAL_ASSERT(dlpack->dl_tensor.ndim == 1);
+    const int64_t* p_data = reinterpret_cast<const int64_t*>(dlpack->dl_tensor.data);
+    c10::List<bool> list_value;
+    size_t len = static_cast<size_t>(dlpack->dl_tensor.shape[0]);
+    for (size_t i = 0; i < len; i++) {
+      list_value.emplace_back(static_cast<bool>(p_data[i]));
+    }
+    return is_optional ? c10::IValue(c10::optional<c10::List<bool>>(list_value)) : c10::IValue(list_value);
+  }
+
+  TORCH_INTERNAL_ASSERT((dlpack->dl_tensor.ndim == 0 && dlpack->dl_tensor.shape == nullptr) ||
+                        (dlpack->dl_tensor.ndim == 1 && dlpack->dl_tensor.shape[0] == 1));
+  bool value = static_cast<bool>(*reinterpret_cast<const int64_t*>(dlpack->dl_tensor.data));
+  return is_optional ? c10::IValue(c10::optional<bool>(value)) : c10::IValue(value);
 }
 
 struct ATenOperator {
@@ -54,13 +73,25 @@ struct ATenOperator {
         i_value = is_optional ? c10::IValue(c10::optional<at::Tensor>(tensor)) : c10::IValue(tensor);
       } break;
       case c10::TypeKind::IntType: {
+        TORCH_INTERNAL_ASSERT(dlpack->dl_tensor.dtype.code == DLDataTypeCode::kDLInt &&
+                              dlpack->dl_tensor.dtype.bits == 64);
         i_value = is_list ? ToListIValue<int64_t>(dlpack, is_optional) : ToIValue<int64_t>(dlpack, is_optional);
       } break;
       case c10::TypeKind::FloatType: {
+        TORCH_INTERNAL_ASSERT(dlpack->dl_tensor.dtype.code == DLDataTypeCode::kDLFloat &&
+                              dlpack->dl_tensor.dtype.bits == 32);
         i_value = is_list ? ToListIValue<float>(dlpack, is_optional) : ToIValue<float>(dlpack, is_optional);
       } break;
       case c10::TypeKind::BoolType: {
-        i_value = is_list ? ToListIValue<bool>(dlpack, is_optional) : ToIValue<bool>(dlpack, is_optional);
+        // In torch 1.8.1, exporter has bug which exports bool constant to int64 type tensor.
+        // This bug has been fixed since torch 1.9.0. To make torch 1.8.1 work, add special handling here.
+        if (dlpack->dl_tensor.dtype.code == DLDataTypeCode::kDLInt && dlpack->dl_tensor.dtype.bits == 64) {
+          i_value = Int64ToBoolIValue(dlpack, is_list, is_optional);
+        } else {
+          TORCH_INTERNAL_ASSERT(dlpack->dl_tensor.dtype.code == DLDataTypeCode::kDLUInt &&
+                                dlpack->dl_tensor.dtype.bits == 8);
+          i_value = is_list ? ToListIValue<bool>(dlpack, is_optional) : ToIValue<bool>(dlpack, is_optional);
+        }
       } break;
       default:
         TORCH_INTERNAL_ASSERT(false);
