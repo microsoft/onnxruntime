@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <chrono>
 #include <ctime>
 #include "NvInfer.h"
 #include "NvOnnxParser.h"
@@ -156,6 +157,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   mutable char model_path_[4096];  // Reserved for max path length
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*);
+  
+  //std::chrono::time_point<std::chrono::high_resolution_clock> get_capability_start_;
+  //std::chrono::time_point<std::chrono::high_resolution_clock> get_capability_end_;
+  //std::chrono::time_point<std::chrono::high_resolution_clock> compile_start_;
+  //std::chrono::time_point<std::chrono::high_resolution_clock> compile_end_;
 
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>> engines_;

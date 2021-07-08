@@ -1,5 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include <iostream>
+#include <chrono>
 #include <fstream>
 #include <list>
 #include <unordered_set>
@@ -1036,6 +1038,7 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
 std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+  auto get_capability_start_ = std::chrono::high_resolution_clock::now();
   // Get ModelPath
   const auto& path_string = graph.ModelPath().ToPathString();
 #ifdef _WIN32
@@ -1086,6 +1089,10 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     LOGS_DEFAULT(INFO) << "[TensorRT EP] Graph is partitioned and number of subgraphs running on TensorRT exeuction provider is " << number_of_subgraphs;
   }
 
+  auto get_capability_end_ = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> get_capability_duration = get_capability_end_ - get_capability_start_;
+  std::cout << "Get capability time cost: " << get_capability_duration.count() << " s\n" << std::endl;
+
   return result;
 }
 
@@ -1098,6 +1105,7 @@ std::unique_lock<OrtMutex> TensorrtExecutionProvider::GetEngineBuildLock() const
 
 common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fused_nodes,
                                                   std::vector<NodeComputeInfo>& node_compute_funcs) {
+  auto compile_start_ = std::chrono::high_resolution_clock::now();
   for (const auto* fused_node : fused_nodes) {
     // Build map from input name to its index in input definitions
     std::unordered_map<std::string, int> input_map;
@@ -1912,6 +1920,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
 
     node_compute_funcs.push_back(compute_info);
   }
+  auto compile_end_ = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> compile_duration = compile_end_ - compile_start_;
+  std::cout << "compile time cost: " << compile_duration.count() << " s\n" << std::endl;
   return Status::OK();
 }
 }  // namespace onnxruntime
