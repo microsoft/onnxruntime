@@ -105,7 +105,7 @@ class TrainingManager(GraphExecutionManager):
                 # Unpack saved_tensor to trigger version detection that catches inplace corruption
                 _ = ctx.saved_tensors
 
-                backward_outputs = self._execution_agent.backward(ctx, *grad_outputs)
+                backward_outputs = self._execution_agent.backward(ctx.run_info, *grad_outputs)
 
                 # Destroy the state immediately (as opposed to be at the mercy of garbage collector) so it does not
                 # affect peak memory usage in a subsequent graph run.
