@@ -226,14 +226,18 @@ elseif(NOT onnxruntime_BUILD_WEBASSEMBLY)
 endif()
 
 
-if ((ARM64 OR ARM OR X86 OR X64 OR X86_64) AND NOT (CMAKE_SYSTEM_NAME STREQUAL "iOS"))
-  # Link cpuinfo
-  # Using it mainly in ARM with Android. 
-  # Its functionality in detecting x86 cpu features are lacking, so is support for Windows.
-  # TODO  solve iOS link error and enable this in iOS
+if (ARM64 OR ARM OR X86 OR X64 OR X86_64) 
+  if((ARM64 OR ARM) AND MSVC)
+    # msvc compiler report syntax error with cpuinfo arm source files
+    # and cpuinfo does not have code for getting arm uarch info under windows
+  else()
+    # Link cpuinfo
+    # Using it mainly in ARM with Android. 
+    # Its functionality in detecting x86 cpu features are lacking, so is support for Windows.
+    # TODO  solve iOS link error and enable this in iOS
 
-  target_include_directories(onnxruntime_common PRIVATE ${PYTORCH_CPUINFO_INCLUDE_DIR})
-  target_link_libraries(onnxruntime_common  cpuinfo)
-
+    target_include_directories(onnxruntime_common PRIVATE ${PYTORCH_CPUINFO_INCLUDE_DIR})
+    target_link_libraries(onnxruntime_common  cpuinfo)
+  endif()
 endif()
 

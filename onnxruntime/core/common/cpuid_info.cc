@@ -23,12 +23,11 @@
 #include "core/common/cpuid_info.h"
 
 #if defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)
-#ifdef __APPLE__
 
-// TODO!! distinguish iOS vs Mac OS
-// cpuinfo failed to build on iOS but is ok for MacOS.
-// however we don't have a flag to distinguish them
-
+#if defined(_MSC_VER) && defined(CPUIDINFO_ARCH_ARM)
+// pytorch cpu info does not work for Windows ARM
+// 1. msvc report syntax error in file src/arm/api.h
+// 2. features reporting micro-arch in Windows is missing 
 #else
 
 #define CPUINFO_INCLUDED
