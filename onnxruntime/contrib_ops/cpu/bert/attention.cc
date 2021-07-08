@@ -333,7 +333,6 @@ bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
 
     prepacked_weights->buffer_sizes_.push_back(packed_weights_data_size);
   }
-
   return true;
 }
 
@@ -532,6 +531,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         int weights_offset = 0;
         T* qkv_dest = nullptr;
         int qkv_offset = 0;
+        int head_size_passed_in = head_size;
 
         if (qkv_hidden_sizes_.size() == 0) {
           input_offset = batch_index * sequence_length * input_hidden_size;
@@ -550,44 +550,32 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
           }
         } else {
           input_offset = batch_index * sequence_length * input_hidden_size;
+          qkv_dest = QKV[qkv_index];
+          qkv_offset = 0;
           weights_offset = 0;
           int bias_offset = 0;
-          if (qkv_index == 1) {
-              bias_offset += q_hidden_size;
-          }
 
-          if (qkv_index == 2) {
+          if (qkv_index == 1) {
+            bias_offset += q_hidden_size;
+          } else if (qkv_index == 2) {
             bias_offset += q_hidden_size + k_hidden_size;
           }
 
           if (q_packed_weights_ == nullptr) {
-            if (qkv_index == 1) {
-              weights_offset += q_hidden_size;
-            } else if (qkv_index == 2) {
-              weights_offset += q_hidden_size + k_hidden_size;
-            }
+            weights_offset = bias_offset;
           }
 
           if (qkv_index == 0) {
-            weights_offset += head_index * q_head_size;
+            head_size_passed_in = q_head_size;
           } else if (qkv_index == 1) {
-            weights_offset += head_index * k_head_size;
+            head_size_passed_in = k_head_size;
           } else {
-            weights_offset += head_index * v_head_size;
+            head_size_passed_in = v_head_size;
           }
 
-          qkv_dest = QKV[qkv_index];
-          qkv_offset = 0;
-          if (qkv_index == 0) {
-            qkv_offset += (batch_index * num_heads_ + head_index) * (sequence_length * q_head_size);
-            bias_offset += head_index * q_head_size;
-          } else if (qkv_index == 1) {
-            qkv_offset += (batch_index * num_heads_ + head_index) * (sequence_length * k_head_size);
-            bias_offset += head_index * k_head_size;
-          } else {
-            qkv_offset += (batch_index * num_heads_ + head_index) * (sequence_length * v_head_size);
-            bias_offset += head_index * v_head_size;
-          }
+          qkv_offset += (batch_index * num_heads_ + head_index) * (sequence_length * head_size_passed_in);
+          bias_offset += head_index * head_size_passed_in;
+          weights_offset += head_index * head_size_passed_in;
 
           // TODO!! memcpy here makes it not worthwhile to use Gemm batch. Possible to post process?
           // broadcast 3NH -> (3.B.N.S.H)
@@ -595,16 +583,8 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
           T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;
 
           for (int seq_index = 0; seq_index < sequence_length; seq_index++) {
-            if (qkv_index == 0) {
-              memcpy(broadcast_data_dest, broadcast_data_src, q_head_size * sizeof(T));
-              broadcast_data_dest += q_head_size;
-            } else if (qkv_index == 1) {
-              memcpy(broadcast_data_dest, broadcast_data_src, k_head_size * sizeof(T));
-              broadcast_data_dest += k_head_size;
-            } else {
-              memcpy(broadcast_data_dest, broadcast_data_src, v_head_size * sizeof(T));
-              broadcast_data_dest += v_head_size;
-            }
+            memcpy(broadcast_data_dest, broadcast_data_src, head_size_passed_in * sizeof(T));
+            broadcast_data_dest += head_size_passed_in;
           }
         }
 
@@ -614,19 +594,15 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         // C: QKV[qkv_index] (3xBxNxSxH)        (3.B.N.)S x H         S x H
         if (packed_weights_ || q_packed_weights_) {
           uint8_t* packed_weight;
-          int head_size_passed_in = head_size;
           if (qkv_hidden_sizes_.size() == 0) {
             packed_weight = static_cast<uint8_t*>(packed_weights_.get()) + packed_weights_size_ * (weights_offset / head_size);
           } else {
             if (qkv_index == 0) {
               packed_weight = static_cast<uint8_t*>(q_packed_weights_.get()) + q_packed_weights_size_ * (weights_offset / q_head_size);
-              head_size_passed_in = q_head_size;
             } else if (qkv_index == 1) {
               packed_weight = static_cast<uint8_t*>(k_packed_weights_.get()) + k_packed_weights_size_ * (weights_offset / k_head_size);
-              head_size_passed_in = k_head_size;
             } else {
               packed_weight = static_cast<uint8_t*>(v_packed_weights_.get()) + v_packed_weights_size_ * (weights_offset / v_head_size);
-              head_size_passed_in = v_head_size;
             }
           }
 
@@ -644,7 +620,6 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
               head_size_passed_in,        // ldc
               nullptr);                   // use single-thread
         } else {
-          int head_size_passed_in = 0;
           if (qkv_index == 0) {
             head_size_passed_in = q_head_size;
           } else if (qkv_index == 1) {
