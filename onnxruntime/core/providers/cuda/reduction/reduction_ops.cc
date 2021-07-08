@@ -40,8 +40,7 @@ namespace cuda {
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
-// Register those with changes in OpSet12.
-#define REGISTER_KERNEL_TYPED_12(name, T)                                                  \
+#define REGISTER_KERNEL_VERSIONED_TYPED_12(name, T)                                        \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       name,                                                                                \
       kOnnxDomain,                                                                         \
@@ -65,7 +64,11 @@ namespace cuda {
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                            \
+      name<T>);
+
+// Register those with changes in OpSet12.
+#define REGISTER_KERNEL_TYPED_12(name, T)                                                  \
+  REGISTER_KERNEL_VERSIONED_TYPED_12(name, T)                                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
       name,                                                                                \
       kOnnxDomain,                                                                         \
@@ -75,31 +78,8 @@ namespace cuda {
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
-#define REGISTER_KERNEL_TYPED_1313(name, T)                                                \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
-      name,                                                                                \
-      kOnnxDomain,                                                                         \
-      1, 10,                                                                               \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                            \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
-      name,                                                                                \
-      kOnnxDomain,                                                                         \
-      11, 11,                                                                              \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                            \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
-      name,                                                                                \
-      kOnnxDomain,                                                                         \
-      12, 12,                                                                              \
-      T,                                                                                   \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                            \
+#define REGISTER_KERNEL_VERSIONED_TYPED_13(name, T)                                        \
+  REGISTER_KERNEL_VERSIONED_TYPED_12(name, T)                                              \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       name,                                                                                \
       kOnnxDomain,                                                                         \
@@ -111,6 +91,7 @@ namespace cuda {
 
 // Register ReduceMin int64_t support in OpSet14.
 #define REGISTER_KERNEL_TYPED_14(name, T)                                                  \
+  REGISTER_KERNEL_VERSIONED_TYPED_13(name, T)                                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
       name,                                                                                \
       kOnnxDomain,                                                                         \
@@ -1011,12 +992,12 @@ REGISTER_KERNEL_TYPED_12(ReduceMax, uint8_t)
 
 REGISTER_KERNEL_HFD(ReduceMean)
 
-REGISTER_KERNEL_TYPED_1313(ReduceMin, MLFloat16)
-REGISTER_KERNEL_TYPED_1313(ReduceMin, float)
-REGISTER_KERNEL_TYPED_1313(ReduceMin, double)
-REGISTER_KERNEL_TYPED_1313(ReduceMin, int32_t)
-REGISTER_KERNEL_TYPED_1313(ReduceMin, int8_t)
-REGISTER_KERNEL_TYPED_1313(ReduceMin, uint8_t)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, MLFloat16)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, float)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, double)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, int32_t)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, int8_t)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, uint8_t)
 REGISTER_KERNEL_TYPED_14(ReduceMin, int64_t)
 
 REGISTER_KERNEL_HFD(ReduceProd)
