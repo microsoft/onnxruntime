@@ -377,8 +377,12 @@ static bool IsUnsupportedOpMode(const onnxruntime::GraphViewer& graph_viewer, co
     if (input_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
       return true;
     }
-  } 
-  else if (optype == "OneHot") {
+  } else if (optype == "NonZero") {
+    if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {0}, logger, input_nodes))
+    {
+      return true;
+    }
+  } else if (optype == "OneHot") {
     if (!can_eval_node_argument(graph_viewer.GetGraph(), node, {1}, logger, input_nodes))
     {
       return true;
@@ -934,18 +938,6 @@ MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_v
     AppendNodesToSubGraph(graph_viewer.GetNodesInTopologicalOrder(), inputs, outputs, result);
 
   } else {  // unsupported_nodes_idx.empty()
-    if (!unsupported_nodes.empty())
-    {
-      std::cout << "=======================================" << std::endl;
-      std::cout << "Unsupported_node_num = " << unsupported_nodes.size() << std::endl;
-      for (auto& idx : unsupported_nodes)
-      {
-        auto&& node = graph_viewer.GetNode(idx);
-        std::cout << "idx = " << idx << ", op_type = " << node->OpType() << std::endl;
-      }
-      std::cout << "=======================================" << std::endl;
-    }
-
     if (unsupported_nodes.size() > 10)
     {
       return result;
