@@ -12,14 +12,13 @@ namespace language_interop_ops {
 namespace torch {
 
 // Perform a thread-safe registration for "pool" (type: map).
-// It creates a new ownership to the Python object "obj" and that
-// ownership is stored in "pool".
+// We stored borrowed reference of the Python object "obj" in "pool".
 template <typename TKey>
 static void RegisterEntry(
     std::mutex& mutex,  // The mutex uniquely associated with "pool".
     TKey key,           // used in move-constructor of tuple below.
     PyObject* obj,
-    std::unordered_map<TKey, PythonObjectPtr>& pool) {
+    std::unordered_map<TKey, PyObject*>& pool) {
   std::lock_guard<std::mutex> lock(mutex);
   // Get iterator to the existing entry, if exists.
   auto it = pool.find(key);
@@ -29,17 +28,12 @@ static void RegisterEntry(
     return;
   }
 
-  // Own the Python object.
-  Py_INCREF(obj);
-  PythonObjectPtr ptr(obj, PythonObjectDeleter);
-
   if (it != pool.end()) {
-    // If an obj has been registered for the key, we release
-    // the ownership of the old one.
-    it->second = std::move(ptr);
+    // If an obj has been registered for the key, we override the old one.
+    it->second = obj;
   } else {
     // Add new entry if key hasn't been registered.
-    pool.emplace(key, std::move(ptr));
+    pool.emplace(key, obj);
   }
 }
 
@@ -96,23 +90,17 @@ void OrtTorchFunctionPool::RegisterTorchAutogradFunction(
 static void RegisterEntry(
     std::mutex& mutex,
     PyObject* obj,
-    PythonObjectPtr& storage) {
+    PyObject*& storage) {
   std::lock_guard<std::mutex> lock(mutex);
   // Basic checks.
   ORT_ENFORCE(obj, "Cannot register NULL PyObject*.");
 
   // Skip registration if storage already stores a Python object.
-  if (storage.get() != nullptr) {
+  if (storage != nullptr) {
     return;
   }
 
-  // Own the Python object.
-  Py_INCREF(obj);
-  PythonObjectPtr ptr(obj, PythonObjectDeleter);
-  
-  // If an obj has been registered, this old ownership is automatically released
-  // after this move-assignment. Then, the "storage" owns the new object.
-  storage = std::move(ptr);
+  storage = obj;
 }
 
 void OrtTorchFunctionPool::RegisterForwardRunner(PyObject* obj) {
@@ -125,14 +113,14 @@ void OrtTorchFunctionPool::RegisterBackwardRunner(PyObject* obj) {
 
 PyObject* OrtTorchFunctionPool::GetForwardRunner() {
   std::lock_guard<std::mutex> lock(mutex_);
-  ORT_ENFORCE(forward_runner_.get(), "Forward runner cannot be NULL. Do you forget register it by calling RegisterForwardRunner(...)?");
-  return forward_runner_.get();
+  ORT_ENFORCE(forward_runner_, "Forward runner cannot be NULL. Do you forget register it by calling RegisterForwardRunner(...)?");
+  return forward_runner_;
 }
 
 PyObject* OrtTorchFunctionPool::GetBackwardRunner() {
   std::lock_guard<std::mutex> lock(mutex_);
-  ORT_ENFORCE(backward_runner_.get(), "backward runner cannot be NULL. Do you forget register it by calling RegisterBackwardRunner(...)?");
-  return backward_runner_.get();
+  ORT_ENFORCE(backward_runner_, "backward runner cannot be NULL. Do you forget register it by calling RegisterBackwardRunner(...)?");
+  return backward_runner_;
 }
 
 PyObject* OrtTorchFunctionPool::GetForwardCore(const std::string& key) {
@@ -140,7 +128,7 @@ PyObject* OrtTorchFunctionPool::GetForwardCore(const std::string& key) {
   std::lock_guard<std::mutex> lock(mutex_);
   auto iter = forward_core_pool_.find(key);
   ORT_ENFORCE(iter != forward_core_pool_.end(), "No forward registered for ", key);
-  return iter->second.get();
+  return iter->second;
 }
 
 PyObject* OrtTorchFunctionPool::GetBackwardCore(const std::string& key) {
@@ -148,7 +136,7 @@ PyObject* OrtTorchFunctionPool::GetBackwardCore(const std::string& key) {
   std::lock_guard<std::mutex> lock(mutex_);
   auto iter = backward_core_pool_.find(key);
   ORT_ENFORCE(iter != backward_core_pool_.end(), "No backward registered for ", key);
-  return iter->second.get();
+  return iter->second;
 }
 
 int64_t OrtTorchFunctionPool::RegisterContext(PyObject* autograd_context) {
@@ -160,10 +148,9 @@ int64_t OrtTorchFunctionPool::RegisterContext(PyObject* autograd_context) {
                                                autograd_context, "autograd_context_register");
 
   ORT_ENFORCE(autograd_context, "Cannot register NULL autograd context.");
-  Py_INCREF(autograd_context);
 
-  func_context_pool_.insert({index_, PythonObjectPtr(autograd_context, PythonObjectDeleter)});
-  // We don't need increase the context refcnt because PyTorch already did it during .apply().
+  // We don't need increase the autograd_context refcnt because PyTorch already did it during .apply().
+  func_context_pool_.insert({index_, autograd_context});
   return index_;
 }
 
@@ -182,7 +169,7 @@ PyObject* OrtTorchFunctionPool::GetContext(int64_t context_index) {
   std::lock_guard<std::mutex> lock(mutex_);
   auto iter = func_context_pool_.find(context_index);
   ORT_ENFORCE(iter != func_context_pool_.end(), "No context registered for ", context_index);
-  return iter->second.get();
+  return iter->second;
 }
 }  // namespace torch
 }  // namespace language_interop_ops

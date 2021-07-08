@@ -13,6 +13,20 @@ namespace onnxruntime {
 namespace language_interop_ops {
 namespace torch {
 
+/*
+  For all PyObject* we stored in OrtTorchFunctionPool singleton instance,
+  the practice is, we stored borrowed reference of the Python object instead
+  of create a new ownership (by increasing the ref count).
+
+ The reason we did not create a new ownership for storage, in our case:
+   A static OrtTorchFunctionPool instance will be destructed after
+   Python modules/functions are released. Once we own func pointers
+   by increasing ref count for the functions, we need decrease the 
+   ref count in ~OrtTorchFunctionPool, but at that ime some contained
+   properties for example co_consts 
+   (tuple type, https://github.com/python/cpython/blob/3.7/Objects/funcobject.c#L38)
+   already released, there will be a segment fault.
+*/
 class OrtTorchFunctionPool final {
  public:
   static OrtTorchFunctionPool& GetInstance() {
@@ -23,7 +37,7 @@ class OrtTorchFunctionPool final {
   // AutogradFunction includes ForwardCore and BackwardCore.
   // ForwardCore is the apply() function pointer.
   // BackwardCore is the backward() function pointer.
-  // RegisterTorchAutogradFunction owns the input "obj" and will release its ownership only in its destructor. 
+  // RegisterTorchAutogradFunction borrowed the "obj" reference.
   void RegisterTorchAutogradFunction(const std::string& key, PyObject* obj);
   // Return a borrowed reference to the stored Python function. Thus,
   //  1. The returned value doesn't own its Python function.
@@ -48,27 +62,27 @@ class OrtTorchFunctionPool final {
 
   // ForwardRunner/BackwardRunner are "glue" codes written in Python that interacting
   // with C++ kernels during Python function invoking.
-  // This function creates new ownership to "obj".
+  // This function borrowed reference to "obj".
   void RegisterForwardRunner(PyObject* obj);
-  // This function creates new ownership to "obj".
+  // This function borrowed reference to "obj".
   void RegisterBackwardRunner(PyObject* obj);
   // Return a borrowed reference to a Python function, which
   // is responsible for executing autograd.Function.apply.
   PyObject* GetForwardRunner();
   // Return a borrowed reference to a Python function, which
-  // is responsible for executing autograd.Function.apply.
+  // is responsible for executing autograd.Function.backward.
   PyObject* GetBackwardRunner();
 
  private:
   OrtTorchFunctionPool() {};
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtTorchFunctionPool);
 
-  PythonObjectPtr forward_runner_;
-  PythonObjectPtr backward_runner_;
+  PyObject* forward_runner_;
+  PyObject* backward_runner_;
 
-  std::unordered_map<std::string, PythonObjectPtr> forward_core_pool_;
-  std::unordered_map<std::string, PythonObjectPtr> backward_core_pool_;
-  std::unordered_map<int64_t, PythonObjectPtr> func_context_pool_;
+  std::unordered_map<std::string, PyObject*> forward_core_pool_;
+  std::unordered_map<std::string, PyObject*> backward_core_pool_;
+  std::unordered_map<int64_t, PyObject*> func_context_pool_;
 
   std::mutex mutex_;
 };
