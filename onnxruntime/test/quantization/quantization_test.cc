@@ -26,7 +26,10 @@ void TestQuantizeVectorAndValues(const std::vector<float>& values,
   }
 
   // Next check pointer signature variant:
-  quantization::Quantize(values.data(), quant_values.data(), params, values.size());
+  quantization::Quantize(values.data(),
+                         quant_values.data(),
+                         params,
+                         values.size());
   for (size_t i = 0; i < values.size(); ++i) {
     EXPECT_EQ(quant_values[i], expected[i]);
   }

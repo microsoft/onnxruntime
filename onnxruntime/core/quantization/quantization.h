@@ -7,14 +7,24 @@
 #include <vector>
 
 // TODO - update documentation to use same verbage as quant_utils.py
-// TODO - restrict types to int8/uint8 for now!
 
 namespace onnxruntime {
 namespace quantization {
 
 // Basic quantization params structure.
 template <typename T>
-struct Params {
+class Params {
+ public:
+  Params() {
+    Params(/*scale=*/0.0f, /*zero_point=*/0);
+  }
+
+  Params(float scale, T zero_point) : scale(scale), zero_point(zero_point) {
+    static_assert(
+        !std::is_same<T, int8_t>::value || !std::is_same<T, uint8_t>::value,
+        "Only int8_t and uint8_t are supported quantization formats");
+  }
+
   float scale;
   T zero_point;
 };
@@ -23,19 +33,28 @@ struct Params {
 template <typename T>
 T Quantize(const float value, const Params<T>& params) {
   T quant_value;
-  MlasQuantizeLinear(&value, &quant_value, /*N=*/1, params.scale, params.zero_point);
+  MlasQuantizeLinear(&value,
+                     &quant_value,
+                     /*N=*/1,
+                     params.scale,
+                     params.zero_point);
   return quant_value;
 }
 
-// Quantizes linearly a list of float values with provided quantization params.
+// Quantizes a list of float values with provided quantization params.
 template <typename T>
-void Quantize(const float* data, T* output, const Params<T>& params, size_t size) {
+void Quantize(const float* data,
+              T* output,
+              const Params<T>& params,
+              size_t size) {
   MlasQuantizeLinear(data, output, /*N=*/size, params.scale, params.zero_point);
 }
 
-// Quantizes linearly a vector of float values with provided quantization params.
+// Quantizes a vector of float values with provided quantization params.
 template <typename T>
-void Quantize(const std::vector<float>& data, std::vector<T>& output, const Params<T>& params) {
+void Quantize(const std::vector<float>& data,
+              std::vector<T>& output,
+              const Params<T>& params) {
   // TODO - assert if data.size() != output.size()
   Quantize(data.data(), output.data(), params, data.size());
 }
@@ -82,8 +101,10 @@ Params<T> QuantizeLinear(const float* data, T* output, size_t size) {
 // Calculates and returns linear quantization params for a given float vector.
 // Output vector is quantized with calculated params.
 template <typename T>
-Params<T> QuantizeLinear(const std::vector<float>& data, std::vector<T>& output) {
-  // TODO - assert if data.size() != output.size()
+Params<T> QuantizeLinear(const std::vector<float>& data,
+  std::vector<T>& output) {
+  static_assert(data.size() != output.size(),
+                "Input and output data must have the same length");
   return QuantizeLinear(data.data(), output.data(), data.size());
 }
 
@@ -93,18 +114,26 @@ float Dequantize(const T value, const Params<T>& params) {
   return static_cast<float>(value - params.zero_point) * params.scale;
 }
 
-// Dequantizes a value buffer value to a float buffer with provided quantization params.
+// Dequantizes a value buffer value to a float buffer with provided
+// quantization params.
 template <typename T>
-void Dequantize(const T* values, float* output, const Params<T>& params, size_t size) {
+void Dequantize(const T* values,
+                float* output,
+                const Params<T>& params,
+                size_t size) {
   for (size_t i = 0; i < size; ++i) {
     output[i] = Dequantize(values[i], params);
   }
 }
 
-// Dequantizes a vector of T values to a float buffer with provided quantization params.
+// Dequantizes a vector of T values to a float buffer with provided
+// quantization params.
 template <typename T>
-void Dequantize(const std::vector<T>& values, std::vector<float>& output, const Params<T>& params) {
-  // TODO - assert if data.size() != output.size()
+void Dequantize(const std::vector<T>& values,
+                std::vector<float>& output,
+                const Params<T>& params) {
+  static_assert(data.size() != output.size(),
+                "Input and output data must have the same length");
   Dequantize(values.data(), output.data(), params, size);
 }
 

@@ -188,8 +188,8 @@ static void RunQAttentionU8S8(
     bool use_special_quantize_parameter = true,
     bool is_unidirectional = false,
     int input_hidden_size = 0) {
-  quantization::Params<uint8_t> input_quant_params = {0.0f, 0};
-  quantization::Params<int8_t> weights_quant_params = {0.0f, 0};
+  quantization::Params<uint8_t> input_quant_params(/*scale=*/0.0f, /*zero_point=*/0);
+  quantization::Params<int8_t> weights_quant_params(/*scale=*/0.0f, /*zero_point=*/0);
   if (use_special_quantize_parameter) {
     input_quant_params.scale = 0.1f;
     weights_quant_params.scale = 0.1f;
