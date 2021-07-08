@@ -73,7 +73,7 @@ class InferenceAgent(ExecutionAgent):
 
         return IOBinding(self._inference_session)
 
-    def _prepare_inputs(self, inputs):
+    def _process_inputs(self, inputs):
         """Runs the forward graph on execution_session with given model inputs and device"""
 
         # Assert that the input and model device match
@@ -117,7 +117,7 @@ class InferenceAgent(ExecutionAgent):
 
     def forward(self, *inputs):
         run_options = C.RunOptions()
-        io_binding = self._prepare_inputs(inputs)
+        io_binding = self._process_inputs(inputs)
 
         # Run and return module outputs.
         ort_output = self._run_forward(io_binding, run_options)
@@ -182,7 +182,7 @@ class TrainingAgent(ExecutionAgent):
 
 
 
-    def _prepare_forward_inputs(self, inputs):
+    def _process_forward_inputs(self, inputs):
         """ Prepare feeds from torch tensors """
 
         # Assert that the input and model device match
@@ -208,14 +208,14 @@ class TrainingAgent(ExecutionAgent):
 
 
     def forward(self, *inputs):
-        feeds = self._prepare_forward_inputs(inputs)
+        feeds = self._process_forward_inputs(inputs)
         fetches = C.OrtValueVector()
         state = C.PartialGraphExecutionState()
         self._training_agent.run_forward(feeds, fetches, state)
         return self._process_forward_outputs(fetches, state)
 
 
-    def _prepare_backward_inputs(self, ctx, grad_outputs):
+    def _process_backward_inputs(self, ctx, grad_outputs):
         _utils._check_same_device(self._device, "Input argument to backward", *grad_outputs)
 
         # Use IO binding
@@ -254,7 +254,7 @@ class TrainingAgent(ExecutionAgent):
 
 
     def backward(self, ctx, *grad_outputs):
-        backward_inputs = self._prepare_backward_inputs(ctx, grad_outputs)
+        backward_inputs = self._process_backward_inputs(ctx, grad_outputs)
         # Run and get results
         backward_outputs = C.OrtValueVector()
         self._training_agent.run_backward(backward_inputs, backward_outputs, ctx.run_info.state)
