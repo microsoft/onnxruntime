@@ -12,8 +12,8 @@ from packaging import version
 from onnx import helper, TensorProto
 
 def float_tensor(name: str, shape: List[int], random=False):
-    low = -0.1
-    high = 0.1
+    low = 0.0
+    high = 1.0
     total_elements = 1
     for x in shape:
         total_elements *= x
@@ -93,8 +93,6 @@ def create_bert_attention(input_hidden_size=16,
                          epsion=0.000009999999747378752),
     ]
 
-    batch_size = 1
-    sequence_length = 3
     pruned_qk_head_size = int(pruned_qk_hidden_size / num_heads)
     pruned_v_head_size = int(pruned_v_hidden_size / num_heads)
     initializers = [  # initializers
@@ -120,6 +118,8 @@ def create_bert_attention(input_hidden_size=16,
         initializers.append(helper.make_tensor('axes_1', TensorProto.INT64, [1], [1]))
         initializers.append(helper.make_tensor('axes_2', TensorProto.INT64, [1], [2]))
 
+    batch_size = 1
+    sequence_length = 3
     graph = helper.make_graph(
         [node for node in nodes if node],
         "AttentionFusionPrunedModel",  #name
