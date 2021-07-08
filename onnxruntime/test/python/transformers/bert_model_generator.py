@@ -6,22 +6,18 @@
 
 import onnx
 import math
-import sys
-from typing import List, Sequence
+import numpy as np
+from typing import List
 from packaging import version
 from onnx import helper, TensorProto
-import numpy as np
 
-
-def float_tensor(name: str, shape: List[int], random=False, val = 1.0):
-    low = -0.1
-    high = 0.1
+def float_tensor(name: str, shape: List[int], random=False):
+    low = 0.0
+    high = 1.0
     total_elements = 1
     for x in shape:
         total_elements *= x
-    #weights = [np.random.uniform(low, high) for _ in range(total_elements)] if random else [val] * total_elements
-    weights = [np.random.uniform(low, high) for _ in range(total_elements)]
-    #weights = [x // 1 for x in weights]
+    weights = [np.random.uniform(low, high) for _ in range(total_elements)] if random else [1.0] * total_elements
     return helper.make_tensor(name, TensorProto.FLOAT, shape, weights)
 
 
@@ -54,7 +50,6 @@ def create_bert_attention(input_hidden_size=16,
         helper.make_node("Add", reverse_if(["matmul_q_out", "add_q_weight"], switch_add_inputs), ["add_q_out"], "add_q"),
         helper.make_node("Reshape", ["add_q_out", "reshape_weight_qk"], ["reshape_q_out"], "reshape_q"),
         helper.make_node("Transpose", ["reshape_q_out"], ["transpose_q_out"], "transpose_q", perm=[0, 2, 1, 3]),
-        helper.make_node("Div", ["transpose_q_out", "div_weight"], ["div_q_out"], "div_q"),
 
         # k nodes
         helper.make_node("MatMul", ["layernorm_out", "matmul_k_weight"], ["matmul_k_out"], "matmul_k"),
@@ -67,17 +62,16 @@ def create_bert_attention(input_hidden_size=16,
             else helper.make_node("Unsqueeze", ["input_mask"], ["unsqueeze0_out"], "unsqueeze0", axes=[1]),
         helper.make_node("Unsqueeze", ["unsqueeze0_out", "axes_2"], ["unsqueeze1_out"], "unsqueeze1") if has_unsqueeze_two_inputs \
             else helper.make_node("Unsqueeze", ["unsqueeze0_out"], ["unsqueeze1_out"], "unsqueeze1", axes=[2]),
-        helper.make_node("Equal", ["unsqueeze1_out", "equal_weight"], ["equal0_out"], "equal0"),
 
         # when attention_mask is float type, no need to cast
-        helper.make_node("Cast", ["equal0_out"], ["cast_out"], "cast", to=9) if not use_float_mask else None,
-        #helper.make_node("Sub", ["sub_weight", "unsqueeze1_out" if use_float_mask else "cast_out"], ["sub_out"], "sub"),
-        #helper.make_node("Mul", ["sub_out", "mul_weight"], ["mul_mask_out"], "mul_mask"),
+        helper.make_node("Cast", ["unsqueeze1_out"], ["cast_out"], "cast", to=1) if not use_float_mask else None,
+        helper.make_node("Sub", ["sub_weight", "unsqueeze1_out" if use_float_mask else "cast_out"], ["sub_out"], "sub"),
+        helper.make_node("Mul", ["sub_out", "mul_weight"], ["mul_mask_out"], "mul_mask"),
 
         # qk nodes
-        helper.make_node("MatMul", ["div_q_out", "transpose_k_out"], ["matmul_qk_out"], "matmul_qk"),
-        helper.make_node("Where", ["cast_out", "where_qk_weight", "matmul_qk_out"], ["where_out"], "where"),
-        helper.make_node("Add", ["where_out", "add_qk_weight"], ["add_qk_out"], "add_qk"),
+        helper.make_node("MatMul", ["transpose_q_out", "transpose_k_out"], ["matmul_qk_out"], "matmul_qk"),
+        helper.make_node("Div", ["matmul_qk_out", "div_weight"], ["div_qk_out"], "div_qk"),
+        helper.make_node("Add", reverse_if(["div_qk_out", "mul_mask_out"], switch_add_inputs), ["add_qk_out"], "add_qk"),
         helper.make_node("Softmax", ["add_qk_out"], ["softmax_qk_out"], "softmax_qk", axis=3),
 
         # v nodes
@@ -107,19 +101,17 @@ def create_bert_attention(input_hidden_size=16,
         float_tensor('layer_norm_weight', [input_hidden_size]),
         float_tensor('layer_norm_bias', [input_hidden_size]),
         float_tensor('matmul_q_weight', [input_hidden_size, pruned_qk_hidden_size]),
-        float_tensor('matmul_k_weight', [input_hidden_size, pruned_qk_hidden_size], val= 2.0),
-        float_tensor('matmul_v_weight', [input_hidden_size, pruned_v_hidden_size], val= 3.0),
+        float_tensor('matmul_k_weight', [input_hidden_size, pruned_qk_hidden_size]),
+        float_tensor('matmul_v_weight', [input_hidden_size, pruned_v_hidden_size]),
         float_tensor('matmul_qkv_weight', [pruned_v_hidden_size, input_hidden_size]),
-        float_tensor('add_q_weight', [pruned_qk_hidden_size], val=4.0),
-        float_tensor('add_k_weight', [pruned_qk_hidden_size], val=5.0),
-        float_tensor('add_v_weight', [pruned_v_hidden_size], val=6.0),
+        float_tensor('add_q_weight', [pruned_qk_hidden_size]),
+        float_tensor('add_k_weight', [pruned_qk_hidden_size]),
+        float_tensor('add_v_weight', [pruned_v_hidden_size]),
         float_tensor('add_qk_weight', [1, num_heads, sequence_length, sequence_length], random=True),
         float_tensor('add_qkv_weight', [input_hidden_size]),
         helper.make_tensor('div_weight', TensorProto.FLOAT, [1], [math.sqrt(pruned_qk_head_size)]),
         helper.make_tensor('sub_weight', TensorProto.FLOAT, [1], [1.0]),
         helper.make_tensor('mul_weight', TensorProto.FLOAT, [1], [-10000]),
-        helper.make_tensor('equal_weight', TensorProto.INT64, [], [0]),
-        helper.make_tensor('where_qk_weight', TensorProto.FLOAT, [], [-math.inf]),
         helper.make_tensor('reshape_weight_qk', TensorProto.INT64, [4], [0, 0, num_heads, pruned_qk_head_size]),
         helper.make_tensor('reshape_weight_v', TensorProto.INT64, [4], [0, 0, num_heads, pruned_v_head_size]),
         helper.make_tensor('reshape_weight_qkv', TensorProto.INT64, [3], [0, 0, pruned_v_hidden_size]),
