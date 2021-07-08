@@ -63,8 +63,8 @@ class OrtTorchFunctionPool final {
   //   A static OrtTorchFunctionPool instance will be destructed after
   //   Python modules/functions are released. Once we own func pointers
   //   by increasing ref count for the functions, we need decrease the
-  //   ref count in ~OrtTorchFunctionPool, but at that ime some contained
-  //   properties for example co_consts
+  //   ref count in ~OrtTorchFunctionPool, but at that time some properties
+  //   of the python function object, for example co_consts
   //   (tuple type, https://github.com/python/cpython/blob/3.7/Objects/funcobject.c#L38)
   //   already released, there will be a segment fault.
 
