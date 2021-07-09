@@ -76,7 +76,7 @@ MlasGemmU8X8FixupZeroPointB<MLAS_GEMM_U8X8_KERNEL_UDOT>(
 template<>
 void
 MlasGemmU8X8CopyPackA<MLAS_GEMM_U8X8_KERNEL_UDOT>(
-    MLAS_GEMM_U8X8_KERNEL_NEON::PackedAType* D,
+    MLAS_GEMM_U8X8_KERNEL_UDOT::PackedAType* D,
     const uint8_t* A,
     size_t lda,
     size_t CountM,
