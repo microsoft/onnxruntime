@@ -440,8 +440,15 @@ class OpTester {
                                optional<float>(), optional<float>()));
   }
 
+  /*
+  * Use this API to add an input *edge* to the node/op being tested that won't 
+  * have any data passed into.
+  * Such an edge will have the qualifier OpSchema::Optional in the schema.
+  * This is exposed to ensure the op kernel implementations can be tested to handle 
+  * presence/absence of such optional input edges.
+  */
   template <typename T>
-  void AddMissingOptionalInput() {
+  void AddOptionalInputEdge() {
     std::string name;  // empty == input doesn't exist
     input_data_.push_back(Data(NodeArg(name, &TTensorType<T>::s_type_proto.proto), OrtValue(), optional<float>(),
                                optional<float>()));
@@ -468,7 +475,7 @@ class OpTester {
     AddData(output_data_, name, dims, p_values, size, false,
             sort_output, nullptr /* dim_params */, rel_error, abs_error);
   }
-
+ 
   template <typename T>
   void AddSparseCooOutput(const char* name, const std::vector<int64_t>& dims,
                           const std::initializer_list<T>& expected_values,
@@ -565,13 +572,20 @@ class OpTester {
                               gsl::make_span(expected_outer_indices));
   }
 
+  /*
+  * Use this API to add an output *edge* to the node/op being tested that shouldn't have any 
+  * data produced into.
+  * Such an edge will have the qualifier OpSchema::Optional in the schema.
+  * This is exposed to ensure the op kernel implementations can be tested to handle 
+  * presence/absence of such optional output edges.
+  */
   template <typename T>
-  void AddMissingOptionalOutput() {
-    std::string name;  // empty == input doesn't exist
+  void AddOptionalOutputEdge() {
+    std::string name;  // empty == output doesn't exist
     output_data_.push_back(Data(NodeArg(name, &TTensorType<T>::s_type_proto.proto), OrtValue(), optional<float>(),
                                 optional<float>()));
   }
-
+  
   // Add other registered types, possibly experimental
   template <typename T>
   void AddOutput(const char* name, const T& val) {

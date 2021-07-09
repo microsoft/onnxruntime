@@ -74,7 +74,7 @@ static void RunTest(const embedlayernorm::OpData& data,
   if (data.has_segment) {
     tester.AddInput<int32_t>("segment_ids", segment_ids_dims, data.segment_ids_data);
   } else {
-    tester.AddMissingOptionalInput<int32_t>();
+    tester.AddOptionalInputEdge<int32_t>();
   }
 
   // Quantized initializer inputs:
@@ -92,7 +92,7 @@ static void RunTest(const embedlayernorm::OpData& data,
                              segment_embedding_data_quant,
                              /*is_initializer=*/true);
   } else {
-    tester.AddMissingOptionalInput<uint8_t>();
+    tester.AddOptionalInputEdge<uint8_t>();
   }
   tester.AddInput<uint8_t>("gamma",
                            gamma_dims,
@@ -106,7 +106,7 @@ static void RunTest(const embedlayernorm::OpData& data,
     std::vector<int64_t> mask_dims = {data.batch_size, data.sequence_size};
     tester.AddInput<int32_t>("mask", mask_dims, data.mask_data);
   } else {
-    tester.AddMissingOptionalInput<int32_t>();
+    tester.AddOptionalInputEdge<int32_t>();
   }
 
   // Quantized scales:
@@ -124,7 +124,7 @@ static void RunTest(const embedlayernorm::OpData& data,
                            {segment_embedding_scale},
                            /*is_initializer=*/true);
   } else {
-    tester.AddMissingOptionalInput<float>();
+    tester.AddOptionalInputEdge<float>();
   }
   tester.AddInput<float>("gamma_scale",
                          /*dims=*/{},
@@ -150,7 +150,7 @@ static void RunTest(const embedlayernorm::OpData& data,
                              {segment_embedding_zero_point},
                              /*is_initializer=*/true);
   } else {
-    tester.AddMissingOptionalInput<uint8_t>();
+    tester.AddOptionalInputEdge<uint8_t>();
   }
   tester.AddInput<uint8_t>("gamma_zero_point",
                            /*dims=*/{},

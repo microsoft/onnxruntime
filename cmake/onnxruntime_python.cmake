@@ -10,13 +10,9 @@ set(onnxruntime_pybind_srcs_pattern
 )
 
 if (onnxruntime_ENABLE_TRAINING)
-  # todo: move dlpack/dlpack_python.* to ${ONNXRUNTIME_ROOT}/python folder.
   list(APPEND onnxruntime_pybind_srcs_pattern
     "${ORTTRAINING_ROOT}/orttraining/python/*.cc"
     "${ORTTRAINING_ROOT}/orttraining/python/*.h"
-    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.cc"
-    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.h"
-    "${ONNXRUNTIME_ROOT}/core/dlpack/python_common.h"
   )
 endif()
 
