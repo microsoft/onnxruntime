@@ -67,7 +67,7 @@ namespace cuda {
       name<T>);
 
 // Register those with changes in OpSet12.
-#define REGISTER_KERNEL_TYPED_12(name, T)                                                  \
+#define REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(name, T)                                \
   REGISTER_KERNEL_VERSIONED_TYPED_12(name, T)                                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
       name,                                                                                \
@@ -981,13 +981,13 @@ REGISTER_KERNEL_HFD_11(ArgMin)
 REGISTER_KERNEL_HFD(ReduceL1)
 REGISTER_KERNEL_HFD(ReduceL2)
 
-REGISTER_KERNEL_TYPED_12(ReduceMax, MLFloat16)
-REGISTER_KERNEL_TYPED_12(ReduceMax, float)
-REGISTER_KERNEL_TYPED_12(ReduceMax, double)
-REGISTER_KERNEL_TYPED_12(ReduceMax, int32_t)
-REGISTER_KERNEL_TYPED_12(ReduceMax, int64_t)
-REGISTER_KERNEL_TYPED_12(ReduceMax, int8_t)
-REGISTER_KERNEL_TYPED_12(ReduceMax, uint8_t)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, MLFloat16)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, float)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, double)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, int32_t)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, int64_t)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, int8_t)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, uint8_t)
 
 REGISTER_KERNEL_HFD(ReduceMean)
 
