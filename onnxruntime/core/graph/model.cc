@@ -652,13 +652,20 @@ common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   }
   auto op_set_ids = builder.CreateVector(op_set_ids_vec);
 
-  std::vector<flatbuffers::Offset<onnxruntime::experimental::fbs::StringStringEntry>> metadata_props_vec;
-  metadata_props_vec.reserve(model_metadata_.size());
-  for (const auto& prop : model_metadata_) {
-    metadata_props_vec.push_back(
-        fbs::CreateStringStringEntryDirect(builder, prop.first.c_str(), prop.second.c_str()));
+  flatbuffers::Offset<flatbuffers::Vector<
+      flatbuffers::Offset<onnxruntime::experimental::fbs::StringStringEntry>>>
+      metadata_props{0};
+
+  // We will not serialize an empty metadata_props
+  if (!model_metadata_.empty()) {
+    std::vector<flatbuffers::Offset<onnxruntime::experimental::fbs::StringStringEntry>> metadata_props_vec;
+    metadata_props_vec.reserve(model_metadata_.size());
+    for (const auto& prop : model_metadata_) {
+      metadata_props_vec.push_back(
+          fbs::CreateStringStringEntryDirect(builder, prop.first.c_str(), prop.second.c_str()));
+    }
+    metadata_props = builder.CreateVector(metadata_props_vec);
   }
-  auto metadata_props = builder.CreateVector(metadata_props_vec);
 
   flatbuffers::Offset<fbs::Graph> fbs_graph;
   ORT_RETURN_IF_ERROR(graph_->SaveToOrtFormat(builder, fbs_graph));
