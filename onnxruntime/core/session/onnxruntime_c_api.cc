@@ -527,14 +527,14 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
   ORT_TRY {
 
     auto start_ = std::chrono::high_resolution_clock::now();
-    std::cout << "CreateSessionAndLoadModel (c_api.cc) start: " << duration.count() << " s" << std::endl;
+    std::cout << "CreateSessionAndLoadModel (c_api.cc) start: " << std::endl;
     ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, model_path, nullptr, 0, sess));
     auto end_ = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration = end_ - start_;
     std::cout << "CreateSessionAndLoadModel time cost: " << duration.count() << " s" << std::endl;
 
     start_ = std::chrono::high_resolution_clock::now();
-    std::cout << "InitializeSession (c_api.cc) start: " << duration.count() << " s" << std::endl;
+    std::cout << "InitializeSession (c_api.cc) start: " << std::endl;
     ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess));
     end_ = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration = end_ - start_;
