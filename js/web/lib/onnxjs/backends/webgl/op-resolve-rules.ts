@@ -46,7 +46,7 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // ['AveragePool', '', '7-10', () => new WebGLAveragePool()],  // TODO: support new attributes for AveragePool-10
   ['BatchNormalization', '', '7+', batchNormalization, parseBatchNormalizationAttributes],
   ['Ceil', '', '6+', unaryOps.ceil],
-  // ['Clip', '', '6-10', () => new WebGLClip()],
+  ['Clip', '', '6-10', unaryOps.clip],
   // ['Concat', '', '4+', () => new WebGLConcat()],
   // ['Conv', '', '1+', () => new WebGLConv()],
   ['Cos', '', '7+', unaryOps.cos],
