@@ -318,12 +318,22 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
       insert_cast_transformer_("CastFloat16Transformer"),
       logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
+  auto start_ = std::chrono::high_resolution_clock::now();
+  std::cout << "Model::Load() (inference_session.cc) start " << std::endl;
   auto status = Model::Load(model_location_, model_proto_);
+  auto end_ = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> duration = end_ - start_;
+  std::cout << "Model::Load() time cost: " << duration.count() << " s" << std::endl;
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
               status.ErrorMessage());
   is_model_proto_parsed_ = true;
   // Finalize session options and initialize assets of this session instance
+  start_ = std::chrono::high_resolution_clock::now();
+  std::cout << "ConstructorCommon (inference_session.cc) start " << std::endl;
   ConstructorCommon(session_options, session_env);
+  end_ = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> duration = end_ - start_;
+  std::cout << "ConstructorCommon time cost: " << duration.count() << " s" << std::endl;
 }
 
 #ifdef _WIN32
@@ -865,7 +875,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
                                          : GraphPartitioner::Mode::kNormal;
 
   auto start_ = std::chrono::high_resolution_clock::now();
-  std::cout << "partitioner time start " << std::endl;
+  std::cout << "partitioner start " << std::endl;
   // Do partitioning based on execution providers' capability.
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.ExportDll(),
