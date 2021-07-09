@@ -5,7 +5,7 @@
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import IOBinding, get_ort_device_type
-from onnxruntime.capi._pybind_state import TrainingAgent as C_TrainingAgent
+from onnxruntime.capi._pybind_state import TrainingAgent as C_TrainingAgent, GraphInfo
 
 from . import _utils
 from ._graph_execution_manager import RunStateInfo
