@@ -10,6 +10,9 @@ import torch
 import warnings
 import gc
 
+from ._fallback import _FallbackManager, ORTModuleIOError
+
+
 class _OutputIdentityOp(torch.autograd.Function):
     '''Internal class used to prepend Identity ops in model's outputs
 
@@ -181,7 +184,8 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
                 inp = _PrimitiveType.get_tensor(inp, device)
             result.append(inp)
         else:
-            raise RuntimeError(f'Input is present in ONNX graph but not provided: {name}.')
+            raise _FallbackManager.wrap_exception(ORTModuleONNXModelException,
+                                                  RuntimeError(f'Input is present in ONNX graph but not provided: {name}.'))
 
     # params is a list of all initializers known to the onnx graph
     result.extend(params)
@@ -281,7 +285,8 @@ def unflatten_user_output(output_schema, outputs):
             for key in sorted(user_output):
                 user_output[key] = _replace_stub_with_tensor_value(user_output[key], outputs, output_idx)
         else:
-            raise TypeError(f'ORTModule does not support the following model output type {type(user_output)}.')
+            raise _FallbackManager.wrap_exception(ORTModuleIOError,
+                                                  TypeError(f'ORTModule does not support the following model output type {type(user_output)}.'))
 
         return user_output
 
@@ -321,7 +326,8 @@ def _extract_schema(data):
         for key in sorted(data):
             data[key] = _extract_schema(data[key])
     else:
-        raise TypeError(f'ORTModule does not support the following model data type {type(data)}')
+        raise _FallbackManager.wrap_exception(ORTModuleIOError,
+                                              TypeError(f'ORTModule does not support the following model data type {type(data)}'))
     return data
 
 
@@ -351,7 +357,8 @@ def _parse_outputs_and_extract_names_and_dynamic_axes(module_output):
             for _, value in sorted(output.items()):
                 _populate_output_names_and_dynamic_axes(value, output_names, output_dynamic_axes, output_idx)
         else:
-            raise TypeError(f'ORTModule does not support the following model output type {type(output)}')
+            raise _FallbackManager.wrap_exception(ORTModuleIOError,
+                                                  TypeError(f'ORTModule does not support the following model output type {type(output)}'))
 
     output_names = []
     output_dynamic_axes = {}
@@ -379,7 +386,8 @@ def _transform_output_to_flat_tuple(data):
             for _, value in sorted(data.items()):
                 _flatten_data(value, flat_data)
         else:
-            raise TypeError(f'ORTModule does not support the following data type {type(data)}.')
+            raise _FallbackManager.wrap_exception(ORTModuleIOError,
+                                                  TypeError(f'ORTModule does not support the following data type {type(data)}.'))
 
     flat_data = []
     _flatten_data(data, flat_data)

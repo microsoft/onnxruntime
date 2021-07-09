@@ -9,6 +9,8 @@ import sys
 from glob import glob
 from packaging import version
 
+from ._fallback import _FallbackManager, ORTModuleInitException
+
 
 ################################################################################
 # All global constant goes here, before ORTModule is imported ##################
@@ -24,26 +26,28 @@ try:
     runtime_pytorch_version = version.parse(torch.__version__.split('+')[0])
     minimum_runtime_pytorch_version = version.parse(MINIMUM_RUNTIME_PYTORCH_VERSION_STR)
     if runtime_pytorch_version < minimum_runtime_pytorch_version:
-        raise RuntimeError(
-            f'ONNX Runtime ORTModule frontend requires PyTorch version greater or equal to {MINIMUM_RUNTIME_PYTORCH_VERSION_STR}, '
-            f'but version {torch.__version__} was found instead.')
+        raise _FallbackManager.wrap_exception(ORTModuleInitException,
+                                              RuntimeError(
+                                                  f'ONNX Runtime ORTModule frontend requires PyTorch version greater or equal to {MINIMUM_RUNTIME_PYTORCH_VERSION_STR}, '
+                                                  f'but version {torch.__version__} was found instead.'))
 except:
-    raise RuntimeError(f'PyTorch {MINIMUM_RUNTIME_PYTORCH_VERSION_STR} must be installed in order to run ONNX Runtime ORTModule frontend!')
+    raise _FallbackManager.wrap_exception(ORTModuleInitException,
+                                          RuntimeError(f'PyTorch {MINIMUM_RUNTIME_PYTORCH_VERSION_STR} must be installed in order to run ONNX Runtime ORTModule frontend!'))
 
 # Verify whether PyTorch C++ extensions are already compiled
 torch_cpp_exts = glob(os.path.join(TORCH_CPP_DIR, '*.so'))
 torch_cpp_exts.extend(glob(os.path.join(TORCH_CPP_DIR, '*.dll')))
 torch_cpp_exts.extend(glob(os.path.join(TORCH_CPP_DIR, '*.dylib')))
 if not torch_cpp_exts and '-m' not in sys.argv:
-    raise EnvironmentError(f"ORTModule's extensions were not detected at '{TORCH_CPP_DIR}' folder. "
-                           "Run `python -m torch_ort.configure` before using `ORTModule` frontend.")
+    raise _FallbackManager.wrap_exception(ORTModuleInitException,
+                                          EnvironmentError(f"ORTModule's extensions were not detected at '{TORCH_CPP_DIR}' folder. "
+                                                           "Run `python -m torch_ort.configure` before using `ORTModule` frontend."))
 
 # PyTorch custom Autograd function support
 from ._custom_autograd_function import enable_custom_autograd_support
 enable_custom_autograd_support()
 
 # Initalized ORT's random seed with pytorch's initial seed
-# Initalized ORT's random seed with pytorch's current seed, 
 # in case user has set pytorch seed before importing ORTModule
 import sys
 from onnxruntime import set_seed

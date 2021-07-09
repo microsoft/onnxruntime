@@ -7,6 +7,7 @@ from ._torch_module_factory import TorchModuleFactory
 from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._custom_gradient_registry import CustomGradientRegistry
 from .debug_options import DebugOptions
+from ._fallback import _FallbackManager, ORTModuleTorchModelException
 
 from onnxruntime.training import register_custom_ops_pytorch_exporter
 
@@ -16,6 +17,7 @@ from typing import Iterator, Optional, Tuple, TypeVar, Set, Callable
 
 # Needed to override PyTorch methods
 T = TypeVar('T', bound='Module')
+
 
 class ORTModule(torch.nn.Module):
     """Extends user's :class:`torch.nn.Module` model to leverage ONNX Runtime super fast training engine.
@@ -101,13 +103,15 @@ class ORTModule(torch.nn.Module):
         which does not need model replication and is also recommended by torch to use instead.
         """
 
-        raise NotImplementedError("ORTModule is not compatible with torch.nn.DataParallel. "
-                                  "Please use torch.nn.parallel.DistributedDataParallel instead.")
+        raise _FallbackManager.wrap_exception(ORTModuleTorchModelException,
+                                              NotImplementedError("ORTModule is not compatible with torch.nn.DataParallel. "
+                                                                  "Please use torch.nn.parallel.DistributedDataParallel instead."))
 
     def add_module(self, name: str, module: Optional['Module']) -> None:
-        """Raises a NotImplementedError exception since ORTModule does not support adding modules to it"""
+        """Raises a ORTModuleTorchModelException exception since ORTModule does not support adding modules to it"""
 
-        raise NotImplementedError("ORTModule does not support adding modules to it.")
+        raise _FallbackManager.wrap_exception(ORTModuleTorchModelException,
+                                              NotImplementedError("ORTModule does not support adding modules to it."))
 
     @property
     def module(self):
@@ -210,11 +214,11 @@ class ORTModule(torch.nn.Module):
         yield from self._torch_module.named_buffers(prefix=prefix, recurse=recurse)
 
     def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
-                                missing_keys, unexpected_keys, error_msgs):
+                              missing_keys, unexpected_keys, error_msgs):
         """Override original method to delegate execution to the original PyTorch user module"""
 
         self._torch_module._load_from_state_dict(state_dict, prefix, local_metadata, strict,
-                                                   missing_keys, unexpected_keys, error_msgs)
+                                                 missing_keys, unexpected_keys, error_msgs)
 
     def named_children(self) -> Iterator[Tuple[str, 'Module']]:
         """Override :meth:`~torch.nn.Module.named_children`"""

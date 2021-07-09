@@ -18,7 +18,7 @@ from inspect import signature
 import tempfile
 import os
 
-from onnxruntime.training.ortmodule import ORTModule, _utils, _io, DebugOptions, LogLevel
+from onnxruntime.training.ortmodule import ORTModule, _utils, _io, DebugOptions, LogLevel, _fallback
 import _test_helpers
 
 # Import autocasting libs
@@ -182,7 +182,7 @@ class NeuralNetNonDifferentiableOutput(torch.nn.Module):
                                 # True is casted to -1 for Cast(from=bool, to=float), where as pytorch would give 1.0f
         mask2 = torch.lt(out2, 0.02)
         mask2 = mask2.long()
-        
+
         return out1, mask1, out2, mask2     # intentionally place the non-differentiable output in the middle
 
 class NeuralNetChainedLayersWithNonDifferentiableOutput(torch.nn.Module):
@@ -275,7 +275,7 @@ class StatelessModel(torch.nn.Module):
         return x
 
 # TODO: This is a workaround for the problem that pytest is still cleaning up the previous test
-# while the next task already start. 
+# while the next task already start.
 @pytest.fixture(autouse=True)
 def run_before_tests():
     # wait for 50ms before starting the next test
@@ -291,7 +291,7 @@ def _get_bert_for_sequence_classification_model(device, output_attentions = Fals
             num_hidden_layers=1,
             output_attentions = output_attentions,
             output_hidden_states = output_hidden_states,
-            hidden_dropout_prob = hidden_dropout_prob, 
+            hidden_dropout_prob = hidden_dropout_prob,
             attention_probs_dropout_prob = attention_probs_dropout_prob,
     )
     config.return_dict = return_dict
@@ -571,7 +571,7 @@ def test_gradient_correctness():
         x = torch.randn(N, D_in, device=device)
         pt_prediction = run_step(pt_model, x)
         ort_prediction = run_step(ort_model, x)
-        
+
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
@@ -609,7 +609,7 @@ def test_gradient_correctness_conv1d(use_fp16, input_requires_grad):
         x = torch.randn(N, seq_len, C_in, device=device, requires_grad=input_requires_grad)
         pt_prediction = run_step(pt_model, x)
         ort_prediction = run_step(ort_model, x)
-        
+
         if use_fp16:
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-3)
             _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, rtol=1e-2, atol=2e-2)
@@ -766,7 +766,7 @@ def test_module_with_non_differential_output():
         ort_prediction1, ort_mask1, ort_prediction2, ort_mask2 = run_step(ort_model, x)
 
         # _test_helpers.assert_values_are_close(ort_prediction1, pt_prediction1)   # TODO: this is failing, need to investigate!
-                                                                                   # This will be no reproducible if we change the model forward to 
+                                                                                   # This will be no reproducible if we change the model forward to
                                                                                    # mask1 = torch.gt(out, 0.01)
         _test_helpers.assert_values_are_close(ort_prediction2, pt_prediction2)
         _test_helpers.assert_values_are_close(ort_mask1, pt_mask1)
@@ -819,7 +819,7 @@ def test_duplicated_output(loss_with_duplicated_output):
 
     def run_step(model, input):
         out, out_dup = model(input)
-        loss = out.sum() 
+        loss = out.sum()
         if loss_with_duplicated_output:
             loss = loss + (2 * out_dup).sum()
         loss.backward()
@@ -833,7 +833,7 @@ def test_duplicated_output(loss_with_duplicated_output):
         _test_helpers.assert_values_are_close(ort_prediction1, pt_prediction1)
         _test_helpers.assert_values_are_close(ort_prediction2, pt_prediction2)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-5)
-        
+
 def test_multiple_forward_only_calls():
     device = 'cuda'
     N, D_in, H, D_out = 32, 784, 500, 10
@@ -892,7 +892,7 @@ def test_multiple_overlapping_forward_backward_calls():
 
         prediction2 = model(x2)
         loss2 = prediction2.sum()
-        
+
         loss1.backward()
         loss2.backward()
         return prediction1, prediction2
@@ -905,10 +905,10 @@ def test_multiple_overlapping_forward_backward_calls():
         ort_x2 = pt_x2.clone().detach()
         ort_x1.requires_grad = True
         ort_x2.requires_grad = True
-        
+
         pt_prediction1, pt_prediction2 = run_step(pt_model, pt_x1, pt_x2)
         ort_prediction1, ort_prediction2 = run_step(ort_model, ort_x1, ort_x2)
-        
+
         _test_helpers.assert_values_are_close(ort_prediction1, pt_prediction1)
         _test_helpers.assert_values_are_close(ort_prediction2, pt_prediction2)
         _test_helpers.assert_values_are_close(ort_x1.grad, pt_x1.grad)
@@ -1045,8 +1045,8 @@ def test_identity_elimination():
         # and then eliminated after transformation
         def forward(self, x):
             y = self.fc(x)
-            z = y 
-            return z 
+            z = y
+            return z
 
     device = 'cuda'
     N, D_in, H, D_out = 64, 784, 500, 10
@@ -1085,8 +1085,8 @@ def test_ortmodule_inputs_with_dynamic_shape():
 def test_bert_inputs_with_dynamic_shape():
 
     # create pytorch model with dropout disabled
-    pt_model = _get_bert_for_sequence_classification_model('cuda', 
-        hidden_dropout_prob=0.0, 
+    pt_model = _get_bert_for_sequence_classification_model('cuda',
+        hidden_dropout_prob=0.0,
         attention_probs_dropout_prob=0.0)
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
@@ -1198,7 +1198,7 @@ def test_model_output_with_inplace_update(device):
     with pytest.raises(Exception) as ex_info:
         pt_y1 = run_step(pt_model, pt_x1)
     assert "modified by an inplace operation" in str(ex_info.value)
-    
+
     with pytest.raises(Exception) as ex_info:
         ort_y1 = run_step(ort_model, ort_x1)
     assert "modified by an inplace operation" in str(ex_info.value)
@@ -1509,7 +1509,7 @@ def test_exception_raised_for_custom_class_return_value_module(device):
     y = torch.randn(N, D_in, device=device)
     z = torch.randn(N, D_in, device=device)
 
-    with pytest.raises(TypeError) as runtime_error:
+    with pytest.raises(_fallback.ORTModuleIOError) as runtime_error:
         model(x, y, z)
     assert 'ORTModule does not support the following model output type' in str(runtime_error.value)
 
@@ -1547,9 +1547,11 @@ def test_model_with_multiple_devices_cpu_cuda():
             return x
 
     model = MultipleDeviceModel()
-    with pytest.raises(RuntimeError) as e:
-        model = ORTModule(model)
-    assert str(e.value) == 'ORTModule supports a single device per model for now'
+    model = ORTModule(model)
+    x = torch.randn(20, 10)
+    with pytest.raises(_fallback.ORTModuleFallbackException) as e:
+        _ = model(x)
+    assert str(e.value) == 'ORTModule supports a single device per model'
 
 def test_model_with_multiple_devices_to_to():
     class MultipleDeviceModel(torch.nn.Module):
@@ -1564,9 +1566,11 @@ def test_model_with_multiple_devices_to_to():
             return x
 
     model = MultipleDeviceModel()
-    with pytest.raises(RuntimeError) as e:
-        model = ORTModule(model)
-    assert str(e.value) == 'ORTModule supports a single device per model for now'
+    model = ORTModule(model)
+    x = torch.randn(20, 10)
+    with pytest.raises(_fallback.ORTModuleFallbackException) as e:
+        _ = model(x)
+    assert str(e.value) == 'ORTModule supports a single device per model'
 
 def test_model_with_multiple_devices_to_cpu():
     class MultipleDeviceModel(torch.nn.Module):
@@ -1581,9 +1585,11 @@ def test_model_with_multiple_devices_to_cpu():
             return x
 
     model = MultipleDeviceModel()
-    with pytest.raises(RuntimeError) as e:
-        model = ORTModule(model)
-    assert str(e.value) == 'ORTModule supports a single device per model for now'
+    model = ORTModule(model)
+    x = torch.randn(20, 10)
+    with pytest.raises(_fallback.ORTModuleFallbackException) as e:
+        _ = model(x)
+    assert str(e.value) == 'ORTModule supports a single device per model'
 
 def test_model_with_multiple_devices_to_cuda():
     class MultipleDeviceModel(torch.nn.Module):
@@ -1598,9 +1604,12 @@ def test_model_with_multiple_devices_to_cuda():
             return x
 
     model = MultipleDeviceModel()
-    with pytest.raises(RuntimeError) as e:
-        model = ORTModule(model)
-    assert str(e.value) == 'ORTModule supports a single device per model for now'
+    model = ORTModule(model)
+    x = torch.randn(20, 10)
+    with pytest.raises(_fallback.ORTModuleFallbackException) as e:
+        _ = model(x)
+
+    assert str(e.value) == 'ORTModule supports a single device per model'
 
 @pytest.mark.parametrize("device", ['cuda', 'cuda:0', 'cuda:1', 'cuda:2'])
 def test_model_with_different_cuda_devices(device):
@@ -1778,7 +1787,7 @@ def test_forward_data_and_model_on_different_devices(data_device, model_device):
 
     # Now that the model has been exported, feed in data from device other than the model device
     x = torch.randn(N, D_in, device=data_device)
-    with pytest.raises(RuntimeError) as runtime_error:
+    with pytest.raises(_fallback.ORTModuleDeviceException) as runtime_error:
         ort_model(x)
     assert f"Input argument to forward found on device {torch.device(x.device)}, but expected it to be on module device {ort_model._torch_module._execution_manager(ort_model._is_training())._device}." in str(runtime_error.value)
 
@@ -2951,7 +2960,7 @@ def test_input_with_string_exception():
 
     model = MyStrNet()
     model = ORTModule(model)
-    with pytest.raises(TypeError) as ex_info:
+    with pytest.raises(_fallback.ORTModuleIOError) as ex_info:
         _ = model(torch.randn(1, 2), 'hello')
     assert "ORTModule does not support the following model data type <class 'str'>" in str(ex_info.value)
 
@@ -3131,3 +3140,127 @@ def test_debug_options_log_level_validation_fails_on_type_mismatch():
     with pytest.raises(Exception) as ex_info:
         _ = DebugOptions(log_level=log_level)
     assert f"Expected log_level of type LogLevel, got {type(log_level)}." in str(ex_info.value)
+
+@pytest.mark.parametrize("is_training,fallback_enabled,matching_policy", [(True, True, True), (False, True, True), (True, False, True), (False, False, True),
+                                                                          (True, True, False), (False, True, False), (True, False, False), (False, False, False)])
+def test_ortmodule_fallback_forward(is_training, fallback_enabled, matching_policy):
+    # is_training: True for torch.nn.Module training model, eval mode otherwise
+    # fallback_enabled: True results in PyTorch executing the forward graph instead of ORT backend
+    # matching_policy: Tru results in properly matching FALLBACK_UNSUPPORTED_DEVICE policy to ORTModuleDeviceException exception.
+    #   Otherwise, an incorrect policy (FALLBACK_UNSUPPORTED_INPUT) is used to verify that the fallback does not happen
+
+    from dataclasses import dataclass
+    @dataclass
+    class Point:
+        x: int
+        y: int
+
+    class UnsupportedInputModel(torch.nn.Module):
+        def __init__(self):
+            super(UnsupportedInputModel, self).__init__()
+        def forward(self, point):
+            return point.x * point.y
+
+    pt_model = UnsupportedInputModel()
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    inputs = Point(x=2,y=3)
+
+    policy = _fallback._FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD if matching_policy else _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE
+
+    ort_model.train(is_training)
+    if fallback_enabled:
+        ort_model._torch_module._execution_manager(is_training=is_training)._fallback_manager._policy = policy
+        if matching_policy:
+            ort_out = ort_model(inputs)
+            pt_out = pt_model(inputs)
+            assert ort_out == pt_out
+        else:
+            with pytest.raises(_fallback.ORTModuleFallbackException) as type_error:
+                ort_model(inputs)
+            assert "ORTModule does not support the following model data type" in str(type_error.value)
+    else:
+        ort_model._torch_module._execution_manager(is_training=is_training)._fallback_manager._policy = _fallback._FallbackPolicy.FALLBACK_DISABLE
+        with pytest.raises(_fallback.ORTModuleFallbackException) as type_error:
+            ort_model(inputs)
+        assert "ORTModule does not support the following model data type" in str(type_error.value)
+
+
+@pytest.mark.parametrize("is_training,fallback_enabled,matching_policy", [(True, True, True), (False, True, True), (True, False, True), (False, False, True),
+                                                                          (True, True, False), (False, True, False), (True, False, False), (False, False, False)])
+def test_ortmodule_fallback_device__multiple(is_training, fallback_enabled, matching_policy):
+    # is_training: True for torch.nn.Module training model, eval mode otherwise
+    # fallback_enabled: True results in PyTorch executing the forward graph instead of ORT backend
+    # matching_policy: Tru results in properly matching FALLBACK_UNSUPPORTED_DEVICE policy to ORTModuleDeviceException exception.
+    #   Otherwise, an incorrect policy (FALLBACK_UNSUPPORTED_INPUT) is used to verify that the fallback does not happen
+
+    class ManyDevicesNet(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.net1 = torch.nn.Linear(10, 10).to('cuda:0')
+            self.relu = torch.nn.ReLU()
+            self.net2 = torch.nn.Linear(10, 5).to('cpu')
+
+        def forward(self, x):
+            x = self.relu(self.net1(x.to('cuda:0')))
+            return self.net2(x.to('cpu'))
+
+    pt_model = ManyDevicesNet()
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    inputs = torch.randn(20, 10)
+
+    policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE if matching_policy else _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_INPUT
+
+    ort_model.train(is_training)
+    if fallback_enabled:
+        ort_model._torch_module._execution_manager(is_training=is_training)._fallback_manager._policy = policy
+        if matching_policy:
+            ort_out = ort_model(inputs)
+            pt_out = pt_model(inputs)
+            _test_helpers.assert_values_are_close(ort_out, pt_out, rtol=0, atol=0)
+        else:
+            with pytest.raises(_fallback.ORTModuleFallbackException) as type_error:
+                ort_model(inputs)
+            assert "ORTModule supports a single device per model" in str(type_error.value)
+    else:
+        ort_model._torch_module._execution_manager(is_training=is_training)._fallback_manager._policy = _fallback._FallbackPolicy.FALLBACK_DISABLE
+        with pytest.raises(_fallback.ORTModuleFallbackException) as type_error:
+            ort_model(inputs)
+        assert "ORTModule supports a single device per model" in str(type_error.value)
+
+
+@pytest.mark.parametrize("is_training,fallback_enabled,matching_policy", [(True, True, True), (False, True, True), (True, False, True), (False, False, True),
+                                                                          (True, True, False), (False, True, False), (True, False, False), (False, False, False)])
+def test_ortmodule_fallback_device__mismatch(is_training, fallback_enabled, matching_policy):
+    # is_training: True for torch.nn.Module training model, eval mode otherwise
+    # fallback_enabled: True results in PyTorch executing the forward graph instead of ORT backend
+    # matching_policy: Tru results in properly matching FALLBACK_UNSUPPORTED_DEVICE policy to ORTModuleDeviceException exception.
+    #   Otherwise, an incorrect policy (FALLBACK_UNSUPPORTED_INPUT) is used to verify that the fallback does not happen
+
+    data_device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+
+    # For initial model export, use same device for data and model
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
+    model = ORTModule(model)
+    model.train(is_training)
+    output = model(torch.randn(N, D_in))
+
+    policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE if matching_policy else _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_INPUT
+
+    # Use data in different device for testing
+    inputs = torch.randn(N, D_in, device=data_device)
+    if fallback_enabled:
+        model._torch_module._execution_manager(is_training=is_training)._fallback_manager._policy = policy
+        if matching_policy:
+            with pytest.raises(RuntimeError) as e:
+                model(inputs)
+            assert "Expected all tensors to be on the same device, but found at least two devices, cpu and cuda:0!" in str(e.value)
+        else:
+            with pytest.raises(_fallback.ORTModuleDeviceException) as e:
+                model(inputs)
+            assert f"Input argument to forward found on device {torch.device(inputs.device)}, but expected it to be on module device {model._torch_module._execution_manager(model._is_training())._device}." in str(e.value)
+    else:
+        model._torch_module._execution_manager(is_training=is_training)._fallback_manager._policy = _fallback._FallbackPolicy.FALLBACK_DISABLE
+        with pytest.raises(_fallback.ORTModuleDeviceException) as e:
+            model(inputs)
+        assert f"Input argument to forward found on device {torch.device(inputs.device)}, but expected it to be on module device {model._torch_module._execution_manager(model._is_training())._device}." in str(e.value)

@@ -9,12 +9,20 @@ from onnxruntime.training import orttrainer
 try:
     from onnxruntime.training.ortmodule import ORTModule
     from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory
+    from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
 except ImportError:
     # Some pipelines do not contain ORTModule
     pass
-except EnvironmentError:
-    # Some pipelines do not contain ORTModule
-    pass
+except Exception as e:
+    try:
+        from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
+        if isinstance(e, ORTModuleInitException):
+            # ORTModule is present but not ready to run
+            # That is OK because this file is also used by ORTTrainer tests
+            pass
+    except Exception:
+        # ORTModule not present
+        pass
 
 def assert_model_outputs(output_a, output_b, verbose=False, rtol=1e-7, atol=0):
     r"""Asserts whether output_a and output_b difference is within specified tolerance
@@ -104,14 +112,14 @@ def assert_optim_state(expected_state, actual_state, rtol=1e-7, atol=0):
                 "Update_Count": update_tensor # if optimizer is adam, absent otherwise
             },
         ...
-        "shared_optimizer_state": # if optimizer is shared, absent otherwise. 
+        "shared_optimizer_state": # if optimizer is shared, absent otherwise.
                                     So far, only lamb optimizer uses this.
         {
             "step": step_tensor # int array of size 1
         }
 
     Args:
-        expected_state (dict(dict())): Expected optimizer state 
+        expected_state (dict(dict())): Expected optimizer state
         actual_state (dict(dict())): Actual optimizer state
         rtol (float, default is 1e-7): Max relative difference
         atol (float, default is 0): Max absolute difference

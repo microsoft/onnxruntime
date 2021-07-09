@@ -5,6 +5,7 @@
 
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
+from ._fallback import _FallbackManager, ORTModuleFallbackException, ORTModuleDeviceException
 
 import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
@@ -35,8 +36,9 @@ def _check_same_device(device, argument_str, *args):
         if arg is not None and isinstance(arg, torch.Tensor):
             arg_device = torch.device(arg.device)
             if arg_device != device:
-                raise RuntimeError(
-                    f"{argument_str} found on device {arg_device}, but expected it to be on module device {device}.")
+                raise _FallbackManager.wrap_exception(ORTModuleDeviceException,
+                                                      RuntimeError(
+                                                            f"{argument_str} found on device {arg_device}, but expected it to be on module device {device}."))
 
 
 def get_device_index(device):
@@ -61,18 +63,26 @@ def get_device_str(device):
         else:
             device = device.type + ':' + str(device.index)
     else:
-        raise RuntimeError('Unsupported device type')
+        raise _FallbackManager.wrap_exception(ORTModuleDeviceException, RuntimeError('Unsupported device type'))
     return device
 
 
 def get_device_from_module(module):
-    '''Returns the first device found in the `module`'s parameters or None'''
+    '''Returns the first device found in the `module`'s parameters or None
+
+    Args:
+        module (torch.nn.Module): PyTorch model to extract device from
+
+    Raises:
+        ORTModuleFallbackException: When more than one device is found at `module`
+    '''
     device = None
     try:
         device = next(module.parameters()).device
         for param in module.parameters():
             if param.device != device:
-                raise RuntimeError('ORTModule supports a single device per model for now')
+                raise _FallbackManager.wrap_exception(ORTModuleDeviceException,
+                                                      RuntimeError('ORTModule supports a single device per model'))
     except StopIteration:
         # Model doesn't have a device set to any of the model parameters
         pass
@@ -80,7 +90,12 @@ def get_device_from_module(module):
 
 
 def get_device_from_inputs(args, kwargs):
-    '''Returns device from first PyTorch Tensor within args or kwargs'''
+    '''Returns device from first PyTorch Tensor within args or kwargs
+
+    Args:
+        args: List with inputs
+        kwargs: Dictionary with inputs
+    '''
 
     device = None
     if args:
