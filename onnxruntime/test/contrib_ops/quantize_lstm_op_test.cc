@@ -127,11 +127,11 @@ static void ComputeRefOutput(std::vector<float>& Y_data,
     std::vector<int64_t> B_dims = {num_directions, 8 * hidden_size};
     test.AddInput<float>("B", B_dims, *B_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   // sequence_lens
-  test.AddMissingOptionalInput<int>();
+  test.AddOptionalInputEdge<int>();
 
   std::vector<int64_t> initial_h_dims = {num_directions, batch_size, hidden_size};
   test.AddInput<float>("initial_h", initial_h_dims, ApplyQDQ<uint8_t>(initial_h_data, num_directions));
@@ -143,7 +143,7 @@ static void ComputeRefOutput(std::vector<float>& Y_data,
     std::vector<int64_t> P_dims = {num_directions, 3 * hidden_size};
     test.AddInput<float>("P", P_dims, *P_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   size_t y_data_size = seq_length * num_directions * batch_size * hidden_size;
@@ -239,11 +239,11 @@ static void RunQuantLSTM(int64_t input_size,
 
     test.AddInput<float>("B", B_dims, B_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   // sequence_lens
-  test.AddMissingOptionalInput<int>();
+  test.AddOptionalInputEdge<int>();
 
   // initial_h
   std::vector<int64_t> initial_h_dims = {num_directions, batch_size, hidden_size};
@@ -261,7 +261,7 @@ static void RunQuantLSTM(int64_t input_size,
     P_data = rand_gen.Gaussian<float>(P_dims, 0.0f, 0.25f);
     test.AddInput<float>("P", P_dims, P_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   std::vector<int64_t> per_tensor_dims = {num_directions};
@@ -408,10 +408,10 @@ TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
   test.AddInput<int8_t>("R", R_dims, r_quant, true);  // Trigger pre-packing
 
   // B
-  test.AddMissingOptionalInput<float>();
+  test.AddOptionalInputEdge<float>();
 
   // sequence_lens
-  test.AddMissingOptionalInput<int>();
+  test.AddOptionalInputEdge<int>();
 
   // initial_h
   std::vector<int64_t> initial_h_dims = {num_directions, batch_size, hidden_size};
@@ -423,7 +423,7 @@ TEST(DynamicQuantLSTMTest, SharedPrepackedWeights) {
   std::vector<float> initial_c_data = rand_gen.Gaussian<float>(initial_c_dims, 0.0f, 0.25f);
   test.AddInput<float>("initial_c", initial_c_dims, initial_c_data);
 
-  test.AddMissingOptionalInput<float>();
+  test.AddOptionalInputEdge<float>();
 
   std::vector<int64_t> per_tensor_dims = {num_directions};
   test.AddInput<float>("W_scale", per_tensor_dims, w_scale);

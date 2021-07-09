@@ -1445,6 +1445,11 @@ struct OrtApi {
   * Use this API to release the instance of OrtTensorRTProviderV2.
   */
   ORT_CLASS_RELEASE2(TensorRTProviderOptions);
+
+  /**
+  * Enable custom operators in onnxruntime-extensions: https://github.com/microsoft/onnxruntime-extensions.git
+  */
+  ORT_API2_STATUS(EnableOrtCustomOps, _Inout_ OrtSessionOptions* options);
 };
 
 /*

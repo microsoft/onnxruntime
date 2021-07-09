@@ -736,7 +736,6 @@ TEST(BatchNormTest, BatchNorm2d_fp16) {
 #endif
 
 // TODO fix flaky test for CUDA
-#if defined(ENABLE_TRAINING)
 TEST(BatchNormTest, ForwardTrainingTestWithSavedOutputsOpset9) {
   OpTester test("BatchNormalization", 9);
   float epsilon = 1e-05f;
@@ -790,7 +789,6 @@ TEST(BatchNormTest, ForwardTrainingTestOpset14) {
   // exclude TRT and OpenVINO for same reasons as seen in TestBatchNorm()
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime

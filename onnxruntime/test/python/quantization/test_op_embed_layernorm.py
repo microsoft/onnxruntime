@@ -53,13 +53,13 @@ class TestOpEmbedLayerNormalization(unittest.TestCase):
         seg_embed_weights = np.random.random_sample(seg_embed_shape).astype(dtype='float32')
         seg_embed_initializer = onnx.numpy_helper.from_array(seg_embed_weights, name='seg_embed')
 
-        layer_norm_weight_shape = [hidden_size]
-        layer_norm_weights = np.random.random_sample(layer_norm_weight_shape).astype(dtype='float32')
-        layer_norm_weights_initializer = onnx.numpy_helper.from_array(layer_norm_weights, name='layer_norm_weight')
+        gamma_shape = [hidden_size]
+        gamma = np.random.random_sample(gamma_shape).astype(dtype='float32')
+        gamma_initializer = onnx.numpy_helper.from_array(gamma, name='gamma')
 
-        layer_norm_bias_shape = [hidden_size]
-        layer_norm_bias_weights = np.random.random_sample(layer_norm_bias_shape).astype(dtype='float32')
-        layer_norm_bias_initializer = onnx.numpy_helper.from_array(layer_norm_bias_weights, name='layer_norm_bias')
+        beta_shape = [hidden_size]
+        beta = np.random.random_sample(beta_shape).astype(dtype='float32')
+        beta_initializer = onnx.numpy_helper.from_array(beta, name='beta')
 
         # EmbedLayerNormalization Outputs:
         layernorm_out_shape = [batch, sequence_length, hidden_size]
@@ -70,7 +70,7 @@ class TestOpEmbedLayerNormalization(unittest.TestCase):
 
         # EmbedLayerNormalization Node:
         embed_layer_norm_inputs = [
-            'input_ids', 'segment_ids', 'word_embed', 'pos_embed', 'seg_embed', 'layer_norm_weight', 'layer_norm_bias'
+            'input_ids', 'segment_ids', 'word_embed', 'pos_embed', 'seg_embed', 'gamma', 'beta'
         ]
         embed_layer_norm_outputs = ['layernorm_out', 'mask_index_out']
         embed_layer_norm_node = helper.make_node('EmbedLayerNormalization',
@@ -84,8 +84,7 @@ class TestOpEmbedLayerNormalization(unittest.TestCase):
         inputs = [input_ids_tensor, segment_ids_tensor]
         outputs = [layernorm_out_tensor, mask_index_out_tensor]
         initializers = [
-            word_embed_initializer, pos_embed_initializer, seg_embed_initializer, layer_norm_weights_initializer,
-            layer_norm_bias_initializer
+            word_embed_initializer, pos_embed_initializer, seg_embed_initializer, gamma_initializer, beta_initializer
         ]
 
         graph = helper.make_graph(nodes, graph_name, inputs, outputs, initializer=initializers)
@@ -110,7 +109,8 @@ class TestOpEmbedLayerNormalization(unittest.TestCase):
 
         quantize_dynamic(model_f32_path, model_uint8_path)
 
-        qnode_counts = {'DequantizeLinear': 3}
+        # Quantization should not have any DequantizeLinear nodes:
+        qnode_counts = {'DequantizeLinear': 0, 'QEmbedLayerNormalization': 1}
         check_op_type_count(self, model_uint8_path, **qnode_counts)
         data_reader.rewind()
 
@@ -133,7 +133,8 @@ class TestOpEmbedLayerNormalization(unittest.TestCase):
 
         quantize_dynamic(model_f32_path, model_uint8_path)
 
-        qnode_counts = {'DequantizeLinear': 3}
+        # Quantization should not have any DequantizeLinear nodes:
+        qnode_counts = {'DequantizeLinear': 0, 'QEmbedLayerNormalization': 1}
         check_op_type_count(self, model_uint8_path, **qnode_counts)
         data_reader.rewind()
 

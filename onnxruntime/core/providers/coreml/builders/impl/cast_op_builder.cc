@@ -28,9 +28,9 @@ class CastOpBuilder : public BaseOpBuilder {
 Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& /* model_builder */,
                                             const Node& /* node */,
                                             const logging::Logger& /* logger */) const {
-  // Right now we're only handling an ArgMax op followed by a Cast to int32 type.
-  // This can fuse the ArgMax's int64 output type which is not supported in CoreML model.
-  // And that ArgMax fused with the cast node produces an int32 output, so we're skipping adding the Cast node here.
+  // This is a special handling case for ArgMax Op, where argmax is followed by a cast to int32 type.
+  // The ArgMax is fused with the Cast node and produces an int32 output.
+  // Cast node is not provided in CoreML model, so we're skipping adding the Cast node here.
   return Status::OK();
 }
 
