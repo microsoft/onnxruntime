@@ -21,7 +21,7 @@ var ot_opts = {
     // os: getAnchorSelectedOS() || getDefaultSelectedOS(),
     ot_os: 'ot_linux',
     ot_architecture: 'ot_X64',
-    ot_language: 'ot_PyTorch18',
+    ot_language: 'ot_PyTorch19',
     ot_hardwareAcceleration: 'ot_CUDA10',
 };
 
@@ -71,6 +71,7 @@ ot_os.on("keypress keyup", function (event) {
 });
 ot_tab.on("click", function() {
     ot_commandMessage(ot_buildMatcher());
+    ot_checkValidity();
 });
 architecture.on("click", function () {
     selectedOption(architecture, this, "architecture");
@@ -535,28 +536,28 @@ function ot_buildMatcher() {
 var ot_validCombos = {
    //linux
     "ot_linux,ot_PyTorch18,ot_X64,ot_CUDA10":
-    "<b>Stable:</b> pip install onnxruntime-training <br/><br/><b>Nightly:</b> pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch181.cu102.html",
+    "pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu102.html<br/> python -m torch_ort.configure",
 
     "ot_linux,ot_PyTorch18,ot_X64,ot_CUDA11":
-    "<b>Stable: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu111.html <br/><br/><b>Nightly: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch181.cu111.html",
+    "pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu111.html<br/> python -m torch_ort.configure",
 
     "ot_linux,ot_PyTorch18,ot_X64,ot_DefaultCPU":
     "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
 
     "ot_linux,ot_PyTorch18,ot_X64,ot_AMD":
-    "<b>Stable: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.rocm42.html<br/><br/><b>Nightly: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch181.rocm42.html",
+    "This combination is in preview. Please <a href=https://github.com/Microsoft/onnxruntime/issues>reach out</a> for preview packages",
    
     "ot_linux,ot_PyTorch18,ot_X64,ot_DNNL":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
    
     "ot_linux,ot_PyTorch19,ot_X64,ot_CUDA10":
-    "<b>Stable:</b> pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.cu102.html <br/><br/><b>Nightly:</b> pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch190.cu102.html",
+    "pip install torch-ort<br/> python -m torch_ort.configure",
 
     "ot_linux,ot_PyTorch19,ot_X64,ot_CUDA11":
-    "<b>Stable: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.cu111.html <br/><br/><b>Nightly: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch190.cu111.html",
+    "pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.cu111.html<br/> python -m torch_ort.configure",
 
     "ot_linux,ot_PyTorch19,ot_X64,ot_AMD":
-    "<b>Stable: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.rocm42.html<br/><br/><b>Nightly: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_torch190.rocm42.html",
+    "This combination is in preview. Please <a href=https://github.com/Microsoft/onnxruntime/issues>reach out</a> for preview packages",
    
     "ot_linux,ot_C++,ot_X64,ot_CUDA10":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
