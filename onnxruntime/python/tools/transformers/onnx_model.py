@@ -23,18 +23,13 @@ class OnnxModel:
         self.shape_infer_helper = None
         self.all_graphs = None
 
-    def infer_runtime_shape(self, dynamic_axis_mapping, update=False):
-        shape_infer_helper = None
-        if update:
-            shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
-            self.shape_infer_helper = shape_infer_helper
-        else:
-            if self.shape_infer_helper is None:
-                self.shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
-            shape_infer_helper = self.shape_infer_helper
+    def infer_runtime_shape(self, dynamic_axis_mapping={}, update=False):
+        if self.shape_infer_helper is None or update:
+            self.shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
+
         try:
-            if shape_infer_helper.infer(dynamic_axis_mapping):
-                return shape_infer_helper
+            if self.shape_infer_helper.infer(dynamic_axis_mapping):
+                return self.shape_infer_helper
         except:
             print("failed in shape inference", sys.exc_info()[0])
 
