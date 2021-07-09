@@ -4,7 +4,8 @@
 #include "onnxruntime_c_api.h"
 
 #ifdef __cplusplus
-#include "core/framework/provider_options.h"
+#include "provider_options.h"
+#include <memory>
 
 namespace onnxruntime {
 class IAllocator;
