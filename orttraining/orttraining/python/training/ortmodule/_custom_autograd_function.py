@@ -9,6 +9,7 @@ def enable_custom_autograd_support():
     from torch.onnx import register_custom_op_symbolic
     from ._custom_autograd_function_exporter import _export
     from ._custom_autograd_function_runner import call_python_forward_function, call_python_backward_function
+    import atexit
 
     register_forward_runner(call_python_forward_function)
     register_backward_runner(call_python_backward_function)

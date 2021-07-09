@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import atexit
 import sys
 import torch
 from torch.onnx import symbolic_helper
