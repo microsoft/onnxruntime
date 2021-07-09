@@ -9,6 +9,10 @@
 #include "dnnl_relu.h"
 #include "dnnl_sum.h"
 
+#if defined(ENABLE_TRAINING)
+#include "dnnl_convgrad.h"
+#endif
+
 namespace onnxruntime {
 namespace ort_dnnl {
 
@@ -168,6 +172,10 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlRelu().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Sum") {
       DnnlSum().CreatePrimitive(*this, node);
+#if defined(ENABLE_TRAINING)
+    } else if (node.OpType() == "ConvGrad") {
+      DnnlConvGrad().CreatePrimitive(*this, node);
+#endif
     } else {
       throw std::invalid_argument("not supported");
     }
