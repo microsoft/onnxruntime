@@ -19,8 +19,18 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
                   const std::vector<int64_t>& output_dims,
                   const std::vector<T>& output_vals,
                   bool v10_only = false) {
-  // V1-9
-  ORT_UNUSED_PARAMETER(steps);
+  std::unordered_set<std::string> excluded_providers;
+
+  if (!v10_only)
+    excluded_providers = {kTensorrtExecutionProvider, kOpenVINOExecutionProvider};
+  else
+    excluded_providers = {kTensorrtExecutionProvider};
+
+  // NNAPI EP does not support empty output
+  if (std::any_of(output_dims.cbegin(), output_dims.cend(), [](int64_t i) { return i == 0; })) {
+    excluded_providers.insert(kNnapiExecutionProvider);
+  }
+
   if (!v10_only) {
     OpTester testv9("Slice", 9);
     testv9.AddAttribute("starts", starts);
@@ -29,20 +39,27 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
       testv9.AddAttribute("axes", axes);
     testv9.AddInput<T>("data", input_dims, input_vals);
     testv9.AddOutput<T>("output", output_dims, output_vals);
-    testv9.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider}); // OpenVINO EP: Disabled temporarily
+    testv9.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);  // OpenVINO EP: Disabled temporarily
   }
 
   // V10
-  OpTester testv10("Slice", 10);
-  testv10.AddInput<T>("data", input_dims, input_vals);
-  testv10.AddInput<int64_t>("starts", {static_cast<int64_t>(starts.size())}, starts);
-  testv10.AddInput<int64_t>("ends", {static_cast<int64_t>(ends.size())}, ends);
-  if (axes.size() != 0)
-    testv10.AddInput<int64_t>("axes", {static_cast<int64_t>(axes.size())}, axes);
-  if (steps.size() != 0)
-    testv10.AddInput<int64_t>("steps", {static_cast<int64_t>(steps.size())}, steps);
-  testv10.AddOutput<T>("output", output_dims, output_vals);
-  testv10.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  auto run_test = [&](bool only_data_not_initializer) {
+    OpTester testv10("Slice", 10);
+    testv10.AddInput<T>("data", input_dims, input_vals);
+    testv10.AddInput<int64_t>("starts", {static_cast<int64_t>(starts.size())}, starts, only_data_not_initializer);
+    testv10.AddInput<int64_t>("ends", {static_cast<int64_t>(ends.size())}, ends, only_data_not_initializer);
+    if (axes.size() != 0)
+      testv10.AddInput<int64_t>("axes", {static_cast<int64_t>(axes.size())}, axes, only_data_not_initializer);
+    if (steps.size() != 0)
+      testv10.AddInput<int64_t>("steps", {static_cast<int64_t>(steps.size())}, steps, only_data_not_initializer);
+    testv10.AddOutput<T>("output", output_dims, output_vals);
+    testv10.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);
+  };
+
+  run_test(false);
+
+  // NNAPI EP requires the starts/ends/axes/steps be initializers
+  run_test(true);
 }
 
 // Slice V1-9 & Slice V10 can both run the following tests

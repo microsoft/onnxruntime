@@ -228,6 +228,7 @@
   Disabled in Release builds.
   Use the _USER variants for VLOG statements involving user data that may need to be filtered.
 */
+#ifndef NDEBUG
 #define VLOGS(logger, level)                                                         \
   if (!(::onnxruntime::logging::vlog_enabled && level <= (logger).VLOGMaxLevel())) { \
     /* do nothing */                                                                 \
@@ -251,6 +252,17 @@
     if (::onnxruntime::logging::vlog_enabled && level <= (logger).VLOGMaxLevel())    \
       LOGF_USER_CATEGORY(logger, VERBOSE, "VLOG" #level, format_str, ##__VA_ARGS__); \
   } while (0)
+#else
+// Disabled in Release builds.
+#define VLOGS(logger, level) \
+  if constexpr (true) {} else LOGS_CATEGORY(logger, VERBOSE, "VLOG" #level)
+#define VLOGS_USER(logger, level) \
+  if constexpr (true) {} else LOGS_USER_CATEGORY(logger, VERBOSE, "VLOG" #level)
+#define VLOGF(logger, level, format_str, ...)
+#define VLOGF_USER(logger, level, format_str, ...)
+#endif
+
+
 
 // Default logger variants
 #define VLOGS_DEFAULT(level) \

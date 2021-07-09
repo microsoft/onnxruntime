@@ -597,7 +597,7 @@ std::unique_ptr<onnxruntime::Model> OpTester::BuildGraph(
 }
 
 template <class SessionType>
-std::vector<MLValue> OpTester::ExecuteModel(
+std::vector<OrtValue> OpTester::ExecuteModel(
     Model& model, SessionType& session_object, ExpectResult expect_result,
     const std::string& expected_failure_string, const RunOptions* run_options,
     const std::unordered_map<std::string, OrtValue>& feeds,
@@ -1039,7 +1039,7 @@ void OpTester::AddReferenceOutputs(const std::string& model_path) {
     }
   }
 
-  std::vector<MLValue> subgraph_fetches;
+  std::vector<OrtValue> subgraph_fetches;
   ASSERT_TRUE((status = subgraph_session_object.Run(run_options, feeds, output_names, &subgraph_fetches)).IsOK()) << status;
 
   for (size_t out_idx = 0; out_idx < subgraph_fetches.size(); out_idx++) {
@@ -1064,11 +1064,11 @@ void OpTester::AddReferenceOutputs(const std::string& model_path) {
 }
 
 #ifdef ENABLE_TRAINING
-template std::vector<MLValue> OpTester::ExecuteModel<training::TrainingSession>(
+template std::vector<OrtValue> OpTester::ExecuteModel<training::TrainingSession>(
     Model& model, training::TrainingSession& session_object,
     ExpectResult expect_result, const std::string& expected_failure_string,
     const RunOptions* run_options,
-    const std::unordered_map<std::string, MLValue>& feeds,
+    const std::unordered_map<std::string, OrtValue>& feeds,
     const std::vector<std::string>& output_names, const std::string& provider_type);
 #endif
 

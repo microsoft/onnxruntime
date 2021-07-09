@@ -121,12 +121,6 @@ describe('#UnitTest# - reshape - packed', () => {
     it(`Test packed reshape kernel ${JSON.stringify(testData.outputShape)}`, () => {
       const webglInferenceHandler = inferenceHandler as WebGLInferenceHandler;
 
-      // TODO support WebGl 1.0
-      if (webglInferenceHandler.session.textureManager.glContext.version === 1) {
-        console.log('Running packed concat with webgl1 is not supported. Skipping.');
-        return;
-      }
-
       if (!env.webgl.pack) {
         console.log('Skipping in unpacked texture mode.');
         return;

@@ -17,7 +17,7 @@ RCT_EXPORT_MODULE(MNISTDataHandler)
 // so that onnxruntime is able to load a model using a given path.
 RCT_EXPORT_METHOD(getLocalModelPath : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
   @try {
-    NSString *modelPath = [[NSBundle mainBundle] pathForResource:@"mnist" ofType:@"onnx"];
+    NSString *modelPath = [[NSBundle mainBundle] pathForResource:@"mnist" ofType:@"ort"];
     NSFileManager *fileManager = [NSFileManager defaultManager];
     if ([fileManager fileExistsAtPath:modelPath]) {
       resolve(modelPath);
@@ -97,8 +97,7 @@ RCT_EXPORT_METHOD(postprocess
   CGContextDrawImage(context, CGRectMake(0, 0, width, height), imageRef);
   CGContextRelease(context);
 
-  const NSInteger channelSize = 1;
-  const NSInteger dimSize = height * width * channelSize;
+  const NSInteger dimSize = height * width;
   const NSInteger byteBufferSize = dimSize * sizeof(float);
 
   unsigned char *byteBuffer = static_cast<unsigned char *>(malloc(byteBufferSize));
@@ -118,7 +117,7 @@ RCT_EXPORT_METHOD(postprocess
 
   // dims
   NSArray *dims = @[
-    [NSNumber numberWithInt:1], [NSNumber numberWithInt:channelSize], [NSNumber numberWithInt:static_cast<int>(height)],
+    [NSNumber numberWithInt:1], [NSNumber numberWithInt:static_cast<int>(height)],
     [NSNumber numberWithInt:static_cast<int>(width)]
   ];
   inputTensorMap[@"dims"] = dims;
@@ -130,7 +129,7 @@ RCT_EXPORT_METHOD(postprocess
   NSString *data = [byteBufferRef base64EncodedStringWithOptions:0];
   inputTensorMap[@"data"] = data;
 
-  inputDataMap[@"Input3"] = inputTensorMap;
+  inputDataMap[@"flatten_2_input"] = inputTensorMap;
 
   return inputDataMap;
 }
@@ -138,31 +137,18 @@ RCT_EXPORT_METHOD(postprocess
 - (NSDictionary *)postprocess:(NSDictionary *)result {
   NSMutableString *detectionResult = [NSMutableString string];
 
-  NSDictionary *outputTensor = [result objectForKey:@"Plus214_Output_0"];
+  NSDictionary *outputTensor = [result objectForKey:@"Identity"];
 
   NSString *data = [outputTensor objectForKey:@"data"];
   NSData *buffer = [[NSData alloc] initWithBase64EncodedString:data options:0];
   float *values = (float *)[buffer bytes];
   int count = (int)[buffer length] / 4;
 
-  double maxValue = 0.0f;
+  int argmax = 0;
+  float maxValue = 0.0f;
   for (int i = 0; i < count; ++i) {
     if (values[i] > maxValue) {
       maxValue = values[i];
-    }
-  }
-  double total = 0.0f;
-  for (int i = 0; i < count; ++i) {
-    values[i] = exp(values[i] - maxValue);
-    total += values[i];
-  }
-  std::vector<double> softmax(count);
-  int argmax = 0;
-  maxValue = 0.0f;
-  for (int i = 0; i < count; ++i) {
-    softmax[i] = values[i] / total;
-    if (softmax[i] > maxValue) {
-      maxValue = softmax[i];
       argmax = i;
     }
   }

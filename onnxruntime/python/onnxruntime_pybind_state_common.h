@@ -134,7 +134,7 @@ ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
 namespace python {
 extern std::string openvino_device_type;
 }
-}
+}  // namespace onnxruntime
 #endif
 #ifdef USE_NUPHAR
 #include "core/providers/nuphar/nuphar_provider_factory.h"
@@ -143,7 +143,7 @@ namespace onnxruntime {
 namespace python {
 extern std::string nuphar_settings;
 }
-}
+}  // namespace onnxruntime
 #endif
 #ifdef USE_VITISAI
 #include "core/providers/vitisai/vitisai_provider_factory.h"
@@ -161,7 +161,8 @@ extern std::string nuphar_settings;
 #if defined(USE_CUDA) || defined(USE_ROCM)
 #ifdef USE_CUDA
 namespace onnxruntime {
-ProviderInfo_CUDA* GetProviderInfo_CUDA();
+ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
+ProviderInfo_CUDA& GetProviderInfo_CUDA();
 namespace python {
 // TODO remove deprecated global config
 extern OrtCudnnConvAlgoSearch cudnn_conv_algo_search;
@@ -180,7 +181,7 @@ namespace onnxruntime {
 namespace python {
 extern onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info;
 }
-}
+}  // namespace onnxruntime
 #endif
 
 // TODO remove deprecated global config
@@ -191,10 +192,8 @@ extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace onnxruntime
 #endif
 
-
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/providers/shared_library/provider_host_api.h"
-
 
 namespace onnxruntime {
 namespace python {
@@ -203,7 +202,6 @@ namespace python {
 extern OrtDevice::DeviceId cuda_device_id;
 // TODO remove deprecated global config
 extern size_t gpu_mem_limit;
-
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 struct CustomOpLibrary {
@@ -342,18 +340,6 @@ AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id);
 bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
                    const std::string& name,
                    /*out*/ ONNX_NAMESPACE::TypeProto& type_proto);
-
-#ifdef ENABLE_TRAINING
-
-namespace py = pybind11;
-
-void DlpackCapsuleDestructor(PyObject* data);
-
-py::object ToDlpack(OrtValue& ort_value);
-
-OrtValue FromDlpack(py::object dlpack_tensor, const bool is_bool_tensor);
-
-#endif
 
 }  // namespace python
 }  // namespace onnxruntime
