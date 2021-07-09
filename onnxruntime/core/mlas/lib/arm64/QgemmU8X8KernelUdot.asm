@@ -185,6 +185,7 @@ SkipScaleByZeroPointBM4
 ComputeBlockLoopStartM4
         ldr     d4,[x0],#32                 // load packed A0.l
         movi    v24.4s,#0
+        ld1     {v1.16b},[x1],#16           // load packed B1
         movi    v25.4s,#0
         ldur    d5,[x0,#-24]                // load packed A0.h
         movi    v26.4s,#0
@@ -192,50 +193,53 @@ ComputeBlockLoopStartM4
         ldur    d6,[x0,#-16]                // load packed A1.l
         movi    v28.4s,#0
         movi    v29.4s,#0
+        ld1     {v2.16b},[x1],#16           // load packed B0_next4k
         movi    v30.4s,#0
+        ld1     {v3.16b},[x1],#16           // load packed B1_next4k
         movi    v31.4s,#0
 
 ComputeBlockLoopM4
-        ld1     {v1.16b},[x1],#16           // load packed B1
+        sub     x3,x3,#1
         UdotByElement 16, 0, 4, 0
         UdotByElement 18, 0, 4, 1
         ldur    d7,[x0,#-8]                 // load packed A1.h
         UdotByElement 20, 0, 5, 0
         UdotByElement 22, 0, 5, 1
-        ld1     {v0.16b},[x1],#16           // load packed B0_next4k
+        cbz     x3,ComputeBlockLoopFinishM4
+        ld1     {v0.16b},[x1],#16           // load packed B0 for next iteration
         UdotByElement 17, 1, 4, 0
         UdotByElement 19, 1, 4, 1
-        sub     x3,x3,#1
-        cbz     x3,ComputeBlockLoopFinishM4
         ldr     d4,[x0],#32                 // load packed A0.l for next iteration
         UdotByElement 21, 1, 5, 0
         UdotByElement 23, 1, 5, 1
-        ld1     {v1.16b},[x1],#16           // load packed B1_next4k
-        UdotByElement 24, 0, 6, 0
-        UdotByElement 26, 0, 6, 1
+        ld1     {v1.16b},[x1],#16           // load packed B1 for next iteration
+        UdotByElement 24, 2, 6, 0
+        UdotByElement 26, 2, 6, 1
         ldur    d5,[x0,#-24]                // load packed A0.h for next iteration
-        UdotByElement 28, 0, 7, 0
-        UdotByElement 30, 0, 7, 1
-        ld1     {v0.16b},[x1],#16           // load packed B0 for next iteration
-        UdotByElement 25, 1, 6, 0
-        UdotByElement 27, 1, 6, 1
+        UdotByElement 28, 2, 7, 0
+        UdotByElement 30, 2, 7, 1
+        ld1     {v2.16b},[x1],#16           // load packed B0_next4k for next iteration
+        UdotByElement 25, 3, 6, 0
+        UdotByElement 27, 3, 6, 1
         ldur    d6,[x0,#-16]                // load packed A1.l for next iteration
-        UdotByElement 29, 1, 7, 0
-        UdotByElement 31, 1, 7, 1
+        UdotByElement 29, 3, 7, 0
+        UdotByElement 31, 3, 7, 1
+        ld1     {v3.16b},[x1],#16           // load packed B1_next4k for next iteration
         b       ComputeBlockLoopM4
 
 ComputeBlockLoopFinishM4
+        UdotByElement 17, 1, 4, 0
+        UdotByElement 19, 1, 4, 1
         UdotByElement 21, 1, 5, 0
         UdotByElement 23, 1, 5, 1
-        ld1     {v1.16b},[x1],#16           // load packed B1_next4k
-        UdotByElement 24, 0, 6, 0
-        UdotByElement 26, 0, 6, 1
-        UdotByElement 28, 0, 7, 0
-        UdotByElement 30, 0, 7, 1
-        UdotByElement 25, 1, 6, 0
-        UdotByElement 27, 1, 6, 1
-        UdotByElement 29, 1, 7, 0
-        UdotByElement 31, 1, 7, 1
+        UdotByElement 24, 2, 6, 0
+        UdotByElement 26, 2, 6, 1
+        UdotByElement 28, 2, 7, 0
+        UdotByElement 30, 2, 7, 1
+        UdotByElement 25, 3, 6, 0
+        UdotByElement 27, 3, 6, 1
+        UdotByElement 29, 3, 7, 0
+        UdotByElement 31, 3, 7, 1
         add     x10,x2,x6,lsl #2            // compute output row 2
         add     v16.4s,v16.4s,v24.4s        // fold high results into low results
         add     v18.4s,v18.4s,v26.4s
