@@ -91,7 +91,6 @@ namespace cuda {
 
 // Register ReduceMin int64_t support in OpSet14.
 #define REGISTER_KERNEL_TYPED_14(name, T)                                                  \
-  REGISTER_KERNEL_VERSIONED_TYPED_13(name, T)                                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
       name,                                                                                \
       kOnnxDomain,                                                                         \
@@ -998,6 +997,13 @@ REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, double)
 REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, int32_t)
 REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, int8_t)
 REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, uint8_t)
+
+REGISTER_KERNEL_TYPED_14(ReduceMin, MLFloat16)
+REGISTER_KERNEL_TYPED_14(ReduceMin, float)
+REGISTER_KERNEL_TYPED_14(ReduceMin, double)
+REGISTER_KERNEL_TYPED_14(ReduceMin, int32_t)
+REGISTER_KERNEL_TYPED_14(ReduceMin, int8_t)
+REGISTER_KERNEL_TYPED_14(ReduceMin, uint8_t)
 REGISTER_KERNEL_TYPED_14(ReduceMin, int64_t)
 
 REGISTER_KERNEL_HFD(ReduceProd)
