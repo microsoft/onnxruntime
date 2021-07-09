@@ -341,5 +341,18 @@ bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
                    const std::string& name,
                    /*out*/ ONNX_NAMESPACE::TypeProto& type_proto);
 
+#ifdef ENABLE_TRAINING
+
+// Allocate a new Capsule object, which takes the ownership of OrtValue.
+// Caller is responsible for releasing.
+// This function calls OrtValueToDlpack(...).
+PyObject* ToDlpack(OrtValue ort_value);
+
+// Consume a Capsule object and claims the ownership of its underlying tensor to
+// create a OrtValue. This function calls DlpackToOrtValue(...) to do the conversion.
+OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor);
+
+#endif
+
 }  // namespace python
 }  // namespace onnxruntime
