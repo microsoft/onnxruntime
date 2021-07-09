@@ -3,7 +3,10 @@
 
 #include "gtest/gtest.h"
 
+#include "core/framework/tensor.h"
+#include "core/framework/allocatormgr.h"
 #include "core/quantization/quantization.h"
+#include "test/framework/test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -91,12 +94,46 @@ void TestDequantizeVectorAndValues(const std::vector<T>& values,
   }
 }
 
+template <typename T>
+void EnsureQuantizedTensorParam(const float scale, const T zero_point) {
+  TensorShape shape({1});
+
+  // First, create the scale tensor:
+  auto alloc = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  auto num_bytes = shape.Size() * sizeof(float);
+  void* data = alloc->Alloc(num_bytes);
+  float* float_data = static_cast<float*>(data);
+  float_data[0] = scale;
+  Tensor scale_tensor(DataTypeImpl::GetType<float>(),
+                      shape,
+                      data,
+                      alloc->Info(),
+                      /*offset=*/0);
+
+  // Next, create the zero_point tensor:
+  auto T_num_bytes = shape.Size() * sizeof(T);
+  void* T_data = alloc->Alloc(T_num_bytes);
+  T* typed_data = static_cast<T*>(T_data);
+  typed_data[0] = zero_point;
+  Tensor zero_point_tensor(DataTypeImpl::GetType<T>(),
+                           shape,
+                           T_data,
+                           alloc->Info(),
+                           /*offset=*/0);
+
+  quantization::Params<T> params =
+      quantization::GetTensorQuantizationParams<T>(&scale_tensor,
+                                                   &zero_point_tensor);
+
+  EXPECT_EQ(params.scale, scale);
+  EXPECT_EQ(params.zero_point, zero_point);
+}
+
 }  // namespace
 
 TEST(Quantization, CreateQuantizationParamsFromTensors) {
-  //
-  // TODO(kreeger): write me!
-  //
+  EnsureQuantizedTensorParam<int8_t>(0.134f, -2);
+  EnsureQuantizedTensorParam<uint8_t>(0.0123f, 141);
 }
 
 //
@@ -192,6 +229,7 @@ TEST(Quantization, DequantizeValues_UInt8) {
 // Invalid test state
 //
 
+#if !defined(ORT_NO_EXCEPTIONS)
 TEST(Quantization, QuantizeMismatchedVectorSizes) {
   std::vector<float> values = {1.0f, 2.0f, 3.0f};
   std::vector<int8_t> quant_values;
@@ -211,6 +249,6 @@ TEST(Quantization, QuantizeLinearMismatchedVectorSizes) {
   EXPECT_THROW(quantization::QuantizeLinear(values, quant_values),
                OnnxRuntimeException);
 }
-
+#endif
 }  // namespace test
 }  // namespace onnxruntime
