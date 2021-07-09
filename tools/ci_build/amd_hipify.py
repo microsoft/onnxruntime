@@ -144,8 +144,6 @@ provider_excluded_files = [
                 'tensor/resize_impl.h',
                 'tensor/transpose.cc',
                 'tensor/transpose.h',
-                'tensor/space_depth_ops.cc',
-                'tensor/space_depth_ops.h',
                 'tensor/upsample.cc',
                 'tensor/upsample.h',
                 'tensor/upsample_impl.cu',
@@ -224,6 +222,9 @@ def hipify(src_file_path, dst_file_path):
         subprocess.run([HIPIFY_PERL, src_file_path], stdout=f)
     with open(dst_file_path) as f:
         s = f.read().replace('kCudaExecutionProvider', 'kRocmExecutionProvider')
+        s = s.replace('cublasHandle', 'RocblasHandle')
+        s = s.replace('cublas_handle', 'rocblas_handle_var')
+        s = s.replace('cublasHandle_t', 'rocblas_handle')
         s = s.replace('CudaAsyncBuffer', 'RocmAsyncBuffer')
         s = s.replace('CudaKernel', 'RocmKernel')
         s = s.replace('ToCudaType', 'ToHipType')
