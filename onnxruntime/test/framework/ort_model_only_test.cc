@@ -198,10 +198,12 @@ static void CompareSessionMetadata(const InferenceSessionWrapper& session_object
   const auto pair_1 = session_object_1.GetModelMetadata();
   ASSERT_STATUS_OK(pair_1.first);
   const auto& metadata_1 = *pair_1.second;
+  const auto& model_1 = session_object_1.GetModel();
 
   const auto pair_2 = session_object_2.GetModelMetadata();
   ASSERT_STATUS_OK(pair_2.first);
   const auto& metadata_2 = *pair_2.second;
+  const auto& model_2 = session_object_2.GetModel();
 
   ASSERT_EQ(metadata_1.producer_name, metadata_2.producer_name);
   // ORT format does not have graph name
@@ -211,6 +213,9 @@ static void CompareSessionMetadata(const InferenceSessionWrapper& session_object
   ASSERT_EQ(metadata_1.graph_description, metadata_2.graph_description);
   ASSERT_EQ(metadata_1.version, metadata_2.version);
   ASSERT_EQ(metadata_1.custom_metadata_map, metadata_2.custom_metadata_map);
+
+  ASSERT_EQ(model_1.IrVersion(), model_2.IrVersion());
+  ASSERT_EQ(model_1.ProducerVersion(), model_2.ProducerVersion());
 }
 
 static void SaveAndCompareModels(const std::string& onnx_file, const std::basic_string<ORTCHAR_T>& ort_file) {

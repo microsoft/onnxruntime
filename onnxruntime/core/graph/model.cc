@@ -671,7 +671,7 @@ common::Status Model::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   ORT_RETURN_IF_ERROR(graph_->SaveToOrtFormat(builder, fbs_graph));
 
   fbs::ModelBuilder mb(builder);
-  mb.add_ir_version(model_proto_.ir_version());
+  mb.add_ir_version(IrVersion());
   mb.add_opset_import(op_set_ids);
   mb.add_producer_name(producer_name);
   mb.add_producer_version(producer_version);
