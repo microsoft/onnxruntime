@@ -576,10 +576,10 @@ TEST(QAttentionTest, QAttentionUnidirectional_U8S8) {
   std::vector<int32_t> mask_index_data = {};
 
   std::vector<float> output_data = {
-      -0.027716159820556641f, 0.091021925210952759f,
-      0.080938525497913361f, 0.61913836002349854f,
-      0.36089283227920532f, -0.11653690040111542f,
-      -0.030121456831693649f, 0.40923327207565308f};
+      -0.029270321130752563f, 0.089105717837810516f,
+      0.084381766617298126f, 0.62047165632247925f,
+      0.36089283227920532f, -0.11732138693332672f,
+      -0.029981952160596848f, 0.40998253226280212f};
 
   RunQAttentionU8S8(input_data, weight_data, bias_data, mask_index_data, output_data,
                     batch_size, sequence_length, hidden_size, number_of_heads,

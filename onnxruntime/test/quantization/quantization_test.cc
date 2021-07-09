@@ -119,8 +119,8 @@ TEST(Quantization, QuantizeFloatValues_Int8) {
 TEST(Quantization, QuantizeLinear_Int8) {
   std::vector<float> values = {-3.412f, -12.42f, 1.032f, 2.32f, 9.8212f};
   const float expected_scale = 0.0872204f;
-  const int8_t expected_zero_point = 14;
-  std::vector<int8_t> expected_values = {-25, -128, 26, 41, 127};
+  const int8_t expected_zero_point = 15;
+  std::vector<int8_t> expected_values = {-24, -127, 27, 41, 127};
 
   TestQuantizeLinearVectorAndValues(values,
                                     expected_scale,
