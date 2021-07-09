@@ -470,7 +470,8 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      if (auto* cuda_provider_info = TryGetProviderInfo_CUDA()) {
+      if(auto* cuda_provider_info = TryGetProviderInfo_CUDA())
+      {
         const auto it = provider_options_map.find(type);
         CUDAExecutionProviderInfo info{};
         if (it != provider_options_map.end())
@@ -489,8 +490,10 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
         // since FromProviderOptions might contain external CUDA allocator.
         external_allocator_info = info.external_allocator_info;
         RegisterExecutionProvider(sess, *cuda_provider_info->CreateExecutionProviderFactory(info));
-      } else {
-        if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
+      }
+      else
+      {
+        if(!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
           ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page, make sure they're in the PATH, and that your GPU is supported.");
         }
       }
@@ -828,7 +831,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     pool.RegisterForwardRunner(obj.ptr());
 #else
-    ORT_UNUSED_PARAMETER(obj);
+        ORT_UNUSED_PARAMETER(obj);
 #endif
   });
   m.def("register_backward_runner", [](py::object obj) -> void {
@@ -836,7 +839,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     pool.RegisterBackwardRunner(obj.ptr());
 #else
-    ORT_UNUSED_PARAMETER(obj);
+        ORT_UNUSED_PARAMETER(obj);
 #endif
   });
   m.def("register_torch_autograd_function", [](std::string key, py::object obj) -> void {
@@ -844,8 +847,8 @@ void addGlobalMethods(py::module& m, Environment& env) {
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
     pool.RegisterTorchAutogradFunction(key, obj.ptr());
 #else
-    ORT_UNUSED_PARAMETER(key);
-    ORT_UNUSED_PARAMETER(obj);
+        ORT_UNUSED_PARAMETER(key);
+        ORT_UNUSED_PARAMETER(obj);
 #endif
   });
   m.def("unregister_python_functions", []() -> void {
@@ -996,7 +999,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
     ORT_UNUSED_PARAMETER(algo);
     ORT_THROW("set_cudnn_conv_algo_search is not supported in ROCM");
 #else
-    cudnn_conv_algo_search = algo;
+        cudnn_conv_algo_search = algo;
 #endif
   });
   // TODO remove deprecated global config
@@ -1007,7 +1010,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
     ORT_UNUSED_PARAMETER(use_single_stream);
     ORT_THROW("set_do_copy_in_default_stream is not supported in ROCM");
 #else
-    do_copy_in_default_stream = use_single_stream;
+        do_copy_in_default_stream = use_single_stream;
 #endif
   });
   // TODO remove deprecated global config
@@ -1409,55 +1412,57 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             return *(na.Type());
           },
           "node type")
-      .def("__str__", [](const onnxruntime::NodeArg& na) -> std::string {
-        std::ostringstream res;
-        res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
-        auto shape = na.Shape();
-        std::vector<py::object> arr;
-        if (shape == nullptr || shape->dim_size() == 0) {
-          res << "[]";
-        } else {
-          res << "[";
-          for (int i = 0; i < shape->dim_size(); ++i) {
-            if (utils::HasDimValue(shape->dim(i))) {
-              res << shape->dim(i).dim_value();
-            } else if (utils::HasDimParam(shape->dim(i))) {
-              res << "'" << shape->dim(i).dim_param() << "'";
+      .def(
+          "__str__", [](const onnxruntime::NodeArg& na) -> std::string {
+            std::ostringstream res;
+            res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
+            auto shape = na.Shape();
+            std::vector<py::object> arr;
+            if (shape == nullptr || shape->dim_size() == 0) {
+              res << "[]";
             } else {
-              res << "None";
+              res << "[";
+              for (int i = 0; i < shape->dim_size(); ++i) {
+                if (utils::HasDimValue(shape->dim(i))) {
+                  res << shape->dim(i).dim_value();
+                } else if (utils::HasDimParam(shape->dim(i))) {
+                  res << "'" << shape->dim(i).dim_param() << "'";
+                } else {
+                  res << "None";
+                }
+
+                if (i < shape->dim_size() - 1) {
+                  res << ", ";
+                }
+              }
+              res << "]";
+            }
+            res << ")";
+
+            return std::string(res.str());
+          },
+          "converts the node into a readable string")
+      .def_property_readonly(
+          "shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
+            auto shape = na.Shape();
+            std::vector<py::object> arr;
+            if (shape == nullptr || shape->dim_size() == 0) {
+              return arr;
             }
 
-            if (i < shape->dim_size() - 1) {
-              res << ", ";
+            arr.resize(shape->dim_size());
+            for (int i = 0; i < shape->dim_size(); ++i) {
+              if (utils::HasDimValue(shape->dim(i))) {
+                arr[i] = py::cast(shape->dim(i).dim_value());
+              } else if (utils::HasDimParam(shape->dim(i))) {
+                arr[i] = py::cast(shape->dim(i).dim_param());
+              } else {
+                arr[i] = py::none();
+              }
             }
-          }
-          res << "]";
-        }
-        res << ")";
-
-        return std::string(res.str());
-      },
-           "converts the node into a readable string")
-      .def_property_readonly("shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
-        auto shape = na.Shape();
-        std::vector<py::object> arr;
-        if (shape == nullptr || shape->dim_size() == 0) {
-          return arr;
-        }
-
-        arr.resize(shape->dim_size());
-        for (int i = 0; i < shape->dim_size(); ++i) {
-          if (utils::HasDimValue(shape->dim(i))) {
-            arr[i] = py::cast(shape->dim(i).dim_value());
-          } else if (utils::HasDimParam(shape->dim(i))) {
-            arr[i] = py::cast(shape->dim(i).dim_param());
-          } else {
-            arr[i] = py::none();
-          }
-        }
-        return arr;
-      },
-                             "node shape (assuming the node holds a tensor)");
+            return arr;
+          },
+          "node shape (assuming the node holds a tensor)");
 
   py::class_<SessionObjectInitializer>(m, "SessionObjectInitializer");
   py::class_<PyInferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
@@ -1549,43 +1554,50 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def_property_readonly("get_profiling_start_time_ns", [](const PyInferenceSession* sess) -> uint64_t {
         return sess->GetSessionHandle()->GetProfiling().GetStartTimeNs();
       })
-      .def("get_providers", [](const PyInferenceSession* sess) -> const std::vector<std::string>& {
-        return sess->GetSessionHandle()->GetRegisteredProviderTypes();
-      },
-           py::return_value_policy::reference_internal)
-      .def("get_provider_options", [](const PyInferenceSession* sess) -> const ProviderOptionsMap& {
-        return sess->GetSessionHandle()->GetAllProviderOptions();
-      },
-           py::return_value_policy::reference_internal)
-      .def_property_readonly("session_options", [](const PyInferenceSession* sess) -> const PySessionOptions& {
-        const auto& session_options = sess->GetSessionHandle()->GetSessionOptions();
-        return static_cast<const PySessionOptions&>(session_options);
-      },
-                             py::return_value_policy::reference_internal)
-      .def_property_readonly("inputs_meta", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
-        auto res = sess->GetSessionHandle()->GetModelInputs();
-        OrtPybindThrowIfError(res.first);
-        return *(res.second);
-      },
-                             py::return_value_policy::reference_internal)
-      .def_property_readonly("outputs_meta", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
-        auto res = sess->GetSessionHandle()->GetModelOutputs();
-        OrtPybindThrowIfError(res.first);
-        return *(res.second);
-      },
-                             py::return_value_policy::reference_internal)
-      .def_property_readonly("overridable_initializers", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
-        auto res = sess->GetSessionHandle()->GetOverridableInitializers();
-        OrtPybindThrowIfError(res.first);
-        return *(res.second);
-      },
-                             py::return_value_policy::reference_internal)
-      .def_property_readonly("model_meta", [](const PyInferenceSession* sess) -> const onnxruntime::ModelMetadata& {
-        auto res = sess->GetSessionHandle()->GetModelMetadata();
-        OrtPybindThrowIfError(res.first);
-        return *(res.second);
-      },
-                             py::return_value_policy::reference_internal)
+      .def(
+          "get_providers", [](const PyInferenceSession* sess) -> const std::vector<std::string>& {
+            return sess->GetSessionHandle()->GetRegisteredProviderTypes();
+          },
+          py::return_value_policy::reference_internal)
+      .def(
+          "get_provider_options", [](const PyInferenceSession* sess) -> const ProviderOptionsMap& {
+            return sess->GetSessionHandle()->GetAllProviderOptions();
+          },
+          py::return_value_policy::reference_internal)
+      .def_property_readonly(
+          "session_options", [](const PyInferenceSession* sess) -> const PySessionOptions& {
+            const auto& session_options = sess->GetSessionHandle()->GetSessionOptions();
+            return static_cast<const PySessionOptions&>(session_options);
+          },
+          py::return_value_policy::reference_internal)
+      .def_property_readonly(
+          "inputs_meta", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
+            auto res = sess->GetSessionHandle()->GetModelInputs();
+            OrtPybindThrowIfError(res.first);
+            return *(res.second);
+          },
+          py::return_value_policy::reference_internal)
+      .def_property_readonly(
+          "outputs_meta", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
+            auto res = sess->GetSessionHandle()->GetModelOutputs();
+            OrtPybindThrowIfError(res.first);
+            return *(res.second);
+          },
+          py::return_value_policy::reference_internal)
+      .def_property_readonly(
+          "overridable_initializers", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
+            auto res = sess->GetSessionHandle()->GetOverridableInitializers();
+            OrtPybindThrowIfError(res.first);
+            return *(res.second);
+          },
+          py::return_value_policy::reference_internal)
+      .def_property_readonly(
+          "model_meta", [](const PyInferenceSession* sess) -> const onnxruntime::ModelMetadata& {
+            auto res = sess->GetSessionHandle()->GetModelMetadata();
+            OrtPybindThrowIfError(res.first);
+            return *(res.second);
+          },
+          py::return_value_policy::reference_internal)
       .def("run_with_iobinding", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
         Status status;
         if (!run_options)
