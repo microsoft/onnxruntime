@@ -536,25 +536,25 @@ function ot_buildMatcher() {
 var ot_validCombos = {
    //linux
     "ot_linux,ot_PyTorch18,ot_X64,ot_CUDA10":
-    "pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu102.html<br/>pip install torch-ort",
+    "pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu102.html<br/> python -m torch_ort.configure",
 
     "ot_linux,ot_PyTorch18,ot_X64,ot_CUDA11":
-    "pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu111.html<br/>pip install torch-ort",
+    "pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu111.html<br/> python -m torch_ort.configure",
 
     "ot_linux,ot_PyTorch18,ot_X64,ot_DefaultCPU":
     "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
 
     "ot_linux,ot_PyTorch18,ot_X64,ot_AMD":
-    "pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.rocm42.html<br/>pip install torch-ort",
+    "pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.rocm42.html<br/> python -m torch_ort.configure",
    
     "ot_linux,ot_PyTorch18,ot_X64,ot_DNNL":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
    
     "ot_linux,ot_PyTorch19,ot_X64,ot_CUDA10":
-    "pip install torch-ort",
+    "pip install torch-ort<br/> python -m torch_ort.configure",
 
     "ot_linux,ot_PyTorch19,ot_X64,ot_CUDA11":
-    "pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.cu111.html<br/>pip install torch-ort",
+    "pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.cu111.html<br/> python -m torch_ort.configure",
 
     "ot_linux,ot_PyTorch19,ot_X64,ot_AMD":
     "This combination is in preview. Please reach out to XXX for preview packages",
