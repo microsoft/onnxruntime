@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cmath>
 #include <vector>
 
 #include "core/common/common.h"
