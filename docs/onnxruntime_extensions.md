@@ -38,7 +38,7 @@ dl_model = onnx.load("dl_model.onnx")
 dl_nodes = dl_model.graph.node
 e2e_nodes.extend(dl_nodes)
 
-# construct ONNX graph and model
+# construct E2E ONNX graph and model
 e2e_graph = helper.make_graph(
     e2e_nodes,
     'e2e_graph',
@@ -49,16 +49,45 @@ e2e_graph = helper.make_graph(
 ```
 For more usage of ONNX helper, please visit the document [Python API Overview](https://github.com/onnx/onnx/blob/master/docs/PythonAPIOverview.md).
 
-### Load and Run E2E Model
+### Run E2E Model in Python
 ```python
 import onnxruntime as _ort
 from onnxruntime_extensions import get_library_path as _lib_path
 
 so = _ort.SessionOptions()
-# Register onnxruntime-extensions library
+# register onnxruntime-extensions library
 so.register_custom_ops_library(_lib_path())
 
-# Run onnxruntime session
+# run onnxruntime session
 sess = _ort.InferenceSession(e2e_model, so)
 sess.run(...)
+```
+
+### Run E2E Model in JavaScript
+To run E2E ONNX model in JavaScript, you need to first [prepare ONNX Runtime WebAssembly artifacts](https://github.com/microsoft/onnxruntime/tree/master/js), include the generated `ort.min.js`, and then load and run the model in JS.
+```js
+// use an async context to call onnxruntime functions
+async function main() {
+    try {
+        // create a new session and load the e2e model
+        const session = await ort.InferenceSession.create('./e2e_model.onnx');
+
+        // prepare inputs
+        const tensorA = new ort.Tensor(...);
+        const tensorB = new ort.Tensor(...);
+
+        // prepare feeds: use model input names as keys
+        const feeds = { a: tensorA, b: tensorB };
+
+        // feed inputs and run
+        const results = await session.run(feeds);
+
+        // read from results
+        const dataC = results.c.data;
+        document.write(`data of result tensor 'c': ${dataC}`);
+
+    } catch (e) {
+        document.write(`failed to inference ONNX model: ${e}.`);
+    }
+}
 ```
