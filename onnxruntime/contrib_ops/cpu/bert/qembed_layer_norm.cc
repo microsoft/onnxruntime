@@ -134,7 +134,7 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
             T subtotal = quantization::Dequantize<T2>(input_word_embedding[i],
                                                       word_embedding_params) +
                          quantization::Dequantize<T2>(input_position_embedding[i],
-                                                      segment_embedding_params);
+                                                      position_embedding_params);
             if (segment_embedding_data != nullptr) {
               subtotal += quantization::Dequantize<T2>(input_segment_embedding[i],
                                                        segment_embedding_params);

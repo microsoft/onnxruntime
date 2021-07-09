@@ -96,7 +96,7 @@ CalculateAvgPoolNchwU8(
             }
           }
           if (kernel_offset >= 0) {
-            y_value_sum += QuantizeTestValue<uint8_t>(xbc[kernel_offset], x_params);
+            y_value_sum += quantization::Dequantize(xbc[kernel_offset], x_params);
             ++count;
           } else {
             count += count_include_pad ? 1 : 0;
