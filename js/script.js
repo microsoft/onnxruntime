@@ -545,7 +545,7 @@ var ot_validCombos = {
     "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
 
     "ot_linux,ot_PyTorch18,ot_X64,ot_AMD":
-    "pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.rocm42.html<br/> python -m torch_ort.configure",
+    "This combination is in preview. Please raise an issue at https://github.com/Microsoft/onnxruntime/issues for preview packages",
    
     "ot_linux,ot_PyTorch18,ot_X64,ot_DNNL":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
@@ -557,7 +557,7 @@ var ot_validCombos = {
     "pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.cu111.html<br/> python -m torch_ort.configure",
 
     "ot_linux,ot_PyTorch19,ot_X64,ot_AMD":
-    "This combination is in preview. Please reach out to XXX for preview packages",
+    "This combination is in preview. Please reach out to https://github.com/Microsoft/onnxruntime/issues for preview packages",
    
     "ot_linux,ot_C++,ot_X64,ot_CUDA10":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
