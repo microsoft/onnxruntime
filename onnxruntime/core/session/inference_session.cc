@@ -332,7 +332,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
   std::cout << "ConstructorCommon (inference_session.cc) start " << std::endl;
   ConstructorCommon(session_options, session_env);
   end_ = std::chrono::high_resolution_clock::now();
-  std::chrono::duration<double> duration = end_ - start_;
+  duration = end_ - start_;
   std::cout << "ConstructorCommon time cost: " << duration.count() << " s" << std::endl;
 }
 
