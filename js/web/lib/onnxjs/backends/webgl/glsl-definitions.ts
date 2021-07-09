@@ -1,9 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor} from '../../tensor';
-import {TextureLayoutStrategy} from './texture-layout-strategy';
-import {ProgramInfo} from './types';
+import {ProgramInfo, TextureLayout} from './types';
 import {WebGLContext} from './webgl-context';
 
 /* eslint-disable @typescript-eslint/naming-convention */
@@ -22,15 +20,10 @@ export interface GlslPositionalFunction extends GlslFunction<FunctionType.Positi
   outputShape: readonly number[];
 }
 
-export interface GlslTensorMetadata {
-  dims: readonly number[];
-  type: Tensor.DataType;
-}
-
 export class GlslContext {
   constructor(
-      public glContext: WebGLContext, public programInfo: ProgramInfo, public inputMetadata: GlslTensorMetadata[],
-      public textureLayoutStrategy: TextureLayoutStrategy) {}
+      public glContext: WebGLContext, public programInfo: ProgramInfo, public inputTextureLayouts: TextureLayout[],
+      public outputTextureLayout: TextureLayout) {}
 }
 export abstract class GlslLib {
   constructor(public context: GlslContext) {}

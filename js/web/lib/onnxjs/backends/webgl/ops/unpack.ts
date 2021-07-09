@@ -8,8 +8,7 @@ import {ProgramInfo, TextureType} from '../types';
 import {getCoordsDataType} from '../utils';
 import {getChannels, unpackFromChannel} from './packing-utils';
 
-export const createUnpackProgramInfo = (handler: WebGLInferenceHandler,
-  input: Tensor): ProgramInfo => {
+export const createUnpackProgramInfo = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfo => {
   const rank = input.dims.length;
 
   const channels = getChannels('rc', rank);
@@ -33,9 +32,11 @@ export const createUnpackProgramInfo = (handler: WebGLInferenceHandler,
    `;
 
   return {
+    name: 'unpack',
+    hasMain: true,
     inputNames: ['A'],
-    inputTypes: [TextureType.unpacked],
-    output: {dims: input.dims, type: input.type, textureType: TextureType.packed},
+    inputTypes: [TextureType.packed],
+    output: {dims: input.dims, type: input.type, textureType: TextureType.unpacked},
     shaderSource
   };
 };

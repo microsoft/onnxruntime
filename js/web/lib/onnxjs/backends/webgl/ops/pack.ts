@@ -9,11 +9,10 @@ import {getCoordsDataType} from '../utils';
 
 import {getChannels} from './packing-utils';
 
-export const createPackProgramInfo = (handler: WebGLInferenceHandler,
-  input: Tensor): ProgramInfo => {
-  if (!handler.session.pack) {
-    throw new Error('Pack kernel should only be called on pack texture.');
-  }
+export const createPackProgramInfo = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfo => {
+  // if (!handler.session.pack) {
+  //   throw new Error('Pack kernel should only be called on pack texture.');
+  // }
 
   const glsl = getGlsl(handler.session.backend.glContext.version);
   const inputShape = input.dims;
@@ -51,8 +50,10 @@ export const createPackProgramInfo = (handler: WebGLInferenceHandler,
         }
       `;
   return {
+    name: 'pack',
+    hasMain: true,
     inputNames: ['A'],
-    inputTypes: [TextureType.packed],
+    inputTypes: [TextureType.unpackedReversed],
     output: {dims: input.dims, type: input.type, textureType: TextureType.packed},
     shaderSource
   };
@@ -62,6 +63,9 @@ export const createPackProgramInfo = (handler: WebGLInferenceHandler,
  * check output coordinate location and return false if it is outside input's width/height boundary
  */
 function getOutOfBoundsCondition(rank: number, shape: readonly number[], dims: string[]): string {
+  if (rank === 0) {
+    return 'false';
+  }
   if (rank === 1) {
     return `rc > ${shape[0]}`;
   }

@@ -40,10 +40,11 @@ export interface TextureData extends TextureLayout {
 }
 
 export enum TextureType {
-  unpacked,
-  packed,
-  downloadUint8AsFloat,
-  packedConvWeight
+  unpacked,              // <-- normal unpacked texture
+  unpackedReversed,      // <-- unpacked texture used in old ONNX.js implementation (deprecated)
+  packed,                // <-- normal packed texture
+  downloadUint8AsFloat,  // <-- ONLY used in texture downloading for iOS devices
+  packedConvWeight       // <-- ONLY used in old ONNX.js Conv implementation for input W (deprecated)
 }
 
 export interface TensorInfo {

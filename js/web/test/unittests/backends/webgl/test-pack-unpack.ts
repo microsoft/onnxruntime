@@ -7,6 +7,7 @@ import {Backend, InferenceHandler, resolveBackend, SessionHandler} from '../../.
 import {WebGLInferenceHandler} from '../../../../lib/onnxjs/backends/webgl/inference-handler';
 import {createPackProgramInfo} from '../../../../lib/onnxjs/backends/webgl/ops/pack';
 import {createUnpackProgramInfo} from '../../../../lib/onnxjs/backends/webgl/ops/unpack';
+import {createTextureLayoutFromShape} from '../../../../lib/onnxjs/backends/webgl/texture-layout';
 import {Profiler} from '../../../../lib/onnxjs/instrument';
 import {Tensor} from '../../../../lib/onnxjs/tensor';
 import {ShapeUtil} from '../../../../lib/onnxjs/util';
@@ -231,7 +232,8 @@ describe('#UnitTest# - pack - Tensor pack', () => {
           console.log('Testing unreverted HW input texture');
 
           // use inputTensorShape to create a texture layout that is unpacked(channel === 1)&& hw unreverted.
-          const inputUnpackedLayout = webglInferenceHandler.createTextureLayoutFromShape(inputTensorShape);
+          const inputUnpackedLayout =
+              createTextureLayoutFromShape(webglInferenceHandler.session.layoutStrategy, inputTensorShape);
 
           // create texture data from the layout. The texture data is cached inside inference handler such that
           // when pack kernel is invoked, it will read this texture data from cache instead of creating it from

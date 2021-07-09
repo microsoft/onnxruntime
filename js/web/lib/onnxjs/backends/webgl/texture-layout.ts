@@ -6,10 +6,13 @@ import {TextureLayoutStrategy, WidthHeightPrefs} from './texture-layout-strategy
 import {TextureLayout, TextureType} from './types';
 
 export const createTextureLayoutFromTextureType =
-    (textureLayoutStrategy: TextureLayoutStrategy, shape: readonly number[], textureType: TextureType): TextureLayout =>
-        createTextureLayoutFromShape(
-            textureLayoutStrategy, shape, textureType === TextureType.unpacked ? 1 : 4, [],
-            textureType === TextureType.packed ? {isPacked: true, reverseWH: true} : undefined);
+    (textureLayoutStrategy: TextureLayoutStrategy, shape: readonly number[],
+     textureType: TextureType): TextureLayout => {
+      const channel = (textureType === TextureType.unpacked || textureType === TextureType.unpackedReversed) ? 1 : 4;
+      const isPacked = textureType === TextureType.packed;
+      const reverseWH = (textureType === TextureType.unpackedReversed || textureType === TextureType.packed);
+      return createTextureLayoutFromShape(textureLayoutStrategy, shape, channel, undefined, {isPacked, reverseWH});
+    };
 
 export const calculateTextureWidthAndHeight =
     (textureLayoutStrategy: TextureLayoutStrategy, shape: readonly number[], textureType: TextureType):
@@ -25,13 +28,7 @@ export const createTextureLayoutFromShape =
     (textureLayoutStrategy: TextureLayoutStrategy, shape: readonly number[], channels: 1|4 = 1,
      unpackedShape?: readonly number[], prefs?: WidthHeightPrefs): TextureLayout => {
       const isPacked = !!(prefs && prefs.isPacked);
-      const [texWidth, texHeight] =
-          textureLayoutStrategy.computeTextureWH(isPacked ? unpackedShape || shape : shape, prefs);
-      let [width, height] = [texWidth, texHeight];
-      if (prefs && prefs.reverseWH) {
-        width = texHeight;
-        height = texWidth;
-      }
+      const [width, height] = textureLayoutStrategy.computeTextureWH(isPacked ? unpackedShape || shape : shape, prefs);
       const rank = shape.length;
       let inferredDims = shape.slice(0);
       if (rank === 0) {

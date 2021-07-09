@@ -3,12 +3,11 @@
 
 import {env} from 'onnxruntime-common';
 import {Logger, Profiler} from '../../instrument';
-import {GlslTensorMetadata} from './glsl-definitions';
 
 import {GlslPreprocessor} from './glsl-preprocessor';
 import {getVertexShaderSource} from './glsl-source';
 import {TextureLayoutStrategy} from './texture-layout-strategy';
-import {Artifact, ProgramInfo, ProgramVariable, TextureData, VariableInfo} from './types';
+import {Artifact, ProgramInfo, ProgramVariable, TextureData, TextureLayout, VariableInfo} from './types';
 import {WebGLContext} from './webgl-context';
 
 /**
@@ -63,9 +62,9 @@ export class ProgramManager {
     }
     this.repo.forEach(a => this.glContext.deleteProgram(a.program));
   }
-  build(programInfo: ProgramInfo, inputs: GlslTensorMetadata[]): Artifact {
+  build(programInfo: ProgramInfo, inputTextureLayouts: TextureLayout[], outputTextureLayout: TextureLayout): Artifact {
     return this.profiler.event('backend', 'ProgramManager.build', () => {
-      const preprocessor = new GlslPreprocessor(this.glContext, programInfo, inputs, this.textureLayoutStrategy);
+      const preprocessor = new GlslPreprocessor(this.glContext, programInfo, inputTextureLayouts, outputTextureLayout);
       const fragScript = preprocessor.preprocess();
       const program = this.compile(fragScript);
       const artifact = {
