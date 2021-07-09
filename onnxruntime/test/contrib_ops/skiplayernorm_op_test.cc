@@ -45,7 +45,7 @@ static void RunTest(
     if (!no_beta) {
       test.AddInput<float>("beta", beta_dims, beta_data);
     } else {
-      test.AddDataLessInput<float>();
+      test.AddOptionalInputEdge<float>();
     }
     test.AddAttribute("epsilon", epsilon);
     if (!bias_data.empty()) {
@@ -63,7 +63,7 @@ static void RunTest(
     if (!no_beta) {
       test.AddInput<MLFloat16>("beta", beta_dims, ToFloat16(beta_data));
     } else {
-      test.AddDataLessInput<float>();
+      test.AddOptionalInputEdge<float>();
     }
     test.AddAttribute("epsilon", epsilon);
     if (!bias_data.empty()) {

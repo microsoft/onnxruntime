@@ -46,9 +46,9 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
 
   if (ratio == -1.0f) {
     if (use_float16_ratio) {
-      t.AddDataLessInput<MLFloat16>();
+      t.AddOptionalInputEdge<MLFloat16>();
     } else {
-      t.AddDataLessInput<float>();
+      t.AddOptionalInputEdge<float>();
     }
     // set ratio to default value
     ratio = 0.5f;
@@ -74,7 +74,7 @@ void RunDropoutTest(const bool use_mask, const std::vector<int64_t>& input_shape
     mask_buffer = std::make_unique<bool[]>(input_size);
     t.AddOutput<bool>("mask", input_shape, mask_buffer.get(), input_size);
   } else {
-    t.AddDataLessOutput<bool>();
+    t.AddOptionalOutputEdge<bool>();
   }
 
   auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
@@ -185,7 +185,7 @@ void RunDropoutGradTest(float ratio, const std::vector<int64_t>& input_dims, boo
   if (!default_ratio) {
     test.AddInput<float>("ratio", {1}, ratio_data);
   } else {
-    test.AddDataLessInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   test.AddInput<bool>("training_mode", {}, {true});

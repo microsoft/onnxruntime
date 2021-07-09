@@ -52,14 +52,14 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
     const std::vector<float> residual(residual_size, residual_value);
     t.AddInput("residual", input_shape, residual);
   } else {
-    t.AddDataLessInput<float>();
+    t.AddOptionalInputEdge<float>();
   }
 
   if (ratio == -1.0f) {
     if (use_float16_ratio) {
-      t.AddDataLessInput<MLFloat16>();
+      t.AddOptionalInputEdge<MLFloat16>();
     } else {
-      t.AddDataLessInput<float>();
+      t.AddOptionalInputEdge<float>();
     }
     // set ratio to default value
     ratio = 0.5f;
@@ -86,7 +86,7 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
     mask_buffer = std::make_unique<bool[]>(input_size);
     t.AddOutput<bool>("mask", input_shape, mask_buffer.get(), input_size);
   } else {
-    t.AddDataLessOutput<bool>();
+    t.AddOptionalOutputEdge<bool>();
   }
 
   auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {

@@ -322,10 +322,10 @@ class OpTester {
   * have any data passed into.
   * Such an edge will have the qualifier OpSchema::Optional in the schema.
   * This is exposed to ensure the op kernel implementations can be tested to handle 
-  * presence/absence of such "data-less" optional edges.
+  * presence/absence of such optional input edges.
   */
   template <typename T>
-  void AddDataLessInput() {
+  void AddOptionalInputEdge() {
     std::string name;  // empty == input doesn't exist
     input_data_.push_back(Data(NodeArg(name, &TTensorType<T>::s_type_proto.proto), OrtValue(), optional<float>(),
                                optional<float>()));
@@ -358,10 +358,10 @@ class OpTester {
   * data produced into.
   * Such an edge will have the qualifier OpSchema::Optional in the schema.
   * This is exposed to ensure the op kernel implementations can be tested to handle 
-  * presence/absence of such "data-less" optional edges.
+  * presence/absence of such optional output edges.
   */
   template <typename T>
-  void AddDataLessOutput() {
+  void AddOptionalOutputEdge() {
     std::string name;  // empty == output doesn't exist
     output_data_.push_back(Data(NodeArg(name, &TTensorType<T>::s_type_proto.proto), OrtValue(), optional<float>(),
                                 optional<float>()));
