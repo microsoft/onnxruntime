@@ -33,11 +33,12 @@ inline std::vector<T> QuantizeTestVector(const std::vector<float>& data,
 template <typename T>
 inline std::vector<T> QuantizeLinearTestVector(
     const std::vector<float>& data,
-    quantization::Params<T>& out_params) {
+    quantization::Params<T>& out_params,
+    bool force_symmetric = false) {
   std::vector<T> result;
   result.resize(data.size());
 
-  out_params = quantization::QuantizeLinear(data, result);
+  out_params = quantization::QuantizeLinear(data, result, force_symmetric);
   return result;
 }
 

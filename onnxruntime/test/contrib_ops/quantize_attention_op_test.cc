@@ -64,12 +64,18 @@ void RunQAttention(const std::vector<float>& input_data,
                              weights_dims,
                              QuantizeTestVector<QWeight>(weights_data, weight_quant_params));
   } else {
-    tester.AddInput<QInput>("input",
-                            input_dims,
-                            QuantizeLinearTestVector<QInput>(input_data, input_quant_params));
-    tester.AddInput<QWeight>("weight",
-                            weights_dims,
-                            QuantizeLinearTestVector<QWeight>(weights_data, weight_quant_params));
+    bool force_symmetric = false;
+    if constexpr (ep == EP::CUDA) {
+      force_symmetric = true;
+    }
+    tester.AddInput<QInput>(
+        "input",
+        input_dims,
+        QuantizeLinearTestVector<QInput>(input_data, input_quant_params, force_symmetric));
+    tester.AddInput<QWeight>(
+        "weight",
+        weights_dims,
+        QuantizeLinearTestVector<QWeight>(weights_data, weight_quant_params, force_symmetric));
   }
   if (use_float16) {
     tester.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));

@@ -9,7 +9,11 @@
 #include "core/framework/tensor.h"
 #include "core/mlas/inc/mlas.h"
 
-// TODO - update documentation to use same verbage as quant_utils.py
+// This header contains utility functions for quantizing and dequantizing
+// values as outlined in the logic in
+// onnxruntime/python/tools/quantization/quant_utils.py.
+// These functions should be used for all quantization work inside ORT kernels
+// and unit tests.
 
 namespace onnxruntime {
 namespace quantization {
@@ -17,7 +21,7 @@ namespace quantization {
 #define ORT_STATIC_ASSERT_QUANTIZATION_TYPES(T)                            \
   static_assert(                                                           \
       !std::is_same<T, int8_t>::value || !std::is_same<T, uint8_t>::value, \
-      "Only int8_t and uint8_t are supported quantization formats."); 
+      "Only int8_t and uint8_t are supported quantization formats.");
 
 // Basic quantization params structure.
 template <typename T>
@@ -79,10 +83,28 @@ void Quantize(const std::vector<float>& data,
 }
 
 // Calculates and returns linear quantization params for a given float buffer.
-// Output buffer is quantized with calculated params.
+// Output buffer is quantized with calculated params. The option to force
+// symmetric quantization for signed values (zero point is forced at 0) is
+// provided through the force_symmetric bool in-param.
 template <typename T>
-Params<T> QuantizeLinear(const float* data, T* output, size_t size) {
+Params<T> QuantizeLinear(const float* data,
+                         T* output,
+                         size_t size,
+                         bool force_symmetric = false) {
   Params<T> params;
+
+  T T_min = std::numeric_limits<T>::min();
+  T T_max = std::numeric_limits<T>::max();
+  // NOTE: ORT currently clamps signed quantization values to -127,127 instead
+  //       of -128/127. This is done to ensure that forced symmetric
+  //       quantization results in a zero point of exactly 0 for signed 8 bit
+  //       ints.
+  // TODO(kreeger): Consider adjusting this clamping to enable more precision
+  //                for signed 8 bit ints.
+  //                See quant_utils.py - get_qmin_qmax_for_qType() for impl.
+  if constexpr (std::is_same<T, int8_t>::value) {
+    T_min = -127;
+  }
 
   float min = std::numeric_limits<float>::max();
   float max = std::numeric_limits<float>::min();
@@ -95,8 +117,17 @@ Params<T> QuantizeLinear(const float* data, T* output, size_t size) {
   min = std::min(min, 0.0f);
   max = std::max(max, 0.0f);
 
-  constexpr float T_max_fp = static_cast<float>(std::numeric_limits<T>::max());
-  constexpr float T_min_fp = static_cast<float>(std::numeric_limits<T>::min());
+  const float T_max_fp = static_cast<float>(T_max);
+  const float T_min_fp = static_cast<float>(T_min);
+
+  if (force_symmetric) {
+    // Adjust min and max to ensure that zero_point will be at 0.
+    // See quant_utils.py - compute_scale_zp() for more details.
+    float abs_max = std::max(std::abs(min), std::abs(max));
+    min = -abs_max;
+    max = +abs_max;
+  }
+
   params.scale = static_cast<float>(max - min) / (T_max_fp - T_min_fp);
 
   float zero_point_fp = min;
@@ -118,13 +149,16 @@ Params<T> QuantizeLinear(const float* data, T* output, size_t size) {
 }
 
 // Calculates and returns linear quantization params for a given float vector.
-// Output vector is quantized with calculated params.
+// Output buffer is quantized with calculated params. The option to force
+// symmetric quantization for signed values (zero point is forced at 0) is
+// provided through the force_symmetric bool in-param.
 template <typename T>
 Params<T> QuantizeLinear(const std::vector<float>& data,
-                         std::vector<T>& output) {
+                         std::vector<T>& output,
+                         bool force_symmetric = false) {
   ORT_ENFORCE(data.size() == output.size(),
               "Input and output data must have the same length.");
-  return QuantizeLinear(data.data(), output.data(), data.size());
+  return QuantizeLinear(data.data(), output.data(), data.size(), force_symmetric);
 }
 
 // Dequantizes a value to float with provided quantization params.
