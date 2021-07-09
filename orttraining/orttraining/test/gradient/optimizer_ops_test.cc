@@ -25,7 +25,7 @@ TEST(OptimizerTest, SGDOptimizerTest_Gradient) {
   test.AddInput<float>("ETA", {}, {0.5f});
   test.AddInput<float>("W", {3}, {1, 2, 3});
   test.AddInput<float>("G", {3}, {4, 5, 6});
-  test.AddMissingOptionalOutput<float>();
+  test.AddOptionalOutputEdge<float>();
   test.AddOutput<float>("G_New", {3}, {-2.f, -2.5f, -3.f});
   test.Run();
 }
@@ -118,7 +118,7 @@ TEST(OptimizerTest, AdamOptimizerTest_Gradient) {
   test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
   test.AddOutput<float>("Moment_1_Out", {3}, data.m1_new);
   test.AddOutput<float>("Moment_2_Out", {3}, data.m2_new);
-  test.AddMissingOptionalOutput<float>();
+  test.AddOptionalOutputEdge<float>();
   test.AddOutput<float>("G_Out", {3}, data.g_new);
 
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
@@ -294,7 +294,7 @@ TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_Test) {
   test.AddOutput<MLFloat16>("Moment_1_Out", {3}, data.m1_new_half);
   test.AddOutput<MLFloat16>("Moment_2_Out", {3}, data.m2_new_half);
   test.AddOutput<float>("W_Out", {3}, data.w_new);
-  test.AddMissingOptionalOutput<MLFloat16>();
+  test.AddOptionalOutputEdge<MLFloat16>();
   test.AddOutput<MLFloat16>("FP16_W_Out", {3}, data.w_new_half);
 
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
@@ -322,7 +322,7 @@ TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_NoClipNorm_Test) {
   test.AddOutput<MLFloat16>("Moment_1_Out", {3}, data.m1_new_half);
   test.AddOutput<MLFloat16>("Moment_2_Out", {3}, data.m2_new_half);
   test.AddOutput<float>("W_Out", {3}, data.w_new);
-  test.AddMissingOptionalOutput<MLFloat16>();
+  test.AddOptionalOutputEdge<MLFloat16>();
   test.AddOutput<MLFloat16>("FP16_W_Out", {3}, data.w_new_half);
 
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
@@ -364,7 +364,7 @@ TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_ClipNorm_Test) {
   test.AddOutput<MLFloat16>("Moment_1_Out", {3}, m1_new_half);
   test.AddOutput<MLFloat16>("Moment_2_Out", {3}, m2_new_half);
   test.AddOutput<float>("W_Out", {3}, w_new);
-  test.AddMissingOptionalOutput<MLFloat16>();
+  test.AddOptionalOutputEdge<MLFloat16>();
   test.AddOutput<MLFloat16>("FP16_W_Out", {3}, w_new_half);
 
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
@@ -394,7 +394,7 @@ TEST(OptimizerTest, AdamOptimizerMixPrecision_FP16Weight_SkipUpdate_Test) {
   test.AddOutput<MLFloat16>("Moment_1_Out", {3}, data.m1_half);
   test.AddOutput<MLFloat16>("Moment_2_Out", {3}, data.m2_half);
   test.AddOutput<float>("W_Out", {3}, data.w);
-  test.AddMissingOptionalOutput<MLFloat16>();
+  test.AddOptionalOutputEdge<MLFloat16>();
   test.AddOutput<MLFloat16>("FP16_W_Out", {3}, data.w_half);
 
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
@@ -441,7 +441,7 @@ TEST(OptimizerTest, AdamOptimizerMixPrecisionTest_Gradient) {
   test.AddOutput<int64_t>("Update_Count_Out", {}, {4});
   test.AddOutput<MLFloat16>("Moment_1_Out", {3}, data.m1_new_half);
   test.AddOutput<MLFloat16>("Moment_2_Out", {3}, data.m2_new_half);
-  test.AddMissingOptionalOutput<float>();
+  test.AddOptionalOutputEdge<float>();
   test.AddOutput<MLFloat16>("G_Out", {3}, data.g_new_half);
 
   test.AddAttribute("do_bias_correction", static_cast<int64_t>(0));
@@ -565,7 +565,7 @@ void run_lamb_test_with_baseline(
   test.AddInput<bool>("update_signal", {1}, {do_update});
   test.AddInput<T2>("loss_scale", {}, {loss_scale});
   if (p_g_norm == nullptr) {
-    test.AddMissingOptionalInput<T2>();
+    test.AddOptionalInputEdge<T2>();
   } else {
     test.AddInput<T2>("gradient_norm", {}, {T2(*p_g_norm)});
   }
@@ -573,7 +573,7 @@ void run_lamb_test_with_baseline(
   if (step > 0) {
     test.AddInput<int64_t>("Step", {}, {step});
   } else {
-    test.AddMissingOptionalInput<int64_t>();
+    test.AddOptionalInputEdge<int64_t>();
   }
   test.AddInput<T2>("W", shape, w);
   test.AddInput<T3>("G", shape, g);
@@ -582,7 +582,7 @@ void run_lamb_test_with_baseline(
   if (!w_half.empty()) {
     test.AddInput<MLFloat16>("FP16_W", shape, w_half);
   } else {
-    test.AddMissingOptionalInput<MLFloat16>();
+    test.AddOptionalInputEdge<MLFloat16>();
   }
 
   test.AddAttribute("alpha", std::vector<float>(1, alpha));
@@ -596,24 +596,24 @@ void run_lamb_test_with_baseline(
   if (step > 0) {
     test.AddOutput<int64_t>("Step_Out", {}, {do_update ? step + 1 : step});
   } else {
-    test.AddMissingOptionalOutput<int64_t>();
+    test.AddOptionalOutputEdge<int64_t>();
   }
   if (!w_new.empty()) {
     test.AddOutput<T2>("W_Out", shape, w_new);
   } else {
-    test.AddMissingOptionalOutput<T2>();
+    test.AddOptionalOutputEdge<T2>();
   }
   if (!g_new.empty()) {
     test.AddOutput<T3>("G_Out", shape, g_new);
   } else {
-    test.AddMissingOptionalOutput<T3>();
+    test.AddOptionalOutputEdge<T3>();
   }
   test.AddOutput<T4>("Moment_1_Out", shape, m_new);
   test.AddOutput<T4>("Moment_2_Out", shape, v_new);
   if (!w_new_half.empty()) {
     test.AddOutput<MLFloat16>("FP16_W_Out", shape, w_new_half);
   } else {
-    test.AddMissingOptionalOutput<MLFloat16>();
+    test.AddOptionalOutputEdge<MLFloat16>();
   }
 
   test.Run();
@@ -675,7 +675,7 @@ void run_multi_tensor_lamb_test_with_baseline(
   test.AddInput<bool>("update_signal", {}, {do_update});
   test.AddInput<T2>("loss_scale", {}, {loss_scale});
   if (p_g_norm == nullptr) {
-    test.AddMissingOptionalInput<T2>();
+    test.AddOptionalInputEdge<T2>();
   } else {
     test.AddInput<float>("gradient_norm", {}, {T2(*p_g_norm)});
   }
@@ -684,8 +684,8 @@ void run_multi_tensor_lamb_test_with_baseline(
     test.AddInput<int64_t>("Step", {}, {step});
     test.AddOutput<int64_t>("Step_Out", {}, {do_update ? step + 1 : step});
   } else {
-    test.AddMissingOptionalInput<int64_t>();
-    test.AddMissingOptionalOutput<int64_t>();
+    test.AddOptionalInputEdge<int64_t>();
+    test.AddOptionalOutputEdge<int64_t>();
   }
   for (int i = 0; i < group_count; ++i) {
     std::string w_name = "W_" + std::to_string(i);
@@ -706,25 +706,25 @@ void run_multi_tensor_lamb_test_with_baseline(
     if (!w_halfs.empty() && !w_halfs[i].empty()) {
       test.AddInput<MLFloat16>(w_fp16_name.c_str(), shapes[i], w_halfs[i]);
     } else {
-      test.AddMissingOptionalInput<MLFloat16>();
+      test.AddOptionalInputEdge<MLFloat16>();
     }
 
     if (!w_news.empty() && !w_news[i].empty()) {
       test.AddOutput<T2>(w_new_name.c_str(), shapes[i], w_news[i]);
     } else {
-      test.AddMissingOptionalOutput<T2>();
+      test.AddOptionalOutputEdge<T2>();
     }
     if (!g_news.empty() && !g_news[i].empty()) {
       test.AddOutput<T3>(g_new_name.c_str(), shapes[i], g_news[i]);
     } else {
-      test.AddMissingOptionalOutput<T3>();
+      test.AddOptionalOutputEdge<T3>();
     }
     test.AddOutput<T4>(m1_new_name.c_str(), shapes[i], m_news[i]);
     test.AddOutput<T4>(m2_new_name.c_str(), shapes[i], v_news[i]);
     if (!w_new_halfs.empty() && !w_new_halfs[i].empty()) {
       test.AddOutput<MLFloat16>(w_fp16_new_name.c_str(), shapes[i], w_new_halfs[i]);
     } else {
-      test.AddMissingOptionalOutput<MLFloat16>();
+      test.AddOptionalOutputEdge<MLFloat16>();
     }
   }
 
@@ -1641,6 +1641,6 @@ TEST(OptimizerTest, LambOptimizerMultiTensorRatio) {
       step, loss_scale, &scaled_g_norm);
 }
 #endif
-}
+}  // namespace
 }  // namespace test
 }  // namespace onnxruntime

@@ -83,7 +83,7 @@ void RunQAttention(const std::vector<float>& input_data,         // input:      
     tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
   } else {
     // mask index is optional.
-    tester.AddMissingOptionalInput<int32_t>();
+    tester.AddOptionalInputEdge<int32_t>();
   }
 
   tester.AddInput<QInput>("input_zero_point", {1}, {input_zero_point});
@@ -721,7 +721,7 @@ void TestQuantizedAttentionPastState(int64_t batch,
   test.AddInput<float>("bias", bias_dims, bias_data);
   test.AddInput<float>("input_scale", {1}, input_scale);
   test.AddInput<float>("weight_scale", {weight_scale_zp_size}, weight_scale);
-  test.AddMissingOptionalInput<int32_t>();
+  test.AddOptionalInputEdge<int32_t>();
   test.AddInput<InputT>("input_zero_point", {1}, input_zero_point);
   test.AddInput<WeightT>("weight_zero_point", {weight_scale_zp_size}, weight_zero_point);
   test.AddInput<float>("past", past_dims, past_data);
