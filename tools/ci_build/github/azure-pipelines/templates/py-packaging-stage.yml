@@ -131,7 +131,7 @@ stages:
               -e NIGHTLY_BUILD \
               -e BUILD_BUILDNUMBER \
               onnxruntimecpubuild \
-                bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/*.whl && $(PythonManylinuxDir)/bin/python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install && /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release " ;
+                bash -c " $(PythonManylinuxDir)/bin/python3 -m pip install /build/Release/dist/*.whl && $(PythonManylinuxDir)/bin/python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install ; /onnxruntime_src/tools/doc/builddoc.sh $(PythonManylinuxDir)/bin/ /onnxruntime_src /build Release " ;
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CopyFiles@2
@@ -243,8 +243,8 @@ stages:
             --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
             --build-arg BUILD_UID=$(id -u)
             --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
-            --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-9/root 
-            --build-arg PREPEND_PATH=/opt/rh/devtoolset-9/root/usr/bin: 
+            --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-9/root
+            --build-arg PREPEND_PATH=/opt/rh/devtoolset-9/root/usr/bin:
             --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-9/root/usr/lib64:/opt/rh/devtoolset-9/root/usr/lib:/opt/rh/devtoolset-9/root/usr/lib64/dyninst:/opt/rh/devtoolset-9/root/usr/lib/dyninst:/usr/local/lib64
           Repository: onnxruntimetrainingrocmbuild-torch1.8.1
       - template: get-docker-image-steps.yml
@@ -256,8 +256,8 @@ stages:
             --build-arg INSTALL_DEPS_EXTRA_ARGS=-tmur
             --build-arg BUILD_UID=$(id -u)
             --network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64
-            --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-9/root 
-            --build-arg PREPEND_PATH=/opt/rh/devtoolset-9/root/usr/bin: 
+            --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-9/root
+            --build-arg PREPEND_PATH=/opt/rh/devtoolset-9/root/usr/bin:
             --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-9/root/usr/lib64:/opt/rh/devtoolset-9/root/usr/lib:/opt/rh/devtoolset-9/root/usr/lib64/dyninst:/opt/rh/devtoolset-9/root/usr/lib/dyninst:/usr/local/lib64
           Repository: onnxruntimetrainingrocmbuild-torch1.9.0
 
@@ -267,7 +267,7 @@ stages:
       workspace:
         clean: all
       pool: AMD-GPU
-      dependsOn: 
+      dependsOn:
       - ROCm_build_environment
       strategy:
         matrix:
@@ -353,7 +353,7 @@ stages:
           echo "Found render_gid=$render_gid; attempting to set as pipeline variable"
           echo "##vso[task.setvariable variable=render]$render_gid"
         displayName: 'Find video and render gid to be mapped into container'
- 
+
       - script: |-
           echo "video=$video"
           echo "render=$render"
@@ -378,7 +378,7 @@ stages:
             onnxruntimetrainingrocmbuild-torch$(TorchVersion) \
                /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh
         displayName: 'Run onnxruntime unit tests (in container)'
-      
+
       - script: |-
           docker run --rm \
             --device=/dev/kfd \
@@ -405,7 +405,7 @@ stages:
                 --gpu_sku MI100_32G
         displayName: 'Run C++ BERT-L batch size test (in container)'
         condition: succeededOrFailed() # ensure all tests are run
-      
+
       - script: |-
           docker run --rm \
             --device=/dev/kfd \
@@ -433,7 +433,7 @@ stages:
                 --gpu_sku MI100_32G
         displayName: 'Run C++ BERT-L performance test (in container)'
         condition: succeededOrFailed() # ensure all tests are run
-      
+
       - script: |-
           docker run --rm \
             --device=/dev/kfd \
@@ -461,7 +461,7 @@ stages:
                 --gpu_sku MI100_32G
         displayName: 'Run C++ BERT-L convergence test (in container)'
         condition: succeededOrFailed() # ensure all tests are run
-      
+
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
         inputs:
@@ -546,7 +546,7 @@ stages:
         EnvSetupScript: setup_env.bat
         buildArch: x64
         setVcvars: true
-        BuildConfig: 'Release'        
+        BuildConfig: 'Release'
       timeoutInMinutes: 120
       workspace:
         clean: all
@@ -846,7 +846,7 @@ stages:
         displayName: 'Publish Artifact: ONNXRuntime python wheel'
         inputs:
           ArtifactName: onnxruntime_gpu
-      
+
       - task: DeleteFiles@1
         displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
         condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
