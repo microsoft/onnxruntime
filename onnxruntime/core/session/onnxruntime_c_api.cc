@@ -13,6 +13,8 @@
 #include <cstring>
 #include <functional>
 #include <sstream>
+#include <iostream>
+#include <chrono>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -523,8 +525,20 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSession, _In_ const OrtEnv* env, _In_ const O
   *out = nullptr;
 
   ORT_TRY {
+
+    auto start_ = std::chrono::high_resolution_clock::now();
+    std::cout << "CreateSessionAndLoadModel (c_api.cc) start: " << duration.count() << " s" << std::endl;
     ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, model_path, nullptr, 0, sess));
+    auto end_ = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end_ - start_;
+    std::cout << "CreateSessionAndLoadModel time cost: " << duration.count() << " s" << std::endl;
+
+    start_ = std::chrono::high_resolution_clock::now();
+    std::cout << "InitializeSession (c_api.cc) start: " << duration.count() << " s" << std::endl;
     ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess));
+    end_ = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end_ - start_;
+    std::cout << "InitializeSession time cost: " << duration.count() << " s" << std::endl;
 
     *out = reinterpret_cast<OrtSession*>(sess.release());
   }
