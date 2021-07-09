@@ -36,16 +36,16 @@ int64_t CalculateRequiredBufferSize(int64_t data_size, int64_t indices_size) {
 }
 }  // namespace
 
-const void* SparseTensor::IndicesStart() const {
+const void* SparseTensor::IndicesStart(int64_t values_bytes) const {
   if (p_data_ != nullptr) {
-    return reinterpret_cast<const uint8_t*>(p_data_) + Roundup(values_.SizeInBytes());
+    return reinterpret_cast<const uint8_t*>(p_data_) + Roundup(values_bytes);
   }
   return nullptr;
 }
 
-void* SparseTensor::IndicesStart() {
+void* SparseTensor::IndicesStart(int64_t values_bytes) {
   if (p_data_ != nullptr) {
-    return reinterpret_cast<uint8_t*>(p_data_) + Roundup(values_.SizeInBytes());
+    return reinterpret_cast<uint8_t*>(p_data_) + Roundup(values_bytes);
   }
   return nullptr;
 }
@@ -230,7 +230,7 @@ SparseTensor::CooMutator SparseTensor::MakeCooData(size_t values_count, size_t i
     ORT_THROW_IF_ERROR(AllocateBuffer(required_buffer_size, values_count));
   }
   values_ = Tensor(DataType(), values_shape, p_data_, Location());
-  InitCooIndex(index_shape, reinterpret_cast<int64_t*>(IndicesStart()));
+  InitCooIndex(index_shape, reinterpret_cast<int64_t*>(IndicesStart(values_.SizeInBytes())));
   return CooMutator(values_, format_data_[0]);
 }
 
@@ -301,7 +301,7 @@ SparseTensor::CsrMutator SparseTensor::MakeCsrData(size_t values_count,
   const auto num_values = gsl::narrow<int64_t>(values_count);
   values_ = Tensor(DataType(), {num_values}, p_data_, Location());
 
-  auto* inner_index_start = reinterpret_cast<int64_t*>(IndicesStart());
+  auto* inner_index_start = reinterpret_cast<int64_t*>(IndicesStart(values_.SizeInBytes()));
   InitCsrIndices(inner_index_count, inner_index_start, outer_index_count, inner_index_start + inner_index_count);
   return CsrMutator(values_, format_data_[0], format_data_[1]);
 }
@@ -358,7 +358,7 @@ SparseTensor::BlockSparseMutator SparseTensor::MakeBlockSparseData(const TensorS
   }
   values_ = Tensor(DataType(), values_shape, p_data_, Location());
   format_data_.resize(1);
-  format_data_[0] = Tensor(DataTypeImpl::GetType<int32_t>(), index_shape, IndicesStart(), Location());
+  format_data_[0] = Tensor(DataTypeImpl::GetType<int32_t>(), index_shape, IndicesStart(values_.SizeInBytes()), Location());
   format_ = SparseFormat::kBlockSparse;
   return BlockSparseMutator(values_, format_data_[0]);
 }
@@ -392,10 +392,11 @@ Status SparseTensor::Copy(const IDataTransfer& data_transfer, SparseTensor& dst_
   SparseTensor result(DataType(), Shape(), dst_tensor.allocator_);
   ORT_RETURN_IF_ERROR(result.AllocateBuffer(required_buffer_size, NumValues()));
 
-  auto* const dst_index_start = reinterpret_cast<int8_t*>(result.IndicesStart());
+  const auto values_bytes = values_.SizeInBytes();
+  auto* const dst_index_start = reinterpret_cast<int8_t*>(result.IndicesStart(values_bytes));
   result.format_data_.resize(format_data_.size());
   int64_t index_bytes = 0;
-  for (size_t i = 0; format_data_.size(); ++i) {
+  for (size_t i = 0; i < format_data_.size(); ++i) {
     const auto& src_idx = format_data_[i];
     result.format_data_[i] = Tensor(src_idx.DataType(), src_idx.Shape(),
                                     dst_index_start + index_bytes,
@@ -414,7 +415,7 @@ Status SparseTensor::Copy(const IDataTransfer& data_transfer, SparseTensor& dst_
       CopyStrings(Values(), result_values);
       if (p_data_ != nullptr) {
         // We are on CPU
-        memcpy(dst_index_start, IndicesStart(), static_cast<size_t>(index_bytes));
+        memcpy(dst_index_start, IndicesStart(values_bytes), static_cast<size_t>(index_bytes));
       }
     } else {
       if (p_data_ == nullptr) {

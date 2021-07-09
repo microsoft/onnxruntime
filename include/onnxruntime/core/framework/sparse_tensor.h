@@ -388,8 +388,8 @@ class SparseTensor final {
  private:
   Status AllocateBuffer(int64_t buffer_size, size_t num_values);
   void ReleaseBuffer();
-  void* IndicesStart();
-  const void* IndicesStart() const;
+  void* IndicesStart(int64_t values_bytes);
+  const void* IndicesStart(int64_t values_bytes) const;
   Status ValidateBlockSparseShapes(const TensorShape& values_shape, const TensorShape& index_shape) const;
   void CopyStrings(const Tensor& src, Tensor& dst) const;
 
