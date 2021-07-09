@@ -37,8 +37,6 @@ class AttentionCPUBase : public AttentionBase {
     auto* tp = context->GetOperatorThreadPool();
 
     int past_sequence_length = 0;
-    // TODO when past is not null, the expectation is head_size of all the three components are same, hence,
-    // additional changes are needed to handle Q,K and V different sizes.
     Tensor* present = GetPresent(context, past, batch_size, v_head_size, sequence_length, past_sequence_length);
 
     // Total sequence length including that of past state: S* = S' + S
@@ -65,7 +63,7 @@ class AttentionCPUBase : public AttentionBase {
     const T* past_data = past != nullptr ? past->template Data<T>() : nullptr;
     T* present_data = present != nullptr ? present->template MutableData<T>() : nullptr;
 
-    const float* extra_add_qk_data = nullptr;
+    const T* extra_add_qk_data = nullptr;
     if (extra_add_qk != nullptr) {
       extra_add_qk_data = extra_add_qk->template Data<T>();
     }
@@ -106,7 +104,7 @@ class AttentionCPUBase : public AttentionBase {
                              const T* past,                                // past state
                              T* present,                                   // present state
                              ThreadPool* tp,
-                             const float* extra_add_qk_data) const {
+                             const T* extra_add_qk_data) const {
     const int all_sequence_length = past_sequence_length + sequence_length;                  // S* = S' + S
     const size_t past_chunk_length = static_cast<size_t>(past_sequence_length) * head_size;  // S' x H
     const size_t input_chunk_length = static_cast<size_t>(sequence_length) * head_size;      // S x H
