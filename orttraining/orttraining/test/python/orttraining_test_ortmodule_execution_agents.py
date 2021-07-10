@@ -9,7 +9,6 @@ import onnxruntime
 from onnxruntime.training.ortmodule._execution_agent import (
     InferenceAgent,
     TrainingAgent,
-    GraphInfo,
 )
 
 
@@ -96,18 +95,7 @@ def test_onnx_graph_forward():
 
 def test_onnx_graph_forward_backward():
     model = make_training_model()
-    graph_info = GraphInfo()
-    graph_info.user_input_names = ["x", "y"]
-    graph_info.user_input_grad_names = {"x": "x_grad", "y": "y_grad"}
-    graph_info.initializer_names = ["bias"]
-    graph_info.initializer_names_to_train = ["bias"]
-    graph_info.user_output_names = ["add"]
-    graph_info.output_grad_indices_non_differentiable = []
-    graph_info.output_grad_indices_require_full_shape = [0]
-    graph_info.module_output_indices_requires_save_for_backward = []
-    training_agent = execution_agent_factory(TrainingAgent)(
-        model, torch.device("cpu"), graph_info
-    )
+    training_agent = execution_agent_factory(TrainingAgent)(model, torch.device("cpu"))
     x = torch.randn(2, 3)
     y = torch.randn(2, 3)
     bias = torch.randn(3)
