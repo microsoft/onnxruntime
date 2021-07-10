@@ -124,7 +124,7 @@ class TrainingManager(GraphExecutionManager):
                         # input_name is not found in the self._input_info.require_grad_names list
                         # Append None to results for each input that did not require grad
                         results.append(None)
-
+                assert require_grad_names_index == num_user_input_grads
                 # Append gradients of initializer to results
                 # Go over each initializer, check if it required grad and append to results accordingly
                 initializer_index = num_user_input_grads
@@ -134,7 +134,7 @@ class TrainingManager(GraphExecutionManager):
                         initializer_index += 1
                     else:
                         results.append(None)
-
+                assert initializer_index == len(backward_outputs)
                 return tuple(results)
 
         return _io.unflatten_user_output(self._module_output_schema,
@@ -164,7 +164,6 @@ class TrainingManager(GraphExecutionManager):
         session_options, providers, provider_options = self._get_session_config()
         self._execution_agent = TrainingAgent(self._optimized_onnx_model,
                                               self._device,
-                                              self._graph_info,
                                               session_options,
                                               providers,
                                               provider_options)
