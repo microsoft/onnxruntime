@@ -19,7 +19,6 @@ Abstract:
 
 // N.B. MSVC does not require turning on SSE 4.1 intrinsics and the current use
 // for this code is Windows only, so restrict this kernel to that environment.
-#if defined(MLAS_SSE2_INTRINSICS) && defined(_MSC_VER)
 
 struct MLAS_GEMM_U8S8_KERNEL_SSE41
 {
@@ -444,5 +443,3 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8S8DispatchSse41 = {
     MLAS_GEMM_U8S8_KERNEL_SSE41::PackedK,
     MLAS_GEMM_U8S8_KERNEL_SSE41::PackedStrides.K,
 };
-
-#endif

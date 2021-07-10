@@ -17,8 +17,6 @@ Abstract:
 #include "mlasi.h"
 #include "qgemm.h"
 
-#if defined(MLAS_NEON64_INTRINSICS)
-
 //
 // Define the prototypes of the NEON UDOT routines written in assembly.
 //
@@ -586,5 +584,3 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchUdot = {
     MLAS_GEMM_U8X8_KERNEL_UDOT::PackedK,
     MLAS_GEMM_U8X8_KERNEL_UDOT::PackedStrides.K,
 };
-
-#endif

@@ -17,8 +17,6 @@ Abstract:
 #include "mlasi.h"
 #include "qgemm.h"
 
-#if defined(MLAS_SSE2_INTRINSICS)
-
 struct MLAS_GEMM_U8X8_KERNEL_SSE
 {
     typedef int16_t PackedAType;
@@ -492,5 +490,3 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchSse = {
     MLAS_GEMM_U8X8_KERNEL_SSE::PackedK,
     0,
 };
-
-#endif

@@ -17,8 +17,6 @@ Abstract:
 #include "mlasi.h"
 #include "qgemm.h"
 
-#if defined(MLAS_TARGET_AMD64)
-
 //
 // Stores a vector to transpose a 4x4 byte vector using vpshufb.
 //
@@ -266,5 +264,3 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8U8DispatchAvx2 = {
     MLAS_GEMM_U8U8_KERNEL_AVX2::PackedK,
     MLAS_GEMM_U8U8_KERNEL_AVX2::PackedStrides.K,
 };
-
-#endif

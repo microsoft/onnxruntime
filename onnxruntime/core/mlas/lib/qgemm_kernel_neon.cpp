@@ -17,8 +17,6 @@ Abstract:
 #include "mlasi.h"
 #include "qgemm.h"
 
-#if defined(MLAS_NEON64_INTRINSICS) || (defined(MLAS_NEON32_INTRINSICS) && !defined(_MSC_VER))
-
 //
 // Define the prototypes of the NEON routines written in assembly.
 //
@@ -510,5 +508,3 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchNeon = {
     MLAS_GEMM_U8X8_KERNEL_NEON::PackedK,
     MLAS_GEMM_U8X8_KERNEL_NEON::PackedStrides.K,
 };
-
-#endif
