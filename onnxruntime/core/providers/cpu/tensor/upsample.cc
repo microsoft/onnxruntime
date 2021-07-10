@@ -4,7 +4,6 @@
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/tensor/upsample.h"
-#include <sstream>
 
 using namespace onnxruntime::common;
 using namespace std;
@@ -48,44 +47,107 @@ void UpsampleNearest2x(int64_t batch_size,
           output[oidx + 1] = v;
         }
       }
+
       input += input_height * input_width;
       output += output_height * output_width;
     }
   }
 }
 
-template <typename T>
-Status UpsampleNearest(const T* input,
-                       T* output,
-                       const TensorShape& input_shape,
-                       const TensorShape& output_shape,
-                       const vector<float>& scales,
-                       const vector<float>& roi,
-                       bool is_resize,
-                       bool extrapolation_enabled,
-                       float extrapolation_value,
-                       bool use_nearest2x_optimization,
-                       GetOriginalCoordinateFunc get_original_coordinate,
-                       GetNearestPixelFunc get_nearest_pixel) {
-  if (!input || !output)
-    return Status(ONNXRUNTIME, FAIL,
-                  is_resize ? "Resize: input/output value is nullptr"
-                            : "Upsample: input/output value is nullptr");
-  if (input_shape.NumDimensions() != output_shape.NumDimensions())
-    return Status(ONNXRUNTIME, FAIL,
-                  is_resize ? "Resize: input/output value's dimension mismatch"
-                            : "Upsample: input/output value's dimension mismatch");
-  if (input_shape.NumDimensions() == 0) {
-    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  is_resize ? "Resize: input shape needs to be at least a single dimension"
-                            : "Upsample: input shape needs to be at least a single dimension.");
+static std::vector<int64_t> UpsampleNearestSetupRank1InputMapping(
+    int64_t length_original,
+    int64_t length_resized,
+    float x_scale,
+    float roi_start,
+    float roi_end,
+    bool extrapolation_enabled,
+    const GetOriginalCoordinateFunc& get_original_coordinate,
+    const GetNearestPixelFunc& get_nearest_pixel) {
+  std::vector<int64_t> input_mapping(length_resized);
+
+  for (int64_t output_dim0_idx = 0; output_dim0_idx < length_resized; ++output_dim0_idx) {
+    float original_0_idx = get_original_coordinate(static_cast<float>(output_dim0_idx),
+                                                   x_scale,
+                                                   static_cast<float>(length_resized),
+                                                   static_cast<float>(length_original),
+                                                   roi_start, roi_end);
+    int64_t input_dim0_idx = -1;
+    if (extrapolation_enabled && (original_0_idx < 0 || original_0_idx > length_original - 1)) {
+      // leave as -1 to indicate the extrapolation value should be used
+    } else {
+      input_dim0_idx = get_nearest_pixel(original_0_idx, x_scale < 1);
+      if (input_dim0_idx > length_original - 1) input_dim0_idx = length_original - 1;
+      if (input_dim0_idx < 0) input_dim0_idx = 0;
+    }
+
+    input_mapping[output_dim0_idx] = input_dim0_idx;
   }
 
+  return input_mapping;
+}
+
+static std::vector<std::vector<int64_t>>
+UpsampleNearestSetupInputMappings(int64_t n_dim,
+                                  const TensorShape& input_shape,
+                                  const TensorShape& output_shape,
+                                  const std::vector<int64_t>& input_dim_factor,
+                                  const vector<float>& scales,
+                                  const vector<float>& roi,
+                                  bool extrapolation_enabled,
+                                  const GetOriginalCoordinateFunc& get_original_coordinate,
+                                  const GetNearestPixelFunc& get_nearest_pixel) {
+  std::vector<std::vector<int64_t>> input_mappings(n_dim);
+
+  for (int64_t axis = 0; axis < n_dim; ++axis) {
+    std::vector<int64_t>& input_mapping = input_mappings[axis];
+    input_mapping.resize(output_shape[axis]);
+
+    // When scale is 1.0, there is a one-to-one mapping between the dimension
+    // in the input and the output and there is no need to apply the co-ordinate
+    // transformation which should only be done when there is "resizing" required
+    if (scales[axis] == 1.0f) {
+      for (int64_t dim = 0; dim < output_shape[axis]; dim++) {
+        input_mapping[dim] = dim * input_dim_factor[axis];
+      }
+      continue;
+    }
+
+    // scale != 1.0
+    const int64_t input_size = input_dim_factor[0] * input_shape[0];
+    for (int64_t dim = 0; dim < output_shape[axis]; dim++) {
+      float original_dim = get_original_coordinate(static_cast<float>(dim),
+                                                   scales[axis],
+                                                   static_cast<float>(output_shape[axis]),
+                                                   static_cast<float>(input_shape[axis]),
+                                                   roi[axis], roi[n_dim + axis]);
+
+      bool need_extrapolation = (extrapolation_enabled && (original_dim < 0 || original_dim > input_shape[axis] - 1));
+      int64_t input_dim = get_nearest_pixel(original_dim, scales[axis] < 1);
+      if (input_dim >= input_shape[axis]) input_dim = input_shape[axis] - 1;
+      if (input_dim < 0) input_dim = 0;
+
+      input_mapping[dim] = need_extrapolation ? (-input_size) : (input_dim * input_dim_factor[axis]);
+    }
+  }
+
+  return input_mappings;
+};
+
+template <typename T>
+static Status UpsampleNearestImpl(const T* input,
+                                  T* output,
+                                  const TensorShape& input_shape,
+                                  const TensorShape& output_shape,
+                                  const vector<float>& scales,
+                                  const vector<float>& roi,
+                                  bool extrapolation_enabled,
+                                  const T extrapolation_value,
+                                  const GetOriginalCoordinateFunc& get_original_coordinate,
+                                  const GetNearestPixelFunc& get_nearest_pixel) {
   int64_t n_dim = static_cast<int64_t>(input_shape.NumDimensions());
 
   std::vector<int64_t> input_dim_counters(n_dim);
   std::vector<int64_t> input_dim_factor(n_dim);
-  std::vector<bool> use_extrapolation_value(n_dim);
   input_dim_factor[n_dim - 1] = 1;  // initialize dimension factor
   for (int64_t dim_idx = n_dim - 2; dim_idx >= 0; dim_idx--) {
     input_dim_factor[dim_idx] = input_dim_factor[dim_idx + 1] * input_shape[dim_idx + 1];
@@ -95,76 +157,52 @@ Status UpsampleNearest(const T* input,
   int64_t input_idx = 0;
 
   if (n_dim == 1) {
-    for (int64_t output_dim0_inx = 0; output_dim0_inx < output_shape[0]; output_dim0_inx++) {
-      use_extrapolation_value[0] = false;
-      float original_0_idx = get_original_coordinate(static_cast<float>(output_dim0_inx), scales[0],
-                                                     static_cast<float>(output_shape[0]), static_cast<float>(input_shape[0]),
-                                                     roi[0], roi[n_dim + 0]);
-      if (extrapolation_enabled && (original_0_idx < 0 || original_0_idx > input_shape[0] - 1)) use_extrapolation_value[0] = true;
-      int64_t input_dim0_inx = get_nearest_pixel(original_0_idx, scales[0] < 1);
-      if (input_dim0_inx > input_shape[0] - 1) input_dim0_inx = input_shape[0] - 1;
-      if (input_dim0_inx < 0) input_dim0_inx = 0;
-      output[output_idx++] = use_extrapolation_value[0] ? static_cast<T>(extrapolation_value) : input[input_dim0_inx];
+    std::vector<int64_t> input_mapping = UpsampleNearestSetupRank1InputMapping(input_shape[0],
+                                                                               output_shape[0],
+                                                                               scales[0],
+                                                                               roi[0], roi[n_dim + 0],
+                                                                               extrapolation_enabled,
+                                                                               get_original_coordinate,
+                                                                               get_nearest_pixel);
+
+    for (int64_t output_dim0_idx = 0; output_dim0_idx < output_shape[0]; output_dim0_idx++) {
+      int64_t input_dim0_idx = input_mapping[output_dim0_idx];
+      output[output_dim0_idx] = input_dim0_idx < 0 ? extrapolation_value : input[input_dim0_idx];
     }
+
     return Status::OK();
   }
 
-  auto CalculateInputMapping =
-      [n_dim, &input_shape, &output_shape, &input_dim_factor, &scales, &roi, extrapolation_enabled, &get_original_coordinate, &get_nearest_pixel](
-          std::vector<int64_t>& input_mapping, const int64_t axis) {
-        // When scale is 1.0, there is a one-to-one mapping between the dimension
-        // in the input and the output and there is no need to apply the co-ordinate
-        // transformation which should only be done when there is "resizing" required
-        if (scales[axis] == 1.0f) {
-          for (int64_t dim = 0; dim < output_shape[axis]; dim++) {
-            input_mapping[dim] = dim * input_dim_factor[axis];
-          }
-          return;
-        }
-
-        // scale != 1.0
-        const int64_t input_size = input_dim_factor[0] * input_shape[0];
-        for (int64_t dim = 0; dim < output_shape[axis]; dim++) {
-          float original_dim = get_original_coordinate(static_cast<float>(dim), scales[axis], static_cast<float>(output_shape[axis]),
-                                                       static_cast<float>(input_shape[axis]), roi[axis], roi[n_dim + axis]);
-          bool need_extrapolation = (extrapolation_enabled && (original_dim < 0 || original_dim > input_shape[axis] - 1));
-          int64_t input_dim = get_nearest_pixel(original_dim, scales[axis] < 1);
-          if (input_dim >= input_shape[axis]) input_dim = input_shape[axis] - 1;
-          if (input_dim < 0) input_dim = 0;
-          input_mapping[dim] = need_extrapolation ? (-input_size) : (input_dim * input_dim_factor[axis]);
-        }
-        return;
-      };
+  std::vector<std::vector<int64_t>> input_mappings =
+      UpsampleNearestSetupInputMappings(n_dim, input_shape, output_shape, input_dim_factor, scales, roi,
+                                        extrapolation_enabled, get_original_coordinate, get_nearest_pixel);
 
   if (n_dim == 2) {
-    std::vector<int64_t> input_mapping_0(output_shape[0]);
-    std::vector<int64_t> input_mapping_1(output_shape[1]);
-    CalculateInputMapping(input_mapping_0, 0);
-    CalculateInputMapping(input_mapping_1, 1);
+    const std::vector<int64_t>& input_mapping_0 = input_mappings[0];
+    const std::vector<int64_t>& input_mapping_1 = input_mappings[1];
+
     for (int64_t output_dim0_inx = 0; output_dim0_inx < output_shape[0]; output_dim0_inx++) {
       int64_t input_idx_0 = input_mapping_0[output_dim0_inx];
       for (int64_t output_dim1_inx = 0; output_dim1_inx < output_shape[1]; output_dim1_inx++) {
         int64_t input_idx_1 = input_idx_0 + input_mapping_1[output_dim1_inx];
-        output[output_idx++] = (input_idx_1 < 0) ? static_cast<T>(extrapolation_value) : input[input_idx_1];
+        output[output_idx++] = (input_idx_1 < 0) ? extrapolation_value : input[input_idx_1];
       }
     }
     return Status::OK();
   }
 
   if (n_dim == 3) {
-    std::vector<int64_t> input_mapping_0(output_shape[0]);
-    std::vector<int64_t> input_mapping_1(output_shape[1]);
-    std::vector<int64_t> input_mapping_2(output_shape[2]);
-    CalculateInputMapping(input_mapping_0, 0);
-    CalculateInputMapping(input_mapping_1, 1);
-    CalculateInputMapping(input_mapping_2, 2);
+    const std::vector<int64_t>& input_mapping_0 = input_mappings[0];
+    const std::vector<int64_t>& input_mapping_1 = input_mappings[1];
+    const std::vector<int64_t>& input_mapping_2 = input_mappings[2];
+
     for (int64_t output_dim0_inx = 0; output_dim0_inx < output_shape[0]; output_dim0_inx++) {
       int64_t input_idx_0 = input_mapping_0[output_dim0_inx];
       for (int64_t output_dim1_inx = 0; output_dim1_inx < output_shape[1]; output_dim1_inx++) {
         int64_t input_idx_1 = input_idx_0 + input_mapping_1[output_dim1_inx];
         for (int64_t output_dim2_inx = 0; output_dim2_inx < output_shape[2]; output_dim2_inx++) {
           int64_t input_idx_2 = input_idx_1 + input_mapping_2[output_dim2_inx];
-          output[output_idx++] = (input_idx_2 < 0) ? static_cast<T>(extrapolation_value) : input[input_idx_2];
+          output[output_idx++] = (input_idx_2 < 0) ? extrapolation_value : input[input_idx_2];
         }
       }
     }
@@ -172,18 +210,11 @@ Status UpsampleNearest(const T* input,
   }
 
   if (n_dim == 4) {
-    if (use_nearest2x_optimization && scales[0] == 1 && scales[1] == 1 && scales[2] == 2 && scales[3] == 2) {
-      UpsampleNearest2x<T>(input_shape[0], input_shape[1], input_shape[2], input_shape[3], input, output);
-      return Status::OK();
-    }
-    std::vector<int64_t> input_mapping_0(output_shape[0]);
-    std::vector<int64_t> input_mapping_1(output_shape[1]);
-    std::vector<int64_t> input_mapping_2(output_shape[2]);
-    std::vector<int64_t> input_mapping_3(output_shape[3]);
-    CalculateInputMapping(input_mapping_0, 0);
-    CalculateInputMapping(input_mapping_1, 1);
-    CalculateInputMapping(input_mapping_2, 2);
-    CalculateInputMapping(input_mapping_3, 3);
+    const std::vector<int64_t>& input_mapping_0 = input_mappings[0];
+    const std::vector<int64_t>& input_mapping_1 = input_mappings[1];
+    const std::vector<int64_t>& input_mapping_2 = input_mappings[2];
+    const std::vector<int64_t>& input_mapping_3 = input_mappings[3];
+
     for (int64_t output_dim0_inx = 0; output_dim0_inx < output_shape[0]; output_dim0_inx++) {
       int64_t input_idx_0 = input_mapping_0[output_dim0_inx];
       for (int64_t output_dim1_inx = 0; output_dim1_inx < output_shape[1]; output_dim1_inx++) {
@@ -200,19 +231,14 @@ Status UpsampleNearest(const T* input,
     return Status::OK();
   }
 
-  std::vector<std::vector<int64_t>> input_mappings(n_dim);
-  for (int64_t dim_idx = 0; dim_idx < n_dim; ++dim_idx) {
-    input_mappings[dim_idx].resize(output_shape[dim_idx]);
-    CalculateInputMapping(input_mappings[dim_idx], dim_idx);
-  }
-
   std::vector<int64_t> output_dim_counter(n_dim);
   for (int64_t dim_idx = 0; dim_idx < n_dim; dim_idx++) {
     input_idx += input_mappings[dim_idx][0 /* output_dim_counter[dim_idx] */];
   }
 
   for (int64_t output_size = output_shape.Size(); output_idx < output_size; output_idx++) {
-    output[output_idx] = (input_idx < 0) ? static_cast<T>(extrapolation_value) : input[input_idx];
+    output[output_idx] = (input_idx < 0) ? extrapolation_value : input[input_idx];
+
     for (int64_t dim_idx = n_dim - 1; dim_idx >= 0; dim_idx--) {
       input_idx -= input_mappings[dim_idx][output_dim_counter[dim_idx]];
       if (++output_dim_counter[dim_idx] < output_shape[dim_idx]) {
@@ -227,27 +253,71 @@ Status UpsampleNearest(const T* input,
   return Status::OK();
 }
 
-//This is a generic upsample in linear mode for N-D tensor.
-//But what's the correct behavior for linear mode is not clear right now.
-//this function is not enabled yet.
-//this function is not tested for opset 11 changes yet
-template <typename T>
-Status UpsampleLinear(const T* input,
-                      T* output,
-                      const TensorShape& input_shape,
-                      const TensorShape& output_shape,
-                      const vector<float>& scales,
-                      bool is_resize,
-                      const std::vector<float>& roi,
-                      GetOriginalCoordinateFunc get_original_coordinate) {
-  if (!input || !output)
+static Status ValidateUpsampleInput(const void* input, const void* output,
+                                    const TensorShape& input_shape, const TensorShape& output_shape,
+                                    bool is_resize) {
+  if (!input || !output) {
     return Status(ONNXRUNTIME, FAIL,
-                  is_resize ? "Resize: input / output value is nullptr"
-                            : "Upsample: input / output value is nullptr");
-  if (input_shape.NumDimensions() != output_shape.NumDimensions())
+                  is_resize ? "Resize: input/output value is nullptr"
+                            : "Upsample: input/output value is nullptr");
+  }
+
+  if (input_shape.NumDimensions() != output_shape.NumDimensions()) {
     return Status(ONNXRUNTIME, FAIL,
                   is_resize ? "Resize: input/output value's dimension mismatch"
                             : "Upsample: input/output value's dimension mismatch");
+  }
+
+  if (input_shape.NumDimensions() == 0) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  is_resize ? "Resize: input shape needs to be at least a single dimension"
+                            : "Upsample: input shape needs to be at least a single dimension.");
+  }
+
+  return Status::OK();
+}
+
+template <typename T>
+static Status UpsampleNearest(const T* input,
+                              T* output,
+                              const TensorShape& input_shape,
+                              const TensorShape& output_shape,
+                              const vector<float>& scales,
+                              const vector<float>& roi,
+                              bool is_resize,
+                              bool extrapolation_enabled,
+                              T extrapolation_value,
+                              bool use_nearest2x_optimization,
+                              const GetOriginalCoordinateFunc& get_original_coordinate,
+                              const GetNearestPixelFunc& get_nearest_pixel) {
+  ORT_RETURN_IF_ERROR(ValidateUpsampleInput(input, output, input_shape, output_shape, is_resize));
+
+  // special case with fast path
+  if (use_nearest2x_optimization && input_shape.NumDimensions() == 4 &&
+      scales[0] == 1 && scales[1] == 1 && scales[2] == 2 && scales[3] == 2) {
+    UpsampleNearest2x<T>(input_shape[0], input_shape[1], input_shape[2], input_shape[3], input, output);
+    return Status::OK();
+  }
+
+  return UpsampleNearestImpl(input, output, input_shape, output_shape, scales, roi,
+                             extrapolation_enabled, extrapolation_value,
+                             get_original_coordinate, get_nearest_pixel);
+}
+
+/*
+
+// This is a generic upsample in linear mode for N-D tensor.
+// But what's the correct behavior for linear mode is not clear right now.
+// this function is not enabled yet.
+// this function is not tested for opset 11 changes yet
+
+static Status UpsampleLinearImpl(const std::function<void(size_t, size_t, float)>& apply,
+                                 const TensorShape& input_shape,
+                                 const TensorShape& output_shape,
+                                 const vector<float>& scales,
+                                 bool is_resize,
+                                 const std::vector<float>& roi,
+                                 const GetOriginalCoordinateFunc& get_original_coordinate) {
   auto n_dim = input_shape.NumDimensions();
   for (size_t i = 0, size = output_shape.Size(); i < size; i++) {
     std::vector<int64_t> val1;
@@ -257,9 +327,10 @@ Status UpsampleLinear(const T* input,
     size_t cur_idx = i;
     //val1, vla2, d1, d2 are in reverse order
     for (auto j = static_cast<int64_t>(n_dim - 1); j >= 0; j--) {
-      float resized_index = cur_idx % output_shape[j];
+      float resized_index = static_cast<float>(cur_idx % output_shape[j]);
       float original_index = get_original_coordinate(static_cast<float>(resized_index), scales[j],
-                                                     static_cast<float>(output_shape[j]), static_cast<float>(input_shape[j]),
+                                                     static_cast<float>(output_shape[j]),
+                                                     static_cast<float>(input_shape[j]),
                                                      roi[j], roi[n_dim + j]);
       float v = std::max(0.0f, std::min(original_index, static_cast<float>(input_shape[j] - 1)));
       auto v1 = std::min(static_cast<int64_t>(v), input_shape[j] - 1);
@@ -276,8 +347,9 @@ Status UpsampleLinear(const T* input,
       cur_idx /= output_shape[j];
     }
 
-    output[i] = 0;
-    int64_t step = static_cast<int64_t>(1 << n_dim) - 1;
+    // output[i] = 0;
+
+    int64_t step = (1LL << n_dim) - 1;
     while (step >= 0) {
       auto cur = step;
       float w = 1.0f;
@@ -290,18 +362,164 @@ Status UpsampleLinear(const T* input,
         base *= input_shape[j];
         cur >>= 1;
       }
-      output[i] += input[old_idx] * w;
+
+      // output[i] += input[old_idx] * w;
+      apply(old_idx, i, w);
+
       step--;
     }
   }
+
   return Status::OK();
 }
+
+template <typename T>
+static Status UpsampleLinear(const T* input,
+                             T* output,
+                             const TensorShape& input_shape,
+                             const TensorShape& output_shape,
+                             const vector<float>& scales,
+                             bool is_resize,
+                             const std::vector<float>& roi,
+                             const GetOriginalCoordinateFunc& get_original_coordinate) {
+  ORT_RETURN_IF_ERROR(ValidateUpsampleInput(input, output, input_shape, output_shape, is_resize));
+
+  // need to initialize the output to 0 as UpsampleLineary always does += when updating
+  std::fill_n(output, output_shape.Size(), T{});
+
+  auto apply = [&input, &output](size_t input_idx, size_t output_idx, float w) {
+    output[output_idx] += input[input_idx] * w;
+  };
+
+  return UpsampleLinearImpl(apply, input_shape, output_shape, scales, is_resize, roi, get_original_coordinate);
+}
+*/
+
+struct BilinearParams {
+  std::vector<float> x_original;
+  std::vector<float> y_original;
+
+  BufferUniquePtr idx_scale_data_buffer_holder;
+
+  int64_t* input_width_mul_y1;
+  int64_t* input_width_mul_y2;
+
+  int64_t* in_x1;
+  int64_t* in_x2;
+
+  float* dx1;
+  float* dx2;
+
+  float* dy1;
+  float* dy2;
+};
 
 // The following method supports a 4-D input in 'Linear mode'
 // that amounts to 'Bilinear' Upsampling/Resizing in the sense that it assumes
 // the scale values for the outermost 2 dimensions are 1.
 // This is the common use-case where the 4-D input (batched multi-channel images)
 // is usually of shape [N, C, H, W] and the scales are [1.0, 1.0, height_scale, width_scale]
+static BilinearParams SetupUpsampleBilinear(int64_t input_height,
+                                            int64_t input_width,
+                                            int64_t output_height,
+                                            int64_t output_width,
+                                            float height_scale,
+                                            float width_scale,
+                                            const std::vector<float>& roi,
+                                            AllocatorPtr& alloc,
+                                            const GetOriginalCoordinateFunc& get_original_coordinate) {
+  BilinearParams p;
+
+  p.x_original.reserve(output_width);
+  p.y_original.reserve(output_height);
+
+  // For each index in the output height and output width, cache its corresponding indices in the input
+  // while multiplying it with the input stride for that dimension (cache because we don't have to re-compute
+  // each time we come across the output width/ output height value while iterating the output image tensor
+  SafeInt<size_t> idx_buffer_size = SafeInt<size_t>(2) * sizeof(int64_t) * (output_height + output_width);
+
+  // For each index in the output height and output width, cache its corresponding "weights/scales" for its
+  // corresponding indices in the input which proportionately indicates how much they will influence the final
+  // pixel value in the output
+  // (cache because we don't have to re-compute each time we come across the output width/output height
+  // value while iterating the output image tensor
+  SafeInt<size_t> scale_buffer_size = SafeInt<size_t>(2) * sizeof(float_t) * (output_height + output_width);
+
+  // Limit number of allocations to just 1
+  auto inx_scale_data_buffer = alloc->Alloc(idx_buffer_size + scale_buffer_size);
+  p.idx_scale_data_buffer_holder = BufferUniquePtr(inx_scale_data_buffer, BufferDeleter(alloc));
+
+  // Get pointers to appropriate memory locations in the scratch buffer
+  auto* idx_data = static_cast<int64_t*>(p.idx_scale_data_buffer_holder.get());
+
+  // input_width is the stride for the height dimension
+  p.input_width_mul_y1 = idx_data;
+  p.input_width_mul_y2 = p.input_width_mul_y1 + output_height;
+
+  // stride for width is 1 (no multiplication needed)
+  p.in_x1 = p.input_width_mul_y1 + 2 * output_height;
+  p.in_x2 = p.in_x1 + output_width;
+
+  auto* scale_data = reinterpret_cast<float*>(p.in_x2 + output_width);
+
+  p.dy1 = scale_data;
+  p.dy2 = p.dy1 + output_height;
+
+  p.dx1 = p.dy1 + 2 * output_height;
+  p.dx2 = p.dx1 + output_width;
+
+  // Start processing
+  auto roi_y_start = roi.size() / 2 - 2;
+  auto roi_y_end = roi.size() - 2;
+  for (int64_t y = 0; y < output_height; ++y) {
+    float in_y = height_scale == 1 ? static_cast<float>(y)
+                                   : get_original_coordinate(static_cast<float>(y), height_scale,
+                                                             static_cast<float>(output_height),
+                                                             static_cast<float>(input_height),
+                                                             roi[roi_y_start], roi[roi_y_end]);
+    p.y_original.emplace_back(in_y);
+    in_y = std::max(0.0f, std::min(in_y, static_cast<float>(input_height - 1)));
+
+    const int64_t in_y1 = std::min(static_cast<int64_t>(in_y), input_height - 1);
+    const int64_t in_y2 = std::min(in_y1 + 1, input_height - 1);
+    p.dy1[y] = std::fabs(in_y - in_y1);
+    p.dy2[y] = std::fabs(in_y - in_y2);
+
+    if (in_y1 == in_y2) {
+      p.dy1[y] = 0.5f;
+      p.dy2[y] = 0.5f;
+    }
+
+    p.input_width_mul_y1[y] = input_width * in_y1;
+    p.input_width_mul_y2[y] = input_width * in_y2;
+  }
+
+  auto roi_x_start = roi.size() / 2 - 1;
+  auto roi_x_end = roi.size() - 1;
+  for (int64_t x = 0; x < output_width; ++x) {
+    float in_x = width_scale == 1 ? static_cast<float>(x)
+                                  : get_original_coordinate(static_cast<float>(x),
+                                                            width_scale,
+                                                            static_cast<float>(output_width),
+                                                            static_cast<float>(input_width),
+                                                            roi[roi_x_start], roi[roi_x_end]);
+    p.x_original.emplace_back(in_x);
+    in_x = std::max(0.0f, std::min(in_x, static_cast<float>(input_width - 1)));
+
+    p.in_x1[x] = std::min(static_cast<int64_t>(in_x), input_width - 1);
+    p.in_x2[x] = std::min(p.in_x1[x] + 1, input_width - 1);
+
+    p.dx1[x] = std::fabs(in_x - p.in_x1[x]);
+    p.dx2[x] = std::fabs(in_x - p.in_x2[x]);
+    if (p.in_x1[x] == p.in_x2[x]) {
+      p.dx1[x] = 0.5f;
+      p.dx2[x] = 0.5f;
+    }
+  }
+
+  return p;
+}
+
 template <typename T>
 void UpsampleBilinear(int64_t batch_size,
                       int64_t num_channels,
@@ -317,49 +535,156 @@ void UpsampleBilinear(int64_t batch_size,
                       const T* XdataBase,
                       T* YdataBase,
                       AllocatorPtr& alloc,
-                      GetOriginalCoordinateFunc get_original_coordinate,
+                      const GetOriginalCoordinateFunc& get_original_coordinate,
                       concurrency::ThreadPool* tp) {
-  std::vector<float> y_original;
-  y_original.reserve(output_height);
+  BilinearParams p = SetupUpsampleBilinear(input_height, input_width, output_height, output_width,
+                                           height_scale, width_scale, roi,
+                                           alloc, get_original_coordinate);
 
+  for (int64_t n = 0; n < batch_size; ++n) {
+    concurrency::ThreadPool::TrySimpleParallelFor(
+        tp, num_channels,
+        [&](std::ptrdiff_t c) {
+          const T* Xdata = XdataBase + (n * num_channels + c) * (input_height * input_width);
+          T* Ydata = YdataBase + (n * num_channels + c) * (output_height * output_width);
+          for (int64_t y = 0; y < output_height; ++y) {
+            for (int64_t x = 0; x < output_width; ++x) {
+              // when use_extrapolation is set and original index of x or y is out of the dim range
+              // then use extrapolation_value as the output value.
+              if (use_extrapolation &&
+                  ((p.y_original[y] < 0 || p.y_original[y] > static_cast<float>(input_height - 1)) ||
+                   (p.x_original[x] < 0 || p.x_original[x] > static_cast<float>(input_width - 1)))) {
+                Ydata[output_width * y + x] = static_cast<T>(extrapolation_value);
+                continue;
+              }
+
+              T X11 = Xdata[p.input_width_mul_y1[y] + p.in_x1[x]];
+              T X21 = Xdata[p.input_width_mul_y1[y] + p.in_x2[x]];
+              T X12 = Xdata[p.input_width_mul_y2[y] + p.in_x1[x]];
+              T X22 = Xdata[p.input_width_mul_y2[y] + p.in_x2[x]];
+
+              Ydata[output_width * y + x] = static_cast<T>(p.dx2[x] * p.dy2[y] * X11 +
+                                                           p.dx1[x] * p.dy2[y] * X21 +
+                                                           p.dx2[x] * p.dy1[y] * X12 +
+                                                           p.dx1[x] * p.dy1[y] * X22);
+            }
+          }
+          Xdata += input_height * input_width;
+          Ydata += output_width * output_height;
+        });
+  }
+}
+
+struct TrilinearParams {
   std::vector<float> x_original;
-  x_original.reserve(output_width);
+  std::vector<float> y_original;
+  std::vector<float> z_original;
+
+  BufferUniquePtr idx_scale_data_buffer_holder;
+
+  int64_t* in_x1;
+  int64_t* in_x2;
+  int64_t* input_width_mul_y1;
+  int64_t* input_width_mul_y2;
+  int64_t* input_height_width_mul_z1;
+  int64_t* input_height_width_mul_z2;
+
+  float* dx1;
+  float* dx2;
+  float* dy1;
+  float* dy2;
+  float* dz1;
+  float* dz2;
+};
+
+static TrilinearParams SetupUpsampleTrilinear(int64_t input_depth,
+                                              int64_t input_height,
+                                              int64_t input_width,
+                                              int64_t output_depth,
+                                              int64_t output_height,
+                                              int64_t output_width,
+                                              float depth_scale,
+                                              float height_scale,
+                                              float width_scale,
+                                              const std::vector<float>& roi,
+                                              AllocatorPtr& alloc,
+                                              const GetOriginalCoordinateFunc& get_original_coordinate) {
+  TrilinearParams p;
+
+  p.z_original.reserve(output_depth);
+  p.y_original.reserve(output_height);
+  p.x_original.reserve(output_width);
 
   // For each index in the output height and output width, cache its corresponding indices in the input
   // while multiplying it with the input stride for that dimension (cache because we don't have to re-compute
   // each time we come across the output width/ output height value while iterating the output image tensor
-  SafeInt<size_t> idx_buffer_size = SafeInt<size_t>(2) * sizeof(int64_t) * (output_height + output_width);
+  SafeInt<size_t> idx_buffer_size = SafeInt<size_t>(2) * sizeof(int64_t) *
+                                    (output_depth + output_height + output_width);
 
   // For each index in the output height and output width, cache its corresponding "weights/scales" for its
   // corresponding indices in the input which proportionately indicates how much they will influence the final
   // pixel value in the output
-  // (cache because we don't have to re-compute each time we come across the output width/ output height value while iterating the output image tensor
-  SafeInt<size_t> scale_buffer_size = SafeInt<size_t>(2) * sizeof(float_t) * (output_height + output_width);
+  // (cache because we don't have to re-compute each time we come across the output width/output height value
+  // while iterating the output image tensor
+  SafeInt<size_t> scale_buffer_size = SafeInt<size_t>(2) * sizeof(float_t) *
+                                      (output_depth + output_height + output_width);
 
   // Limit number of allocations to just 1
-  auto inx_scale_data_buffer = alloc->Alloc(idx_buffer_size + scale_buffer_size);
-  BufferUniquePtr idx_scale_data_buffer_holder(inx_scale_data_buffer, BufferDeleter(alloc));
+  void* inx_scale_data_buffer = alloc->Alloc(idx_buffer_size + scale_buffer_size);
+  p.idx_scale_data_buffer_holder = BufferUniquePtr(inx_scale_data_buffer, BufferDeleter(alloc));
 
   // Get pointers to appropriate memory locations in the scratch buffer
-  auto* idx_data = static_cast<int64_t*>(idx_scale_data_buffer_holder.get());
+  auto* idx_data = static_cast<int64_t*>(p.idx_scale_data_buffer_holder.get());
+
+  // input_width * input_height is the stride for the depth dimension
+  p.input_height_width_mul_z1 = idx_data;
+  p.input_height_width_mul_z2 = p.input_height_width_mul_z1 + output_depth;
 
   // input_width is the stride for the height dimension
-  int64_t* input_width_mul_y1 = idx_data;
-  int64_t* input_width_mul_y2 = input_width_mul_y1 + output_height;
+  p.input_width_mul_y1 = p.input_height_width_mul_z1 + 2 * output_depth;
+  p.input_width_mul_y2 = p.input_width_mul_y1 + output_height;
 
   // stride for width is 1 (no multiplication needed)
-  int64_t* in_x1 = input_width_mul_y1 + 2 * output_height;
-  int64_t* in_x2 = in_x1 + output_width;
+  p.in_x1 = p.input_width_mul_y1 + 2 * output_height;
+  p.in_x2 = p.in_x1 + output_width;
 
-  auto* scale_data = reinterpret_cast<float*>(in_x2 + output_width);
+  auto* scale_data = reinterpret_cast<float*>(p.in_x2 + output_width);
 
-  float* dy1 = scale_data;
-  float* dy2 = dy1 + output_height;
+  p.dz1 = scale_data;
+  p.dz2 = p.dz1 + output_depth;
 
-  float* dx1 = dy1 + 2 * output_height;
-  float* dx2 = dx1 + output_width;
+  p.dy1 = p.dz1 + 2 * output_depth;
+  p.dy2 = p.dy1 + output_height;
+
+  p.dx1 = p.dy1 + 2 * output_height;
+  p.dx2 = p.dx1 + output_width;
 
   // Start processing
+  auto roi_z_start = roi.size() / 2 - 3;
+  auto roi_z_end = roi.size() - 3;
+  for (int64_t z = 0; z < output_depth; ++z) {
+    float in_z = depth_scale == 1 ? static_cast<float>(z)
+                                  : get_original_coordinate(static_cast<float>(z), depth_scale,
+                                                            static_cast<float>(output_depth),
+                                                            static_cast<float>(input_depth),
+                                                            roi[roi_z_start], roi[roi_z_end]);
+    p.z_original.emplace_back(in_z);
+    in_z = std::max(0.0f, std::min(in_z, static_cast<float>(input_depth - 1)));
+
+    const int64_t in_z1 = std::min(static_cast<int64_t>(in_z), input_depth - 1);
+    const int64_t in_z2 = std::min(in_z1 + 1, input_depth - 1);
+    p.dz1[z] = std::fabs(in_z - in_z1);
+    p.dz2[z] = std::fabs(in_z - in_z2);
+
+    if (in_z1 == in_z2) {
+      p.dz1[z] = 0.5f;
+      p.dz2[z] = 0.5f;
+    }
+
+    p.input_height_width_mul_z1[z] = input_height * input_width * in_z1;
+    p.input_height_width_mul_z2[z] = input_height * input_width * in_z2;
+  }
+
   auto roi_y_start = roi.size() / 2 - 2;
   auto roi_y_end = roi.size() - 2;
   for (int64_t y = 0; y < output_height; ++y) {
@@ -368,77 +693,46 @@ void UpsampleBilinear(int64_t batch_size,
                                                              static_cast<float>(output_height),
                                                              static_cast<float>(input_height),
                                                              roi[roi_y_start], roi[roi_y_end]);
-    y_original.emplace_back(in_y);
+    p.y_original.emplace_back(in_y);
     in_y = std::max(0.0f, std::min(in_y, static_cast<float>(input_height - 1)));
 
     const int64_t in_y1 = std::min(static_cast<int64_t>(in_y), input_height - 1);
     const int64_t in_y2 = std::min(in_y1 + 1, input_height - 1);
-    dy1[y] = std::fabs(in_y - in_y1);
-    dy2[y] = std::fabs(in_y - in_y2);
+    p.dy1[y] = std::fabs(in_y - in_y1);
+    p.dy2[y] = std::fabs(in_y - in_y2);
 
     if (in_y1 == in_y2) {
-      dy1[y] = 0.5f;
-      dy2[y] = 0.5f;
+      p.dy1[y] = 0.5f;
+      p.dy2[y] = 0.5f;
     }
 
-    input_width_mul_y1[y] = input_width * in_y1;
-    input_width_mul_y2[y] = input_width * in_y2;
+    p.input_width_mul_y1[y] = input_width * in_y1;
+    p.input_width_mul_y2[y] = input_width * in_y2;
   }
 
   auto roi_x_start = roi.size() / 2 - 1;
   auto roi_x_end = roi.size() - 1;
   for (int64_t x = 0; x < output_width; ++x) {
     float in_x = width_scale == 1 ? static_cast<float>(x)
-                                  : get_original_coordinate(static_cast<float>(x),
-                                                            width_scale,
+                                  : get_original_coordinate(static_cast<float>(x), width_scale,
                                                             static_cast<float>(output_width),
                                                             static_cast<float>(input_width),
                                                             roi[roi_x_start], roi[roi_x_end]);
-    x_original.emplace_back(in_x);
+    p.x_original.emplace_back(in_x);
     in_x = std::max(0.0f, std::min(in_x, static_cast<float>(input_width - 1)));
 
-    in_x1[x] = std::min(static_cast<int64_t>(in_x), input_width - 1);
-    in_x2[x] = std::min(in_x1[x] + 1, input_width - 1);
+    p.in_x1[x] = std::min(static_cast<int64_t>(in_x), input_width - 1);
+    p.in_x2[x] = std::min(p.in_x1[x] + 1, input_width - 1);
 
-    dx1[x] = std::fabs(in_x - in_x1[x]);
-    dx2[x] = std::fabs(in_x - in_x2[x]);
-    if (in_x1[x] == in_x2[x]) {
-      dx1[x] = 0.5f;
-      dx2[x] = 0.5f;
+    p.dx1[x] = std::fabs(in_x - p.in_x1[x]);
+    p.dx2[x] = std::fabs(in_x - p.in_x2[x]);
+    if (p.in_x1[x] == p.in_x2[x]) {
+      p.dx1[x] = 0.5f;
+      p.dx2[x] = 0.5f;
     }
   }
-  
- for (int64_t n = 0; n < batch_size; ++n) {
-    concurrency::ThreadPool::TrySimpleParallelFor(tp, num_channels,
-                                                  [&](std::ptrdiff_t c) {
-                                                    const T* Xdata = XdataBase + (n * num_channels + c) * (input_height * input_width);
-                                                    T* Ydata = YdataBase + (n * num_channels + c) * (output_height * output_width);
-                                                    for (int64_t y = 0; y < output_height; ++y) {
-                                                      for (int64_t x = 0; x < output_width; ++x) {
-                                                        // when use_extrapolation is set and original index of x or y is out of the dim range
-                                                        // then use extrapolation_value as the output value.
-                                                        if (use_extrapolation &&
-                                                            ((y_original[y] < 0 || y_original[y] > static_cast<float>(input_height - 1)) ||
-                                                             (x_original[x] < 0 || x_original[x] > static_cast<float>(input_width - 1)))) {
-                                                          Ydata[output_width * y + x] = static_cast<T>(extrapolation_value);
-                                                          continue;
-                                                        }
 
-                                                        T X11 = Xdata[input_width_mul_y1[y] + in_x1[x]];
-                                                        T X21 = Xdata[input_width_mul_y1[y] + in_x2[x]];
-                                                        T X12 = Xdata[input_width_mul_y2[y] + in_x1[x]];
-                                                        T X22 = Xdata[input_width_mul_y2[y] + in_x2[x]];
-
-                                                        Ydata[output_width * y + x] = static_cast<T>(dx2[x] * dy2[y] * X11 +
-                                                                                                     dx1[x] * dy2[y] * X21 +
-                                                                                                     dx2[x] * dy1[y] * X12 +
-                                                                                                     dx1[x] * dy1[y] * X22);
-                                                      }
-                                                    }
-                                                    Xdata += input_height * input_width;
-                                                    Ydata += output_width * output_height;
-                                                  });
-  }
+  return p;
 }
 
 // The following method supports a 5-D input in 'Linear mode'
@@ -464,176 +758,60 @@ void UpsampleTrilinear(int64_t batch_size,
                        const T* XdataBase,
                        T* YdataBase,
                        AllocatorPtr& alloc,
-                       GetOriginalCoordinateFunc get_original_coordinate,
+                       const GetOriginalCoordinateFunc& get_original_coordinate,
                        concurrency::ThreadPool* tp) {
-  std::vector<float> z_original;
-  z_original.reserve(output_depth);
-
-  std::vector<float> y_original;
-  y_original.reserve(output_height);
-
-  std::vector<float> x_original;
-  x_original.reserve(output_width);
-
-  // For each index in the output height and output width, cache its corresponding indices in the input
-  // while multiplying it with the input stride for that dimension (cache because we don't have to re-compute
-  // each time we come across the output width/ output height value while iterating the output image tensor
-  SafeInt<size_t> idx_buffer_size = SafeInt<size_t>(2) * sizeof(int64_t) *
-                                    (output_depth + output_height + output_width);
-
-  // For each index in the output height and output width, cache its corresponding "weights/scales" for its
-  // corresponding indices in the input which proportionately indicates how much they will influence the final
-  // pixel value in the output
-  // (cache because we don't have to re-compute each time we come across the output width/ output height value while iterating the output image tensor
-  SafeInt<size_t> scale_buffer_size = SafeInt<size_t>(2) * sizeof(float_t) *
-                                      (output_depth + output_height + output_width);
-
-  // Limit number of allocations to just 1
-  auto inx_scale_data_buffer = alloc->Alloc(idx_buffer_size + scale_buffer_size);
-  BufferUniquePtr idx_scale_data_buffer_holder(inx_scale_data_buffer, BufferDeleter(alloc));
-
-  // Get pointers to appropriate memory locations in the scratch buffer
-  auto* idx_data = static_cast<int64_t*>(idx_scale_data_buffer_holder.get());
-
-  // input_width * input_height is the stride for the depth dimension
-  int64_t* input_height_width_mul_z1 = idx_data;
-  int64_t* input_height_width_mul_z2 = input_height_width_mul_z1 + output_depth;
-
-  // input_width is the stride for the height dimension
-  int64_t* input_width_mul_y1 = input_height_width_mul_z1 + 2 * output_depth;
-  int64_t* input_width_mul_y2 = input_width_mul_y1 + output_height;
-
-  // stride for width is 1 (no multiplication needed)
-  int64_t* in_x1 = input_width_mul_y1 + 2 * output_height;
-  int64_t* in_x2 = in_x1 + output_width;
-
-  auto* scale_data = reinterpret_cast<float*>(in_x2 + output_width);
-
-  float* dz1 = scale_data;
-  float* dz2 = dz1 + output_depth;
-
-  float* dy1 = dz1 + 2 * output_depth;
-  float* dy2 = dy1 + output_height;
-
-  float* dx1 = dy1 + 2 * output_height;
-  float* dx2 = dx1 + output_width;
-
-  // Start processing
-  auto roi_z_start = roi.size() / 2 - 3;
-  auto roi_z_end = roi.size() - 3;
-  for (int64_t z = 0; z < output_depth; ++z) {
-    float in_z = depth_scale == 1 ? static_cast<float>(z)
-                                  : get_original_coordinate(static_cast<float>(z), depth_scale,
-                                                            static_cast<float>(output_depth), static_cast<float>(input_depth),
-                                                            roi[roi_z_start], roi[roi_z_end]);
-    z_original.emplace_back(in_z);
-    in_z = std::max(0.0f, std::min(in_z, static_cast<float>(input_depth - 1)));
-
-    const int64_t in_z1 = std::min(static_cast<int64_t>(in_z), input_depth - 1);
-    const int64_t in_z2 = std::min(in_z1 + 1, input_depth - 1);
-    dz1[z] = std::fabs(in_z - in_z1);
-    dz2[z] = std::fabs(in_z - in_z2);
-
-    if (in_z1 == in_z2) {
-      dz1[z] = 0.5f;
-      dz2[z] = 0.5f;
-    }
-
-    input_height_width_mul_z1[z] = input_height * input_width * in_z1;
-    input_height_width_mul_z2[z] = input_height * input_width * in_z2;
-  }
-
-  auto roi_y_start = roi.size() / 2 - 2;
-  auto roi_y_end = roi.size() - 2;
-  for (int64_t y = 0; y < output_height; ++y) {
-    float in_y = height_scale == 1 ? static_cast<float>(y)
-                                   : get_original_coordinate(static_cast<float>(y), height_scale,
-                                                             static_cast<float>(output_height), static_cast<float>(input_height),
-                                                             roi[roi_y_start], roi[roi_y_end]);
-    y_original.emplace_back(in_y);
-    in_y = std::max(0.0f, std::min(in_y, static_cast<float>(input_height - 1)));
-
-    const int64_t in_y1 = std::min(static_cast<int64_t>(in_y), input_height - 1);
-    const int64_t in_y2 = std::min(in_y1 + 1, input_height - 1);
-    dy1[y] = std::fabs(in_y - in_y1);
-    dy2[y] = std::fabs(in_y - in_y2);
-
-    if (in_y1 == in_y2) {
-      dy1[y] = 0.5f;
-      dy2[y] = 0.5f;
-    }
-
-    input_width_mul_y1[y] = input_width * in_y1;
-    input_width_mul_y2[y] = input_width * in_y2;
-  }
-
-  auto roi_x_start = roi.size() / 2 - 1;
-  auto roi_x_end = roi.size() - 1;
-  for (int64_t x = 0; x < output_width; ++x) {
-    float in_x = width_scale == 1 ? static_cast<float>(x)
-                                  : get_original_coordinate(static_cast<float>(x), width_scale,
-                                                            static_cast<float>(output_width), static_cast<float>(input_width),
-                                                            roi[roi_x_start], roi[roi_x_end]);
-    x_original.emplace_back(in_x);
-    in_x = std::max(0.0f, std::min(in_x, static_cast<float>(input_width - 1)));
-
-    in_x1[x] = std::min(static_cast<int64_t>(in_x), input_width - 1);
-    in_x2[x] = std::min(in_x1[x] + 1, input_width - 1);
-
-    dx1[x] = std::fabs(in_x - in_x1[x]);
-    dx2[x] = std::fabs(in_x - in_x2[x]);
-    if (in_x1[x] == in_x2[x]) {
-      dx1[x] = 0.5f;
-      dx2[x] = 0.5f;
-    }
-  }
+  TrilinearParams p = SetupUpsampleTrilinear(input_depth, input_height, input_width,
+                                             output_depth, output_height, output_width,
+                                             depth_scale, height_scale, width_scale, roi,
+                                             alloc, get_original_coordinate);
 
   for (int64_t n = 0; n < batch_size; ++n) {
-    concurrency::ThreadPool::TrySimpleParallelFor(tp, num_channels,
-                                                  [&](std::ptrdiff_t c) {
-                                                    const T* Xdata = XdataBase + (n * num_channels + c) * (input_depth * input_height * input_width);
-                                                    T* Ydata = YdataBase + (n * num_channels + c) * (output_depth * output_height * output_width);
-                                                    for (int64_t z = 0; z < output_depth; ++z) {
-                                                      for (int64_t y = 0; y < output_height; ++y) {
-                                                        for (int64_t x = 0; x < output_width; ++x) {
-                                                          // when use_extrapolation is set and original index of x or y is out of the dim range
-                                                          // then use extrapolation_value as the output value.
-                                                          if (use_extrapolation &&
-                                                              ((z_original[z] < 0 || z_original[z] > static_cast<float>(input_depth - 1)) ||
-                                                               (y_original[y] < 0 || y_original[y] > static_cast<float>(input_height - 1)) ||
-                                                               (x_original[x] < 0 || x_original[x] > static_cast<float>(input_width - 1)))) {
-                                                            Ydata[output_width * output_height * z + output_width * y + x] =
-                                                                static_cast<T>(extrapolation_value);
-                                                            continue;
-                                                          }
+    concurrency::ThreadPool::TrySimpleParallelFor(
+        tp, num_channels,
+        [&](std::ptrdiff_t c) {
+          const T* Xdata = XdataBase + (n * num_channels + c) * (input_depth * input_height * input_width);
+          T* Ydata = YdataBase + (n * num_channels + c) * (output_depth * output_height * output_width);
+          for (int64_t z = 0; z < output_depth; ++z) {
+            for (int64_t y = 0; y < output_height; ++y) {
+              for (int64_t x = 0; x < output_width; ++x) {
+                // when use_extrapolation is set and original index of x or y is out of the dim range
+                // then use extrapolation_value as the output value.
+                if (use_extrapolation &&
+                    ((p.z_original[z] < 0 || p.z_original[z] > static_cast<float>(input_depth - 1)) ||
+                     (p.y_original[y] < 0 || p.y_original[y] > static_cast<float>(input_height - 1)) ||
+                     (p.x_original[x] < 0 || p.x_original[x] > static_cast<float>(input_width - 1)))) {
+                  Ydata[output_width * output_height * z + output_width * y + x] =
+                      static_cast<T>(extrapolation_value);
+                  continue;
+                }
 
-                                                          // subscript ordering in the variable - (xyz)
-                                                          T X111 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y1[y] + in_x1[x]];
-                                                          T X211 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y1[y] + in_x2[x]];
-                                                          T X121 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y2[y] + in_x1[x]];
-                                                          T X221 = Xdata[input_height_width_mul_z1[z] + input_width_mul_y2[y] + in_x2[x]];
+                // subscript ordering in the variable - (xyz)
+                T X111 = Xdata[p.input_height_width_mul_z1[z] + p.input_width_mul_y1[y] + p.in_x1[x]];
+                T X211 = Xdata[p.input_height_width_mul_z1[z] + p.input_width_mul_y1[y] + p.in_x2[x]];
+                T X121 = Xdata[p.input_height_width_mul_z1[z] + p.input_width_mul_y2[y] + p.in_x1[x]];
+                T X221 = Xdata[p.input_height_width_mul_z1[z] + p.input_width_mul_y2[y] + p.in_x2[x]];
 
-                                                          T X112 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y1[y] + in_x1[x]];
-                                                          T X212 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y1[y] + in_x2[x]];
-                                                          T X122 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y2[y] + in_x1[x]];
-                                                          T X222 = Xdata[input_height_width_mul_z2[z] + input_width_mul_y2[y] + in_x2[x]];
+                T X112 = Xdata[p.input_height_width_mul_z2[z] + p.input_width_mul_y1[y] + p.in_x1[x]];
+                T X212 = Xdata[p.input_height_width_mul_z2[z] + p.input_width_mul_y1[y] + p.in_x2[x]];
+                T X122 = Xdata[p.input_height_width_mul_z2[z] + p.input_width_mul_y2[y] + p.in_x1[x]];
+                T X222 = Xdata[p.input_height_width_mul_z2[z] + p.input_width_mul_y2[y] + p.in_x2[x]];
 
-                                                          Ydata[output_width * output_height * z + output_width * y + x] =
-                                                              static_cast<T>(dx2[x] * dy2[y] * dz2[z] * X111 +
-                                                                             dx1[x] * dy2[y] * dz2[z] * X211 +
-                                                                             dx2[x] * dy1[y] * dz2[z] * X121 +
-                                                                             dx1[x] * dy1[y] * dz2[z] * X221 +
+                Ydata[output_width * output_height * z + output_width * y + x] =
+                    static_cast<T>(p.dx2[x] * p.dy2[y] * p.dz2[z] * X111 +
+                                   p.dx1[x] * p.dy2[y] * p.dz2[z] * X211 +
+                                   p.dx2[x] * p.dy1[y] * p.dz2[z] * X121 +
+                                   p.dx1[x] * p.dy1[y] * p.dz2[z] * X221 +
 
-                                                                             dx2[x] * dy2[y] * dz1[z] * X112 +
-                                                                             dx1[x] * dy2[y] * dz1[z] * X212 +
-                                                                             dx2[x] * dy1[y] * dz1[z] * X122 +
-                                                                             dx1[x] * dy1[y] * dz1[z] * X222);
-                                                        }
-                                                      }
-                                                    }
-                                                    Xdata += input_depth * input_height * input_width;
-                                                    Ydata += output_depth * output_width * output_height;
-                                                  });
+                                   p.dx2[x] * p.dy2[y] * p.dz1[z] * X112 +
+                                   p.dx1[x] * p.dy2[y] * p.dz1[z] * X212 +
+                                   p.dx2[x] * p.dy1[y] * p.dz1[z] * X122 +
+                                   p.dx1[x] * p.dy1[y] * p.dz1[z] * X222);
+              }
+            }
+          }
+          Xdata += input_depth * input_height * input_width;
+          Ydata += output_depth * output_width * output_height;
+        });
   }
 }
 
@@ -642,10 +820,12 @@ void UpsampleTrilinear(int64_t batch_size,
 std::array<float, CubicModeGridLength> GetCubicCoeffs(float s, float cubic_coeff_a = -0.75) {
   auto abs_s = std::abs(s);
   std::array<float, CubicModeGridLength> coeffs;
-  coeffs[0] = static_cast<float>(((cubic_coeff_a * (abs_s + 1) - 5 * cubic_coeff_a) * (abs_s + 1) + 8 * cubic_coeff_a) * (abs_s + 1) - 4 * cubic_coeff_a);
+  coeffs[0] = static_cast<float>(
+      ((cubic_coeff_a * (abs_s + 1) - 5 * cubic_coeff_a) * (abs_s + 1) + 8 * cubic_coeff_a) * (abs_s + 1) - 4 * cubic_coeff_a);
   coeffs[1] = static_cast<float>(((cubic_coeff_a + 2) * abs_s - (cubic_coeff_a + 3)) * abs_s * abs_s + 1);
   coeffs[2] = static_cast<float>(((cubic_coeff_a + 2) * (1 - abs_s) - (cubic_coeff_a + 3)) * (1 - abs_s) * (1 - abs_s) + 1);
-  coeffs[3] = static_cast<float>(((cubic_coeff_a * (2 - abs_s) - 5 * cubic_coeff_a) * (2 - abs_s) + 8 * cubic_coeff_a) * (2 - abs_s) - 4 * cubic_coeff_a);
+  coeffs[3] = static_cast<float>(
+      ((cubic_coeff_a * (2 - abs_s) - 5 * cubic_coeff_a) * (2 - abs_s) + 8 * cubic_coeff_a) * (2 - abs_s) - 4 * cubic_coeff_a);
   return coeffs;
 }
 
@@ -693,23 +873,22 @@ float CubicInterpolation1D(const T* Xdata,
 #pragma warning(disable : 6001)
 #endif
 template <typename T>
-void ResizeBiCubic(
-    int64_t batch_size,
-    int64_t num_channels,
-    int64_t input_height,
-    int64_t input_width,
-    int64_t output_height,
-    int64_t output_width,
-    float height_scale,
-    float width_scale,
-    float cubic_coeff_a,
-    bool use_extrapolation,
-    float extrapolation_value,
-    bool exclude_outside,
-    const std::vector<float>& roi,
-    const T* Xdata,
-    T* Ydata,
-    GetOriginalCoordinateFunc get_original_coordinate) {
+void ResizeBiCubic(int64_t batch_size,
+                   int64_t num_channels,
+                   int64_t input_height,
+                   int64_t input_width,
+                   int64_t output_height,
+                   int64_t output_width,
+                   float height_scale,
+                   float width_scale,
+                   float cubic_coeff_a,
+                   bool use_extrapolation,
+                   float extrapolation_value,
+                   bool exclude_outside,
+                   const std::vector<float>& roi,
+                   const T* Xdata,
+                   T* Ydata,
+                   const GetOriginalCoordinateFunc& get_original_coordinate) {
   std::vector<float> y_original;
   y_original.reserve(output_height);
 
@@ -880,8 +1059,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 
   switch (mode_) {
     case UpsampleMode::NN:
-      return UpsampleNearest<T>(X->template Data<T>(), Y->template MutableData<T>(), X->Shape(), Y->Shape(),
-                                scales, roi, is_resize_, use_extrapolation_, extrapolation_value_,
+      return UpsampleNearest<T>(X->Data<T>(), Y->MutableData<T>(), X->Shape(), Y->Shape(),
+                                scales, roi, is_resize_, use_extrapolation_, static_cast<T>(extrapolation_value_),
                                 use_nearest2x_optimization_, get_original_coordinate_, get_nearest_pixel_);
     case UpsampleMode::LINEAR: {
       // Supports 'bilinear' and 'trilinear' sampling only
@@ -902,9 +1081,9 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
         ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
         UpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
                          is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], roi,
-                         use_extrapolation_, extrapolation_value_, X->template Data<T>(),
-                         Y->template MutableData<T>(), alloc, get_original_coordinate_, 
-                         output_height*output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+                         use_extrapolation_, extrapolation_value_, X->Data<T>(),
+                         Y->MutableData<T>(), alloc, get_original_coordinate_,
+                         output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
         return Status::OK();
       } else if (dims.size() == 3 || dims.size() == 5) {
         //'trilinear' == 3-D input or 5-D input with outermost 2 scales as 1
@@ -926,17 +1105,15 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                           output_depth, output_height, output_width,
                           is_3D ? scales[0] : scales[2], is_3D ? scales[1] : scales[3],
                           is_3D ? scales[2] : scales[4], roi, use_extrapolation_, extrapolation_value_,
-                          X->template Data<T>(), Y->template MutableData<T>(), alloc, get_original_coordinate_, 
+                          X->Data<T>(), Y->MutableData<T>(), alloc, get_original_coordinate_,
                           output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
         return Status::OK();
       } else {
         // User shouldn't hit this as the check has been performed in ScalesValidation()
-        std::ostringstream oss;
-        oss << "'Linear' mode only support 2-D inputs or 3-D inputs ('Bilinear', 'Trilinear') "
-               "or 4-D inputs or 5-D inputs with the corresponding outermost 2 scale values "
-               "being 1 in the ";
-        oss << (is_resize_ ? "Resize operator" : "Upsample operator");
-        return Status(ONNXRUNTIME, FAIL, oss.str());
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, (is_resize_ ? "Resize" : "Upsample"),
+                               ": 'Linear' mode only support 2-D inputs or 3-D inputs ('Bilinear', 'Trilinear') "
+                               "or 4-D inputs or 5-D inputs with the corresponding outermost 2 scale values "
+                               "being 1.");
       }
     }
     case UpsampleMode::CUBIC: {
@@ -944,12 +1121,11 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 
       // User shouldn't hit this as the check has been performed in ScalesValidation()
       if (dims.size() != 2 && dims.size() != 4) {
-        std::ostringstream oss;
-        oss << "'Cubic' mode only support 2-D inputs ('Bicubic') or 4-D inputs "
-               "with the corresponding outermost 2 scale values being 1 in the ";
-        oss << (is_resize_ ? "Resize operator" : "Upsample operator");
-        return Status(ONNXRUNTIME, FAIL, oss.str());
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, (is_resize_ ? "Resize" : "Upsample"),
+                               ": 'Cubic' mode only support 2-D inputs ('Bicubic') or 4-D inputs "
+                               "with the corresponding outermost 2 scale values being 1.");
       }
+
       bool is_2D = dims.size() == 2;
       const int64_t batch_size = is_2D ? 1 : dims[0];
       const int64_t num_channels = is_2D ? 1 : dims[1];
@@ -960,8 +1136,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 
       ResizeBiCubic(batch_size, num_channels, input_height, input_width, output_height, output_width,
                     is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], cubic_coeff_a_, use_extrapolation_,
-                    extrapolation_value_, exclude_outside_, roi, X->template Data<float>(), Y->template MutableData<float>(),
-                    get_original_coordinate_);
+                    extrapolation_value_, exclude_outside_, roi, X->Data<float>(),
+                    Y->MutableData<float>(), get_original_coordinate_);
       return Status::OK();
     }
     default:

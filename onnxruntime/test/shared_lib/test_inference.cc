@@ -162,7 +162,9 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 
 static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
 static constexpr PATH_TYPE MATMUL_MODEL_URI = TSTR("testdata/matmul_1.onnx");
+#ifndef ORT_NO_RTTI
 static constexpr PATH_TYPE SEQUENCE_MODEL_URI = TSTR("testdata/sequence_length.onnx");
+#endif
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/custom_op_library/custom_op_test.onnx");
 static constexpr PATH_TYPE OVERRIDABLE_INITIALIZER_MODEL_URI = TSTR("testdata/overridable_initializer.onnx");
@@ -173,6 +175,11 @@ static constexpr PATH_TYPE VARIED_INPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/f
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_bar_1.onnx");
 static constexpr PATH_TYPE OPTIONAL_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI_2 = TSTR("testdata/foo_bar_2.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_WITH_ATTRIBUTES_URI = TSTR("testdata/foo_bar_3.onnx");
+
+#ifdef ENABLE_EXTENSION_CUSTOM_OPS
+static constexpr PATH_TYPE ORT_CUSTOM_OPS_MODEL_URI = TSTR("testdata/custom_op_string_lower.onnx");
+static constexpr PATH_TYPE ORT_CUSTOM_OPS_MODEL_URI_2 = TSTR("testdata/custom_op_negpos.onnx");
+#endif
 
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 static constexpr PATH_TYPE PYOP_FLOAT_MODEL_URI = TSTR("testdata/pyop_1.onnx");
@@ -265,6 +272,95 @@ TEST(CApiTest, custom_op_handler) {
                        custom_op_domain, nullptr);
 #endif
 }
+
+#ifdef ENABLE_EXTENSION_CUSTOM_OPS
+// test enabled ort-customops negpos
+TEST(CApiTest, test_enable_ort_customops_negpos) {
+
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  auto allocator = std::make_unique<MockedOrtAllocator>();
+
+  // Create Inputs
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<float> input_data = {-1.1f, 2.2f, 4.4f, -5.5f};
+  std::vector<int64_t> input_dims = {2, 2};
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(info, const_cast<float*>(input_data.data()), input_data.size(), input_dims.data(), input_dims.size()));
+
+  // Create Session with ORT CustomOps
+  Ort::SessionOptions session_options;
+  session_options.EnableOrtCustomOps();
+  Ort::Session session(*ort_env, ORT_CUSTOM_OPS_MODEL_URI_2, session_options);
+
+  // Create Input and Output Names
+  std::vector<const char*> input_names = {"X"};
+  const char* output_names[] = {"out0", "out1"};
+
+  // Run Session
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{}, input_names.data(), ort_inputs.data(), ort_inputs.size(), output_names, countof(output_names));
+
+  // Validate Results
+  ASSERT_EQ(ort_outputs.size(), 2u);
+
+  std::vector<int64_t> out_dims = {2, 2};
+  std::vector<float> values_out0 = {-1.1f, 0.0f, 0.0f, -5.5f};
+  auto type_info = ort_outputs[0].GetTensorTypeAndShapeInfo();
+  ASSERT_EQ(type_info.GetShape(), out_dims);
+  size_t total_len = type_info.GetElementCount();
+  ASSERT_EQ(values_out0.size(), total_len);
+
+  float* f = ort_outputs[0].GetTensorMutableData<float>();
+  for (size_t i = 0; i != total_len; ++i) {
+    ASSERT_EQ(values_out0[i], f[i]);
+  }
+}
+
+// test enabled ort-customops stringlower
+TEST(CApiTest, test_enable_ort_customops_stringlower) {
+
+  auto allocator = std::make_unique<MockedOrtAllocator>();
+
+  // Create Inputs
+  std::vector<Ort::Value> ort_inputs;
+  std::string input_data{"HI, This is ENGINEER from Microsoft."};
+  const char* const input_strings[] = {input_data.c_str()};
+  std::vector<int64_t> input_dims = {1, 1};
+
+  Ort::Value input_tensor = Ort::Value::CreateTensor(allocator.get(), input_dims.data(), input_dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+  input_tensor.FillStringTensor(input_strings, 1U);
+  ort_inputs.push_back(std::move(input_tensor));
+
+  // Create Session with ORT CustomOps
+  Ort::SessionOptions session_options;
+  session_options.EnableOrtCustomOps();
+  Ort::Session session(*ort_env, ORT_CUSTOM_OPS_MODEL_URI, session_options);
+
+  // Create Input and Output Names
+  std::vector<const char*> input_names = {"input_1"};
+  const char* output_names[] = {"customout"};
+
+  // Run Session
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, input_names.data(), ort_inputs.data(), ort_inputs.size(), output_names, countof(output_names));
+
+  // Validate Results
+  ASSERT_EQ(ort_outputs.size(), 1u);
+
+  std::vector<int64_t> out_dims = {1, 1};
+  auto type_info = ort_outputs[0].GetTensorTypeAndShapeInfo();
+  ASSERT_EQ(type_info.GetShape(), out_dims);
+  ASSERT_EQ(type_info.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+
+  std::string output_data{"hi, this is engineer from microsoft."};
+  auto expected_string = output_data.c_str();
+  size_t expected_string_len = strlen(expected_string);
+  auto data_length = ort_outputs[0].GetStringTensorDataLength();
+  ASSERT_EQ(expected_string_len, data_length);
+
+  std::string result(data_length, '\0');
+  std::vector<size_t> offsets(type_info.GetElementCount());
+  ort_outputs[0].GetStringTensorContent((void*)result.data(), data_length, offsets.data(), offsets.size());
+  ASSERT_STREQ(result.c_str(), expected_string);
+}
+#endif
 
 //test custom op which accepts float and double as inputs
 TEST(CApiTest, varied_input_custom_op_handler) {
@@ -955,7 +1051,7 @@ TEST(CApiTest, get_string_tensor_element) {
   tensor.FillStringTensor(s, expected_len);
 
   auto expected_string = s[element_index];
-  size_t expected_string_len = strlen(expected_string);
+  size_t expected_string_len = strnlen(expected_string, onnxruntime::kMaxStrLen);
 
   std::string result(expected_string_len, '\0');
   tensor.GetStringTensorElement(expected_string_len, element_index, (void*)result.data());
@@ -1493,5 +1589,64 @@ TEST(CApiTest, ConfigureCudaArenaAndDemonstrateMemoryArenaShrinkage) {
   // To also trigger a cpu memory arena shrinkage along with the gpu arena shrinkage, use the following-
   // (Memory arena for the CPU should not have been disabled)
   //  run_option.AddConfigEntry(kOrtRunOptionsConfigEnableMemoryArenaShrinkage, "cpu:0;gpu:0");
+}
+#endif
+
+#ifdef USE_TENSORRT
+
+// This test uses CreateTensorRTProviderOptions/UpdateTensorRTProviderOptions APIs to configure and create a TensorRT Execution Provider
+TEST(CApiTest, TestConfigureTensorRTProviderOptions) {
+  const auto& api = Ort::GetApi();
+  OrtTensorRTProviderOptionsV2* trt_options;
+  OrtAllocator* allocator;
+  char* trt_options_str;
+  ASSERT_TRUE(api.CreateTensorRTProviderOptions(&trt_options) == nullptr);
+  std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(api.ReleaseTensorRTProviderOptions)> rel_trt_options(trt_options, api.ReleaseTensorRTProviderOptions);
+
+  const char* engine_cache_path = "./trt_engine_folder";
+
+  std::vector<const char*> keys{"device_id", "trt_fp16_enable", "trt_int8_enable", "trt_engine_cache_enable", "trt_engine_cache_path"};
+
+  std::vector<const char*> values{"0", "1", "0", "1", engine_cache_path};
+
+  ASSERT_TRUE(api.UpdateTensorRTProviderOptions(rel_trt_options.get(), keys.data(), values.data(), 5) == nullptr);
+
+  ASSERT_TRUE(api.GetAllocatorWithDefaultOptions(&allocator) == nullptr);
+  ASSERT_TRUE(api.GetTensorRTProviderOptionsAsString(rel_trt_options.get(), allocator, &trt_options_str) == nullptr);
+  std::string s(trt_options_str);
+  ASSERT_TRUE(s.find(engine_cache_path) != std::string::npos);
+  ASSERT_TRUE(api.AllocatorFree(allocator, (void*)trt_options_str) == nullptr);
+
+  Ort::SessionOptions session_options;
+  ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(static_cast<OrtSessionOptions*>(session_options), rel_trt_options.get()) == nullptr);
+
+  // simple inference test
+  // prepare inputs
+  std::vector<Input> inputs(1);
+  Input& input = inputs.back();
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+  std::basic_string<ORTCHAR_T> model_uri = MODEL_URI;
+
+  // if session creation passes, model loads fine
+  Ort::Session session(*ort_env, model_uri.c_str(), session_options);
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+
+  //without preallocated output tensor
+  RunSession(default_allocator.get(),
+             session,
+             inputs,
+             "Y",
+             expected_dims_y,
+             expected_values_y,
+             nullptr);
+
+  struct stat buffer;
+  ASSERT_TRUE(stat(engine_cache_path, &buffer) == 0);
 }
 #endif

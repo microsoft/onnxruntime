@@ -203,10 +203,10 @@ void addOrtValueMethods(pybind11::module& m) {
       })
 #ifdef ENABLE_TRAINING
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
-        return ToDlpack(*ort_value);
+        return py::reinterpret_steal<py::object>(ToDlpack(*ort_value));
       })
       .def_static("from_dlpack", [](py::object data, bool is_bool_tensor = false) {
-        return FromDlpack(data, is_bool_tensor);
+        return FromDlpack(data.ptr(), is_bool_tensor);
       })
 #endif
       ;

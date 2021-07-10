@@ -49,11 +49,6 @@ endif()
 if (onnxruntime_USE_NCCL)
   target_include_directories(onnxruntime_pybind11_state PRIVATE ${NCCL_INCLUDE_DIRS})
 endif()
-if (onnxruntime_ENABLE_TRAINING)
-  # DLPack is a header-only dependency
-  set(DLPACK_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/external/dlpack/include)
-  target_include_directories(onnxruntime_pybind11_state PRIVATE ${ORTTRAINING_ROOT} ${DLPACK_INCLUDE_DIR})
-endif()
 
 if(APPLE)
   set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
@@ -64,10 +59,12 @@ else()
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
+  target_include_directories(onnxruntime_pybind11_state PRIVATE ${ORTTRAINING_ROOT})
+  target_include_directories(onnxruntime_pybind11_state PRIVATE ${PROJECT_SOURCE_DIR}/external/dlpack/include)
   target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_training)
 endif()
 
-target_link_libraries(onnxruntime_pybind11_state PRIVATE 
+target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_MIGRAPHX}
@@ -95,8 +92,6 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_language_interop onnxruntime_pyop)
 endif()
-
-
 
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
@@ -195,6 +190,15 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_ortmodule_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/*.py"
   )
+  file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/*.py"
+  )
+  file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_aten_op_executor_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/aten_op_executor/*"
+  )
+  file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_torch_gpu_allocator_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/torch_gpu_allocator/*"
+  )
   file(GLOB onnxruntime_python_train_tools_srcs CONFIGURE_DEPENDS
     "${REPO_ROOT}/tools/python/register_custom_ops_pytorch_exporter.py"
   )
@@ -218,6 +222,12 @@ if (onnxruntime_BUILD_UNIT_TESTS)
   )
   file(GLOB onnxruntime_python_dhp_parallel_test_srcs CONFIGURE_DEPENDS
       "${ORTTRAINING_SOURCE_DIR}/test/python/dhp_parallel/*.py"
+  )
+  file(GLOB onnxruntime_python_transformers_test_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/test/python/transformers/*.py"
+  )
+  file(GLOB onnxruntime_python_transformers_testdata_srcs CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/test/python/transformers/test_data/models/*.onnx"
   )
 endif()
 
@@ -278,6 +288,8 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/checkpoint
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/dhp_parallel
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/quantization
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models
   COMMAND ${CMAKE_COMMAND} -E copy
       ${ONNXRUNTIME_ROOT}/__init__.py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
@@ -343,7 +355,7 @@ add_custom_command(
       $<TARGET_FILE_DIR:${build_output_target}>
 )
 
-if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD 
+if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
                                   AND NOT onnxruntime_ENABLE_TRAINING
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
                                   AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
@@ -371,6 +383,12 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_dhp_parallel_test_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/dhp_parallel/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_transformers_test_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_transformers_testdata_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models/
   )
 endif()
 
@@ -381,6 +399,9 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/amp
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/optim
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/aten_op_executor
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/torch_gpu_allocator
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_capi_training_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
@@ -396,6 +417,15 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_ortmodule_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ortmodule_torch_cpp_ext_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ortmodule_torch_cpp_ext_aten_op_executor_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/aten_op_executor/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ortmodule_torch_cpp_ext_torch_gpu_allocator_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/torch_gpu_allocator/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_train_tools_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/
@@ -485,3 +515,4 @@ endif()
 if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
   include(onnxruntime_language_interop_ops.cmake)
 endif()
+

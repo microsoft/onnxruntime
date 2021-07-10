@@ -240,9 +240,9 @@ class PipelineScheduler {
 
 struct PipelineWorkerState {
   std::vector<std::string> feed_names;
-  std::vector<MLValue> feeds;
+  std::vector<OrtValue> feeds;
   std::vector<std::string> fetch_names;
-  std::vector<MLValue> fetches;
+  std::vector<OrtValue> fetches;
   std::exception_ptr execution_exception{nullptr};
 };
 

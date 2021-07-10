@@ -9,12 +9,12 @@ namespace onnxruntime {
 namespace nnapi {
 
 struct OpSupportCheckParams {
-  OpSupportCheckParams(int32_t android_sdk_ver, bool use_nchw)
-      : android_sdk_ver(android_sdk_ver),
+  OpSupportCheckParams(int32_t android_feature_level, bool use_nchw)
+      : android_feature_level(android_feature_level),
         use_nchw(use_nchw) {
   }
 
-  int32_t android_sdk_ver = 0;
+  int32_t android_feature_level = 0;
   bool use_nchw = false;
 };
 

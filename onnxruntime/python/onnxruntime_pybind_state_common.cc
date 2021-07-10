@@ -19,7 +19,6 @@ std::string openvino_device_type;
 std::string nuphar_settings;
 #endif
 
-
 // TODO remove deprecated global config
 OrtDevice::DeviceId cuda_device_id = 0;
 // TODO remove deprecated global config
@@ -46,29 +45,35 @@ onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExten
 
 #ifdef ENABLE_TRAINING
 
-void DlpackCapsuleDestructor(PyObject* data) {
-  DLManagedTensor* dlmanged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(data, "dltensor");
+static void DlpackCapsuleDestructor(PyObject* data) {
+  DLManagedTensor* dlmanged_tensor = reinterpret_cast<DLManagedTensor*>(
+      PyCapsule_GetPointer(data, "dltensor"));
   if (dlmanged_tensor) {
-    // the dlmanged_tensor has not been consumed, call deleter ourselves.
+    // The dlmanged_tensor has not been consumed, call deleter ourselves.
     dlmanged_tensor->deleter(const_cast<DLManagedTensor*>(dlmanged_tensor));
   } else {
-    // the dlmanged_tensor has been consumed,
+    // The dlmanged_tensor has been consumed,
     // PyCapsule_GetPointer has set an error indicator.
     PyErr_Clear();
   }
 }
 
-py::object ToDlpack(OrtValue& ort_value) {
+// Allocate a new Capsule object, which takes the ownership of OrtValue.
+// Caller is responsible for releasing.
+// This function calls OrtValueToDlpack(...).
+PyObject* ToDlpack(OrtValue ort_value) {
   DLManagedTensor* dlmanaged_tensor = dlpack::OrtValueToDlpack(ort_value);
-  return py::reinterpret_steal<py::object>(
-      PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor));
+  return PyCapsule_New(dlmanaged_tensor, "dltensor", DlpackCapsuleDestructor);
 }
 
-OrtValue FromDlpack(py::object dlpack_tensor, const bool is_bool_tensor) {
-  DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(dlpack_tensor.ptr(), "dltensor");
+// Consume a Capsule object and claims the ownership of its underlying tensor to
+// create a OrtValue. This function calls DlpackToOrtValue(...) to do the conversion.
+OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor) {
+  // Extract DLPack tensor pointer from the capsule carrier.
+  DLManagedTensor* dlmanaged_tensor = (DLManagedTensor*)PyCapsule_GetPointer(dlpack_tensor, "dltensor");
   OrtValue ort_value = dlpack::DlpackToOrtValue(dlmanaged_tensor, is_bool_tensor);
   // Make sure this capsule will never be used again.
-  PyCapsule_SetName(dlpack_tensor.ptr(), "used_dltensor");
+  PyCapsule_SetName(dlpack_tensor, "used_dltensor");
   return ort_value;
 }
 

@@ -35,6 +35,12 @@
 #include "orttraining/training_ops/cpu/aten_ops/aten_op.h"
 #include "orttraining/training_ops/cpu/controlflow/group.h"
 #include "orttraining/training_ops/cpu/controlflow/yield.h"
+
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+#include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
+#include "core/language_interop_ops/torch/refcount_tracker.h"
+#endif
+
 #endif
 
 #ifndef _Ret_notnull_
@@ -99,6 +105,7 @@ template <>
 MLDataType DataTypeImpl::GetType<Tensor>() { return Provider_GetHost()->DataTypeImpl__GetType_Tensor(); }
 template <>
 MLDataType DataTypeImpl::GetType<TensorSeq>() { return Provider_GetHost()->DataTypeImpl__GetType_TensorSeq(); }
+MLDataType DataTypeImpl::GetTypeFromOnnxType(int onnx_type) { return Provider_GetHost()->DataTypeImpl__GetTypeFromOnnxType(onnx_type); }
 template <>
 MLDataType DataTypeImpl::GetType<bool>() { return Provider_GetHost()->DataTypeImpl__GetType_bool(); }
 template <>
@@ -125,6 +132,8 @@ template <>
 MLDataType DataTypeImpl::GetType<BFloat16>() { return Provider_GetHost()->DataTypeImpl__GetType_BFloat16(); }
 template <>
 MLDataType DataTypeImpl::GetType<MLFloat16>() { return Provider_GetHost()->DataTypeImpl__GetType_MLFloat16(); }
+template <>
+MLDataType DataTypeImpl::GetType<std::string>() { return Provider_GetHost()->DataTypeImpl__GetType_string(); }
 template <>
 MLDataType DataTypeImpl::GetTensorType<bool>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_bool(); }
 template <>
@@ -370,6 +379,10 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
 
 }  // namespace utils
 
+Status GatherBase::PrepareForCompute(OpKernelContext* context, GatherBase::Prepare& p) const { return g_host->GatherBase__PrepareForCompute(this, context, reinterpret_cast<GatherBase__Prepare&>(p)); }
+Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, UnsqueezeBase::Prepare& p) const { return g_host->UnsqueezeBase__PrepareCompute(this, ctx, reinterpret_cast<UnsqueezeBase__Prepare&>(p)); }
+
+
 #ifdef USE_CUDA
 bool TileOp::IsTileMemcpy(const TensorShape& input_shape, const int64_t* repeats, size_t rank, bool& is_batched_memcpy, size_t& num_of_elements_per_batch, size_t& num_of_copies_per_batch, size_t& num_of_batch_copies) {
   return g_host->TileOp__IsTileMemcpy(input_shape, repeats, rank, is_batched_memcpy, num_of_elements_per_batch, num_of_copies_per_batch, num_of_batch_copies);
@@ -377,8 +390,6 @@ bool TileOp::IsTileMemcpy(const TensorShape& input_shape, const int64_t* repeats
 
 Status NonMaxSuppressionBase::PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) { return g_host->NonMaxSuppressionBase__PrepareCompute(ctx, pc); }
 Status NonMaxSuppressionBase::GetThresholdsFromInputs(const PrepareContext& pc, int64_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold) { return g_host->NonMaxSuppressionBase__GetThresholdsFromInputs(pc, max_output_boxes_per_class, iou_threshold, score_threshold); }
-
-Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, UnsqueezeBase::Prepare& p) const { return g_host->UnsqueezeBase__PrepareCompute(this, ctx, reinterpret_cast<UnsqueezeBase__Prepare&>(p)); }
 
 Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                     const std::vector<int64_t>& raw_ends,
@@ -414,8 +425,6 @@ Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_sh
 
 Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, const std::vector<const Tensor*>& input_tensors,
                                      Prepare& p) const { return g_host->ConcatBase__PrepareForCompute(this, ctx, input_tensors, p); }
-
-Status GatherBase::PrepareForCompute(OpKernelContext* context, GatherBase::Prepare& p) const { return g_host->GatherBase__PrepareForCompute(this, context, reinterpret_cast<GatherBase__Prepare&>(p)); }
 
 PhiloxGenerator& PhiloxGenerator::Default() { return g_host->PhiloxGenerator__Default(); }
 
@@ -475,7 +484,38 @@ Status ATenOpBase::Compute(OpKernelContext* p_ctx) const { return g_host->ATenOp
 Status Group::Compute(OpKernelContext* context) const { return g_host->contrib__Group__Compute(this, context); }
 Status PassThrough::Compute(OpKernelContext* context) const { return g_host->contrib__PassThrough__Compute(this, context); }
 Status YieldOp::Compute(OpKernelContext* context) const { return g_host->contrib__YieldOp__Compute(this, context); }
+}
+
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+namespace contrib {
+void PythonOpBase::Init(const OpKernelInfo& info) { return g_host->contrib__PythonOpBase__Init(this, info); }
+void PythonOpBase::Clear() { return g_host->contrib__PythonOpBase__Clear(this); }
+void PythonOpBase::RunForward(OpKernelContext* context, void** diff_ctx, std::vector<OrtValue>& returned_ortvalues) const {
+  return g_host->contrib__PythonOpBase__RunForward(this, context, diff_ctx, returned_ortvalues);
+}
+void PythonOpBase::SetOutputs(OpKernelContext* context, void* diff_ctx, std::vector<OrtValue>& returned_args) const {
+  return g_host->contrib__PythonOpBase__SetOutputs(this, context, diff_ctx, returned_args);
+}
+
+void PythonOpGradBase::Init(const OpKernelInfo& info) { return g_host->contrib__PythonOpGradBase__Init(this, info); }
+void PythonOpGradBase::RunBackward(OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) const {
+  return g_host->contrib__PythonOpGradBase__RunBackward(this, context, returned_ortvalues);
+}
+void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_args) const {
+  return g_host->contrib__PythonOpGradBase__SetOutputs(this, context, returned_args);
+}
 }  // namespace contrib
+
+namespace language_interop_ops {
+namespace torch {
+void RefCountTracker::DumpDetails(const std::string& phase_name) const {
+  return g_host->RefCountTracker__DumpDetails(this, phase_name);
+}
+
+}  // namespace torch
+}  // namespace language_interop_ops
+#endif
+
 #endif
 #endif
 }  // namespace onnxruntime
