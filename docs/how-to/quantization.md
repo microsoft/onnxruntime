@@ -158,7 +158,7 @@ We have 2 E2E examples [Yolo V3](https://github.com/microsoft/onnxruntime/tree/m
 ### Why am I not seeing performance improvements?
 {: .no_toc }
 
-Performance improvement depends on your model and hardware. Quantization performance gain comes in 2 part: instruction and cache. Old hardware doesn't have or has few instrction support for byte computation. And quantization has overhead (quantize and dequantize), so it is not rare to get worse performance on old devices.
+Performance improvement depends on your model and hardware. Quantization performance gain comes in 2 part: instruction and cache. Old hardware doesn't have or has few instruction support for byte computation. And quantization has overhead (quantize and dequantize), so it is not rare to get worse performance on old devices.
 
 x86-64 with VNNI, GPU with Tensor Core int8 support and ARM with dot-product instructions can get better performance in general.
 
