@@ -15,8 +15,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#include "qgemm_dispatcher.h"
-#include "qgemm_kernel.h"
+#include "qgemm.h"
 
 struct MLAS_GEMM_U8X8_KERNEL_DEFAULT
 {

@@ -16,7 +16,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#include "qgemm_dispatcher.h"
+#include "qgemm.h"
 
 //
 // Define the parameters to execute segments of a QGEMM operation on worker

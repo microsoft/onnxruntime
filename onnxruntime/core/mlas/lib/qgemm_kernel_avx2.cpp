@@ -15,8 +15,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#include "qgemm_dispatcher.h"
-#include "qgemm_kernel.h"
+#include "qgemm.h"
 
 #if defined(MLAS_TARGET_AMD64)
 

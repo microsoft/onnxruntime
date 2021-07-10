@@ -15,8 +15,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#include "qgemm_dispatcher.h"
-#include "qgemm_kernel.h"
+#include "qgemm.h"
 
 // N.B. MSVC does not require turning on SSE 4.1 intrinsics and the current use
 // for this code is Windows only, so restrict this kernel to that environment.
