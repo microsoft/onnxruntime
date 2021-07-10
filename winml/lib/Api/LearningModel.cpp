@@ -17,7 +17,7 @@
 namespace WINMLP {
 LearningModel::LearningModel(
     const hstring& path,
-    const winml::ILearningModelOperatorProvider op_provider) try {
+    const winml::ILearningModelOperatorProvider op_provider) try : operator_provider_(op_provider) {
   _winmlt::TelemetryEvent loadModel_event(_winmlt::EventCategory::kModelLoad);
 
   WINML_THROW_IF_FAILED(CreateOnnxruntimeEngineFactory(engine_factory_.put()));
@@ -94,7 +94,9 @@ static HRESULT CreateModelFromStream(
   WINML_THROW_IF_FAILED_MSG(bytes->Buffer(reinterpret_cast<byte**>(&data)), "Failed to acquire buffer from model stream.");
 
   size_t len = static_cast<size_t>(content.Size());
-  WINML_THROW_IF_FAILED(engine_factory->CreateModel(data, len, model));
+  if (FAILED(engine_factory->CreateModel(data, len, model))) {
+    WINML_THROW_HR(E_INVALIDARG);
+  }
 
   return S_OK;
 }
