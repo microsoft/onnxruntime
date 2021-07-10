@@ -2,10 +2,15 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+from abc import abstractmethod
+from dataclasses import dataclass
+from typing import List, Sequence, Tuple
+from onnx import ModelProto
+from onnx.helper import get_attribute_value
 import onnxruntime
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import IOBinding, get_ort_device_type
-from onnxruntime.capi._pybind_state import TrainingAgent as C_TrainingAgent, GraphInfo
+from onnxruntime.capi._pybind_state import TrainingAgent as C_TrainingAgent
 
 from . import _utils
 from ._graph_execution_manager import RunStateInfo
@@ -19,13 +24,24 @@ class ExecutionAgentOutput(object):
         self.run_id = run_id
 
 class ExecutionAgent(object):
-    def __init__(self, onnx_model, device):
-        """
+    """ExecutionAgent wraps ORT inference session and provides forward / backward methods
+    for ORTModule and users who would like to run an ONNX graph with torch inputs
+    """
+
+    def __init__(self, onnx_model: ModelProto, device: torch.device):
+        """Initializes ExecutionAgent
+
+        Args:
         :param onnx_model: ONNX ModelProto
         :param device: torch device
         """
         self._onnx_model = onnx_model
         self._device = device
+
+    @abstractmethod
+    def forward(self, *inputs: Sequence[torch.Tensor]) -> Tuple[Sequence[torch.Tensor], RunStateInfo]:
+        """Runs forward computation
+        """
 
 class InferenceAgent(ExecutionAgent):
     """
@@ -115,7 +131,7 @@ class InferenceAgent(ExecutionAgent):
         ortvalues = iobinding.get_outputs()
         return ExecutionAgentOutput(ortvalues)
 
-    def forward(self, *inputs):
+    def forward(self, *inputs: Sequence[torch.Tensor]) -> Tuple[Sequence[torch.Tensor], RunStateInfo]:
         run_options = C.RunOptions()
         io_binding = self._process_inputs(inputs)
 
@@ -125,17 +141,37 @@ class InferenceAgent(ExecutionAgent):
         return self._process_outputs(ort_output)
 
 
+@dataclass(frozen=True)
+class YieldOpInfo:
+    """Minimum version of GraphInfo needed for TrainingAgent
+    """
+    user_output_names: List[str]
+    non_differentiable_outputs: List[int]
+    full_shape_outputs: List[int]
+
+    @staticmethod
+    def from_training_model(onnx_model):
+        yield_op = next(op for op in onnx_model.graph.node if op.op_type == "YieldOp")
+        attrs = {
+            attr.name: get_attribute_value(attr)
+            for attr in yield_op.attribute
+        }
+        return YieldOpInfo(
+            [output for output in yield_op.input],
+            attrs.get("non_differentiable_outputs", []),
+            attrs.get("full_shape_outputs", [])
+        )
+
 class TrainingAgent(ExecutionAgent):
     """
     This is the main class used to run an ORTModule model training.
     """
 
-    def __init__(self, onnx_model, device, graph_info, session_options=None,
+    def __init__(self, onnx_model, device, session_options=None,
                  providers=None, provider_options=None):
         """
         :param onnx_model: ONNX ModelProto
         :param device: torch device
-        :param graph_info: GraphInfo
         :param sess_options: session options
         :param providers: Optional sequence of providers in order of decreasing
             precedence. Values can either be provider names or tuples of
@@ -160,7 +196,7 @@ class TrainingAgent(ExecutionAgent):
         means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
         """
         super().__init__(onnx_model, device)
-        self._graph_info = graph_info
+        self._info = YieldOpInfo.from_training_model(onnx_model)
         self._inference_session = onnxruntime.InferenceSession(onnx_model.SerializeToString(), session_options,
                                                                providers, provider_options)
 
@@ -169,7 +205,7 @@ class TrainingAgent(ExecutionAgent):
             C.OrtDevice(get_ort_device_type(self._device.type),
                         C.OrtDevice.default_memory(),
                         _utils.get_device_index(self._device)
-            )] * len(self._graph_info.user_output_names)
+            )] * len(self._info.user_output_names)
 
         bw_fetches_names = [output.name for output in onnx_model.graph.output]
         bw_outputs_device_info = [
@@ -207,7 +243,7 @@ class TrainingAgent(ExecutionAgent):
         return user_outputs, run_info
 
 
-    def forward(self, *inputs):
+    def forward(self, *inputs: Sequence[torch.Tensor]) -> Tuple[Sequence[torch.Tensor], RunStateInfo]:
         feeds = self._process_forward_inputs(inputs)
         fetches = C.OrtValueVector()
         state = C.PartialGraphExecutionState()
@@ -224,17 +260,17 @@ class TrainingAgent(ExecutionAgent):
         # Preallocate length of the vector. And then delete as required towards the end.
         backward_inputs.reserve(len(grad_outputs))
         for idx, grad_output in enumerate(grad_outputs):
-            if idx in self._graph_info.output_grad_indices_non_differentiable:
+            if idx in self._info.non_differentiable_outputs:
                 assert grad_output is None, "ORT found the {}-th module output '{}' is " \
                                             "non-differentiable according to the onnx graph. " \
                                             "However, the gradient value is still provided by " \
                                             "PyTorch's autograd engine." \
-                                            .format(idx, self._graph_info.user_output_names[idx])
+                                            .format(idx, self._info.user_output_names[idx])
                 continue
 
             if grad_output is None:
                 shape, device, dtype = run_info.output_info[idx]
-                if idx in self._graph_info.output_grad_indices_require_full_shape:
+                if idx in self._info.full_shape_outputs:
                     grad_output = torch.zeros(shape, device=device, dtype=dtype)
                 else:
                     grad_output = torch.tensor(0., device=device, dtype=dtype)
