@@ -4,19 +4,21 @@
 # --------------------------------------------------------------------------
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import List, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
+import onnx
 from onnx import ModelProto
-from onnx.helper import get_attribute_value
-import onnxruntime
-from onnxruntime.capi import _pybind_state as C
-from onnxruntime.capi.onnxruntime_inference_collection import IOBinding, get_ort_device_type
-from onnxruntime.capi._pybind_state import TrainingAgent as C_TrainingAgent
+import torch
+from torch.utils.dlpack import to_dlpack
 
+
+import onnxruntime
+from onnxruntime import SessionOptions
+from onnxruntime.capi import _pybind_state as C
+from onnxruntime.capi.onnxruntime_inference_collection import IOBinding, OrtValue, get_ort_device_type
+from onnxruntime.capi._pybind_state import OrtValueVector, PartialGraphExecutionState, RunOptions, TrainingAgent as C_TrainingAgent
 from . import _utils
 from ._graph_execution_manager import RunStateInfo
 
-import torch
-from torch.utils.dlpack import to_dlpack
 
 class ExecutionAgentOutput(object):
     def __init__(self, ortvalues, run_id=None):
@@ -39,7 +41,7 @@ class ExecutionAgent(object):
         self._device = device
 
     @abstractmethod
-    def forward(self, *inputs: Sequence[torch.Tensor]) -> Tuple[Sequence[torch.Tensor], RunStateInfo]:
+    def forward(self, *inputs: torch.Tensor) -> Tuple[Sequence[torch.Tensor], RunStateInfo]:
         """Runs forward computation
         """
 
@@ -48,7 +50,8 @@ class InferenceAgent(ExecutionAgent):
     This is the main class used to run an ORTModule model inferencing.
     """
 
-    def __init__(self, onnx_model, device, session_options=None, providers=None, provider_options=None):
+    def __init__(self, onnx_model: ModelProto, device: torch.device, session_options: Optional[SessionOptions] = None,
+                 providers: Optional[List[str]] = None, provider_options: Optional[List[Dict]] = None):
         """
         :param onnx_model: ONNX ModelProto
         :param device: torch device
@@ -80,8 +83,8 @@ class InferenceAgent(ExecutionAgent):
 
         self.create_inference_agent(onnx_model.SerializeToString(), session_options, providers, provider_options)
 
-    def create_inference_agent(self, bytes_, session_options, providers, provider_options):
-        self._inference_session = onnxruntime.InferenceSession(bytes_, session_options,
+    def create_inference_agent(self, onnx_bytes, session_options, providers, provider_options):
+        self._inference_session = onnxruntime.InferenceSession(onnx_bytes, session_options,
                                                                providers, provider_options)
 
     def io_binding(self):
@@ -89,7 +92,7 @@ class InferenceAgent(ExecutionAgent):
 
         return IOBinding(self._inference_session)
 
-    def _process_inputs(self, inputs):
+    def _process_inputs(self, inputs: Sequence[torch.Tensor]) -> IOBinding:
         """Runs the forward graph on execution_session with given model inputs and device"""
 
         # Assert that the input and model device match
@@ -107,8 +110,7 @@ class InferenceAgent(ExecutionAgent):
 
         return io_binding
 
-    def _process_outputs(self, ort_output):
-        forward_outputs = ort_output.ortvalues
+    def _process_outputs(self, forward_outputs: Sequence[OrtValue]) -> Tuple[Sequence[torch.Tensor], RunStateInfo]:
         user_outputs = tuple(_utils._ortvalue_to_torch_tensor(forward_output._ortvalue) for forward_output in forward_outputs)
         state = None
 
@@ -120,7 +122,7 @@ class InferenceAgent(ExecutionAgent):
         # Return user outputs and forward run information
         return user_outputs, run_info
 
-    def _run_forward(self, iobinding, run_options):
+    def _run_forward(self, iobinding: IOBinding, run_options: RunOptions) -> ExecutionAgentOutput:
         """
          Compute the forward graph.
          :param iobinding: the iobinding object that has graph inputs/outputs bind.
@@ -131,14 +133,14 @@ class InferenceAgent(ExecutionAgent):
         ortvalues = iobinding.get_outputs()
         return ExecutionAgentOutput(ortvalues)
 
-    def forward(self, *inputs: Sequence[torch.Tensor]) -> Tuple[Sequence[torch.Tensor], RunStateInfo]:
-        run_options = C.RunOptions()
+    def forward(self, *inputs: torch.Tensor) -> Tuple[Sequence[torch.Tensor], RunStateInfo]:
+        run_options = RunOptions()
         io_binding = self._process_inputs(inputs)
 
         # Run and return module outputs.
         ort_output = self._run_forward(io_binding, run_options)
 
-        return self._process_outputs(ort_output)
+        return self._process_outputs(ort_output.ortvalues)
 
 
 @dataclass(frozen=True)
@@ -153,11 +155,11 @@ class YieldOpInfo:
     def from_training_model(onnx_model):
         yield_op = next(op for op in onnx_model.graph.node if op.op_type == "YieldOp")
         attrs = {
-            attr.name: get_attribute_value(attr)
+            attr.name: onnx.helper.get_attribute_value(attr)
             for attr in yield_op.attribute
         }
         return YieldOpInfo(
-            [output for output in yield_op.input],
+            list(yield_op.input),
             attrs.get("non_differentiable_outputs", []),
             attrs.get("full_shape_outputs", [])
         )
@@ -167,8 +169,8 @@ class TrainingAgent(ExecutionAgent):
     This is the main class used to run an ORTModule model training.
     """
 
-    def __init__(self, onnx_model, device, session_options=None,
-                 providers=None, provider_options=None):
+    def __init__(self, onnx_model: ModelProto, device: torch.device, session_options: Optional[SessionOptions] = None,
+                 providers: Optional[List[str]] = None, provider_options: Optional[List[Dict]] = None):
         """
         :param onnx_model: ONNX ModelProto
         :param device: torch device
@@ -218,7 +220,7 @@ class TrainingAgent(ExecutionAgent):
 
 
 
-    def _process_forward_inputs(self, inputs):
+    def _process_forward_inputs(self, inputs: Sequence[torch.Tensor]) -> OrtValueVector:
         """ Prepare feeds from torch tensors """
 
         # Assert that the input and model device match
@@ -227,7 +229,7 @@ class TrainingAgent(ExecutionAgent):
         #   especially the backward graph outputs.
         # REVIEW(codemzs): Consolidate Training Agent with InferenceAgent on C++ side to not
         # have the need for passing IOBinding.
-        forward_inputs = C.OrtValueVector()
+        forward_inputs = OrtValueVector()
         forward_inputs.reserve(len(inputs))
         for input in inputs:
             forward_inputs.push_back(to_dlpack(input), input.dtype == torch.bool)
@@ -235,7 +237,8 @@ class TrainingAgent(ExecutionAgent):
         return forward_inputs
 
 
-    def _process_forward_outputs(self, forward_outputs, state):
+    @staticmethod
+    def _process_forward_outputs(forward_outputs: OrtValueVector, state: PartialGraphExecutionState) -> Tuple[Sequence[torch.Tensor], RunStateInfo]:
         user_outputs = tuple(_utils._ortvalue_to_torch_tensor(forward_output) for forward_output in forward_outputs)
         output_info = [(output.shape, output.device, output.dtype) for output in user_outputs]
         run_info = RunStateInfo(state, output_info)
@@ -243,20 +246,20 @@ class TrainingAgent(ExecutionAgent):
         return user_outputs, run_info
 
 
-    def forward(self, *inputs: Sequence[torch.Tensor]) -> Tuple[Sequence[torch.Tensor], RunStateInfo]:
+    def forward(self, *inputs: torch.Tensor) -> Tuple[Sequence[torch.Tensor], RunStateInfo]:
         feeds = self._process_forward_inputs(inputs)
-        fetches = C.OrtValueVector()
-        state = C.PartialGraphExecutionState()
+        fetches = OrtValueVector()
+        state = PartialGraphExecutionState()
         self._training_agent.run_forward(feeds, fetches, state)
         return self._process_forward_outputs(fetches, state)
 
 
-    def _process_backward_inputs(self, run_info, grad_outputs):
+    def _process_backward_inputs(self, run_info: RunStateInfo, grad_outputs: Sequence[torch.Tensor]) -> OrtValueVector:
         _utils._check_same_device(self._device, "Input argument to backward", *grad_outputs)
 
         # Use IO binding
         # Push user output grads to ONNX backend.
-        backward_inputs = C.OrtValueVector()
+        backward_inputs = OrtValueVector()
         # Preallocate length of the vector. And then delete as required towards the end.
         backward_inputs.reserve(len(grad_outputs))
         for idx, grad_output in enumerate(grad_outputs):
@@ -282,16 +285,16 @@ class TrainingAgent(ExecutionAgent):
 
 
     @staticmethod
-    def _process_backward_outputs(backward_outputs):
-        return [
+    def _process_backward_outputs(backward_outputs: OrtValueVector) -> Sequence[torch.Tensor]:
+        return tuple(
             _utils._torch_tensor_from_dl_pack(backward_outputs.dlpack_at(i), backward_output)
             for i, backward_output in enumerate(backward_outputs)
-        ]
+        )
 
 
-    def backward(self, run_info, *grad_outputs):
+    def backward(self, run_info: RunStateInfo, *grad_outputs: torch.Tensor) -> Sequence[torch.Tensor]:
         backward_inputs = self._process_backward_inputs(run_info, grad_outputs)
         # Run and get results
-        backward_outputs = C.OrtValueVector()
+        backward_outputs = OrtValueVector()
         self._training_agent.run_backward(backward_inputs, backward_outputs, run_info.state)
         return self._process_backward_outputs(backward_outputs)
