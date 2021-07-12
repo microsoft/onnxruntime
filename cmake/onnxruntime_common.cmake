@@ -234,7 +234,6 @@ if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
     # Link cpuinfo
     # Using it mainly in ARM with Android. 
     # Its functionality in detecting x86 cpu features are lacking, so is support for Windows.
-    # TODO  solve iOS link error and enable this in iOS
 
     target_include_directories(onnxruntime_common PRIVATE ${PYTORCH_CPUINFO_INCLUDE_DIR})
     target_link_libraries(onnxruntime_common  cpuinfo)
