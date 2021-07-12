@@ -65,7 +65,7 @@ class FusionUtils:
                 value = helper.get_attribute_value(attr)
 
         if isinstance(expected_value, list):
-            return array_equal(expected_value, value, equal_nan=False)
+            return isinstance(value, ndarray) and array_equal(expected_value, value, equal_nan=False)
         else:
             return value == expected_value
 
@@ -75,7 +75,7 @@ class FusionUtils:
         value = self.model.get_constant_value(node.input[input_index])
 
         if isinstance(expected_value, list):
-            return array_equal(expected_value, value, equal_nan=False)
+            return isinstance(value, ndarray) and array_equal(expected_value, value, equal_nan=False)
         else:
             return value == expected_value
 

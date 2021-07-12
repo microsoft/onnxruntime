@@ -206,7 +206,7 @@ class FusionGptAttention(Fusion):
 
         fc_nodes = self.model.match_parent_path(split_fc, ['Reshape', 'Gemm', 'Reshape', 'LayerNormalization'], [0, 0, 0, 0], output_name_to_node)
         if fc_nodes is None:
-            fc_nodes = self.model.match_parent_path(split_fc, ['Add', 'MatMul', 'LayerNormalization'], [0, 0, 0], output_name_to_node)
+            fc_nodes = self.model.match_parent_path(split_fc, ['Add', 'MatMul', 'LayerNormalization'], [0, None, 0], output_name_to_node)
             if fc_nodes is None:
                 logger.debug("fuse_attention: failed to match fc path")
                 return
@@ -247,7 +247,7 @@ class FusionGptAttention(Fusion):
             # New pattern for gpt2 from PyTorch 1.5.0 and Transformers 2.9.0.
             i, qk_nodes, _ = self.model.match_parent_paths(
                 matmul_qkv, [(['Softmax', 'Where', 'Div', 'MatMul'], [0, 0, 1, 0]),
-                             (['Softmax', 'Add', 'Where', 'Div', 'MatMul'], [0, 0, 0, 1, 0])], output_name_to_node)
+                             (['Softmax', 'Add', 'Where', 'Div', 'MatMul'], [0, 0, None, 1, 0])], output_name_to_node)
             if qk_nodes is None:
                 logger.debug("fuse_attention: failed to match qk nodes")
                 return
@@ -259,8 +259,8 @@ class FusionGptAttention(Fusion):
             if i == 1:
                 add_qk = qk_nodes[1]
                 _, input_mask_nodes, _ = self.model.match_parent_paths(
-                    add_qk, [(['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze', 'Reshape'], [1, 0, 1, 0, 0, 0]),
-                             (['Mul', 'Sub', 'Unsqueeze', 'Unsqueeze', 'Reshape'], [1, 0, 1, 0, 0])],
+                    add_qk, [(['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze', 'Reshape'], [None, 0, 1, 0, 0, 0]),
+                             (['Mul', 'Sub', 'Unsqueeze', 'Unsqueeze', 'Reshape'], [None, 0, 1, 0, 0])],
                     output_name_to_node)
                 if input_mask_nodes is None:
                     logger.debug("fuse_attention: failed to match input attention mask path")
@@ -287,7 +287,6 @@ class FusionGptAttention(Fusion):
                     return
             elif div_or_concat.op_type == "Concat":
                 concat_k_to_match = div_or_concat
-                pass
             else:
                 logger.debug("fuse_attention: failed to match mask path")            
 
