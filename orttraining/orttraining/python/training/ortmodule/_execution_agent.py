@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 import onnx
 from onnx import ModelProto
 import torch
@@ -34,15 +34,15 @@ class ExecutionAgent(object):
         """Initializes ExecutionAgent
 
         Args:
-        :param onnx_model: ONNX ModelProto
-        :param device: torch device
+            onnx_model: ONNX ModelProto object to be wrapped
+            device: torch device where the computation should happen
         """
         self._onnx_model = onnx_model
         self._device = device
 
     @abstractmethod
     def forward(self, *inputs: torch.Tensor) -> Tuple[Sequence[torch.Tensor], RunStateInfo]:
-        """Runs forward computation
+        """Performs forward computation
         """
 
 class InferenceAgent(ExecutionAgent):
@@ -51,26 +51,19 @@ class InferenceAgent(ExecutionAgent):
     """
 
     def __init__(self, onnx_model: ModelProto, device: torch.device, session_options: Optional[SessionOptions] = None,
-                 providers: Optional[List[str]] = None, provider_options: Optional[List[Dict]] = None):
-        """
-        :param onnx_model: ONNX ModelProto
-        :param device: torch device
-        :param sess_options: session options
-        :param providers: Optional sequence of providers in order of decreasing
-            precedence. Values can either be provider names or tuples of
-            (provider name, options dict). If not provided, then all available
-            providers are used with the default precedence.
-        :param provider_options: Optional sequence of options dicts corresponding
-            to the providers listed in 'providers'.
+                 providers: Optional[List[Union[str, Tuple[str, Dict]]]] = None, provider_options: Optional[List[Dict]] = None):
+        """Initializes InferenceAgent
 
-        The model type will be inferred unless explicitly set in the SessionOptions.
-        To explicitly set:
-          so = onnxruntime.SessionOptions()
-          so.add_session_config_entry('session.load_model_format', 'ONNX') or
-          so.add_session_config_entry('session.load_model_format', 'ORT') or
-
-        A file extension of '.ort' will be inferred as an ORT format model.
-        All other filenames are assumed to be ONNX format models.
+        Args:
+            onnx_model: ONNX ModelProto object to be wrapped
+            device: torch device where the computation should happen
+            sess_options: session options
+            providers: Optional sequence of providers in order of decreasing
+                precedence. Values can either be provider names or tuples of
+                (provider name, options dict). If not provided, then all available
+                providers are used with the default precedence.
+            provider_options: Optional sequence of options dicts corresponding
+                to the providers listed in 'providers'.
 
         'providers' can contain either names or names and options. When any options
         are given in 'providers', 'provider_options' should not be used.
@@ -123,10 +116,11 @@ class InferenceAgent(ExecutionAgent):
         return user_outputs, run_info
 
     def _run_forward(self, iobinding: IOBinding, run_options: RunOptions) -> ExecutionAgentOutput:
-        """
-         Compute the forward graph.
-         :param iobinding: the iobinding object that has graph inputs/outputs bind.
-         :param run_options: See :class:`onnxruntime.RunOptions`.
+        """Computes the forward graph using IOBinding.
+
+        Args:
+            iobinding: the iobinding object that has graph inputs/outputs bind.
+            run_options: See :class:`onnxruntime.RunOptions`.
         """
 
         self._inference_session.run_with_iobinding(iobinding, run_options)
@@ -134,6 +128,14 @@ class InferenceAgent(ExecutionAgent):
         return ExecutionAgentOutput(ortvalues)
 
     def forward(self, *inputs: torch.Tensor) -> Tuple[Sequence[torch.Tensor], RunStateInfo]:
+        """Performs forward computation
+
+        Args:
+            inputs: torch input tensors
+
+        Returns:
+            a tuple of torch output tensors and RunStateInfo object containing forward run information
+        """
         run_options = RunOptions()
         io_binding = self._process_inputs(inputs)
 
@@ -142,6 +144,8 @@ class InferenceAgent(ExecutionAgent):
 
         return self._process_outputs(ort_output.ortvalues)
 
+class YieldOpNotFound(Exception):
+    pass
 
 @dataclass(frozen=True)
 class YieldOpInfo:
@@ -152,8 +156,23 @@ class YieldOpInfo:
     full_shape_outputs: List[int]
 
     @staticmethod
-    def from_training_model(onnx_model):
-        yield_op = next(op for op in onnx_model.graph.node if op.op_type == "YieldOp")
+    def from_training_model(onnx_model: ModelProto) -> "YieldOpInfo":
+        """Initializes an YieldOpInfo object from a training onnx model
+
+        Args:
+            onnx_model: onnx model with an YieldOp created by OrtModuleGraphBuilder
+
+        Returns:
+            YieldOpInfo
+
+        Raises:
+            YieldOpNotFound if the graph does not contain a YieldOp
+        """
+        try:
+            yield_op = next(op for op in onnx_model.graph.node if op.op_type == "YieldOp")
+        except StopIteration as e:
+            raise YieldOpNotFound(f"Could not find a YiledOp in onnx graph {onnx_model.graph.name}. Please make sure"
+                                  " that you have generated your graph using OrtModuleGraphBuilder.") from e
         attrs = {
             attr.name: onnx.helper.get_attribute_value(attr)
             for attr in yield_op.attribute
@@ -170,26 +189,19 @@ class TrainingAgent(ExecutionAgent):
     """
 
     def __init__(self, onnx_model: ModelProto, device: torch.device, session_options: Optional[SessionOptions] = None,
-                 providers: Optional[List[str]] = None, provider_options: Optional[List[Dict]] = None):
-        """
-        :param onnx_model: ONNX ModelProto
-        :param device: torch device
-        :param sess_options: session options
-        :param providers: Optional sequence of providers in order of decreasing
-            precedence. Values can either be provider names or tuples of
-            (provider name, options dict). If not provided, then all available
-            providers are used with the default precedence.
-        :param provider_options: Optional sequence of options dicts corresponding
-            to the providers listed in 'providers'.
+                 providers: Optional[List[Union[str, Tuple[str, Dict]]]] = None, provider_options: Optional[List[Dict]] = None):
+        """Initializes TrainingAgent
 
-        The model type will be inferred unless explicitly set in the SessionOptions.
-        To explicitly set:
-          so = onnxruntime.SessionOptions()
-          so.add_session_config_entry('session.load_model_format', 'ONNX') or
-          so.add_session_config_entry('session.load_model_format', 'ORT') or
-
-        A file extension of '.ort' will be inferred as an ORT format model.
-        All other filenames are assumed to be ONNX format models.
+        Args:
+            onnx_model: ONNX ModelProto object to be wrapped
+            device: torch device where the computation should happen
+            sess_options: session options
+            providers: Optional sequence of providers in order of decreasing
+                precedence. Values can either be provider names or tuples of
+                (provider name, options dict). If not provided, then all available
+                providers are used with the default precedence.
+            provider_options: Optional sequence of options dicts corresponding
+                to the providers listed in 'providers'.
 
         'providers' can contain either names or names and options. When any options
         are given in 'providers', 'provider_options' should not be used.
@@ -219,7 +231,6 @@ class TrainingAgent(ExecutionAgent):
                                                bw_fetches_names, bw_outputs_device_info)
 
 
-
     def _process_forward_inputs(self, inputs: Sequence[torch.Tensor]) -> OrtValueVector:
         """ Prepare feeds from torch tensors """
 
@@ -247,6 +258,14 @@ class TrainingAgent(ExecutionAgent):
 
 
     def forward(self, *inputs: torch.Tensor) -> Tuple[Sequence[torch.Tensor], RunStateInfo]:
+        """Performs forward computation
+
+        Args:
+            inputs: torch input tensors
+
+        Returns:
+            a tuple of torch output tensors and RunStateInfo object containing forward run information
+        """
         feeds = self._process_forward_inputs(inputs)
         fetches = OrtValueVector()
         state = PartialGraphExecutionState()
@@ -293,6 +312,15 @@ class TrainingAgent(ExecutionAgent):
 
 
     def backward(self, run_info: RunStateInfo, *grad_outputs: torch.Tensor) -> Sequence[torch.Tensor]:
+        """Performs backward computation
+
+        Args:
+            run_info: RunStateInfo object containing forward run information
+            grad_outputs: torch tensors representing partial gradients w.r.t. forward outputs
+
+        Returns:
+            torch tensors representing partial gradients w.r.t. forward inputs
+        """
         backward_inputs = self._process_backward_inputs(run_info, grad_outputs)
         # Run and get results
         backward_outputs = OrtValueVector()
