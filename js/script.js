@@ -1049,6 +1049,9 @@ var validCombos = {
     "ios,objectivec,ARM64,DefaultCPU":
         "Add 'onnxruntime-mobile-objc' using CocoaPods and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
     
+    "ios,objectivec,ARM64,CoreML":
+        "Add 'onnxruntime-mobile-objc' using CocoaPods and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
+    
     "windows,Python,X86,VitisAI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
     
