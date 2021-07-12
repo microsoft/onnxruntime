@@ -865,3 +865,9 @@ class OnnxModel:
             if self.get_initializer(input.name) is None:
                 graph_inputs.append(input)
         return graph_inputs
+
+    def get_opset_version(self):
+        for opset in self.model.opset_import:
+            if opset.domain in ["", "ai.onnx"]:
+                return opset.version
+        raise RuntimeError("ONNX model does not find opset for default domain")

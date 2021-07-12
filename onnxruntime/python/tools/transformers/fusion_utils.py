@@ -5,7 +5,7 @@
 from logging import getLogger
 from typing import Tuple
 from onnx import helper, numpy_helper, TensorProto
-from numpy import ndarray
+from numpy import ndarray, array_equal
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -56,6 +56,28 @@ class FusionUtils:
                     output_name = node.output[0]
                     self.model.remove_node(node)
                     self.model.replace_input_of_all_nodes(output_name, input_name)
+
+    @staticmethod
+    def check_node_attribute(node, attribute_name:str, expected_value, default_value=None):
+        value = default_value
+        for attr in node.attribute:
+            if attr.name == attribute_name:
+                value = helper.get_attribute_value(attr)
+
+        if isinstance(expected_value, list):
+            return array_equal(expected_value, value, equal_nan=False)
+        else:
+            return value == expected_value
+
+    def check_node_input_value(self, node, input_index:int, expected_value):
+        assert len(node.input) >  input_index
+
+        value = self.model.get_constant_value(node.input[input_index])
+
+        if isinstance(expected_value, list):
+            return array_equal(expected_value, value, equal_nan=False)
+        else:
+            return value == expected_value
 
 class NumpyHelper:
     @staticmethod    
