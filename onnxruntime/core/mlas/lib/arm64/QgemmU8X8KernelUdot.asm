@@ -144,10 +144,10 @@ Return Value:
 //                           |v2.b[3] ... v2.b[15] v3.b[3] ... v3.b[15]|
 //                           \-----------------------------------------/
 //  /---------------------\  /-----------------------------------------\
-//  |d6.b[0]  ... d6.b[3] |  |v24.s[0] .. v24.s[3] v25.s[0] .. v25.s[3]|
-//  |d6.b[4]  ... d6.b[7] |  |v26.s[0] .. v26.s[3] v27.s[0] .. v27.s[3]|
-//  |d7.b[0]  ... d7.b[3] |  |v28.s[0] .. v24.s[3] v29.s[0] .. v29.s[3]|
-//  |d7.b[4]  ... d7.b[7] |  |v30.s[0] .. v24.s[3] v31.s[0] .. v31.s[3]|
+//  |d6.b[0]  ... d6.b[3] |  |v16.s[0] .. v16.s[3] v17.s[0] .. v17.s[3]|
+//  |d6.b[4]  ... d6.b[7] |  |v18.s[0] .. v18.s[3] v19.s[0] .. v19.s[3]|
+//  |d7.b[0]  ... d7.b[3] |  |v20.s[0] .. v20.s[3] v21.s[0] .. v21.s[3]|
+//  |d7.b[4]  ... d7.b[7] |  |v22.s[0] .. v22.s[3] v23.s[0] .. v23.s[3]|
 //  \---------------------/  \-----------------------------------------/
 //                                  int32 accumulators 8x8 block
 
@@ -191,19 +191,19 @@ SkipScaleByZeroPointBM4
 
 ComputeBlockLoopStartM4
         ldr     d4,[x0],#32                 // load packed A0.l
-        movi    v24.4s,#0
+//        movi    v24.4s,#0
         ld1     {v1.16b},[x1],#16           // load packed B1
-        movi    v25.4s,#0
+//        movi    v25.4s,#0
         ldur    d5,[x0,#-24]                // load packed A0.h
-        movi    v26.4s,#0
-        movi    v27.4s,#0
+//        movi    v26.4s,#0
+//        movi    v27.4s,#0
         ldur    d6,[x0,#-16]                // load packed A1.l
-        movi    v28.4s,#0
-        movi    v29.4s,#0
+//        movi    v28.4s,#0
+//        movi    v29.4s,#0
         ld1     {v2.16b},[x1],#16           // load packed B0_next4k
-        movi    v30.4s,#0
+//        movi    v30.4s,#0
         ld1     {v3.16b},[x1],#16           // load packed B1_next4k
-        movi    v31.4s,#0
+//        movi    v31.4s,#0
 
 ComputeBlockLoopM4
         sub     x3,x3,#1
@@ -220,17 +220,17 @@ ComputeBlockLoopM4
         UdotByElement 21, 1, 5, 0
         UdotByElement 23, 1, 5, 1
         ld1     {v1.16b},[x1],#16           // load packed B1 for next iteration
-        UdotByElement 24, 2, 6, 0
-        UdotByElement 26, 2, 6, 1
+        UdotByElement 16, 2, 6, 0
+        UdotByElement 18, 2, 6, 1
         ldur    d5,[x0,#-24]                // load packed A0.h for next iteration
-        UdotByElement 28, 2, 7, 0
-        UdotByElement 30, 2, 7, 1
+        UdotByElement 20, 2, 7, 0
+        UdotByElement 22, 2, 7, 1
         ld1     {v2.16b},[x1],#16           // load packed B0_next4k for next iteration
-        UdotByElement 25, 3, 6, 0
-        UdotByElement 27, 3, 6, 1
+        UdotByElement 17, 3, 6, 0
+        UdotByElement 19, 3, 6, 1
         ldur    d6,[x0,#-16]                // load packed A1.l for next iteration
-        UdotByElement 29, 3, 7, 0
-        UdotByElement 31, 3, 7, 1
+        UdotByElement 21, 3, 7, 0
+        UdotByElement 23, 3, 7, 1
         ld1     {v3.16b},[x1],#16           // load packed B1_next4k for next iteration
         b       ComputeBlockLoopM4
 
@@ -239,24 +239,24 @@ ComputeBlockLoopFinishM4
         UdotByElement 19, 1, 4, 1
         UdotByElement 21, 1, 5, 0
         UdotByElement 23, 1, 5, 1
-        UdotByElement 24, 2, 6, 0
-        UdotByElement 26, 2, 6, 1
-        UdotByElement 28, 2, 7, 0
-        UdotByElement 30, 2, 7, 1
-        UdotByElement 25, 3, 6, 0
-        UdotByElement 27, 3, 6, 1
-        UdotByElement 29, 3, 7, 0
-        UdotByElement 31, 3, 7, 1
+        UdotByElement 16, 2, 6, 0
+        UdotByElement 18, 2, 6, 1
+        UdotByElement 20, 2, 7, 0
+        UdotByElement 22, 2, 7, 1
+        UdotByElement 17, 3, 6, 0
+        UdotByElement 19, 3, 6, 1
+        UdotByElement 21, 3, 7, 0
+        UdotByElement 23, 3, 7, 1
         add     x10,x2,x6,lsl #2            // compute output row 2
-        add     v16.4s,v16.4s,v24.4s        // fold high results into low results
-        add     v18.4s,v18.4s,v26.4s
-        add     v20.4s,v20.4s,v28.4s
-        add     v22.4s,v22.4s,v30.4s
+//        add     v16.4s,v16.4s,v24.4s        // fold high results into low results
+//        add     v18.4s,v18.4s,v26.4s
+//        add     v20.4s,v20.4s,v28.4s
+//        add     v22.4s,v22.4s,v30.4s
         add     x11,x10,x6,lsl #2           // compute output row 3
-        add     v17.4s,v17.4s,v25.4s
-        add     v19.4s,v19.4s,v27.4s
-        add     v21.4s,v21.4s,v29.4s
-        add     v23.4s,v23.4s,v31.4s
+//        add     v17.4s,v17.4s,v25.4s
+//        add     v19.4s,v19.4s,v27.4s
+//        add     v21.4s,v21.4s,v29.4s
+//        add     v23.4s,v23.4s,v31.4s
         add     x12,x11,x6,lsl #2           // compute output row 4
         subs    x5,x5,#8                    // adjust CountN remaining
         blo     StoreOutputPartialM4
