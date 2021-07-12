@@ -5,6 +5,8 @@
 #include "core/framework/allocatormgr.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
+#include "core/common/cpuid_info.h"
+
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets_ml.h"
@@ -135,6 +137,7 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
 Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
                                const OrtThreadingOptions* tp_options,
                                bool create_global_thread_pools) {
+  ORT_RETURN_IF_ERROR(CPUIDInfo::Initialize());
   auto status = Status::OK();
 
   logging_manager_ = std::move(logging_manager);
