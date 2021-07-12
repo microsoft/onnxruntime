@@ -78,6 +78,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   if(!openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph) {
     ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
 
+  #if defined(OPENVINO_2021_1)
     // Replace framework output names with OV output names
     std::unordered_map<std::string, int> new_names;
     for(auto output_name: subgraph_context_.output_names)
@@ -87,6 +88,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     }
     subgraph_context_.output_names = new_names;
     // End of Replacement
+  #endif
 
     SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
   #if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
@@ -127,6 +129,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     if(!openvino_ep::backend_utils::UseCompiledNetwork()) {
       ie_cnn_network_ = CreateCNNNetwork(model_proto, global_context_, subgraph_context_, const_outputs_map_);
 
+    #if defined(OPENVINO_2021_1)
       // Replace framework output names with OV output names
       std::unordered_map<std::string, int> new_names;
       for(auto output_name: subgraph_context_.output_names)
@@ -136,6 +139,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
       }
       subgraph_context_.output_names = new_names;
       // End of Replacement
+    #endif
 
       SetIODefs(model_proto, ie_cnn_network_, subgraph_context_.output_names, const_outputs_map_, global_context_.device_type);
     #if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
