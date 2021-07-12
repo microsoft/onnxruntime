@@ -56,8 +56,8 @@ def generate_initializers():
 def generate_model(model_name):
     # TODO(kreeger): where do attributes go?
 
-    batch_size = 16
-    sequence_size = 32
+    batch_size = 1
+    sequence_size = 8
     something_something = 4
 
     graph = helper.make_graph(
