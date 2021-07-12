@@ -18,13 +18,16 @@ def generate_nodes():
     nodes = [
         helper.make_node('SkipLayerNormalization',
                          ['sln_1_input', 'sln_1_skip', 'sln_1_gamma', 'sln_1_beta', 'sln_1_bias'], ['sln_1_output'],
+                         domain="com.microsoft",
                          **kwargs),
         helper.make_node('MatMul', ['sln_1_output', 'matmul_1_b'], ['matmul_1_output']),
-        helper.make_node('BiasGelu', ['matmul_1_output', 'bias_gelu_1_bias'], ['bias_gelu_1_output']),
+        helper.make_node('BiasGelu', ['matmul_1_output', 'bias_gelu_1_bias'], ['bias_gelu_1_output'],
+                         domain="com.microsoft"),
         helper.make_node('MatMul', ['bias_gelu_1_output', 'matmul_2_b'], ['matmul_2_output']),
         helper.make_node('SkipLayerNormalization',
                          ['sln_2_input', 'matmul_2_output', 'sln_2_gamma', 'sln_2_beta', 'sln_2_bias'],
                          ['sln_2_output'],
+                         domain="com.microsoft",
                          **kwargs),
     ]
     return nodes
@@ -53,11 +56,25 @@ def generate_initializers():
 def generate_model(model_name):
     # TODO(kreeger): where do attributes go?
 
+    batch_size = 16
+    sequence_size = 32
+    something_something = 4
+
     graph = helper.make_graph(
         generate_nodes(),
         'SkipLayerNorm_MatMulBiasGeluMatMul_Subgraph',
-        [],  # inputs
-        [],  # outputs
+        [  # inputs
+            helper.make_tensor_value_info('sln_1_input', TensorProto.FLOAT,
+                                          [batch_size, sequence_size, something_something]),
+            helper.make_tensor_value_info('sln_1_skip', TensorProto.FLOAT,
+                                          [batch_size, sequence_size, something_something]),
+            helper.make_tensor_value_info('sln_2_input', TensorProto.FLOAT,
+                                          [batch_size, sequence_size, something_something])
+        ],
+        [  # outputs
+            helper.make_tensor_value_info('sln_2_output', TensorProto.FLOAT,
+                                          [batch_size, sequence_size, something_something])
+        ],
         generate_initializers())
 
     model = helper.make_model(graph);
