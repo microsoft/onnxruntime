@@ -1301,10 +1301,13 @@ def run_ios_tests(args, source_dir, config, cwd):
         framework_info_file = os.path.join(cwd, 'framework_info.json')
         dynamic_framework_dir = os.path.join(cwd, config + '-' + args.ios_sysroot)
         static_framework_dir = os.path.join(cwd, config + '-' + args.ios_sysroot, 'static_framework')
-        # test both dynamic framework and static framework
+        # test dynamic framework
         run_subprocess([sys.executable, package_test_py,
                         '--c_framework_dir', dynamic_framework_dir,
                         '--framework-info-file', framework_info_file], cwd=cwd)
+        # clean the Cocoapods cache between runs
+        run_subprocess(['pod', 'cache', 'clean', '--all'], cwd=cwd)
+        # test static framework
         run_subprocess([sys.executable, package_test_py,
                         '--c_framework_dir', static_framework_dir,
                         '--framework-info-file', framework_info_file], cwd=cwd)
