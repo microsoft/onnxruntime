@@ -788,7 +788,7 @@ var validCombos = {
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
 
     "linux,Python,X64,OpenVINO":
-        "Follow installation instructions from <a href='https://github.com/intel/onnxruntime/releases/tag/2021.3' target='_blank'>here</a>. Docker image also <a href='https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu18' target='_blank'>available</a>.",
+        "Follow installation instructions from <a href='https://github.com/intel/onnxruntime/releases/latest' target='_blank'>here</a>. Docker image also <a href='https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu18' target='_blank'>available</a>.",
 
     "windows,C-API,X64,OpenVINO":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
