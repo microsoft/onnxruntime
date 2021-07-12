@@ -107,7 +107,7 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
   }
 #endif
 
-#if defined OPENVINO_2020_3
+#if (defined OPENVINO_2020_3) || (defined OPENVINO_2021_1) || (defined OPENVINO_2021_2) || (defined OPENVINO_2021_3)
   ORT_UNUSED_PARAMETER(const_outputs_map);
   std::istringstream model_stream{model_proto.SerializeAsString()};
   try {
@@ -119,6 +119,7 @@ CreateCNNNetwork(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalCont
     ORT_THROW(log_tag + "[OpenVINO-EP] Unknown exception while importing model to nGraph Func");
   }
 #else
+  //ReadNetwork() API flow will be used in OpenVINO-EP starting from OpenVINO 2021.4
   InferenceEngine::CNNNetwork cnn_network;
   const std::string model = model_proto.SerializeAsString();
   InferenceEngine::Blob::Ptr blob = {nullptr};
