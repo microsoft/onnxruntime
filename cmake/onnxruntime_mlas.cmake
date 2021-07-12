@@ -18,6 +18,7 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/erf.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/compute.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/quantize.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_default.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qladd.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qlmul.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qpostprocessor.cpp
@@ -40,6 +41,8 @@ elseif(MSVC)
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/QgemmU8X8KernelNeon.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/QgemmU8X8KernelUdot.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm64/SgemmKernelNeon.asm
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_neon.cpp
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_udot.cpp
     )
 
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -90,6 +93,9 @@ elseif(MSVC)
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/dgemm.cpp
       ${mlas_platform_srcs_avx}
       ${mlas_platform_srcs_avx2}
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_avx2.cpp
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_sse.cpp
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_sse41.cpp
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx512/quantize_avx512f.cpp
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8S8KernelAvx2.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/amd64/QgemmU8U8KernelAvx2.asm
@@ -130,6 +136,8 @@ elseif(MSVC)
     set(CMAKE_ASM_MASM_FLAGS "${CMAKE_ASM_MASM_FLAGS} /safeseh")
 
     set(mlas_platform_srcs
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_sse.cpp
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_sse41.cpp
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/i386/SgemmKernelSse2.asm
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/i386/SgemmKernelAvx.asm
     )
@@ -188,6 +196,7 @@ else()
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch32/QgemmU8X8KernelNeon.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/arm/sgemmc.cpp
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_neon.cpp
     )
   elseif(ARM64)
     enable_language(ASM)
@@ -197,6 +206,8 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/QgemmU8X8KernelUdot.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemmKernelNeon.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/aarch64/SgemvKernelNeon.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_neon.cpp
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_udot.cpp
     )
   elseif(POWER)
     set(mlas_platform_srcs
@@ -229,6 +240,7 @@ else()
     enable_language(ASM)
 
     set(mlas_platform_srcs_sse2
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_sse.cpp
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86/SgemmKernelSse2.S
     )
     set_source_files_properties(${mlas_platform_srcs_sse2} PROPERTIES COMPILE_FLAGS "-msse2")
@@ -256,6 +268,7 @@ else()
     # instruction set extension and explicitly set the compiler flag as appropriate.
 
     set(mlas_platform_srcs_sse2
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_sse.cpp
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/DgemmKernelSse2.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelSse2.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmTransposePackB16x4Sse2.S
@@ -373,6 +386,7 @@ else()
 
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/dgemm.cpp
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/qgemm_kernel_avx2.cpp
       ${mlas_platform_srcs_sse2}
       ${mlas_platform_srcs_avx}
       ${mlas_platform_srcs_avx2}
