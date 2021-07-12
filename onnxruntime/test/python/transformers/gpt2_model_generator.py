@@ -12,10 +12,8 @@ from packaging import version
 from onnx import helper, TensorProto
 from bert_model_generator import float_tensor, reverse_if
 
-def create_gpt2_attention(hidden_size=64,
-                          num_heads=4,
-                          max_seq_len = 32,
-                          switch_add_inputs=False):
+
+def create_gpt2_attention(hidden_size=64, num_heads=4, max_seq_len=32, switch_add_inputs=False):
     # unsqueeze in opset version 13 has two inputs (axis is moved from attribute to input).
     is_opset_13_or_newer = (version.parse(onnx.__version__) >= version.parse('1.8.0'))
 
@@ -95,7 +93,7 @@ def create_gpt2_attention(hidden_size=64,
 
         # mask nodes
         helper.make_node("Reshape", ["input_mask", "input_mask_shape"], ["input_mask_reshape_out"], "input_mask_reshape"),
-        
+
         helper.make_node("Unsqueeze", ["input_mask_reshape_out", "axes_1"], ["unsqueeze0_out"], "unsqueeze0") if is_opset_13_or_newer \
             else helper.make_node("Unsqueeze", ["input_mask_reshape_out"], ["unsqueeze0_out"], "unsqueeze0", axes=[1]),
 
@@ -130,7 +128,7 @@ def create_gpt2_attention(hidden_size=64,
             else helper.make_node("Unsqueeze", ["qkv_shape_slice_squeeze_out"], ["qkv_shape_slice_squeeze_unsqueeze_out"], "qkv_shape_slice_squeeze_unsqueeze", axes=[0]),
 
         helper.make_node("Concat", ["concat_n1", "qkv_shape_slice_squeeze_unsqueeze_out"], ["qkv_shape_slice_squeeze_unsqueeze_concat_out"], "qkv_shape_slice_squeeze_unsqueeze_concat", axis=0),
-        
+
         helper.make_node("Reshape", ["reshape_qkv_out", "qkv_shape_slice_squeeze_unsqueeze_concat_out"], ["qkv_reshape_out"], "qkv_reshape"),
         helper.make_node("Gemm", ["qkv_reshape_out", "gemm_weight", "gemm_bias"], ["gemm_out"], "gemm", alpha=1.0, beta=1.0, transA=0, transB=0),
 
@@ -155,25 +153,21 @@ def create_gpt2_attention(hidden_size=64,
     ]
 
     head_size = int(hidden_size // num_heads)
-    unidir_mask = numpy.tril(numpy.ones((max_seq_len,max_seq_len))).reshape([max_seq_len * max_seq_len]).astype(numpy.uint8)
+    unidir_mask = numpy.tril(numpy.ones(
+        (max_seq_len, max_seq_len))).reshape([max_seq_len * max_seq_len]).astype(numpy.uint8)
     initializers = [  # initializers
         float_tensor('layer_norm_weight', [hidden_size]),
         float_tensor('layer_norm_bias', [hidden_size]),
-        float_tensor('matmul_fc_weight', [hidden_size, 3*hidden_size]),
-        float_tensor('add_fc_weight', [3*hidden_size]),
+        float_tensor('matmul_fc_weight', [hidden_size, 3 * hidden_size]),
+        float_tensor('add_fc_weight', [3 * hidden_size]),
         float_tensor('gemm_weight', [hidden_size, hidden_size]),
         float_tensor('gemm_bias', [hidden_size]),
-
-
         helper.make_tensor('undir_mask', TensorProto.UINT8, [1, 1, max_seq_len, max_seq_len], unidir_mask.tolist()),
-
         helper.make_tensor('div_weight', TensorProto.FLOAT, [], [math.sqrt(head_size)]),
         helper.make_tensor('sub_weight', TensorProto.FLOAT, [], [1.0]),
         helper.make_tensor('where_weight', TensorProto.FLOAT, [], [-10000.]),
         helper.make_tensor('mul_weight', TensorProto.FLOAT, [], [-10000]),
-
         helper.make_tensor('input_mask_shape', TensorProto.INT64, [2], [0, -1]),
-
         helper.make_tensor('starts_0', TensorProto.INT64, [1], [0]),
         helper.make_tensor('concat_n1', TensorProto.INT64, [1], [-1]),
         helper.make_tensor('starts_n1', TensorProto.INT64, [1], [-1]),
@@ -187,14 +181,14 @@ def create_gpt2_attention(hidden_size=64,
         helper.make_tensor('indices_0', TensorProto.INT64, [], [0]),
         helper.make_tensor('indices_1', TensorProto.INT64, [], [1]),
         helper.make_tensor('qkv_hidden', TensorProto.INT64, [1], [hidden_size]),
-
         helper.make_tensor('reshape_x_shape', TensorProto.INT64, [4], [0, 0, num_heads, head_size]),
         helper.make_tensor('reshape_weight_qkv', TensorProto.INT64, [3], [0, 0, hidden_size]),
     ]
 
     if is_opset_13_or_newer:
         initializers.append(helper.make_tensor('split_1_1', TensorProto.INT64, [2], [1, 1]))
-        initializers.append(helper.make_tensor('split_q_k_v', TensorProto.INT64, [3], [hidden_size, hidden_size, hidden_size]))
+        initializers.append(
+            helper.make_tensor('split_q_k_v', TensorProto.INT64, [3], [hidden_size, hidden_size, hidden_size]))
         initializers.append(helper.make_tensor('axes_1', TensorProto.INT64, [1], [1]))
 
     batch_size = 1
@@ -204,16 +198,18 @@ def create_gpt2_attention(hidden_size=64,
         [node for node in nodes if node],
         "GPT2",  #name
         [  # inputs
-            helper.make_tensor_value_info('input_1', TensorProto.FLOAT,
-                                          ['batch_size', 'sequence_length', hidden_size]),
-            helper.make_tensor_value_info('input_2', TensorProto.FLOAT,
-                                          ['batch_size', 'sequence_length', hidden_size]),
-            helper.make_tensor_value_info('input_mask', TensorProto.FLOAT, ['batch_size', 'past_sequence_length + sequence_length']),
-            helper.make_tensor_value_info('past', TensorProto.FLOAT, [2, 'batch_size', num_heads, 'past_sequence_length', head_size])
+            helper.make_tensor_value_info('input_1', TensorProto.FLOAT, ['batch_size', 'sequence_length', hidden_size]),
+            helper.make_tensor_value_info('input_2', TensorProto.FLOAT, ['batch_size', 'sequence_length', hidden_size]),
+            helper.make_tensor_value_info('input_mask', TensorProto.FLOAT,
+                                          ['batch_size', 'past_sequence_length + sequence_length']),
+            helper.make_tensor_value_info('past', TensorProto.FLOAT,
+                                          [2, 'batch_size', num_heads, 'past_sequence_length', head_size])
         ],
         [  # outputs
             helper.make_tensor_value_info('output', TensorProto.FLOAT, ['batch_size', 'sequence_length', hidden_size]),
-            helper.make_tensor_value_info('present', TensorProto.FLOAT, [2, 'batch_size', num_heads, 'past_sequence_length + sequence_length', head_size]),
+            helper.make_tensor_value_info(
+                'present', TensorProto.FLOAT,
+                [2, 'batch_size', num_heads, 'past_sequence_length + sequence_length', head_size]),
         ],
         initializers)
 

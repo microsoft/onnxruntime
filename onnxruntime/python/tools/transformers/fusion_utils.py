@@ -58,7 +58,7 @@ class FusionUtils:
                     self.model.replace_input_of_all_nodes(output_name, input_name)
 
     @staticmethod
-    def check_node_attribute(node, attribute_name:str, expected_value, default_value=None):
+    def check_node_attribute(node, attribute_name: str, expected_value, default_value=None):
         value = default_value
         for attr in node.attribute:
             if attr.name == attribute_name:
@@ -69,8 +69,8 @@ class FusionUtils:
         else:
             return value == expected_value
 
-    def check_node_input_value(self, node, input_index:int, expected_value):
-        assert len(node.input) >  input_index
+    def check_node_input_value(self, node, input_index: int, expected_value):
+        assert len(node.input) > input_index
 
         value = self.model.get_constant_value(node.input[input_index])
 
@@ -79,9 +79,10 @@ class FusionUtils:
         else:
             return value == expected_value
 
+
 class NumpyHelper:
-    @staticmethod    
-    def to_array(tensor:TensorProto, fill_zeros:bool = False) -> ndarray:
+    @staticmethod
+    def to_array(tensor: TensorProto, fill_zeros: bool = False) -> ndarray:
         # When weights are in external data format but not presented, we can still test the optimizer with two changes:
         # (1) set fill_zeros = True  (2) change load_external_data=False in optimizer.py
         if fill_zeros:
