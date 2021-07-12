@@ -24,7 +24,8 @@ class FusionGptAttention(Fusion):
         self.utils = FusionUtils(model)
         self.casted_attention_mask = {}  # map from name of attention mask to the name that casted to int32
 
-    def create_attention_node(self, fc_weight, fc_bias, gemm_qkv, past, present, input, output, mask, is_unidirectional):
+    def create_attention_node(self, fc_weight, fc_bias, gemm_qkv, past, present, input, output, mask,
+                              is_unidirectional):
         attention_node_name = self.model.create_node_name('GptAttention')
         attention_node = helper.make_node('Attention',
                                           inputs=[input, fc_weight, fc_bias, mask, past],
@@ -60,7 +61,7 @@ class FusionGptAttention(Fusion):
         #    Transpose (perm=0,1,3,2)     |
         #      |                          |
         #  Concat_k                     Concat_v
-        #      |                        /   
+        #      |                        /
         #  Transpose (perm=0,1,3,2)    /
         #      |                      /
         #  Unsqueeze        Unsqueeze
@@ -96,18 +97,18 @@ class FusionGptAttention(Fusion):
         return past
 
     def match_past_pattern_2(self, concat_k, concat_v, output_name_to_node):
-        # Pattern 2:                  
+        # Pattern 2:
         #      Split (QKV)
         #      / |   |
         #     /  |   +----------------------+
-        #        |                          | 
+        #        |                          |
         #        |         {past}           |
         #        |           |              |
-        #      Reshape     Split         Reshape   
+        #      Reshape     Split         Reshape
         #        |         /    \           |
-        # Transpose_k  Squeeze  Squeeze  Transpose_v 
+        # Transpose_k  Squeeze  Squeeze  Transpose_v
         #        |      |        \        /
-        #        +------|---+     \      / 
+        #        +------|---+     \      /
         #               |   |      \    /
         #              Concat_k   Concat_v
         #               |            |
@@ -133,7 +134,7 @@ class FusionGptAttention(Fusion):
                 logger.debug("match_past_pattern_2: axes != [0] for Squeeze in past path")
                 return None
 
-            if not FusionUtils.check_node_attribute(split, 'split', [1,1]):
+            if not FusionUtils.check_node_attribute(split, 'split', [1, 1]):
                 logger.debug("match_past_pattern_2: split != [1, 1] for Split in past path")
                 return None
         else:
@@ -148,14 +149,14 @@ class FusionGptAttention(Fusion):
         if not FusionUtils.check_node_attribute(split, 'axis', 0, default_value=0):
             logger.debug("match_past_pattern_2: attribute axis of Split are not expected in past path")
             return None
-        past = split.input[0]          
+        past = split.input[0]
 
         past_k_nodes = self.model.match_parent_path(concat_k, ['Squeeze', 'Split'], [0, 0])
         if past_k_nodes is None:
             logger.debug("match_past_pattern_2: failed to match past_k_nodes path")
             return None
         past_k = past_k_nodes[-1].input[0]
-   
+
         if past != past_k:
             logger.info("match_past_pattern_2: expect past to be same")
             return None
@@ -204,9 +205,11 @@ class FusionGptAttention(Fusion):
             return
         (concat_v, transpose_v, reshape_v, split_fc) = v_nodes
 
-        fc_nodes = self.model.match_parent_path(split_fc, ['Reshape', 'Gemm', 'Reshape', 'LayerNormalization'], [0, 0, 0, 0], output_name_to_node)
+        fc_nodes = self.model.match_parent_path(split_fc, ['Reshape', 'Gemm', 'Reshape', 'LayerNormalization'],
+                                                [0, 0, 0, 0], output_name_to_node)
         if fc_nodes is None:
-            fc_nodes = self.model.match_parent_path(split_fc, ['Add', 'MatMul', 'LayerNormalization'], [0, None, 0], output_name_to_node)
+            fc_nodes = self.model.match_parent_path(split_fc, ['Add', 'MatMul', 'LayerNormalization'], [0, None, 0],
+                                                    output_name_to_node)
             if fc_nodes is None:
                 logger.debug("fuse_attention: failed to match fc path")
                 return
@@ -278,7 +281,6 @@ class FusionGptAttention(Fusion):
 
             slice_mask = mask_nodes[2]
 
-
             div_or_concat = self.model.get_parent(mask_nodes[-1], 0, output_name_to_node)
             if div_or_concat.op_type == "Div":
                 div_mask = div_or_concat
@@ -288,7 +290,7 @@ class FusionGptAttention(Fusion):
             elif div_or_concat.op_type == "Concat":
                 concat_k_to_match = div_or_concat
             else:
-                logger.debug("fuse_attention: failed to match mask path")            
+                logger.debug("fuse_attention: failed to match mask path")
 
         # Validate that the mask data is either lower triangular (unidirectional) or all ones
         mask_data = numpy_helper.to_array(self.model.get_initializer(slice_mask.input[0]))
@@ -314,7 +316,8 @@ class FusionGptAttention(Fusion):
         k_nodes = self.model.match_parent_path(matmul_qk, ['Concat', 'Transpose', 'Reshape', 'Split'], [1, 1, 0, 0])
         if k_nodes is None:
             # This pattern is from pytorch 1.7.1 and transformers 4.6.1
-            k_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Concat', 'Transpose', 'Reshape', 'Split'], [1, 0, 1, 0, 0])
+            k_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Concat', 'Transpose', 'Reshape', 'Split'],
+                                                   [1, 0, 1, 0, 0])
             if k_nodes is None:
                 logger.debug("fuse_attention: failed to match k path")
                 return
@@ -351,7 +354,7 @@ class FusionGptAttention(Fusion):
         if not self.model.find_graph_input(past):
             logger.debug("past is not graph input.")
             # For GPT2LMHeadModel_BeamSearchStep, there is an extra Gather node to select beam index so it is not graph input.
-        
+
         present = self.match_present(concat_v, input_name_to_nodes)
         if present is None:
             logger.info("fuse_attention: failed to match present path")
