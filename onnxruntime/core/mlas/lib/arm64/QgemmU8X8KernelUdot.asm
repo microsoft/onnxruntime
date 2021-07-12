@@ -106,6 +106,51 @@ Return Value:
 // Process 4 rows of the matrices.
 //
 
+//
+// The packing layout is setup to have a pair of four quad vectors from
+// packed matrix A and a pair of eight quad vectors from packed matrix B.
+// With this scheme, alternating loads from the packed matrices can be
+// interleaved with the dot product instructions.
+//
+// One negative consequence of using four rows here is that the accumulator
+// register tile is too small for processors with high out of order execution
+// windows (such as the Apple M1). The dot product instructions for a given
+// cell are too close to each other to avoid dependencies. To workaround this,
+// the below loop uses a pair of accumulator registers that are then added
+// together when the loop finishes.
+//
+// A55-based cores are optimized for 64-bit loads, so use 64-bit loads for
+// packed matrix A. At the time of this implementation, using a wider 128-bit
+// load didn't affect performance for higher end cores.
+//
+//                                      int8 RHS 4x8 block
+//                           /-----------------------------------------|
+//                           |v0.b[0] ... v0.b[12] v1.b[0] ... v1.b[12]|
+//                           |  ...                              ...   |
+//                           |v0.b[3] ... v0.b[15] v1.b[3] ... v1.b[15]|
+//                           \-----------------------------------------/
+//    int8 LHS 4x4 block
+//  /---------------------\  /-----------------------------------------|
+//  |d4.b[0]  ... d4.b[3] |  |v16.s[0] .. v16.s[3] v17.s[0] .. v17.s[3]|
+//  |d4.b[4]  ... d4.b[7] |  |v18.s[0] .. v18.s[3] v19.s[0] .. v19.s[3]|
+//  |d5.b[0]  ... d5.b[3] |  |v20.s[0] .. v20.s[3] v21.s[0] .. v21.s[3]|
+//  |d5.b[4]  ... d5.b[7] |  |v22.s[0] .. v22.s[3] v23.s[0] .. v23.s[3]|
+//  \---------------------/  \-----------------------------------------/
+//////////////////////////
+//  unroll for the next 4 in k dimension
+//                           /-----------------------------------------|
+//                           |v2.b[0] ... v2.b[12] v3.b[0] ... v3.b[12]|
+//                           |  ...                              ...   |
+//                           |v2.b[3] ... v2.b[15] v3.b[3] ... v3.b[15]|
+//                           \-----------------------------------------/
+//  /---------------------\  /-----------------------------------------\
+//  |d6.b[0]  ... d6.b[3] |  |v24.s[0] .. v24.s[3] v25.s[0] .. v25.s[3]|
+//  |d6.b[4]  ... d6.b[7] |  |v26.s[0] .. v26.s[3] v27.s[0] .. v27.s[3]|
+//  |d7.b[0]  ... d7.b[3] |  |v28.s[0] .. v24.s[3] v29.s[0] .. v29.s[3]|
+//  |d7.b[4]  ... d7.b[7] |  |v30.s[0] .. v24.s[3] v31.s[0] .. v31.s[3]|
+//  \---------------------/  \-----------------------------------------/
+//                                  int32 accumulators 8x8 block
+
 ProcessNextColumnLoopM4
         ld1     {v0.16b},[x1],#16           // load packed B0
         mov     x0,x14                      // reload matrix A
@@ -143,44 +188,6 @@ SkipScaleByZeroPointBM4
         add     v21.4s,v3.4s,v10.4s
         add     v23.4s,v3.4s,v11.4s
 
-//
-// The packing layout is setup to have a pair of four quad vectors from
-// packed matrix A and a pair of eight quad vectors from packed matrix B.
-// With this scheme, alternating loads from the packed matrices can be
-// interleaved with the dot product instructions.
-//
-// One negative consequence of using four rows here is that the accumulator
-// register tile is too small for processors with high out of order execution
-// windows (such as the Apple M1). The dot product instructions for a given
-// cell are too close to each other to avoid dependencies. To workaround this,
-// the below loop uses a pair of accumulator registers that are then added
-// together when the loop finishes.
-//
-// A55-based cores are optimized for 64-bit loads, so use 64-bit loads for
-// packed matrix A. At the time of this implementation, using a wider 128-bit
-// load didn't affect performance for higher end cores.
-//
-//                                      int8 RHS 4x8 block
-//                           /-----------------------------------------|
-//                           |v0.b[0] ... v0.b[12] v1.b[0] ... v1.b[12]|
-//                           |  ...                              ...   |
-//                           |v0.b[3] ... v0.b[15] v1.b[3] ... v1.b[15]|
-//                           \-----------------------------------------/
-//    int8 LHS 4x4 block
-//  /---------------------\  /-----------------------------------------|
-//  |d4.b[0]  ... d4.b[3] |  |v16.s[0] .. v16.s[3] v17.s[0] .. v17.s[3]|
-//  |d4.b[4]  ... d4.b[7] |  |v18.s[0] .. v18.s[3] v19.s[0] .. v19.s[3]|
-//  |d5.b[0]  ... d5.b[3] |  |v20.s[0] .. v20.s[3] v21.s[0] .. v21.s[3]|
-//  |d5.b[4]  ... d5.b[7] |  |v22.s[0] .. v22.s[3] v23.s[0] .. v23.s[3]|
-//  \---------------------/  \-----------------------------------------/
-
-//  /---------------------\  /-----------------------------------------\
-//  |d6.b[0]  ... d6.b[3] |  |v24.s[0] .. v24.s[3] v25.s[0] .. v25.s[3]|
-//  |d6.b[4]  ... d6.b[7] |  |v26.s[0] .. v26.s[3] v27.s[0] .. v27.s[3]|
-//  |d7.b[0]  ... d7.b[3] |  |v28.s[0] .. v24.s[3] v29.s[0] .. v29.s[3]|
-//  |d7.b[4]  ... d7.b[7] |  |v30.s[0] .. v24.s[3] v31.s[0] .. v31.s[3]|
-//  \---------------------/  \-----------------------------------------/
-//                                  int32 accumulators 8x8 block
 
 ComputeBlockLoopStartM4
         ldr     d4,[x0],#32                 // load packed A0.l
