@@ -59,6 +59,17 @@ class FusionUtils:
 
     @staticmethod
     def check_node_attribute(node, attribute_name: str, expected_value, default_value=None):
+        """Verify that a node has expected value for an attribute.
+
+        Args:
+            node (NodeProto): a node to check
+            attribute_name (str): name of attribute
+            expected_value (Any): expected value of the attribute
+            default_value (Any, optional): default value if the attribute does not exist. Defaults to None.
+
+        Returns:
+            bool: whether the check is passed or not
+        """
         value = default_value
         for attr in node.attribute:
             if attr.name == attribute_name:
@@ -70,6 +81,16 @@ class FusionUtils:
             return value == expected_value
 
     def check_node_input_value(self, node, input_index: int, expected_value):
+        """Verify that a node has expected input value
+
+        Args:
+            node (NodeProto): a node to check
+            input_index (int): index of its input to be verified
+            expected_value (Any): expected value of the input
+
+        Returns:
+            bool: whether the check is passed or not
+        """
         assert len(node.input) > input_index
 
         value = self.model.get_constant_value(node.input[input_index])
