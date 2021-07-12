@@ -3312,13 +3312,11 @@ TEST_F(GraphTransformationTests, EmbedLayerNormBiasGeluFusion1) {
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
-  //std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  //ASSERT_TRUE(op_to_count["Gather"] == 0);
-  //ASSERT_TRUE(op_to_count["Add"] == 0);
-  //ASSERT_TRUE(op_to_count["ReduceSum"] == 1);
-  //ASSERT_TRUE(op_to_count["com.microsoft.Attention"] == 1);
-  //ASSERT_TRUE(op_to_count["com.microsoft.SkipLayerNormalization"] == 0);
-  //ASSERT_TRUE(op_to_count["com.microsoft.EmbedLayerNormalization"] == 1);
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["MatMul"] == 0);
+  ASSERT_TRUE(op_to_count["BiasGelu"] == 0);
+  // Preserve the SkipLayerNorm layer without a matching subgraph:
+  ASSERT_TRUE(op_to_count["com.microsoft.SkipLayerNormalization"] == 1);
 }
 
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat1) {
