@@ -224,3 +224,6 @@ def create_gpt2_attention(hidden_size=64,
 if __name__ == "__main__":
     model = create_gpt2_attention()
     onnx.save(model, "gpt2_attention.onnx")
+
+    model = create_gpt2_attention(switch_add_inputs=True)
+    onnx.save(model, "gpt2_attention_add.onnx")
