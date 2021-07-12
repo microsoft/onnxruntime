@@ -11,6 +11,7 @@ from typing import List
 from packaging import version
 from onnx import helper, TensorProto
 
+
 def float_tensor(name: str, shape: List[int], random=False):
     low = 0.0
     high = 1.0
