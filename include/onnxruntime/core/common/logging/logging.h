@@ -55,6 +55,7 @@ namespace profiling {
 enum EventCategory {
   SESSION_EVENT = 0,
   NODE_EVENT,
+  KERNEL_EVENT,
   EVENT_CATEGORY_MAX
 };
 

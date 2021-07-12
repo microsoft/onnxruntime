@@ -765,7 +765,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
     ]
     if args.use_cuda:
         cmake_args += ["-Donnxruntime_USE_CUDA=ON", "-Donnxruntime_CUDA_VERSION=" + args.cuda_version,
-                       "-Donnxruntime_CUDA_HOME="+cudnn_home,
+                       "-Donnxruntime_CUDA_HOME="+cuda_home,
                        "-Donnxruntime_CUDNN_HOME="+cudnn_home]
     if args.enable_msvc_static_runtime:
         cmake_args += ["-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>",
