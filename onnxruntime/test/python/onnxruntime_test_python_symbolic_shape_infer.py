@@ -140,8 +140,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         nodes = [
             helper.make_node("SoftmaxCrossEntropyLoss",
                              inputs=["logits", "labels"],
-                             outputs=["loss"],
-                             domain="com.microsoft"),
+                             outputs=["loss"]),
         ]
 
         inputs = [
@@ -153,7 +152,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
             helper.make_tensor_value_info('loss', TensorProto.FLOAT, None),
         ]
 
-        graph = helper.make_graph(nodes, "Unsqueeze_Test", inputs, outputs, [])
+        graph = helper.make_graph(nodes, "SoftmaxCrossEntropyLoss_Test", inputs, outputs, [])
         model = helper.make_model(graph)
 
         inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
