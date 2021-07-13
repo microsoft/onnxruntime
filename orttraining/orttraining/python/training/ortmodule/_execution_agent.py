@@ -208,6 +208,9 @@ class TrainingAgent(ExecutionAgent):
 
         The list of providers is ordered by precedence. For example ['CUDAExecutionProvider', 'CPUExecutionProvider']
         means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
+
+       Raises:
+            YieldOpNotFound: when the model doesn't have a YieldOp node        
         """
         super().__init__(onnx_model, device)
         self._info = YieldOpInfo.from_training_model(onnx_model)
