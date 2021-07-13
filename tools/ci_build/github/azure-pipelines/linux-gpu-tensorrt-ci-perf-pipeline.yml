@@ -156,6 +156,6 @@ jobs:
       env:
         DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
 
-  # - script: rd /S /Q $(Agent.BuildDirectory)
-  #   displayName: Clean build files (Windows)
-  #   condition: eq(variables['Agent.OS'], 'Windows_NT') # and always()
+  - script: rd /S /Q $(Agent.BuildDirectory)
+    displayName: Clean build files (Windows)
+    condition: eq(variables['Agent.OS'], 'Windows_NT') # and always()
