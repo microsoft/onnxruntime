@@ -28,6 +28,11 @@ parameters:
     - "many-models"
     - "partner-models"
 
+- name: MemTest
+  displayName: Run memory test
+  type: boolean
+  default: true
+
 jobs: 
 - job: Linux_CI_GPU_TENSORRT_PERF
   pool: Linux-GPU-TensorRT-Perf 
@@ -42,6 +47,8 @@ jobs:
       value: $(environment) -e "$(epList)"
     - name: run_conda
       value: eval "$(command conda 'shell.bash' 'hook' 2> /dev/null)" && conda activate perf3.8 
+    - name: mem_test_docker_image
+      value: "trt-ep-mem-test"
   timeoutInMinutes: 3000 
       
   steps:
@@ -64,9 +71,14 @@ jobs:
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
         env:
           LD_LIBRARY_PATH : "/home/hcsuser/TensorRT-7.2.2.3/lib"
+
+    - ${{ if eq(parameters.MemTest, true) }}:
+      - script: '$(run_conda) && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d $(mem_test_docker_image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
+        displayName: 'Run memory test'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
   
     - ${{ if not(eq(length(parameters.ModelGroups), 0)) }}:
-      - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
+      - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/result $(Build.SourcesDirectory)/Artifact/result_mem_test'
         displayName: 'Prepare Artifacts'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
       - task: PublishBuildArtifacts@1
