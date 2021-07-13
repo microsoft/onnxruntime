@@ -16,7 +16,7 @@ export interface BatchNormalizationAttributes {
 
 export const batchNormalization: OperatorImplementation<BatchNormalizationAttributes> =
     (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: BatchNormalizationAttributes): Tensor[] => {
-      validateInputTypes(inputs);
+      validateInputs(inputs);
       const output =
           inferenceHandler.run(createBatchNormalizationProgramInfo(inferenceHandler, inputs, attributes), inputs);
       return [output];
@@ -48,6 +48,7 @@ const createBatchNormalizationProgramInfo =
     return scale * ( (_A(indices) - mean) / sqrt(variance + float(${attributes.epsilon})) ) + b;
   }`;
       return {
+        name: 'BatchNormalization',
         inputNames: ['A', 'Scale', 'B', 'Mean', 'Variance'],
         inputTypes: [
           TextureType.unpacked, TextureType.unpacked, TextureType.unpacked, TextureType.unpacked, TextureType.unpacked
@@ -57,7 +58,7 @@ const createBatchNormalizationProgramInfo =
       };
     };
 
-const validateInputTypes = (inputs: Tensor[]): void => {
+const validateInputs = (inputs: Tensor[]): void => {
   if (!inputs || inputs.length !== 5) {
     throw new Error('BatchNormalization requires 5 inputs.');
   }
