@@ -18,6 +18,19 @@ class Node;
 
 namespace utils {
 
+using IsNodeSupportedFn = std::function<bool(const Node&)>;
+using OnPartitionClosedFn = std::function<bool(const std::vector<const Node*>&)>;
+using GenerateMetadefNameFn = std::function<std::string()>;
+
+// TODO doc
+std::vector<std::unique_ptr<ComputeCapability>>
+CreateSupportedPartitions(const GraphViewer& graph_viewer,
+                          const IsNodeSupportedFn& is_node_supported_fn,
+                          const OnPartitionClosedFn& on_partition_closed_fn,
+                          const GenerateMetadefNameFn& generate_metadef_name_fn,
+                          const std::string& execution_provider_name,
+                          bool debug_output = false);
+
 /** 
 Create the supported partitions for the execution provider. 
 
@@ -38,9 +51,13 @@ std::vector<std::unique_ptr<ComputeCapability>> CreateSupportedPartitions(
     const GraphViewer& graph_viewer,
     const std::unordered_set<const Node*>& supported_nodes,
     const std::unordered_set<std::string>& stop_ops,
-    const std::function<std::string()>& generate_metadef_name,
+    const GenerateMetadefNameFn& generate_metadef_name,
     const std::string& execution_provider_name,
     bool debug_output = false);
+
+// TODO doc
+std::unordered_set<const Node*> CreateExcludedNodeSet(const GraphViewer& graph_viewer,
+                                                      const std::unordered_set<std::string>& stop_ops);
 
 /**
 Create a ComputeCapability instance from the group of nodes.
@@ -61,7 +78,7 @@ Will automatically determine the inputs and outputs required.
 */
 std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& graph_viewer,
                                                          const std::vector<const Node*>& group,
-                                                         const std::function<std::string()>& generate_metadef_name,
+                                                         const GenerateMetadefNameFn& generate_metadef_name,
                                                          const std::string& execution_provider_name);
 }  // namespace utils
 }  // namespace onnxruntime

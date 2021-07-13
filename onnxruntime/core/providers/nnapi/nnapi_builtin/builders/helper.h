@@ -126,8 +126,16 @@ void GetFlattenOutputShape(const Node& node, const Shape& input_shape, int32_t& 
 // If a node is supported by NNAPI
 bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const OpSupportCheckParams& params);
 
-// Get a list of groups of supported nodes, each group represents a subgraph supported by NNAPI EP
-std::vector<std::vector<size_t>> GetSupportedNodes(const GraphViewer& graph_viewer, const OpSupportCheckParams& params);
+// TODO doc
+bool IsNodeSupportedInPartition(const Node& node, const GraphViewer& graph_viewer,
+                                const OpSupportCheckParams& params,
+                                const std::unordered_set<std::string>& node_outputs_in_partition);
+
+// TODO doc
+bool IsInputSupported(const NodeArg& input, const std::string& parent_name);
+
+// TODO doc
+bool IsValidSupportedNodePartition(const std::vector<const Node*>& supported_node_partition);
 
 // Get string representation of a Shape
 std::string Shape2String(const std::vector<uint32_t>& shape);
