@@ -148,7 +148,7 @@ jobs:
     #   displayName: Add conda to PATH
 
     - script: 'where conda'
-    - script: 'conda activate clean'
+    - script: 'conda activate clean && echo %CONDA_DEFAULT_ENV%'
 
     - script: 'conda activate clean && python $(Build.SourcesDirectory)\onnxruntime\python\tools\tensorrt\perf\post.py -r $(Pipeline.Workspace)/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" ' 
       displayName: 'Post to Dashboard'
