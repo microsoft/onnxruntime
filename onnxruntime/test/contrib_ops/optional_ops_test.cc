@@ -13,12 +13,23 @@ TEST(OptionalOpTest, OptionalTensorCreateFromTensor) {
   std::initializer_list<float> data = {-1.0856307f, 0.99734545f};
 
   test.AddInput<float>("A", {2}, data);
-
-  test.AddOptionalTypeTensorOutput<float>("y", {2}, &data);
+  test.AddOptionalTypeTensorOutput<float>("Y", {2}, &data);
 
   test.Run();
 }
 
+TEST(OptionalOpTest, OptionalSeqTensorCreateFromSeqTensor) {
+  OpTester test("Optional", 1, onnxruntime::kMSDomain);
+
+  SeqTensors<float> data;
+  data.AddTensor({3, 2}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+  data.AddTensor({3, 3}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+
+  test.AddSeqInput("S", data);
+  test.AddOptionalTypeSeqOutput<float>("Y", &data);
+
+  test.Run();
+}
 TEST(OptionalOpTest, OptionalTensorCreateFromTypeProto) {
   OpTester test("Optional", 1, onnxruntime::kMSDomain);
 
@@ -27,9 +38,25 @@ TEST(OptionalOpTest, OptionalTensorCreateFromTypeProto) {
       ->set_elem_type(onnx::TensorProto_DataType::TensorProto_DataType_FLOAT);
 
   test.AddAttribute<onnx::TypeProto>("type", tp);
+  // expected value is nullptr because we expect a "None" output
+  test.AddOptionalTypeTensorOutput<float>("Y", {2}, nullptr);
 
-  // expected values in nullptr because we expect a "None" output
-  test.AddOptionalTypeTensorOutput<float>("y", {2}, nullptr);
+  test.Run();
+}
+
+TEST(OptionalOpTest, OptionalSeqTensorCreateFromTypeProto) {
+  OpTester test("Optional", 1, onnxruntime::kMSDomain);
+
+  onnx::TypeProto tensor_tp;
+  tensor_tp.mutable_tensor_type()
+      ->set_elem_type(onnx::TensorProto_DataType::TensorProto_DataType_FLOAT);
+
+  onnx::TypeProto tp;
+  tp.mutable_sequence_type()->mutable_elem_type()->CopyFrom(tensor_tp);
+
+  test.AddAttribute<onnx::TypeProto>("type", tp);
+  // expected value is nullptr because we expect a "None" output
+  test.AddOptionalTypeSeqOutput<float>("Y", nullptr);
 
   test.Run();
 }
@@ -40,7 +67,19 @@ TEST(OptionalOpTest, OptionalTensorHasElement_True) {
   std::initializer_list<float> data = {-1.0856307f, 0.99734545f};
 
   test.AddOptionalTypeTensorInput<float>("A", {2}, &data);
+  test.AddOutput<bool>("Y", {}, {true});
 
+  test.Run();
+}
+
+TEST(OptionalOpTest, OptionalSeqTensorHasElement_True) {
+  OpTester test("OptionalHasElement", 1, onnxruntime::kMSDomain);
+
+  SeqTensors<float> data;
+  data.AddTensor({3, 2}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+  data.AddTensor({3, 3}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+
+  test.AddOptionalTypeSeqInput<float>("A", &data);
   test.AddOutput<bool>("Y", {}, {true});
 
   test.Run();
@@ -51,19 +90,40 @@ TEST(OptionalOpTest, OptionalTensorHasElement_False) {
 
   // Input is an optional type and is None
   test.AddOptionalTypeTensorInput<float>("A", {2}, nullptr);
-
   test.AddOutput<bool>("Y", {}, {false});
 
   test.Run();
 }
+
+TEST(OptionalOpTest, OptionalSeqTensorHasElement_False) {
+  OpTester test("OptionalHasElement", 1, onnxruntime::kMSDomain);
+
+  // Input is an optional type and is None
+  test.AddOptionalTypeSeqInput<float>("A", nullptr);
+  test.AddOutput<bool>("Y", {}, {false});
+
+  test.Run();
+}
+
 TEST(OptionalOpTest, OptionalTensorGetElement) {
   OpTester test("OptionalGetElement", 1, onnxruntime::kMSDomain);
 
   std::initializer_list<float> data = {-1.0856307f, 0.99734545f};
 
   test.AddOptionalTypeTensorInput<float>("A", {2}, &data);
-
   test.AddOutput<float>("Y", {2}, {-1.0856307f, 0.99734545f});
+
+  test.Run();
+}
+
+TEST(OptionalOpTest, OptionalSeqTensorGetElement) {
+  OpTester test("OptionalGetElement", 1, onnxruntime::kMSDomain);
+
+  SeqTensors<float> data;
+  data.AddTensor({3, 2}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+  data.AddTensor({3, 3}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+  test.AddOptionalTypeSeqInput<float>("A", &data);
+  test.AddSeqOutput("S", data);
 
   test.Run();
 }

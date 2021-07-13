@@ -1472,8 +1472,12 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
       }
 
       // check for type
-      auto expected_element_type = expected_type->IsTensorType() ? expected_type->AsTensorType()->GetElementType()
-                                                                 : expected_type->AsOptionalType()->GetElementType()->AsTensorType()->GetElementType();
+      auto expected_element_type = expected_type->IsTensorType()
+                                       ? expected_type->AsTensorType()->GetElementType()
+                                       : expected_type->AsOptionalType()
+                                             ->GetElementType()
+                                             ->AsTensorType()
+                                             ->GetElementType();
       auto input_element_type = input_ml_value.Get<Tensor>().DataType();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "tensor"));
 
@@ -1499,11 +1503,19 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
         ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(feed_name, input_shape, expected_shape));
       }
     } else if (input_ml_value.IsTensorSequence()) {
-      if (!expected_type->IsTensorSequenceType()) {
+      if (!expected_type->IsTensorSequenceType() &&
+          !(expected_type->IsOptionalType() &&
+            expected_type->AsOptionalType()->GetElementType()->IsTensorSequenceType())) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
                                " is not expected to be of type tensor sequence.");
       }
-      auto expected_element_type = expected_type->AsSequenceTensorType()->GetElementType();
+
+      auto expected_element_type = expected_type->IsTensorSequenceType()
+                                       ? expected_type->AsSequenceTensorType()->GetElementType()
+                                       : expected_type->AsOptionalType()
+                                             ->GetElementType()
+                                             ->AsSequenceTensorType()
+                                             ->GetElementType();
       auto input_element_type = input_ml_value.Get<TensorSeq>().DataType();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "seq"));
     } else {

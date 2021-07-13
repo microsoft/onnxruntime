@@ -61,6 +61,8 @@ static void CloneSequnceTensor(AllocatorPtr alloc,
     output_tensors.push_back(std::move(tmp));
   }
 
+  output_sequence_tensors->SetElements(std::move(output_tensors));
+
   auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
   clone.Init(output_sequence_tensors.release(),
              ml_tensor_sequence,

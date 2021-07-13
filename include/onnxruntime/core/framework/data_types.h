@@ -614,7 +614,7 @@ class OptionalType : public OptionalTypeBase {
   MLDataType GetElementType() const override {
     if (std::is_same<T, Tensor>::value) {
       return DataTypeImpl::GetTensorType<elemT>();
-    } else if (std::is_same<T, Tensor>::value) {
+    } else if (std::is_same<T, TensorSeq>::value) {
       return DataTypeImpl::GetSequenceTensorType<elemT>();
     } else {
       // Will not reach here

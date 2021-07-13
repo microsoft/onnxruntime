@@ -208,19 +208,11 @@ const SequenceTensorTypeProto<ElemType> SequenceTensorType<ElemType>::s_sequence
 
 template <typename ElemType>
 struct OptionalTypeProto {
-  OptionalTypeProto(const TTypeProto<ElemType>& tensor_proto) {
-    proto.mutable_optional_type()->mutable_elem_type()->CopyFrom(tensor_proto.proto);
+  OptionalTypeProto(const ONNX_NAMESPACE::TypeProto& type_proto) {
+    proto.mutable_optional_type()->mutable_elem_type()->CopyFrom(type_proto);
   }
   ONNX_NAMESPACE::TypeProto proto;
 };
-
-template <typename ElemType>
-struct OptionalType {
-  static const OptionalTypeProto<ElemType> s_optional_type_proto;
-};
-
-template <typename ElemType>
-const OptionalTypeProto<ElemType> OptionalType<ElemType>::s_optional_type_proto;
 
 // To use OpTester:
 //  1. Create one with the op name
@@ -315,12 +307,12 @@ class OpTester {
 
   template <typename T>
   void AddSeqInput(const char* name, const SeqTensors<T>& seq_tensors) {
-    AddSeqData<T>(input_data_, name, seq_tensors);
+    AddSeqData<T>(input_data_, name, &seq_tensors);
   }
 
   template <typename T>
   void AddSeqOutput(const char* name, const SeqTensors<T>& seq_tensors) {
-    AddSeqData<T>(output_data_, name, seq_tensors);
+    AddSeqData<T>(output_data_, name, &seq_tensors);
   }
 
   template <typename T>
@@ -338,6 +330,18 @@ class OpTester {
     AddData(output_data_, name, dims, expected_values ? expected_values->begin() : nullptr,
             expected_values ? expected_values->size() : 0, false,
             sort_output, nullptr /* dim_params */, rel_error, abs_error, true);
+  }
+
+  template <typename T>
+  void AddOptionalTypeSeqInput(const char* name,
+                               const SeqTensors<T>* seq_tensors) {
+    AddSeqData<T>(input_data_, name, seq_tensors, true);
+  }
+
+  template <typename T>
+  void AddOptionalTypeSeqOutput(const char* name,
+                                const SeqTensors<T>* seq_tensors) {
+    AddSeqData<T>(output_data_, name, seq_tensors, true);
   }
 
   template <typename TKey, typename TVal>
@@ -607,15 +611,15 @@ class OpTester {
         dims_for_proto[add_symbolic_dim_to_tensor_data_] = -1;
       }
 
-      TTypeProto<T> type_proto(add_shape_to_tensor_data_ ? &dims_for_proto : nullptr);
-      OptionalTypeProto<T> optional_proto(type_proto);
+      TTypeProto<T> tensor_type_proto(add_shape_to_tensor_data_ ? &dims_for_proto : nullptr);
+      OptionalTypeProto<T> optional_type_proto(tensor_type_proto.proto);
 
       OrtValue value;
 
       // If p_tensor is nullptr, it is a "None", we won't even include it as part of the feeds.
       value.Init(p_tensor ? p_tensor.release() : nullptr, DataTypeImpl::GetType<Tensor>(),
                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-      auto node_arg = NodeArg(name, !is_optional_type_tensor ? &type_proto.proto : &optional_proto.proto);
+      auto node_arg = NodeArg(name, !is_optional_type_tensor ? &tensor_type_proto.proto : &optional_type_proto.proto);
 
       if (dim_params && !(dim_params->empty()) && add_shape_to_tensor_data_) {
         // If dim_params presents, configure node_arg's dim value based on dim_params, which supports symbolic dim and dim broadcast.
@@ -665,38 +669,54 @@ class OpTester {
 
  private:
   template <typename T>
-  void AddSeqData(std::vector<Data>& data, const char* name, const SeqTensors<T>& seq_tensors) {
-    auto num_tensors = seq_tensors.tensors.size();
-    std::vector<Tensor> tensors;
-    tensors.resize(num_tensors);
-    auto elem_type = DataTypeImpl::GetType<T>();
-    for (size_t i = 0; i < num_tensors; ++i) {
-      TensorShape shape{seq_tensors.tensors[i].shape};
-      auto values_count = static_cast<int64_t>(seq_tensors.tensors[i].data.size());
-      ORT_ENFORCE(shape.Size() == values_count, values_count,
-                  " input values doesn't match tensor size of ", shape.Size());
+  void AddSeqData(std::vector<Data>& data, const char* name,
+                  const SeqTensors<T>* seq_tensors,
+                  bool is_optional_sequence_tensor_type = false) {
+    std::unique_ptr<TensorSeq> ptr;
 
-      auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-      auto& tensor = tensors[i];
+    if (seq_tensors) {
+      auto num_tensors = seq_tensors->tensors.size();
+      std::vector<Tensor> tensors;
+      tensors.resize(num_tensors);
+      auto elem_type = DataTypeImpl::GetType<T>();
+      for (size_t i = 0; i < num_tensors; ++i) {
+        TensorShape shape{seq_tensors->tensors[i].shape};
+        auto values_count = static_cast<int64_t>(seq_tensors->tensors[i].data.size());
+        ORT_ENFORCE(shape.Size() == values_count, values_count,
+                    " input values doesn't match tensor size of ", shape.Size());
 
-      tensor = Tensor(elem_type,
-                      shape,
-                      allocator);
+        auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
+        auto& tensor = tensors[i];
 
-      auto* data_ptr = tensor.template MutableData<T>();
-      for (int64_t x = 0; x < values_count; ++x) {
-        data_ptr[x] = seq_tensors.tensors[i].data[x];
+        tensor = Tensor(elem_type,
+                        shape,
+                        allocator);
+
+        auto* data_ptr = tensor.template MutableData<T>();
+        for (int64_t x = 0; x < values_count; ++x) {
+          data_ptr[x] = seq_tensors->tensors[i].data[x];
+        }
       }
+
+      ptr = std::make_unique<TensorSeq>(elem_type);
+      ptr->SetElements(std::move(tensors));
     }
 
     OrtValue value;
     auto mltype = DataTypeImpl::GetType<TensorSeq>();
-    auto ptr = std::make_unique<TensorSeq>(elem_type);
-    ptr->SetElements(std::move(tensors));
-    value.Init(ptr.get(), mltype, mltype->GetDeleteFunc());
-    ptr.release();
-    data.push_back(Data(NodeArg(name, &SequenceTensorType<T>::s_sequence_tensor_type_proto.proto), std::move(value),
-                        optional<float>(), optional<float>()));
+
+    // nullptr means None OrtValue which we will skip insering into the feeds
+    value.Init(ptr ? ptr.release() : nullptr, mltype, mltype->GetDeleteFunc());
+
+    SequenceTensorTypeProto<T> sequence_tensor_proto;
+    OptionalTypeProto<T> optional_type_proto(sequence_tensor_proto.proto);
+
+    data.push_back(
+        Data(NodeArg(name, !is_optional_sequence_tensor_type
+                               ? &sequence_tensor_proto.proto
+                               : &optional_type_proto.proto),
+             std::move(value),
+             optional<float>(), optional<float>()));
   }
 
   const char* domain_;
