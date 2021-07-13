@@ -140,12 +140,12 @@ jobs:
   
   steps: 
   - ${{ if eq(parameters.PostToDashboard, true) }}:
-    # - task: DownloadPipelineArtifact@2
-    #   inputs:
-    #     artifact: 'result-$(Build.BuildNumber)'
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        artifact: 'result-$(Build.BuildNumber)'
 
-    # - powershell: Write-Host "##vso[task.prependpath]$env:CONDA\Scripts"
-    #   displayName: Add conda to PATH
+    - powershell: Write-Host "##vso[task.prependpath]$env:CONDA\Scripts"
+      displayName: Add conda to PATH
 
     - script: 'where conda'
     - script: 'conda info --envs'
