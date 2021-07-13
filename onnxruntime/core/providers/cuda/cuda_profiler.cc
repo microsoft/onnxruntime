@@ -20,6 +20,32 @@ TimePoint CudaProfiler::start_time;
   (((uintptr_t)(buffer) & ((align)-1)) ? ((buffer) + (align) - ((uintptr_t)(buffer) & ((align)-1))) : (buffer))
 #define DUR(s, e) std::lround(static_cast<double>(e - s) / 1000)
 
+static const char* GetMemcpyKindString(CUpti_ActivityMemcpyKind kind) {
+  switch (kind) {
+    case CUPTI_ACTIVITY_MEMCPY_KIND_HTOD:
+      return "MemcpyHostToDevice";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_DTOH:
+      return "MemcpyDeviceToHost";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_HTOA:
+      return "MemcpyHostToDeviceArray";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_ATOH:
+      return "MemcpyDeviceArrayToHost";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_ATOA:
+      return "MemcpyDeviceArrayToDeviceArray";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_ATOD:
+      return "MemcpyDeviceArrayToDevice";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_DTOA:
+      return "MemcpyDeviceToDeviceArray";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_DTOD:
+      return "MemcpyDeviceToDevice";
+    case CUPTI_ACTIVITY_MEMCPY_KIND_HTOH:
+      return "MemcpyHostToHost";
+    default:
+      break;
+  }
+  return "<unknown>";
+}
+
 void CUPTIAPI CudaProfiler::BufferRequested(uint8_t** buffer, size_t* size, size_t* maxNumRecords) {
   uint8_t* bfr = (uint8_t*)malloc(BUF_SIZE + ALIGN_SIZE);
   //ORT_ENFORCE(bfr, "Failed to allocate memory for cuda kernel profiling.");
@@ -44,6 +70,13 @@ void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer
                            static_cast<int64_t>(kernel->start),
                            static_cast<int64_t>(kernel->end),
                            static_cast<int64_t>(kernel->correlationId)});
+        } else if (CUPTI_ACTIVITY_KIND_MEMCPY == record->kind) {
+          CUpti_ActivityMemcpy4* mmcpy = (CUpti_ActivityMemcpy4*)record;
+          stats.push_back({GetMemcpyKindString((CUpti_ActivityMemcpyKind)mmcpy->copyKind),
+                           mmcpy->streamId, -1, -1, -1, -1, -1, -1,
+                           static_cast<int64_t>(mmcpy->start),
+                           static_cast<int64_t>(mmcpy->end),
+                           static_cast<int64_t>(mmcpy->correlationId)});
         }
       } else if (status == CUPTI_ERROR_MAX_LIMIT_REACHED) {
         break;
@@ -57,6 +90,7 @@ bool CudaProfiler::StartProfiling() {
   if (!enabled.test_and_set()) {
     start_time = std::chrono::high_resolution_clock::now();
     if (cuptiActivityEnable(CUPTI_ACTIVITY_KIND_KERNEL) == CUPTI_SUCCESS &&
+        cuptiActivityEnable(CUPTI_ACTIVITY_KIND_MEMCPY) == CUPTI_SUCCESS &&
         cuptiActivityRegisterCallbacks(BufferRequested, BufferCompleted) == CUPTI_SUCCESS) {
       initialized = true;
       return true;
@@ -69,6 +103,7 @@ Events CudaProfiler::StopProfiling() {
   Events events;
   if (enabled.test_and_set()) {
     cuptiActivityDisable(CUPTI_ACTIVITY_KIND_KERNEL);
+    cuptiActivityDisable(CUPTI_ACTIVITY_KIND_MEMCPY);
     if (initialized) {
       cuptiActivityFlushAll(1);
       std::lock_guard<onnxruntime::OrtMutex> lock(mtx);
