@@ -26,16 +26,14 @@ class TrainingAgent {
   // For ORTModule.forward()
   common::Status RunForward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                             PartialGraphExecutionState& state) ORT_MUST_USE_RESULT;
-  ;
+
   // For ORTModule.backward()
   common::Status RunBackward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                              PartialGraphExecutionState& state) ORT_MUST_USE_RESULT;
-  ;
 
   common::Status RunCore(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                          PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager)
       ORT_MUST_USE_RESULT;
-  ;
 
   void CreateAndInitializeFeedsFetchesManager(const SessionState& session_state,
                                               const std::vector<std::string>& feed_names,

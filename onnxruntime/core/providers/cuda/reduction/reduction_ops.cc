@@ -40,8 +40,7 @@ namespace cuda {
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       name<T>);
 
-// Register those with changes in OpSet12.
-#define REGISTER_KERNEL_TYPED_12(name, T)                                                  \
+#define REGISTER_KERNEL_VERSIONED_TYPED_12(name, T)                                        \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
       name,                                                                                \
       kOnnxDomain,                                                                         \
@@ -65,11 +64,37 @@ namespace cuda {
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      name<T>);                                                                            \
+      name<T>);
+
+// Register those with changes in OpSet12.
+#define REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(name, T)                                \
+  REGISTER_KERNEL_VERSIONED_TYPED_12(name, T)                                              \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
       name,                                                                                \
       kOnnxDomain,                                                                         \
       13,                                                                                  \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);
+
+#define REGISTER_KERNEL_VERSIONED_TYPED_13(name, T)                                        \
+  REGISTER_KERNEL_VERSIONED_TYPED_12(name, T)                                              \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      13, 13,                                                                              \
+      T,                                                                                   \
+      kCudaExecutionProvider,                                                              \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      name<T>);
+
+// Register ReduceMin int64_t support in OpSet14.
+#define REGISTER_KERNEL_TYPED_14(name, T)                                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
+      name,                                                                                \
+      kOnnxDomain,                                                                         \
+      14,                                                                                  \
       T,                                                                                   \
       kCudaExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
@@ -956,22 +981,30 @@ REGISTER_KERNEL_HFD_11(ArgMin)
 REGISTER_KERNEL_HFD(ReduceL1)
 REGISTER_KERNEL_HFD(ReduceL2)
 
-REGISTER_KERNEL_TYPED_12(ReduceMax, MLFloat16)
-REGISTER_KERNEL_TYPED_12(ReduceMax, float)
-REGISTER_KERNEL_TYPED_12(ReduceMax, double)
-REGISTER_KERNEL_TYPED_12(ReduceMax, int32_t)
-REGISTER_KERNEL_TYPED_12(ReduceMax, int64_t)
-REGISTER_KERNEL_TYPED_12(ReduceMax, int8_t)
-REGISTER_KERNEL_TYPED_12(ReduceMax, uint8_t)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, MLFloat16)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, float)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, double)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, int32_t)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, int64_t)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, int8_t)
+REGISTER_KERNEL_TYPED_13_WITH_VERSIONED_12(ReduceMax, uint8_t)
 
 REGISTER_KERNEL_HFD(ReduceMean)
 
-REGISTER_KERNEL_TYPED_12(ReduceMin, MLFloat16)
-REGISTER_KERNEL_TYPED_12(ReduceMin, float)
-REGISTER_KERNEL_TYPED_12(ReduceMin, double)
-REGISTER_KERNEL_TYPED_12(ReduceMin, int32_t)
-REGISTER_KERNEL_TYPED_12(ReduceMin, int8_t)
-REGISTER_KERNEL_TYPED_12(ReduceMin, uint8_t)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, MLFloat16)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, float)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, double)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, int32_t)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, int8_t)
+REGISTER_KERNEL_VERSIONED_TYPED_13(ReduceMin, uint8_t)
+
+REGISTER_KERNEL_TYPED_14(ReduceMin, MLFloat16)
+REGISTER_KERNEL_TYPED_14(ReduceMin, float)
+REGISTER_KERNEL_TYPED_14(ReduceMin, double)
+REGISTER_KERNEL_TYPED_14(ReduceMin, int32_t)
+REGISTER_KERNEL_TYPED_14(ReduceMin, int8_t)
+REGISTER_KERNEL_TYPED_14(ReduceMin, uint8_t)
+REGISTER_KERNEL_TYPED_14(ReduceMin, int64_t)
 
 REGISTER_KERNEL_HFD(ReduceProd)
 

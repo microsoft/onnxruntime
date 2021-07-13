@@ -1328,7 +1328,7 @@ STDMETHODIMP OnnxruntimeEngineFactory::CreateModel(_In_ void* data, _In_ size_t 
   RETURN_IF_FAILED(EnsureEnvironment());
   OrtModel* ort_model = nullptr;
   if (auto status = winml_adapter_api_->CreateModelFromData(data, size, &ort_model)) {
-    return E_INVALIDARG;
+    return __HRESULT_FROM_WIN32(ERROR_FILE_CORRUPT);
   }
 
   auto model = UniqueOrtModel(ort_model, winml_adapter_api_->ReleaseModel);

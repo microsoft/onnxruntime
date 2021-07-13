@@ -2,10 +2,14 @@
 // Licensed under the MIT License.
 
 #if defined(_M_IX86) || defined(_M_X64) || defined(__i386__) || defined(__x86_64__)
-#define PLATFORM_X86
+#define CPUIDINFO_ARCH_X86
 #endif
 
-#if defined(PLATFORM_X86)
+#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
+#define CPUIDINFO_ARCH_ARM
+#endif
+
+#if defined(CPUIDINFO_ARCH_X86)
 #include <memory>
 #include <mutex>
 
@@ -18,9 +22,24 @@
 
 #include "core/common/cpuid_info.h"
 
+#if defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)
+
+#if defined(_MSC_VER) && defined(CPUIDINFO_ARCH_ARM)
+// pytorch cpu info does not work for Windows ARM
+// 1. msvc report syntax error in file src/arm/api.h
+// 2. features reporting micro-arch in Windows is missing 
+#else
+
+#define CPUINFO_INCLUDED
+#include <cpuinfo.h>
+
+#endif
+
+#endif
+
 namespace onnxruntime {
 
-#if defined(PLATFORM_X86)
+#if defined(CPUIDINFO_ARCH_X86)
 static inline void GetCPUID(int function_id, int data[4]) {  // NOLINT
 #if defined(_MSC_VER)
   __cpuid(reinterpret_cast<int*>(data), function_id);
@@ -40,10 +59,21 @@ static inline int XGETBV() {
   return eax;
 #endif
 }
-#endif  // PLATFORM_X86
+#endif  // CPUIDINFO_ARCH_X86
 
-CPUIDInfo::CPUIDInfo() noexcept {
-#if defined(PLATFORM_X86)
+CPUIDInfo CPUIDInfo::instance_;
+
+
+common::Status CPUIDInfo::Init() {
+
+#ifdef CPUINFO_INCLUDED
+  if (!cpuinfo_initialize()) {
+    // Unfortunately we can not capture cpuinfo log!!
+    return ORT_MAKE_STATUS(SYSTEM, FAIL, "Failed to initialize cpuinfo");
+  }
+#endif
+
+#if defined(CPUIDINFO_ARCH_X86)
   int data[4] = {-1};
   GetCPUID(0, data);
 
@@ -56,6 +86,7 @@ CPUIDInfo::CPUIDInfo() noexcept {
       int value = XGETBV();
       bool has_sse2 = (data[3] & (1 << 26));
       has_sse3_ = (data[2] & 0x1);
+      has_sse4_1_ = (data[2] & (1 << 19));
       bool has_ssse3 = (data[2] & (1 << 9));
       has_avx_ = has_sse2 && has_ssse3 && (data[2] & (1 << 28)) && ((value & AVX_MASK) == AVX_MASK);
       bool has_avx512 = (value & AVX512_MASK) == AVX512_MASK;
@@ -73,6 +104,16 @@ CPUIDInfo::CPUIDInfo() noexcept {
     }
   }
 #endif
+
+#if defined(CPUIDINFO_ARCH_ARM) && defined(CPUINFO_INCLUDED)
+
+  // only works on ARM linux or android, does not work on Windows
+  is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
+  has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
+
+#endif
+  initalized_ = true;
+  return common::Status();
 }
 
 }  // namespace onnxruntime
