@@ -182,6 +182,7 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
 #endif
 } provider_host_cpu_;
 
-ProviderHostCPU* GetProviderHostCPU() NO_EXCEPTION { return &provider_host_cpu_; }
+extern ProviderHostCPU* g_provider_host_cpu;
+static void* init = g_provider_host_cpu = &provider_host_cpu_;
 
 }  // namespace onnxruntime
