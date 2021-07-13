@@ -170,8 +170,7 @@ std::unordered_set<const Node*> CreateExcludedNodeSet(const GraphViewer& graph_v
   for (const NodeIndex node_index : graph_viewer.GetNodesInTopologicalOrder()) {
     const Node& node = *graph_viewer.GetNode(node_index);
 
-    if (excluded_nodes.find(&node) == excluded_nodes.cend() &&
-        stop_ops.find(node.OpType()) != end_stop_ops) {
+    if (!Contains(excluded_nodes, &node) && Contains(stop_ops, node.OpType())) {
       excluded_nodes.insert(&node);
 
       // add all the downstream nodes
@@ -218,8 +217,8 @@ std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& grap
 
     for (const auto* input : node->InputDefs()) {
       // if the node input was not produced by this subgraph, add it to the subgraph inputs.
-      if (node_outputs.count(input) == 0) {
-        if (subgraph_inputs.count(input) == 0) {
+      if (!Contains(node_outputs, input)) {
+        if (!Contains(subgraph_inputs, input)) {
           subgraph_inputs.insert(input);
           ordered_subgraph_inputs.push_back(input);
         }
@@ -230,7 +229,7 @@ std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& grap
     for (const auto* output_def : output_defs) {
       node_outputs.insert(output_def);
       // if output is overall graph output we need to produce it.
-      if (graph_outputs.count(output_def) != 0) {
+      if (Contains(graph_outputs, output_def)) {
         ordered_subgraph_outputs.push_back(output_def);
       }
     }
@@ -238,9 +237,9 @@ std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& grap
     // if output connects to a node not in this subgraph we need to add it
     // unless it was already added as an overall graph output,
     for (auto it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); it != end; ++it) {
-      if (node_set.count(&it->GetNode()) == 0) {
+      if (!Contains(node_set, &it->GetNode())) {
         const auto* output_def = output_defs[it->GetSrcArgIndex()];
-        if (subgraph_outputs.count(output_def) == 0 && graph_outputs.count(output_def) == 0) {
+        if (!Contains(subgraph_outputs, output_def) && !Contains(graph_outputs, output_def)) {
           subgraph_outputs.insert(output_def);
           ordered_subgraph_outputs.push_back(output_def);
         }
@@ -298,7 +297,7 @@ std::vector<std::unique_ptr<ComputeCapability>>
 CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const std::unordered_set<const Node*>& supported_nodes,
                           const std::unordered_set<std::string>& stop_ops,
-                          const std::function<std::string()>& generate_metadef_name_fn,
+                          const GenerateMetadefNameFn& generate_metadef_name_fn,
                           const std::string& execution_provider_name,
                           bool debug_output) {
   const auto excluded_nodes = CreateExcludedNodeSet(graph_viewer, stop_ops);

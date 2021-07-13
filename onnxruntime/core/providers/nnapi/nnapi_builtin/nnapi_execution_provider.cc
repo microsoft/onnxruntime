@@ -89,7 +89,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
 
   std::unordered_set<std::string> node_outputs_in_current_partition{};
 
-  auto is_node_supported = [&](const Node& node) -> bool {
+  const auto is_node_supported = [&](const Node& node) -> bool {
     const bool supported = nnapi::IsNodeSupportedInPartition(node, graph_viewer, params,
                                                              node_outputs_in_current_partition);
     LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.OpType()
@@ -109,7 +109,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     return supported;
   };
 
-  auto on_partition_closed = [&](const std::vector<const Node*>& partition) -> bool {
+  const auto on_partition_closed = [&](const std::vector<const Node*>& partition) -> bool {
     // reset per-partition tracking
     node_outputs_in_current_partition.clear();
     return nnapi::IsValidSupportedNodePartition(partition);
@@ -125,7 +125,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
                                             is_node_supported, on_partition_closed,
                                             gen_metadef_name, NNAPI);
 
-  auto num_of_partitions = result.size();
+  const auto num_of_partitions = result.size();
   const auto num_of_supported_nodes = std::transform_reduce(
       result.begin(), result.end(),
       size_t{0}, std::plus<>{},
