@@ -38,6 +38,10 @@ def _test_ios_packages(args):
     # create a temp folder
     import tempfile
     with tempfile.TemporaryDirectory() as temp_dir:
+        # This is for debugging only
+        # temp_dir = <a local directory>
+        # shutil.rmtree(temp_dir)
+
         # create a zip file contains the framework
         # TODO, move this into a util function
         local_pods_dir = os.path.join(temp_dir, 'local_pods')
@@ -77,7 +81,10 @@ def _test_ios_packages(args):
         with open(podspec, 'w') as file:
             file.write(file_data)
 
-        # install pods first
+        # clean the Cocoapods cache first, in case the same pod was cached in previous runs
+        subprocess.run(['pod', 'cache', 'clean', '--all'], shell=False, check=True, cwd=target_proj_path)
+
+        # install pods
         subprocess.run(['pod', 'install'], shell=False, check=True, cwd=target_proj_path)
 
         # run the tests
