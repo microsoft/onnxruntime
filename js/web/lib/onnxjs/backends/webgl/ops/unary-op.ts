@@ -27,6 +27,22 @@ export function glslCeil(): GlslValueFunction {
 export function glslCos(): GlslValueFunction {
   return glslBuiltinUnary('cos');
 }
+export function glslElu(attributes: Attribute): GlslValueFunction {
+  const alpha = attributes.getFloat('alpha', 1.0);
+
+  const name = 'elu';
+  const body = `
+  const float alpha = float(${alpha});
+
+  float ${name}_(float a) {
+    return a >= 0.0 ? a: (exp(a) - 1.0) * alpha;
+  }
+  vec4 ${name}_(vec4 v) {
+    return vec4(${name}_(v.x), ${name}_(v.y), ${name}_(v.z), ${name}_(v.w));
+  }
+  `;
+  return {body, name, type: FunctionType.ValueBased};
+}
 export function glslExp(): GlslValueFunction {
   return glslBuiltinUnary('exp');
 }
@@ -203,6 +219,9 @@ export const ceil = (handler: WebGLInferenceHandler, inputs: Tensor[]):
 
 export const cos = (handler: WebGLInferenceHandler, inputs: Tensor[]):
     Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslCos()), inputs)];
+
+export const elu = (handler: WebGLInferenceHandler, inputs: Tensor[], node: Graph.Node):
+    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslElu(node.attributes)), inputs)];
 
 export const exp = (handler: WebGLInferenceHandler, inputs: Tensor[]):
     Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslExp()), inputs)];

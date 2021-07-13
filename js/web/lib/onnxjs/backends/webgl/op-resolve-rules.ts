@@ -53,7 +53,7 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Dropout', '', '7+', unaryOps.identity],
   ['DepthToSpace', '', '1+', depthToSpace, parseDepthToSpaceAttributes],
   ['Equal', '', '7+', binaryOps.equal],
-  // ['Elu', '', '6+', () => new WebGLElu()],
+  ['Elu', '', '6+', unaryOps.elu],
   ['Exp', '', '6+', unaryOps.exp],
   // ['Flatten', '', '1+', () => new WebGLFlatten()],
   ['Floor', '', '6+', unaryOps.floor],
