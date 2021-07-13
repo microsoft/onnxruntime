@@ -6,6 +6,7 @@
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
+#include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
@@ -21,9 +22,16 @@ namespace onnxruntime {
 
 constexpr const char* NNAPI = "Nnapi";
 
+constexpr std::array kDefaultPartitioningStopOps{
+    "NonMaxSuppression",
+};
+
 NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags)
     : IExecutionProvider{onnxruntime::kNnapiExecutionProvider, true},
-      nnapi_flags_(nnapi_flags) {
+      nnapi_flags_(nnapi_flags),
+      // TODO make this configurable
+      partitioning_stop_ops_(kDefaultPartitioningStopOps.begin(),
+                             kDefaultPartitioningStopOps.end()) {
   AllocatorCreationInfo device_info(
       [](int) {
         return std::make_unique<CPUAllocator>(OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator));
@@ -87,10 +95,15 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     }
   }
 
+  const auto excluded_nodes = utils::CreateExcludedNodeSet(graph_viewer, partitioning_stop_ops_);
+  const bool check_excluded_nodes = !excluded_nodes.empty();
+
   std::unordered_set<std::string> node_outputs_in_current_partition{};
 
   const auto is_node_supported = [&](const Node& node) -> bool {
-    const bool supported = nnapi::IsNodeSupportedInPartition(node, graph_viewer, params,
+    const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node);
+    const bool supported = !excluded &&
+                           nnapi::IsNodeSupportedInPartition(node, graph_viewer, params,
                                                              node_outputs_in_current_partition);
     LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.OpType()
                           << "] index: [" << node.Index()
