@@ -23,18 +23,13 @@ class OnnxModel:
         self.shape_infer_helper = None
         self.all_graphs = None
 
-    def infer_runtime_shape(self, dynamic_axis_mapping, update=False):
-        shape_infer_helper = None
-        if update:
-            shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
-            self.shape_infer_helper = shape_infer_helper
-        else:
-            if self.shape_infer_helper is None:
-                self.shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
-            shape_infer_helper = self.shape_infer_helper
+    def infer_runtime_shape(self, dynamic_axis_mapping={}, update=False):
+        if self.shape_infer_helper is None or update:
+            self.shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
+
         try:
-            if shape_infer_helper.infer(dynamic_axis_mapping):
-                return shape_infer_helper
+            if self.shape_infer_helper.infer(dynamic_axis_mapping):
+                return self.shape_infer_helper
         except:
             print("failed in shape inference", sys.exc_info()[0])
 
@@ -783,13 +778,13 @@ class OnnxModel:
 
     @staticmethod
     def graph_topological_sort(graph):
-        deps_count = [0]*len(graph.node) # dependency count of each node
-        deps_to_nodes = {} # input to node indice
+        deps_count = [0] * len(graph.node)  # dependency count of each node
+        deps_to_nodes = {}  # input to node indice
         sorted_nodes = []  # initialize sorted_nodes
         for node_idx, node in enumerate(graph.node):
             # CANNOT use len(node.input) directly because input can be optional
-            deps_count[node_idx] = sum(1 for _ in node.input if _ )
-            if deps_count[node_idx] == 0: # Constant doesn't depend on any inputs
+            deps_count[node_idx] = sum(1 for _ in node.input if _)
+            if deps_count[node_idx] == 0:  # Constant doesn't depend on any inputs
                 sorted_nodes.append(graph.node[node_idx])
                 continue
 
@@ -828,7 +823,7 @@ class OnnxModel:
                             end = end + 1
             start = start + 1
 
-        assert(end == len(graph.node)), "Graph is not a DAG"
+        assert (end == len(graph.node)), "Graph is not a DAG"
         graph.ClearField('node')
         graph.node.extend(sorted_nodes)
 
@@ -870,3 +865,17 @@ class OnnxModel:
             if self.get_initializer(input.name) is None:
                 graph_inputs.append(input)
         return graph_inputs
+
+    def get_opset_version(self):
+        """Get opset version of onnx domain
+
+        Raises:
+            RuntimeError: ONNX model has no opset for default domain.
+
+        Returns:
+            int: opset version of onnx domain.
+        """
+        for opset in self.model.opset_import:
+            if opset.domain in ["", "ai.onnx"]:
+                return opset.version
+        raise RuntimeError("ONNX model has no opset for default domain")
