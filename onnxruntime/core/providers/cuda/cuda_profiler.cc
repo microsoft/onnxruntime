@@ -9,7 +9,7 @@ namespace profiling {
 
 auto KEVENT = onnxruntime::profiling::KERNEL_EVENT;
 onnxruntime::OrtMutex CudaProfiler::mtx;
-std::atomic_flag CudaProfiler::enabled;
+std::atomic_flag CudaProfiler::enabled{0};
 std::vector<CudaProfiler::KernelStat> CudaProfiler::stats;
 bool CudaProfiler::initialized{false};
 TimePoint CudaProfiler::start_time;

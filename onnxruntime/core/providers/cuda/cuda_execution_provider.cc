@@ -210,7 +210,14 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
 }
 
 std::unique_ptr<profiling::EpProfiler> CUDAExecutionProvider::GetProfiler() {
-  return std::make_unique<profiling::CudaProfiler>();
+  static std::atomic_flag called{0};
+  if (called.test_and_set()) {
+    return {};
+  } else {
+    auto profiler = std::make_unique<profiling::CudaProfiler>();
+    profiler->StartProfiling();
+    return profiler;
+  }
 }
 
 CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadContext() const {

@@ -18,7 +18,8 @@ enum EventCategory {
 // Event descriptions for the above session events.
 static constexpr const char* event_categor_names_[EVENT_CATEGORY_MAX] = {
     "Session",
-    "Node"};
+    "Node",
+    "Kernel"};
 
 // Timing record for all events.
 struct EventRecord {
