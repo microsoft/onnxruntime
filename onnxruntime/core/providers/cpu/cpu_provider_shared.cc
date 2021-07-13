@@ -47,13 +47,7 @@
 
 namespace onnxruntime {
 
-extern ProviderHostCPU* g_provider_host_cpu;
-
 struct ProviderHostCPUImpl : ProviderHostCPU {
-  ProviderHostCPUImpl() {
-    g_provider_host_cpu = this;
-  }
-
   // From cpu/tensor/gatherbase.h (direct)
   Status GatherBase__PrepareForCompute(const GatherBase* p, OpKernelContext* context, GatherBase__Prepare& prepare) override { return p->GatherBase::PrepareForCompute(context, reinterpret_cast<GatherBase::Prepare&>(prepare)); }
   // From cpu/tensor/unsqueeze.h (direct)
@@ -188,5 +182,6 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
 };
 
 ProviderHostCPUImpl provider_host_cpu_;
+ProviderHostCPU& g_provider_host_cpu=provider_host_cpu_;
 
 }  // namespace onnxruntime
