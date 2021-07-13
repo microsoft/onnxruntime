@@ -60,12 +60,6 @@
         "test_data_path": "./shufflenet/"
     },
     {
-        "model_name": "shufflenet-v2-10",
-        "working_directory": "./onnx-zoo-models/shufflenet-v2-10/",
-        "model_path": "./model/test_shufflenetv2/model.onnx",
-        "test_data_path": "./model/test_shufflenetv2/"
-    },
-    {
         "model_name": "mnist-8",
         "working_directory": "./onnx-zoo-models/mnist-8/",
         "model_path": "./mnist/model.onnx",
@@ -130,17 +124,5 @@
         "working_directory": "./onnx-zoo-models/bertsquad-10/",
         "model_path": "./bertsquad-10/bertsquad10.onnx",
         "test_data_path": "./bertsquad-10/"
-    },
-    {
-        "model_name": "gpt2-lm-head-10",
-        "working_directory": "./onnx-zoo-models/gpt2-lm-head-10/",
-        "model_path": "./GPT-2-LM-HEAD/model.onnx",
-        "test_data_path": "./GPT-2-LM-HEAD/"
-    },
-    {
-        "model_name": "zfnet512-9",
-        "working_directory": "./onnx-zoo-models/zfnet512-9/",
-        "model_path": "./zfnet512/model.onnx",
-        "test_data_path": "./zfnet512/"
     }
 ]
