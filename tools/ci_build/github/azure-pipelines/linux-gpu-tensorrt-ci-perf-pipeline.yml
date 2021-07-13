@@ -144,11 +144,11 @@ jobs:
       inputs:
         artifact: 'result-$(Build.BuildNumber)' 
 
-    - script: 'python $(Build.SourcesDirectory)\onnxruntime\python\tools\tensorrt\perf\post.py -r $(Pipeline.Workspace)/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" ' 
+    - script: 'conda activate clean && python $(Build.SourcesDirectory)\onnxruntime\python\tools\tensorrt\perf\post.py -r $(Pipeline.Workspace)/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" ' 
       displayName: 'Post to Dashboard'
       env:
         DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
 
-  # - script: rd /S /Q $(Agent.BuildDirectory)
-  #   displayName: Clean build files (Windows)
-  #   condition: eq(variables['Agent.OS'], 'Windows_NT') # and always()
+  - script: rd /S /Q $(Agent.BuildDirectory)
+    displayName: Clean build files (Windows)
+    condition: eq(variables['Agent.OS'], 'Windows_NT') # and always()
