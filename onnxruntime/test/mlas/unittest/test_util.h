@@ -4,7 +4,6 @@
 #pragma once
 
 #include "mlas.h"
-#include "core/common/cpuid_info.h"
 #include "gtest/gtest.h"
 
 #include <stdio.h>
@@ -174,10 +173,6 @@ class MlasTestFixture : public testing::Test {
  public:
   static void SetUpTestSuite() {
     mlas_tester = new TMlasTester();
-    auto status = onnxruntime::CPUIDInfo::Initialize();
-    if (!status.IsOK()) {
-      FAIL() << "Failed to initialize cpu info!";
-    }
   };
 
   static void TearDownTestSuite() {

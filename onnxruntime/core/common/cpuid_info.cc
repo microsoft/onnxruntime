@@ -62,17 +62,12 @@ static inline int XGETBV() {
 
 CPUIDInfo CPUIDInfo::instance_;
 
-std::once_flag cpuidinit_flag;
 
-common::Status CPUIDInfo::Init() {
-  if (this != &instance_) {
-    return ORT_MAKE_STATUS(SYSTEM, FAIL, "Illegal CPUIDInfo instance detected!");
-  }
-  std::call_once(cpuidinit_flag, [&]() {
+CPUIDInfo::CPUIDInfo() {
 #ifdef CPUINFO_INCLUDED
     if (!cpuinfo_initialize()) {
       // Unfortunately we can not capture cpuinfo log!!
-      return;
+      ORT_THROW("Failed to initialize CPU info.");
     }
 #endif
 
@@ -115,14 +110,7 @@ common::Status CPUIDInfo::Init() {
     has_arm_neon_dot_ = cpuinfo_has_arm_neon_dot();
 
 #endif
-    initalized_ = true;
-  });
 
-  if (initalized_) {
-    return common::Status();
-  } else {
-    return ORT_MAKE_STATUS(SYSTEM, FAIL, "Failed to initialize cpuinfo");
-  }
 }
 
 }  // namespace onnxruntime
