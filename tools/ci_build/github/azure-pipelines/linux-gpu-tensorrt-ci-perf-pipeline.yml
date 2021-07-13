@@ -145,8 +145,8 @@ jobs:
         artifact: 'result-$(Build.BuildNumber)'
 
     - script: |
-        'call conda activate clean'
-        'python $(Build.SourcesDirectory)\onnxruntime\python\tools\tensorrt\perf\post.py -r $(Pipeline.Workspace)/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" ' 
+        call conda activate clean
+        python $(Build.SourcesDirectory)\onnxruntime\python\tools\tensorrt\perf\post.py -r $(Pipeline.Workspace)/result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"
       displayName: 'Post to Dashboard'
       env:
         DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
