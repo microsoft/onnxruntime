@@ -46,9 +46,24 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(node);
 
   const auto& input_defs = node.InputDefs();
+  const auto& input_name = input_defs[0]->Name();
+  const auto& output_name = node.OutputDefs()[0]->Name();
 
   const auto& weight_tensor = *model_builder.GetInitializerTensors().at(input_defs[1]->Name());
   const auto& weight_shape = weight_tensor.dims();
+
+  const bool is_1d_conv = (weight_shape.size() == 3);
+
+  std::string expand_output_name = model_builder.GetUniqueName(node.Name() + "_expandDims");
+
+  if (is_1d_conv) {
+    std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> expand_layer = CreateNNLayer(node);
+    int64_t expand_axes = -1;
+    expand_layer->mutable_expanddims()->add_axes(expand_axes);
+    *expand_layer->mutable_input()->Add() = input_name;
+    *expand_layer->mutable_output()->Add() = expand_output_name;
+    model_builder.AddLayer(std::move(expand_layer));
+  }
 
   NodeAttrHelper helper(node);
   const auto strides = helper.Get("strides", std::vector<int64_t>{1, 1});
@@ -107,8 +122,23 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     CreateCoreMLWeight(*coreml_conv->mutable_bias(), bias_tensor);
   }
 
-  *layer->mutable_input()->Add() = input_defs[0]->Name();
-  *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
+  if (is_1d_conv) {
+    std::string squeeze_input_name = model_builder.GetUniqueName(node.Name() + "_squeezed");
+    *layer->mutable_input()->Add() = expand_output_name;
+    *layer->mutable_output()->Add() = squeeze_input_name;
+    model_builder.AddLayer(std::move(layer));
+
+    std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> squeeze_layer = CreateNNLayer(node);
+    int64_t squeeze_axes = -1;
+    squeeze_layer->mutable_squeeze()->add_axes(squeeze_axes);
+    *squeeze_layer->mutable_input()->Add() = squeeze_input_name;
+    *squeeze_layer->mutable_output()->Add() = output_name;
+    model_builder.AddLayer(std::move(squeeze_layer));
+    return Status::OK();
+  }
+
+  *layer->mutable_input()->Add() = input_name;
+  *layer->mutable_output()->Add() = output_name;
 
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
@@ -125,9 +155,9 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
   const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
   if (Contains(initializers, weight_name)) {
     const auto& tensor = *initializers.at(weight_name);
-    if (tensor.dims().size() != 4) {
+    if (tensor.dims().size() != 4 && tensor.dims().size() != 3) {
       LOGS(logger, VERBOSE) << "Conv [" << name << "] dimension: " << tensor.dims().size()
-                            << " Only conv 2d is supported.";
+                            << " Only conv 2d and conv 1d are supported.";
       return false;
     }
   } else {
