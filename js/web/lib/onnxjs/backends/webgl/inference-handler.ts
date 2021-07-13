@@ -4,6 +4,7 @@
 import {InferenceHandler} from '../../backend';
 import {Logger} from '../../instrument';
 import {Tensor} from '../../tensor';
+import {ShapeUtil} from '../../util';
 import {createPackProgramInfo} from './ops/pack';
 
 import {encodeAsUint8} from './ops/uint8-encode';
@@ -40,24 +41,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
 
   executeProgram(programInfo: ProgramInfo, inputs: Tensor[]): TextureData {
     // create texture info for input
-    const inputTextureDatas = inputs.map((tensor, i) => {
-      const textureType = programInfo.inputTypes[i];
-      let td = this.getTextureData(tensor.dataId, textureType === TextureType.packed);
-      if (!td) {
-        const layout = createTextureLayoutFromTextureType(this.session.layoutStrategy, tensor.dims, textureType);
-
-        if (textureType === TextureType.packed) {
-          const unpackedTextureLayout =
-              createTextureLayoutFromShape(this.session.layoutStrategy, tensor.dims, 1, [], {reverseWH: true});
-          const unpackedTextureData = this.createTextureData(
-              unpackedTextureLayout, tensor.type, tensor.numberData, tensor, Encoder.Usage.UploadOnly);
-          td = this.pack(unpackedTextureData);
-        } else {
-          td = this.createTextureData(layout, tensor.type, tensor.numberData, tensor, Encoder.Usage.UploadOnly);
-        }
-      }
-      return td;
-    });
+    const inputTextureDatas = inputs.map((tensor, i) => this.getOrCreateTextureData(tensor, programInfo.inputTypes[i]));
 
     // create texture info for output
     const outputTextureLayout = createTextureLayoutFromTextureType(
@@ -102,43 +86,34 @@ export class WebGLInferenceHandler implements InferenceHandler {
     this.session.programManager.run(artifact, inputs, output);
   }
 
-  // /**
-  //  * Create a TextureData object from a tensor.
-  //  * Usage = Encoder.Usage.UploadOnly.
-  //  * If a related texture data is found in cache, returns it;
-  //  * Otherwise:
-  //  *   Creates a new texture layout if not provided;
-  //  *   Creates WebGLTexture with the layout;
-  //  *   Upload tensor data to the texture;
-  //  *   Creates a texture data object associated with the given tensor.
-  //  * @param tensor the tensor with data to upload
-  //  */
-  // private getOrCreateTextureData(tensor: Tensor, layout?: TextureLayout, isPacked = false) {
-  //   let td = this.getTextureData(tensor.dataId, isPacked);
-  //   if (!td) {
-  //     Logger.verbose('InferenceHandler', `Creating new TextureData for dims: [${tensor.dims}]`);
-  //     if (!layout) {
-  //       layout = this.createTextureLayoutFromShape(tensor.dims.slice());
-  //     }
-  //     // if we don't find the texture data with specific pack mode in the cache, try with the different
-  //     // pack mode to see if the tensor is cached using that pack mode. If succeed, we can return this
-  //     // tensor data and later apply a pack/unpack op on this texture, no need to create a new one here.
-  //     td = this.getTextureData(tensor.dataId, !isPacked);
-  //     if (!td) {
-  //       if (isPacked) {
-  //         const unpackedTextureLayout = this.getOrCreateTextureLayout(tensor, 1, false, [], true);
-  //         const unpackedTextureData = this.createTextureData(
-  //             unpackedTextureLayout, tensor.type, tensor.numberData, tensor, Encoder.Usage.UploadOnly);
-  //         td = this.pack(unpackedTextureData);
-  //       } else {
-  //         td = this.createTextureData(layout, tensor.type, tensor.numberData, tensor, Encoder.Usage.UploadOnly);
-  //       }
-  //     }
-  //   } else {
-  //     Logger.verbose('InferenceHandler', `Retrieving TextureData from cache: [${tensor.dims}]`);
-  //   }
-  //   return td;
-  // }
+  /**
+   * Create a TextureData object from a tensor.
+   * Usage = Encoder.Usage.UploadOnly.
+   * If a related texture data is found in cache, returns it;
+   * Otherwise:
+   *   Creates a new texture layout if not provided;
+   *   Creates WebGLTexture with the layout;
+   *   Upload tensor data to the texture;
+   *   Creates a texture data object associated with the given tensor.
+   * @param tensor the tensor with data to upload
+   */
+  private getOrCreateTextureData(tensor: Tensor, textureType: TextureType) {
+    let td = this.getTextureData(tensor.dataId, textureType === TextureType.packed);
+    if (!td) {
+      const layout = createTextureLayoutFromTextureType(this.session.layoutStrategy, tensor.dims, textureType);
+
+      if (textureType === TextureType.packed) {
+        const unpackedTextureLayout =
+            createTextureLayoutFromShape(this.session.layoutStrategy, tensor.dims, 1, [], {reverseWH: true});
+        const unpackedTextureData = this.createTextureData(
+            unpackedTextureLayout, tensor.type, tensor.numberData, tensor, Encoder.Usage.UploadOnly);
+        td = this.pack(unpackedTextureData);
+      } else {
+        td = this.createTextureData(layout, tensor.type, tensor.numberData, tensor, Encoder.Usage.UploadOnly);
+      }
+    }
+    return td;
+  }
 
   // /**
   //  * Create a TextureData object from the given data type and texture layout.
@@ -171,17 +146,35 @@ export class WebGLInferenceHandler implements InferenceHandler {
     return this.createTextureDataFromTexture(layout, dataType, texture, tensor);
   }
 
-  /**
-   * Create a TextureData object, using the given texture.
-   * This function does not create new texture. Usually used in scenarios using texture sharing. (eg. Reshape)
-   * @param dataType the tensor data type
-   * @param texture the WebGLTexture object to share
-   * @param tensorId the tensor ID of the shared tensor data
-   */
-  createSharedTextureData(  // TODO: make private
-      layout: TextureLayout, dataType: Tensor.DataType, texture: WebGLTexture, tensorId?: Tensor.Id): TextureData {
-    return this.createTextureDataFromTexture(layout, dataType, texture, undefined, tensorId);
+  reshapeUnpacked(input: Tensor, reshapedDims: readonly number[]): Tensor {
+    const inputTD = this.getOrCreateTextureData(input, TextureType.unpacked);
+    if (!inputTD) {
+      throw new Error('texture data of input does not exists');
+    }
+    const newTextureLayout: TextureLayout = {
+      channels: inputTD.channels,
+      height: inputTD.height,
+      width: inputTD.width,
+      // handle reshaping into scalar Tensors
+      shape: reshapedDims.length !== 0 ? reshapedDims : [1],
+      strides: ShapeUtil.computeStrides(reshapedDims),
+      unpackedShape: reshapedDims,
+    };
+    const newTextureData = this.createTextureDataFromTexture(newTextureLayout, input.type, inputTD.texture);
+    return newTextureData.tensor;
   }
+
+  // /**
+  //  * Create a TextureData object, using the given texture.
+  //  * This function does not create new texture. Usually used in scenarios using texture sharing. (eg. Reshape)
+  //  * @param dataType the tensor data type
+  //  * @param texture the WebGLTexture object to share
+  //  * @param tensorId the tensor ID of the shared tensor data
+  //  */
+  // createSharedTextureData(  // TODO: make private
+  //     layout: TextureLayout, dataType: Tensor.DataType, texture: WebGLTexture, tensorId?: Tensor.Id): TextureData {
+  //   return this.createTextureDataFromTexture(layout, dataType, texture, undefined, tensorId);
+  // }
 
   private createTextureDataFromTexture(
       layout: TextureLayout, dataType: Tensor.DataType, texture: WebGLTexture, tensor?: Tensor, tensorId?: Tensor.Id) {

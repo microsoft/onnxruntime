@@ -8,7 +8,7 @@ import * as binaryOps from './ops/binary-op';
 // import {WebGLClip} from './ops/clip';
 import {concat, parseConcatAttributes} from './ops/concat';
 // import {WebGLConv} from './ops/conv';
-// import {WebGLDepthToSpace} from './ops/depth-to-space';
+import {depthToSpace, parseDepthToSpaceAttributes} from './ops/depth-to-space';
 // import {WebGLDropout} from './ops/dropout';
 // import {WebGLElu} from './ops/elu';
 // import {WebGLFlatten} from './ops/flatten';
@@ -30,7 +30,7 @@ import {reshape} from './ops/reshape';
 // import {WebGLSqueeze} from './ops/squeeze';
 // import {WebGLSum} from './ops/sum';
 // import {WebGLTile} from './ops/tile';
-// import {WebGLTranspose} from './ops/transpose';
+import {parseTransposeAttributes, transpose} from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
 // import {WebGLUnsqueeze} from './ops/unsqueeze';
 // import {WebGLUpsample} from './ops/upsample';
@@ -51,7 +51,7 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Cos', '', '7+', unaryOps.cos],
   ['Div', '', '7+', binaryOps.div],
   ['Dropout', '', '7+', unaryOps.identity],
-  // ['DepthToSpace', '', '1+', () => new WebGLDepthToSpace()],
+  ['DepthToSpace', '', '1+', depthToSpace, parseDepthToSpaceAttributes],
   ['Equal', '', '7+', binaryOps.equal],
   // ['Elu', '', '6+', () => new WebGLElu()],
   ['Exp', '', '6+', unaryOps.exp],
@@ -107,7 +107,7 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Tan', '', '7+', unaryOps.tan],
   ['Tanh', '', '6+', unaryOps.tanh],
   // ['Tile', '', '6+', () => new WebGLTile()],
-  // ['Transpose', '', '1+', () => new WebGLTranspose()],
+  ['Transpose', '', '1+', transpose, parseTransposeAttributes],
   // ['Upsample', '', '7-8', () => new WebGLUpsample(7)],
   // ['Upsample', '', '9', () => new WebGLUpsample(9)],
   // ['Unsqueeze', '', '1+', () => new WebGLUnsqueeze()],
