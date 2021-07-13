@@ -26,6 +26,55 @@ Status CheckInputs(const Tensor* input,
   return Status::OK();
 }
 
+template <typename T>
+void ComputeSkipLayerNorm(ptrdiff_t task_idx,
+                          int64_t hidden_size,
+                          float epsilon,
+                          const T* input_data,
+                          const T* skip_data,
+                          const T* gamma_data,
+                          const T* beta_data,
+                          const T* bias_data,
+                          T* output_data) {
+  const T* cur_input = input_data + (task_idx * hidden_size);
+  const T* cur_skip = skip_data + (task_idx * hidden_size);
+  T* cur_output = output_data + (task_idx * hidden_size);
+
+  T mean = 0;
+  T mean_square = 0;
+
+  for (int64_t i = 0; i < hidden_size; ++i) {
+    T value = cur_input[i] + cur_skip[i];
+    if (bias_data != nullptr) {
+      value += bias_data[i];
+    }
+
+    cur_output[i] = value;
+    mean += value;
+    mean_square += value * value;
+  }
+
+  mean = mean / hidden_size;
+  mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon);
+
+  for (int64_t i = 0; i < hidden_size; ++i) {
+    if (beta_data == nullptr) {
+      cur_output[i] =
+          (cur_output[i] - mean) / mean_square * gamma_data[i];
+    } else {
+      cur_output[i] =
+          (cur_output[i] - mean) / mean_square * gamma_data[i] + beta_data[i];
+    }
+  }
+}
+
+template <typename T>
+void ComputeMatMul() {
+  //
+  // TODO(kreeger): write me
+  //
+}
+
 }  // namespace
 
 // This op is internal-only, so register outside of onnx:
@@ -96,45 +145,31 @@ Status EmbedLayerNormBiasGelu<T>::Compute(OpKernelContext* context) const {
   //MatMulComputeHelper helper;
   //ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, trans_a, trans_b));
 
+  // 
+
+  //auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * 3 * hidden_size * element_size);
+  //BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
+
+
   int64_t task_count = batch_size * sequence_length;
   concurrency::ThreadPool::TryBatchParallelFor(
       context->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
       [&](ptrdiff_t task_idx) {
-        const T* cur_input = input_data + (task_idx * hidden_size);
-        const T* cur_skip = skip_data + (task_idx * hidden_size);
-        T* cur_output = output_data + (task_idx * hidden_size);
-
-        T mean = 0;
-        T mean_square = 0;
-
-        for (int64_t i = 0; i < hidden_size; ++i) {
-          T value = cur_input[i] + cur_skip[i];
-          if (bias_data != nullptr) {
-            value += bias_data[i];
-          }
-
-          cur_output[i] = value;
-          mean += value;
-          mean_square += value * value;
-        }
-
-        mean = mean / hidden_size;
-        mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon());
-
-        for (int64_t i = 0; i < hidden_size; ++i) {
-          if (beta_data == nullptr) {
-            cur_output[i] =
-                (cur_output[i] - mean) / mean_square * gamma_data[i];
-          } else {
-            cur_output[i] =
-                (cur_output[i] - mean) / mean_square * gamma_data[i] + beta_data[i];
-          }
-        }
+        // First, compute SkipLayerNorm:
+        ComputeSkipLayerNorm(task_idx,
+                             hidden_size,
+                             epsilon(),
+                             input_data,
+                             skip_data,
+                             gamma_data,
+                             beta_data,
+                             bias_data,
+                             output_data);
 
         // Now perform MatMul
-        MLAS_SGEMM_DATA_PARAMS matmul_1_params;
-        matmul_1_params.A = cur_output;
-        matmul_1_params.lda = 0;  // first dim of cur_output?
+        //MLAS_SGEMM_DATA_PARAMS matmul_1_params;
+        //matmul_1_params.A = cur_output;
+        //matmul_1_params.lda = 0;  // first dim of cur_output?
 
         // Now perform BiasGelu
 
