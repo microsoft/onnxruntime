@@ -286,8 +286,8 @@ Status ROCMExecutionProvider::OnRunStart() {
         for (auto p : v.cpu_ptrs) {
           cpu_alloc->Free(p);
         }
-        it = deferred_release_cpu_ptr_.erase(it);
         HIP_RETURN_IF_ERROR(hipEventDestroy(e));
+        it = deferred_release_cpu_ptr_.erase(it);
       } else if (event_query_status == hipErrorNotReady) {
         // ignore and clear the error if not ready
         hipGetLastError();
