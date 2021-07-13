@@ -121,10 +121,10 @@ jobs:
         displayName: 'Prepare Artifacts'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-    - task: PublishBuildArtifacts@1
-      inputs:
-        pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
-        artifactName: 'result-$(Build.BuildNumber)'
+      - task: PublishBuildArtifacts@1
+        inputs:
+          pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
+          artifactName: 'result-$(Build.BuildNumber)'
 
     - script: sudo rm -rf $(Agent.BuildDirectory)
       displayName: Clean build files (POSIX)
