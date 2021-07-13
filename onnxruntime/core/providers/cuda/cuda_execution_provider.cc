@@ -8,6 +8,7 @@
 #include "core/providers/cuda/cuda_fence.h"
 #include "core/providers/cuda/cuda_fwd.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
+#include "core/providers/cuda/cuda_profiler.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cuda/cuda_contrib_kernels.h"
@@ -206,6 +207,10 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
   if (!external_stream_ && stream_) {
     CUDA_CALL(cudaStreamDestroy(stream_));
   }
+}
+
+std::unique_ptr<profiling::EpProfiler> CUDAExecutionProvider::GetProfiler() {
+  return std::make_unique<profiling::CudaProfiler>();
 }
 
 CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadContext() const {

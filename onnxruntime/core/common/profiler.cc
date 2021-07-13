@@ -43,6 +43,9 @@ void Profiler::StartProfiling(const logging::Logger* custom_logger) {
   profile_with_logger_ = true;
   custom_logger_ = custom_logger;
   profiling_start_time_ = StartTime();
+  for (const auto& ep_profiler : ep_profilers_) {
+    ep_profiler->StartProfiling();
+  }
 }
 
 template <typename T>
@@ -51,6 +54,9 @@ void Profiler::StartProfiling(const std::basic_string<T>& file_name) {
   profile_stream_.open(file_name, std::ios::out | std::ios::trunc);
   profile_stream_file_ = ToMBString(file_name);
   profiling_start_time_ = StartTime();
+  for (auto& ep_profiler : ep_profilers_) {
+    ep_profiler->StartProfiling();
+  }
 }
 
 template void Profiler::StartProfiling<char>(const std::basic_string<char>& file_name);
@@ -100,6 +106,11 @@ std::string Profiler::EndProfiling() {
 
   std::lock_guard<OrtMutex> lock(mutex_);
   profile_stream_ << "[\n";
+
+  for (auto& ep_profiler : ep_profilers_) {
+    std::vector<EventRecord> ep_events = ep_profiler->StopProfiling();
+    std::copy(ep_events.begin(), ep_events.end(), std::back_inserter(events_));
+  }
 
   for (size_t i = 0; i < events_.size(); ++i) {
     auto& rec = events_[i];

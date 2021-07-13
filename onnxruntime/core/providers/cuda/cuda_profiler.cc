@@ -5,16 +5,14 @@
 
 namespace onnxruntime {
 
-namespace cuda {
+namespace profiling {
 
-auto KERNEL_EVENT = onnxruntime::profiling::EventCategory::KERNEL_EVENT;
+auto KEVENT = onnxruntime::profiling::KERNEL_EVENT;
 onnxruntime::OrtMutex CudaProfiler::mtx;
 std::atomic_flag CudaProfiler::enabled;
 std::vector<CudaProfiler::KernelStat> CudaProfiler::stats;
 bool CudaProfiler::initialized{false};
 TimePoint CudaProfiler::start_time;
-int CudaProfiler::pid = 0;
-int CudaProfiler::tid = 0;
 
 #define BUF_SIZE (32 * 1024)
 #define ALIGN_SIZE (8)
@@ -55,16 +53,16 @@ void CUPTIAPI CudaProfiler::BufferCompleted(CUcontext, uint32_t, uint8_t* buffer
   free(buffer);
 }
 
-void CudaProfiler::StartProfiling(TimePoint start_at, int start_pid, int start_tid) {
+bool CudaProfiler::StartProfiling() {
   if (!enabled.test_and_set()) {
-    start_time = start_at;
-    pid = start_pid;
-    tid = start_tid;
+    start_time = std::chrono::high_resolution_clock::now();
     if (cuptiActivityEnable(CUPTI_ACTIVITY_KIND_KERNEL) == CUPTI_SUCCESS &&
         cuptiActivityRegisterCallbacks(BufferRequested, BufferCompleted) == CUPTI_SUCCESS) {
       initialized = true;
+      return true;
     }
   }
+  return false;
 }
 
 Events CudaProfiler::StopProfiling() {
@@ -84,18 +82,18 @@ Events CudaProfiler::StopProfiling() {
                                                                            {"block_y", std::to_string(stat.block_y_)},
                                                                            {"block_z", std::to_string(stat.block_z_)},
                                                                            {"correlation_id", std::to_string(stat.correlation_id)}};
-        events.push_back({KERNEL_EVENT, pid, tid, stat.name_, DUR(profiling_start, stat.stop_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}});
+        events.push_back({KEVENT, -1, -1, stat.name_, DUR(profiling_start, stat.stop_), DUR(stat.start_, stat.stop_), {args.begin(), args.end()}});
       }
       stats.clear();
       cuptiFinalize();
     } else {
       std::initializer_list<std::pair<std::string, std::string>> args;
-      events.push_back({KERNEL_EVENT, pid, tid, "not_available_due_to_cupti_error", 0, 0, {args.begin(), args.end()}});
+      events.push_back({KEVENT, -1, -1, "not_available_due_to_cupti_error", 0, 0, {args.begin(), args.end()}});
     }
   }
   enabled.clear();
   return events;
 }
 
-}  // namespace cuda
+}  // namespace profiling
 }  // namespace onnxruntime

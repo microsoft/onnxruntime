@@ -9,6 +9,7 @@
 #include <iostream>
 #include <tuple>
 
+#include "core/common/profiler_common.h"
 #include "core/common/logging/logging.h"
 #include "core/platform/ort_mutex.h"
 
@@ -107,6 +108,12 @@ class Profiler {
   static void SetGlobalMaxNumEvents(size_t new_max_num_events) {
     global_max_num_events_.store(new_max_num_events);
   }
+  
+  void AddEpProfilers(std::unique_ptr<EpProfiler> ep_profiler) {
+    if (ep_profiler) {
+      ep_profilers_.push_back(std::move(ep_profiler));
+    }
+  }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
@@ -134,6 +141,8 @@ class Profiler {
 #ifdef ENABLE_STATIC_PROFILER_INSTANCE
   static Profiler* instance_;
 #endif
+
+  std::vector<std::unique_ptr<EpProfiler>> ep_profilers_;
 };
 
 }  // namespace profiling

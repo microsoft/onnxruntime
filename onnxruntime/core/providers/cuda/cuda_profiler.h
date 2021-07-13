@@ -1,29 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/platform/ort_mutex.h"
-#include "core/common/logging/logging.h"
+#include "core/common/profiler_common.h"
 #include <cupti.h>
 #include <mutex>
 #include <vector>
 
 namespace onnxruntime {
 
-namespace cuda {
+namespace profiling {
 
 using TimePoint = std::chrono::high_resolution_clock::time_point;
 using Events = std::vector<onnxruntime::profiling::EventRecord>;
 
-class CudaProfiler final {
+class CudaProfiler final : public EpProfiler {
  public:
-  CudaProfiler() = delete;
-  CudaProfiler(const CudaProfiler&) = delete;
-  CudaProfiler& operator=(const CudaProfiler&) = delete;
-  CudaProfiler(CudaProfiler&&) = delete;
-  CudaProfiler& operator=(CudaProfiler&&) = delete;
-  ~CudaProfiler() = default;
-
-  static void StartProfiling(TimePoint, int, int);
-  static Events StopProfiling();
+  bool StartProfiling() override;
+  Events StopProfiling() override;
 
  private:
   static void CUPTIAPI BufferRequested(uint8_t**, size_t*, size_t*);
@@ -46,9 +39,7 @@ class CudaProfiler final {
   static std::vector<KernelStat> stats;
   static bool initialized;
   static TimePoint start_time;
-  static int pid;
-  static int tid;
 };
 
-}  // namespace cuda
+}  // namespace profiling
 }  // namespace onnxruntime
