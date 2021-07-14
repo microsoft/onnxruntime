@@ -338,6 +338,8 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
                              /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
+  //TODO remove this comment, used for triggering build
+
   if (1 != input_idx) {
     return Status::OK();
   }
