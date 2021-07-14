@@ -27,7 +27,7 @@ std::string NodeDebugString(const Node& node) {
 
 template <typename Container>
 std::string NodeGroupDebugString(const Container& group, bool show_all = false) {
-  static_assert(std::is_same_v<Container::value_type, const Node*>);
+  static_assert(std::is_same_v<typename Container::value_type, const Node*>);
 
   if (group.empty()) {
     return "<no nodes>";
@@ -165,7 +165,6 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
 std::unordered_set<const Node*> CreateExcludedNodeSet(const GraphViewer& graph_viewer,
                                                       const std::unordered_set<std::string>& stop_ops) {
   std::unordered_set<const Node*> excluded_nodes;
-  const auto end_stop_ops = stop_ops.cend();
 
   for (const NodeIndex node_index : graph_viewer.GetNodesInTopologicalOrder()) {
     const Node& node = *graph_viewer.GetNode(node_index);
