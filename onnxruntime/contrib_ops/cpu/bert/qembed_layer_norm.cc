@@ -15,8 +15,7 @@ namespace contrib {
 
 namespace {
 
-
-template <typename T, typename T2>
+template <typename T, typename QuantizedType>
 Status ComputeInternal(OpKernelContext* context, float epsilon) {
   const Tensor* input_ids = context->Input<Tensor>(0);
   const Tensor* segment_ids = context->Input<Tensor>(1);  // optional. nullptr if it's distill-bert
@@ -60,30 +59,30 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
       has_segment_embedding ? static_cast<int>(segment_embedding->Shape()[0]) : 0;
 
   // Grab quantization values:
-  quantization::Params<T2> word_embedding_params =
-      quantization::GetTensorQuantizationParams<T2>(word_embedding_scale,
-                                                    word_embedding_zero_point);
-  quantization::Params<T2> position_embedding_params =
-      quantization::GetTensorQuantizationParams<T2>(position_embedding_scale,
-                                                    position_embedding_zero_point);
-  quantization::Params<T2> segment_embedding_params;
+  quantization::Params<QuantizedType> word_embedding_params =
+      quantization::GetTensorQuantizationParams<QuantizedType>(word_embedding_scale,
+                                                               word_embedding_zero_point);
+  quantization::Params<QuantizedType> position_embedding_params =
+      quantization::GetTensorQuantizationParams<QuantizedType>(position_embedding_scale,
+                                                               position_embedding_zero_point);
+  quantization::Params<QuantizedType> segment_embedding_params;
   if (has_segment_embedding) {
     segment_embedding_params =
-        quantization::GetTensorQuantizationParams<T2>(segment_embedding_scale,
-                                                      segment_embedding_zero_point);
+        quantization::GetTensorQuantizationParams<QuantizedType>(segment_embedding_scale,
+                                                                 segment_embedding_zero_point);
   }
-  quantization::Params<T2> gamma_params =
-      quantization::GetTensorQuantizationParams<T2>(gamma_scale, gamma_zero_point);
-  quantization::Params<T2> beta_params =
-      quantization::GetTensorQuantizationParams<T2>(beta_scale, beta_zero_point);
+  quantization::Params<QuantizedType> gamma_params =
+      quantization::GetTensorQuantizationParams<QuantizedType>(gamma_scale, gamma_zero_point);
+  quantization::Params<QuantizedType> beta_params =
+      quantization::GetTensorQuantizationParams<QuantizedType>(beta_scale, beta_zero_point);
 
   // Grab pointers to buffers each Tensor represents:
-  const T2* word_embedding_data = word_embedding->template Data<T2>();
-  const T2* position_embedding_data = position_embedding->template Data<T2>();
-  const T2* segment_embedding_data =
-      has_segment_embedding ? segment_embedding->template Data<T2>() : nullptr;
-  const T2* gamma_data = gamma->template Data<T2>();
-  const T2* beta_data = beta->template Data<T2>();
+  const QuantizedType* word_embedding_data = word_embedding->template Data<QuantizedType>();
+  const QuantizedType* position_embedding_data = position_embedding->template Data<QuantizedType>();
+  const QuantizedType* segment_embedding_data =
+      has_segment_embedding ? segment_embedding->template Data<QuantizedType>() : nullptr;
+  const QuantizedType* gamma_data = gamma->template Data<QuantizedType>();
+  const QuantizedType* beta_data = beta->template Data<QuantizedType>();
 
   T* output_data = output->template MutableData<T>();
 
@@ -116,11 +115,11 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
           }
 
           // Grab inputs for the embeddings for the current batch index:
-          const T2* input_word_embedding =
+          const QuantizedType* input_word_embedding =
               word_embedding_data + word_col_index * hidden_size;
-          const T2* input_position_embedding =
+          const QuantizedType* input_position_embedding =
               position_embedding_data + position_col_index * hidden_size;
-          const T2* input_segment_embedding = nullptr;
+          const QuantizedType* input_segment_embedding = nullptr;
           if (segment_embedding_data != nullptr) {
             input_segment_embedding =
                 segment_embedding_data + segment_col_index * hidden_size;
@@ -131,13 +130,13 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
           T sum = static_cast<T>(0);
           for (int i = 0; i < hidden_size; ++i) {
             // TODO(kreeger): Use a table query to improve performance:
-            T subtotal = quantization::Dequantize<T2>(input_word_embedding[i],
-                                                      word_embedding_params) +
-                         quantization::Dequantize<T2>(input_position_embedding[i],
-                                                      position_embedding_params);
+            T subtotal = quantization::Dequantize<QuantizedType>(input_word_embedding[i],
+                                                                 word_embedding_params) +
+                         quantization::Dequantize<QuantizedType>(input_position_embedding[i],
+                                                                 position_embedding_params);
             if (segment_embedding_data != nullptr) {
-              subtotal += quantization::Dequantize<T2>(input_segment_embedding[i],
-                                                       segment_embedding_params);
+              subtotal += quantization::Dequantize<QuantizedType>(input_segment_embedding[i],
+                                                                  segment_embedding_params);
             }
             output[i] = subtotal;
             sum += subtotal;
@@ -155,8 +154,8 @@ Status ComputeInternal(OpKernelContext* context, float epsilon) {
           T e = sqrt(sum / hidden_size + epsilon);
           for (int i = 0; i < hidden_size; i++) {
             // TODO(kreeger): Consider keeping these as int8 or use PrePack()!
-            T cur_gamma = quantization::Dequantize<T2>(gamma_data[i], gamma_params);
-            T cur_beta = quantization::Dequantize<T2>(beta_data[i], beta_params);
+            T cur_gamma = quantization::Dequantize<QuantizedType>(gamma_data[i], gamma_params);
+            T cur_beta = quantization::Dequantize<QuantizedType>(beta_data[i], beta_params);
             output[i] = output[i] / e * cur_gamma + cur_beta;
           }
         },
