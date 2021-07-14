@@ -129,8 +129,23 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
         * Initializers: computed from original PyTorch model parameters
     '''
 
+    def _expand_inputs(current_input, non_none_inputs):
+        # The exporter handles input lists by expanding them so that each
+        # element of the list is its own input.
+        # ORTModule must match this behavior by also expanding the inputs.
+        if isinstance(current_input, abc.Sequence):
+            # If the input is a sequence (like a list), expand the list so that
+            # each element of the list is an input by itself
+            for inp in current_input:
+                _expand_inputs(inp, non_none_inputs)
+        elif current_input is not None:
+            # else just collect all the non none inputs within non_none_inputs
+            non_none_inputs.append(current_input)
+
+
     # User inputs
-    non_none_inputs = [inp for inp in inputs if inp is not None]
+    non_none_inputs = []
+    _expand_inputs(inputs, non_none_inputs)
     buffer_names_dict = {buffer_name: inp for buffer_name, inp in buffer_names}
     result = []
 
@@ -396,6 +411,18 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
     def _add_input(name, input, onnx_graph, onnx_graph_input_names):
         if input is None:
             # Drop all None inputs.
+            return
+
+        if isinstance(input, abc.Sequence):
+            # If the input is a sequence (like a list), expand the list so that
+            # each element of the list is an input by itself.
+            for i, val in enumerate(input):
+                # Name each input with the index appended to the original name of the
+                # argument.
+                _add_input(f"{name}_{i}", val, onnx_graph, onnx_graph_input_names)
+
+            # Return here since the list by itself is not a valid input.
+            # All the elements of the list have already been added as inputs individually.
             return
 
         # InputInfo should contain all the names irrespective of whether they are

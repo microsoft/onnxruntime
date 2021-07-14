@@ -24,10 +24,11 @@ class FusionGptAttention(Fusion):
         self.utils = FusionUtils(model)
         self.casted_attention_mask = {}  # map from name of attention mask to the name that casted to int32
 
-    def create_attention_node(self, gemm, gemm_qkv, past, present, input, output, mask, is_unidirectional):
+    def create_attention_node(self, fc_weight, fc_bias, gemm_qkv, past, present, input, output, mask,
+                              is_unidirectional):
         attention_node_name = self.model.create_node_name('GptAttention')
         attention_node = helper.make_node('Attention',
-                                          inputs=[input, gemm.input[1], gemm.input[2], mask, past],
+                                          inputs=[input, fc_weight, fc_bias, mask, past],
                                           outputs=[attention_node_name + "_output", present],
                                           name=attention_node_name)
         attention_node.domain = "com.microsoft"
@@ -50,6 +51,137 @@ class FusionGptAttention(Fusion):
         self.node_name_to_graph_name[matmul_node.name] = self.this_graph_name
         self.node_name_to_graph_name[add_node.name] = self.this_graph_name
 
+    def match_past_pattern_1(self, concat_k, concat_v, output_name_to_node):
+        # Pattern 1:
+        #                      {past}
+        #                    /        \
+        #                   /          \
+        #    Gather(axes=0, indices=0)  Gather(indices=1)
+        #      |                          |
+        #    Transpose (perm=0,1,3,2)     |
+        #      |                          |
+        #  Concat_k                     Concat_v
+        #      |                        /
+        #  Transpose (perm=0,1,3,2)    /
+        #      |                      /
+        #  Unsqueeze        Unsqueeze
+        #        \        /
+        #         \      /
+        #           Concat
+        #             |
+        #         {present}
+        gather = self.model.get_parent(concat_v, 0, output_name_to_node)
+        if gather.op_type != 'Gather':
+            logger.debug("match_past_pattern_1: expect Gather for past")
+            return None
+
+        if not self.model.find_constant_input(gather, 1) == 1:
+            logger.debug("match_past_pattern_1: expect indices=1 for Gather of past")
+            return None
+        past = gather.input[0]
+
+        past_k_nodes = self.model.match_parent_path(concat_k, ['Transpose', 'Gather'], [0, 0])
+        if past_k_nodes is None:
+            logger.debug("match_past_pattern_1: failed match Transpose and Gather")
+            return None
+
+        gather_past_k = past_k_nodes[-1]
+        if not self.model.find_constant_input(gather_past_k, 0) == 1:
+            logger.debug("match_past_pattern_1: expect indices=0 for Gather k of past")
+            return None
+        past_k = gather_past_k.input[0]
+        if past != past_k:
+            logger.debug("match_past_pattern_1: expect past to be same")
+            return None
+
+        return past
+
+    def match_past_pattern_2(self, concat_k, concat_v, output_name_to_node):
+        # Pattern 2:
+        #      Split (QKV)
+        #      / |   |
+        #     /  |   +----------------------+
+        #        |                          |
+        #        |         {past}           |
+        #        |           |              |
+        #      Reshape     Split         Reshape
+        #        |         /    \           |
+        # Transpose_k  Squeeze  Squeeze  Transpose_v
+        #        |      |        \        /
+        #        +------|---+     \      /
+        #               |   |      \    /
+        #              Concat_k   Concat_v
+        #               |            |
+        #          Unsqueeze    Unsqueeze
+        #                \       /
+        #                 Concat
+        #                   |
+        #               {present}
+        #
+        squeeze = self.model.get_parent(concat_v, 0, output_name_to_node)
+        if squeeze.op_type != 'Squeeze':
+            logger.debug("match_past_pattern_2: expect Squeeze as parent of concat_v")
+            return None
+
+        split = self.model.get_parent(squeeze, 0, output_name_to_node)
+        if split.op_type != "Split":
+            logger.debug("match_past_pattern_2: expect Split for past path")
+            return None
+
+        opset_version = self.model.get_opset_version()
+        if opset_version < 13:
+            if not FusionUtils.check_node_attribute(squeeze, 'axes', [0]):
+                logger.debug("match_past_pattern_2: axes != [0] for Squeeze in past path")
+                return None
+
+            if not FusionUtils.check_node_attribute(split, 'split', [1, 1]):
+                logger.debug("match_past_pattern_2: split != [1, 1] for Split in past path")
+                return None
+        else:
+            if not self.utils.check_node_input_value(squeeze, 1, [0]):
+                logger.debug("match_past_pattern_2: axes != [0] for Squeeze in past path")
+                return None
+
+            if not self.utils.check_node_input_value(split, 1, [1, 1]):
+                logger.debug("match_past_pattern_2: split != [1, 1] for Split in past path")
+                return None
+
+        if not FusionUtils.check_node_attribute(split, 'axis', 0, default_value=0):
+            logger.debug("match_past_pattern_2: attribute axis of Split are not expected in past path")
+            return None
+        past = split.input[0]
+
+        past_k_nodes = self.model.match_parent_path(concat_k, ['Squeeze', 'Split'], [0, 0])
+        if past_k_nodes is None:
+            logger.debug("match_past_pattern_2: failed to match past_k_nodes path")
+            return None
+        past_k = past_k_nodes[-1].input[0]
+
+        if past != past_k:
+            logger.info("match_past_pattern_2: expect past to be same")
+            return None
+
+        return past
+
+    def match_present(self, concat_v, input_name_to_nodes):
+        unsqueeze_present_v = self.model.find_first_child_by_type(concat_v,
+                                                                  'Unsqueeze',
+                                                                  input_name_to_nodes,
+                                                                  recursive=False)
+        if not unsqueeze_present_v:
+            logger.info("expect unsqueeze for present")
+            return None
+        concat_present = self.model.find_first_child_by_type(unsqueeze_present_v,
+                                                             'Concat',
+                                                             input_name_to_nodes,
+                                                             recursive=False)
+        if not concat_present:
+            logger.info("expect concat for present")
+            return None
+
+        present = concat_present.output[0]
+        return present
+
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
         past = None
         present = None
@@ -67,54 +199,28 @@ class FusionGptAttention(Fusion):
 
         another_input = add_qkv.input[1 - return_indice[0]]
 
-        v_nodes = self.model.match_parent_path(
-            matmul_qkv,
-            ['Concat', 'Transpose', 'Reshape', 'Split', 'Reshape', 'Gemm', 'Reshape'],
-            [1,        1,            0,         0,       0,         0,      0]) # yapf: disable
+        v_nodes = self.model.match_parent_path(matmul_qkv, ['Concat', 'Transpose', 'Reshape', 'Split'], [1, 1, 0, 0])
         if v_nodes is None:
             logger.debug("fuse_attention: failed to match v path")
             return
-        (concat_v, transpose_v, reshape_v, split_v, reshape_after_gemm, gemm, reshape_before_gemm) = v_nodes
+        (concat_v, transpose_v, reshape_v, split_fc) = v_nodes
 
-        #      concat <-- Gather(indices=1) <-- past
-        #        |
-        #      unsqueeze
-        #        |
-        #    concat  -->  present
-        gather_v = self.model.get_parent(concat_v, 0, output_name_to_node)
-        if gather_v.op_type != 'Gather':
-            logger.info("expect Gather for past")
-            return
-        if not self.model.find_constant_input(gather_v, 1) == 1:
-            logger.info("expect indices=1 for Gather of past")
-            return
-        past = gather_v.input[0]
-        if not self.model.find_graph_input(past):
-            logger.info("expect past to be graph input")
-            return
-        unsqueeze_present_v = self.model.find_first_child_by_type(concat_v,
-                                                                  'Unsqueeze',
-                                                                  input_name_to_nodes,
-                                                                  recursive=False)
-        if not unsqueeze_present_v:
-            logger.info("expect unsqueeze for present")
-            return
-        concat_present = self.model.find_first_child_by_type(unsqueeze_present_v,
-                                                             'Concat',
-                                                             input_name_to_nodes,
-                                                             recursive=False)
-        if not concat_present:
-            logger.info("expect concat for present")
-            return
-        present = concat_present.output[0]
-        if not self.model.find_graph_output(present):
-            logger.info("expect present to be graph input")
-            return
+        fc_nodes = self.model.match_parent_path(split_fc, ['Reshape', 'Gemm', 'Reshape', 'LayerNormalization'],
+                                                [0, 0, 0, 0], output_name_to_node)
+        if fc_nodes is None:
+            fc_nodes = self.model.match_parent_path(split_fc, ['Add', 'MatMul', 'LayerNormalization'], [0, None, 0],
+                                                    output_name_to_node)
+            if fc_nodes is None:
+                logger.debug("fuse_attention: failed to match fc path")
+                return
+            fc_weight = fc_nodes[1].input[1]
+            i, _ = self.model.get_constant_input(fc_nodes[0])
+            fc_bias = fc_nodes[0].input[i]
+        else:
+            fc_weight = fc_nodes[1].input[1]
+            fc_bias = fc_nodes[1].input[2]
 
-        layernorm_before_attention = self.model.get_parent(reshape_before_gemm, 0, output_name_to_node)
-        if layernorm_before_attention is None or layernorm_before_attention.op_type != 'LayerNormalization':
-            logger.debug(f"failed to get layernorm before gemm. Got {layernorm_before_attention.op_type}")
-            return
+        layernorm_before_attention = fc_nodes[-1]
 
         if not another_input in layernorm_before_attention.input:
             logger.debug("Add and LayerNormalization shall have one same input")
@@ -123,6 +229,7 @@ class FusionGptAttention(Fusion):
         is_unidirectional = True
         slice_mask = None
         input_mask_nodes = None
+        concat_k_to_match = None
         qk_nodes = self.model.match_parent_path(matmul_qkv, ['Softmax', 'Sub', 'Mul', 'Div', 'MatMul'], [0, 0, 0, 0, 0])
         if qk_nodes is not None:
             (softmax_qk, sub_qk, mul_qk, div_qk, matmul_qk) = qk_nodes
@@ -143,7 +250,7 @@ class FusionGptAttention(Fusion):
             # New pattern for gpt2 from PyTorch 1.5.0 and Transformers 2.9.0.
             i, qk_nodes, _ = self.model.match_parent_paths(
                 matmul_qkv, [(['Softmax', 'Where', 'Div', 'MatMul'], [0, 0, 1, 0]),
-                             (['Softmax', 'Add', 'Where', 'Div', 'MatMul'], [0, 0, 0, 1, 0])], output_name_to_node)
+                             (['Softmax', 'Add', 'Where', 'Div', 'MatMul'], [0, 0, None, 1, 0])], output_name_to_node)
             if qk_nodes is None:
                 logger.debug("fuse_attention: failed to match qk nodes")
                 return
@@ -155,8 +262,8 @@ class FusionGptAttention(Fusion):
             if i == 1:
                 add_qk = qk_nodes[1]
                 _, input_mask_nodes, _ = self.model.match_parent_paths(
-                    add_qk, [(['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze', 'Reshape'], [1, 0, 1, 0, 0, 0]),
-                             (['Mul', 'Sub', 'Unsqueeze', 'Unsqueeze', 'Reshape'], [1, 0, 1, 0, 0])],
+                    add_qk, [(['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze', 'Reshape'], [None, 0, 1, 0, 0, 0]),
+                             (['Mul', 'Sub', 'Unsqueeze', 'Unsqueeze', 'Reshape'], [None, 0, 1, 0, 0])],
                     output_name_to_node)
                 if input_mask_nodes is None:
                     logger.debug("fuse_attention: failed to match input attention mask path")
@@ -164,17 +271,26 @@ class FusionGptAttention(Fusion):
 
             mask_nodes = self.model.match_parent_path(
                 where_qk,
-                ['Cast', 'Slice', 'Slice', 'Unsqueeze', 'Sub', 'Squeeze', 'Slice', 'Shape', 'Div'],
-                [ 0,     0,       0,       1,           0,     0,         0,       0,       0])  # yapf: disable
+                ['Cast', 'Slice', 'Slice', 'Unsqueeze', 'Sub', 'Squeeze', 'Slice', 'Shape'],
+                [ 0,     0,       0,       1,           0,     0,         0,       0],
+                output_name_to_node)  # yapf: disable
             if mask_nodes is None:
+                # TODO: match mask path for GPT2LMHeadModel_BeamSearchStep.
                 logger.debug("fuse_attention: failed to match mask path")
                 return
-            div_mask = mask_nodes[-1]
+
             slice_mask = mask_nodes[2]
 
-            if div_qk != div_mask:
-                logger.debug("fuse_attention: skip since div_qk != div_mask")
-                return
+            div_or_concat = self.model.get_parent(mask_nodes[-1], 0, output_name_to_node)
+            if div_or_concat.op_type == "Div":
+                div_mask = div_or_concat
+                if div_qk != div_mask:
+                    logger.debug("fuse_attention: skip since div_qk != div_mask")
+                    return
+            elif div_or_concat.op_type == "Concat":
+                concat_k_to_match = div_or_concat
+            else:
+                logger.debug("fuse_attention: failed to match mask path")
 
         # Validate that the mask data is either lower triangular (unidirectional) or all ones
         mask_data = numpy_helper.to_array(self.model.get_initializer(slice_mask.input[0]))
@@ -193,38 +309,28 @@ class FusionGptAttention(Fusion):
             logger.debug("fuse_attention: failed to match q path")
             return
         (transpose_q, reshape_q, split_q) = q_nodes
-        if split_v != split_q:
-            logger.debug("fuse_attention: skip since split_v != split_q")
+        if split_fc != split_q:
+            logger.debug("fuse_attention: skip since split_fc != split_q")
             return
 
         k_nodes = self.model.match_parent_path(matmul_qk, ['Concat', 'Transpose', 'Reshape', 'Split'], [1, 1, 0, 0])
         if k_nodes is None:
-            logger.debug("fuse_attention: failed to match k path")
-            return
-        (concat_k, transpose_k, reshape_k, split_k) = k_nodes
-        if split_v != split_k:
-            logger.debug("fuse_attention: skip since split_v != split_k")
-            return
-
-        #     concat_k <-- Transpose (perm=0,1,3,2) <-- Gather(axes=0, indices=0) <-- past
-        #        |
-        #     Transpose (perm=0,1,3,2)
-        #        |
-        #      unsqueeze
-        #        |
-        #    concat  -->  present
-        past_k_nodes = self.model.match_parent_path(concat_k, ['Transpose', 'Gather'], [0, 0])
-        if past_k_nodes is None:
-            logger.debug("fuse_attention: failed to match past_k_nodes path")
+            # This pattern is from pytorch 1.7.1 and transformers 4.6.1
+            k_nodes = self.model.match_parent_path(matmul_qk, ['Transpose', 'Concat', 'Transpose', 'Reshape', 'Split'],
+                                                   [1, 0, 1, 0, 0])
+            if k_nodes is None:
+                logger.debug("fuse_attention: failed to match k path")
+                return
+            else:
+                (_, concat_k, transpose_k, reshape_k, split_k) = k_nodes
+        else:
+            (concat_k, transpose_k, reshape_k, split_k) = k_nodes
+        if split_fc != split_k:
+            logger.debug("fuse_attention: skip since split_fc != split_k")
             return
 
-        gather_past_k = past_k_nodes[-1]
-        if not self.model.find_constant_input(gather_past_k, 0) == 1:
-            logger.info("expect indices=0 for Gather k of past")
-            return
-        past_k = gather_past_k.input[0]
-        if past != past_k:
-            logger.info("expect past to be same")
+        if concat_k_to_match and concat_k != concat_k_to_match:
+            logger.debug("fuse_attention: skip since concat_k != concat_k_to_match")
             return
 
         attention_mask_input_name = ''
@@ -239,7 +345,25 @@ class FusionGptAttention(Fusion):
                 attention_mask_input_name, cast_node = self.utils.cast_input_to_int32(input_name)
                 self.casted_attention_mask[input_name] = attention_mask_input_name
 
-        self.create_attention_node(gemm, gemm_qkv, past, present, layernorm_before_attention.output[0],
+        # Match past and present paths
+        past = self.match_past_pattern_1(concat_k, concat_v, output_name_to_node) or \
+               self.match_past_pattern_2(concat_k, concat_v, output_name_to_node)
+        if past is None:
+            logger.info("fuse_attention: failed to match past path")
+            return
+        if not self.model.find_graph_input(past):
+            logger.debug("past is not graph input.")
+            # For GPT2LMHeadModel_BeamSearchStep, there is an extra Gather node to select beam index so it is not graph input.
+
+        present = self.match_present(concat_v, input_name_to_nodes)
+        if present is None:
+            logger.info("fuse_attention: failed to match present path")
+            return
+        if not self.model.find_graph_output(present):
+            logger.info("expect present to be graph output")
+            return
+
+        self.create_attention_node(fc_weight, fc_bias, gemm_qkv, past, present, layernorm_before_attention.output[0],
                                    reshape_qkv.output[0], attention_mask_input_name, is_unidirectional)
 
         # we rely on prune_graph() to clean old subgraph nodes:

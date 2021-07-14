@@ -358,7 +358,7 @@ if (onnxruntime_USE_CUDA)
   endif()
 
   add_dependencies(onnxruntime_providers_cuda onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES} ${onnxruntime_tvm_dependencies})
-  target_link_libraries(onnxruntime_providers_cuda PRIVATE cudart cublas cudnn curand cufft ${ONNXRUNTIME_PROVIDERS_SHARED})
+  target_link_libraries(onnxruntime_providers_cuda PRIVATE cublas cudnn curand cufft ${ONNXRUNTIME_PROVIDERS_SHARED})
   target_include_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/cuda  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
@@ -533,7 +533,7 @@ if (onnxruntime_USE_TENSORRT)
   target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${onnxruntime_CUDNN_HOME}/include ${eigen_INCLUDE_DIRS} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/tensorrt  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers)
-  set_target_properties(onnxruntime_providers_tensorrt PROPERTIES LINKER_LANGUAGE CXX)
+  set_target_properties(onnxruntime_providers_tensorrt PROPERTIES LINKER_LANGUAGE CUDA)
   set_target_properties(onnxruntime_providers_tensorrt PROPERTIES FOLDER "ONNXRuntime")
   target_compile_definitions(onnxruntime_providers_tensorrt PRIVATE ONNXIFI_BUILD_LIBRARY=1)
   target_compile_options(onnxruntime_providers_tensorrt PRIVATE ${DISABLED_WARNINGS_FOR_TRT})
@@ -855,8 +855,6 @@ if (onnxruntime_USE_RKNPU)
   onnxruntime_add_include_to_target(onnxruntime_providers_rknpu onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite flatbuffers)
   target_link_libraries(onnxruntime_providers_rknpu PRIVATE -lrknpu_ddk)
   add_dependencies(onnxruntime_providers_rknpu onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  set_target_properties(onnxruntime_providers_rknpu PROPERTIES CXX_STANDARD 14)
-  set_target_properties(onnxruntime_providers_rknpu PROPERTIES CXX_STANDARD_REQUIRED ON)
   set_target_properties(onnxruntime_providers_rknpu PROPERTIES FOLDER "ONNXRuntime")
   target_include_directories(onnxruntime_providers_rknpu PRIVATE ${ONNXRUNTIME_ROOT} ${rknpu_INCLUDE_DIRS} ${RKNPU_DDK_INCLUDE_DIR})
   link_directories(onnxruntime_providers_rknpu ${RKNPU_DDK_LIB_DIR})
@@ -906,10 +904,6 @@ if (onnxruntime_USE_DML)
   endif()
 
   set(onnxruntime_DELAYLOAD_FLAGS "${onnxruntime_DELAYLOAD_FLAGS} /DELAYLOAD:DirectML.dll /DELAYLOAD:d3d12.dll /DELAYLOAD:dxgi.dll /ignore:4199")
-
-  # The DML EP requires C++17
-  set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD 17)
-  set_target_properties(onnxruntime_providers_dml PROPERTIES CXX_STANDARD_REQUIRED ON)
 
   target_compile_definitions(onnxruntime_providers_dml PRIVATE ONNX_NAMESPACE=onnx ONNX_ML LOTUS_LOG_THRESHOLD=2 LOTUS_ENABLE_STDERR_LOGGING PLATFORM_WINDOWS)
   target_compile_definitions(onnxruntime_providers_dml PRIVATE UNICODE _UNICODE NOMINMAX)
@@ -1070,7 +1064,7 @@ if (onnxruntime_USE_ROCM)
   endif()
 
   set(HIP_CXX_FLAGS -fPIC)
-  list(APPEND HIP_CXX_FLAGS -std=c++14)
+  list(APPEND HIP_CXX_FLAGS -std=c++17)
 
   if(CMAKE_BUILD_TYPE MATCHES Debug)
       list(APPEND HIP_CXX_FLAGS -g)

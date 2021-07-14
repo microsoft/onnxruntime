@@ -161,7 +161,8 @@ extern std::string nuphar_settings;
 #if defined(USE_CUDA) || defined(USE_ROCM)
 #ifdef USE_CUDA
 namespace onnxruntime {
-ProviderInfo_CUDA* GetProviderInfo_CUDA();
+ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
+ProviderInfo_CUDA& GetProviderInfo_CUDA();
 namespace python {
 // TODO remove deprecated global config
 extern OrtCudnnConvAlgoSearch cudnn_conv_algo_search;
@@ -339,6 +340,19 @@ AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id);
 bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
                    const std::string& name,
                    /*out*/ ONNX_NAMESPACE::TypeProto& type_proto);
+
+#ifdef ENABLE_TRAINING
+
+// Allocate a new Capsule object, which takes the ownership of OrtValue.
+// Caller is responsible for releasing.
+// This function calls OrtValueToDlpack(...).
+PyObject* ToDlpack(OrtValue ort_value);
+
+// Consume a Capsule object and claims the ownership of its underlying tensor to
+// create a OrtValue. This function calls DlpackToOrtValue(...) to do the conversion.
+OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor);
+
+#endif
 
 }  // namespace python
 }  // namespace onnxruntime

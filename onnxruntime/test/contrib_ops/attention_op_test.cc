@@ -105,7 +105,7 @@ static void RunAttentionTest(
     if (mask_index_data.size() > 0) {  // mask index is optional.
       tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
     } else {
-      tester.AddMissingOptionalInput<int32_t>();
+      tester.AddOptionalInputEdge<int32_t>();
     }
 
     if (use_past_state) {
@@ -1483,7 +1483,7 @@ TEST(AttentionTest, AttentionPastState_dynamic) {
   test.AddInput<float>("input", input_dims, input_data);
   test.AddInput<float>("weight", weight_dims, weight_data);
   test.AddInput<float>("bias", bias_dims, bias_data);
-  test.AddMissingOptionalInput<int32_t>();
+  test.AddOptionalInputEdge<int32_t>();
   test.AddInput<float>("past", past_dims, past_data);
 
   test.AddReferenceOutputs("testdata/attention_past_state.onnx");

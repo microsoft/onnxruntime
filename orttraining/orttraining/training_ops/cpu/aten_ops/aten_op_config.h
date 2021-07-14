@@ -5,7 +5,6 @@
 
 #include <vector>
 #include <string>
-#include <tuple>
 #include <unordered_map>
 
 namespace onnxruntime {
@@ -41,16 +40,35 @@ enum ArgumentKind {
   // TODO: may need more type
 };
 
+struct ArgumentConfig {
+  ArgumentKind kind;
+  std::string name;
+  bool is_cpu_tensor;
+  bool is_optional;
+
+  ArgumentConfig(ArgumentKind _kind, const std::string& _name, bool _is_cpu_tensor, bool _is_optional)
+      : kind(_kind), name(_name), is_cpu_tensor(_is_cpu_tensor), is_optional(_is_optional) {}
+};
+
+struct BackwardInputSourceConfig {
+  BackwardInputSourceKind kind;
+  size_t index;
+  std::string transform_func;
+
+  BackwardInputSourceConfig(BackwardInputSourceKind _kind, size_t _index, std::string _transform_func)
+      : kind(_kind), index(_index), transform_func(_transform_func) {}
+};
+
 // TODO: need to support default attribute value.
 struct ATenOperatorConfig {
   std::string op_name;
   std::string backward_op_name;
-  // Forward ATen Op's argument kind, name and if it's optional.
-  std::vector<std::tuple<ArgumentKind, std::string, bool>> forward_argument_configs;
-  // Backward ATen Op's argument kind, name and if it's optional.
-  std::vector<std::tuple<ArgumentKind, std::string, bool>> backward_argument_configs;
+  // Forward ATen Op's argument configs.
+  std::vector<ArgumentConfig> forward_argument_configs;
+  // Backward ATen Op's argument configs.
+  std::vector<ArgumentConfig> backward_argument_configs;
   // The source config of inputs of com.microsoft::ATenOpGrad.
-  std::vector<std::pair<BackwardInputSourceKind, size_t>> backward_input_source_configs;
+  std::vector<BackwardInputSourceConfig> backward_input_source_configs;
   // The output type infer config of outputs of com.microsoft::ATenOp.
   std::vector<std::pair<OutputTypeInferKind, int>> forward_output_type_infer_configs;
   // The mapping between com.microsoft::ATenOpGrad's outputs and com.microsoft::ATenOp's inputs,
@@ -120,6 +138,21 @@ struct ATenOperatorConfig {
     }
 
     return has_default_value;
+  }
+
+  bool IsInputOnCpu(size_t input_index, bool is_backward) const {
+    const auto& argument_configs = is_backward ? backward_argument_configs : forward_argument_configs;
+    size_t tensor_input_index = 0;
+    for (const auto& argument_config : argument_configs) {
+      if (argument_config.kind == TENSOR || argument_config.is_cpu_tensor) {
+        if (tensor_input_index == input_index) {
+          return argument_config.is_cpu_tensor;
+        }
+        tensor_input_index++;
+      }
+    }
+
+    return false;
   }
 };
 

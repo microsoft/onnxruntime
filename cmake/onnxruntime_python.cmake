@@ -10,13 +10,9 @@ set(onnxruntime_pybind_srcs_pattern
 )
 
 if (onnxruntime_ENABLE_TRAINING)
-  # todo: move dlpack/dlpack_python.* to ${ONNXRUNTIME_ROOT}/python folder.
   list(APPEND onnxruntime_pybind_srcs_pattern
     "${ORTTRAINING_ROOT}/orttraining/python/*.cc"
     "${ORTTRAINING_ROOT}/orttraining/python/*.h"
-    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.cc"
-    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.h"
-    "${ONNXRUNTIME_ROOT}/core/dlpack/python_common.h"
   )
 endif()
 
@@ -193,6 +189,15 @@ if (onnxruntime_ENABLE_TRAINING)
   )
   file(GLOB onnxruntime_python_ortmodule_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/*.py"
+  )
+  file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/*.py"
+  )
+  file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_aten_op_executor_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/aten_op_executor/*"
+  )
+  file(GLOB onnxruntime_python_ortmodule_torch_cpp_ext_torch_gpu_allocator_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/python/training/ortmodule/torch_cpp_extensions/torch_gpu_allocator/*"
   )
   file(GLOB onnxruntime_python_train_tools_srcs CONFIGURE_DEPENDS
     "${REPO_ROOT}/tools/python/register_custom_ops_pytorch_exporter.py"
@@ -394,6 +399,9 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/amp
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/optim
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/aten_op_executor
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/torch_gpu_allocator
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_capi_training_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
@@ -409,6 +417,15 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_ortmodule_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ortmodule_torch_cpp_ext_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ortmodule_torch_cpp_ext_aten_op_executor_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/aten_op_executor/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_ortmodule_torch_cpp_ext_torch_gpu_allocator_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/torch_gpu_allocator/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_train_tools_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/

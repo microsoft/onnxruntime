@@ -61,7 +61,7 @@ Status GemmActivationFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
-    if (!graph.GetNodeOutputsInGraphOutputs(node).empty()) {
+    if (graph.NodeProducesGraphOutput(node)) {
       continue;
     }
 
