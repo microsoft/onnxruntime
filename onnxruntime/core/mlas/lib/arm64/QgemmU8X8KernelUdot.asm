@@ -22,9 +22,11 @@ Abstract:
 
 //
 // Stack frame layout for the U8X8 kernel.
+// Defining spaces for saving 8 vector registers, and pointers to parameters
+// on the stack
 //
 
-#define GemmU8X8KernelFrame_SavedNeonRegisters       (4 * 8)
+#define GemmU8X8KernelFrame_SavedNeonRegisters       (8 * 8)
 #define GemmU8X8KernelFrame_SavedRegisters           GemmU8X8KernelFrame_SavedNeonRegisters
 #define GemmU8X8KernelFrame_ColumnSumBuffer          (0 + GemmU8X8KernelFrame_SavedRegisters)
 #define GemmU8X8KernelFrame_ZeroPointB               (8 + GemmU8X8KernelFrame_SavedRegisters)
@@ -85,8 +87,10 @@ Return Value:
 
         NESTED_ENTRY MlasGemmU8X8KernelUdot
 
-        PROLOG_SAVE_REG_PAIR d8,d9,#-32!
+        PROLOG_SAVE_REG_PAIR d8,d9,#-64!
         PROLOG_SAVE_REG_PAIR d10,d11,#16
+        PROLOG_SAVE_REG_PAIR d12,d13,#32
+        PROLOG_SAVE_REG_PAIR d14,d15,#48
         ldr     x8,[sp,#GemmU8X8KernelFrame_ColumnSumBuffer]
         ldr     x9,[sp,#GemmU8X8KernelFrame_ZeroPointB]
         ldrb    w13,[sp,#GemmU8X8KernelFrame_ZeroMode]
@@ -105,6 +109,7 @@ Return Value:
 //
 // Process 4 rows of the matrices.
 //
+// v8 ~ v11 row sums 
 
 //
 // The packing layout is setup to have a pair of four quad vectors from
@@ -151,59 +156,55 @@ Return Value:
 //  \---------------------/  \-----------------------------------------/
 //                                  int32 accumulators 8x8 block
 
+// Starting the loop: for each 4 colomns
 ProcessNextColumnLoopM4
-        ld1     {v0.16b},[x1],#16           // load packed B0
         mov     x0,x14                      // reload matrix A
-        ld1     {v2.4s},[x8],#16            // load ColumnSumBuffer[0]
+        ld1     {v0.4s},[x8],#16            // load ColumnSumBuffer[0]
         mov     x3,x15                      // reload PackedCountK
-        ld1     {v3.4s},[x8],#16            // load ColumnSumBuffer[4]
+        ld1     {v1.4s},[x8],#16            // load ColumnSumBuffer[4]
         cbz     x9,SkipScaleByZeroPointBM4
-        ld1     {v30.4s},[x9],#16           // load ZeroPointB[0]
-        mul     v16.4s,v30.4s,v8.4s
-        mul     v18.4s,v30.4s,v9.4s
-        ld1     {v31.4s},[x9],#16           // load ZeroPointB[4]
-        mul     v20.4s,v30.4s,v10.4s
-        mul     v22.4s,v30.4s,v11.4s
-        mul     v17.4s,v31.4s,v8.4s
-        mul     v19.4s,v31.4s,v9.4s
-        mul     v21.4s,v31.4s,v10.4s
-        mul     v23.4s,v31.4s,v11.4s
-        add     v16.4s,v2.4s,v16.4s
-        add     v18.4s,v2.4s,v18.4s
-        add     v20.4s,v2.4s,v20.4s
-        add     v22.4s,v2.4s,v22.4s
-        add     v17.4s,v3.4s,v17.4s
-        add     v19.4s,v3.4s,v19.4s
-        add     v21.4s,v3.4s,v21.4s
-        add     v23.4s,v3.4s,v23.4s
+
+        // accumulator = zero point B * row sum A + column sum B 
+        ld1     {v22.4s},[x9],#16           // load ZeroPointB[0]
+        mul     v16.4s,v22.4s,v8.4s
+        mul     v18.4s,v22.4s,v9.4s
+        ld1     {v23.4s},[x9],#16           // load ZeroPointB[4]
+        mul     v20.4s,v22.4s,v10.4s
+        mul     v22.4s,v22.4s,v11.4s
+        mul     v17.4s,v23.4s,v8.4s
+        mul     v19.4s,v23.4s,v9.4s
+        mul     v21.4s,v23.4s,v10.4s
+        mul     v23.4s,v23.4s,v11.4s
+        add     v16.4s,v0.4s,v16.4s
+        add     v18.4s,v0.4s,v18.4s
+        add     v20.4s,v0.4s,v20.4s
+        add     v22.4s,v0.4s,v22.4s
+        add     v17.4s,v1.4s,v17.4s
+        add     v19.4s,v1.4s,v19.4s
+        add     v21.4s,v1.4s,v21.4s
+        add     v23.4s,v1.4s,v23.4s
         b       ComputeBlockLoopStartM4
 
 SkipScaleByZeroPointBM4
-        add     v16.4s,v2.4s,v8.4s
-        add     v18.4s,v2.4s,v9.4s
-        add     v20.4s,v2.4s,v10.4s
-        add     v22.4s,v2.4s,v11.4s
-        add     v17.4s,v3.4s,v8.4s
-        add     v19.4s,v3.4s,v9.4s
-        add     v21.4s,v3.4s,v10.4s
-        add     v23.4s,v3.4s,v11.4s
+        // accumulator = row sum A + column sum B 
+        add     v16.4s,v0.4s,v8.4s
+        add     v18.4s,v0.4s,v9.4s
+        add     v20.4s,v0.4s,v10.4s
+        add     v22.4s,v0.4s,v11.4s
+        add     v17.4s,v1.4s,v8.4s
+        add     v19.4s,v1.4s,v9.4s
+        add     v21.4s,v1.4s,v10.4s
+        add     v23.4s,v1.4s,v11.4s
 
 
 ComputeBlockLoopStartM4
+        ld1     {v0.16b},[x1],#16           // load packed B0
         ldr     d4,[x0],#32                 // load packed A0.l
-//        movi    v24.4s,#0
         ld1     {v1.16b},[x1],#16           // load packed B1
-//        movi    v25.4s,#0
         ldur    d5,[x0,#-24]                // load packed A0.h
-//        movi    v26.4s,#0
-//        movi    v27.4s,#0
         ldur    d6,[x0,#-16]                // load packed A1.l
-//        movi    v28.4s,#0
-//        movi    v29.4s,#0
         ld1     {v2.16b},[x1],#16           // load packed B0_next4k
-//        movi    v30.4s,#0
         ld1     {v3.16b},[x1],#16           // load packed B1_next4k
-//        movi    v31.4s,#0
 
 ComputeBlockLoopM4
         sub     x3,x3,#1
@@ -248,15 +249,7 @@ ComputeBlockLoopFinishM4
         UdotByElement 21, 3, 7, 0
         UdotByElement 23, 3, 7, 1
         add     x10,x2,x6,lsl #2            // compute output row 2
-//        add     v16.4s,v16.4s,v24.4s        // fold high results into low results
-//        add     v18.4s,v18.4s,v26.4s
-//        add     v20.4s,v20.4s,v28.4s
-//        add     v22.4s,v22.4s,v30.4s
         add     x11,x10,x6,lsl #2           // compute output row 3
-//        add     v17.4s,v17.4s,v25.4s
-//        add     v19.4s,v19.4s,v27.4s
-//        add     v21.4s,v21.4s,v29.4s
-//        add     v23.4s,v23.4s,v31.4s
         add     x12,x11,x6,lsl #2           // compute output row 4
         subs    x5,x5,#8                    // adjust CountN remaining
         blo     StoreOutputPartialM4
@@ -283,8 +276,10 @@ SkipAccumulateOutputM4
 
 ExitKernelM4
         mov     x0,#4                       // return number of rows handled
+        EPILOG_RESTORE_REG_PAIR d14,d15,#48
+        EPILOG_RESTORE_REG_PAIR d12,d13,#32
         EPILOG_RESTORE_REG_PAIR d10,d11,#16
-        EPILOG_RESTORE_REG_PAIR d8,d9,#32!
+        EPILOG_RESTORE_REG_PAIR d8,d9,#64!
         EPILOG_RETURN
 
 //
@@ -448,8 +443,10 @@ SkipAccumulateOutputM2
 
 ExitKernelM2
         mov     x0,#2                       // return number of rows handled
+        EPILOG_RESTORE_REG_PAIR d14,d15,#48
+        EPILOG_RESTORE_REG_PAIR d12,d13,#32
         EPILOG_RESTORE_REG_PAIR d10,d11,#16
-        EPILOG_RESTORE_REG_PAIR d8,d9,#32!
+        EPILOG_RESTORE_REG_PAIR d8,d9,#64!
         EPILOG_RETURN
 
 //
@@ -566,8 +563,10 @@ SkipAccumulateOutputM1
 
 ExitKernelM1
         mov     x0,#1                       // return number of rows handled
+        EPILOG_RESTORE_REG_PAIR d14,d15,#48
+        EPILOG_RESTORE_REG_PAIR d12,d13,#32
         EPILOG_RESTORE_REG_PAIR d10,d11,#16
-        EPILOG_RESTORE_REG_PAIR d8,d9,#32!
+        EPILOG_RESTORE_REG_PAIR d8,d9,#64!
         EPILOG_RETURN
 
 //
