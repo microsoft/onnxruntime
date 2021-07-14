@@ -5,13 +5,13 @@
 
 from torch.onnx import register_custom_op_symbolic
 import torch.onnx.symbolic_helper as sym_help
-from torch.onnx.symbolic_helper import parse_args, _get_tensor_dim_size, _get_tensor_sizes
+from torch.onnx.symbolic_helper import parse_args
 
 
 _onnx_opset_version = 1
 
 
-def register_custom_op(is_ortmodule=False):
+def register_custom_op():
     """
     This function registers symbolic functions for
     custom ops that are implemented as part of ONNX Runtime
@@ -36,61 +36,33 @@ def register_custom_op(is_ortmodule=False):
     register_custom_op_symbolic('::triu', triu, _onnx_opset_version)
     register_custom_op_symbolic('::tril', tril, _onnx_opset_version)
 
-    if is_ortmodule:
-        def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
-            output = g.op("com.microsoft::ATenOp", weight, indices, padding_idx, scale_grad_by_freq, sparse,
-                          name_s='aten::embedding')
-            indices_shape = _get_tensor_sizes(indices)
-            if indices_shape is not None and hasattr(weight.type(), 'with_sizes'):
-                output_type = weight.type().with_sizes(indices_shape + [_get_tensor_dim_size(weight, 1)])
-                output.setType(output_type)
-            return output
+    @parse_args('v', 'v', 'v', 'i', 'v')
+    def cross_entropy_loss(g, self, target, weight, reduction, ignore_index):
+        # reduction: 0->none, 1->mean, 2->sum
+        reduction = sym_help._maybe_get_const(reduction, 'i')
+        reduction_vals = ['none', 'mean', 'sum']
+        reduction = reduction_vals[reduction]
+        output, log_prob = g.op("com.microsoft::SoftmaxCrossEntropyLossInternal",
+                                self, target, weight, ignore_index,
+                                reduction_s=reduction, outputs=2)
+        output.setType(self.type())
+        log_prob.setType(self.type())
+        return output
 
-        register_custom_op_symbolic('::embedding', embedding, _onnx_opset_version)
+    register_custom_op_symbolic('::cross_entropy_loss', cross_entropy_loss, _onnx_opset_version)
 
-        @parse_args('v', 'v', 'v', 'i', 'v')
-        def cross_entropy_loss(g, self, target, weight, reduction, ignore_index):
-            # reduction: 0->none, 1->mean, 2->sum
-            reduction = sym_help._maybe_get_const(reduction, 'i')
-            reduction_vals = ['none', 'mean', 'sum']
-            reduction = reduction_vals[reduction]
-            output, log_prob = g.op("com.microsoft::SoftmaxCrossEntropyLossInternal",
-                                    self, target, weight, ignore_index,
-                                    reduction_s=reduction, outputs=2)
-            output.setType(self.type())
-            log_prob.setType(self.type())
-            return output
+    @parse_args('v', 'v', 'v', 'i', 'v')
+    def nll_loss(g, self, target, weight, reduction, ignore_index):
+        # reduction: 0->none, 1->mean, 2->sum
+        reduction = sym_help._maybe_get_const(reduction, 'i')
+        reduction_vals = ['none', 'mean', 'sum']
+        reduction = reduction_vals[reduction]
+        output = g.op("com.microsoft::NegativeLogLikelihoodLossInternal",
+                      self, target, weight, ignore_index, reduction_s=reduction)
+        output.setType(self.type())
+        return output
 
-        register_custom_op_symbolic('::cross_entropy_loss', cross_entropy_loss, _onnx_opset_version)
-
-        @parse_args('v', 'v', 'v', 'i', 'v')
-        def nll_loss(g, self, target, weight, reduction, ignore_index):
-            # reduction: 0->none, 1->mean, 2->sum
-            reduction = sym_help._maybe_get_const(reduction, 'i')
-            reduction_vals = ['none', 'mean', 'sum']
-            reduction = reduction_vals[reduction]
-            output = g.op("com.microsoft::NegativeLogLikelihoodLossInternal",
-                          self, target, weight, ignore_index, reduction_s=reduction)
-            output.setType(self.type())
-            return output
-
-        register_custom_op_symbolic('::nll_loss', nll_loss, _onnx_opset_version)
-
-        def max_pool2d(g, self, kernel_size, stride, padding, dilation, ceil_mode):
-            return g.op("com.microsoft::ATenOp", self, kernel_size, stride, padding, dilation, ceil_mode,
-                        name_s='aten::max_pool2d_with_indices', outputs=2)[0]
-
-        register_custom_op_symbolic('::max_pool2d', max_pool2d, _onnx_opset_version)
-
-        def unfold(g, input, dimension, size, step):
-            return g.op("com.microsoft::ATenOp", input, dimension, size, step, name_s='aten::unfold')
-
-        register_custom_op_symbolic('::unfold', unfold, _onnx_opset_version)
-
-        def argmax(g, input, dim, keepdim):
-            return g.op("com.microsoft::ATenOp", input, dim, keepdim, name_s='aten::argmax')
-
-        register_custom_op_symbolic('::argmax', argmax, _onnx_opset_version)
+    register_custom_op_symbolic('::nll_loss', nll_loss, _onnx_opset_version)
 
 
 def unregister_custom_op():

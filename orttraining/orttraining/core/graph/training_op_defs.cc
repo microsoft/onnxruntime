@@ -2801,10 +2801,12 @@ Return true if all elements are true and false otherwise.
               /*is_homogeneous*/ false,
               /*min_arity*/ 1)
       .Attr("name", "Name of ATen operator.", AttributeProto::STRING)
+      .Attr("overload_name", "Overload name of ATen operator.", AttributeProto::STRING, false)
       .Attr("output_types", "Output types of ATenOp's gradient op.", AttributeProto::INTS, false)
       .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        // Load and set output types if in attribute.
+        // Load and set output types if there is attribute 'output_type'.
+        // This is usually set in gradient nodes to help resolving graph.
         const auto output_types_proto = ctx.getAttribute("output_types");
         if (output_types_proto) {
           ORT_ENFORCE(static_cast<size_t>(output_types_proto->ints_size()) == ctx.getNumOutputs(),

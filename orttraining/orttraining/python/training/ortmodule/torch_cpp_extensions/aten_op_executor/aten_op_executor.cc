@@ -59,6 +59,7 @@ struct ATenOperator {
     TORCH_INTERNAL_ASSERT(dlpack || is_optional || default_values[index]);
     if (!dlpack) {
       if (is_optional) {
+        // Optional argument always has no default value.
         return c10::IValue(c10::nullopt);
       }
 
@@ -93,11 +94,18 @@ struct ATenOperator {
           i_value = is_list ? ToListIValue<bool>(dlpack, is_optional) : ToIValue<bool>(dlpack, is_optional);
         }
       } break;
-      default:
+      default:  // TODO: will add more type support if needed.
         TORCH_INTERNAL_ASSERT(false);
     }
 
     return i_value;
+  }
+};
+
+struct PairHash {
+  template <class T1, class T2>
+  size_t operator()(const std::pair<T1, T2>& pair) const {
+    return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
   }
 };
 
@@ -108,11 +116,10 @@ class ATenOperatorCache {
     return instance;
   }
 
-  const ATenOperator& GetOperator(const std::string& op_name) {
-    if (ops_.find(op_name) == ops_.end()) {
-      // Some op name can get multiple ops with different overload names,
-      // we are using the one with empty overload name.
-      c10::OperatorName full_name(op_name, "");
+  const ATenOperator& GetOperator(const std::string& op_name, const std::string& overload_name) {
+    auto key = std::make_pair(op_name, overload_name);
+    if (ops_.find(key) == ops_.end()) {
+      c10::OperatorName full_name(op_name, overload_name);
       auto op = torch::jit::findOperatorFor(full_name);
       TORCH_INTERNAL_ASSERT(op);
       ATenOperator aten_op;
@@ -142,24 +149,44 @@ class ATenOperatorCache {
       for (const auto& ret : schema.returns()) {
         TORCH_INTERNAL_ASSERT(ret.type()->kind() == c10::TypeKind::TensorType);
       }
-      ops_[op_name] = aten_op;
+      ops_.emplace(key, aten_op);
     }
-    return ops_.at(op_name);
+    return ops_.at(key);
+  }
+
+  void SetGradientDefinition(const std::string& op_name, const std::string& overload_name,
+                             const std::string& gradient_def_json) {
+    auto key = std::make_pair(op_name, overload_name);
+    TORCH_INTERNAL_ASSERT(gradient_definitions_.find(key) == gradient_definitions_.end());
+    gradient_definitions_.emplace(key, gradient_def_json);
+  }
+
+  const char* GetGradientDefinition(const std::string& op_name, const std::string& overload_name) {
+    auto it = gradient_definitions_.find(std::make_pair(op_name, overload_name));
+    return it != gradient_definitions_.end() ? it->second.c_str() : nullptr;
   }
 
  private:
   ATenOperatorCache() = default;
-  std::unordered_map<std::string, ATenOperator> ops_;
+  std::unordered_map<std::pair<std::string, std::string>, ATenOperator, PairHash> ops_;
+  std::unordered_map<std::pair<std::string, std::string>, std::string, PairHash> gradient_definitions_;
 };
 
-bool IsTensorArgument(const char* op_name, size_t index) {
-  const auto& aten_op = ATenOperatorCache::Instance().GetOperator(op_name);
+// Backend uses this function to check if an argument is CPU input (non-tensor argument) or not.
+bool IsTensorArgument(const char* op_name, const char* overload_name, size_t index) {
+  const auto& aten_op = ATenOperatorCache::Instance().GetOperator(op_name, overload_name);
   TORCH_INTERNAL_ASSERT(index < aten_op.argument_size);
   return aten_op.elem_kinds[index] == c10::TypeKind::TensorType;
 }
 
-std::vector<DLManagedTensor*> ExecuteATenOperator(const char* op_name, const std::vector<DLManagedTensor*>& dlpacks) {
-  const auto& aten_op = ATenOperatorCache::Instance().GetOperator(op_name);
+// Backend uses this function to get gradient definition JSON to build gradient for ATenOp.
+const char* GetGradientDefinition(const char* op_name, const char* overload_name) {
+  return ATenOperatorCache::Instance().GetGradientDefinition(op_name, overload_name);
+}
+
+std::vector<DLManagedTensor*> ExecuteATenOperator(const char* op_name, const char* overload_name,
+                                                  const std::vector<DLManagedTensor*>& dlpacks) {
+  const auto& aten_op = ATenOperatorCache::Instance().GetOperator(op_name, overload_name);
   TORCH_INTERNAL_ASSERT(dlpacks.size() == aten_op.argument_size);
   std::vector<c10::IValue> arguments;
   for (size_t i = 0; i < dlpacks.size(); i++) {
@@ -183,8 +210,14 @@ std::vector<DLManagedTensor*> ExecuteATenOperator(const char* op_name, const std
 
 size_t is_tensor_argument_address() { return reinterpret_cast<size_t>(&IsTensorArgument); }
 size_t execute_aten_operator_address() { return reinterpret_cast<size_t>(&ExecuteATenOperator); }
+size_t get_gradient_definition_address() { return reinterpret_cast<size_t>(&GetGradientDefinition); }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("is_tensor_argument_address", &is_tensor_argument_address, "Address of tensor argument check.");
   m.def("execute_aten_operator_address", &execute_aten_operator_address, "Address of Aten operator executor");
+  m.def("get_gradient_definition_address", &get_gradient_definition_address, "Address of getting gradient definition.");
+  m.def("set_gradient_definition",
+        [](const std::string& op_name, const std::string& overload_name, const std::string& gradient_def_json) {
+          return ATenOperatorCache::Instance().SetGradientDefinition(op_name, overload_name, gradient_def_json);
+        });
 }

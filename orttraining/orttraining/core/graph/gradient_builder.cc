@@ -16,7 +16,6 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/graph_augmenter.h"
-#include "orttraining/core/graph/aten_op_grad_config.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -1684,37 +1683,67 @@ IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
   std::vector<NodeDef> result;
   const auto& src_attrs = SrcNodeAttributes();
   ORT_ENFORCE(utils::HasString(src_attrs.at("name")));
-  const std::string name = src_attrs.at("name").s();
-  const auto* p_grad_config = ATenOpGradConfigs::Instance().GetConfig(name);
-  ORT_ENFORCE(p_grad_config, "ATenOp gradient config for ", name, " is not found.");
-  const auto& grad_config = *p_grad_config;
-
-  std::vector<AttributeProto> attrs;
-  attrs.emplace_back(MakeAttribute("name", grad_config.backward_op_name));
-
-  // TODO: check the index within range.
-  std::vector<ArgDef> input_args;
-  for (const auto& config : grad_config.backward_input_source_configs) {
-    ArgDef source_arg_def = config.kind == GRAD_OUTPUT     ? GO(config.index)
-                            : config.kind == FORWARD_INPUT ? I(config.index)
-                                                           : O(config.index);
-    input_args.emplace_back(HandleATenOpGradInput(source_arg_def, config.transform_func, result));
+  std::string op_name = src_attrs.at("name").s();
+  std::string overload_name = "";
+  if (src_attrs.find("overload_name") != src_attrs.end() && utils::HasString(src_attrs.at("overload_name"))) {
+    overload_name = src_attrs.at("overload_name").s();
   }
 
-  std::vector<ArgDef> output_args;
-  std::vector<int64_t> grad_output_types;
-  for (size_t index : grad_config.gradient_input_indices) {
-    if (IsGradientRequiredForSrcNodeInput(index)) {
-      output_args.emplace_back(GI(index));
-    } else {
-      output_args.emplace_back(ArgDef("", nullptr));
+  const auto& grad_def = ATenOpGradientDefinitionGetter::Instance()(op_name, overload_name);
+  ORT_ENFORCE(!grad_def.empty());
+
+  std::unordered_set<std::string> seen_outputs;
+  for (const auto& node_def : grad_def) {
+    OpDef op_def(node_def.op_type, node_def.domain);
+    bool is_aten_op = node_def.op_type == "ATenOp" && node_def.domain == kMSDomain;
+    std::vector<ArgDef> input_args;
+    for (const auto& input : node_def.inputs) {
+      if (input.find("GO(") == 0) {
+        int index = std::stoi(input.substr(3, input.length() - 4));
+        input_args.emplace_back(GO(static_cast<size_t>(index)));
+      } else if (input.find("I(") == 0) {
+        int index = std::stoi(input.substr(2, input.length() - 3));
+        input_args.emplace_back(I(static_cast<size_t>(index)));
+      } else if (input.find("O(") == 0) {
+        int index = std::stoi(input.substr(2, input.length() - 3));
+        input_args.emplace_back(O(static_cast<size_t>(index)));
+      } else {
+        ORT_ENFORCE(seen_outputs.find(input) != seen_outputs.end(), input, " is not a valid intermediate output.");
+        input_args.emplace_back(IA(input));
+      }
     }
 
-    grad_output_types.emplace_back(IElemType(index));
+    std::vector<ArgDef> output_args;
+    std::vector<int64_t> grad_output_types;
+    for (const auto& output : node_def.outputs) {
+      if (output.find("GI(") == 0) {
+        size_t index = static_cast<size_t>(std::stoi(output.substr(3, output.length() - 4)));
+        output_args.emplace_back(GI(index));
+        if (is_aten_op) {
+          grad_output_types.emplace_back(IElemType(index));
+        }
+      } else {
+        // For ATenOp, we need to set "output_types" attribute to help graph resolving. Current gradient definition
+        // cannot tell the data type of intermediate outputs. If we want to support this case in the future,
+        // we will need to add the data type information to the gradient definition.
+        ORT_ENFORCE(!is_aten_op, "ATenOp in gradient graph supports only gradient inputs as node outputs for now.");
+        seen_outputs.insert(output);
+        output_args.emplace_back(IA(output));
+      }
+    }
+
+    std::vector<AttributeProto> attrs;
+    for (const auto& attribute : node_def.attributes) {
+      attrs.emplace_back(AttributeDefinitionToAttributeProto(attribute.first, attribute.second));
+    }
+
+    if (is_aten_op) {
+      attrs.emplace_back(MakeAttribute("output_types", grad_output_types));
+    }
+
+    result.emplace_back(NodeDef(op_def, input_args, output_args, attrs));
   }
 
-  attrs.emplace_back(MakeAttribute("output_types", grad_output_types));
-  result.emplace_back(NodeDef(OpDef{"ATenOp", kMSDomain, 1}, input_args, output_args, attrs));
   return result;
 }
 
