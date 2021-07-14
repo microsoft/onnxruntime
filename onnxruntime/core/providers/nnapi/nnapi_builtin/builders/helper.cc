@@ -367,7 +367,7 @@ void GetFlattenOutputShape(const Node& node, const Shape& input_shape, int32_t& 
   dim_2 = std::accumulate(input_shape.cbegin() + axis, input_shape.cend(), 1, std::multiplies<int32_t>());
 }
 
-bool IsValidSupportedNodePartition(const std::vector<const Node*>& supported_node_partition) {
+bool IsValidSupportedNodeGroup(const std::vector<const Node*>& supported_node_partition) {
   if (supported_node_partition.size() == 1) {
     const auto* node = supported_node_partition[0];
     const auto& op = node->OpType();
@@ -436,15 +436,15 @@ bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const Op
   return op_support_checker->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, params);
 }
 
-bool IsNodeSupportedInPartition(const Node& node, const GraphViewer& graph_viewer,
-                                const OpSupportCheckParams& params,
-                                const std::unordered_set<std::string>& node_outputs_in_partition) {
+bool IsNodeSupportedInGroup(const Node& node, const GraphViewer& graph_viewer,
+                            const OpSupportCheckParams& params,
+                            const std::unordered_set<std::string>& node_outputs_in_group) {
   if (!IsNodeSupported(node, graph_viewer, params))
     return false;
 
   // We also want to check if the node is supported as an internal quantized node
   if (IsInternalQuantizedNode(node))
-    return IsInternalQuantizationSupported(node, node_outputs_in_partition);
+    return IsInternalQuantizationSupported(node, node_outputs_in_group);
   else  // This is not a internal quantized node, it is supported
     return true;
 }

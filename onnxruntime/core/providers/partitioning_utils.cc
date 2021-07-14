@@ -51,10 +51,10 @@ std::string NodeGroupDebugString(const Container& group, bool show_all = false) 
 }
 #endif
 
-std::vector<std::vector<const Node*>> GetSupportedPartitions(
+std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
     const GraphViewer& graph_viewer,
     const IsNodeSupportedFn& is_node_supported_fn,
-    const OnPartitionClosedFn& on_partition_closed_fn,
+    const OnGroupClosedFn& on_group_closed_fn,
     bool debug_output) {
 #ifdef NDEBUG
   ORT_UNUSED_PARAMETER(debug_output);
@@ -62,14 +62,14 @@ std::vector<std::vector<const Node*>> GetSupportedPartitions(
 
   ORT_ENFORCE(is_node_supported_fn, "Node support test is required.");
 
-  std::vector<std::vector<const Node*>> supported_partitions{};
+  std::vector<std::vector<const Node*>> supported_groups{};
 
   // number of inputs from unprocessed nodes (in-degree) per node
   std::unordered_map<NodeIndex, size_t> in_degree{};
   // nodes that are ready to process
   std::deque<const Node*> nodes_to_process{};
-  // nodes that will be processed when considering the next partition
-  std::deque<const Node*> nodes_to_process_with_next_partition{};
+  // nodes that will be processed when considering the next partition node group
+  std::deque<const Node*> nodes_to_process_with_next_group{};
 
   // initialize in-degrees and find root nodes
   for (const auto& node : graph_viewer.Nodes()) {
@@ -80,41 +80,41 @@ std::vector<std::vector<const Node*>> GetSupportedPartitions(
     }
   }
 
-  std::vector<const Node*> supported_partition{};
-  // the partition's frontier is the aggregate of its nodes' output nodes
-  std::unordered_set<const Node*> supported_partition_frontier{};
+  std::vector<const Node*> supported_group{};
+  // the partition node group's frontier is the aggregate of its nodes' output nodes
+  std::unordered_set<const Node*> supported_group_frontier{};
 
-  auto close_partition = [&]() {
-    if (!supported_partition.empty()) {
+  auto close_group = [&]() {
+    if (!supported_group.empty()) {
 #ifndef NDEBUG
       if (debug_output) {
-        LOGS_DEFAULT(VERBOSE) << "New partition.\n"
-                              << "Unsupported nodes on partition frontier: "
-                              << NodeGroupDebugString(nodes_to_process_with_next_partition, true) << "\n"
-                              << "Nodes in partition: " << NodeGroupDebugString(supported_partition);
+        LOGS_DEFAULT(VERBOSE) << "New partition node group.\n"
+                              << "Unsupported nodes on group frontier: "
+                              << NodeGroupDebugString(nodes_to_process_with_next_group, true) << "\n"
+                              << "Nodes in group: " << NodeGroupDebugString(supported_group);
       }
 #endif
 
-      // if no on_partition_closed_fn callback was given, keep the partition
+      // if no on_group_closed_fn callback was given, keep the partition
       // otherwise, let the callback determine whether to keep it
-      const bool keep_partition = !on_partition_closed_fn || on_partition_closed_fn(supported_partition);
+      const bool keep_partition = !on_group_closed_fn || on_group_closed_fn(supported_group);
 
       if (keep_partition) {
-        supported_partitions.emplace_back(std::move(supported_partition));
+        supported_groups.emplace_back(std::move(supported_group));
       } else {
-        LOGS_DEFAULT(VERBOSE) << "Discarded partition.";
+        LOGS_DEFAULT(VERBOSE) << "Discarded partition node group.";
       }
 
-      supported_partition.clear();
-      supported_partition_frontier.clear();
+      supported_group.clear();
+      supported_group_frontier.clear();
     }
   };
 
-  while (!nodes_to_process.empty() || !nodes_to_process_with_next_partition.empty()) {
+  while (!nodes_to_process.empty() || !nodes_to_process_with_next_group.empty()) {
     if (nodes_to_process.empty()) {
-      // we have processed all the nodes that we can while building this partition, start a new one
-      close_partition();
-      nodes_to_process.swap(nodes_to_process_with_next_partition);
+      // we have processed all the nodes that we can while building this partition node group, start a new one
+      close_group();
+      nodes_to_process.swap(nodes_to_process_with_next_group);
       continue;
     }
 
@@ -123,23 +123,23 @@ std::vector<std::vector<const Node*>> GetSupportedPartitions(
 
     const bool is_node_supported = is_node_supported_fn(node);
 
-    if (!is_node_supported && Contains(supported_partition_frontier, &node)) {
-      // an unsupported node on the frontier will be processed after the current partition
-      nodes_to_process_with_next_partition.push_back(&node);
+    if (!is_node_supported && Contains(supported_group_frontier, &node)) {
+      // an unsupported node on the frontier will be processed after the current partition node group
+      nodes_to_process_with_next_group.push_back(&node);
       continue;
     }
 
     if (is_node_supported) {
-      // add node to the partition
-      supported_partition.push_back(&node);
+      // add node to the partition node group
+      supported_group.push_back(&node);
 
       // remove node from the frontier and add its outputs to the frontier
-      supported_partition_frontier.erase(&node);
+      supported_group_frontier.erase(&node);
 
       std::for_each(
           node.OutputNodesBegin(), node.OutputNodesEnd(),
-          [&supported_partition_frontier](const Node& output) {
-            supported_partition_frontier.insert(&output);
+          [&supported_group_frontier](const Node& output) {
+            supported_group_frontier.insert(&output);
           });
     }
 
@@ -156,9 +156,9 @@ std::vector<std::vector<const Node*>> GetSupportedPartitions(
         });
   }
 
-  close_partition();
+  close_group();
 
-  return supported_partitions;
+  return supported_groups;
 }
 }  // namespace
 
@@ -270,27 +270,27 @@ std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& grap
 std::vector<std::unique_ptr<ComputeCapability>>
 CreateSupportedPartitions(const GraphViewer& graph_viewer,
                           const IsNodeSupportedFn& is_node_supported_fn,
-                          const OnPartitionClosedFn& on_partition_closed_fn,
+                          const OnGroupClosedFn& on_partition_closed_fn,
                           const GenerateMetadefNameFn& generate_metadef_name_fn,
                           const std::string& execution_provider_name,
                           bool debug_output) {
-  const auto supported_partitions = GetSupportedPartitions(graph_viewer,
-                                                           is_node_supported_fn,
-                                                           on_partition_closed_fn,
-                                                           debug_output);
+  const auto groups = CreateSupportedPartitionNodeGroups(graph_viewer,
+                                                         is_node_supported_fn,
+                                                         on_partition_closed_fn,
+                                                         debug_output);
 
-  std::vector<std::unique_ptr<ComputeCapability>> compute_capabilities{};
-  compute_capabilities.reserve(supported_partitions.size());
+  std::vector<std::unique_ptr<ComputeCapability>> partitions{};
+  partitions.reserve(groups.size());
 
   std::transform(
-      supported_partitions.begin(), supported_partitions.end(),
-      std::back_inserter(compute_capabilities),
+      groups.begin(), groups.end(),
+      std::back_inserter(partitions),
       [&](const auto& supported_partition) {
         return MakeComputeCapability(graph_viewer, supported_partition, generate_metadef_name_fn,
                                      execution_provider_name);
       });
 
-  return compute_capabilities;
+  return partitions;
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>

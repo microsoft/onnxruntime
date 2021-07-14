@@ -30,8 +30,7 @@ NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags)
     : IExecutionProvider{onnxruntime::kNnapiExecutionProvider, true},
       nnapi_flags_(nnapi_flags),
       // TODO make this configurable
-      partitioning_stop_ops_(kDefaultPartitioningStopOps.begin(),
-                             kDefaultPartitioningStopOps.end()) {
+      partitioning_stop_ops_(kDefaultPartitioningStopOps.begin(), kDefaultPartitioningStopOps.end()) {
   AllocatorCreationInfo device_info(
       [](int) {
         return std::make_unique<CPUAllocator>(OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator));
@@ -98,13 +97,13 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   const auto excluded_nodes = utils::CreateExcludedNodeSet(graph_viewer, partitioning_stop_ops_);
   const bool check_excluded_nodes = !excluded_nodes.empty();
 
-  std::unordered_set<std::string> node_outputs_in_current_partition{};
+  std::unordered_set<std::string> node_outputs_in_current_group{};
 
   const auto is_node_supported = [&](const Node& node) -> bool {
     const bool excluded = check_excluded_nodes && Contains(excluded_nodes, &node);
     const bool supported = !excluded &&
-                           nnapi::IsNodeSupportedInPartition(node, graph_viewer, params,
-                                                             node_outputs_in_current_partition);
+                           nnapi::IsNodeSupportedInGroup(node, graph_viewer, params,
+                                                         node_outputs_in_current_group);
     LOGS_DEFAULT(VERBOSE) << "Operator type: [" << node.OpType()
                           << "] index: [" << node.Index()
                           << "] name: [" << node.Name()
@@ -112,20 +111,20 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
                           << "]";
 
     if (supported) {
-      // We want to put all the output names of nodes in the current group for easy query
-      // See nnapi::IsNodeSupportedInPartition()
+      // We want to save all the output names of nodes in the current group for easy query
+      // See nnapi::IsNodeSupportedInGroup()
       for (const auto* output : node.OutputDefs()) {
-        node_outputs_in_current_partition.insert(output->Name());
+        node_outputs_in_current_group.insert(output->Name());
       }
     }
 
     return supported;
   };
 
-  const auto on_partition_closed = [&](const std::vector<const Node*>& partition) -> bool {
-    // reset per-partition tracking
-    node_outputs_in_current_partition.clear();
-    return nnapi::IsValidSupportedNodePartition(partition);
+  const auto on_group_closed = [&](const std::vector<const Node*>& group) -> bool {
+    // reset per-partition node group tracking
+    node_outputs_in_current_group.clear();
+    return nnapi::IsValidSupportedNodeGroup(group);
   };
 
   const auto gen_metadef_name = [&]() {
@@ -134,8 +133,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     return MakeString(NNAPI, "_", model_hash, "_", metadef_id);
   };
 
-  result = utils::CreateSupportedPartitions(graph_viewer,
-                                            is_node_supported, on_partition_closed,
+  result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,
                                             gen_metadef_name, NNAPI);
 
   const auto num_of_partitions = result.size();
