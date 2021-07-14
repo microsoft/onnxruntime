@@ -12,7 +12,6 @@ password=os.environ.get('DASHBOARD_MYSQL_ORT_PASSWORD')
 host='onnxruntimedashboard.mysql.database.azure.com'
 database='onnxruntime'
 
-
 # table names
 fail = 'fail'
 memory = 'memory'
@@ -28,6 +27,8 @@ def parse_arguments():
         "-c", "--commit_hash", help="Commit id", required=True)
     parser.add_argument(
         "-u", "--report_url", help="Report Url", required=True)
+    parser.add_argument(
+        "-t", "--trt_version", help="Tensorrt Version", required=True)
     return parser.parse_args()
 
 def parse_csv(report_file):
@@ -101,16 +102,17 @@ def get_status(status, model_group):
     status = adjust_columns(status, status_columns, status_db_columns, model_group)
     return status
 
-def write_table(engine, table, table_name, drop_duplicates=True):
+def write_table(engine, table, table_name, trt_version, drop_duplicates=True):
     if table.empty:
         return
+    table = table.assign(TrtVersion=trt_version) # add TrtVersion
     table.to_sql(table_name, con=engine, if_exists='append', index=False, chunksize=1)
     if drop_duplicates: 
         full_table = pd.read_sql("SELECT * FROM " + table_name,  engine)
         full_table.drop_duplicates(keep='last', inplace=True)
         table.to_sql(table_name, con=engine, if_exists='replace', index=False, chunksize=1)
 
-def write_latency_over_time(engine, table, table_name):
+def write_latency_over_time(engine, table, table_name, trt_version):
 
     # delete using cursor for large table
     conn = engine.raw_connection()
@@ -125,7 +127,7 @@ def write_latency_over_time(engine, table, table_name):
     conn.close()
 
     # write table 
-    write_table(engine, table, table_name, drop_duplicates=False)
+    write_table(engine, table, table_name, trt_version, drop_duplicates=False)
     
 def main():
     
@@ -168,9 +170,9 @@ def main():
             print('writing ' + table + ' over time to database')
             db_table_name = 'ep_model_' + table
             if table == 'latency_over_time':
-                 write_latency_over_time(engine, table_results[table], db_table_name)
+                write_latency_over_time(engine, table_results[table], db_table_name, args.trt_version)
             else:
-                write_table(engine, table_results[table], db_table_name)
+                write_table(engine, table_results[table], db_table_name, args.trt_version)
 
     except BaseException as e: 
         print(str(e))
