@@ -8,12 +8,12 @@ FROM centos:7.8.2003
 WORKDIR /code
 
 ARG MY_ROOT=/code
-ARG YUM_OV_PACKAGE=intel-openvino-runtime-centos7-2021.3.394.x86_64
+ARG YUM_OV_PACKAGE=intel-openvino-runtime-centos7-2021.4.582.x86_64
 ARG DEVICE=CPU_FP32
-ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
+ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=master
 
-ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2021.3.394
+ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2021.4.582
 ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/share
 ENV IE_PLUGINS_PATH=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/lib/intel64
 ENV ngraph_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/ngraph/cmake
@@ -27,7 +27,7 @@ ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/lib:/usr/local/lib64:/usr/lib64:/lib64:$
 # Install packages 
 RUN yum update -y && \
     yum groupinstall "Development Tools" -y && \
-    yum install -y yum-utils autoconf automake libtool unzip udev wget zlib-devel libffi-devel openssl-devel && \
+    yum install -y yum-utils autoconf automake libtool unzip udev wget zlib-devel libffi-devel openssl-devel boost-devel-1.53.0 && \
     yum clean packages &&  yum clean all && rm -rf /var/cache/yum && \
 # Install cmake
     cd $MY_ROOT && \
@@ -58,7 +58,7 @@ RUN yum update -y && \
     yum update -y && yum list intel-openvino* && \
     yum install -y $YUM_OV_PACKAGE && \
     cd ${INTEL_OPENVINO_DIR}/install_dependencies/ && ./install_openvino_dependencies.sh -y && \
-    printf "\nexport LD_LIBRARY_PATH=\${LD_LIBRARY_PATH}:/usr/local/lib\n" >> /opt/intel/openvino_2021.3.394/bin/setupvars.sh && \
+    printf "\nexport LD_LIBRARY_PATH=\${LD_LIBRARY_PATH}:/usr/local/lib\n" >> /opt/intel/openvino_2021.4.582/bin/setupvars.sh && \
     cd /opt/libusb-1.0.22 && \
     /usr/bin/install -c -m 644 libusb-1.0.pc '/usr/local/lib/pkgconfig' && \
     cp /opt/intel/openvino_2021/deployment_tools/inference_engine/external/97-myriad-usbboot.rules /etc/udev/rules.d/ && \
@@ -99,7 +99,7 @@ RUN yum update -y && \
     cd /code/onnxruntime && ./build.sh --config Release --update --build --parallel --use_openvino ${DEVICE} --build_shared_lib --build_wheel && \
     pip3 install /code/onnxruntime/build/Linux/Release/dist/*-linux_x86_64.whl && \
 # Clean up
-    cd  $MY_ROOT && rm -rf Python-3* && \
+    cd  $MY_ROOT && rm -rf onnxruntime Python-3* && \
     cd ${MY_ROOT}/ && rm -rf cmake* && \
     cd /usr/share/ && rm -rf gcc* && cd /usr/lib/ && rm -rf gcc cd && rm -rf .cache && \
     cd ${INTEL_OPENVINO_DIR}/ && rm -rf documentation data_processing && cd deployment_tools/ && rm -rf tools
