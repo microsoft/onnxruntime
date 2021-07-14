@@ -13,8 +13,8 @@ WORKDIR $WORKDIR_PATH
 ENV DEBIAN_FRONTEND noninteractive
 
 ARG DEVICE=CPU_FP32 
-ARG ONNXRUNTIME_REPO=https://github.com/intel/onnxruntime.git
-ARG ONNXRUNTIME_BRANCH=openvino-ep-2021.4
+ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
+ARG ONNXRUNTIME_BRANCH=master
 
 ENV InferenceEngine_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/share
 ENV ngraph_DIR=${INTEL_OPENVINO_DIR}/deployment_tools/ngraph/cmake
