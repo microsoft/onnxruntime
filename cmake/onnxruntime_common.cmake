@@ -171,3 +171,72 @@ endif()
 if(APPLE)
   target_link_libraries(onnxruntime_common "-framework Foundation")
 endif()
+
+
+if(MSVC)
+  if(onnxruntime_target_platform STREQUAL "ARM64")
+    set(ARM64 TRUE)
+  elseif (onnxruntime_target_platform STREQUAL "ARM")
+    set(ARM TRUE)
+  elseif(onnxruntime_target_platform STREQUAL "x64")
+    set(X64 TRUE)
+  elseif(onnxruntime_target_platform STREQUAL "x86")
+    set(X86 TRUE)
+  endif()
+elseif(NOT onnxruntime_BUILD_WEBASSEMBLY)
+  if (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+    set(ARM64 TRUE)
+  elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm64e")
+    set(ARM64 TRUE)
+  elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "arm")
+    set(ARM TRUE)
+  elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "x86_64")
+    set(X86_64 TRUE)
+  elseif (CMAKE_OSX_ARCHITECTURES STREQUAL "i386")
+    set(X86 TRUE)
+  endif()
+  if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+    if (CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
+      set(ARM TRUE)
+    elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+      set(ARM64 TRUE)
+    elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "x86_64")
+      set(X86_64 TRUE)
+    elseif (CMAKE_ANDROID_ARCH_ABI STREQUAL "x86")
+      set(X86 TRUE)
+    endif()
+  else()
+    execute_process(
+      COMMAND ${CMAKE_C_COMPILER} -dumpmachine
+      OUTPUT_VARIABLE dumpmachine_output
+      ERROR_QUIET
+    )
+    if(dumpmachine_output MATCHES "^arm64.*")
+      set(ARM64 TRUE)
+    elseif(dumpmachine_output MATCHES "^arm.*")
+      set(ARM TRUE)
+    elseif(dumpmachine_output MATCHES "^aarch64.*")
+      set(ARM64 TRUE)
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
+      set(X86 TRUE)
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
+      set(X86_64 TRUE)
+    endif()
+  endif()
+endif()
+
+
+if (ARM64 OR ARM OR X86 OR X64 OR X86_64) 
+  if((ARM64 OR ARM) AND MSVC)
+    # msvc compiler report syntax error with cpuinfo arm source files
+    # and cpuinfo does not have code for getting arm uarch info under windows
+  else()
+    # Link cpuinfo
+    # Using it mainly in ARM with Android. 
+    # Its functionality in detecting x86 cpu features are lacking, so is support for Windows.
+
+    target_include_directories(onnxruntime_common PRIVATE ${PYTORCH_CPUINFO_INCLUDE_DIR})
+    target_link_libraries(onnxruntime_common  cpuinfo)
+  endif()
+endif()
+

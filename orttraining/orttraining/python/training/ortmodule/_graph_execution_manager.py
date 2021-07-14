@@ -283,8 +283,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         except RuntimeError as e:
             raise RuntimeError('There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
         exported_model = onnx.load_model_from_string(f.getvalue())
-        if self._enable_custom_autograd_function:
-            exported_model = _post_process_after_export(exported_model)
+
+        exported_model = _post_process_after_export(exported_model, self._enable_custom_autograd_function)
 
         return exported_model
 
