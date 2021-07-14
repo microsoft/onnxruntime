@@ -26,7 +26,7 @@ namespace quantization {
 
 // Basic quantization params structure.
 template <typename T>
-class Params {
+struct Params {
  public:
   Params() {
     Params(/*scale=*/0.0f, /*zero_point=*/0);
