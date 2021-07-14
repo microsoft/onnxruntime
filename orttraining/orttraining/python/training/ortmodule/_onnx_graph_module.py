@@ -54,6 +54,13 @@ class OnnxGraphModule(torch.nn.Module):
         self._train = False
         return self
 
+    def to(self, device: torch.device): # pylint: disable=arguments-differ
+        assert isinstance(device, torch.device), "Currently the only operation supported is device movement."
+        super().to(device)
+        self._inference_agent.device = device
+        self._training_agent.device = device
+        return self
+
     def parameters(self, _recurse: bool = True) -> Iterator[torch.Tensor]:
         return (param for _, param in self._named_parameters)
 
@@ -87,7 +94,7 @@ class OnnxGraphModule(torch.nn.Module):
         else:
             outputs, _ = self._inference_agent.forward(*inputs)
 
-        # Outputs is a sequence of tensors. Handle special case of
+        # Outputs is a sequence of tensors. Handle the special case of
         # single tensor return
         if len(outputs) == 1:
             return outputs[0]

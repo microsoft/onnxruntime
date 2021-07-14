@@ -45,6 +45,17 @@ class ExecutionAgent(object):
         """Performs forward computation
         """
 
+
+    @property
+    def device(self):
+        return self._device
+
+
+    @device.setter
+    def device(self, to_device: torch.device):
+        self._device = to_device
+
+
 class InferenceAgent(ExecutionAgent):
     """
     This is the main class used to run an ORTModule model inferencing.
