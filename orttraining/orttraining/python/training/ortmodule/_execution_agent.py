@@ -26,7 +26,7 @@ class ExecutionAgentOutput(object):
         self.run_id = run_id
 
 class ExecutionAgent(object):
-    """ExecutionAgent wraps ORT inference session and provides forward / backward methods
+    """Executes the ONNX graph for both forward and backward calls
     for ORTModule and users who would like to run an ONNX graph with torch inputs
     """
 
@@ -95,7 +95,7 @@ class InferenceAgent(ExecutionAgent):
         #   especially the backward graph outputs.
         # REVIEW(codemzs): Consolidate Training Agent with InferenceAgent on C++ side to not
         # have the need for passing IOBinding.
-        io_binding = IOBinding(self._inference_session)
+        io_binding = self.io_binding()
 
 
         # Use IO binding
@@ -213,7 +213,7 @@ class TrainingAgent(ExecutionAgent):
             YieldOpNotFound: when the model doesn't have a YieldOp node        
         """
         super().__init__(onnx_model, device)
-        self._info = YieldOpInfo.from_training_model(onnx_model)
+        self._yield_op_info = YieldOpInfo.from_training_model(onnx_model)
         self._inference_session = onnxruntime.InferenceSession(onnx_model.SerializeToString(), session_options,
                                                                providers, provider_options)
 
@@ -222,7 +222,7 @@ class TrainingAgent(ExecutionAgent):
             C.OrtDevice(get_ort_device_type(self._device.type),
                         C.OrtDevice.default_memory(),
                         _utils.get_device_index(self._device)
-            )] * len(self._info.user_output_names)
+            )] * len(self._yield_op_info.user_output_names)
 
         bw_fetches_names = [output.name for output in onnx_model.graph.output]
         bw_outputs_device_info = [
@@ -285,17 +285,17 @@ class TrainingAgent(ExecutionAgent):
         # Preallocate length of the vector. And then delete as required towards the end.
         backward_inputs.reserve(len(grad_outputs))
         for idx, grad_output in enumerate(grad_outputs):
-            if idx in self._info.non_differentiable_outputs:
+            if idx in self._yield_op_info.non_differentiable_outputs:
                 assert grad_output is None, "ORT found the {}-th module output '{}' is " \
                                             "non-differentiable according to the onnx graph. " \
                                             "However, the gradient value is still provided by " \
                                             "PyTorch's autograd engine." \
-                                            .format(idx, self._info.user_output_names[idx])
+                                            .format(idx, self._yield_op_info.user_output_names[idx])
                 continue
 
             if grad_output is None:
                 shape, device, dtype = run_info.output_info[idx]
-                if idx in self._info.full_shape_outputs:
+                if idx in self._yield_op_info.full_shape_outputs:
                     grad_output = torch.zeros(shape, device=device, dtype=dtype)
                 else:
                     grad_output = torch.tensor(0., device=device, dtype=dtype)

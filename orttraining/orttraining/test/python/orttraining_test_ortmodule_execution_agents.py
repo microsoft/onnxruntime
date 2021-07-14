@@ -1,18 +1,17 @@
-import numpy as np
-from onnx import TensorProto
-from onnx import helper
-
+from onnx import helper, TensorProto
+import pytest
 import torch
 
 import onnxruntime
-
 from onnxruntime.training.ortmodule._execution_agent import (
     InferenceAgent,
     TrainingAgent,
 )
+from _test_helpers import assert_values_are_close # pylint: disable=wrong-import-order
 
 
-def make_inference_model():
+@pytest.fixture
+def inference_model():
     inputs = [
         helper.make_tensor_value_info("x", TensorProto.FLOAT, [2, 3]),
         helper.make_tensor_value_info("y", TensorProto.FLOAT, [2, 3]),
@@ -25,7 +24,8 @@ def make_inference_model():
     return helper.make_model(graph_def)
 
 
-def make_training_model():
+@pytest.fixture
+def training_model():
     inputs = [
         helper.make_tensor_value_info("x", TensorProto.FLOAT, [2, 3]),
         helper.make_tensor_value_info("y", TensorProto.FLOAT, [2, 3]),
@@ -57,45 +57,34 @@ def make_training_model():
     return helper.make_model(graph_def)
 
 
-def assert_tensors_allclose(*args, **kwargs):
-    assert len(args) == 2
-    args = [t.detach().numpy() if isinstance(t, torch.Tensor) else t for t in args]
-    np.testing.assert_allclose(*args, **kwargs)
-
-
-def execution_agent_factory(cls):
-    session_options = onnxruntime.SessionOptions()
-    providers = ["CPUExecutionProvider"]
-    provider_options = [{}]
-
-    def body(*args, **kwargs):
-        return cls(
-            *args,
-            session_options=session_options,
-            providers=providers,
-            provider_options=provider_options,
-            **kwargs
-        )
-
-    return body
-
-
-def test_onnx_graph_forward():
-    model = make_inference_model()
-    inference_agent = execution_agent_factory(InferenceAgent)(
-        model, torch.device("cpu")
+@pytest.fixture
+def execution_agent_kwargs():
+    return dict(
+        session_options=onnxruntime.SessionOptions(),
+        providers=[("CPUExecutionProvider", {})],
     )
+
+
+@pytest.fixture
+def inference_agent(inference_model, execution_agent_kwargs):
+    return InferenceAgent(inference_model, torch.device("cpu"), **execution_agent_kwargs)
+
+
+@pytest.fixture
+def training_agent(training_model, execution_agent_kwargs):
+    return TrainingAgent(training_model, torch.device("cpu"), **execution_agent_kwargs)
+
+
+def test_onnx_graph_forward(inference_agent):
     x = torch.randn(2, 3)
     y = torch.randn(2, 3)
     bias = torch.randn(3)
     expected_output = x * y + bias
     outputs, _ = inference_agent.forward(x, y, bias)
-    assert_tensors_allclose(outputs[0], expected_output)
+    assert_values_are_close(outputs[0], expected_output)
 
 
-def test_onnx_graph_forward_backward():
-    model = make_training_model()
-    training_agent = execution_agent_factory(TrainingAgent)(model, torch.device("cpu"))
+def test_onnx_graph_forward_backward(training_agent):
     x = torch.randn(2, 3)
     y = torch.randn(2, 3)
     bias = torch.randn(3)
@@ -107,6 +96,6 @@ def test_onnx_graph_forward_backward():
     x.grad = y.grad = bias.grad = None
     outputs, run_info = training_agent.forward(x, y, bias)
     grads = training_agent.backward(run_info, add_grad)
-    assert_tensors_allclose(outputs[0], expected_output)
+    assert_values_are_close(outputs[0], expected_output)
     for grad, expected_grad in zip(grads, expected_grads):
-        assert_tensors_allclose(grad, expected_grad)
+        assert_values_are_close(grad, expected_grad)
