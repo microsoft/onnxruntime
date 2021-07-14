@@ -149,7 +149,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_BUILD_JAVA)
   # copy the header files one by one
   foreach(h_ ${ANDROID_AAR_HEADERS})
     get_filename_component(HEADER_NAME_ ${h_} NAME)
-    configure_file(${h_} ${ANDROID_HEADERS_DIR}/${HEADER_NAME_} COPYONLY)
+    add_custom_command(TARGET onnxruntime POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different ${h_} ${ANDROID_HEADERS_DIR}/${HEADER_NAME_})
   endforeach()
 endif()
 
@@ -234,7 +234,7 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
     set(STATIC_FRAMEWORK_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR})
   endif()
 
-  # Assemble the static framwwork
+  # Assemble the static framework
   set(STATIC_FRAMEWORK_DIR ${STATIC_FRAMEWORK_OUTPUT_DIR}/static_framework/onnxruntime.framework)
   set(STATIC_FRAMEWORK_HEADER_DIR ${STATIC_FRAMEWORK_DIR}/Headers)
   file(MAKE_DIRECTORY ${STATIC_FRAMEWORK_DIR})
@@ -247,9 +247,9 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
   # copy the header files one by one, and the Info.plist
   foreach(h_ ${APPLE_FRAMEWORK_HEADERS})
     get_filename_component(HEADER_NAME_ ${h_} NAME)
-    configure_file(${h_} ${STATIC_FRAMEWORK_HEADER_DIR}/${HEADER_NAME_} COPYONLY)
+    add_custom_command(TARGET onnxruntime POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different ${h_} ${STATIC_FRAMEWORK_HEADER_DIR}/${HEADER_NAME_})
   endforeach()
-  configure_file(${INFO_PLIST_PATH} ${STATIC_FRAMEWORK_DIR}/Info.plist COPYONLY)
+  add_custom_command(TARGET onnxruntime POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different ${INFO_PLIST_PATH} ${STATIC_FRAMEWORK_DIR}/Info.plist)
 
   # link the static library
   add_custom_command(TARGET onnxruntime POST_BUILD COMMAND libtool -static -o ${STATIC_FRAMEWORK_DIR}/onnxruntime *.a WORKING_DIRECTORY ${STATIC_LIB_DIR})
