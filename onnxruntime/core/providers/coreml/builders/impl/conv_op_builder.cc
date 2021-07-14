@@ -59,6 +59,9 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto strides = helper.Get("strides", std::vector<int64_t>{1, 1});
   const auto dilations = helper.Get("dilations", std::vector<int64_t>{1, 1});
   const auto onnx_pads = helper.Get("pads", std::vector<int64_t>{0, 0, 0, 0});
+  // Strides/dilations for 1d conv is normally of length 1. Expand them by 1
+  // to meet the required length 2 (for 2d conv it's normally 2)
+  // Similarly 1d conv normally has a length 2 padding. Expand it to length 4 by adding additional zeros.
   auto strides_prime = strides;
   auto dilations_prime = dilations;
   auto onnx_pads_prime = onnx_pads;
@@ -69,9 +72,9 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     if (dilations.size() < 2) {
       dilations_prime.push_back(1);
     }
-    if (onnx_pads.size() < 4 && onnx_pads != std::vector<int64_t>{0, 0}) {
-      onnx_pads_prime.insert(onnx_pads_prime.begin() + 1, 1);
-      onnx_pads_prime.push_back(1);
+    if (onnx_pads.size() < 4) {
+      onnx_pads_prime.insert(onnx_pads_prime.begin() + 1, 0);
+      onnx_pads_prime.push_back(0);
     }
   }
   const auto group = helper.Get("group", static_cast<int64_t>(1));
@@ -83,17 +86,16 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   if (is_1d_conv) {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> expand_layer = CreateNNLayer(node);
-
-    expand_layer->mutable_expanddims()->add_axes(0);
+    // Add an expanddims layer here. CoreML only supports 2d convolution, so for 1d Conv case
+    // we need to add an additional dimension here to the input to make it "2d Conv" like.
+    // NxCxH -> NxCxHx1
+    expand_layer->mutable_expanddims()->add_axes(-1);
     *expand_layer->mutable_input()->Add() = input_name;
     *expand_layer->mutable_output()->Add() = expand_output_name;
     model_builder.AddLayer(std::move(expand_layer));
 
-    weight_tensor_prime.add_dims(1);
-    // const bool is_1d_conv_updated = (weight_tensor_prime.dims().size() == 4);
-    // if (is_1d_conv_updated) {
-    //   LOGS(logger, VERBOSE) << "weight_tensor gets updated.";
-    // }
+    weight_tensor_prime.add_dims(1);  // weight_tensor also needs to be expanded from MCH->MCH1
+
     const auto& weight_shape_prime = weight_tensor_prime.dims();
     coreml_conv->set_outputchannels(weight_shape_prime[0]);  // M
     coreml_conv->set_kernelchannels(weight_shape_prime[1]);  // C/Group
@@ -183,8 +185,10 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     *layer->mutable_output()->Add() = conv_output_name;
     model_builder.AddLayer(std::move(layer));
 
+    // Add a squeeze layer here. Since CoreML only supports 2d conv and we expanded the dimension by 1 before,
+    // we need to squeeze it back from NxCxHx1->NxCxH.
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> squeeze_layer = CreateNNLayer(node);
-    squeeze_layer->mutable_squeeze()->add_axes(0);
+    squeeze_layer->mutable_squeeze()->add_axes(-1);
     *squeeze_layer->mutable_input()->Add() = conv_output_name;
     *squeeze_layer->mutable_output()->Add() = output_name;
     model_builder.AddLayer(std::move(squeeze_layer));
