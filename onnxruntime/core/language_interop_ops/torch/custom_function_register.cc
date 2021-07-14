@@ -109,7 +109,7 @@ static void RegisterEntry(
   // Own the Python object.
   Py_INCREF(obj);
   PythonObjectPtr ptr(obj, PythonObjectDeleter);
-  
+
   // If an obj has been registered, this old ownership is automatically released
   // after this move-assignment. Then, the "storage" owns the new object.
   storage = std::move(ptr);
@@ -184,6 +184,15 @@ PyObject* OrtTorchFunctionPool::GetContext(int64_t context_index) {
   ORT_ENFORCE(iter != func_context_pool_.end(), "No context registered for ", context_index);
   return iter->second.get();
 }
+
+void OrtTorchFunctionPool::UnRegisterFunctions() {
+  forward_runner_.reset();
+  backward_runner_.reset();
+  forward_core_pool_.clear();
+  backward_core_pool_.clear();
+  func_context_pool_.clear();
+}
+
 }  // namespace torch
 }  // namespace language_interop_ops
 }  // namespace onnxruntime
