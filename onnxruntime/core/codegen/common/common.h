@@ -7,12 +7,6 @@
 #include "core/graph/graph_nodes.h"
 #include "core/graph/graph_viewer.h"
 
-#ifndef NDEBUG
-#define ORT_ENFORCE_DEBUG(...) ORT_ENFORCE(__VA_ARGS__)
-#else
-#define ORT_ENFORCE_DEBUG(...)
-#endif  // !NDEBUG
-
 // DYN_PROMOTE is a simplified llvm::dyn_cast, which does not need RTTI
 // DYN_PROMOTE is faster than dynamic_cast and also has smaller binary size
 // Please use DYN_PROMOTE in a critical path.

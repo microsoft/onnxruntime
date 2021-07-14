@@ -12,6 +12,19 @@
 
 namespace onnxruntime {
 
+namespace {
+std::vector<int64_t> ContiguousStrides(const TensorShape& shape) {
+  auto strides = std::vector<int64_t>(shape.NumDimensions());
+  int64_t running_size = 1;
+  for (auto i = shape.NumDimensions(); i > 0; i--) {
+    strides[i - 1] = running_size;
+    running_size *= shape[i - 1];
+  }
+
+  return strides;
+}
+}  // namespace
+
 Tensor::Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
                ptrdiff_t offset)
     : alloc_info_(alloc) {
@@ -74,6 +87,8 @@ void Tensor::Init(MLDataType p_type, const TensorShape& shape, void* p_raw_data,
   ORT_ENFORCE(dtype_ != nullptr, "Tensor is expected to contain one of the primitive data types. Got: ",
               DataTypeImpl::ToString(p_type));
   shape_ = shape;
+  strides_ = ContiguousStrides(shape_);
+  is_contiguous_ = true;
   p_data_ = p_raw_data;
   // if caller passed in a deleter, that means this tensor own this buffer
   // we will release the buffer when this tensor is deconstructed.
@@ -90,6 +105,8 @@ Tensor::Tensor(Tensor&& other) noexcept
     : p_data_(other.p_data_),
       buffer_deleter_(other.buffer_deleter_),
       shape_(other.shape_),
+      strides_(other.strides_),
+      is_contiguous_(other.is_contiguous_),
       dtype_(other.dtype_),
       alloc_info_(other.alloc_info_),
       byte_offset_(other.byte_offset_) {
@@ -106,6 +123,8 @@ Tensor& Tensor::operator=(Tensor&& other) noexcept {
 
     dtype_ = other.dtype_;
     shape_ = other.shape_;
+    strides_ = other.strides_;
+    is_contiguous_ = other.is_contiguous_;
     alloc_info_ = other.alloc_info_;
     byte_offset_ = other.byte_offset_;
     p_data_ = other.p_data_;
@@ -131,6 +150,23 @@ void Tensor::ReleaseBuffer() {
     }
     buffer_deleter_->Free(p_data_);
   }
+}
+
+bool Tensor::CheckIsContiguous() const {
+  int64_t running_size = 1;
+  for (auto i = shape_.NumDimensions(); i > 0; i--) {
+    if (shape_[i - 1] == 0) {
+      return true;
+    }
+
+    if (shape_[i - 1] != 1 && strides_[i - 1] != running_size) {
+      return false;
+    }
+
+    running_size *= shape_[i - 1];
+  }
+
+  return true;
 }
 
 }  // namespace onnxruntime

@@ -149,6 +149,16 @@ class Tensor final {
   const OrtMemoryInfo& Location() const { return alloc_info_; }
 
   /**
+     Returns the strides of the tensor in each dimension (in elements, not bytes)
+  */
+  const std::vector<int64_t>& Strides() const noexcept { return strides_; }
+
+  bool IsContiguous() const {
+    ORT_ENFORCE_DEBUG(CheckIsContiguous() == is_contiguous_);
+    return is_contiguous_;
+  }
+
+  /**
      May return nullptr if tensor size is zero
   */
   template <typename T>
@@ -252,6 +262,11 @@ class Tensor final {
             AllocatorPtr deleter,
             ptrdiff_t offset = 0);
 
+  /**
+     Update the is_contiguous_ field. Should be called whenever strides (or shape) change.
+  */
+  bool CheckIsContiguous() const;
+
   void ReleaseBuffer();
 
   void* p_data_;
@@ -263,6 +278,13 @@ class Tensor final {
   AllocatorPtr buffer_deleter_;
 
   TensorShape shape_;
+  /**
+     The i-th entry in strides_ specifies the offset (in number of elements, not bytes) between elements in the i-th
+     dimension of the tensor.
+  */
+  std::vector<int64_t> strides_;
+  bool is_contiguous_ = true;
+
   const PrimitiveDataTypeBase* dtype_;
   OrtMemoryInfo alloc_info_;
   ptrdiff_t byte_offset_;

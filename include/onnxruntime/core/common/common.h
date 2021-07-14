@@ -185,6 +185,12 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
     }                                                                                    \
   } while (false)
 
+#ifndef NDEBUG
+#define ORT_ENFORCE_DEBUG(...) ORT_ENFORCE(__VA_ARGS__)
+#else
+#define ORT_ENFORCE_DEBUG(...)
+#endif  // !NDEBUG
+
 #define ORT_THROW_EX(ex, ...) \
   throw ex(__VA_ARGS__)
 
