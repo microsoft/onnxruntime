@@ -46,40 +46,70 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(node);
 
   const auto& input_defs = node.InputDefs();
+  const auto& output_defs = node.OutputDefs();
   const auto& input_name = input_defs[0]->Name();
-  const auto& output_name = node.OutputDefs()[0]->Name();
+  const auto& output_name = output_defs[0]->Name();
 
   const auto& weight_tensor = *model_builder.GetInitializerTensors().at(input_defs[1]->Name());
   const auto& weight_shape = weight_tensor.dims();
 
   const bool is_1d_conv = (weight_shape.size() == 3);
 
-  std::string expand_output_name = model_builder.GetUniqueName(node.Name() + "_expandDims");
-
-  if (is_1d_conv) {
-    std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> expand_layer = CreateNNLayer(node);
-    int64_t expand_axes = -1;
-    expand_layer->mutable_expanddims()->add_axes(expand_axes);
-    *expand_layer->mutable_input()->Add() = input_name;
-    *expand_layer->mutable_output()->Add() = expand_output_name;
-    model_builder.AddLayer(std::move(expand_layer));
-  }
-
   NodeAttrHelper helper(node);
   const auto strides = helper.Get("strides", std::vector<int64_t>{1, 1});
-  const auto onnx_pads = helper.Get("pads", std::vector<int64_t>{0, 0, 0, 0});
   const auto dilations = helper.Get("dilations", std::vector<int64_t>{1, 1});
+  const auto onnx_pads = helper.Get("pads", std::vector<int64_t>{0, 0, 0, 0});
+  auto strides_prime = strides;
+  auto dilations_prime = dilations;
+  auto onnx_pads_prime = onnx_pads;
+  if (is_1d_conv) {
+    if (strides.size() < 2) {
+      strides_prime.push_back(1);
+    }
+    if (dilations.size() < 2) {
+      dilations_prime.push_back(1);
+    }
+    if (onnx_pads.size() < 4 && onnx_pads != std::vector<int64_t>{0, 0}) {
+      onnx_pads_prime.insert(onnx_pads_prime.begin() + 1, 1);
+      onnx_pads_prime.push_back(1);
+    }
+  }
   const auto group = helper.Get("group", static_cast<int64_t>(1));
 
   auto* coreml_conv = layer->mutable_convolution();
 
-  coreml_conv->set_outputchannels(weight_shape[0]);  // M
-  coreml_conv->set_kernelchannels(weight_shape[1]);  // C/Group
-  coreml_conv->add_kernelsize(weight_shape[2]);      // H
-  coreml_conv->add_kernelsize(weight_shape[3]);      // W
+  std::string expand_output_name = model_builder.GetUniqueName(node.Name() + "_expandDims");
+  auto weight_tensor_prime = weight_tensor;
+
+  if (is_1d_conv) {
+    std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> expand_layer = CreateNNLayer(node);
+
+    expand_layer->mutable_expanddims()->add_axes(0);
+    *expand_layer->mutable_input()->Add() = input_name;
+    *expand_layer->mutable_output()->Add() = expand_output_name;
+    model_builder.AddLayer(std::move(expand_layer));
+
+    weight_tensor_prime.add_dims(1);
+    // const bool is_1d_conv_updated = (weight_tensor_prime.dims().size() == 4);
+    // if (is_1d_conv_updated) {
+    //   LOGS(logger, VERBOSE) << "weight_tensor gets updated.";
+    // }
+    const auto& weight_shape_prime = weight_tensor_prime.dims();
+    coreml_conv->set_outputchannels(weight_shape_prime[0]);  // M
+    coreml_conv->set_kernelchannels(weight_shape_prime[1]);  // C/Group
+    coreml_conv->add_kernelsize(weight_shape_prime[2]);      // H
+    coreml_conv->add_kernelsize(weight_shape_prime[3]);      // W:1
+    *coreml_conv->mutable_stride() = {strides_prime.cbegin(), strides_prime.cend()};
+    *coreml_conv->mutable_dilationfactor() = {dilations_prime.cbegin(), dilations_prime.cend()};
+  } else {
+    coreml_conv->set_outputchannels(weight_shape[0]);  // M
+    coreml_conv->set_kernelchannels(weight_shape[1]);  // C/Group
+    coreml_conv->add_kernelsize(weight_shape[2]);      // H
+    coreml_conv->add_kernelsize(weight_shape[3]);      // W
+    *coreml_conv->mutable_stride() = {strides.cbegin(), strides.cend()};
+    *coreml_conv->mutable_dilationfactor() = {dilations.cbegin(), dilations.cend()};
+  }
   coreml_conv->set_ngroups(group);
-  *coreml_conv->mutable_stride() = {strides.cbegin(), strides.cend()};
-  *coreml_conv->mutable_dilationfactor() = {dilations.cbegin(), dilations.cend()};
 
   coreml_conv->set_isdeconvolution(false);
 
@@ -89,10 +119,18 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   std::vector<int64_t> input_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape");
   AutoPadType auto_pad_type;
-  ORT_RETURN_IF_ERROR(HandleAutoPad(input_shape, weight_shape[2], weight_shape[3],
-                                    onnx_pads, strides, dilations,
-                                    StringToAutoPadType(helper.Get("auto_pad", "NOTSET")),
-                                    auto_pad_type));
+
+  if (is_1d_conv) {
+    ORT_RETURN_IF_ERROR(HandleAutoPad(input_shape, weight_shape[2], 1,
+                                      onnx_pads_prime, strides_prime, dilations_prime,
+                                      StringToAutoPadType(helper.Get("auto_pad", "NOTSET")),
+                                      auto_pad_type));
+  } else {
+    ORT_RETURN_IF_ERROR(HandleAutoPad(input_shape, weight_shape[2], weight_shape[3],
+                                      onnx_pads, strides, dilations,
+                                      StringToAutoPadType(helper.Get("auto_pad", "NOTSET")),
+                                      auto_pad_type));
+  }
 
   if (AutoPadType::SAME_UPPER == auto_pad_type || AutoPadType::SAME_LOWER == auto_pad_type) {
     auto* padding_type = coreml_conv->mutable_same();
@@ -101,19 +139,36 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     }
   } else {
     auto* padding_type = coreml_conv->mutable_valid();
-    if (AutoPadType::NOTSET == auto_pad_type && onnx_pads != std::vector<int64_t>{0, 0, 0, 0}) {
-      // NOTSET is adding the explicit padding to the ValidPadding.paddingAmounts
-      auto* height_border = padding_type->mutable_paddingamounts()->add_borderamounts();
-      height_border->set_startedgesize(onnx_pads[0]);
-      height_border->set_endedgesize(onnx_pads[2]);
-      auto* width_border = padding_type->mutable_paddingamounts()->add_borderamounts();
-      width_border->set_startedgesize(onnx_pads[1]);
-      width_border->set_endedgesize(onnx_pads[3]);
+
+    if (is_1d_conv) {
+      if (AutoPadType::NOTSET == auto_pad_type && onnx_pads_prime != std::vector<int64_t>{0, 0, 0, 0}) {
+        // NOTSET is adding the explicit padding to the ValidPadding.paddingAmounts
+        auto* height_border = padding_type->mutable_paddingamounts()->add_borderamounts();
+        height_border->set_startedgesize(onnx_pads_prime[0]);
+        height_border->set_endedgesize(onnx_pads_prime[2]);
+        auto* width_border = padding_type->mutable_paddingamounts()->add_borderamounts();
+        width_border->set_startedgesize(onnx_pads_prime[1]);
+        width_border->set_endedgesize(onnx_pads_prime[3]);
+      }
+    } else {
+      if (AutoPadType::NOTSET == auto_pad_type && onnx_pads != std::vector<int64_t>{0, 0, 0, 0}) {
+        auto* height_border = padding_type->mutable_paddingamounts()->add_borderamounts();
+        height_border->set_startedgesize(onnx_pads[0]);
+        height_border->set_endedgesize(onnx_pads[2]);
+        auto* width_border = padding_type->mutable_paddingamounts()->add_borderamounts();
+        width_border->set_startedgesize(onnx_pads[1]);
+        width_border->set_endedgesize(onnx_pads[3]);
+      }
     }
   }
 
   // Add weight
-  CreateCoreMLWeight(*coreml_conv->mutable_weights(), weight_tensor);
+  if (is_1d_conv) {
+    auto& weight_tensor_prime_ref = weight_tensor_prime;
+    CreateCoreMLWeight(*coreml_conv->mutable_weights(), weight_tensor_prime_ref);
+  } else {
+    CreateCoreMLWeight(*coreml_conv->mutable_weights(), weight_tensor);
+  }
 
   // Add bias if present
   if (input_defs.size() > 2) {
@@ -123,24 +178,22 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   if (is_1d_conv) {
-    std::string squeeze_input_name = model_builder.GetUniqueName(node.Name() + "_squeezed");
+    std::string conv_output_name = model_builder.GetUniqueName(node.Name() + "_conv_output");
     *layer->mutable_input()->Add() = expand_output_name;
-    *layer->mutable_output()->Add() = squeeze_input_name;
+    *layer->mutable_output()->Add() = conv_output_name;
     model_builder.AddLayer(std::move(layer));
 
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> squeeze_layer = CreateNNLayer(node);
-    int64_t squeeze_axes = -1;
-    squeeze_layer->mutable_squeeze()->add_axes(squeeze_axes);
-    *squeeze_layer->mutable_input()->Add() = squeeze_input_name;
+    squeeze_layer->mutable_squeeze()->add_axes(0);
+    *squeeze_layer->mutable_input()->Add() = conv_output_name;
     *squeeze_layer->mutable_output()->Add() = output_name;
     model_builder.AddLayer(std::move(squeeze_layer));
-    return Status::OK();
+  } else {
+    *layer->mutable_input()->Add() = input_name;
+    *layer->mutable_output()->Add() = output_name;
+    model_builder.AddLayer(std::move(layer));
   }
 
-  *layer->mutable_input()->Add() = input_name;
-  *layer->mutable_output()->Add() = output_name;
-
-  model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
 
