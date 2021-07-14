@@ -11,7 +11,7 @@ from torch.onnx.symbolic_helper import parse_args
 _onnx_opset_version = 1
 
 
-def register_custom_op():
+def register_custom_op(is_ortmodule=False):
     """
     This function registers symbolic functions for
     custom ops that are implemented as part of ONNX Runtime
@@ -36,33 +36,34 @@ def register_custom_op():
     register_custom_op_symbolic('::triu', triu, _onnx_opset_version)
     register_custom_op_symbolic('::tril', tril, _onnx_opset_version)
 
-    @parse_args('v', 'v', 'v', 'i', 'v')
-    def cross_entropy_loss(g, self, target, weight, reduction, ignore_index):
-        # reduction: 0->none, 1->mean, 2->sum
-        reduction = sym_help._maybe_get_const(reduction, 'i')
-        reduction_vals = ['none', 'mean', 'sum']
-        reduction = reduction_vals[reduction]
-        output, log_prob = g.op("com.microsoft::SoftmaxCrossEntropyLossInternal",
-                                self, target, weight, ignore_index,
-                                reduction_s=reduction, outputs=2)
-        output.setType(self.type())
-        log_prob.setType(self.type())
-        return output
+    if is_ortmodule:
+        @parse_args('v', 'v', 'v', 'i', 'v')
+        def cross_entropy_loss(g, self, target, weight, reduction, ignore_index):
+            # reduction: 0->none, 1->mean, 2->sum
+            reduction = sym_help._maybe_get_const(reduction, 'i')
+            reduction_vals = ['none', 'mean', 'sum']
+            reduction = reduction_vals[reduction]
+            output, log_prob = g.op("com.microsoft::SoftmaxCrossEntropyLossInternal",
+                                    self, target, weight, ignore_index,
+                                    reduction_s=reduction, outputs=2)
+            output.setType(self.type())
+            log_prob.setType(self.type())
+            return output
 
-    register_custom_op_symbolic('::cross_entropy_loss', cross_entropy_loss, _onnx_opset_version)
+        register_custom_op_symbolic('::cross_entropy_loss', cross_entropy_loss, _onnx_opset_version)
 
-    @parse_args('v', 'v', 'v', 'i', 'v')
-    def nll_loss(g, self, target, weight, reduction, ignore_index):
-        # reduction: 0->none, 1->mean, 2->sum
-        reduction = sym_help._maybe_get_const(reduction, 'i')
-        reduction_vals = ['none', 'mean', 'sum']
-        reduction = reduction_vals[reduction]
-        output = g.op("com.microsoft::NegativeLogLikelihoodLossInternal",
-                      self, target, weight, ignore_index, reduction_s=reduction)
-        output.setType(self.type())
-        return output
+        @parse_args('v', 'v', 'v', 'i', 'v')
+        def nll_loss(g, self, target, weight, reduction, ignore_index):
+            # reduction: 0->none, 1->mean, 2->sum
+            reduction = sym_help._maybe_get_const(reduction, 'i')
+            reduction_vals = ['none', 'mean', 'sum']
+            reduction = reduction_vals[reduction]
+            output = g.op("com.microsoft::NegativeLogLikelihoodLossInternal",
+                          self, target, weight, ignore_index, reduction_s=reduction)
+            output.setType(self.type())
+            return output
 
-    register_custom_op_symbolic('::nll_loss', nll_loss, _onnx_opset_version)
+        register_custom_op_symbolic('::nll_loss', nll_loss, _onnx_opset_version)
 
 
 def unregister_custom_op():
