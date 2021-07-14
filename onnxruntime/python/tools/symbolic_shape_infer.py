@@ -1331,6 +1331,7 @@ class SymbolicShapeInference:
         vi = self.known_vi_[node.output[0]]
         elem_type = self.known_vi_[node.input[0]].type.tensor_type.elem_type
         vi.type.tensor_type.elem_type = elem_type
+        vi.type.tensor_type.shape.CopyFrom(onnx.TensorShapeProto())
 
         if len(node.output) > 1:
             data_shape = self._get_shape(node, 0)
