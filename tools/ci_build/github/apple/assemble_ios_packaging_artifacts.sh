@@ -6,7 +6,7 @@
 set -e
 set -x
 
-USAGE_TEXT="Usage: ${0} <binaries staging directory> <artifacts staging directory> <ORT pod version>"
+USAGE_TEXT="Usage: ${0} <binaries staging directory> <artifacts staging directory> <ORT pod version> <whether to upload the package archives, 'true' or 'false'>"
 
 abspath() {
   local INPUT_PATH=${1:?"Expected path as the first argument."}
@@ -18,6 +18,7 @@ BINARIES_STAGING_DIR=$(abspath "${1:?${USAGE_TEXT}}")
 # staging directory for build artifacts (destination)
 ARTIFACTS_STAGING_DIR=$(abspath "${2:?${USAGE_TEXT}}")
 ORT_POD_VERSION=${3:?${USAGE_TEXT}}
+SHOULD_UPLOAD_ARCHIVES=${4:?${USAGE_TEXT}}
 
 STORAGE_ACCOUNT_NAME="onnxruntimepackages"
 STORAGE_ACCOUNT_CONTAINER_NAME="ortmobilestore"
@@ -34,13 +35,16 @@ assemble_and_upload_pod() {
   zip -r ${ARTIFACTS_STAGING_DIR}/${POD_ARCHIVE_BASENAME} * --exclude ${PODSPEC_BASENAME}
   cp ${PODSPEC_BASENAME} ${ARTIFACTS_STAGING_DIR}/${PODSPEC_BASENAME}
 
-  # upload the pod archive and set the podspec source to the pod archive URL
-  az storage blob upload \
-    --account-name ${STORAGE_ACCOUNT_NAME} --container-name ${STORAGE_ACCOUNT_CONTAINER_NAME} \
-    --file ${ARTIFACTS_STAGING_DIR}/${POD_ARCHIVE_BASENAME} --name ${POD_ARCHIVE_BASENAME}
+  if [[ "${SHOULD_UPLOAD_ARCHIVES}" == "true" ]]; then
+    # upload the pod archive and set the podspec source to the pod archive URL
+    az storage blob upload \
+      --account-name ${STORAGE_ACCOUNT_NAME} --container-name ${STORAGE_ACCOUNT_CONTAINER_NAME} \
+      --file ${ARTIFACTS_STAGING_DIR}/${POD_ARCHIVE_BASENAME} --name ${POD_ARCHIVE_BASENAME} \
+      --if-none-match "*"
 
-  sed -i "" -e "s|file:///http_source_placeholder|${STORAGE_URL_PREFIX}/${POD_ARCHIVE_BASENAME}|" \
-    ${ARTIFACTS_STAGING_DIR}/${PODSPEC_BASENAME}
+    sed -i "" -e "s|file:///http_source_placeholder|${STORAGE_URL_PREFIX}/${POD_ARCHIVE_BASENAME}|" \
+      ${ARTIFACTS_STAGING_DIR}/${PODSPEC_BASENAME}
+  fi
 
   popd
 }
