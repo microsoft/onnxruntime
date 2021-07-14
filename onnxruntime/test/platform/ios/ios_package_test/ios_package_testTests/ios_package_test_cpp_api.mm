@@ -11,27 +11,32 @@
 #include <math.h>
 #include <onnxruntime/onnxruntime_cxx_api.h>
 
-@interface ios_package_test_cpp_api : XCTestCase
+#if __has_include(<onnxruntime/coreml_provider_factory.h>)
+#define COREML_EP_AVAILABLE 1
+#else
+#define COREML_EP_AVAILABLE 0
+#endif
 
-@end
+#if COREML_EP_AVAILABLE
+#include <onnxruntime/coreml_provider_factory.h>
+#endif
 
-@implementation ios_package_test_cpp_api
-
-- (void)setUp {
-  // Put setup code here. This method is called before the invocation of each test method in the class.
-}
-
-- (void)tearDown {
-  // Put teardown code here. This method is called after the invocation of each test method in the class.
-}
-
-- (void)testCppAPI {
+void testSigmoid(bool useCoreML) {
   // This is an e2e test for ORT C++ API
   Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "testCppAPI");
 
   // initialize session options if needed
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(1);
+
+#if COREML_EP_AVAILABLE
+  if (useCoreML) {
+    const uint32_t flags = COREML_FLAG_USE_CPU_ONLY;
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(session_options, flags));
+  }
+#else
+  (void)useCoreML;
+#endif
 
   NSString* ns_model_path = [[NSBundle mainBundle] pathForResource:@"sigmoid" ofType:@"ort"];
   Ort::Session session(env, ns_model_path.UTF8String, session_options);
@@ -64,5 +69,29 @@
     XCTAssertEqualWithAccuracy(expected_output_values[i], output_values[i], 1e-6);
   }
 }
+
+@interface ios_package_test_cpp_api : XCTestCase
+
+@end
+
+@implementation ios_package_test_cpp_api
+
+- (void)setUp {
+  // Put setup code here. This method is called before the invocation of each test method in the class.
+}
+
+- (void)tearDown {
+  // Put teardown code here. This method is called after the invocation of each test method in the class.
+}
+
+- (void)testCppAPI_Basic {
+  testSigmoid(false /* useCoreML */);
+}
+
+#if COREML_EP_AVAILABLE
+- (void)testCppAPI_Basic_CoreML {
+  testSigmoid(true /* useCoreML */);
+}
+#endif
 
 @end

@@ -226,17 +226,18 @@ elseif(NOT onnxruntime_BUILD_WEBASSEMBLY)
 endif()
 
 
-if (ARM64 OR ARM OR X86 OR X64 OR X86_64) 
+if (ARM64 OR ARM OR X86 OR X64 OR X86_64)
   if((ARM64 OR ARM) AND MSVC)
     # msvc compiler report syntax error with cpuinfo arm source files
     # and cpuinfo does not have code for getting arm uarch info under windows
   else()
     # Link cpuinfo
-    # Using it mainly in ARM with Android. 
+    # Using it mainly in ARM with Android.
     # Its functionality in detecting x86 cpu features are lacking, so is support for Windows.
 
     target_include_directories(onnxruntime_common PRIVATE ${PYTORCH_CPUINFO_INCLUDE_DIR})
-    target_link_libraries(onnxruntime_common  cpuinfo)
+    target_link_libraries(onnxruntime_common cpuinfo)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo clog)
   endif()
 endif()
 
