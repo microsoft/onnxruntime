@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/common/common.h"
 #include <unordered_map>
 
 namespace onnxruntime {
@@ -45,11 +46,16 @@ struct EventRecord {
   std::unordered_map<std::string, std::string> args;
 };
 
+using Events = std::vector<EventRecord>;
+
+//Execution Provider Profiler
 class EpProfiler {
  public:
   virtual ~EpProfiler() = default;
-  virtual bool StartProfiling() = 0;
-  virtual std::vector<EventRecord> StopProfiling() = 0;
+  virtual bool StartProfiling() = 0;                                    // called when profiling starts
+  virtual void EndProfiling(TimePoint start_time, Events& events) = 0;  // called when profiling ends, save all captures numbers to "events"
+  virtual void Start(uint64_t){};                                       // called before op start, accept an id as argument to identify the op
+  virtual void Stop(uint64_t){};                                        // called after op stop, accept an id as argument to identify the op
 };
 
 }  //namespace profiling

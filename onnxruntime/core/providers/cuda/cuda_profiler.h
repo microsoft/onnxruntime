@@ -10,15 +10,16 @@ namespace onnxruntime {
 
 namespace profiling {
 
-using TimePoint = std::chrono::high_resolution_clock::time_point;
 using Events = std::vector<onnxruntime::profiling::EventRecord>;
 
 class CudaProfiler final : public EpProfiler {
  public:
   bool StartProfiling() override;
-  Events StopProfiling() override;
+  void EndProfiling(TimePoint start_time, Events& events) override;
+  void Start(uint64_t) override;
+  void Stop(uint64_t) override;
 
- private:
+private:
   static void CUPTIAPI BufferRequested(uint8_t**, size_t*, size_t*);
   static void CUPTIAPI BufferCompleted(CUcontext, uint32_t, uint8_t*, size_t, size_t);
   struct KernelStat {
@@ -32,13 +33,13 @@ class CudaProfiler final : public EpProfiler {
     int32_t block_z_ = 0;
     int64_t start_ = 0;
     int64_t stop_ = 0;
-    int64_t correlation_id = 0;
+    uint32_t correlation_id = 0;
   };
   static onnxruntime::OrtMutex mtx;
   static std::atomic_flag enabled;
   static std::vector<KernelStat> stats;
+  static std::unordered_map<uint32_t, uint64_t> id_map;
   static bool initialized;
-  static TimePoint start_time;
 };
 
 }  // namespace profiling

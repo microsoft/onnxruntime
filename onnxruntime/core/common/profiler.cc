@@ -21,7 +21,12 @@ profiling::Profiler::~Profiler() {}
 
 ::onnxruntime::TimePoint profiling::Profiler::StartTime() const {
   ORT_ENFORCE(enabled_);
-  return std::chrono::high_resolution_clock::now();
+  auto start_time = std::chrono::high_resolution_clock::now();
+  auto ts = TimeDiffMicroSeconds(profiling_start_time_, start_time);
+  for (const auto& ep_profiler : ep_profilers_) {
+    ep_profiler->Start(ts);
+  } 
+  return start_time;
 }
 
 void Profiler::Initialize(const logging::Logger* session_logger) {
@@ -89,6 +94,10 @@ void Profiler::EndTimeAndRecordEvent(EventCategory category,
       }
     }
   }
+
+  for (const auto& ep_profiler : ep_profilers_) {
+    ep_profiler->Stop(ts);
+  }
 }
 
 std::string Profiler::EndProfiling() {
@@ -108,8 +117,7 @@ std::string Profiler::EndProfiling() {
   profile_stream_ << "[\n";
 
   for (auto& ep_profiler : ep_profilers_) {
-    std::vector<EventRecord> ep_events = ep_profiler->StopProfiling();
-    std::copy(ep_events.begin(), ep_events.end(), std::back_inserter(events_));
+    ep_profiler->EndProfiling(profiling_start_time_, events_);
   }
 
   for (size_t i = 0; i < events_.size(); ++i) {

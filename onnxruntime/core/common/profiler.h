@@ -133,7 +133,7 @@ class Profiler {
   const logging::Logger* session_logger_{nullptr};
   const logging::Logger* custom_logger_{nullptr};
   TimePoint profiling_start_time_;
-  std::vector<EventRecord> events_;
+  Events events_;
   bool max_events_reached{false};
   bool profile_with_logger_{false};
   const size_t max_num_events_{global_max_num_events_.load()};
