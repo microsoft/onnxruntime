@@ -5,6 +5,7 @@
 
 import os
 import sys
+import onnx
 
 # In ORT Package the symbolic_shape_infer.py is in ../tools
 file_path = os.path.dirname(__file__)
@@ -12,7 +13,8 @@ if os.path.exists(os.path.join(file_path, "../tools/symbolic_shape_infer.py")):
     sys.path.append(os.path.join(file_path, '../tools'))
 else:
     sys.path.append(os.path.join(file_path, '..'))
-from symbolic_shape_infer import *
+
+from symbolic_shape_infer import SymbolicShapeInference, get_shape_from_type_proto, sympy
 
 
 class SymbolicShapeInferenceHelper(SymbolicShapeInference):
@@ -43,7 +45,7 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
         self.initializers_ = dict([(i.name, i) for i in self.out_mp_.graph.initializer])
         self.known_vi_ = dict([(i.name, i) for i in list(self.out_mp_.graph.input)])
         self.known_vi_.update(
-            dict([(i.name, helper.make_tensor_value_info(i.name, i.data_type, list(i.dims)))
+            dict([(i.name, onnx.helper.make_tensor_value_info(i.name, i.data_type, list(i.dims)))
                   for i in self.out_mp_.graph.initializer]))
 
     # Override _get_sympy_shape() in symbolic_shape_infer.py to ensure shape inference by giving the actual value of dynamic axis

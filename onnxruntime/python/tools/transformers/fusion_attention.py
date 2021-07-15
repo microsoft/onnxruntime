@@ -119,10 +119,10 @@ class FusionAttention(Fusion):
         hidden_size = num_heads * head_size
 
         if self.num_heads > 0 and num_heads != self.num_heads:
-            logger.warn("--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")
+            logger.warn(f"--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")
 
         if self.hidden_size > 0 and hidden_size != self.hidden_size:
-            logger.warn("--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value.")
+            logger.warn(f"--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value.")
 
         return num_heads, hidden_size
 
