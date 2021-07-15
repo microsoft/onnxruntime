@@ -207,6 +207,10 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                              extra_add_qk_dims.size());
     }
 
+    if (extra_add_qk_dims[0] != batch_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'extra_add_qk' dimension 0 should be same as batch_size, got ",
+                             extra_add_qk_dims[0]);
+    }
     if (extra_add_qk_dims[1] != num_heads_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'extra_add_qk' dimension 1 should be same as number of heads, got ",
                              extra_add_qk_dims[1]);
@@ -475,7 +479,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   // Compute Q, K, V
   // gemm_data(BS, NT) = input(BS, D) x weights(D, NT) + bias(NT)
   // D (input_hidden_size) is hidden dimension of input, where D could be larger than any of the hidden_sizes
-  // (NH) when model is pruned.
+  // (NH) when model is pruned. T = H1 + H2 + H3, where H1, H2, H3 are head sizes of Q, K, V respectively
   auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * (q_hidden_size + k_hidden_size + v_hidden_size) * element_size);
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
 
@@ -539,7 +543,6 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         // A: input          (BxSxD)            (B.)S x D             S x D
         // B: weights        (DxNxT)             D x (N.)T            D x H
         // C: QKV[qkv_index] (BxNxSxT)          (B.N.)S x T           S x H
-        // T = H1 + H2 + H3, where H1, H2, H3 are head sizes of Q, K, V respectively
         if (q_packed_weights_) {
           uint8_t* packed_weight;
           if (qkv_index == 0) {

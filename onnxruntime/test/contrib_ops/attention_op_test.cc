@@ -338,6 +338,48 @@ TEST(AttentionTest, AttentionBatch1ExtraAdd) {
                    0, false, true, qkv_sizes, extra_add_qk);
 }
 
+TEST(AttentionTest, AttentionBatch2ExtraAdd) {
+  int batch_size = 2;
+  int sequence_length = 2;
+  int hidden_size = 4;
+  int number_of_heads = 2;
+
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f,
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<int32_t> qkv_sizes = {};
+
+  std::vector<float> weight_data = {
+      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
+      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
+      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
+      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
+
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f,
+      0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
+
+  std::vector<int32_t> mask_index_data = {2L, 2L};
+
+  std::vector<float> extra_add_qk = {
+      0.2f, -0.1f, 0.4f, 2.5f, 1.6f, -1.1f, 0.4f, -2.5f,
+      0.2f, -0.1f, 0.4f, 2.5f, 1.6f, -1.1f, 0.4f, -2.5f};
+
+  std::vector<float> output_data = {
+      4.066014289855957f, 0.068997815251350403f, 4.25f, 5.6499996185302734f,
+      -1.8799558877944946f, 0.32488855719566345f, 4.25f, 5.6499996185302734f,
+      4.066014289855957f, 0.068997815251350403f, 4.25f, 5.6499996185302734f,
+      -1.8799558877944946f, 0.32488855719566345f, 4.25f, 5.6499996185302734f};
+
+  RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
+                   batch_size, sequence_length, hidden_size, number_of_heads,
+                   false, false, false, 0, nullptr, nullptr, kMaskIndexEnd, 0,
+                   0, false, true, qkv_sizes, extra_add_qk);
+}
+
 TEST(AttentionTest, AttentionBatch1_Float16) {
   int batch_size = 1;
   int sequence_length = 2;
