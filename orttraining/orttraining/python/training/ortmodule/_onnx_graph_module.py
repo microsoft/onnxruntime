@@ -27,8 +27,13 @@ class OnnxGraphModule(torch.nn.Module):
     ):
         super().__init__()
         self._device = torch.device("cpu")
-        self._inference_agent = InferenceAgent(inference_model, self._device, session_options, providers, provider_options)
-        self._training_agent = TrainingAgent(training_model, self._device, session_options, providers, provider_options)
+        self._agent_kwargs = {
+            "session_options": session_options,
+            "providers": providers,
+            "provider_options": provider_options
+        }
+        self._inference_agent = InferenceAgent(inference_model, self._device, **self._agent_kwargs)
+        self._training_agent = TrainingAgent(training_model, self._device, **self._agent_kwargs)
         self._user_input_names = user_input_names
         self._require_grad_names = require_grad_names
         self._named_parameters = named_parameters
@@ -56,9 +61,13 @@ class OnnxGraphModule(torch.nn.Module):
 
     def to(self, device: torch.device): # pylint: disable=arguments-differ
         assert isinstance(device, torch.device), "Currently the only operation supported is device movement."
+        if self._device == device:
+            # Nothing to do
+            return self
         super().to(device)
-        self._inference_agent.device = device
-        self._training_agent.device = device
+        self._device = device
+        self._inference_agent = InferenceAgent(self._inference_agent._onnx_model, device, **self._agent_kwargs)
+        self._training_agent = TrainingAgent(self._training_agent._onnx_model, device, **self._agent_kwargs)
         return self
 
     def parameters(self, _recurse: bool = True) -> Iterator[torch.Tensor]:
