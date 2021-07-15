@@ -269,18 +269,18 @@ Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPU
 
 template <typename T>
 bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
-                                 AllocatorPtr alloc,
-                                 size_t head_size,
-                                 size_t input_hidden_size,
-                                 const T* weights_data,
-                                 size_t weight_matrix_col_size,
-                                 /*out*/ PrePackedWeights* prepacked_weights) {
+                                           AllocatorPtr alloc,
+                                           size_t head_size,
+                                           size_t input_hidden_size,
+                                           const T* weights_data,
+                                           size_t weight_matrix_col_size,
+                                           /*out*/ PrePackedWeights* prepacked_weights) {
   size_t packb_size = MlasGemmPackBSize(head_size, input_hidden_size);
   if (packb_size == 0) {
     return false;
   }
 
-  size_t loop_len = static_cast<size_t>(1) * num_heads_;
+  size_t loop_len = static_cast<size_t>(num_heads_);
   size_t packed_weights_data_size = packb_size * loop_len;  // The same size would be computed by AllocArray() below
   auto* packed_weights_data = static_cast<uint8_t*>(alloc->AllocArray(packb_size, loop_len));
 
@@ -337,8 +337,6 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
                              /*out*/ bool& is_packed,
                              /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
-
-  //TODO remove this comment, used for triggering build
 
   if (1 != input_idx) {
     return Status::OK();
@@ -475,8 +473,9 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
   auto* tp = context->GetOperatorThreadPool();
   // Compute Q, K, V
-  // gemm_data(BS, 3NH) = input(BS, D) x weights(D, 3NH) + bias(3NH)
-  // D (input_hidden_size) is hidden dimension of input, where D could be larger than hidden_size (NH) when model is pruned.
+  // gemm_data(BS, NT) = input(BS, D) x weights(D, NT) + bias(NT)
+  // D (input_hidden_size) is hidden dimension of input, where D could be larger than any of the hidden_sizes
+  // (NH) when model is pruned.
   auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * (q_hidden_size + k_hidden_size + v_hidden_size) * element_size);
   BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
 
@@ -526,7 +525,8 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         qkv_offset += (batch_index * num_heads_ + head_index) * (sequence_length * head_size_passed_in);
 
         // TODO!! memcpy here makes it not worthwhile to use Gemm batch. Possible to post process?
-        // broadcast 3NH -> (3.B.N.S.H)
+        // broadcast NH -> (B.N.S.H) for each of Q, K, V
+
         const T* broadcast_data_src = bias_data + bias_offset;
         T* broadcast_data_dest = QKV[qkv_index] + qkv_offset;
 
@@ -537,8 +537,9 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
         //                   original           transposed            iteration
         // A: input          (BxSxD)            (B.)S x D             S x D
-        // B: weights        (Dx3xNxH)          D x (3.N.)H           D x H
-        // C: QKV[qkv_index] (3xBxNxSxH)        (3.B.N.)S x H         S x H
+        // B: weights        (DxNxT)             D x (N.)T            D x H
+        // C: QKV[qkv_index] (BxNxSxT)          (B.N.)S x T           S x H
+        // T = H1 + H2 + H3, where H1, H2, H3 are head sizes of Q, K, V respectively
         if (q_packed_weights_) {
           uint8_t* packed_weight;
           if (qkv_index == 0) {

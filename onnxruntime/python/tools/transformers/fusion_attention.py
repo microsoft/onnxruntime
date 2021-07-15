@@ -433,8 +433,6 @@ class FusionAttention(Fusion):
             if new_node is None:
                 return
 
-            print("New node created")
-
             self.nodes_to_add.append(new_node)
             self.node_name_to_graph_name[new_node.name] = self.this_graph_name
 

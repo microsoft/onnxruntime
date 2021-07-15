@@ -380,7 +380,7 @@ void FusedMatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   updateOutputShape(ctx, 0, resultShape);
 }
 
-void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_input_index, int extra_add_index) {
+void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_input_index) {
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 0);
   if (ctx.getNumOutputs() > 1) {
@@ -404,16 +404,11 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
     std::vector<int64_t> qkv_hidden_sizes;
     getRepeatedAttribute(ctx, "qkv_hidden_sizes", qkv_hidden_sizes);
 
-    if (hasInputShape(ctx, extra_add_index)) {
-      auto& extra_add_shape = getInputShape(ctx, extra_add_index);
-      auto& extra_add_dims = extra_add_shape.dim();
-      if (extra_add_dims.size() != 4) {
-        fail_shape_inference("Extra add input should have 4 dimenstions");
-      }
-    }
-
     int64_t output_hidden_size;
     if (qkv_hidden_sizes.size() != 0) {
+      if (qkv_hidden_sizes.size() != 3) {
+        fail_shape_inference("qkv_hidden_sizes should have 3 elements")
+      }
       output_hidden_size = qkv_hidden_sizes[2];
     } else {
       output_hidden_size = bias_shape.dim(0).dim_value() / 3;
@@ -490,8 +485,7 @@ and present state are optional. Present state could appear in output even when p
       .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask index to integer types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         constexpr int past_input_index = 4;
-        constexpr int extra_add_index = 5;
-        AttentionTypeAndShapeInference(ctx, past_input_index, extra_add_index);
+        AttentionTypeAndShapeInference(ctx, past_input_index);
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(QAttention)
@@ -577,9 +571,8 @@ and present state are optional. Present state could appear in output even when p
       .TypeConstraint("T4", {"tensor(int32)"}, "Constrain mask index to integer types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         constexpr int past_input_index = 8;
-        constexpr int extra_add_index = 9;
 
-        AttentionTypeAndShapeInference(ctx, past_input_index, extra_add_index);
+        AttentionTypeAndShapeInference(ctx, past_input_index);
       });
 
   static const char* Longformer_Attention_doc = R"DOC(
