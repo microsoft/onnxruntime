@@ -80,6 +80,9 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 
   #if defined(OPENVINO_2022_1)
     // Replace framework output names with OV output names
+    // Until OV 2022.1 output names from ONNX were stored in the friendly name of a node.
+    // Now output name will be stored in Tensor names.
+    // This change convert tensor names to matching OutputInfo via getOVNameForTensor method
     std::unordered_map<std::string, int> new_names;
     for(auto output_name: subgraph_context_.output_names)
     {
@@ -138,6 +141,9 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 
     #if defined(OPENVINO_2022_1)
       // Replace framework output names with OV output names
+      // Until OV 2022.1 output names from ONNX were stored in the friendly name of a node.
+      // Now output name will be stored in Tensor names.
+      // This change convert tensor names to matching OutputInfo via getOVNameForTensor method
       std::unordered_map<std::string, int> new_names;
       for(auto output_name: subgraph_context_.output_names)
       {
