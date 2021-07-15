@@ -107,12 +107,9 @@ Params<T> QuantizeLinear(const float* data,
     T_min = -127;
   }
 
-  float min = std::numeric_limits<float>::max();
-  float max = std::numeric_limits<float>::min();
-  for (size_t i = 0; i < size; ++i) {
-    min = std::min(min, data[i]);
-    max = std::max(max, data[i]);
-  }
+  auto min_max_pair = std::minmax_element(data, data + size);
+  float min = *min_max_pair.first;
+  float max = *min_max_pair.second;
 
   // Adjust boundaries to ensure that 0 is included
   min = std::min(min, 0.0f);
