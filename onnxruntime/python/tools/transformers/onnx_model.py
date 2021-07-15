@@ -495,7 +495,12 @@ class OnnxModel:
         from packaging.version import Version
         import onnxconverter_common as oc
         if Version(oc.__version__) > Version("1.7.0"):
-            self.model = oc.float16.convert_float_to_float16(self.model, keep_io_types=cast_input_output)
+            # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc) are not recognized by onnx shape inference.
+            shape_infer_helper = SymbolicShapeInferenceHelper(self.model)
+            model_with_shape = shape_infer_helper.infer_shapes(self.model, auto_merge=True, guess_output_rank=False)
+            self.model = oc.float16.convert_float_to_float16(model_with_shape,
+                                                             keep_io_types=cast_input_output,
+                                                             disable_shape_infer=True)
             return
 
         graph = self.model.graph

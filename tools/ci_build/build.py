@@ -1298,8 +1298,17 @@ def run_ios_tests(args, source_dir, config, cwd):
 
     if args.build_apple_framework:
         package_test_py = os.path.join(source_dir, 'tools', 'ci_build', 'github', 'apple', 'test_ios_packages.py')
-        framework_dir = os.path.join(cwd, config + '-' + args.ios_sysroot)
-        run_subprocess([sys.executable, package_test_py, '--c_framework_dir', framework_dir], cwd=cwd)
+        framework_info_file = os.path.join(cwd, 'framework_info.json')
+        dynamic_framework_dir = os.path.join(cwd, config + '-' + args.ios_sysroot)
+        static_framework_dir = os.path.join(cwd, config + '-' + args.ios_sysroot, 'static_framework')
+        # test dynamic framework
+        run_subprocess([sys.executable, package_test_py,
+                        '--c_framework_dir', dynamic_framework_dir,
+                        '--framework_info_file', framework_info_file], cwd=cwd)
+        # test static framework
+        run_subprocess([sys.executable, package_test_py,
+                        '--c_framework_dir', static_framework_dir,
+                        '--framework_info_file', framework_info_file], cwd=cwd)
 
 
 def run_orttraining_test_orttrainer_frontend_separately(cwd):
