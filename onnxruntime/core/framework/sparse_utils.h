@@ -63,13 +63,6 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
 /// <param name="dst_allocator"></param>
 /// <param name="dst"></param>
 /// <returns>Status instance</returns>
-/// </summary>
-/// <param name="data_manager"></param>
-/// <param name="src"></param>
-/// <param name="cpu_allocator"></param>
-/// <param name="dst_allocator"></param>
-/// <param name="dst"></param>
-/// <returns></returns>
 Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator,
                               const AllocatorPtr& dst_allocator, Tensor& dst);
 #endif  //ORT_MINIMAL_BUILD

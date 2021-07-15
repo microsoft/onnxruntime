@@ -34,7 +34,7 @@ if import_capi_exception:
     raise import_capi_exception
 
 from onnxruntime.capi.onnxruntime_inference_collection import InferenceSession, IOBinding, OrtValue, SparseTensor, \
-    OrtDevice, numpy_array_to_cuda, numpy_array_to_cpu
+    OrtDevice
 
 from onnxruntime.capi.training import *  # noqa: F403
 

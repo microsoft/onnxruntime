@@ -111,7 +111,10 @@ Tensor::~Tensor() {
 
 void Tensor::ReleaseBuffer() {
   if (buffer_deleter_) {
-    utils::ReleaseTensorBuffer(buffer_deleter_, IsDataTypeString(), p_data_, shape_.Size());
+    if (IsDataTypeString()) {
+      utils::DestroyStrings(p_data_, shape_.Size());
+    }
+    buffer_deleter_->Free(p_data_);
   }
 }
 

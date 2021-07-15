@@ -90,7 +90,7 @@ void IExecutionFrame::UpdateFetches(const std::vector<int>& fetch_mlvalue_idxs, 
           dest.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
         }
 
-        ORT_THROW_IF_ERROR(CopyTensor(src, *dest.GetMutable<Tensor>()));
+        ORT_THROW_IF_ERROR(CopySparseTensor(src, *dest.GetMutable<Tensor>()));
       }
     }
   }
@@ -154,8 +154,8 @@ Status IExecutionFrame::GetOrCreateNodeOutputMLValue(const int output_index, int
                     " Requested shape:", shape ? shape->ToString() : "null");
       } else if (p_ort_value->IsSparseTensor()) {
         const SparseTensor& sp_tensor = p_ort_value->Get<SparseTensor>();
-        ORT_ENFORCE(shape && sp_tensor.Shape() == *shape,
-                    "OrtValue shape verification failed. Current shape:", sp_tensor.Shape(),
+        ORT_ENFORCE(shape && sp_tensor.DenseShape() == *shape,
+                    "OrtValue shape verification failed. Current shape:", sp_tensor.DenseShape(),
                     " Requested shape:", shape ? shape->ToString() : "null");
       }
     } else {

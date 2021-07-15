@@ -105,17 +105,11 @@ void ConstructStrings(void* p_data, int64_t elements) {
   }
 }
 
-
-void ReleaseTensorBuffer(const AllocatorPtr& allocator, bool is_string, void* p_data, int64_t elements) {
-  // if current buffer contains strings, need to explicitly call string(s)
-  // __dtor(s).
-  if (is_string) {
-    using string = std::string;
-    auto* ptr = static_cast<std::string*>(p_data);
-    for (int64_t i = 0; i < elements; i++)
-      ptr[i].~string();
-  }
-  allocator->Free(p_data);
+void DestroyStrings(void* p_data, int64_t elements) {
+  using string = std::string;
+  auto* ptr = static_cast<std::string*>(p_data);
+  for (int64_t i = 0; i < elements; i++)
+    ptr[i].~string();
 }
 
 bool ProviderIsCpuBased(const std::string& provider_type) {
@@ -149,7 +143,7 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
   } else if (source_mlvalue.IsSparseTensor()) {
     const SparseTensor& source_tensor = source_mlvalue.Get<SparseTensor>();
     auto p_tensor = std::make_unique<SparseTensor>(source_tensor.DataType(),
-                                                   source_tensor.Shape(),
+                                                   source_tensor.DenseShape(),
                                                    allocator);
     auto ml_tensor = DataTypeImpl::GetType<SparseTensor>();
     target_mlvalue.Init(p_tensor.release(),
@@ -189,23 +183,6 @@ const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info) 
   return required_provider_type;
 }
 
-namespace {
-template <class T, class Batch>
-Status BatchOrCopyHelper(const SessionState& session_state,
-                         const OrtValue& source_mlvalue,
-                         OrtValue& target_mlvalue, Batch* copy_batch = nullptr) {
-  const auto& source_tensor = source_mlvalue.Get<T>();
-  T* p_output_tensor = target_mlvalue.GetMutable<T>();
-
-  if (copy_batch != nullptr) {
-    copy_batch->push_back({source_tensor, *p_output_tensor, 0});
-  } else {
-    ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(source_tensor, *p_output_tensor));
-  }
-  return Status::OK();
-}
-}  // namespace
-
 // Copy MLValue. Uses DataTransferManager for device copy if necessary. If copy_tensor_pairs/copy_sparse_pairs is provided,
 // src/dst pairs that need a device copy are added to copy_pairs so copying can be batches by the DataTransferManager
 // implementation for performance reasons.
@@ -228,9 +205,22 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
   }
 
   if (source_mlvalue.IsTensor()) {
-    ORT_RETURN_IF_ERROR(BatchOrCopyHelper<Tensor>(session_state, source_mlvalue, target_mlvalue, copy_tensor_pairs));
+    const auto& source_tensor = source_mlvalue.Get<Tensor>();
+    Tensor* p_output_tensor = target_mlvalue.GetMutable<Tensor>();
+
+    if (copy_tensor_pairs != nullptr) {
+      copy_tensor_pairs->push_back({source_tensor, *p_output_tensor, 0});
+    } else {
+      ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(source_tensor, *p_output_tensor));
+    }
   } else if (source_mlvalue.IsSparseTensor()) {
-    ORT_RETURN_IF_ERROR(BatchOrCopyHelper<SparseTensor>(session_state, source_mlvalue, target_mlvalue, copy_sparse_pairs));
+    const auto& source_tensor = source_mlvalue.Get<SparseTensor>();
+    SparseTensor* p_output_tensor = target_mlvalue.GetMutable<SparseTensor>();
+    if (copy_sparse_pairs != nullptr) {
+      copy_sparse_pairs->push_back({source_tensor, *p_output_tensor, 0});
+    } else {
+      ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopySparseTensor(source_tensor, *p_output_tensor));
+    }
   } else if (source_mlvalue.IsTensorSequence()) {
     const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
     TensorSeq& target_tensor_seq = const_cast<TensorSeq&>(target_mlvalue.Get<TensorSeq>());
@@ -508,7 +498,7 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
   }
 
   if (!batched_sparse_data_transfers.empty()) {
-    ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensors(batched_sparse_data_transfers));
+    ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopySparseTensors(batched_sparse_data_transfers));
   }
 
   return Status::OK();
@@ -551,7 +541,7 @@ static common::Status CopyOutputsAcrossDevices(const SessionState& session_state
   }
 
   if (!batched_sparse_data_transfers.empty()) {
-    ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensors(batched_sparse_data_transfers));
+    ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopySparseTensors(batched_sparse_data_transfers));
   }
 
   return Status::OK();

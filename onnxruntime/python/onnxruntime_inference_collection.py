@@ -92,26 +92,6 @@ def check_and_normalize_provider_args(providers, provider_options, available_pro
     return list(provider_name_to_options.keys()), list(provider_name_to_options.values())
 
 
-def numpy_array_to_cuda(ort_device, numpy_array_on_cpu):
-    '''
-    The function allocates a numpy array on the specified CUDA device and copies
-    the content of numpy_array_on_cpu. It preserves the dtype and the shape.
-    Only numeric types are supported and only in CUDA enabled builds.
-    No attempt is made to verify that the source is indeed on CPU
-    '''
-    return C.numpy_array_to_cuda(numpy_array_on_cpu, ort_device._get_c_device())
-
-
-def numpy_array_to_cpu(numpy_array_on_cuda):
-    '''
-    The function allocates a numpy array in the host memory and copies
-    the content of numpy_array_on_cuda. It preserves the dtype and the shape.
-    Only numeric types are supported and only in CUDA enabled builds.
-    No attempt is made to verify that the source is indeed on CUDA
-    '''
-    return C.numpy_array_to_cpu(numpy_array_on_cuda)
-
-
 class Session:
     """
     This is the main class used to run a model.

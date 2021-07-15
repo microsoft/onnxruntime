@@ -36,6 +36,23 @@ struct MakeDType {
     return py::dtype::of<T>();
   }
 };
+
+/// <summary>
+/// The function creates a numpy array that points to
+/// data stored within the corresponing tensor. Parent object
+/// holds a reference to the object that owns the data so it
+/// does not disappear.
+/// </summary>
+/// <returns>numpy array</returns>
+py::array MakeNumpyArrayFromIndices(const Tensor& indices, const py::object& parent) {
+  // See https://github.com/pybind/pybind11/issues/2271 for more information on parent
+  py::array result(indices.Shape().GetDims(), indices.Data<int64_t>(), parent);
+  assert(!result.owndata());
+  // Set a read-only flag
+  PyArray_CLEARFLAGS(reinterpret_cast<PyArrayObject*>(result.ptr()), NPY_ARRAY_WRITEABLE);
+  return result;
+}
+
 }  // namespace
 
 class PySparseCooView : public SparseTensor::CooView {
@@ -56,6 +73,7 @@ class PySparseCsrView : public SparseTensor::CsrView {
 
 class PySparseBlockSparseView : public SparseTensor::BlockSparseView {
   py::object parent_;
+
  public:
   PySparseBlockSparseView(const SparseTensor::BlockSparseView& view, const py::object& parent) noexcept
       : SparseTensor::BlockSparseView(view), parent_(parent) {}
@@ -72,60 +90,28 @@ void addSparseTensorMethods(pybind11::module& m) {
       // Returns a numpy array of COO indices backed by Sparse Tensor memory
       // be aware that indices may reside on GPU if Sparse Tensor is on GPU
       .def("indices", [](const PySparseCooView* view) -> py::array {
-        const auto& indices = view->Index();
-        // Since rep is a registered pybind object, it will create an extra reference
-        // as base object for numpy array to make sure rep python object does not go away
-        // while numpy array view is in use.
-        // See https://github.com/pybind/pybind11/issues/2271
-        py::array result(indices.Shape().GetDims(), indices.Data<int64_t>(), py::cast(*view));
-        assert(!result.owndata());
-        // Set a read-only flag
-        PyArray_CLEARFLAGS(reinterpret_cast<PyArrayObject*>(result.ptr()), NPY_ARRAY_WRITEABLE);
-        return result;
+        const auto& indices = view->Indices();
+        return MakeNumpyArrayFromIndices(indices, py::cast(*view));
       });
 
   py::class_<PySparseCsrView>(m, "SparseCsrView")
       .def("inner", [](const PySparseCsrView* view) -> py::array {
         const auto& indices = view->Inner();
-        // Since rep is a registered pybind object, it will create an extra reference
-        // as base object for numpy array to make sure rep python object does not go away
-        // while numpy array view is in use.
-        // See https://github.com/pybind/pybind11/issues/2271
-        py::array result(indices.Shape().GetDims(), indices.Data<int64_t>(), py::cast(*view));
-        assert(!result.owndata());
-        // Set a read-only flag
-        PyArray_CLEARFLAGS(reinterpret_cast<PyArrayObject*>(result.ptr()), NPY_ARRAY_WRITEABLE);
-        return result;
+        return MakeNumpyArrayFromIndices(indices, py::cast(*view));
       })
       .def("outer", [](const PySparseCsrView* view) -> py::array {
         const auto& indices = view->Outer();
-        // Since rep is a registered pybind object, it will create an extra reference
-        // as base object for numpy array to make sure rep python object does not go away
-        // while numpy array view is in use.
-        // See https://github.com/pybind/pybind11/issues/2271
-        py::array result(indices.Shape().GetDims(), indices.Data<int64_t>(), py::cast(*view));
-        assert(!result.owndata());
-        // Set a read-only flag
-        PyArray_CLEARFLAGS(reinterpret_cast<PyArrayObject*>(result.ptr()), NPY_ARRAY_WRITEABLE);
-        return result;
+        return MakeNumpyArrayFromIndices(indices, py::cast(*view));
       });
 
   py::class_<PySparseBlockSparseView>(m, "SparseBlockSparseView")
       .def("index", [](const PySparseBlockSparseView* view) -> py::array {
-        const auto& indices = view->Index();
-        // Since rep is a registered pybind object, it will create an extra reference
-        // as base object for numpy array to make sure rep python object does not go away
-        // while numpy array view is in use.
-        // See https://github.com/pybind/pybind11/issues/2271
-        py::array result(indices.Shape().GetDims(), indices.Data<int64_t>(), py::cast(*view));
-        assert(!result.owndata());
-        // Set a read-only flag
-        PyArray_CLEARFLAGS(reinterpret_cast<PyArrayObject*>(result.ptr()), NPY_ARRAY_WRITEABLE);
-        return result;
+        const auto& indices = view->Indices();
+        return MakeNumpyArrayFromIndices(indices, py::cast(*view));
       });
 
-  py::class_<PySparseTensor>(m, "SparseTensor")
-      // Factor method to create a COO Sparse Tensor from numpy arrays acting as backing storage.
+  py::class_<PySparseTensor> sparse_bind(m, "SparseTensor");
+      // Factory method to create a COO Sparse Tensor from numpy arrays acting as backing storage.
       // Numeric arrays memory is used as is with reference count increment. All other supported
       // types are copied and supported only on CPU.
       // Use numpy.ascontiguousarray() to obtain contiguous array of values and indices if necessary
@@ -136,6 +122,7 @@ void addSparseTensorMethods(pybind11::module& m) {
       // ort_device - where the value and indices buffers are allocated. For non-primitive types,
       //              only cpu device is supported. There is not a way to verify that ort_device
       //              accurately describes the memory that is backing values and indices.
+      sparse_bind
       .def_static("sparse_coo_from_numpy", [](const std::vector<int64_t>& py_dense_shape, const py::array& py_values, const py::array_t<int64_t>& py_indices, const OrtDevice& ort_device) -> std::unique_ptr<PySparseTensor> {
         if (1 != py_values.ndim()) {
           ORT_THROW("Expecting values 1-D numpy values array for COO format. Got dims: ", py_values.ndim());
@@ -161,8 +148,8 @@ void addSparseTensorMethods(pybind11::module& m) {
           TensorShape values_shape{py_values.size()};
           auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, values_shape,
                                                               const_cast<void*>(py_values.data()), mem_info);
-          auto index_span = gsl::make_span(py_indices.data(), py_indices.size());
-          ORT_THROW_IF_ERROR(sparse_tensor->UseCooIndex(index_span));
+          auto index_span = gsl::make_span(const_cast<int64_t*>(py_indices.data()), py_indices.size());
+          ORT_THROW_IF_ERROR(sparse_tensor->UseCooIndices(index_span));
           result = std::make_unique<PySparseTensor>(std::move(sparse_tensor), std::move(reference_holders));
         } else if (values_type == NPY_UNICODE || values_type == NPY_STRING) {
           if (ort_device.Type() != OrtDevice::CPU) {
@@ -171,14 +158,14 @@ void addSparseTensorMethods(pybind11::module& m) {
           auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, GetAllocator());
           auto mutator = sparse_tensor->MakeCooData(py_values.size(), py_indices.size());
           CopyDataToTensor(py_values, values_type, mutator.Values());
-          CopyDataToTensor(py_indices, GetNumpyArrayType(py_indices), mutator.Index());
+          CopyDataToTensor(py_indices, GetNumpyArrayType(py_indices), mutator.Indices());
           result = std::make_unique<PySparseTensor>(std::move(sparse_tensor));
         } else {
           ORT_THROW("Unsupported values data type: ", values_type);
         }
         return result;
       })
-      // Factor method to create a CSR Sparse Tensor from numpy arrays acting as backing storage.
+      // Factory method to create a CSR Sparse Tensor from numpy arrays acting as backing storage.
       // Numeric arrays memory is used as is with reference count increment. All other supported
       // types are copied and supported only on CPU.
       // Use numpy.ascontiguousarray() to obtain contiguous array of values and indices if necessary
@@ -238,7 +225,7 @@ void addSparseTensorMethods(pybind11::module& m) {
 
         return result;
       })
-      // Factor method to create a BlockSparse Tensor from numpy arrays acting as backing storage.
+      // Factory method to create a BlockSparse Tensor from numpy arrays acting as backing storage.
       // Numeric arrays memory is used as is with reference count increment. All other supported
       // types are copied and supported only on CPU.
       // Use numpy.ascontiguousarray() to obtain contiguous array of values and indices if necessary
@@ -249,10 +236,7 @@ void addSparseTensorMethods(pybind11::module& m) {
       // ort_device - where the value and indices buffers are allocated. For non-primitive types,
       //              only cpu device is supported. There is not a way to verify that ort_device
       //              accurately describes the memory that is backing values and indices.
-      .def_static("blocksparse_from_numpy", [](const std::vector<int64_t>& py_dense_shape,
-                                               const py::array& py_values,
-                                               const py::array_t<int32_t>& py_indices,
-                                               const OrtDevice& ort_device) -> std::unique_ptr<PySparseTensor> {
+      .def_static("blocksparse_from_numpy", [](const std::vector<int64_t>& py_dense_shape, const py::array& py_values, const py::array_t<int32_t>& py_indices, const OrtDevice& ort_device) -> std::unique_ptr<PySparseTensor> {
         TensorShape dense_shape(py_dense_shape);
         TensorShape values_shape = GetShape(py_values);
         TensorShape index_shape = GetShape(py_indices);
@@ -274,7 +258,7 @@ void addSparseTensorMethods(pybind11::module& m) {
           OrtMemoryInfo mem_info = GetMemoryInfoPerDeviceType(ort_device);
           auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, values_shape,
                                                               const_cast<void*>(py_values.data()), mem_info);
-          ORT_THROW_IF_ERROR(sparse_tensor->UseBlockSparseIndices(index_shape, py_indices.data()));
+          ORT_THROW_IF_ERROR(sparse_tensor->UseBlockSparseIndices(index_shape, const_cast<int32_t*>(py_indices.data())));
           result = std::make_unique<PySparseTensor>(std::move(sparse_tensor), std::move(reference_holders));
         } else if (values_type == NPY_UNICODE || values_type == NPY_STRING) {
           if (ort_device.Type() != OrtDevice::CPU) {
@@ -283,7 +267,7 @@ void addSparseTensorMethods(pybind11::module& m) {
           auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, GetAllocator());
           auto mutator = sparse_tensor->MakeBlockSparseData(values_shape, index_shape);
           CopyDataToTensor(py_values, values_type, mutator.Values());
-          CopyDataToTensor(py_indices, GetNumpyArrayType(py_indices), mutator.Index());
+          CopyDataToTensor(py_indices, GetNumpyArrayType(py_indices), mutator.Indices());
           result = std::make_unique<PySparseTensor>(std::move(sparse_tensor));
         } else {
           ORT_THROW("Unsupported values data type: ", values_type);
@@ -298,15 +282,20 @@ void addSparseTensorMethods(pybind11::module& m) {
           ORT_THROW("This sparse tensor instance does not contain data");
         }
         if (sparse_tensor.IsDataTypeString()) {
-          // Strings can not be on GPU but we can not expose them as mapped memory
-          // So we need to create a copy.
-          py::list str_list;
-          auto str_span = sparse_tensor.Values().DataAsSpan<std::string>();
-          for (const auto& s : str_span) {
-            // valid UTF-8 to python UNICODE is handled automatically
-            str_list.append(py::cast(s));
+          // Strings can not be on GPU and require conversion UTF-8 to Python UNICODE
+          // We need to create a copy.
+          const auto& values_shape = sparse_tensor.Values().Shape();
+          const int numpy_type = OnnxRuntimeTensorToNumpyType(DataTypeImpl::GetType<std::string>());
+          ORT_ENFORCE(NPY_OBJECT == numpy_type, "We are expecting to map strings to NPY_OBJECT type");
+          py::array result = py::reinterpret_steal<py::array>(PyArray_SimpleNew(
+              gsl::narrow<npy_int>(values_shape.NumDimensions()), values_shape.GetDims().data(), numpy_type));
+          auto* out_ptr = static_cast<py::object*>(
+              PyArray_DATA(reinterpret_cast<PyArrayObject*>(result.ptr())));
+          const std::string* src = sparse_tensor.Values().Data<std::string>();
+          for (int64_t i = 0, size = values_shape.Size(); i < size; ++i, src++) {
+            out_ptr[i] = py::cast(*src);
           }
-          return py::cast<py::array>(str_list);
+          return result;
         } else {
           utils::MLTypeCallDispatcher<float, double, int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t>
               t_disp(sparse_tensor.GetElementType());
@@ -321,32 +310,29 @@ void addSparseTensorMethods(pybind11::module& m) {
         }
       })
       // Returns a Coo view of data
-      .def(
-          "get_coo_data", [](const PySparseTensor* py_tensor) -> std::unique_ptr<PySparseCooView> {
-            const SparseTensor& sparse_tensor = py_tensor->Instance();
-            if (sparse_tensor.Format() != SparseFormat::kCoo) {
-              ORT_THROW("This sparse tensor does not contain COO format");
-            }
-            return std::make_unique<PySparseCooView>(sparse_tensor.AsCoo(), py::cast(*py_tensor));
-          })
+      .def("get_coo_data", [](const PySparseTensor* py_tensor) -> std::unique_ptr<PySparseCooView> {
+        const SparseTensor& sparse_tensor = py_tensor->Instance();
+        if (sparse_tensor.Format() != SparseFormat::kCoo) {
+          ORT_THROW("This sparse tensor does not contain COO format");
+        }
+        return std::make_unique<PySparseCooView>(sparse_tensor.AsCoo(), py::cast(*py_tensor));
+      })
       // Returns a CSR view of data
-      .def(
-          "get_csrc_data", [](const PySparseTensor* py_tensor) -> std::unique_ptr<PySparseCsrView> {
-            const SparseTensor& sparse_tensor = py_tensor->Instance();
-            if (sparse_tensor.Format() != SparseFormat::kCsrc) {
-              ORT_THROW("This sparse tensor does not contain CSR(C) format");
-            }
-            return std::make_unique<PySparseCsrView>(sparse_tensor.AsCsr(), py::cast(*py_tensor));
-          })
+      .def("get_csrc_data", [](const PySparseTensor* py_tensor) -> std::unique_ptr<PySparseCsrView> {
+        const SparseTensor& sparse_tensor = py_tensor->Instance();
+        if (sparse_tensor.Format() != SparseFormat::kCsrc) {
+          ORT_THROW("This sparse tensor does not contain CSR(C) format");
+        }
+        return std::make_unique<PySparseCsrView>(sparse_tensor.AsCsr(), py::cast(*py_tensor));
+      })
       // Returns a blocksparse view of data
-      .def(
-          "get_blocksparse_data", [](const PySparseTensor* py_tensor) -> std::unique_ptr<PySparseBlockSparseView> {
-            const SparseTensor& sparse_tensor = py_tensor->Instance();
-            if (sparse_tensor.Format() != SparseFormat::kBlockSparse) {
-              ORT_THROW("This sparse tensor does not contain BlockSparse format");
-            }
-            return std::make_unique<PySparseBlockSparseView>(sparse_tensor.AsBlockSparse(), py::cast(*py_tensor));
-          })
+      .def("get_blocksparse_data", [](const PySparseTensor* py_tensor) -> std::unique_ptr<PySparseBlockSparseView> {
+        const SparseTensor& sparse_tensor = py_tensor->Instance();
+        if (sparse_tensor.Format() != SparseFormat::kBlockSparse) {
+          ORT_THROW("This sparse tensor does not contain BlockSparse format");
+        }
+        return std::make_unique<PySparseBlockSparseView>(sparse_tensor.AsBlockSparse(), py::cast(*py_tensor));
+      })
 
   /// This will copy SparseTensor into a new instance on a specified CUDA device or throw:
   /// - if this sparse tensor contains strings
@@ -367,7 +353,7 @@ void addSparseTensorMethods(pybind11::module& m) {
         }
         auto cuda_allocator = GetCudaAllocator(ort_device.Id());
         auto gpu_transfer = GetGPUDataTransfer();
-        auto dest_tensor = std::make_unique<SparseTensor>(sparse_tensor.DataType(), sparse_tensor.Shape(), std::move(cuda_allocator));
+        auto dest_tensor = std::make_unique<SparseTensor>(sparse_tensor.DataType(), sparse_tensor.DenseShape(), std::move(cuda_allocator));
         ORT_THROW_IF_ERROR(sparse_tensor.Copy(*gpu_transfer, *dest_tensor, 0));
         auto result = std::make_unique<PySparseTensor>(std::move(dest_tensor));
         return result;
@@ -378,7 +364,7 @@ void addSparseTensorMethods(pybind11::module& m) {
       })
       .def("shape", [](const PySparseTensor* py_tensor) -> py::list {
         const SparseTensor& st = py_tensor->Instance();
-        const auto& dims = st.Shape().GetDims();
+        const auto& dims = st.DenseShape().GetDims();
         // We create a copy of dimensions, it is small
         py::list py_dims;
         for (auto d : dims) {

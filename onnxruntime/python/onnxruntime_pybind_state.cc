@@ -212,7 +212,7 @@ py::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value, co
                             << " Returned it will have its data on GPU, you can copy it using numpy_array_to_cpu()";
       py_sparse_tensor.reset(new PySparseTensor(ort_value));
     } else {
-      auto dst_sparse_tensor = std::make_unique<SparseTensor>(src_sparse_tensor.DataType(), src_sparse_tensor.Shape(), GetAllocator());
+      auto dst_sparse_tensor = std::make_unique<SparseTensor>(src_sparse_tensor.DataType(), src_sparse_tensor.DenseShape(), GetAllocator());
       auto status = src_sparse_tensor.Copy(*data_transfer_manager, 0, *dst_sparse_tensor);
       OrtPybindThrowIfError(status);
       py_sparse_tensor.reset(new PySparseTensor(std::move(dst_sparse_tensor)));
@@ -827,57 +827,6 @@ void addGlobalMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
         }
       });
-#ifdef USE_CUDA
-  m.def("numpy_array_to_cuda", [](const py::array& cpu_src, const OrtDevice& ort_device) -> py::array {
-        const auto dtype = cpu_src.dtype();
-        if (!IsNumericDType(dtype)) {
-          ORT_THROW("Supports only numeric datatypes");
-        }
-        if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), ort_device.Id())) {
-          ORT_THROW("The provided device id doesn't match any available GPUs on the machine: ", ort_device.Id());
-        }
-        auto allocator = GetCudaAllocator(ort_device.Id());
-        const auto alloc_size = cpu_src.nbytes();
-        struct ptr_cont {
-          IAllocatorUniquePtr<void> ptr;
-          explicit ptr_cont(IAllocatorUniquePtr<void>&& p_p) : ptr(std::move(p_p)) {}
-        };
-        auto alloc_ptr = IAllocator::MakeUniquePtr<void>(allocator, alloc_size);
-        void* array_ptr = alloc_ptr.get();
-        CpuToCudaMemCpy(array_ptr, cpu_src.data(), alloc_size);
-        auto cc = std::make_unique<ptr_cont>(std::move(alloc_ptr));
-        py::capsule cap(cc.get(), [](void* ptr) {
-          delete reinterpret_cast<ptr_cont*>(ptr);
-        });
-        auto shape_span = gsl::make_span(cpu_src.shape(), cpu_src.ndim());
-        py::array result(dtype, shape_span, array_ptr, cap);
-        cc.release();
-        return result;
-#else
-    m.def("numpy_array_to_cuda", [](const py::array&, const OrtDevice&){
-         ORT_THROW("CUDA is not available in this build.");
-#endif
-      },
-      "Copies numpy array to the specified CUDA device. Shape and type are preserved." \
-      "Only numeric types are supported. No attempt is made to verify source is on CPU.");
-#ifdef USE_CUDA
-    m.def("numpy_array_to_cpu", [](const py::array& cuda_src) -> py::array {
-        const auto dtype = cuda_src.dtype();
-        if (!IsNumericDType(dtype)) {
-          ORT_THROW("Supports only numeric datatypes");
-        }
-        auto shape_span = gsl::make_span(cuda_src.shape(), cuda_src.ndim());
-        py::array result(dtype, shape_span);
-        assert(result.nbytes() == cuda_src.nbytes());
-        CudaToCpuMemCpy(result.mutable_data(), cuda_src.data(), cuda_src.nbytes());
-        return result;
-#else
-  m.def("numpy_array_to_cpu", [](const py::array&) {
-        ORT_THROW("CUDA is not available in this build.");
-#endif
-    },
-    "Copies numpy array CPU/Host memory from the specified CUDA device. Shape and type are preserved." \
-    "Only numeric types are supported. No attempt is made to verify source is on GPU.");
 
 #ifdef ENABLE_TRAINING
   m.def(

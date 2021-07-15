@@ -28,18 +28,35 @@ std::ostream& operator<<(std::ostream&, SparseFormat);
 
 /**
  * @brief This class implements SparseTensor. 
- * We represent a SparseTensor as a single contiguous buffer with Tensors that project
- * values into that buffer with other Tensors projecting format specific indices.
+ * This class holds sparse non-zero data (values) and sparse format
+ * specific indices. There are two main uses for the class (similar to that of Tensor)
+ * - one is to re-present model sparse inputs. Such inputs typically reside
+ *   in user allocated buffers that are not owned by SparseTensor instance and the instance
+ *   serves as a facade to expose user allocated buffers. Such buffers should already
+ *   contain proper values and format specific indices.
+ *   Use the first constructor
+ *   to instantiate SparseTensor and supply values_data pointer. Use*() functions can
+ *   be used to supply pointers to format specific indices. These buffers are used as is
+ *   and will not be modified or deallocated by the instance. However, the lifespan of the buffers
+ *   must eclipse the lifespan of the SparseTensor instance.
  * 
+ * - Represent sparse data that is a result of format conversion or a computation result. Use second constructor
+ *   to supply a desired allocator. Use Make*() format specific interfaces to supply values and format
+ *   specific indices. The specified data will be copied into an internally allocated buffer.
+     Internally, we will represent a SparseTensor as a single contiguous buffer that
+ *   contains values followed by format specific indices. We use Tensors to project
+ *   values and indices into various parts of buffer.
  */
 
 class SparseTensor final {
  public:
   /// <summary>
-  /// This constructs an instances that points to user defined buffers.
-  /// Make use of Use* functions to supplied format specific indices that
-  /// reside in the user supplied buffers. Format specific indices are expected
-  /// to be supplied via Use*() methods.
+  /// This constructs an instance that points to user defined buffers.
+  /// Make use of Use* functions to supply format specific indices that
+  /// reside in the user supplied buffers. The instance constructed this way
+  /// will not copy data and will use the supplied buffers in read-only way.
+  /// The lifespan of supplied buffers is expected to eclipse the lifespan of the
+  /// sparse tensor instance.
   /// </summary>
   /// <param name="elt_type">MlDataType</param>
   /// <param name="dense_shape">a shape of original tensor in dense form</param>
@@ -53,8 +70,10 @@ class SparseTensor final {
                const OrtMemoryInfo& location);
 
   /// <summary>
-  /// A constructor that would memorize allocation details but
-  /// will do nothing. All the data would come via Make*() interfaces.
+  /// Use this constructor to hold sparse data in the buffer
+  /// allocated with the specificed allocator. Use Make*() methods
+  /// to populate the instance with data which will be copied into the
+  /// allocated buffer.
   /// </summary>
   /// <param name="elt_type"></param>
   /// <param name="dense_shape"></param>
@@ -67,15 +86,19 @@ class SparseTensor final {
 
   ~SparseTensor();
 
-  // For now, disallow all copy, assignment, and move.
+  // For now, disallow copy and assignment.
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(SparseTensor);
 
-  // Returns the number of entries in the values tensor (aka "NNZ" or "number of nonzero values")
-  // For block sparse formats this may include some zeros in the blocks are considered non-zero.
+  /// <summary>
+  // Returns the number of non-zero values (aka "NNZ")
+  // For block sparse formats this may include some zeros in the blocks
+  // are considered non-zero.
+  /// </summary>
+  /// <returns>nnz</returns>
   size_t NumValues() const { return static_cast<size_t>(values_.Shape().Size()); }
 
   /// <summary>
-  /// Read only accessor to values
+  /// Read only accessor to non-zero values
   /// </summary>
   /// <returns></returns>
   const Tensor& Values() const noexcept {
@@ -89,17 +112,16 @@ class SparseTensor final {
   /// Returns SparseFormat that the instance currently holds
   /// if the value returned in kUndefined, the instance is not populated
   /// </summary>
-  /// <returns></returns>
+  /// <returns>format enum</returns>
   SparseFormat Format() const noexcept {
     return format_;
   }
 
   /// <summary>
   /// Returns a would be dense_shape
-  /// This does not describe shapes of values of indices or values.
   /// </summary>
-  /// <returns></returns>
-  const TensorShape& Shape() const noexcept {
+  /// <returns>reference to dense_shape</returns>
+  const TensorShape& DenseShape() const noexcept {
     return dense_shape_;
   }
 
@@ -107,7 +129,7 @@ class SparseTensor final {
   /// Calculates and returns how much this fully initialized SparseTensor data (would)
   /// occupy in a contiguous allocation block, or, in fact, occupies if it owns the buffer.
   /// </summary>
-  /// <returns></returns>
+  /// <returns>required allocation size</returns>
   int64_t RequiredAllocationSize() const noexcept;
 
   /// <summary>
@@ -147,74 +169,72 @@ class SparseTensor final {
 
   const OrtMemoryInfo& Location() const noexcept { return location_; }
 
-  bool OwnsBuffer() const noexcept {
-    return allocator_ != nullptr;
-  }
-
   /// <summary>
-  /// Read only access to Coo index
+  /// Read only access to Coo indices
   /// </summary>
   class CooView {
    public:
-    explicit CooView(const Tensor& index) noexcept
-        : index_(index) {}
-    const Tensor& Index() const noexcept { return index_; }
+    explicit CooView(const Tensor& indices) noexcept
+        : indices_(indices) {}
+    const Tensor& Indices() const noexcept { return indices_; }
 
    private:
-    std::reference_wrapper<const Tensor> index_;
+    std::reference_wrapper<const Tensor> indices_;
   };
 
   /// <summary>
   /// Returns Coo index view
   /// </summary>
-  /// <returns></returns>
+  /// <returns>CooView instance</returns>
   CooView AsCoo() const;
 
   /// <summary>
-  /// Uses COO index contained the user allocated buffer along with the values buffer passed on
-  /// to the constructor. The buffer is used as is. The location of the index is assumed to be
-  /// the same as values.
+  /// Uses COO index contained in the user allocated buffer along with the values buffer passed on
+  /// to the constructor. The buffer is used as is and its lifespan must eclipse the lifespan of the sparse
+  /// tensor instance. The OrtMemoryInfo (location) of the index is assumed to be the same as values.
   ///
   /// The index size must either exactly match the number of values in which case
   /// index shape would be 1-D (values_count) or it must be twice the number of values
   /// in which case its shape would be 2-D (values_count, 2)
   /// </summary>
-  /// <param name="index">user allocated buffer span</param>
+  /// <param name="indices">user allocated buffer span</param>
   /// <returns>Status</returns>
-  Status UseCooIndex(gsl::span<const int64_t> index);
+  Status UseCooIndices(gsl::span<int64_t> indices);
 
   /// <summary>
   /// The method allocates a single contiguous buffer and copies specified values
-  /// and index into it using supplied IDataTransfer
+  /// and indices into it using supplied IDataTransfer.
   ///
-  /// The index size must either exactly match the number of values in which case
-  /// index shape would be 1-D (values_count) or it must be twice the number of values
-  /// in which case its shape would be 2-D (values_count, 2)
+  /// The indices size must either exactly match the number of values in which case
+  /// indices shape would be 1-D (values_count) or it must be twice the number of values
+  /// in which case its shape would be 2-D (values_count, 2).
+  ///
+  /// Values shape is supplied at construction time and its Size() must match values_count.
   /// </summary>
   /// <param name="values_count"></param>
   /// <param name="values_data"></param>
-  /// <param name="index"></param>
+  /// <param name="indices"></param>
   /// <returns></returns>
   Status MakeCooData(const IDataTransfer& data_transfer, const OrtMemoryInfo& data_location,
-                     size_t values_count, const void* values_data, gsl::span<const int64_t> index);
+                     size_t values_count, const void* values_data, gsl::span<const int64_t> indices);
 
   /// <summary>
   /// Gives mutable access to Coo buffers so they can be populated
   /// </summary>
   class CooMutator {
    public:
-    CooMutator(Tensor& values, Tensor& index) noexcept : values_(values), index_(index) {}
+    CooMutator(Tensor& values, Tensor& indices) noexcept : values_(values), indices_(indices) {}
     Tensor& Values() noexcept { return values_; }
-    Tensor& Index() noexcept { return index_; }
+    Tensor& Indices() noexcept { return indices_; }
 
    private:
     std::reference_wrapper<Tensor> values_;
-    std::reference_wrapper<Tensor> index_;
+    std::reference_wrapper<Tensor> indices_;
   };
 
   /// <summary>
-  /// Allocates memory for values and index and returns mutator so
-  /// data can be populated
+  /// Allocates memory for values and index and returns a mutator so
+  /// data can be copied into the buffer.
   /// </summary>
   /// <param name="values_count"></param>
   /// <param name="index_count"></param>
@@ -237,14 +257,14 @@ class SparseTensor final {
   };
 
   /// <summary>
-  /// Returns Csr indices view
+  /// Returns Csr indices readonly view
   /// </summary>
   /// <returns></returns>
   CsrView AsCsr() const;
 
   /// <summary>
   /// This function will use Csr indices contained within the user allocated buffers.
-  /// The buffers will be used as is.
+  /// The lifespan of the buffers must exclipse the lifespan of sparse tensor instance.
   /// </summary>
   /// <param name="inner_index"></param>
   /// <param name="outer_index"></param>
@@ -287,7 +307,7 @@ class SparseTensor final {
 
   /// <summary>
   /// Allocates memory for values and index and returns mutator so
-  /// data can be populated
+  /// data can be populated.
   /// </summary>
   /// <param name="values_count"></param>
   /// <param name="inner_index_count"></param>
@@ -300,29 +320,30 @@ class SparseTensor final {
   /// </summary>
   class BlockSparseView {
    public:
-    explicit BlockSparseView(const Tensor& index) noexcept
-        : index_(index) {}
-    const Tensor& Index() const noexcept { return index_; }
+    explicit BlockSparseView(const Tensor& indices) noexcept
+        : indices_(indices) {}
+    const Tensor& Indices() const noexcept { return indices_; }
 
    private:
-    std::reference_wrapper<const Tensor> index_;
+    std::reference_wrapper<const Tensor> indices_;
   };
 
   /// <summary>
   /// Return BlockSparseIndex view
   /// </summary>
-  /// <returns></returns>
+  /// <returns>an instance of BlockSparseView</returns>
   BlockSparseView AsBlockSparse() const;
 
   /// <summary>
-  /// Used blocksparse index contianed in the user allocated buffer. The shape of the index
+  /// Use blocksparse indices contained in the user allocated buffer. The shape of the index
   /// must be 2-D and must contain one tuple per each of the value blocks that
-  /// were supplied to the constructor.
+  /// were supplied to the constructor. The supplied buffer lifespan must eclipse the life
+  /// of sparse tensor instance.
   /// </summary>
-  /// <param name="index_shape"></param>
-  /// <param name="index_data"></param>
+  /// <param name="indices_shape"></param>
+  /// <param name="indices_data"></param>
   /// <returns></returns>
-  Status UseBlockSparseIndices(const TensorShape& index_shape, const int32_t* index_data);
+  Status UseBlockSparseIndices(const TensorShape& indices_shape, int32_t* indices_data);
 
   /// <summary>
   /// The function allocates a single contiguous buffer and copies values and index
@@ -337,27 +358,27 @@ class SparseTensor final {
   /// <param name="data_location"></param>
   /// <param name="values_shape"></param>
   /// <param name="values_data"></param>
-  /// <param name="index_shape"></param>
-  /// <param name="index_data"></param>
+  /// <param name="indices_shape"></param>
+  /// <param name="indices_data"></param>
   /// <returns></returns>
   Status MakeBlockSparseData(const IDataTransfer& data_transfer,
                              const OrtMemoryInfo& data_location,
                              const TensorShape& values_shape, const void* values_data,
-                             const TensorShape& index_shape, const int32_t* index_data);
+                             const TensorShape& indices_shape, const int32_t* indices_data);
 
   /// <summary>
   /// Mutable data access
   /// </summary>
   class BlockSparseMutator {
    public:
-    BlockSparseMutator(Tensor& values, Tensor& index) noexcept
-        : values_(values), index_(index) {}
+    BlockSparseMutator(Tensor& values, Tensor& indices) noexcept
+        : values_(values), indices_(indices) {}
     Tensor& Values() noexcept { return values_; }
-    Tensor& Index() noexcept { return index_; }
+    Tensor& Indices() noexcept { return indices_; }
 
    private:
     std::reference_wrapper<Tensor> values_;
-    std::reference_wrapper<Tensor> index_;
+    std::reference_wrapper<Tensor> indices_;
   };
 
   /// <summary>
@@ -365,9 +386,9 @@ class SparseTensor final {
   /// data can be populated
   /// </summary>
   /// <param name="values_shape"></param>
-  /// <param name="index_shape"></param>
+  /// <param name="indices_shape"></param>
   /// <returns></returns>
-  BlockSparseMutator MakeBlockSparseData(const TensorShape& values_shape, const TensorShape& index_shape);
+  BlockSparseMutator MakeBlockSparseData(const TensorShape& values_shape, const TensorShape& indices_shape);
 
   /// <summary>
   /// X-device copy. Destination tensor must have allocator set.
@@ -391,7 +412,6 @@ class SparseTensor final {
   void* IndicesStart(int64_t values_bytes);
   const void* IndicesStart(int64_t values_bytes) const;
   Status ValidateBlockSparseShapes(const TensorShape& values_shape, const TensorShape& index_shape) const;
-  void CopyStrings(const Tensor& src, Tensor& dst) const;
 
   std::vector<int64_t> GetCooIndexDims(size_t values_count, size_t index_size) const;
   void InitCooIndex(const TensorShape& index_shape, const int64_t* index_data);
@@ -399,29 +419,18 @@ class SparseTensor final {
   void ValidateCsrIndices(size_t values_count, size_t inner_size, size_t outer_size) const;
   void InitCsrIndices(size_t inner_size, const int64_t* inner, size_t outer_size, const int64_t* outer);
 
-  template <typename... T>
-  std::vector<std::reference_wrapper<Tensor>> MakeListNonConst(T&... t) {
-    return std::vector{std::ref(t)...};
-  }
-
-  template <typename... T>
-  std::vector<std::reference_wrapper<const Tensor>> MakeListConst(const T&... t) {
-    return std::vector{std::cref(t)...};
-  }
-
-  Status CopyData(const IDataTransfer& data_transfer,
-                  const std::vector<std::reference_wrapper<const Tensor>>& src,
-                  const std::vector<std::reference_wrapper<Tensor>>& dst);
-
-  SparseFormat format_;
-  TensorShape dense_shape_;
-  const PrimitiveDataTypeBase* ml_data_type_;
-  AllocatorPtr allocator_;
-  OrtMemoryInfo location_;
-  void* p_data_;
-  int64_t buffer_size_;
-  Tensor values_;
-  std::vector<Tensor> format_data_;
+  SparseFormat format_;                        // sparse format enum value
+  TensorShape dense_shape_;                    // a shape of a corresponding dense tensor
+  const PrimitiveDataTypeBase* ml_data_type_;  // MLDataType for contained values
+  AllocatorPtr allocator_;                     // Allocator or nullptr when using user supplied buffers
+  OrtMemoryInfo location_;                     // Memory info where data resides. When allocator is supplied,
+                                               // location_ is obtained from the allocator.
+  void* p_data_;                               // Allocated buffer ptr, or nullptr when using user supplied buffers
+  int64_t buffer_size_;                        // Allocated buffer size or zero when using user supplied buffers.
+  Tensor values_;                              // Tensor instance that holds a values buffer information either user supplied or
+                                               // to a beginning of p_data_, before format specific indices.
+  std::vector<Tensor> format_data_;            // A collection of format specific indices. They contain pointers to either a
+                                               // user supplied buffers or to portions of contiguous buffer p_data_.
 };
 
 }  // namespace onnxruntime

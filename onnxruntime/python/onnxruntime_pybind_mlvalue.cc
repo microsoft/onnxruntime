@@ -68,7 +68,7 @@ std::vector<py::dtype> MakeTypes() {
 }  // namespace
 
 bool IsNumericDType(const py::dtype& dtype) {
-  static std::vector<py::dtype> numeric =
+  static const std::vector<py::dtype> numeric =
       MakeTypes<int8_t, uint8_t, int16_t, uint16_t, int32_t, uint32_t, int64_t, uint64_t, float, double>();
   return std::any_of(numeric.cbegin(), numeric.cend(), [&dtype](const py::dtype& dt) {
     return dtype.is(dt);

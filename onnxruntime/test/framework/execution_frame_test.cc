@@ -505,11 +505,11 @@ TEST(ExecutionFrameTestInit, SparseInitializerAsOutput) {
     ASSERT_TRUE(results[0].IsSparseTensor());
     const SparseTensor& result = results[0].Get<SparseTensor>();
     ASSERT_EQ(result.DataType(), DataTypeImpl::GetType<float>());
-    EXPECT_THAT(result.Shape().GetDims(), ::testing::ContainerEq(dense_shape));
+    EXPECT_THAT(result.DenseShape().GetDims(), ::testing::ContainerEq(dense_shape));
     ASSERT_EQ(result.NumValues(), 3U);
     EXPECT_THAT(result.Values().DataAsSpan<float>(), ::testing::ContainerEq(gsl::make_span(expected_values)));
     auto coo_view = result.AsCoo();
-    EXPECT_THAT(coo_view.Index().DataAsSpan<int64_t>(), ::testing::ContainerEq(gsl::make_span(expected_linear_indices)));
+    EXPECT_THAT(coo_view.Indices().DataAsSpan<int64_t>(), ::testing::ContainerEq(gsl::make_span(expected_linear_indices)));
   }
 }
 

@@ -374,15 +374,15 @@ struct ProviderHost {
   // DataTransferManager
   virtual Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst, int exec_queue_id) = 0;
   virtual Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst) = 0;
-  virtual Status DataTransferManager__CopyTensor(const DataTransferManager* p, const SparseTensor& src, SparseTensor& dst) = 0;
-  virtual Status DataTransferManager__CopyTensor(const DataTransferManager* p, const SparseTensor& src, SparseTensor& dst, int exec_queue_id) = 0;
-  virtual Status DataTransferManager__CopyTensors(const DataTransferManager* p, const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) = 0;
+  virtual Status DataTransferManager__CopySparseTensor(const DataTransferManager* p, const SparseTensor& src, SparseTensor& dst) = 0;
+  virtual Status DataTransferManager__CopySparseTensor(const DataTransferManager* p, const SparseTensor& src, SparseTensor& dst, int exec_queue_id) = 0;
+  virtual Status DataTransferManager__CopySparseTensors(const DataTransferManager* p, const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) = 0;
   virtual const IDataTransfer* DataTransferManager__GetDataTransfer(const DataTransferManager* p, const OrtDevice& src_device, const OrtDevice& dst_device) = 0;
 
   // IDataTransfer
   virtual Status IDataTransfer__CopyTensor(const IDataTransfer* p, const Tensor& src, Tensor& dst) = 0;
   virtual Status IDataTransfer__CopyTensors(const IDataTransfer* p, const std::vector<IDataTransfer::SrcDstPair>& src_dst_pairs) = 0;
-  virtual Status IDataTransfer__CopyTensors(const IDataTransfer* p, const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) = 0;
+  virtual Status IDataTransfer__CopySparseTensors(const IDataTransfer* p, const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) = 0;
 
   // IndexedSubGraph_MetaDef
   virtual std::unique_ptr<IndexedSubGraph_MetaDef> IndexedSubGraph_MetaDef__construct() = 0;
@@ -624,11 +624,13 @@ struct ProviderHost {
 
   // OpKernelContext
   virtual const Tensor* OpKernelContext__Input_Tensor(const OpKernelContext* p, int index) = 0;
+  virtual const SparseTensor* OpKernelContext__Input_SparseTensor(const OpKernelContext* p, int index) = 0;
   virtual const TensorSeq* OpKernelContext__Input_TensorSeq(const OpKernelContext* p, int index) = 0;
   virtual const Tensor& OpKernelContext__RequiredInput_Tensor(const OpKernelContext* p, int index) = 0;
   virtual Tensor* OpKernelContext__Output_Tensor(OpKernelContext* p, int index) = 0;
   virtual TensorSeq* OpKernelContext__Output_TensorSeq(OpKernelContext* p, int index) = 0;
   virtual Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape) = 0;
+  virtual SparseTensor* OpKernelContext__OutputSparse(OpKernelContext* p, int index, const TensorShape& shape) = 0;
   virtual Tensor& OpKernelContext__RequiredOutput(OpKernelContext* p, int index, const TensorShape& shape) = 0;
   virtual MLDataType OpKernelContext__InputType(const OpKernelContext* p, int index) = 0;
   virtual int OpKernelContext__InputCount(const OpKernelContext* p) = 0;
@@ -724,6 +726,10 @@ struct ProviderHost {
   virtual const OrtMemoryInfo& Tensor__Location(const Tensor* p) = 0;
   virtual int32_t Tensor__GetElementType(const Tensor* p) = 0;
   virtual MLDataType Tensor__DataType(const Tensor* p) = 0;
+
+  // SparseTensor
+  virtual const TensorShape& SparseTensor__DenseShape(const SparseTensor*) = 0;
+  virtual Status SparseTensor__Copy(const SparseTensor*, const DataTransferManager&, int, SparseTensor&) = 0;
 
   // TensorSeq
   virtual MLDataType TensorSeq__DataType(const TensorSeq* p) noexcept = 0;
@@ -1169,9 +1175,9 @@ struct ComputeCapability final {
 struct DataTransferManager final {
   Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const { return g_host->DataTransferManager__CopyTensor(this, src, dst, exec_queue_id); }
   Status CopyTensor(const Tensor& src, Tensor& dst) const { return g_host->DataTransferManager__CopyTensor(this, src, dst); }
-  Status CopyTensor(const SparseTensor& src, SparseTensor& dst) const { return g_host->DataTransferManager__CopyTensor(this, src, dst); }
-  common::Status CopyTensor(const SparseTensor& src, SparseTensor& dst, int exec_queue_id) const { return g_host->DataTransferManager__CopyTensor(this, src, dst, exec_queue_id); }
-  common::Status CopyTensors(const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) const { return g_host->DataTransferManager__CopyTensors(this, src_dst_pairs); }
+  Status CopySparseTensor(const SparseTensor& src, SparseTensor& dst) const { return g_host->DataTransferManager__CopySparseTensor(this, src, dst); }
+  Status CopySparseTensor(const SparseTensor& src, SparseTensor& dst, int exec_queue_id) const { return g_host->DataTransferManager__CopySparseTensor(this, src, dst, exec_queue_id); }
+  Status CopySparseTensors(const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) const { return g_host->DataTransferManager__CopySparseTensors(this, src_dst_pairs); }
   const IDataTransfer* GetDataTransfer(const OrtDevice& src_device, const OrtDevice& dst_device) const { return g_host->DataTransferManager__GetDataTransfer(this, src_device, dst_device); }
 
   PROVIDER_DISALLOW_ALL(DataTransferManager)
@@ -1558,6 +1564,7 @@ struct OpKernelContext final {
   T* Output(int index);
 
   Tensor* Output(int index, const TensorShape& shape) { return g_host->OpKernelContext__Output(this, index, shape); }
+  SparseTensor* OutputSparse(int index, const TensorShape& shape) { return g_host->OpKernelContext__OutputSparse(this, index, shape); } 
   int OutputCount() const { return g_host->OpKernelContext__OutputCount(this); }
 
   Status GetTempSpaceAllocator(AllocatorPtr* output) const { return g_host->OpKernelContext__GetTempSpaceAllocator(this, output); }
@@ -1573,6 +1580,11 @@ struct OpKernelContext final {
 template <>
 inline const Tensor* OpKernelContext::Input<Tensor>(int index) const {
   return g_host->OpKernelContext__Input_Tensor(this, index);
+}
+
+template <>
+inline const SparseTensor* OpKernelContext::Input<SparseTensor>(int index) const {
+  return g_host->OpKernelContext__Input_SparseTensor(this, index);
 }
 
 template <>
@@ -1781,6 +1793,12 @@ template <>
 inline const BFloat16* Tensor::Data<BFloat16>() const { return g_host->Tensor__Data_BFloat16(this); }
 template <>
 inline const MLFloat16* Tensor::Data<MLFloat16>() const { return g_host->Tensor__Data_MLFloat16(this); }
+
+// SparseTensor
+struct SparseTensor final {
+  const TensorShape& DenseShape() const noexcept { return g_host->SparseTensor__DenseShape(this); }
+  Status Copy(const DataTransferManager& dtm, int exec_q_id, SparseTensor& dst) const { return g_host->SparseTensor__Copy(this, dtm, exec_q_id, dst); }
+};
 
 //TensorSeq
 struct TensorSeq final {

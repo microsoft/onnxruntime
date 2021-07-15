@@ -465,16 +465,16 @@ struct ProviderHostImpl : ProviderHost {
   // DataTransferManager (wrapped)
   Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst, int exec_queue_id) override { return p->CopyTensor(src, dst, exec_queue_id); }
   Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst) override { return p->CopyTensor(src, dst); }
-  Status DataTransferManager__CopyTensor(const DataTransferManager* p, const SparseTensor& src, SparseTensor& dst) override { return p->CopyTensor(src, dst); }
-  Status DataTransferManager__CopyTensor(const DataTransferManager* p, const SparseTensor& src, SparseTensor& dst, int exec_queue_id) override { return p->CopyTensor(src, dst, exec_queue_id); }
-  Status DataTransferManager__CopyTensors(const DataTransferManager* p, const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) override { return p->CopyTensors(src_dst_pairs); };
+  Status DataTransferManager__CopySparseTensor(const DataTransferManager* p, const SparseTensor& src, SparseTensor& dst) override { return p->CopySparseTensor(src, dst); }
+  Status DataTransferManager__CopySparseTensor(const DataTransferManager* p, const SparseTensor& src, SparseTensor& dst, int exec_queue_id) override { return p->CopySparseTensor(src, dst, exec_queue_id); }
+  Status DataTransferManager__CopySparseTensors(const DataTransferManager* p, const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) override { return p->CopySparseTensors(src_dst_pairs); };
   const IDataTransfer* DataTransferManager__GetDataTransfer(const DataTransferManager* p, const OrtDevice& src_device, const OrtDevice& dst_device) override { return p->GetDataTransfer(src_device, dst_device); }
 
   // IDataTransfer (direct)
   Status IDataTransfer__CopyTensor(const IDataTransfer* p, const Tensor& src, Tensor& dst) override { return p->IDataTransfer::CopyTensor(src, dst); }
   Status IDataTransfer__CopyTensors(const IDataTransfer* p, const std::vector<IDataTransfer::SrcDstPair>& src_dst_pairs) override { return p->IDataTransfer::CopyTensors(src_dst_pairs); }
-  Status IDataTransfer__CopyTensors(const IDataTransfer* p, const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) override {
-    return p->CopyTensors(src_dst_pairs);
+  Status IDataTransfer__CopySparseTensors(const IDataTransfer* p, const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) override {
+    return p->CopySparseTensors(src_dst_pairs);
   }
 
   // IndexedSubGraph_MetaDef (wrapped)
@@ -732,12 +732,14 @@ struct ProviderHostImpl : ProviderHost {
 
   // OpKernelContext (wrapped)
   const Tensor* OpKernelContext__Input_Tensor(const OpKernelContext* p, int index) override { return p->Input<Tensor>(index); }
+  const SparseTensor* OpKernelContext__Input_SparseTensor(const OpKernelContext* p, int index) override { return p->Input<SparseTensor>(index); }
   const TensorSeq* OpKernelContext__Input_TensorSeq(const OpKernelContext* p, int index) override { return p->Input<TensorSeq>(index); }
   const Tensor& OpKernelContext__RequiredInput_Tensor(const OpKernelContext* p, int index) override { return p->RequiredInput<Tensor>(index); }
   MLDataType OpKernelContext__InputType(const OpKernelContext* p, int index) override { return p->InputType(index); }
   Tensor* OpKernelContext__Output_Tensor(OpKernelContext* p, int index) override { return p->Output<Tensor>(index); }
   TensorSeq* OpKernelContext__Output_TensorSeq(OpKernelContext* p, int index) override { return p->Output<TensorSeq>(index); }
   Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape) override { return p->Output(index, shape); }
+  SparseTensor* OpKernelContext__OutputSparse(OpKernelContext* p, int index, const TensorShape& shape) override { return p->OutputSparse(index, shape); }
   Tensor& OpKernelContext__RequiredOutput(OpKernelContext* p, int index, const TensorShape& shape) override { return p->RequiredOutput(index, shape); }
   int OpKernelContext__InputCount(const OpKernelContext* p) override { return p->InputCount(); }
   int OpKernelContext__OutputCount(const OpKernelContext* p) override { return p->OutputCount(); }
@@ -832,6 +834,10 @@ struct ProviderHostImpl : ProviderHost {
   const OrtMemoryInfo& Tensor__Location(const Tensor* p) override { return p->Location(); }
   int32_t Tensor__GetElementType(const Tensor* p) override { return p->GetElementType(); }
   MLDataType Tensor__DataType(const Tensor* p) override { return p->DataType(); }
+
+  // SparseTensor(wrapped)
+  const TensorShape& SparseTensor__DenseShape(const SparseTensor* p) override { return p->DenseShape(); }
+  Status SparseTensor__Copy(const SparseTensor* p, const DataTransferManager& dtm, int exec_q_id, SparseTensor& dst) override { return p->Copy(dtm, exec_q_id, dst); }
 
   // TensorSeq(wrapped)
   MLDataType TensorSeq__DataType(const TensorSeq* p) noexcept override { return p->DataType(); }

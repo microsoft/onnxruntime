@@ -870,32 +870,7 @@ class TestInferenceSession(unittest.TestCase):
 
             # The constructed OrtValue should still be valid after being used in a session
             self.assertTrue(np.array_equal(ortvalue2.numpy(), numpy_arr_input))
-    def testNumpyToCudaCpu(self):
-        shape = [2,2]
-        cuda_device = onnxrt.OrtDevice.make('cuda', 0)
-        data_to_copy = np.array([1, 2, 3, 4], np.int32).reshape(shape)
-        if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
-            cuda_result = onnxrt.numpy_array_to_cuda(cuda_device, data_to_copy)
-            self.assertEqual(list(cuda_result.shape), shape)
-            self.assertEqual(cuda_result.dtype, np.dtype(np.int32))
-
-            cpu_result = onnxrt.numpy_array_to_cpu(cuda_result)
-            self.assertEqual(list(cpu_result.shape), shape)
-            self.assertEqual(cpu_result.dtype, np.dtype(np.int32))
-            self.assertTrue(np.array_equal(cpu_result, data_to_copy))
-
-            # Test unsupported dtype
-            unsupported_str = np.array(['xyz', 'zyx', 'xzy', 'zxy'], np.dtype(str)).reshape(shape)
-            unsupported_obj = np.array(['xyz', 'zyx', 'xzy', 'zxy'], np.dtype(object)).reshape(shape)
-            with self.assertRaises(RuntimeError):
-                onnxrt.numpy_array_to_cuda(cuda_device, unsupported_str)
-            with self.assertRaises(RuntimeError):
-                onnxrt.numpy_array_to_cuda(cuda_device, unsupported_obj)
-        else:
-            # No CUDA
-            with self.assertRaises(RuntimeError):
-                onnxrt.numpy_array_to_cuda(cuda_device, data_to_copy)
-
+            
     def testSparseTensorCooFormat(self):
         cpu_device = onnxrt.OrtDevice.make('cpu', 0)
         shape = [9,9]
@@ -946,10 +921,6 @@ class TestInferenceSession(unittest.TestCase):
 
         cuda_device = onnxrt.OrtDevice.make('cuda', 0)
         if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
-            values_on_gpu = onnxrt.numpy_array_to_cuda(cuda_device, values)
-            indices_on_gpu = onnxrt.numpy_array_to_cuda(cuda_device, indices)
-            cuda_sparse_tensor = onnxrt.SparseTensor.sparse_coo_from_numpy(shape, values_on_gpu, indices_on_gpu, cuda_device)
-            self.assertEqual(cuda_sparse_tensor.device_name(), 'cuda')
             # Test to_cuda
             copy_on_cuda = sparse_tensor.to_cuda(cuda_device)
             self.assertEqual(copy_on_cuda.shape(), shape)
@@ -998,15 +969,6 @@ class TestInferenceSession(unittest.TestCase):
 
         if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
             cuda_device = onnxrt.OrtDevice.make('cuda', 0)
-            values_on_gpu = onnxrt.numpy_array_to_cuda(cuda_device, values)
-            inner_indices_on_gpu = onnxrt.numpy_array_to_cuda(cuda_device, inner_indices)
-            outer_indices_on_gpu = onnxrt.numpy_array_to_cuda(cuda_device, outer_indices)
-            cuda_sparse_tensor = onnxrt.SparseTensor.sparse_csr_from_numpy(shape, values_on_gpu, inner_indices_on_gpu, outer_indices_on_gpu, cuda_device)
-            self.assertEqual(cuda_sparse_tensor.device_name(), 'cuda')
-            self.assertEqual(cuda_sparse_tensor.format(), onnxrt.OrtSparseFormat.ORT_SPARSE_CSRC)
-            self.assertEqual(cuda_sparse_tensor.shape(), shape)
-            self.assertEqual(cuda_sparse_tensor.data_type(), "sparse_tensor(float)")
-
             cuda_sparse_tensor = sparse_tensor.to_cuda(cuda_device)
             self.assertEqual(cuda_sparse_tensor.device_name(), 'cuda')
             self.assertEqual(cuda_sparse_tensor.format(), onnxrt.OrtSparseFormat.ORT_SPARSE_CSRC)

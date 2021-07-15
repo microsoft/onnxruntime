@@ -69,10 +69,10 @@ static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
 static Status MergeShapeInfo(const std::string& output_name,
                              const TypeProto& source, TypeProto& target,
                              bool strict, const logging::Logger& logger) {
-
   if (!(utils::HasTensorType(source) && utils::HasTensorType(target)) &&
       !(utils::HasSparseTensorType(source) && utils::HasSparseTensorType(target))) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Source and target must both be either tensors or sparse tensors");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Source and target must both be either tensors or sparse tensors");
   }
 
   auto status = Status::OK();

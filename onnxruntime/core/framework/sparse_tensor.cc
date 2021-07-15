@@ -17,12 +17,9 @@ std::ostream& operator<<(std::ostream& os, SparseFormat flags) {
 }
 
 namespace {
-// Round up size to a multiple of align.
-// Example:
-//   Roundup(13, 5)   => 15
-//   Roundup(201, 16) => 208
+// Round up size to a multiple of int64
 constexpr size_t kIndexAlignment = alignof(int64_t);
-int64_t Roundup(int64_t size) {
+inline int64_t Roundup(int64_t size) {
   return ((SafeInt<int64_t>(size) + kIndexAlignment - 1) / kIndexAlignment) * kIndexAlignment;
 }
 
@@ -31,9 +28,43 @@ int64_t Roundup(int64_t size) {
 /// after data and make sure indices start at int64_t aligned place
 /// </summary>
 /// <returns></returns>
-int64_t CalculateRequiredBufferSize(int64_t data_size, int64_t indices_size) {
+inline int64_t CalculateRequiredBufferSize(int64_t data_size, int64_t indices_size) {
   return SafeInt<int64_t>(Roundup(data_size)) + indices_size;
 }
+
+template <typename... T>
+inline std::vector<std::reference_wrapper<Tensor>> MakeListNonConst(T&... t) {
+  return std::vector{std::ref(t)...};
+}
+
+template <typename... T>
+inline std::vector<std::reference_wrapper<const Tensor>> MakeListConst(const T&... t) {
+  return std::vector{std::cref(t)...};
+}
+
+void CopyStrings(const Tensor& src, Tensor& dst) {
+  auto src_span = src.DataAsSpan<std::string>();
+  auto* dst_iter = dst.MutableData<std::string>();
+  std::copy(src_span.cbegin(), src_span.cend(), dst_iter);
+}
+
+Status CopyData(const IDataTransfer& data_transfer,
+                const std::vector<std::reference_wrapper<const Tensor>>& src,
+                const std::vector<std::reference_wrapper<Tensor>>& dst) {
+  ORT_RETURN_IF_NOT(src.size() == dst.size(), "Must have the same size. Got src_size: ",
+                    src.size(), " dst_size: ", dst.size());
+  for (size_t i = 0, src_size = src.size(); i < src_size; ++i) {
+    const Tensor& src_t = src[i];
+    Tensor& dst_t = dst[i];
+    if (src_t.IsDataTypeString()) {
+      CopyStrings(src_t, dst_t);
+    } else {
+      ORT_RETURN_IF_ERROR(data_transfer.CopyTensor(src_t, dst_t));
+    }
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 const void* SparseTensor::IndicesStart(int64_t values_bytes) const {
@@ -120,16 +151,17 @@ SparseTensor::~SparseTensor() {
 
 Status SparseTensor::AllocateBuffer(int64_t buffer_size, size_t num_values) {
   if (buffer_size > 0) {
-    SafeInt<size_t> b_size_t(buffer_size);
-    ORT_ENFORCE(b_size_t.Ref() > (num_values * ml_data_type_->Size()),
-                "Values size must be less than total buffer size");
-    auto data_ptr = IAllocator::MakeUniquePtr<void>(allocator_, b_size_t);
-    ORT_RETURN_IF_NOT(data_ptr != nullptr, "SparseTensor Allocation failed for size: ", buffer_size);
+    SafeInt<size_t> buffer_size_t(buffer_size);
+    const auto values_bytes = SafeInt<size_t>(num_values) * ml_data_type_->Size();
+    ORT_ENFORCE(buffer_size_t > values_bytes,
+                "Values size ", static_cast<size_t>(values_bytes), " must be less than total buffer size: ", buffer_size);
+    auto data_ptr = IAllocator::MakeUniquePtr<void>(allocator_, buffer_size_t);
+    ORT_RETURN_IF(data_ptr == nullptr, "SparseTensor Allocation failed for size: ", buffer_size);
     if (IsDataTypeString()) {
       // We own the buffer, so we must properly construct strings. Neither of the Tensors
       // we construct on top of the buffer own it. We are constructing empty strings, hopefully
       // nothrow and no buffer allocation
-      utils::ConstructStrings(data_ptr.get(), static_cast<int64_t>(num_values));
+      utils::ConstructStrings(data_ptr.get(), gsl::narrow<int64_t>(num_values));
     }
     p_data_ = data_ptr.release();
   }
@@ -139,79 +171,58 @@ Status SparseTensor::AllocateBuffer(int64_t buffer_size, size_t num_values) {
 
 void SparseTensor::ReleaseBuffer() {
   if (allocator_ && p_data_ != nullptr) {
-    // if current tensor is responsible for deleting the buffer
-    // and it is a string tensor, need to explicitly call string(s)
-    // __dtor(s).
-    utils::ReleaseTensorBuffer(allocator_, IsDataTypeString(), p_data_, values_.Shape().Size());
+    if (IsDataTypeString()) {
+      utils::DestroyStrings(p_data_, values_.Shape().Size());
+    }
+    allocator_->Free(p_data_);
   }
   p_data_ = nullptr;
   buffer_size_ = 0;
 }
 
-void SparseTensor::CopyStrings(const Tensor& src, Tensor& dst) const {
-  auto src_span = src.DataAsSpan<std::string>();
-  auto* dst_iter = dst.MutableData<std::string>();
-  std::copy(src_span.cbegin(), src_span.cend(), dst_iter);
-}
-
-Status SparseTensor::CopyData(const IDataTransfer& data_transfer,
-                              const std::vector<std::reference_wrapper<const Tensor>>& src,
-                              const std::vector<std::reference_wrapper<Tensor>>& dst) {
-  ORT_RETURN_IF_NOT(src.size() == dst.size(), "Must have the same size");
-  for (size_t i = 0; i < src.size(); ++i) {
-    const Tensor& src_t = src[i];
-    Tensor& dst_t = dst[i];
-    if (src_t.IsDataTypeString()) {
-      CopyStrings(src_t, dst_t);
-    } else {
-      ORT_RETURN_IF_ERROR(data_transfer.CopyTensor(src_t, dst_t));
-    }
-  }
-  return Status::OK();
-}
-
 SparseTensor::CooView SparseTensor::AsCoo() const {
-  ORT_ENFORCE(Format() == SparseFormat::kCoo, "Must contain Coo format");
-  ORT_ENFORCE(format_data_.size() == 1U, "Expecting one index");
+  ORT_ENFORCE(Format() == SparseFormat::kCoo, "Must contain Coo format. Got: ", Format());
+  ORT_ENFORCE(format_data_.size() == 1U, "Expecting to contain one index, got: ", format_data_.size());
   return CooView(format_data_[0]);
 }
 
 std::vector<int64_t> SparseTensor::GetCooIndexDims(size_t values_count, size_t index_size) const {
   std::vector<int64_t> index_dims{gsl::narrow<int64_t>(values_count)};
   if (values_count * 2 == index_size) {
-    // Coor index
+    // 2-D COO index
     index_dims.push_back(2);
   } else {
     ORT_ENFORCE(values_count == index_size,
-                      "Index size must be equal to or twice the values size");
+                "Index size: ", index_size, " must be equal to or twice the values size: ", values_count);
   }
   return index_dims;
 }
 
 void SparseTensor::InitCooIndex(const TensorShape& index_shape, const int64_t* index_data) {
   format_data_.resize(1);
-  format_data_[0] = Tensor(DataTypeImpl::GetType<int64_t>(), index_shape, const_cast<int64_t*>(index_data), Location());
+  format_data_[0] = Tensor(DataTypeImpl::GetType<int64_t>(), index_shape,
+                           const_cast<int64_t*>(index_data), Location());
   format_ = SparseFormat::kCoo;
 }
 
-Status SparseTensor::UseCooIndex(gsl::span<const int64_t> index) {
+Status SparseTensor::UseCooIndices(gsl::span<int64_t> indices) {
   ORT_RETURN_IF_NOT(allocator_ == nullptr, "Not expecting an allocator set");
-  TensorShape index_shape(GetCooIndexDims(NumValues(), index.size()));
-  InitCooIndex(index_shape, index.data());
+  TensorShape index_shape(GetCooIndexDims(NumValues(), indices.size()));
+  InitCooIndex(index_shape, indices.data());
   return Status::OK();
 }
 
 Status SparseTensor::MakeCooData(const IDataTransfer& data_transfer,
                                  const OrtMemoryInfo& data_location,
                                  size_t values_count, const void* values_data,
-                                 gsl::span<const int64_t> index) {
-  auto mutator = MakeCooData(values_count, index.size());
+                                 gsl::span<const int64_t> indices) {
+  auto mutator = MakeCooData(values_count, indices.size());
   if (values_count > 0) {
     auto& dst_values = mutator.Values();
-    auto& dst_index = mutator.Index();
+    auto& dst_index = mutator.Indices();
 
     Tensor src_values(dst_values.DataType(), dst_values.Shape(), const_cast<void*>(values_data), data_location);
-    Tensor src_index(dst_index.DataType(), dst_index.Shape(), const_cast<int64_t*>(index.data()), data_location);
+    Tensor src_index(dst_index.DataType(), dst_index.Shape(), const_cast<int64_t*>(indices.data()), data_location);
     ORT_RETURN_IF_ERROR(CopyData(data_transfer, MakeListConst(src_values, src_index), MakeListNonConst(dst_values, dst_index)));
   }
   return Status::OK();
@@ -220,11 +231,11 @@ Status SparseTensor::MakeCooData(const IDataTransfer& data_transfer,
 SparseTensor::CooMutator SparseTensor::MakeCooData(size_t values_count, size_t index_count) {
   ORT_ENFORCE(allocator_ != nullptr, "This method should follow a call to constructor that supplies the allocator");
   const auto num_values = gsl::narrow<int64_t>(values_count);
-  TensorShape index_shape(GetCooIndexDims(values_count, index_count));
   TensorShape values_shape{num_values};
+  TensorShape index_shape(GetCooIndexDims(values_count, index_count));
   if (num_values > 0) {
-    const auto data_size = values_count * ml_data_type_->Size();
-    const auto index_size = index_count * sizeof(int64_t);
+    const auto data_size = SafeInt<size_t>(values_count) * ml_data_type_->Size();
+    const auto index_size = SafeInt<size_t>(index_count) * sizeof(int64_t);
     const auto required_buffer_size = CalculateRequiredBufferSize(gsl::narrow<int64_t>(data_size),
                                                                   gsl::narrow<int64_t>(index_size));
     ORT_THROW_IF_ERROR(AllocateBuffer(required_buffer_size, values_count));
@@ -235,17 +246,18 @@ SparseTensor::CooMutator SparseTensor::MakeCooData(size_t values_count, size_t i
 }
 
 SparseTensor::CsrView SparseTensor::AsCsr() const {
-  ORT_ENFORCE(Format() == SparseFormat::kCsrc, "Must contain Csr format");
-  ORT_ENFORCE(format_data_.size() == 2U, "Expecting two indices");
+  ORT_ENFORCE(Format() == SparseFormat::kCsrc, "Must contain Csr format. Contains: ", Format());
+  ORT_ENFORCE(format_data_.size() == 2U, "Expecting two indices. Got: ", format_data_.size());
   return CsrView(format_data_[0], format_data_[1]);
 }
 
 void SparseTensor::ValidateCsrIndices(size_t values_count, size_t inner_size, size_t outer_size) const {
-  ORT_ENFORCE(dense_shape_.NumDimensions() == 2U, "dense shape must 2-D");
-  ORT_ENFORCE(inner_size == values_count, "Expecting inner index size the same as values size");
+  ORT_ENFORCE(dense_shape_.NumDimensions() == 2U, "dense shape must 2-D. Got: ", dense_shape_.NumDimensions());
+  ORT_ENFORCE(inner_size == values_count,
+              "Expecting inner index size: ", inner_size, " the same as values size: ", values_count);
   const auto rows = dense_shape_.GetDims()[0];
   ORT_ENFORCE(outer_size == 0 || outer_size == static_cast<size_t>(rows + 1),
-              "Outer index count must be rows + 1 or zero");
+              "Outer index count must be rows + 1 or zero. Got: ", outer_size, " rows: ", rows);
 }
 
 void SparseTensor::InitCsrIndices(size_t inner_size, const int64_t* inner, size_t outer_size, const int64_t* outer) {
@@ -291,8 +303,8 @@ SparseTensor::CsrMutator SparseTensor::MakeCsrData(size_t values_count,
   ValidateCsrIndices(values_count, inner_index_count, outer_index_count);
 
   if (values_count > 0) {
-    const auto data_size = values_count * ml_data_type_->Size();
-    const auto index_size = (inner_index_count + outer_index_count) * sizeof(int64_t);
+    const auto data_size = SafeInt<size_t>(values_count) * ml_data_type_->Size();
+    const auto index_size = (SafeInt<size_t>(inner_index_count) + outer_index_count) * sizeof(int64_t);
     const auto required_buffer_size = CalculateRequiredBufferSize(gsl::narrow<int64_t>(data_size),
                                                                   gsl::narrow<int64_t>(index_size));
     ORT_THROW_IF_ERROR(AllocateBuffer(required_buffer_size, values_count));
@@ -307,58 +319,61 @@ SparseTensor::CsrMutator SparseTensor::MakeCsrData(size_t values_count,
 }
 
 SparseTensor::BlockSparseView SparseTensor::AsBlockSparse() const {
-  ORT_ENFORCE(Format() == SparseFormat::kBlockSparse, "Must contain BlockSparse format");
-  ORT_ENFORCE(format_data_.size() == 1U, "Expecting one index");
+  ORT_ENFORCE(Format() == SparseFormat::kBlockSparse, "Must contain BlockSparse format. Got: ", Format());
+  ORT_ENFORCE(format_data_.size() == 1U, "Expecting one index. Got: ", format_data_.size());
   return BlockSparseView(format_data_[0]);
 }
 
-Status SparseTensor::ValidateBlockSparseShapes(const TensorShape& values_shape, const TensorShape& index_shape) const {
-  ORT_RETURN_IF_NOT(values_shape.NumDimensions() >= 3, "Expecting values dimensions to be at least 3");
-  ORT_RETURN_IF_NOT(index_shape.NumDimensions() == 2, "Expecting index dimensions to be 2");
+Status SparseTensor::ValidateBlockSparseShapes(const TensorShape& values_shape, const TensorShape& indices_shape) const {
+  ORT_RETURN_IF_NOT(values_shape.NumDimensions() >= 3,
+                    "Expecting values dimensions to be at least 3. Got:", values_shape.NumDimensions());
+  ORT_RETURN_IF_NOT(indices_shape.NumDimensions() == 2,
+                    "Expecting index dimensions to be 2. Got: ", indices_shape.NumDimensions());
   const auto values_blocks = values_shape.SizeFromDimension(2);
-  const auto index_blocks = index_shape.Size() / 2;  // Two integers per block
-  ORT_RETURN_IF_NOT(values_blocks == index_blocks, "Expecting index blocks to be equal to values blocks");
+  const auto index_blocks = indices_shape.Size() / 2;  // Two integers per block
+  ORT_RETURN_IF_NOT(values_blocks == index_blocks,
+                    "Expecting index blocks: ", index_blocks, " to be equal to values blocks: ", values_blocks);
   return Status::OK();
 }
 
-Status SparseTensor::UseBlockSparseIndices(const TensorShape& index_shape, const int32_t* index_data) {
+Status SparseTensor::UseBlockSparseIndices(const TensorShape& index_shape, int32_t* indices_data) {
   ORT_RETURN_IF_NOT(allocator_ == nullptr, "Not expecting an allocator set");
   ORT_RETURN_IF_ERROR(ValidateBlockSparseShapes(Values().Shape(), index_shape));
 
   format_data_.resize(1);
   format_data_[0] = Tensor(DataTypeImpl::GetType<int32_t>(), index_shape,
-                           const_cast<int32_t*>(index_data), Location());
+                           indices_data, Location());
   format_ = SparseFormat::kBlockSparse;
   return Status::OK();
 }
 
 Status SparseTensor::MakeBlockSparseData(const IDataTransfer& data_transfer, const OrtMemoryInfo& data_location,
                                          const TensorShape& values_shape, const void* values_data,
-                                         const TensorShape& index_shape, const int32_t* index_data) {
-  auto mutator = MakeBlockSparseData(values_shape, index_shape);
+                                         const TensorShape& indices_shape, const int32_t* indices_data) {
+  auto mutator = MakeBlockSparseData(values_shape, indices_shape);
   if (values_shape.Size() > 0) {
     auto& dst_values = mutator.Values();
-    auto& dst_index = mutator.Index();
+    auto& dst_indices = mutator.Indices();
     Tensor src_values(dst_values.DataType(), dst_values.Shape(), const_cast<void*>(values_data), data_location);
-    Tensor src_index(dst_index.DataType(), dst_index.Shape(), const_cast<int32_t*>(index_data), data_location);
-    ORT_RETURN_IF_ERROR(CopyData(data_transfer, MakeListConst(src_values, src_index), MakeListNonConst(dst_values, dst_index)));
+    Tensor src_index(dst_indices.DataType(), dst_indices.Shape(), const_cast<int32_t*>(indices_data), data_location);
+    ORT_RETURN_IF_ERROR(CopyData(data_transfer, MakeListConst(src_values, src_index), MakeListNonConst(dst_values, dst_indices)));
   }
   return Status::OK();
 }
 
-SparseTensor::BlockSparseMutator SparseTensor::MakeBlockSparseData(const TensorShape& values_shape, const TensorShape& index_shape) {
+SparseTensor::BlockSparseMutator SparseTensor::MakeBlockSparseData(const TensorShape& values_shape, const TensorShape& indices_shape) {
   ORT_ENFORCE(allocator_ != nullptr, "This method should follow a call to constructor that supplies the allocator");
-  ORT_THROW_IF_ERROR(ValidateBlockSparseShapes(values_shape, index_shape));
+  ORT_THROW_IF_ERROR(ValidateBlockSparseShapes(values_shape, indices_shape));
   if (values_shape.Size() > 0) {
-    const auto data_size = values_shape.Size() * ml_data_type_->Size();
-    const auto index_size = index_shape.Size() * sizeof(int32_t);
+    const auto data_size = SafeInt<int64_t>(values_shape.Size()) * ml_data_type_->Size();
+    const auto index_size = SafeInt<int64_t>(indices_shape.Size()) * sizeof(int32_t);
     const auto required_buffer_size = CalculateRequiredBufferSize(gsl::narrow<int64_t>(data_size),
                                                                   gsl::narrow<int64_t>(index_size));
     ORT_THROW_IF_ERROR(AllocateBuffer(required_buffer_size, static_cast<size_t>(data_size / ml_data_type_->Size())));
   }
   values_ = Tensor(DataType(), values_shape, p_data_, Location());
   format_data_.resize(1);
-  format_data_[0] = Tensor(DataTypeImpl::GetType<int32_t>(), index_shape, IndicesStart(values_.SizeInBytes()), Location());
+  format_data_[0] = Tensor(DataTypeImpl::GetType<int32_t>(), indices_shape, IndicesStart(values_.SizeInBytes()), Location());
   format_ = SparseFormat::kBlockSparse;
   return BlockSparseMutator(values_, format_data_[0]);
 }
@@ -389,38 +404,34 @@ Status SparseTensor::Copy(const IDataTransfer& data_transfer, SparseTensor& dst_
   ORT_RETURN_IF_NOT(dst_tensor.dense_shape_.Size() == dense_shape_.Size(), "Must have the same shape");
 
   const auto required_buffer_size = RequiredAllocationSize();
-  SparseTensor result(DataType(), Shape(), dst_tensor.allocator_);
+  SparseTensor result(DataType(), DenseShape(), dst_tensor.allocator_);
   ORT_RETURN_IF_ERROR(result.AllocateBuffer(required_buffer_size, NumValues()));
 
+  // Prepare result Tensor on top of the new buffer
+  Tensor result_values(DataType(), Values().Shape(), result.p_data_, result.Location());
+
+  // Setup indices Tensors on top of the new buffer
   const auto values_bytes = values_.SizeInBytes();
   auto* const dst_index_start = reinterpret_cast<int8_t*>(result.IndicesStart(values_bytes));
   result.format_data_.resize(format_data_.size());
-  int64_t index_bytes = 0;
-  for (size_t i = 0; i < format_data_.size(); ++i) {
+  SafeInt<int64_t> index_bytes = 0;
+  for (size_t i = 0, size = format_data_.size(); i < size; ++i) {
     const auto& src_idx = format_data_[i];
     result.format_data_[i] = Tensor(src_idx.DataType(), src_idx.Shape(),
-                                    dst_index_start + index_bytes,
+                                    dst_index_start + static_cast<int64_t>(index_bytes),
                                     result.Location());
-    const auto size_in_bytes = src_idx.SizeInBytes();
-    index_bytes += size_in_bytes;
-    // We donot have a contiguous buffer, copy one by one
-    if (p_data_ == nullptr && size_in_bytes > 0) {
-      ORT_RETURN_IF_ERROR(data_transfer.CopyTensor(src_idx, result.format_data_[i], exec_q_id));
-    }
+    index_bytes += src_idx.SizeInBytes();
   }
 
-  Tensor result_values(DataType(), Values().Shape(), result.p_data_, result.Location());
   if (Values().Shape().Size() > 0) {
-    if (is_string) {
-      CopyStrings(Values(), result_values);
-      if (p_data_ != nullptr) {
-        // We are on CPU
+    // This instance may either have a contigious buffer which we can copy in one shot
+    // or it can point to users buffers, in which case we have to copy each buffer individually
+    // strings can not be memcpyed albeit always on CPU.
+    if (p_data_ != nullptr) {
+      if (is_string) {
+        CopyStrings(Values(), result_values);
+        // We are on CPU, copy indices
         memcpy(dst_index_start, IndicesStart(values_bytes), static_cast<size_t>(index_bytes));
-      }
-    } else {
-      if (p_data_ == nullptr) {
-        // No contiguous buffer, copy only values, indices copied above
-        ORT_RETURN_IF_ERROR(data_transfer.CopyTensor(Values(), result_values, exec_q_id));
       } else {
         // Copy everything at once, setup artificial tensors
         // that describe the whole buffer
@@ -429,6 +440,17 @@ Status SparseTensor::Copy(const IDataTransfer& data_transfer, SparseTensor& dst_
         Tensor src(bytes_type, buffer_shape, p_data_, Location());
         Tensor dst(bytes_type, buffer_shape, result.p_data_, result.Location());
         ORT_RETURN_IF_ERROR(data_transfer.CopyTensor(src, dst, exec_q_id));
+      }
+    } else {
+      // non-contiguos buffer
+      if (is_string) {
+        CopyStrings(Values(), result_values);
+      } else {
+        ORT_RETURN_IF_ERROR(data_transfer.CopyTensor(Values(), result_values, exec_q_id));
+      }
+      // Copy indices
+      for (size_t i = 0, size = format_data_.size(); i < size; ++i) {
+        ORT_RETURN_IF_ERROR(data_transfer.CopyTensor(format_data_[i], result.format_data_[i], exec_q_id));
       }
     }
   }

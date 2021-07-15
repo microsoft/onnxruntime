@@ -157,7 +157,7 @@ void DumpTensor(
       auto cpu_allocator = cpu_execution_provider->GetAllocator(0, OrtMemTypeDefault);
       Tensor cpu_tensor{data_type, tensor.Shape(), cpu_allocator};
       const auto& data_transfer_mgr = session_state.GetDataTransferMgr();
-      auto status = data_transfer_mgr.CopyTensor(tensor, cpu_tensor);
+      auto status = data_transfer_mgr.CopySparseTensor(tensor, cpu_tensor);
       if (status == common::Status::OK()) {
         DumpCpuTensor(dump_options, cpu_tensor, tensor_name);
       } else {

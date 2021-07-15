@@ -77,7 +77,7 @@ void SparseDenseMatMulImpl<float>(const ComputeCtx& ctx, const ConstSparseMatrix
 template <class T>
 struct SparseToDenseCsr {
   void operator()(const ComputeCtx& ctx, const SparseTensor& A, const Tensor& B, Tensor& output) const {
-    const auto& a_dims = A.Shape().GetDims();
+    const auto& a_dims = A.DenseShape().GetDims();
     const auto& b_dims = B.Shape().GetDims();
     const auto& out_dims = output.Shape().GetDims();
     auto csr_view = A.AsCsr();
@@ -116,10 +116,10 @@ struct SparseToDenseCoo {
 
     auto a_values = A.Values().DataAsSpan<T>();
     auto coo_view = A.AsCoo();
-    const auto& ind_dims = coo_view.Index().Shape().GetDims();
-    ORT_RETURN_IF_NOT(ind_dims.size() == 2, "COO indicies must be 2-D");
+    const auto& ind_dims = coo_view.Indices().Shape().GetDims();
+    ORT_RETURN_IF_NOT(ind_dims.size() == 2, "COO indices must be 2-D, got: ", ind_dims.size());
 
-    ConstEigenMatrixMapRowMajor<int64_t> a_indicies_map(coo_view.Index().Data<int64_t>(), ind_dims[0], ind_dims[1]);
+    ConstEigenMatrixMapRowMajor<int64_t> a_indicies_map(coo_view.Indices().Data<int64_t>(), ind_dims[0], ind_dims[1]);
     ConstEigenMatrixMapRowMajor<T> map_b(B.Data<T>(), b_dims[0], b_dims[1]);
     EigenMatrixMapRowMajor<T> output_map(output.MutableData<T>(), out_dims[0], out_dims[1]);
     output_map.setZero();
@@ -154,7 +154,7 @@ Status SparseToDenseMatMul::Compute(OpKernelContext* ctx) const {
   const auto* A = ctx->Input<SparseTensor>(0);
   const auto* B = ctx->Input<Tensor>(1);
 
-  const auto& A_shape = A->Shape();
+  const auto& A_shape = A->DenseShape();
   const auto& B_shape = B->Shape();
 
   ORT_RETURN_IF_NOT(A_shape.NumDimensions() == 2, "Currently supporting only 2-D matrices");
@@ -180,14 +180,14 @@ Status SparseToDenseMatMul::Compute(OpKernelContext* ctx) const {
   ComputeCtx compute_ctx{trans_a_attr_ != 0, trans_b_attr_ != 0, alpha_attr_};
   if (A->Format() == SparseFormat::kCoo) {
     auto coo_view = A->AsCoo();
-    const auto num_dims = coo_view.Index().Shape().NumDimensions();
+    const auto num_dims = coo_view.Indices().Shape().NumDimensions();
     ORT_RETURN_IF_NOT(num_dims == 2, "Expecting COO 2-D indices shape");
-    ORT_RETURN_IF_NOT(A->Values().Shape().Size() * 2 == coo_view.Index().Shape().Size(), "Expecting 2xValues == indices");
+    ORT_RETURN_IF_NOT(A->Values().Shape().Size() * 2 == coo_view.Indices().Shape().Size(), "Expecting 2xValues == indices");
     auto status = t_disp.InvokeRet<Status, SparseToDenseCoo>(compute_ctx, *A, *B, *output);
     ORT_RETURN_IF_ERROR(status);
 // Eigen has a bug in x86 where it calculates reallocation size as -1
 // and throws bad_alloc
-#if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__)
+#if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
   } else if (A->Format() == SparseFormat::kCsrc) {
     auto csr_view = A->AsCsr();
     ORT_RETURN_IF_NOT(A->Values().Shape().Size() == csr_view.Inner().Shape().Size(),

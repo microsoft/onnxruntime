@@ -42,7 +42,7 @@ class IDataTransfer {
     int exec_queue_id;
   };
 
-  virtual common::Status CopyTensors(const std::vector<SparseSrcDstPair>& src_dst_pairs) const;
+  virtual common::Status CopySparseTensors(const std::vector<SparseSrcDstPair>& src_dst_pairs) const;
 };
 
 class CPUDataTransfer : public IDataTransfer {

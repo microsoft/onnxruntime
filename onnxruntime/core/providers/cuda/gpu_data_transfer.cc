@@ -76,5 +76,4 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst, int e
 
   return Status::OK();
 }
-
 }  // namespace onnxruntime

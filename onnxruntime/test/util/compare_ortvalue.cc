@@ -257,9 +257,9 @@ std::pair<COMPARE_RESULT, std::string> CompareSparseTensors(const SparseTensor& 
                      "Expected type: ", ElementTypeToString(expected.DataType()),
                      " actual: ", ElementTypeToString(actual.DataType()));
 
-  TEST_RETURN_IF_NOT(actual.Shape() == expected.Shape(), COMPARE_RESULT::SHAPE_MISMATCH,
-                     "Expected dense shape: ", expected.Shape(),
-                     " Actual: ", actual.Shape());
+  TEST_RETURN_IF_NOT(actual.DenseShape() == expected.DenseShape(), COMPARE_RESULT::SHAPE_MISMATCH,
+                     "Expected dense shape: ", expected.DenseShape(),
+                     " Actual: ", actual.DenseShape());
 
   TEST_RETURN_IF_NOT(actual.Format() == expected.Format(), COMPARE_RESULT::TYPE_MISMATCH,
                      "Expected sparse format", expected.Format(),
@@ -273,7 +273,7 @@ std::pair<COMPARE_RESULT, std::string> CompareSparseTensors(const SparseTensor& 
     auto actual_view = actual.AsCoo();
     auto expected_view = expected.AsCoo();
 
-    TEST_RETURN_IF_ERROR(CompareTwoTensors(actual_view.Index(), expected_view.Index(),
+    TEST_RETURN_IF_ERROR(CompareTwoTensors(actual_view.Indices(), expected_view.Indices(),
                                            per_sample_tolerance, relative_per_sample_tolerance, post_processing),
                          "Comparing COO indices");
   } else if (actual.Format() == SparseFormat::kCsrc) {

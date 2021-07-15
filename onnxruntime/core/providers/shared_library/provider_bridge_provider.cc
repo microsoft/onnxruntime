@@ -200,8 +200,8 @@ Status IDataTransfer::CopyTensors(const std::vector<SrcDstPair>& src_dst_pairs) 
   return g_host->IDataTransfer__CopyTensors(this, src_dst_pairs);
 }
 
-Status IDataTransfer::CopyTensors(const std::vector<SparseSrcDstPair>& src_dst_pairs) const {
-  return g_host->IDataTransfer__CopyTensors(this, src_dst_pairs);
+Status IDataTransfer::CopySparseTensors(const std::vector<SparseSrcDstPair>& src_dst_pairs) const {
+  return g_host->IDataTransfer__CopySparseTensors(this, src_dst_pairs);
 }
 
 const Node& OpKernel::Node() const { return g_host->OpKernel__Node(this); }

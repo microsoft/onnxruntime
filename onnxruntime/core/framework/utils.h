@@ -50,18 +50,12 @@ void DefaultFree(void* p);
 void ConstructStrings(void* p_data, int64_t elements);
 
 /// <summary>
-/// The function uses an allocator (not null)
-/// and releases the supplied buffer. If is_string is true
-/// then the function assumes the buffer contains instances
-/// of std::string and calls ~string() on each instance `elements`
-/// times total.
+/// Destroy std::string objects in the contiquous chunk of memory
+/// by explicitely invoking ~string();
 /// </summary>
-/// <param name="allocator"></param>
-/// <param name="is_string"></param>
 /// <param name="p_data"></param>
 /// <param name="elements"></param>
-void ReleaseTensorBuffer(const AllocatorPtr& allocator, bool is_string,
-                         void* p_data, int64_t elements);
+void DestroyStrings(void* p_data, int64_t elements);
 
 const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info);
 

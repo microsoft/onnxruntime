@@ -101,6 +101,7 @@ Status DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Ten
   const auto cols = src_dims[1];
 
   std::vector<int64_t> inner_indices;
+  inner_indices.reserve(static_cast<size_t>(src.Shape().Size() / 2));
   std::vector<int64_t> outer_indices;
   outer_indices.reserve(static_cast<size_t>(rows) + 1);
 
@@ -173,7 +174,7 @@ Status DenseTensorToSparseCsr(const DataTransferManager& data_manager, const Ten
 Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src,
                               const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator,
                               Tensor& dst) {
-  const auto& src_dims = src.Shape().GetDims();
+  const auto& src_dims = src.DenseShape().GetDims();
   if (src_dims.size() != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Support 2-D matrices only");
   }
@@ -193,7 +194,7 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
                                                  ? dst_allocator
                                                  : cpu_allocator;
 
-  Tensor cpu_result(src.DataType(), src.Shape(), conversion_allocator);
+  Tensor cpu_result(src.DataType(), src.DenseShape(), conversion_allocator);
   if (!is_string) {
     memset(cpu_result.MutableDataRaw(), 0, cpu_result.SizeInBytes());
   }
@@ -238,8 +239,8 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
     gsl::span<const int64_t> inner_span;
     gsl::span<const int64_t> outer_span;
     if (src.Location().device.Type() != OrtDevice::CPU) {
-      SparseTensor t(src.DataType(), src.Shape(), cpu_allocator);
-      ORT_RETURN_IF_ERROR(data_manager.CopyTensor(src, t));
+      SparseTensor t(src.DataType(), src.DenseShape(), cpu_allocator);
+      ORT_RETURN_IF_ERROR(data_manager.CopySparseTensor(src, t));
       cpu_src = std::move(t);
       values = cpu_src.Values().DataRaw();
       inner_span = cpu_src.AsCsr().Inner().DataAsSpan<int64_t>();
@@ -266,7 +267,7 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
   }
 
   if (dst_allocator->Info().device.Type() != OrtDevice::CPU) {
-    Tensor dest_tensor(src.DataType(), src.Shape(), dst_allocator);
+    Tensor dest_tensor(src.DataType(), src.DenseShape(), dst_allocator);
     ORT_RETURN_IF_ERROR(data_manager.CopyTensor(cpu_result, dest_tensor));
     dst = std::move(dest_tensor);
   } else {
@@ -278,7 +279,7 @@ Status SparseCsrToDenseTensor(const DataTransferManager& data_manager, const Spa
 
 Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src,
                               const AllocatorPtr& cpu_allocator, const AllocatorPtr& dst_allocator, Tensor& dst) {
-  const auto& src_dims = src.Shape().GetDims();
+  const auto& src_dims = src.DenseShape().GetDims();
   if (src_dims.size() != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Currently do not support dims higher than 2 dimensions: ", src_dims.size());
@@ -297,7 +298,7 @@ Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const Spa
   const AllocatorPtr& conversion_allocator = (dst_allocator->Info().device.Type() == OrtDevice::CPU)
                                                  ? dst_allocator
                                                  : cpu_allocator;
-  Tensor cpu_result(src.DataType(), src.Shape(), conversion_allocator);
+  Tensor cpu_result(src.DataType(), src.DenseShape(), conversion_allocator);
   if (!is_string) {
     memset(cpu_result.MutableDataRaw(), 0, cpu_result.SizeInBytes());
   }
@@ -306,20 +307,20 @@ Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const Spa
     const void* values = nullptr;
     const int64_t* indices = nullptr;
     const auto num_values = src.Values().Shape().Size();
-    const auto num_indices = src.AsCoo().Index().Shape().Size();
+    const auto num_indices = src.AsCoo().Indices().Shape().Size();
     ORT_RETURN_IF_NOT((num_values == num_indices || 2 * num_values == num_indices), 
       "Expecting indices to be equal the number of values or be twice as many");
 
     SparseTensor src_cpu;
     if (src.Location().device.Type() != OrtDevice::CPU) {
-      SparseTensor t(src.DataType(), src.Shape(), cpu_allocator);
-      ORT_RETURN_IF_ERROR(data_manager.CopyTensor(src, t));
+      SparseTensor t(src.DataType(), src.DenseShape(), cpu_allocator);
+      ORT_RETURN_IF_ERROR(data_manager.CopySparseTensor(src, t));
       src_cpu = std::move(t);
       values = src_cpu.Values().DataRaw();
-      indices = src_cpu.AsCoo().Index().Data<int64_t>();
+      indices = src_cpu.AsCoo().Indices().Data<int64_t>();
     } else {
       values = src.Values().DataRaw();
-      indices = src.AsCoo().Index().Data<int64_t>();
+      indices = src.AsCoo().Indices().Data<int64_t>();
     }
 
     const auto element_size = src.DataType()->Size();
@@ -345,7 +346,7 @@ Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const Spa
       }
     }
 
-    const auto dense_size = src.Shape().Size();
+    const auto dense_size = src.DenseShape().Size();
     void* output = cpu_result.MutableDataRaw();
     // Linear index
     if (num_indices == num_values) {
@@ -366,7 +367,7 @@ Status SparseCooToDenseTensor(const DataTransferManager& data_manager, const Spa
   }
 
   if (dst_allocator->Info().device.Type() != OrtDevice::CPU) {
-    Tensor t(src.DataType(), src.Shape(), dst_allocator);
+    Tensor t(src.DataType(), src.DenseShape(), dst_allocator);
     ORT_RETURN_IF_ERROR(data_manager.CopyTensor(cpu_result, t));
     dst = std::move(t);
   } else {
@@ -436,6 +437,7 @@ Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Ten
   }
 
   std::vector<int64_t> gathered_indices;
+  gathered_indices.reserve(static_cast<size_t>(src.Shape().Size() / 2));
   const auto cols = src_dims[1];
   std::vector<uint8_t> values_8;
   std::vector<uint16_t> values_16;
@@ -497,8 +499,8 @@ Status DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Ten
     } else {
       ORT_RETURN_IF_ERROR(data_transfer->CopyTensor(nnz_tensor, mutator.Values()));
     }
-    Tensor indices_tensor(DataTypeImpl::GetType<int64_t>(), mutator.Index().Shape(), gathered_indices.data(), cpu_allocator->Info());
-    ORT_RETURN_IF_ERROR(data_transfer->CopyTensor(indices_tensor, mutator.Index()));
+    Tensor indices_tensor(DataTypeImpl::GetType<int64_t>(), mutator.Indices().Shape(), gathered_indices.data(), cpu_allocator->Info());
+    ORT_RETURN_IF_ERROR(data_transfer->CopyTensor(indices_tensor, mutator.Indices()));
   }
 
   dst = std::move(dst_result);

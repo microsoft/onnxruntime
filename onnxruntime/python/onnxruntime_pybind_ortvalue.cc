@@ -118,16 +118,17 @@ void addOrtValueMethods(pybind11::module& m) {
         return ml_value;
       })
       // This will create a copy of OrtValue (cheap) and will return as a separate OrtValue object
-      .def_static("ort_value_from_sparse_tensor", [](const PySparseTensor* py_sparse_tensor) -> std::unique_ptr<OrtValue> {
+      .def_static("ort_value_from_sparse_tensor", 
+                  [](const PySparseTensor* py_sparse_tensor) -> std::unique_ptr<OrtValue> {
         return py_sparse_tensor->AsOrtValue();
-       })
+      })
       // This will create a copy of OrtValue(cheap) and will return as a separate SparseTensor object
       .def("as_sparse_tensor", [](const OrtValue* ort_value) -> std::unique_ptr<PySparseTensor> {
         if (!ort_value->IsSparseTensor()) {
           ORT_THROW("This OrtValue does not contain SparseTensor. Check data_type() value.");
         }
         return std::make_unique<PySparseTensor>(*ort_value);
-       })
+      })
       // Get a pointer to Tensor data
       .def("data_ptr", [](OrtValue* ml_value) -> int64_t {
         // TODO: Assumes that the OrtValue is a Tensor, make this generic to handle non-Tensors
@@ -159,7 +160,7 @@ void addOrtValueMethods(pybind11::module& m) {
         py::list shape_arr;
         const auto& dims = (ort_value->IsTensor())
                                ? ort_value->Get<Tensor>().Shape().GetDims()
-                               : ort_value->Get<SparseTensor>().Shape().GetDims();
+                               : ort_value->Get<SparseTensor>().DenseShape().GetDims();
 
         for (auto dim : dims) {
           // For sequence tensors - we would append a list of dims to the outermost list

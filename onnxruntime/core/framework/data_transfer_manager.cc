@@ -31,8 +31,8 @@ Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst) const {
   return CopyTensor(src, dst, 0);
 }
 
-common::Status DataTransferManager::CopyTensor(const SparseTensor& src, SparseTensor& dst) const {
-  return CopyTensor(src, dst, 0);
+common::Status DataTransferManager::CopySparseTensor(const SparseTensor& src, SparseTensor& dst) const {
+  return CopySparseTensor(src, dst, 0);
 }
 
 Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const {
@@ -56,8 +56,8 @@ Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst, int exec_
                          dst.Location().device.ToString());
 }
 
-Status DataTransferManager::CopyTensor(const SparseTensor& src, SparseTensor& dst, int exec_queue_id) const {
-  if (src.Shape().Size() != dst.Shape().Size()) {
+Status DataTransferManager::CopySparseTensor(const SparseTensor& src, SparseTensor& dst, int exec_queue_id) const {
+  if (src.DenseShape().Size() != dst.DenseShape().Size()) {
     return Status(ONNXRUNTIME, FAIL, "Tensor size mismatch");
   }
 
@@ -128,7 +128,7 @@ common::Status DataTransferManager::CopyTensors(const std::vector<IDataTransfer:
   return Status::OK();
 }
 
-common::Status DataTransferManager::CopyTensors(const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) const {
+common::Status DataTransferManager::CopySparseTensors(const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) const {
   if (src_dst_pairs.empty())
     return Status::OK();
 
@@ -162,7 +162,7 @@ common::Status DataTransferManager::CopyTensors(const std::vector<IDataTransfer:
 
   // all copies are between the same devices so we can do them all at once
   if (all_same) {
-    return first_dt->CopyTensors(src_dst_pairs);
+    return first_dt->CopySparseTensors(src_dst_pairs);
   }
 
   // there are a mix of devices requiring copies. we don't expect this to happen, so just iterate the pairs
@@ -173,7 +173,7 @@ common::Status DataTransferManager::CopyTensors(const std::vector<IDataTransfer:
   ORT_RETURN_IF_ERROR(first_pair.src.get().Copy(*first_dt, first_pair.dst, first_pair.exec_queue_id));
 
   for (auto cur_pair = src_dst_pairs.cbegin() + 1, end_pair = src_dst_pairs.cend(); cur_pair != end_pair; ++cur_pair) {
-    ORT_RETURN_IF_ERROR(CopyTensor(cur_pair->src, cur_pair->dst, cur_pair->exec_queue_id));
+    ORT_RETURN_IF_ERROR(CopySparseTensor(cur_pair->src, cur_pair->dst, cur_pair->exec_queue_id));
   }
 
   return Status::OK();

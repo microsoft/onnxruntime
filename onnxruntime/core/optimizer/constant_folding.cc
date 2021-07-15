@@ -62,7 +62,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
 
-  std::function<bool(const std::string&)> is_constant_initializer_check = [&graph](const std::string& name) -> bool {
+  std::function<bool(const std::string&)> is_sparse_initializer_check = [&graph](const std::string& name) -> bool {
     return graph.IsSparseInitializer(name);
   };
 
@@ -116,7 +116,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
       // Create execution frame for executing constant nodes.
       OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_,
-                                         is_constant_initializer_check);
+                                         is_sparse_initializer_check);
 
       std::vector<int> fetch_mlvalue_idxs;
       for (const auto* node_out : node->OutputDefs()) {
