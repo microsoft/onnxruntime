@@ -40,10 +40,6 @@
 #include "ortcustomops.h"
 #endif
 
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_provider_factory.h"
-#endif
-
 using namespace onnxruntime::logging;
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;

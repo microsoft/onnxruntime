@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 #include "onnxruntime_c_api.h"
-
-#ifdef __cplusplus
 #include "core/framework/provider_options.h"
 
 namespace onnxruntime {
@@ -17,8 +15,6 @@ struct CUDAExecutionProviderExternalAllocatorInfo;
 namespace cuda {
 class INcclService;
 }
-
-}  // namespace onnxruntime
 
 struct ProviderInfo_CUDA {
   virtual OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) = 0;
@@ -48,14 +44,4 @@ struct ProviderInfo_CUDA {
   virtual std::shared_ptr<onnxruntime::IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, OrtArenaCfg* default_memory_arena_cfg) = 0;
 };
 
-extern "C" {
-#endif
-
-/**
- * \param device_id cuda device id, starts from zero.
- */
-ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id);
-
-#ifdef __cplusplus
-}
-#endif
+}  // namespace onnxruntime

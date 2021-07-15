@@ -4,9 +4,6 @@
 #pragma once
 #include "onnxruntime/core/providers/cpu/cpu_provider_factory.h"
 
-#ifdef USE_CUDA
-#include "onnxruntime/core/providers/cuda/cuda_provider_factory.h"
-#endif
 #ifdef USE_DNNL
 #include "onnxruntime/core/providers/dnnl/dnnl_provider_factory.h"
 #endif
