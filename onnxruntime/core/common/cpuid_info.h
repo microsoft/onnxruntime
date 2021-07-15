@@ -9,14 +9,9 @@ namespace onnxruntime {
 
 class CPUIDInfo {
  public:
-  static common::Status Initialize() {
-    return instance_.Init();
-  }
   static const CPUIDInfo& GetCPUIDInfo() {
-    if (!instance_.initalized_) {
-      ORT_THROW("CPUIDInfo used before initialization!");
-    }
-    return instance_;
+    static CPUIDInfo cpuid_info;
+    return cpuid_info;
   }
 
   bool HasAVX() const { return has_avx_; }
@@ -32,8 +27,7 @@ class CPUIDInfo {
   bool HasArmNeonDot() const { return has_arm_neon_dot_; }
 
  private:
-  common::Status Init();
-  bool initalized_{false};
+  CPUIDInfo();
   bool has_avx_{false};
   bool has_avx2_{false};
   bool has_avx512f_{false};
