@@ -8,8 +8,6 @@ SET TargetFramework=netcoreapp2.1
 SET TargetArch=x64
 SET dn="C:\Program Files\dotnet\dotnet"
 SET CurrentOnnxRuntimeVersion=""
-SET OrtEp=""
-SET DefineConstants=""
 
 SET LocalNuGetRepo=%1
 IF NOT "%2"=="" (SET TargetFramework=%2)
