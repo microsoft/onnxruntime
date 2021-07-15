@@ -1,7 +1,6 @@
 parameters:
   AgentPool : 'Win-CPU'
   Skipx86Tests: 'false'
-  EnvSetupScript: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_cuda_11.bat'
 
 jobs:
 - job: NuGet_Test_Win
@@ -16,18 +15,11 @@ jobs:
     SKIPNONPACKAGETESTS: 'ON'
     runCodesignValidationInjection: false
     NugetArtifact: $(Build.BinariesDirectory)\nuget-artifact
-    ${{ if eq(parameters.SharedEps, '') }}:
-      RunTestScript: test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat
-      DotNetCoreX64Args: ${{ variables.NugetArtifact }} netcoreapp2.1 x64 $(NuGetPackageVersionNumber)
-      DotNetCoreX86Args: ${{ variables.NugetArtifact }} netcoreapp2.1 x86 $(NuGetPackageVersionNumber)
-      DotNetFrameworkX64Args: ${{ variables.NugetArtifact }} net461 x64 $(NuGetPackageVersionNumber)
-      DotNetFrameworkX86Args: ${{ variables.NugetArtifact }} net461 x86 $(NuGetPackageVersionNumber)
-    ${{ if ne(parameters.SharedEps, '') }}:
-      RunTestScript: test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest_shared_ep.bat
-      DotNetCoreX64Args: ${{ variables.NugetArtifact }} netcoreapp2.1 x64 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
-      DotNetCoreX86Args: ${{ variables.NugetArtifact }} netcoreapp2.1 x86 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
-      DotNetFrameworkX64Args: ${{ variables.NugetArtifact }} net461 x64 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
-      DotNetFrameworkX86Args: ${{ variables.NugetArtifact }} net461 x86 $(NuGetPackageVersionNumber) ${{ parameters.SharedEps }}
+    RunTestScript: test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat
+    DotNetCoreX64Args: ${{ variables.NugetArtifact }} netcoreapp2.1 x64 $(NuGetPackageVersionNumber)
+    DotNetCoreX86Args: ${{ variables.NugetArtifact }} netcoreapp2.1 x86 $(NuGetPackageVersionNumber)
+    DotNetFrameworkX64Args: ${{ variables.NugetArtifact }} net461 x64 $(NuGetPackageVersionNumber)
+    DotNetFrameworkX86Args: ${{ variables.NugetArtifact }} net461 x86 $(NuGetPackageVersionNumber)
 
   steps:
   - task: UsePythonVersion@0
