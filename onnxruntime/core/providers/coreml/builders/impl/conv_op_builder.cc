@@ -56,25 +56,22 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const bool is_1d_conv = (weight_shape.size() == 3);
 
   NodeAttrHelper helper(node);
-  const auto strides = helper.Get("strides", std::vector<int64_t>{1, 1});
-  const auto dilations = helper.Get("dilations", std::vector<int64_t>{1, 1});
-  const auto onnx_pads = helper.Get("pads", std::vector<int64_t>{0, 0, 0, 0});
+  auto strides = helper.Get("strides", std::vector<int64_t>{1, 1});
+  auto dilations = helper.Get("dilations", std::vector<int64_t>{1, 1});
+  auto onnx_pads = helper.Get("pads", std::vector<int64_t>{0, 0, 0, 0});
   // Strides/dilations for 1d conv is normally of length 1. Expand them by 1
   // to meet the required length 2 (for 2d conv it's normally 2)
   // Similarly 1d conv normally has a length 2 padding. Expand it to length 4 by adding additional zeros.
-  auto strides_prime = strides;
-  auto dilations_prime = dilations;
-  auto onnx_pads_prime = onnx_pads;
   if (is_1d_conv) {
     if (strides.size() < 2) {
-      strides_prime.push_back(1);
+      strides.push_back(1);
     }
     if (dilations.size() < 2) {
-      dilations_prime.push_back(1);
+      dilations.push_back(1);
     }
     if (onnx_pads.size() < 4) {
-      onnx_pads_prime.insert(onnx_pads_prime.begin() + 1, 0);
-      onnx_pads_prime.push_back(0);
+      onnx_pads.insert(onnx_pads.begin() + 1, 0);
+      onnx_pads.push_back(0);
     }
   }
   const auto group = helper.Get("group", static_cast<int64_t>(1));
@@ -101,18 +98,16 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     coreml_conv->set_kernelchannels(weight_shape_prime[1]);  // C/Group
     coreml_conv->add_kernelsize(weight_shape_prime[2]);      // H
     coreml_conv->add_kernelsize(weight_shape_prime[3]);      // W:1
-    *coreml_conv->mutable_stride() = {strides_prime.cbegin(), strides_prime.cend()};
-    *coreml_conv->mutable_dilationfactor() = {dilations_prime.cbegin(), dilations_prime.cend()};
   } else {
     coreml_conv->set_outputchannels(weight_shape[0]);  // M
     coreml_conv->set_kernelchannels(weight_shape[1]);  // C/Group
     coreml_conv->add_kernelsize(weight_shape[2]);      // H
     coreml_conv->add_kernelsize(weight_shape[3]);      // W
-    *coreml_conv->mutable_stride() = {strides.cbegin(), strides.cend()};
-    *coreml_conv->mutable_dilationfactor() = {dilations.cbegin(), dilations.cend()};
   }
   coreml_conv->set_ngroups(group);
-
+  *coreml_conv->mutable_stride() = {strides.cbegin(), strides.cend()};
+  *coreml_conv->mutable_dilationfactor() = {dilations.cbegin(), dilations.cend()};
+  
   coreml_conv->set_isdeconvolution(false);
 
   // Add Padding
@@ -124,7 +119,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   if (is_1d_conv) {
     ORT_RETURN_IF_ERROR(HandleAutoPad(input_shape, weight_shape[2], 1,
-                                      onnx_pads_prime, strides_prime, dilations_prime,
+                                      onnx_pads, strides, dilations,
                                       StringToAutoPadType(helper.Get("auto_pad", "NOTSET")),
                                       auto_pad_type));
   } else {
@@ -141,26 +136,14 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     }
   } else {
     auto* padding_type = coreml_conv->mutable_valid();
-
-    if (is_1d_conv) {
-      if (AutoPadType::NOTSET == auto_pad_type && onnx_pads_prime != std::vector<int64_t>{0, 0, 0, 0}) {
-        // NOTSET is adding the explicit padding to the ValidPadding.paddingAmounts
-        auto* height_border = padding_type->mutable_paddingamounts()->add_borderamounts();
-        height_border->set_startedgesize(onnx_pads_prime[0]);
-        height_border->set_endedgesize(onnx_pads_prime[2]);
-        auto* width_border = padding_type->mutable_paddingamounts()->add_borderamounts();
-        width_border->set_startedgesize(onnx_pads_prime[1]);
-        width_border->set_endedgesize(onnx_pads_prime[3]);
-      }
-    } else {
-      if (AutoPadType::NOTSET == auto_pad_type && onnx_pads != std::vector<int64_t>{0, 0, 0, 0}) {
-        auto* height_border = padding_type->mutable_paddingamounts()->add_borderamounts();
-        height_border->set_startedgesize(onnx_pads[0]);
-        height_border->set_endedgesize(onnx_pads[2]);
-        auto* width_border = padding_type->mutable_paddingamounts()->add_borderamounts();
-        width_border->set_startedgesize(onnx_pads[1]);
-        width_border->set_endedgesize(onnx_pads[3]);
-      }
+    if (AutoPadType::NOTSET == auto_pad_type && onnx_pads != std::vector<int64_t>{0, 0, 0, 0}) {
+      // NOTSET is adding the explicit padding to the ValidPadding.paddingAmounts
+      auto* height_border = padding_type->mutable_paddingamounts()->add_borderamounts();
+      height_border->set_startedgesize(onnx_pads[0]);
+      height_border->set_endedgesize(onnx_pads[2]);
+      auto* width_border = padding_type->mutable_paddingamounts()->add_borderamounts();
+      width_border->set_startedgesize(onnx_pads[1]);
+      width_border->set_endedgesize(onnx_pads[3]);
     }
   }
 
