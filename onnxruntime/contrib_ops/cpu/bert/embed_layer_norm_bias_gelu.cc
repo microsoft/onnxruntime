@@ -3,14 +3,16 @@
 
 #include "embed_layer_norm_bias_gelu.h"
 
+#include "core/common/safeint.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/providers/cpu/math/matmul_helper.h"
 
 namespace onnxruntime {
 namespace contrib {
 
 namespace {
 
-#pragma warning(disable : 4100)
+#pragma warning(disable : 4189 4100)
 Status CheckInputs(const Tensor* input,
                    const Tensor* skip,
                    const Tensor* gamma,
@@ -27,8 +29,7 @@ Status CheckInputs(const Tensor* input,
 }
 
 template <typename T>
-void ComputeSkipLayerNorm(ptrdiff_t task_idx,
-                          int64_t hidden_size,
+void ComputeSkipLayerNorm(int64_t hidden_size,
                           float epsilon,
                           const T* input_data,
                           const T* skip_data,
@@ -36,20 +37,16 @@ void ComputeSkipLayerNorm(ptrdiff_t task_idx,
                           const T* beta_data,
                           const T* bias_data,
                           T* output_data) {
-  const T* cur_input = input_data + (task_idx * hidden_size);
-  const T* cur_skip = skip_data + (task_idx * hidden_size);
-  T* cur_output = output_data + (task_idx * hidden_size);
-
   T mean = 0;
   T mean_square = 0;
 
   for (int64_t i = 0; i < hidden_size; ++i) {
-    T value = cur_input[i] + cur_skip[i];
+    T value = input_data[i] + skip_data[i];
     if (bias_data != nullptr) {
       value += bias_data[i];
     }
 
-    cur_output[i] = value;
+    output_data[i] = value;
     mean += value;
     mean_square += value * value;
   }
@@ -59,20 +56,41 @@ void ComputeSkipLayerNorm(ptrdiff_t task_idx,
 
   for (int64_t i = 0; i < hidden_size; ++i) {
     if (beta_data == nullptr) {
-      cur_output[i] =
-          (cur_output[i] - mean) / mean_square * gamma_data[i];
+      output_data[i] =
+          (output_data[i] - mean) / mean_square * gamma_data[i];
     } else {
-      cur_output[i] =
-          (cur_output[i] - mean) / mean_square * gamma_data[i] + beta_data[i];
+      output_data[i] =
+          (output_data[i] - mean) / mean_square * gamma_data[i] + beta_data[i];
     }
   }
 }
 
+// TODO(kreeger): This is mostly a vector dot product vs. a full matmul.
 template <typename T>
-void ComputeMatMul() {
+void ComputeMatMul(const int64_t hidden_size,
+                   const int64_t bias_size,
+                   const T* a_data,
+                   const T* b_data,
+                   T* output_data) {
+
   //
-  // TODO(kreeger): write me
   //
+  // TODO LEFT OFF RIGHT HERE THIS IS WONG
+  //
+  //
+
+  // TODO - check inputs needs to make sure the dimensions are safe here.
+  for (int64_t i = 0; i < bias_size; ++i) {
+    T sum = 0;
+    for (int64_t j = 0; j < hidden_size; ++j) {
+      size_t b_idx = i + (hidden_size * j);
+      T cur_a = a_data[j];
+      T cur_b = b_data[b_idx];
+      sum += cur_a * cur_b;
+      //sum += a_data[j] * b_data[b_idx];
+    }
+    output_data[i] = sum;
+  }
 }
 
 }  // namespace
@@ -107,7 +125,9 @@ Status EmbedLayerNormBiasGelu<T>::Compute(OpKernelContext* context) const {
   const Tensor* bias_gelu_bias = context->Input<Tensor>(6);
   const Tensor* matmul_2_b = context->Input<Tensor>(7);
 
-  Tensor* output = context->Output(0, input->Shape());
+  const TensorShape& output_shape = input->Shape();
+
+  Tensor* output = context->Output(0, output_shape);
 
   ORT_RETURN_IF_ERROR(CheckInputs(input,
                                   skip,
@@ -119,11 +139,15 @@ Status EmbedLayerNormBiasGelu<T>::Compute(OpKernelContext* context) const {
                                   matmul_2_b,
                                   output));
 
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+
   const auto& input_dims = input->Shape().GetDims();
 
   const int64_t batch_size = input_dims[0];
   const int64_t sequence_length = input_dims[1];
   const int64_t hidden_size = input_dims[2];
+  const int64_t bias_size = bias_gelu_bias->Shape().GetDims()[0];
 
   const T* input_data = input->Data<T>();
   const T* skip_data = skip->Data<T>();
@@ -132,44 +156,68 @@ Status EmbedLayerNormBiasGelu<T>::Compute(OpKernelContext* context) const {
   const T* beta_data = beta == nullptr ? nullptr : beta->Data<T>();
   const T* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
 
+  // Scratch buffer for the SkipLayerNorm output:
+  auto skip_layer_norm_output_data =
+      alloc->Alloc(SafeInt<size_t>(output_shape.Size()));
+  BufferUniquePtr skip_layer_norm_output_buffer(skip_layer_norm_output_data,
+                                                BufferDeleter(alloc));
+  T* skip_layer_norm_output = reinterpret_cast<T*>(skip_layer_norm_output_data);
+
+
   T* output_data = output->MutableData<T>();
 
-  AllocatorPtr alloc;
-  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+  // Determine shape and size for matmul #1:
+  MatMulComputeHelper helper_1;
+  ORT_RETURN_IF_ERROR(helper_1.Compute(output_shape,
+                                       matmul_1_b->Shape(),
+                                       /*transa=*/false,
+                                       /*transb=*/false));
+  const T* matmul_1_b_data = matmul_1_b->Data<T>();
 
-  //
-  // TODO(kreeger): Left off right here. I need a temp buffer to hold
-  //                the placeholder of output?
-  //
+  // Scratch buffer for matmul1 output:
+  auto matmul_1_output_data =
+      alloc->Alloc(SafeInt<size_t>(helper_1.OutputShape().Size()));
+  BufferUniquePtr matmul_1_output_buffer(matmul_1_output_data,
+                                         BufferDeleter(alloc));
+  T* matmul_1_output = reinterpret_cast<T*>(matmul_1_output_data);
 
-  //MatMulComputeHelper helper;
-  //ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, trans_a, trans_b));
+  // BiasGelu shape is the output of matmul #1:
+  auto bias_gelu_shape = helper_1.OutputShape();
 
-  // 
-
-  //auto gemm_data = allocator->Alloc(SafeInt<size_t>(batch_size) * sequence_length * 3 * hidden_size * element_size);
-  //BufferUniquePtr gemm_buffer(gemm_data, BufferDeleter(allocator));
+  // Determine shape and size for matmul #2:
+  MatMulComputeHelper helper_2;
+  ORT_RETURN_IF_ERROR(helper_2.Compute(bias_gelu_shape,
+                                       matmul_2_b->Shape(),
+                                       /*transa=*/false,
+                                       /*transb=*/false));
 
 
   int64_t task_count = batch_size * sequence_length;
   concurrency::ThreadPool::TryBatchParallelFor(
       context->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
       [&](ptrdiff_t task_idx) {
-        // First, compute SkipLayerNorm:
-        ComputeSkipLayerNorm(task_idx,
-                             hidden_size,
-                             epsilon(),
-                             input_data,
-                             skip_data,
-                             gamma_data,
-                             beta_data,
-                             bias_data,
-                             output_data);
 
-        // Now perform MatMul
-        //MLAS_SGEMM_DATA_PARAMS matmul_1_params;
-        //matmul_1_params.A = cur_output;
-        //matmul_1_params.lda = 0;  // first dim of cur_output?
+        // TODO(kreeger): Add some ASCII art to help with the breakup of this
+        //                work as it filters through the graph.
+        
+        // Now perform MatMul on the 1 row that was calculated in the call to
+        // ComputeSkipLayerNorm():
+        if (task_idx == 0) {
+          ComputeSkipLayerNorm(hidden_size,
+                               epsilon(),
+                               input_data + (task_idx * hidden_size),
+                               skip_data + (task_idx * hidden_size),
+                               gamma_data,
+                               beta_data,
+                               bias_data,
+                               skip_layer_norm_output + (task_idx * hidden_size));
+
+          ComputeMatMul(hidden_size,
+                        bias_size,
+                        skip_layer_norm_output + (task_idx * hidden_size),
+                        matmul_1_b_data,  // no offset here - as expected.
+                        matmul_1_output);   // TODO what is the offset here???
+        }
 
         // Now perform BiasGelu
 
@@ -179,7 +227,7 @@ Status EmbedLayerNormBiasGelu<T>::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
-#pragma warning(default : 4100)
+#pragma warning(default : 4189 4100)
 
 }  // namespace contrib
 }  // namespace onnxruntime

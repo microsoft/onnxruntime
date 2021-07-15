@@ -71,7 +71,7 @@ void TestInvokeOp(const OpData& data) {
   std::vector<int64_t> bias_dims = {data.hidden_size};
   std::vector<int64_t> matmul_1_b_dims = {data.hidden_size, data.bias_size};
   std::vector<int64_t> bias_gelu_bias_dims = {data.bias_size};
-  std::vector<int64_t> matmul_2_b_dims = {data.hidden_size, data.bias_size};
+  std::vector<int64_t> matmul_2_b_dims = {data.bias_size, data.hidden_size};
   std::vector<int64_t> output_dims =
       {data.batch_size, data.sequence_length, data.hidden_size};
 
