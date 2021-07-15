@@ -87,7 +87,8 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   std::string expand_output_name = model_builder.GetUniqueName(node.Name() + "_expandDims");
 
   if (is_1d_conv) {
-    std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> expand_layer = CreateNNLayer(node);
+    const auto expand_layer_name = model_builder.GetUniqueName(MakeString(node.Name(), "_Conv_expand"));
+    std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> expand_layer = CreateNNLayer(expand_layer_name);
     // Add an expanddims layer here. CoreML only supports 2d convolution, so for 1d Conv case
     // we need to add an additional dimension here to the input to make it "2d Conv" like.
     // NxCxH -> NxCxHx1
@@ -158,7 +159,8 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
     // Add a squeeze layer here. Since CoreML only supports 2d conv and we expanded the dimension by 1 before,
     // we need to squeeze it back from NxCxHx1->NxCxH.
-    std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> squeeze_layer = CreateNNLayer(node);
+    const auto squeeze_layer_name = model_builder.GetUniqueName(MakeString(node.Name(), "_Conv_squeeze"));
+    std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> squeeze_layer = CreateNNLayer(squeeze_layer_name);
     squeeze_layer->mutable_squeeze()->add_axes(-1);
     *squeeze_layer->mutable_input()->Add() = conv_output_name;
     *squeeze_layer->mutable_output()->Add() = output_name;
