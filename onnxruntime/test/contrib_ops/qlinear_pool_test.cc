@@ -50,12 +50,10 @@ static void
 CalculateAvgPoolNchwU8(
     uint8_t* x,
     const std::vector<int64_t> x_dims,
-    float x_scale,
-    int x_zero_point,
+    const quantization::Params<uint8_t>& x_params,
     uint8_t* y,
     const std::vector<int64_t> y_dims,
-    float y_scale,
-    int y_zero_point,
+    const quantization::Params<uint8_t>& y_params,
     const std::vector<int64_t> kernel_shape,
     const std::vector<int64_t> strides,
     const std::vector<int64_t> pads,
@@ -98,14 +96,14 @@ CalculateAvgPoolNchwU8(
             }
           }
           if (kernel_offset >= 0) {
-            y_value_sum += Dequantize<uint8_t>(xbc[kernel_offset], x_scale, static_cast<uint8_t>(x_zero_point));
+            y_value_sum += quantization::Dequantize(xbc[kernel_offset], x_params);
             ++count;
           } else {
             count += count_include_pad ? 1 : 0;
           }
         }
         auto y_offset = yit.next();
-        auto y_u8 = Quantize<uint8_t>(y_value_sum / count, y_scale, static_cast<uint8_t>(y_zero_point));
+        auto y_u8 = QuantizeTestValue<uint8_t>(y_value_sum / count, y_params);
         ybc[y_offset] = y_u8;
       }
     }
@@ -121,18 +119,19 @@ void RunQLinearAveragePoolNchwU8(
     const int64_t count_include_pad = 0) {
   auto run_test = [&](bool only_x_not_initializer, bool x_y_same_zero_point) {
     float x_scale = 1.0f / 255.0f;
-    uint8_t x_zero_point = 128;
+    quantization::Params<uint8_t> x_params(x_scale, /*zero_point=*/128);
     RandomValueGenerator random{};
     std::vector<float> x_data_fp32 = random.Uniform<float>(x_dims, -0.5f, 0.5f);
-    std::vector<uint8_t> x_data = Quantize<uint8_t>(x_data_fp32, x_scale, x_zero_point);
+    std::vector<uint8_t> x_data = QuantizeTestVector<uint8_t>(x_data_fp32, x_params);
 
     float y_scale = 1.0f / 255.0f;
-    uint8_t y_zero_point = x_y_same_zero_point ? x_zero_point : 100;
+    uint8_t y_zero_point = x_y_same_zero_point ? x_params.zero_point : 100;
+    const quantization::Params<uint8_t> y_params(y_scale, y_zero_point);
     int64_t y_size = std::accumulate(y_dims.begin(), y_dims.end(), 1LL, std::multiplies<int64_t>());
     std::vector<uint8_t> y_data(y_size);
     CalculateAvgPoolNchwU8(
-        x_data.data(), x_dims, x_scale, x_zero_point,
-        y_data.data(), y_dims, y_scale, y_zero_point,
+        x_data.data(), x_dims, x_params,
+        y_data.data(), y_dims, y_params,
         kernel_shape, strides, pads, count_include_pad);
 
     OpTester test("QLinearAveragePool", 1, onnxruntime::kMSDomain);
@@ -145,9 +144,9 @@ void RunQLinearAveragePoolNchwU8(
 
     test.AddInput<uint8_t>("X", x_dims, x_data);
     test.AddInput<float>("x_scale", {}, {x_scale}, only_x_not_initializer);
-    test.AddInput<uint8_t>("x_zero_point", {}, {x_zero_point}, only_x_not_initializer);
+    test.AddInput<uint8_t>("x_zero_point", {}, {x_params.zero_point}, only_x_not_initializer);
     test.AddInput<float>("y_scale", {}, {y_scale}, only_x_not_initializer);
-    test.AddInput<uint8_t>("y_zero_point", {}, {y_zero_point}, only_x_not_initializer);
+    test.AddInput<uint8_t>("y_zero_point", {}, {y_params.zero_point}, only_x_not_initializer);
     test.AddOutput<uint8_t>("Y", y_dims, y_data);
 
     auto q8checker = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
@@ -216,18 +215,18 @@ void RunQLinearAveragePoolNhwcU8(
     const std::vector<int64_t> pads,
     const int64_t count_include_pad = 0) {
   float x_scale = 1.0f / 255.0f;
-  uint8_t x_zero_point = 128;
+  const quantization::Params<uint8_t> x_params(x_scale, /*zero_point=*/128);
   RandomValueGenerator random{};
   std::vector<float> x_data_fp32 = random.Uniform<float>(x_dims, -0.5f, 0.5f);
-  std::vector<uint8_t> x_data = Quantize<uint8_t>(x_data_fp32, x_scale, x_zero_point);
+  std::vector<uint8_t> x_data = QuantizeTestVector<uint8_t>(x_data_fp32, x_params);
 
   float y_scale = 1.0f / 255.0f;
-  uint8_t y_zero_point = 100;
+  const quantization::Params<uint8_t> y_params(y_scale, /*zero_point=*/100);
   int64_t y_size = std::accumulate(y_dims.begin(), y_dims.end(), 1LL, std::multiplies<int64_t>());
   std::vector<uint8_t> y_data(y_size);
   CalculateAvgPoolNchwU8(
-      x_data.data(), x_dims, x_scale, x_zero_point,
-      y_data.data(), y_dims, y_scale, y_zero_point,
+      x_data.data(), x_dims, x_params,
+      y_data.data(), y_dims, y_params,
       kernel_shape, strides, pads, count_include_pad);
 
   // transpose the result
@@ -247,9 +246,9 @@ void RunQLinearAveragePoolNhwcU8(
 
   test.AddInput<uint8_t>("X", x_dims_nhwc, x_data_nhwc);
   test.AddInput<float>("x_scale", {}, {x_scale});
-  test.AddInput<uint8_t>("x_zero_point", {}, {x_zero_point});
+  test.AddInput<uint8_t>("x_zero_point", {}, {x_params.zero_point});
   test.AddInput<float>("y_scale", {}, {y_scale});
-  test.AddInput<uint8_t>("y_zero_point", {}, {y_zero_point});
+  test.AddInput<uint8_t>("y_zero_point", {}, {y_params.zero_point});
   test.AddOutput<uint8_t>("Y", y_dims_nhwc, y_data_nhwc);
 
   auto q8checker = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {

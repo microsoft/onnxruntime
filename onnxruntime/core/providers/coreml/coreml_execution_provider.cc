@@ -191,6 +191,11 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
           if (model->IsScalarOutput(output_name))
             output_shape.clear();
 
+          // Since CoreML EP only accepts int32 output type and onnx requires int64 output,
+          // We are going to set the model output (from int32) ->int64
+          if (model->IsInt64Output(output_name))
+            output_type = ONNX_NAMESPACE::TensorProto_DataType_INT64;
+
           auto* output_tensor =
               ort.KernelContext_GetOutput(context, i, output_shape.data(), output_shape.size());
 
@@ -201,6 +206,9 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
               break;
             case ONNX_NAMESPACE::TensorProto_DataType_INT32:
               output_buffer = ort.GetTensorMutableData<int32_t>(output_tensor);
+              break;
+            case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+              output_buffer = ort.GetTensorMutableData<int64_t>(output_tensor);
               break;
             default:
               return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
