@@ -10,7 +10,6 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_registry.h"
-#include "core/framework/provider_bridge_ort.h"
 #include "core/framework/provider_shutdown.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
@@ -23,6 +22,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
+#include "core/session/provider_bridge_ort.h"
 #include "core/util/math.h"
 #include "core/common/string_helper.h"
 
@@ -81,7 +81,7 @@ namespace onnxruntime {
 
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
-extern ProviderHostCPU& g_provider_host_cpu;
+ProviderHostCPU& GetProviderHostCPU();
 
 struct TensorShapeProto_Dimension_Iterator_Impl : TensorShapeProto_Dimension_Iterator {
   TensorShapeProto_Dimension_Iterator_Impl(google::protobuf::internal::RepeatedPtrIterator<const onnx::TensorShapeProto_Dimension>&& v) : v_{std::move(v)} {}
@@ -770,7 +770,7 @@ struct ProviderHostImpl : ProviderHost {
 #endif
 #endif
 
-  ProviderHostCPU& GetProviderHostCPU() override { return g_provider_host_cpu; }
+  ProviderHostCPU& GetProviderHostCPU() override { return onnxruntime::GetProviderHostCPU(); }
 } provider_host_;
 
 struct ProviderSharedLibrary {

@@ -182,6 +182,6 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
 };
 
 ProviderHostCPUImpl provider_host_cpu_;
-ProviderHostCPU& g_provider_host_cpu=provider_host_cpu_;
+ProviderHostCPU& GetProviderHostCPU() { return provider_host_cpu_; }
 
 }  // namespace onnxruntime
