@@ -261,7 +261,7 @@ TEST(AttentionTest, AttentionBatch1WithQKVAttr1) {
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads, 
                    false, false, false, 0, nullptr, nullptr, kMaskIndexEnd, 0,
-                   0, false, false, qkv_sizes);
+                   0, false, true, qkv_sizes);
 }
 
 TEST(AttentionTest, AttentionBatch1WithQKVAttr2) {

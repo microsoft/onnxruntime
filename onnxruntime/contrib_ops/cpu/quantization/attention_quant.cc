@@ -230,6 +230,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* i_zp_tensor = context->Input<Tensor>(6);
   const Tensor* w_zp_tensor = context->Input<Tensor>(7);
   const Tensor* past_tensor = context->Input<Tensor>(8);
+  const Tensor* extra_add_qk = context->Input<Tensor>(9);
 
   const TensorShape& weights_shape = (q_packed_weights_ ? weight_shape_ : weights->Shape());
   ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(),
@@ -237,7 +238,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
                                                  bias->Shape(),
                                                  mask_index,
                                                  past_tensor,
-                                                 nullptr));
+                                                 extra_add_qk));
 
   ORT_RETURN_IF_NOT(IsScalarOr1ElementVector(input_scale_tensor),
                     "input scale must be a scalar or 1D tensor of size 1");
@@ -419,7 +420,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q, K, V, mask_index, past_tensor, output,
                         batch_size, sequence_length,
-                        q_head_size, v_head_size, v_hidden_size, nullptr, context);
+                        q_head_size, v_head_size, v_hidden_size, extra_add_qk, context);
 }
 
 }  // namespace contrib
