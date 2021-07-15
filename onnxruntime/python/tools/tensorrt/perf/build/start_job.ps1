@@ -17,7 +17,7 @@ $body_trt_perf_compare = @{
         "ORT_TRT_EP_PKG_SAS_URI"=$ort_trt_ep_pkg_sas_uri};
 }
 
-$anubissvctesturl = "https://anubispoc.azurewebsites.net/api/mlperf/jobs"
+$anubissvctesturl = "https://anubistest.azurewebsites.net/api/mlperf/jobs"
 
 Write-Host ($body_trt_perf_compare|ConvertTo-Json)
 
