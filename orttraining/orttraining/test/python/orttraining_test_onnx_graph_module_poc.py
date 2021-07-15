@@ -2,9 +2,9 @@ import argparse
 import logging
 import torch
 import time
+import onnxruntime
 from torchvision import datasets, transforms
 
-import onnxruntime
 from onnxruntime.training.ortmodule import ORTModule
 from onnxruntime.training.ortmodule._onnx_graph_module import OnnxGraphModule
 
@@ -111,12 +111,12 @@ def my_loss(x, target, is_train=True):
         return torch.nn.CrossEntropyLoss(reduction='sum')(x, target)
 
 
-def export_and_import_models(model, train_loader):
+def export_and_import_models(model, train_loader, device):
     print("Saving inference / training onnx models")
     data, target = next(iter(train_loader))
     data = data.reshape(data.shape[0], -1)
-    output = model(data)
-    loss = torch.nn.CrossEntropyLoss()(output, target)
+    output = model(data.to(device))
+    loss = torch.nn.CrossEntropyLoss()(output, target.to(device))
     loss.backward()
     manager = model._torch_module._execution_manager._training_manager
     return manager._onnx_model, manager._optimized_onnx_model
@@ -158,7 +158,7 @@ def main():
     onnxruntime.set_seed(args.seed)
 
     if not args.no_cuda and torch.cuda.is_available():
-        device = "cuda"
+        device = "cuda:0"
     else:
         device = "cpu"
 
@@ -181,7 +181,7 @@ def main():
         print('Training MNIST on OnnxGraphModule....')
         model = ORTModule(model)
 
-        inference_model, training_model = export_and_import_models(model, train_loader)
+        inference_model, training_model = export_and_import_models(model, train_loader, device)
         named_params = list(model.named_parameters())
         model = OnnxGraphModule(
             inference_model,
@@ -191,8 +191,8 @@ def main():
             named_params,
             [name for name, _ in named_params],
             session_options=onnxruntime.SessionOptions(),
-            providers=[("CPUExecutionProvider", {})]
-        )
+            providers=[("CUDAExecutionProvider", {"device_id": 0}), ("CPUExecutionProvider", {})]
+        ).to(torch.device(device))
 
         # Set log level
         numeric_level = getattr(logging, args.log_level.upper(), None)
