@@ -14,7 +14,6 @@
 		229E593C265869C2006E41AE /* ios_package_test_cpp_api.mm in Sources */ = {isa = PBXBuildFile; fileRef = 229E593B265869C2006E41AE /* ios_package_test_cpp_api.mm */; };
 		229E595926586B4A006E41AE /* sigmoid.ort in Resources */ = {isa = PBXBuildFile; fileRef = 229E595826586B4A006E41AE /* sigmoid.ort */; };
 		229E595A26586B4A006E41AE /* sigmoid.ort in Resources */ = {isa = PBXBuildFile; fileRef = 229E595826586B4A006E41AE /* sigmoid.ort */; };
-		22DEADEE265905A7005CBD1C /* ios_package_test_c_api.m in Sources */ = {isa = PBXBuildFile; fileRef = 22DEADED265905A7005CBD1C /* ios_package_test_c_api.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -39,7 +38,6 @@
 		229E593B265869C2006E41AE /* ios_package_test_cpp_api.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = ios_package_test_cpp_api.mm; sourceTree = "<group>"; };
 		229E593D265869C2006E41AE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		229E595826586B4A006E41AE /* sigmoid.ort */ = {isa = PBXFileReference; lastKnownFileType = file; path = sigmoid.ort; sourceTree = "<group>"; };
-		22DEADED265905A7005CBD1C /* ios_package_test_c_api.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ios_package_test_c_api.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -97,7 +95,6 @@
 			children = (
 				229E593B265869C2006E41AE /* ios_package_test_cpp_api.mm */,
 				229E593D265869C2006E41AE /* Info.plist */,
-				22DEADED265905A7005CBD1C /* ios_package_test_c_api.m */,
 			);
 			path = ios_package_testTests;
 			sourceTree = "<group>";
@@ -220,7 +217,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				229E593C265869C2006E41AE /* ios_package_test_cpp_api.mm in Sources */,
-				22DEADEE265905A7005CBD1C /* ios_package_test_c_api.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

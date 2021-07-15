@@ -57,6 +57,7 @@ def main():
     variable_substitutions = {
         "VERSION": args.pod_version,
         "IOS_DEPLOYMENT_TARGET": framework_info["IOS_DEPLOYMENT_TARGET"],
+        "WEAK_FRAMEWORK": framework_info["WEAK_FRAMEWORK"],
         "LICENSE_FILE": '"LICENSE"',
     }
 
