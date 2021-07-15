@@ -72,22 +72,11 @@ void ComputeMatMul(const int64_t hidden_size,
                    const T* a_data,
                    const T* b_data,
                    T* output_data) {
-
-  //
-  //
-  // TODO LEFT OFF RIGHT HERE THIS IS WONG
-  //
-  //
-
   // TODO - check inputs needs to make sure the dimensions are safe here.
   for (int64_t i = 0; i < bias_size; ++i) {
     T sum = 0;
     for (int64_t j = 0; j < hidden_size; ++j) {
-      size_t b_idx = i + (hidden_size * j);
-      T cur_a = a_data[j];
-      T cur_b = b_data[b_idx];
-      sum += cur_a * cur_b;
-      //sum += a_data[j] * b_data[b_idx];
+      sum += a_data[j] * b_data[i + (bias_size * j)];
     }
     output_data[i] = sum;
   }
@@ -212,14 +201,22 @@ Status EmbedLayerNormBiasGelu<T>::Compute(OpKernelContext* context) const {
                                bias_data,
                                skip_layer_norm_output + (task_idx * hidden_size));
 
+          // TODO(kreeger): Need to calculate the output offset at each point
+          //                in the last output. Probably should do this before
+          //                trying to fix up biasgelu.
           ComputeMatMul(hidden_size,
                         bias_size,
                         skip_layer_norm_output + (task_idx * hidden_size),
-                        matmul_1_b_data,  // no offset here - as expected.
+                        matmul_1_b_data,
                         matmul_1_output);   // TODO what is the offset here???
         }
 
         // Now perform BiasGelu
+
+        //
+        // TODO(kreeger): LEFT OFF RIGHT HERE. NEED TO STITCH BIAS GELU RESULTS
+        //                HERE.
+        //
 
         // Now perform MatMul
       },
