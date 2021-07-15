@@ -32,7 +32,6 @@ void PadImpl(
     const TArray<int64_t>& input_dims,
     const TArray<int64_t>& input_strides,
     const TArray<int64_t>& lower_pads,
-    const TArray<int64_t>& upper_pads,
     const T pad_value,
     const int pad_mode,
     const T* input_data,

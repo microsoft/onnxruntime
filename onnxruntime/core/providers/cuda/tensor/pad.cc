@@ -164,8 +164,7 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  if (IsNCHWInputWithPaddingAlongHAndW(static_cast<size_t>(dimension_count), lower_pads, upper_pads) &&
-      static_cast<int>(mode_) != 2) {
+  if (IsNCHWInputWithPaddingAlongHAndW(static_cast<size_t>(dimension_count), lower_pads, upper_pads)) {
     // If we have entered here, it means the input can only be 4-D (NCHW), 3-D (CHW), or 2-D (HW)
 
     // NCHW input
@@ -211,7 +210,6 @@ Status Pad<T>::ComputeInternal(OpKernelContext* ctx) const {
       input_dims,
       input_strides,
       lower_pads,
-      upper_pads,
       value,
       static_cast<int>(mode_),
       reinterpret_cast<const typename ToCudaType<T>::MappedType*>(input_tensor.template Data<T>()),
