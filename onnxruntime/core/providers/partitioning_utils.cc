@@ -51,6 +51,38 @@ std::string NodeGroupDebugString(const Container& group, bool show_all = false) 
 }
 #endif
 
+/**
+Create partition node groups.
+
+A partition node group (a.k.a. a group) contains supported nodes that will run in a partition.
+
+All nodes in a group can be run together. This means that two nodes with an intervening unsupported node cannot be in
+the same group. On the other hand, nodes within the same group do not necessarily have to be connected.
+
+The partitioning algorithm attempts to form the largest possible groups in a greedy fashion. It is a variant of Kahn's
+topological sort algorithm that forms the group(s) as it goes.
+
+Conceptually, we consider nodes in a sequence of waves starting from the root nodes. One wave produces at most one
+group. A wave flows over nodes in topological order, adding supported nodes to the current group, and stops at the
+border of the current group. The next wave starts where the previous wave stopped.
+
+In the topological sort, we maintain a set of nodes that have no unprocessed inputs from which we select the next node
+to process.
+
+When selecting the next node to process, we first take:
+- a supported node (which will be part of the group)
+- an unsupported node that is not an output of any node in the group
+
+The remaining unsupported nodes mark the border of the current group so they will be processed later when we consider
+the next group.
+
+@param graph_viewer GraphViewer that IExecutionProvider::GetCapability is called with.
+@param is_node_supported_fn Callback to check whether a node is supported.
+@param on_group_closed_fn Callback to indicate a completed partition node group.
+@param debug_output Print diagnostic output about the partitions and reasons for partition breaks.
+                    No-op in a release build.
+@return The partition node groups.
+*/
 std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
     const GraphViewer& graph_viewer,
     const IsNodeSupportedFn& is_node_supported_fn,
@@ -81,15 +113,15 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
   }
 
   std::vector<const Node*> supported_group{};
-  // the partition node group's frontier is the aggregate of its nodes' output nodes
-  std::unordered_set<const Node*> supported_group_frontier{};
+  // the partition node group's border is the aggregate of its nodes' output nodes
+  std::unordered_set<const Node*> supported_group_border{};
 
   auto close_group = [&]() {
     if (!supported_group.empty()) {
 #ifndef NDEBUG
       if (debug_output) {
         LOGS_DEFAULT(VERBOSE) << "New partition node group.\n"
-                              << "Unsupported nodes on group frontier: "
+                              << "Unsupported nodes on group border: "
                               << NodeGroupDebugString(nodes_to_process_with_next_group, true) << "\n"
                               << "Nodes in group: " << NodeGroupDebugString(supported_group);
       }
@@ -101,12 +133,15 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
 
       if (keep_partition) {
         supported_groups.emplace_back(std::move(supported_group));
-      } else {
-        LOGS_DEFAULT(VERBOSE) << "Discarded partition node group.";
       }
+#ifndef NDEBUG
+      else {
+        LOGS_DEFAULT_IF(debug_output, VERBOSE) << "Discarded partition node group.";
+      }
+#endif
 
       supported_group.clear();
-      supported_group_frontier.clear();
+      supported_group_border.clear();
     }
   };
 
@@ -123,8 +158,8 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
 
     const bool is_node_supported = is_node_supported_fn(node);
 
-    if (!is_node_supported && Contains(supported_group_frontier, &node)) {
-      // an unsupported node on the frontier will be processed after the current partition node group
+    if (!is_node_supported && Contains(supported_group_border, &node)) {
+      // an unsupported node on the border will be processed after the current partition node group
       nodes_to_process_with_next_group.push_back(&node);
       continue;
     }
@@ -133,13 +168,13 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
       // add node to the partition node group
       supported_group.push_back(&node);
 
-      // remove node from the frontier and add its outputs to the frontier
-      supported_group_frontier.erase(&node);
+      // remove node from the border and add its outputs to the border
+      supported_group_border.erase(&node);
 
       std::for_each(
           node.OutputNodesBegin(), node.OutputNodesEnd(),
-          [&supported_group_frontier](const Node& output) {
-            supported_group_frontier.insert(&output);
+          [&supported_group_border](const Node& output) {
+            supported_group_border.insert(&output);
           });
     }
 
