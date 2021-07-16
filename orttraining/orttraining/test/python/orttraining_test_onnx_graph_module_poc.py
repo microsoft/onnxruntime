@@ -190,8 +190,6 @@ def main():
             [],
             named_params,
             [name for name, _ in named_params],
-            session_options=onnxruntime.SessionOptions(),
-            providers=[("CUDAExecutionProvider", {"device_id": 0}), ("CPUExecutionProvider", {})]
         ).to(torch.device(device))
 
         # Set log level

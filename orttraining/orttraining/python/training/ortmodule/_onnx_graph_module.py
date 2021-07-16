@@ -7,7 +7,7 @@ from onnxruntime import SessionOptions
 from ._execution_agent import InferenceAgent, TrainingAgent
 from ._io import _combine_input_buffers_initializers, _InputInfo
 from ._ort_module_function_factory import ort_module_function_factory
-
+from ._utils import get_session_config
 
 class OnnxGraphModule(torch.nn.Module):
     """Wraps inference / training onnx models and acts as a torch.nn.Module
@@ -21,19 +21,12 @@ class OnnxGraphModule(torch.nn.Module):
         named_parameters: Sequence[Tuple[str, torch.Tensor]],
         initializer_names_to_train: Sequence[str],
         module_output_indices_requires_save_for_backward: Sequence[int] = (),
-        session_options: Optional[SessionOptions] = None,
-        providers: Optional[Sequence[Union[str, Tuple[str, Dict]]]] = None,
-        provider_options: Optional[Sequence[Dict]] = None
     ):
         super().__init__()
         self._device = torch.device("cpu")
-        self._agent_kwargs = {
-            "session_options": session_options,
-            "providers": providers,
-            "provider_options": provider_options
-        }
-        self._inference_agent = InferenceAgent(inference_model, self._device, **self._agent_kwargs)
-        self._training_agent = TrainingAgent(training_model, self._device, **self._agent_kwargs)
+        session_config = get_session_config(self._device)
+        self._inference_agent = InferenceAgent(inference_model, self._device, **session_config._asdict())
+        self._training_agent = TrainingAgent(training_model, self._device, **session_config._asdict())
         self._user_input_names = user_input_names
         self._require_grad_names = require_grad_names
         self._named_parameters = named_parameters
@@ -66,8 +59,9 @@ class OnnxGraphModule(torch.nn.Module):
             return self
         super().to(device)
         self._device = device
-        self._inference_agent = InferenceAgent(self._inference_agent._onnx_model, device, **self._agent_kwargs)
-        self._training_agent = TrainingAgent(self._training_agent._onnx_model, device, **self._agent_kwargs)
+        session_config = get_session_config(self._device)
+        self._inference_agent = InferenceAgent(self._inference_agent._onnx_model, device, **session_config._asdict())
+        self._training_agent = TrainingAgent(self._training_agent._onnx_model, device, **session_config._asdict())
         return self
 
     def parameters(self, _recurse: bool = True) -> Iterator[torch.Tensor]:
