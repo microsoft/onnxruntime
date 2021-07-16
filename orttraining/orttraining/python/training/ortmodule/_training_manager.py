@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from . import _utils, _io
+from . import _utils, _io, _logger
 from ._graph_execution_manager import GraphExecutionManager, RunStateInfo
 from ._execution_agent import TrainingAgent
 
@@ -12,6 +12,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_typ
 
 import onnx
 import torch
+import warnings
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
 
@@ -26,11 +27,12 @@ class TrainingManager(GraphExecutionManager):
         self._export_mode = torch.onnx.TrainingMode.TRAINING
 
     @staticmethod
-    def execution_session_run_forward(execution_session, onnx_model, device, *inputs):
+    def execution_session_run_forward(execution_session, onnx_model, device, fast_path, *inputs):
         """Runs the forward graph on execution_session with given model inputs and device"""
 
-        # Assert that the input and model device match
-        _utils._check_same_device(device, "Input argument to forward", *inputs)
+        if fast_path == False:
+            # Assert that the input and model device match
+            _utils._check_same_device(device, "Input argument to forward", *inputs)
 
         # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
         #   especially the backward graph outputs.
@@ -66,30 +68,41 @@ class TrainingManager(GraphExecutionManager):
             # If model was exported, then initialize the graph builder
             self._initialize_graph_builder(training=True)
 
-        input_info = _io.parse_inputs_for_onnx_export(self._module_parameters,
-                                                      self._onnx_model,
-                                                      inputs,
-                                                      kwargs)
+        if self._fast_path == False:
+            input_info = _io.parse_inputs_for_onnx_export(self._module_parameters,
+                                                        self._onnx_model,
+                                                        inputs,
+                                                        kwargs)
 
-        # Reinitialize graph builder if the inputs or initializers requiring gradient have changed.
-        # Order of or operation is important here because we always need to call
-        # _reinitialize_graph_builder irrespective of the value of build_gradient_graph.
-        build_gradient_graph = self._reinitialize_graph_builder(input_info) or build_gradient_graph
+            # Reinitialize graph builder if the inputs or initializers requiring gradient have changed.
+            # Order of or operation is important here because we always need to call
+            # _reinitialize_graph_builder irrespective of the value of build_gradient_graph.
+            build_gradient_graph = self._reinitialize_graph_builder(input_info) or build_gradient_graph
 
         # Build the gradient graph
         if build_gradient_graph:
             self._build_graph()
 
-        device = _utils.get_device_from_module(self._original_module) or \
-            _utils.get_device_from_inputs(inputs, kwargs)
-        # The _training_session/_inference_session should be created every time
-        # the graph was built or if the device changed between calls to forward
-        create_execution_session = build_gradient_graph or self._device != device
-        if self._device != device:
-            self._device = device
+        create_execution_session = False
+        if self._fast_path == False:
+            device = _utils.get_device_from_module(self._original_module) or \
+                _utils.get_device_from_inputs(inputs, kwargs)
+            # The _training_session/_inference_session should be created every time
+            # the graph was built or if the device changed between calls to forward
+            create_execution_session = build_gradient_graph or self._device != device
+            if self._device != device:
+                self._device = device
+
         if create_execution_session:
             # Create execution session creates the training_session
             self._create_execution_agent()
+
+            if self._freeze:
+                # enabled fast path when execution session is created the first time
+                self._fast_path = True
+                if self._loglevel <= _logger.LogLevel.WARNING:
+                    warnings.warn("Fast path enabled, some checks will be skipped by assuming model's schema remains unchanged during training.",
+                                  UserWarning)
 
         class _ORTModuleFunction(torch.autograd.Function):
             '''Use a custom torch.autograd.Function to associate self.backward_graph as the
@@ -109,6 +122,7 @@ class TrainingManager(GraphExecutionManager):
                 user_outputs, ctx.run_info = TrainingManager.execution_session_run_forward(self._execution_agent,
                                                                                            self._optimized_onnx_model,
                                                                                            self._device,
+                                                                                           self._fast_path,
                                                                                            *inputs)
 
                 # Disable materializing grads then None object will not be
@@ -130,7 +144,8 @@ class TrainingManager(GraphExecutionManager):
                 '''Performs backward pass based on grad wrt module output'''
 
                 assert ctx.run_info is not None, 'forward() or __call__() methods must be called before backward()'
-                _utils._check_same_device(self._device, "Input argument to backward", *grad_outputs)
+                if self._fast_path == False:
+                    _utils._check_same_device(self._device, "Input argument to backward", *grad_outputs)
 
                 # Unpack saved_tensor to trigger version detection that catches inplace corruption
                 _ = ctx.saved_tensors

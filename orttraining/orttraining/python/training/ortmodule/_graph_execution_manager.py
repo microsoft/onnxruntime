@@ -61,6 +61,12 @@ class GraphExecutionManager(GraphExecutionInterface):
         # TrainingAgent or InferenceAgent
         self._execution_agent = None
 
+        # enable fast path to skip some repeated logic if user knows that there will be no change for the entire training
+        # TODO - move it to config API
+        self._freeze = False
+        # enabled only when _freeze is True and after execution session is created the first time
+        self._fast_path = False
+
         # Debug flags
         self._save_onnx = False
         self._save_onnx_prefix = ''
@@ -216,6 +222,9 @@ class GraphExecutionManager(GraphExecutionInterface):
         #       2. Model input schema has changed (changes in inputs requiring gradient, shape, boolean inputs values change, etc)
         #       Model is not re-exported when the model parameters change. This can happen when the model is a stateful model,
         #       or the user explicitly changed model parameters after the onnx export.
+
+        if self._fast_path == True:
+            return False
 
         schema = _io._extract_schema({'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
         if self._onnx_model and schema == self._input_info.schema:
