@@ -32,7 +32,7 @@
 #include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
-#include "core/language_interop_ops/torch/custom_function_register.h"
+#include "orttraining/core/framework/torch/custom_function_register.h"
 #endif
 
 #endif
