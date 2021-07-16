@@ -66,12 +66,12 @@ Conceptually, we consider nodes in a sequence of waves starting from the root no
 group. A wave flows over nodes in topological order, adding supported nodes to the current group, and stops at the
 border of the current group. The next wave starts where the previous wave stopped.
 
-In the topological sort, we maintain a set of nodes that have no unprocessed inputs from which we select the next node
-to process.
+When generating the topological ordering, we maintain a set of nodes that have no inputs produced by unprocessed nodes.
+From this set, we select the next node to process.
 
 When selecting the next node to process, we first take:
 - a supported node (which will be part of the group)
-- an unsupported node that is not an output of any node in the group
+- an unsupported node that does not consume an output of any node in the group
 
 The remaining unsupported nodes mark the border of the current group so they will be processed later when we consider
 the next group.
