@@ -188,14 +188,14 @@ namespace Dml
     HRESULT __stdcall ExecutionProviderImpl::GetD3DDevice(_COM_Outptr_ ID3D12Device** d3dDevice) const noexcept
     {
         m_d3d12Device.CopyTo(d3dDevice);
-        _Analysis_assume_(*d3dDevice != NULL);
+        _Analysis_assume_(*d3dDevice != nullptr);
         return S_OK;
     }
 
     HRESULT __stdcall ExecutionProviderImpl::GetDmlDevice(_COM_Outptr_ IDMLDevice** dmlDevice) const noexcept
     {
         m_dmlDevice.CopyTo(dmlDevice);
-        _Analysis_assume_(*dmlDevice != NULL);
+        _Analysis_assume_(*dmlDevice != nullptr);
         return S_OK;
     }
 
