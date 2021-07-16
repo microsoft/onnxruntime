@@ -74,6 +74,11 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   // Where hidden_size = num_heads * head_size.
   // When a model is pruned (like some attention heads are removed), hidden_size < input_hidden_size.
 
+  if (past != nullptr && extra_add_qk != nullptr) {
+    // past is used on GPT-2 model with past state, we don't have a case for extra add qk yet
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Attention cannot have past sequence and extra add qk");
+  }
+
   const auto& dims = input_shape.GetDims();
   if (dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'input' is expected to have 3 dimensions, got ",

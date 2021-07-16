@@ -104,7 +104,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>past</tt> (optional) : T</dt>
 <dd>past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).</dd>
 <dt><tt>extra_add</tt> (optional) : T</dt>
-<dd>additional add to QxK' with shape (1, num_heads, sequence_length, sequence_length).</dd>
+<dd>additional add to QxK' with shape (batch_size, num_heads, sequence_length, sequence_length).</dd>
 </dl>
 
 #### Outputs (1 - 2)
@@ -1794,7 +1794,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
 
-#### Inputs (5 - 10)
+#### Inputs (5 - 9)
 
 <dl>
 <dt><tt>input</tt> : T1</dt>
@@ -1815,8 +1815,6 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>zero point of quantized weight tensor. It's a scalar or a 1D tensor, which means a per-tensor/per-column quantization.Its size should be 3 * hidden_size if it is per-column quantization</dd>
 <dt><tt>past</tt> (optional) : T3</dt>
 <dd>past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).</dd>
-<dt><tt>extra_add</tt> (optional) : T3</dt>
-<dd>additional add to QxK' with shape (1, num_heads, sequence_length, sequence_length).</dd>
 </dl>
 
 #### Outputs (1 - 2)
