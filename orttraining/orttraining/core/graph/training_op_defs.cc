@@ -2181,7 +2181,7 @@ Example 4:
       .Input(0, "dY", "Gradient output from previous node", "T")
       .Input(1, "X", "Input", "T")
       .Input(2, "scale", "Scale tensor", "T1")
-      .Input(3, "mean", "Mean of X", "T1")
+      .Input(3, "mean", "Mean of X", "T2")
       .Input(4, "variance", "Variance of X", "T2")
       .Output(0, "X_grad", "Gradient of the input", "T")
       .Output(1, "scale_grad", "Gradient of the scale", "T1")
