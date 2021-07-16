@@ -2,6 +2,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+from typing import Dict, NamedTuple, Sequence, Tuple, Union
+
 import onnxruntime
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
@@ -99,8 +101,14 @@ def _create_iobinding(io_binding, inputs, model, device):
         io_binding.bind_output(value_info.name, device.type, device_id=get_device_index(device))
 
 
+class SessionConfig(NamedTuple):
+    session_options: onnxruntime.SessionOptions
+    providers: Sequence[Union[str, Tuple[str, Dict]]]
+    provider_options: Sequence[Dict]
+
+
 def get_session_config(device: torch.device, use_external_gpu_allocator: bool = True,
-                       is_rocm_pytorch: bool = False, loglevel: int = 2):
+                       is_rocm_pytorch: bool = False, loglevel: int = 2) -> SessionConfig:
     """Creates and returns the session configuration to be used for the ExecutionAgent"""
     providers = None
     provider_options = None
@@ -131,4 +139,4 @@ def get_session_config(device: torch.device, use_external_gpu_allocator: bool = 
     # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
     session_options.log_severity_level = int(loglevel)
 
-    return session_options, providers, provider_options
+    return SessionConfig(session_options, providers, provider_options)
