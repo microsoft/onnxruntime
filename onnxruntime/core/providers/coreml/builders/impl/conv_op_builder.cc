@@ -69,12 +69,15 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   // Similarly 1d conv normally has a length 2 padding. Expand it to length 4 by adding additional zeros.
   if (is_1d_conv) {
     if (strides.size() < 2) {
+      ORT_RETURN_IF_NOT(strides.size() == 1, "strides size does not equal 1 for Conv 1d");
       strides.push_back(1);
     }
     if (dilations.size() < 2) {
+      ORT_RETURN_IF_NOT(dilations.size() == 1, "dilations size does not equal 1 for Conv 1d");
       dilations.push_back(1);
     }
     if (onnx_pads.size() < 4) {
+      ORT_RETURN_IF_NOT(onnx_pads.size() == 2, "onnx_pads size does not equal 2 for Conv 1d");
       onnx_pads.insert(onnx_pads.begin() + 1, 0);
       onnx_pads.push_back(0);
     }
