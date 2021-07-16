@@ -119,11 +119,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         self.is_rocm_pytorch = (True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
 
         self._use_external_gpu_allocator = True
-        if self._use_external_gpu_allocator and torch.cuda.is_available():
-            # CPP extension to get torch GPU allocator's alloc and free function addresses
-            from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_gpu_allocator
-            self._torch_alloc = torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
-            self._torch_free = torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
 
         # WIP feature to enable caching in Gradient accumulation scenario.
         self._enable_grad_acc_optimization = False
@@ -174,30 +169,8 @@ class GraphExecutionManager(GraphExecutionInterface):
 
     def _get_session_config(self):
         """Creates and returns the session configuration to be used for the ExecutionAgent"""
-        providers = None
-        provider_options = None
-        if self._device.type == 'cuda':
-            # Configure the InferenceSessions to use the specific GPU on which the model is placed.
-            providers = (["ROCMExecutionProvider"] if self.is_rocm_pytorch else ["CUDAExecutionProvider"])
-            providers.append("CPUExecutionProvider")
-            if self._use_external_gpu_allocator:
-                provider_options = [{"device_id": str(self._device.index),
-                                     "gpu_external_alloc": str(self._torch_alloc),
-                                     "gpu_external_free": str(self._torch_free)}, {}]
-            else:
-                provider_options = [{"device_id": str(self._device.index)}, {}]
-        elif self._device.type == 'cpu':
-            providers = ["CPUExecutionProvider"]
-            provider_options = [{}]
-
-        session_options = onnxruntime.SessionOptions()
-        session_options.enable_mem_pattern = False
-        session_options.enable_mem_reuse = False
-        session_options.use_deterministic_compute = False
-        # default to PRIORITY_BASED execution order
-        session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
-        # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
-        session_options.log_severity_level = int(self._loglevel)
+        session_options, providers, provider_options = _utils.get_session_config(self._device, self._use_external_gpu_allocator,
+                                                                                 self.is_rocm_pytorch, self._loglevel)
 
         # enable dumping optimized training graph
         if self._save_onnx:
