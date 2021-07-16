@@ -56,7 +56,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const bool is_1d_conv = (weight_shape.size() == 3);
 
   if (is_1d_conv) {
-    // weight_tensor needs to be expanded from MXCXH->MXCXHx1
+    // weight_shape needs to be expanded from MXCXH->MXCXHx1
     weight_shape.push_back(1);
   }
 
