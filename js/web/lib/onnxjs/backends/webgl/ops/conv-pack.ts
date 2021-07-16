@@ -49,6 +49,10 @@ export class WebGLConvPacked extends Conv {
     if (this.activation) {
       const attributes = new Attribute(undefined);
       attributes.set('__internal_activation', 'string', (this.activation));
+      if (this.activation === 'Clip') {
+        attributes.set('__clip_max', 'float', this.clipMax);
+        attributes.set('__clip_min', 'float', this.clipMin);
+      }
       this.matmul.initialize(attributes);
     }
     // shape for kernel reshape

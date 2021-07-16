@@ -59,6 +59,11 @@ parameters:
     - "onnx-zoo-models"
     - "partner-models"
 
+- name: MemTest
+  displayName: Run memory test
+  type: boolean
+  default: true
+
 jobs: 
 - job: Linux_CI_GPU_TENSORRT_PERF
   pool:
@@ -79,6 +84,10 @@ jobs:
         value: machine.sh
     - name: with_arguments
       value: $(environment) -e "$(epList)"
+    - name: run_conda
+      value: eval "$(command conda 'shell.bash' 'hook' 2> /dev/null)" && conda activate perf3.8 
+    - name: mem_test_docker_image
+      value: "trt-ep-mem-test"
   timeoutInMinutes: 3000 
       
   steps:
@@ -116,8 +125,13 @@ jobs:
         displayName: '${{option}} perf'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
+    - ${{ if eq(parameters.MemTest, true) }}:
+      - script: '$(run_conda) && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d $(mem_test_docker_image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
+        displayName: 'Run memory test'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
+  
     - ${{ if not(eq(length(parameters.ModelGroups), 0)) }}:
-      - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
+      - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/result $(Build.SourcesDirectory)/Artifact/result_mem_test'
         displayName: 'Prepare Artifacts'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
@@ -140,12 +154,11 @@ jobs:
   
   steps: 
   - ${{ if eq(parameters.PostToDashboard, true) }}:
-    # - task: DownloadPipelineArtifact@2
-    #   inputs:
-    #     artifact: 'result-$(Build.BuildNumber)'
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        artifact: 'result-$(Build.BuildNumber)'
 
-    #- script: conda activate clean && python $(Build.SourcesDirectory)\onnxruntime\python\tools\tensorrt\perf\post.py -r $(Pipeline.Workspace)\result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"
-    - script: conda activate clean && python $(Build.SourcesDirectory)\onnxruntime\python\tools\tensorrt\perf\post.py -r C:\Users\jclient\Documents\result-20210713.20\result-20210713.20\result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)" -t ${{ parameters.TrtVersion }}
+      script: conda activate clean && python $(Build.SourcesDirectory)\onnxruntime\python\tools\tensorrt\perf\post.py -r $(Pipeline.Workspace)\result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"
       displayName: 'Post to Dashboard'
       env:
         DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)

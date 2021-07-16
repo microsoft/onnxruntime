@@ -89,35 +89,35 @@ static void RunLstmTest(const std::vector<float>& X_data,
     std::vector<int64_t> B_dims = {num_directions, 8 * hidden_size};
     test.AddInput<float>("B", B_dims, *B_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   if (sequence_lengths) {
     std::vector<int64_t> sequence_lens_dims{batch_size};
     test.AddInput<int>("sequence_lens", sequence_lens_dims, *sequence_lengths);
   } else {
-    test.AddMissingOptionalInput<int>();
+    test.AddOptionalInputEdge<int>();
   }
 
   if (initial_h_data && !initial_h_data->empty()) {
     std::vector<int64_t> initial_h_dims = {num_directions, batch_size, hidden_size};
     test.AddInput<float>("initial_h", initial_h_dims, *initial_h_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   if (initial_c_data && !initial_c_data->empty()) {
     std::vector<int64_t> initial_c_dims = {num_directions, batch_size, hidden_size};
     test.AddInput<float>("initial_c", initial_c_dims, *initial_c_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   if (P_data && !P_data->empty()) {
     std::vector<int64_t> P_dims = {num_directions, 3 * hidden_size};
     test.AddInput<float>("P", P_dims, *P_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   if (output_sequence != 0 && !Y_data.empty()) {
@@ -126,21 +126,21 @@ static void RunLstmTest(const std::vector<float>& X_data,
   } else {
     // add placeholder so node counts match as Y_h will always be the second Y_data,
     // so Y must exist as the first Y_data
-    test.AddMissingOptionalOutput<float>();
+    test.AddOptionalOutputEdge<float>();
   }
 
   if (!Y_h_data.empty()) {
     std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
     test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
   } else {
-    test.AddMissingOptionalOutput<float>();
+    test.AddOptionalOutputEdge<float>();
   }
 
   if (!Y_c_data.empty()) {
     std::vector<int64_t> Y_c_dims{num_directions, batch_size, hidden_size};
     test.AddOutput<float>("Y_c", Y_c_dims, Y_c_data);
   } else {
-    test.AddMissingOptionalOutput<float>();
+    test.AddOptionalOutputEdge<float>();
   }
 
   // TensorRT failed on LSTM tests
@@ -1249,28 +1249,28 @@ TEST(LSTMTest, SharedPrepackedWeights) {
   test.AddInput<float>("R", R_dims, R_data, true);  // Trigger pre-packing
 
   // B data
-  test.AddMissingOptionalInput<float>();
+  test.AddOptionalInputEdge<float>();
 
   // sequence
-  test.AddMissingOptionalInput<int>();
+  test.AddOptionalInputEdge<int>();
 
   // initial_h
-  test.AddMissingOptionalInput<float>();
+  test.AddOptionalInputEdge<float>();
 
   // initial_c
-  test.AddMissingOptionalInput<float>();
+  test.AddOptionalInputEdge<float>();
 
   // P_data
-  test.AddMissingOptionalInput<float>();
+  test.AddOptionalInputEdge<float>();
 
   std::vector<int64_t> Y_dims = {seq_length, num_directions, batch_size, hidden_size};
   test.AddOutput<float>("Y", Y_dims, Y_data);
 
   // Y_h
-  test.AddMissingOptionalOutput<float>();
+  test.AddOptionalOutputEdge<float>();
 
   // Y_c
-  test.AddMissingOptionalOutput<float>();
+  test.AddOptionalOutputEdge<float>();
 
   // W
   auto W_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<float>(), TensorShape(W_dims),
