@@ -137,12 +137,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   // Add weight
-  if (is_1d_conv) {
-    auto& weight_tensor_prime_ref = weight_tensor_prime;
-    CreateCoreMLWeight(*coreml_conv->mutable_weights(), weight_tensor_prime_ref);
-  } else {
-    CreateCoreMLWeight(*coreml_conv->mutable_weights(), weight_tensor);
-  }
+  CreateCoreMLWeight(*coreml_conv->mutable_weights(), weight_tensor);
 
   // Add bias if present
   if (input_defs.size() > 2) {
