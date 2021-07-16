@@ -51,14 +51,13 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   const auto& output_name = output_defs[0]->Name();
 
   const auto& weight_tensor = *model_builder.GetInitializerTensors().at(input_defs[1]->Name());
-  auto weight_tensor_prime = weight_tensor;
-  auto& weight_shape = weight_tensor_prime.dims();
+  std::vector<int64_t> weight_shape = {weight_tensor.dims().cbegin(), weight_tensor.dims().cend()};
 
   const bool is_1d_conv = (weight_shape.size() == 3);
 
   if (is_1d_conv) {
     // weight_tensor needs to be expanded from MXCXH->MXCXHx1
-    weight_tensor_prime.add_dims(1);
+    weight_shape.push_back(1);
   }
 
   NodeAttrHelper helper(node);
