@@ -128,7 +128,7 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     return num_devices;
   }
 
-  void CUDAExecutionProviderInfo__FromProviderOptions(const ProviderOptions& options, CUDAExecutionProviderInfo& info) {
+  void CUDAExecutionProviderInfo__FromProviderOptions(const ProviderOptions& options, CUDAExecutionProviderInfo& info) override {
     info = CUDAExecutionProviderInfo::FromProviderOptions(options);
   }
 

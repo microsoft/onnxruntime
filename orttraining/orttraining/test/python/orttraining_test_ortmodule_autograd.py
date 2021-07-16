@@ -161,6 +161,53 @@ def test_ScalarAndTuple():
     run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
+def test_ScalarAndTupleReordered():
+    class ScalarAndTupleReorderedFunction(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, alpha, beta, input, gamma):
+            ctx.save_for_backward(input)
+            ctx.alpha = alpha
+            ctx.beta = beta
+            ctx.gamma = gamma
+            return alpha * beta[0] * beta[1] * gamma * input.clamp(min=0)
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            input, = ctx.saved_tensors
+            alpha = ctx.alpha
+            beta = ctx.beta
+            gamma = ctx.gamma
+            grad_input = grad_output.clone()
+            grad_input[input < 0] = 0
+            return None, None, alpha * beta[0] * beta[1] * gamma * grad_input, None
+
+    class ScalarAndTupleReorderedModel(torch.nn.Module):
+        def __init__(self, output_size):
+            super(ScalarAndTupleReorderedModel, self).__init__()
+            self.activation = ScalarAndTupleReorderedFunction.apply
+            self.linear_a = torch.nn.Linear(output_size, output_size)
+            self.linear_b = torch.nn.Linear(output_size, output_size)
+
+        def forward(self, x):
+            h = self.linear_a(x)
+            h = self.activation(5.0, (-1.0, 2.0), h, -1.0)
+            h = self.linear_b(h)
+            return h
+
+    output_size = 2
+
+    def model_builder():
+        return ScalarAndTupleReorderedModel(output_size)
+
+    def input_generator():
+        return torch.randn(output_size, dtype=torch.float)
+
+    # generate a label that have same shape as forward output.
+    label_input = torch.ones([output_size])
+
+    run_training_test_and_compare(model_builder, input_generator, label_input)
+
+
 @pytest.mark.skip(reason="This test is not correct. All tensors modified by in-place operattions should be mark_dirty(...).")
 def test_InplaceUpdateInputAsOutputNotRequireGrad():
     class InplaceUpdateInputAsOutputNotRequireGradFunction(torch.autograd.Function):
@@ -703,3 +750,71 @@ def test_Share_Input():
     run_training_test_and_compare(model_builder, input_generator, label_input)
 
     run_training_test_and_compare(model_builder, input_generator_with_requires_grad, label_input)
+
+
+def test_GeLU_When_Autograd_Func_Fallback_Not_Enabled():
+    @torch.jit.script
+    def bias_gelu(bias, y):
+        x = bias + y
+        return x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
+
+    @torch.jit.script
+    def bias_gelu_backward(g, bias, y):
+        x = bias + y
+        tanh_out = torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))
+        ff = 0.5 * x * ((1 - tanh_out * tanh_out) * (0.79788456 +
+                        0.1070322243 * x * x)) + 0.5 * (1 + tanh_out)
+        return ff*g
+
+    class GeLUFunction(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, input, bias):
+            ctx.save_for_backward(input, bias)
+            return bias_gelu(bias, input)
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            input, bias = ctx.saved_tensors
+            tmp = bias_gelu_backward(grad_output, bias, input)
+            return tmp, tmp
+
+    class GeLUModel(torch.nn.Module):
+        def __init__(self, output_size):
+            super(GeLUModel, self).__init__()
+            self.relu = GeLUFunction.apply
+            self.bias = Parameter(torch.empty(
+                output_size,
+                device=torch.cuda.current_device(),
+                dtype=torch.float))
+
+            with torch.no_grad():
+                self.bias.uniform_()
+
+        def forward(self, model_input):
+            out = self.relu(model_input, self.bias)
+            return out
+
+    output_size = 1024
+
+    def model_builder():
+        return GeLUModel(output_size)
+
+    def input_generator():
+        return torch.randn(output_size, dtype=torch.float)
+
+    # generate a label that have same shape as forward output.
+    label_input = torch.ones([output_size])
+
+    m_ort = model_builder()
+    x_ort = input_generator()
+
+    try:
+        device = torch.device("cpu")
+        m_ort.to(device)
+        model = ORTModule(m_ort)
+        model.train()
+
+        inputs_on_device = [x_ort.to(device)]
+        output = model(*inputs_on_device)
+    except RuntimeError as e:
+        assert "Detected autograd functions usage in current model, the run will fail" in str(e)

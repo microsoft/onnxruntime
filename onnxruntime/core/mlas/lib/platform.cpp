@@ -17,6 +17,10 @@ Abstract:
 
 #include "mlasi.h"
 
+#if defined(MLAS_TARGET_POWER) && defined(__linux__)
+#include <sys/auxv.h>
+#endif
+
 #if defined(MLAS_TARGET_ARM64)
 #if defined(_WIN32)
 // N.B. Support building with downlevel versions of the Windows SDK.
@@ -368,6 +372,19 @@ Return Value:
     }
 
 #endif // MLAS_TARGET_ARM64
+#if defined(MLAS_TARGET_POWER)
+  this->GemmFloatKernel = MlasSgemmKernel;
+#if defined(__linux__)
+#if (defined(__GNUC__) && ((__GNUC__ > 10) || (__GNUC__== 10 && __GNUC_MINOR__ >= 2))) || \
+    (defined(__clang__) && (__clang_major__ >= 12))
+  unsigned long hwcap2 = getauxval(AT_HWCAP2);
+  bool HasP10Instructions = ((hwcap2 & PPC_FEATURE2_MMA) && (hwcap2 & PPC_FEATURE2_ARCH_3_1));
+  if (HasP10Instructions) {
+    this->GemmFloatKernel = MlasSgemmKernelPOWER10;
+  }
+#endif
+#endif
+#endif
 
 }
 

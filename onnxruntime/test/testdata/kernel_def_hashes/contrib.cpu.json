@@ -254,5 +254,9 @@
     [
         "QLinearConcat com.microsoft CPUExecutionProvider",
         1734858160766311432
+    ],
+    [
+        "QEmbedLayerNormalization com.microsoft CPUExecutionProvider",
+        9235385557940152248
     ]
 ]

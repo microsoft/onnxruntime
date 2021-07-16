@@ -71,9 +71,8 @@ elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
   set(MACOSX_FRAMEWORK_IDENTIFIER "com.microsoft.onnxruntime")
   configure_file(${REPO_ROOT}/cmake/Info.plist.in ${CMAKE_CURRENT_BINARY_DIR}/Info.plist)
   configure_file(
-    ${REPO_ROOT}/tools/ci_build/github/apple/onnxruntime-mobile-c.podspec.template
-    ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime-mobile-c.podspec
-  )
+    ${REPO_ROOT}/tools/ci_build/github/apple/framework_info.json.template
+    ${CMAKE_CURRENT_BINARY_DIR}/framework_info.json)
   set_target_properties(onnxruntime PROPERTIES
     FRAMEWORK TRUE
     FRAMEWORK_VERSION A
@@ -97,10 +96,6 @@ target_compile_definitions(onnxruntime PRIVATE VER_MINOR=${VERSION_MINOR_PART})
 target_compile_definitions(onnxruntime PRIVATE VER_BUILD=${VERSION_BUILD_PART})
 target_compile_definitions(onnxruntime PRIVATE VER_PRIVATE=${VERSION_PRIVATE_PART})
 target_compile_definitions(onnxruntime PRIVATE VER_STRING=\"${VERSION_STRING}\")
-
-if (onnxruntime_USE_CUDA)
-  target_include_directories(onnxruntime PRIVATE ${onnxruntime_CUDNN_HOME}/include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-endif()
 
 if(UNIX)
   if (APPLE)
