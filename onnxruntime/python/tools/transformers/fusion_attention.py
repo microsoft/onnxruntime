@@ -408,9 +408,7 @@ class FusionAttention(Fusion):
                 where_qk, [(['Cast', 'Equal', 'Unsqueeze', 'Unsqueeze'], [0, 0, 0, 0]),
                            (['Equal', 'Unsqueeze', 'Unsqueeze'], [0, 0, 0])], output_name_to_node)
             if add_qk is not None:
-                gather_elements_nodes = self.model.match_parent_path(add_qk, ['GatherElements', 'Expand', 'Where'], [1, 1, 1], output_name_to_node)
-                if gather_elements_nodes is not None:
-                    add_qk_str = gather_elements_nodes[0].output[0]
+                add_qk_str = add_qk.input[1]
         else:
             _, mask_nodes, _ = self.model.match_parent_paths(
                 add_qk, [(['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'], [None, 0, 1, 0, 0]),
