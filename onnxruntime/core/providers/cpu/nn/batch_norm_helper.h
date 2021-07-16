@@ -23,7 +23,7 @@ class BatchNormHelper {
     // If x_dims size < 2, num_channels defaults to 1.
     int64_t num_channels = x_dims.size() > 1 ? x_dims[1] : 1;
     // the first 2 are respectively - N and C.
-    int num_feature_dims = x_dims.size() > 1 ? x_dims.size() - 2 : 0;
+    int num_feature_dims = x_dims.size() > 1 ? static_cast<int>(x_dims.size() - 2) : 0;
 
     // defined as per spec and used for validation
     int kNumInputScaleDimensions = (is_spatial ? 1 : num_feature_dims + 1);
