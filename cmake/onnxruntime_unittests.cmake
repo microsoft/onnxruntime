@@ -189,6 +189,11 @@ file(GLOB onnxruntime_test_common_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/common/logging/*.h"
 )
 
+file(GLOB onnxruntime_test_quantiztion_src CONFIGURE_DEPENDS
+  "${TEST_SRC_DIR}/quantization/*.cc"
+  "${TEST_SRC_DIR}/quantization/*.h"
+)
+
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
 
   file(GLOB onnxruntime_test_ir_src CONFIGURE_DEPENDS
@@ -601,7 +606,7 @@ target_include_directories(onnx_test_runner_common PRIVATE ${eigen_INCLUDE_DIRS}
 set_target_properties(onnx_test_runner_common PROPERTIES FOLDER "ONNXRuntimeTest")
 
 set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src}
-        ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src})
+        ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src} ${onnxruntime_test_quantiztion_src})
 if(NOT TARGET onnxruntime AND NOT onnxruntime_BUILD_WEBASSEMBLY)
   list(APPEND all_tests ${onnxruntime_shared_lib_test_SRC})
 endif()

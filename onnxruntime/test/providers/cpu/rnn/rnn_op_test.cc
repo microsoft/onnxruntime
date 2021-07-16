@@ -505,9 +505,9 @@ TEST(RNNTest, DISABLED_RNN_default_attributes_and_forward_direction) {
       std::vector<float> initial_h_data({0.0F, 0.0F, 0.0F});
       test.AddInput<float>("initial_h", initial_h_dims, initial_h_data);
     } else {
-      test.AddMissingOptionalInput<float>();
-      test.AddMissingOptionalInput<int>();
-      test.AddMissingOptionalInput<float>();
+      test.AddOptionalInputEdge<float>();
+      test.AddOptionalInputEdge<int>();
+      test.AddOptionalInputEdge<float>();
     }
 
     if (outputOption == RNNOutputY || outputOption == RNNOutputBoth) {
@@ -519,7 +519,7 @@ TEST(RNNTest, DISABLED_RNN_default_attributes_and_forward_direction) {
                                  -0.74626476F, -0.07818383F, -0.75139415F});
       test.AddOutput<float>("Y", Y_dims, Y_data);
     } else {
-      test.AddMissingOptionalOutput<float>();
+      test.AddOptionalOutputEdge<float>();
     }
 
     if (outputOption == RNNOutputY_h || outputOption == RNNOutputBoth) {
@@ -527,7 +527,7 @@ TEST(RNNTest, DISABLED_RNN_default_attributes_and_forward_direction) {
       std::vector<float> Y_h_data({-0.74626476F, -0.07818383F, -0.75139415F});
       test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
     } else {
-      test.AddMissingOptionalOutput<float>();
+      test.AddOptionalOutputEdge<float>();
     }
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
@@ -614,9 +614,9 @@ TEST(RNNTest, DISABLED_RNN_reverse_direction) {
       std::vector<float> initial_h_data({0.0F, 0.0F, 0.0F});
       test.AddInput<float>("initial_h", initial_h_dims, initial_h_data);
     } else {
-      test.AddMissingOptionalInput<float>();
-      test.AddMissingOptionalInput<int>();
-      test.AddMissingOptionalInput<float>();
+      test.AddOptionalInputEdge<float>();
+      test.AddOptionalInputEdge<int>();
+      test.AddOptionalInputEdge<float>();
     }
 
     std::vector<int64_t> Y_dims = {seq_length, num_directions, batch_size, hidden_size};
@@ -628,7 +628,7 @@ TEST(RNNTest, DISABLED_RNN_reverse_direction) {
     if (outputOption == RNNOutputY || outputOption == RNNOutputBoth) {
       test.AddOutput<float>("Y", Y_dims, Y_data);
     } else {
-      test.AddMissingOptionalOutput<float>();
+      test.AddOptionalOutputEdge<float>();
     }
 
     std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
@@ -636,7 +636,7 @@ TEST(RNNTest, DISABLED_RNN_reverse_direction) {
     if (outputOption == RNNOutputY_h || outputOption == RNNOutputBoth) {
       test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
     } else {
-      test.AddMissingOptionalOutput<float>();
+      test.AddOptionalOutputEdge<float>();
     }
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
@@ -729,7 +729,7 @@ TEST(RNNTest, RNN_invalid_sequence_lens) {
     test.AddInput<float>("initial_h", initial_h_dims, initial_h_data);
 
     // Y
-    test.AddMissingOptionalOutput<float>();
+    test.AddOptionalOutputEdge<float>();
 
     std::vector<int64_t> Y_h_dims{num_directions, batch_size, hidden_size};
     std::vector<float> Y_h_data{0.f, 0.f, 0.f, 0.f, 0.f, 0.f};

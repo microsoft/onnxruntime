@@ -31,7 +31,7 @@ void RunTest(int64_t axis, const std::vector<int64_t> split_sizes, const ShapeAn
       test.AddAttribute("split", split_sizes);
     }
   } else if (!skip_split_if_empty) {
-    test.AddMissingOptionalInput<int64_t>();
+    test.AddOptionalInputEdge<int64_t>();
   }
 
   int i = 0;

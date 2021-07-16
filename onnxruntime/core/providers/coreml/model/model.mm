@@ -237,6 +237,8 @@
                              [output_name cStringUsingEncoding:NSUTF8StringEncoding]);
     }
 
+    auto model_output_type = data.dataType;
+
     auto& output_tensor = output.second;
     size_t num_elements =
         accumulate(output_tensor.tensor_info.shape.begin(),
@@ -249,16 +251,32 @@
     switch (type) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
         output_data_byte_size = num_elements * sizeof(float);
+        memcpy(output_tensor.buffer, model_output_data, output_data_byte_size);
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_INT32:
         output_data_byte_size = num_elements * sizeof(int32_t);
+        memcpy(output_tensor.buffer, model_output_data, output_data_byte_size);
+        break;
+      // For this case, since Coreml Spec only uses int32 for model output while onnx provides
+      // int64 for model output data type. We are doing a type casting (int32 -> int64) here 
+      // when copying the model to ORT
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+        output_data_byte_size = num_elements * sizeof(int64_t);
+        if (model_output_type == MLMultiArrayDataTypeInt32) {
+          int32_t* model_output_data_prime = static_cast<int32_t*>(model_output_data);
+          int64_t* output_tensor_buffer_prime = static_cast<int64_t*>(output_tensor.buffer);
+          for (size_t i = 0; i < num_elements; i++) {
+            output_tensor_buffer_prime[i] = model_output_data_prime[i];
+          }
+        }
+        ORT_RETURN_IF_NOT(model_output_type == MLMultiArrayDataTypeInt32,
+                          "Coreml model_output_type is not MLMultiArrayDataTypeInt32 for the case")
         break;
       default:
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Output data type is not float/int32, actual type: ",
+                               "Output data type is not supported, actual type: ",
                                type);
-  }
-    memcpy(output_tensor.buffer, model_output_data, output_data_byte_size);
+    }
   }
 
   return onnxruntime::common::Status::OK();
@@ -333,6 +351,10 @@ Status Model::Predict(const std::unordered_map<std::string, OnnxTensorData>& inp
 
 bool Model::IsScalarOutput(const std::string& output_name) const {
   return Contains(scalar_outputs_, output_name);
+}
+
+bool Model::IsInt64Output(const std::string& output_name) const {
+  return Contains(int64_outputs_, output_name);
 }
 
 const OnnxTensorInfo& Model::GetInputOutputInfo(const std::string& name) const {
