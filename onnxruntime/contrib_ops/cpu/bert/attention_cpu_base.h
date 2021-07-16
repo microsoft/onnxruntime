@@ -148,25 +148,15 @@ class AttentionCPUBase : public AttentionBase {
           math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, all_sequence_length, head_size, alpha,
                                     Q + input_chunk_length * i, k, 1.0,
                                     reinterpret_cast<T*>(attention_probs) + sequence_length * all_sequence_length * i, nullptr);
-        }
-      });
-    }
 
-    if (extra_add_qk_data != nullptr) {
-      int batch_offset = num_heads_*sequence_length*all_sequence_length;
-      int head_offset = sequence_length*all_sequence_length;
-      int seq_len_offset = all_sequence_length;
-
-      for (int i = 0; i < batch_size; i++) {
-        for (int j = 0; j < num_heads_; j++) {
-          for (int k = 0; k < sequence_length; k++) {
-            for (int l = 0; l < all_sequence_length; l++) {
-              int final_offset =  i*batch_offset + j*head_offset + k*seq_len_offset + l;
-              attention_probs[final_offset] += extra_add_qk_data[final_offset];
+          if (extra_add_qk_data != nullptr) {
+            int extra_add_qk_offset = static_cast<int>(i) * sequence_length * all_sequence_length;
+            for (int j = 0; j < sequence_length * all_sequence_length ; j++) {
+              attention_probs[extra_add_qk_offset+j] += extra_add_qk_data[extra_add_qk_offset + j];
             }
           }
         }
-      }
+      });
     }
 
     //  attention_probs(B, N, S, S*) = Softmax(attention_probs)
