@@ -246,12 +246,6 @@ def generate_files(list, args):
                                    'include\\onnxruntime\\core\\providers\\cpu\\cpu_provider_factory.h') +
                       '" target="build\\native\\include" />')
 
-    if includes_cuda:
-        files_list.append('<file src=' + '"' +
-                          os.path.join(args.sources_path,
-                                       'include\\onnxruntime\\core\\providers\\cuda\\cuda_provider_factory.h') +
-                          '" target="build\\native\\include" />')
-
     if args.execution_provider == 'openvino':
         files_list.append('<file src=' + '"' +
                           os.path.join(args.sources_path,
