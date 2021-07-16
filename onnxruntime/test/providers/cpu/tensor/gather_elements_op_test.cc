@@ -79,7 +79,7 @@ void RunTypedTest() {
   // skip openvino which will not throw error message but will ensure no out-of-bound access
   test5.Run(OpTester::ExpectResult::kExpectFailure,
             "GatherElements op: Value in indices must be within bounds [-2 , 1]. Actual value is 2",
-            {kNupharExecutionProvider, kCudaExecutionProvider, kOpenVINOExecutionProvider});
+            {kNupharExecutionProvider, kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider});
 
   // 3D input - axis 1
   OpTester test6("GatherElements", 11);

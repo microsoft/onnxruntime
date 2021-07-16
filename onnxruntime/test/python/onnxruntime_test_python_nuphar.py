@@ -101,7 +101,7 @@ def generate_gemm_inputs_initializers(graph, config, added_inputs_initializers={
 
 def generate_gemm_model(model_name, config):
     model = onnx.ModelProto()
-    model.ir_version = onnx.IR_VERSION
+    model.ir_version = 7 # use stable onnx ir version
     opset = model.opset_import.add()
     opset.version = 11
 
@@ -179,7 +179,7 @@ def generate_gemm_node_subgraph(scan_body, scan_node_inputs, postfix, config, ad
 
 def generate_gemm_scan_model(model_name, config1, config2):
     model = onnx.ModelProto()
-    model.ir_version = onnx.IR_VERSION
+    model.ir_version = 7 # use stable onnx ir version
     opset = model.opset_import.add()
     opset.version = 11
 

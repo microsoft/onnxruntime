@@ -7,6 +7,17 @@ import argparse
 from azure.storage.blob import BlockBlobService, ContentSettings
 
 
+def parse_local_version_from_whl_name(blob_name):
+    start = blob_name.find("+")
+    if start == -1:
+        return None
+    start = start + 1
+    end = blob_name.find("-", start)
+    if end == -1:
+        return None
+    return blob_name[start:end]
+
+
 def upload_whl(python_wheel_path, account_name, account_key, container_name):
     block_blob_service = BlockBlobService(
         account_name=account_name,
@@ -16,7 +27,12 @@ def upload_whl(python_wheel_path, account_name, account_key, container_name):
     blob_name = os.path.basename(python_wheel_path)
     block_blob_service.create_blob_from_path(container_name, blob_name, python_wheel_path)
 
-    html_blob_name = 'onnxruntime_nightly.html'
+    local_version = parse_local_version_from_whl_name(blob_name)
+    if local_version:
+        html_blob_name = 'onnxruntime_nightly_{}.html'.format(local_version)
+    else:
+        html_blob_name = 'onnxruntime_nightly.html'
+
     download_path_to_html = "./onnxruntime_nightly.html"
     block_blob_service.get_blob_to_path(container_name, html_blob_name, download_path_to_html)
 

@@ -5,8 +5,7 @@ import deepspeed
 from deepspeed.pipe import PipelineModule, LayerSpec
 from deepspeed.utils import RepeatingLoader
 
-import onnxruntime
-from onnxruntime.training import ORTModule
+from onnxruntime.training.ortmodule import ORTModule, _utils
 
 import argparse
 

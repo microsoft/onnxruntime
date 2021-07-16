@@ -10,7 +10,7 @@ TEST(DNNLExecutionProviderTest, MetadataTest) {
     #if 0 // With DNNL as a DLL this can't be tested here TODO(pranav)
   DNNLExecutionProviderInfo info;
   info.create_arena = false;
-  auto provider = onnxruntime::make_unique<DNNLExecutionProvider>(info);
+  auto provider = std::make_unique<DNNLExecutionProvider>(info);
   EXPECT_TRUE(provider != nullptr);
   ASSERT_STREQ(provider->GetAllocator(0, OrtMemTypeCPUOutput)->Info().name, "DnnlCpu");
   #endif

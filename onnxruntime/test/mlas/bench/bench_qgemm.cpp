@@ -17,18 +17,18 @@ void QGEMM(benchmark::State& state, bool pack_b) {
   const uint8_t a_zero_point = 29;
   const uint8_t b_zero_point = 179;
 
-  const int64_t M = state.range(0);
-  const int64_t N = state.range(1);
-  const int64_t K = state.range(2);
+  if (state.range(0) <= 0) throw std::invalid_argument("M must greater than 0!");
+  if (state.range(1) <= 0) throw std::invalid_argument("N must greater than 0!");
+  if (state.range(2) <= 0) throw std::invalid_argument("K must greater than 0!");
+  if (state.range(3) <= 0) throw std::invalid_argument("Batch must greater than 0!");
+  if (state.range(4) <= 0) throw std::invalid_argument("Threads must greater than 0!");
 
-  const int64_t batch = state.range(3);
-  const int64_t threads = state.range(4);
+  const size_t M = static_cast<size_t>(state.range(0));
+  const size_t N = static_cast<size_t>(state.range(1));
+  const size_t K = static_cast<size_t>(state.range(2));
 
-  if (M <= 0) throw std::invalid_argument("M must greater than 0!");
-  if (N <= 0) throw std::invalid_argument("N must greater than 0!");
-  if (K <= 0) throw std::invalid_argument("K must greater than 0!");
-  if (batch <= 0) throw std::invalid_argument("Batch must greater than 0!");
-  if (threads <= 0) throw std::invalid_argument("Threads must greater than 0!");
+  const size_t batch = static_cast<size_t>(state.range(3));
+  const size_t threads = static_cast<size_t>(state.range(4));
   
   OrtThreadPoolParams tpo;
   tpo.thread_pool_size = int(threads);

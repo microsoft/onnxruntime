@@ -64,7 +64,7 @@ class ConstantBufferImpl : public IConstantBuffer<T> {
 
 template <typename T>
 std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes() {
-  return onnxruntime::make_unique<ConstantBufferImpl<T>>(Consts<T>::One);
+  return std::make_unique<ConstantBufferImpl<T>>(Consts<T>::One);
 }
 
 template std::unique_ptr<IConstantBuffer<float>> CreateConstantOnes<float>();

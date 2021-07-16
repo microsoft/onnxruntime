@@ -17,7 +17,7 @@ using namespace onnxruntime::cuda;
       1,                                                           \
       T##_##U,                                                     \
       kCudaExecutionProvider,                                      \
-      KernelDefBuilder()                                           \
+      (*KernelDefBuilder::Create())                                \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<U>())  \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
       QuantizeLinear<T, U>);
@@ -32,7 +32,7 @@ REGISTER_Q_KERNEL_TYPED(uint8_t, MLFloat16)
       1,                                                           \
       T##_##U,                                                     \
       kCudaExecutionProvider,                                      \
-      KernelDefBuilder()                                           \
+      (*KernelDefBuilder::Create())                                \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<U>()), \
       DequantizeLinear<T, U>);

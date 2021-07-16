@@ -47,8 +47,8 @@ in the simple case where the entire model can be offloaded to ONNX Runtime:
 API
 ===
 
-.. automodule:: onnxruntime.training.ortmodule
+.. automodule:: onnxruntime.training.ortmodule.ortmodule
     :members:
     :show-inheritance:
     :member-order: bysource
-..    :inherited-members:
+    :inherited-members:

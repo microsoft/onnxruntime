@@ -64,11 +64,11 @@ inline MemoryAllocation::~MemoryAllocation() {
   }
 }
 
-inline MemoryAllocation::MemoryAllocation(MemoryAllocation&& o) : allocator_(nullptr), p_(nullptr), size_(0) {
+inline MemoryAllocation::MemoryAllocation(MemoryAllocation&& o) noexcept : allocator_(nullptr), p_(nullptr), size_(0) {
   *this = std::move(o);
 }
 
-inline MemoryAllocation& MemoryAllocation::operator=(MemoryAllocation&& o) {
+inline MemoryAllocation& MemoryAllocation::operator=(MemoryAllocation&& o) noexcept {
   OrtAllocator* alloc = nullptr;
   void* p = nullptr;
   size_t sz = 0;
@@ -385,6 +385,11 @@ inline const char* RunOptions::GetRunTag() const {
   return out;
 }
 
+inline RunOptions& RunOptions::AddConfigEntry(const char* config_key, const char* config_value) {
+  ThrowOnError(GetApi().AddRunConfigEntry(p_, config_key, config_value));
+  return *this;
+}
+
 inline RunOptions& RunOptions::SetTerminate() {
   ThrowOnError(GetApi().RunOptionsSetTerminate(p_));
   return *this;
@@ -432,6 +437,11 @@ inline SessionOptions& SessionOptions::EnableProfiling(const ORTCHAR_T* profile_
 
 inline SessionOptions& SessionOptions::DisableProfiling() {
   ThrowOnError(GetApi().DisableProfiling(p_));
+  return *this;
+}
+
+inline SessionOptions& SessionOptions::EnableOrtCustomOps() {
+  ThrowOnError(GetApi().EnableOrtCustomOps(p_));
   return *this;
 }
 
@@ -507,6 +517,11 @@ inline SessionOptions& SessionOptions::AppendExecutionProvider_OpenVINO(const Or
 
 inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options) {
   ThrowOnError(GetApi().CreateSession(env, model_path, options, &p_));
+}
+
+inline Session::Session(Env& env, const ORTCHAR_T* model_path, const SessionOptions& options,
+                        OrtPrepackedWeightsContainer* prepacked_weights_container) {
+  ThrowOnError(GetApi().CreateSessionWithPrepackedWeightsContainer(env, model_path, options, prepacked_weights_container, &p_));
 }
 
 inline Session::Session(Env& env, const void* model_data, size_t model_data_length, const SessionOptions& options) {

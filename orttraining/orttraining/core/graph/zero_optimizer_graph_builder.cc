@@ -124,7 +124,7 @@ static std::vector<ArgDef> AddPartitionsForParameter(
         ORT_ENFORCE(dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
         // Find the initializer partition to read out.
-        auto initializer = onnxruntime::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
+        auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
         const float* initializer_data = initializer->data<float>();
 
         // Create new initializer tensor proto.
@@ -205,13 +205,13 @@ void PartitionOptimizerState(
 
       if (utils::IsPrimitiveDataType<float>(element_type)) {
         float* data_buffer = init_tensor->MutableData<float>();
-        p_tensor = onnxruntime::make_unique<Tensor>(element_type,
+        p_tensor = std::make_unique<Tensor>(element_type,
                                                     shape,
                                                     data_buffer + partition_offset,
                                                     info);
       } else if (utils::IsPrimitiveDataType<MLFloat16>(element_type)) {
         MLFloat16* data_buffer = init_tensor->MutableData<MLFloat16>();
-        p_tensor = onnxruntime::make_unique<Tensor>(element_type,
+        p_tensor = std::make_unique<Tensor>(element_type,
                                                     shape,
                                                     data_buffer + partition_offset,
                                                     info);

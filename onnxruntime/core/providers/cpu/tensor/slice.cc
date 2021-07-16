@@ -8,12 +8,12 @@
 
 #include "core/framework/element_type_lists.h"
 #include "core/providers/common.h"
+#include "core/providers/cpu/tensor/slice_helper.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/op_kernel_type_control.h"
 #include "core/providers/op_kernel_type_control_utils.h"
 
 using namespace ::onnxruntime::common;
-using namespace std;
 
 namespace onnxruntime {
 namespace op_kernel_type_control {
@@ -39,33 +39,20 @@ using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExec
                                                                         Slice, Input, 0);
 using EnabledIndicesTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                            Slice, Input, 1);
-
-const auto data_type_constraints = BuildKernelDefConstraintsFromTypeList<DataTypes>();
-const auto indices_type_constraints = BuildKernelDefConstraintsFromTypeList<IndicesTypes>();
-const auto enabled_data_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>();
-const auto enabled_indices_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>();
-
-// std::clamp doesn't exist until C++17 so create a local version
-template <typename T>
-const T& clamp(const T& v, const T& lo, const T& hi) {
-  if (v < lo) return lo;
-  if (v > hi) return hi;
-  return v;
-}
 }  // namespace
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Slice,
     1, 9,
-    KernelDefBuilder().TypeConstraint("T", data_type_constraints, enabled_data_type_constraints),
+    KernelDefBuilder().TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<DataTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>()),
     Slice1);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Slice,
     10, 10,
     KernelDefBuilder()
-        .TypeConstraint("T", data_type_constraints, enabled_data_type_constraints)
-        .TypeConstraint("Tind", indices_type_constraints, enabled_indices_type_constraints),
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<DataTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndicesTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
     Slice10);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -73,16 +60,16 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     11,
     12,
     KernelDefBuilder()
-        .TypeConstraint("T", data_type_constraints, enabled_data_type_constraints)
-        .TypeConstraint("Tind", indices_type_constraints, enabled_indices_type_constraints),
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<DataTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndicesTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
     Slice10);
 
 ONNX_CPU_OPERATOR_KERNEL(
     Slice,
     13,
     KernelDefBuilder()
-        .TypeConstraint("T", data_type_constraints, enabled_data_type_constraints)
-        .TypeConstraint("Tind", indices_type_constraints, enabled_indices_type_constraints),
+        .TypeConstraint("T", BuildKernelDefConstraintsFromTypeList<DataTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledDataTypes>())
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndicesTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndicesTypes>()),
     Slice10);
 
 // Check if it's possible to combine innermost dimensions so we copy larger blocks.
@@ -93,6 +80,7 @@ ONNX_CPU_OPERATOR_KERNEL(
 static void FlattenOutputDims(const std::vector<int64_t>& input_dimensions,
                               const std::vector<int64_t>& output_dims,
                               std::vector<int64_t>& starts,
+                              std::vector<int64_t>& ends,
                               std::vector<int64_t>& steps,
                               std::vector<int64_t>*& flattened_output_dims) {
   int num_to_combine = 0;
@@ -120,6 +108,10 @@ static void FlattenOutputDims(const std::vector<int64_t>& input_dimensions,
     // so we can just shrink via resize so the number of entries matches flattened_output_dims
     starts.resize(num_dims);
     steps.resize(num_dims);
+
+    // update ends as well
+    ends.resize(num_dims);
+    ends.back() = dim_value;
   } else {
     flattened_output_dims = nullptr;
   }
@@ -130,47 +122,9 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                     const std::vector<int64_t>& raw_ends,
                                     const std::vector<int64_t>& raw_axes,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
-  // Initialize axes to the provided axes attribute or to the default sequence
-  std::vector<int64_t> axes(raw_axes);
-  if (axes.empty()) {
-    //axes are omitted, they are set to[0, ..., ndim - 1]
-    axes.resize(compute_metadata.starts_.size());
-    std::iota(axes.begin(), axes.end(), 0);
-  }
-
-  // Iterate through the provided axes and override the start/end ranges
-  std::unordered_set<int64_t> unique_axes;
-  const auto& dimension_count = compute_metadata.input_dimensions_.size();
-  for (size_t axis_index = 0, axes_count = axes.size(); axis_index < axes_count; ++axis_index) {
-    auto axis = HandleNegativeAxis(axes[axis_index], dimension_count);  // handle negative and enforce axis is valid
-    if (axis >= static_cast<int64_t>(dimension_count) || axis < 0)
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an axis outside of the tensor dimension count");
-    if (unique_axes.find(axis) != unique_axes.end())
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has duplicates");
-    unique_axes.insert(axis);
-
-    // process start
-    auto start = raw_starts[axis_index];
-    if (start < 0)
-      start += compute_metadata.input_dimensions_[axis];
-    compute_metadata.starts_[axis] = clamp(start, int64_t{0}, compute_metadata.input_dimensions_[axis]);
-
-    // process end
-    auto end = raw_ends[axis_index];
-    if (end < 0)
-      end += compute_metadata.input_dimensions_[axis];
-
-    // find output dim value for this axis
-    auto temp = clamp(end, int64_t{0}, compute_metadata.input_dimensions_[axis]) - compute_metadata.starts_[axis];
-    if (temp < 0)
-      compute_metadata.output_dims_[axis] = 0;
-    else
-      compute_metadata.output_dims_[axis] = temp;
-  }
-
+  ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, compute_metadata));
   FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
-                    compute_metadata.steps_, compute_metadata.p_flattened_output_dims_);
-
+                    compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_output_dims_);
   return Status::OK();
 }
 
@@ -180,70 +134,9 @@ Status SliceBase::PrepareForCompute(const std::vector<int64_t>& raw_starts,
                                     const std::vector<int64_t>& raw_axes,
                                     const std::vector<int64_t>& raw_steps,
                                     SliceOp::PrepareForComputeMetadata& compute_metadata) {
-  // Initialize axes to the provided axes attribute or to the default sequence
-  std::vector<int64_t> axes(raw_axes);
-
-  if (axes.empty()) {
-    // axes are omitted, they are set to[0, ..., ndim - 1]
-    axes.resize(compute_metadata.starts_.size());
-    std::iota(axes.begin(), axes.end(), 0);
-  }
-
-  // Iterate through the provided axes and override the start/end/steps ranges
-  std::unordered_set<int64_t> unique_axes;
-  const auto& dimension_count = compute_metadata.input_dimensions_.size();
-  for (size_t axis_index = 0, axes_count = axes.size(); axis_index < axes_count; ++axis_index) {
-    auto axis = axes[axis_index] < 0 ? axes[axis_index] + static_cast<int64_t>(dimension_count) : axes[axis_index];
-    if (axis >= static_cast<int64_t>(dimension_count) || axis < 0)
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an axis outside of the tensor dimension count");
-    if (unique_axes.find(axis) != unique_axes.end())
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has duplicates");
-    unique_axes.insert(axis);
-
-    // process step
-    auto step = axis_index < raw_steps.size() ? raw_steps[axis_index] : 1;
-    if (step == 0)
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'step' value cannot be 0");
-    compute_metadata.steps_[axis] = step;
-
-    // process start
-    auto start = raw_starts[axis_index];
-    if (start < 0)
-      start += compute_metadata.input_dimensions_[axis];
-    if (step < 0)
-      compute_metadata.starts_[axis] = clamp(start, int64_t{0}, compute_metadata.input_dimensions_[axis] - 1);
-    else
-      compute_metadata.starts_[axis] = clamp(start, int64_t{0}, compute_metadata.input_dimensions_[axis]);
-
-    // process end
-    auto end = raw_ends[axis_index];
-    // INT_MAX has a special meaning for end according to spec
-    // equivalent to 'None' in numpy
-    // it represent slicing to the end of the dimension
-    if (end == std::numeric_limits<int32_t>::max() ||
-        end == std::numeric_limits<int64_t>::max()) {
-      end = step < 0 ? -1 : compute_metadata.input_dimensions_[axis];
-    }
-
-    else {
-      if (end < 0)
-        end += compute_metadata.input_dimensions_[axis];
-      if (step < 0)
-        end = clamp(end, int64_t{-1}, compute_metadata.input_dimensions_[axis]);
-      else
-        end = clamp(end, int64_t{0}, compute_metadata.input_dimensions_[axis]);
-    }
-
-    // find output dim value for this axis
-    auto temp = static_cast<int64_t>(ceil(1.0 * (end - compute_metadata.starts_[axis]) / step));
-    if (temp < 0)
-      compute_metadata.output_dims_[axis] = 0;
-    else
-      compute_metadata.output_dims_[axis] = temp;
-  }
-
+  ORT_RETURN_IF_ERROR(SliceOp::PrepareForComputeHelper(raw_starts, raw_ends, raw_axes, raw_steps, compute_metadata));
   FlattenOutputDims(compute_metadata.input_dimensions_, compute_metadata.output_dims_, compute_metadata.starts_,
-                    compute_metadata.steps_, compute_metadata.p_flattened_output_dims_);
+                    compute_metadata.ends_, compute_metadata.steps_, compute_metadata.p_flattened_output_dims_);
 
   return Status::OK();
 }
@@ -322,14 +215,14 @@ static Status SliceImpl(OpKernelContext* ctx,
   T* output = reinterpret_cast<T*>(output_tensor.MutableDataRaw());
   const auto* output_end = output + output_tensor.Shape().Size();
 
-  auto create_output = [&output, &output_end](SliceIterator<T>& input_iterator) {
-    if (input_iterator.SolitaryInnerStep()) {
+  auto create_output = [&output, &output_end](SliceIterator<T>& slice_input_iterator) {
+    if (slice_input_iterator.SolitaryInnerStep()) {
       while (output < output_end) {
-        output = input_iterator.CopyInnermostAxisSolitaryInnerStep(output);
+        output = slice_input_iterator.CopyInnermostAxisSolitaryInnerStep(output);
       }
     } else {
       while (output < output_end) {
-        output = input_iterator.CopyInnermostAxisNonSolitaryInnerStep(output);
+        output = slice_input_iterator.CopyInnermostAxisNonSolitaryInnerStep(output);
       }
     }
 
@@ -344,13 +237,13 @@ static Status SliceImpl(OpKernelContext* ctx,
     flattened_input_dims.back() = compute_metadata.p_flattened_output_dims_->back();
     TensorShape input_shape(std::move(flattened_input_dims));
 
-    auto input_iterator = SliceIterator<T>(input_tensor, input_shape, compute_metadata.starts_,
-                                           *compute_metadata.p_flattened_output_dims_, compute_metadata.steps_);
-    create_output(input_iterator);
+    auto input_iterator2 = SliceIterator<T>(input_tensor, input_shape, compute_metadata.starts_,
+                                            *compute_metadata.p_flattened_output_dims_, compute_metadata.steps_);
+    create_output(input_iterator2);
   } else {
-    auto input_iterator = SliceIterator<T>(input_tensor, compute_metadata.starts_, compute_metadata.output_dims_,
-                                           compute_metadata.steps_);
-    create_output(input_iterator);
+    auto input_iterator2 = SliceIterator<T>(input_tensor, compute_metadata.starts_, compute_metadata.output_dims_,
+                                            compute_metadata.steps_);
+    create_output(input_iterator2);
   }
 
   return Status::OK();

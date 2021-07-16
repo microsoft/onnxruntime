@@ -8,6 +8,7 @@
 #include <onnx/onnx_pb.h>
 
 #include "core/providers/shared/utils/utils.h"
+#include "core/providers/cpu/tensor/slice_helper.h"
 #include "helper.h"
 #include "model_builder.h"
 #include "op_builder.h"
@@ -223,9 +224,9 @@ static Status AddSqueezeOp(ModelBuilder& model_builder,
                            const std::string& node_name,
                            const std::string& input, const std::string& output,
                            vector<int32_t> axes) {
-  if (model_builder.GetAndroidSdkVer() < 28) {
+  if (model_builder.GetNNAPIFeatureLevel() < ANEURALNETWORKS_FEATURE_LEVEL_2) {
     return ORT_MAKE_STATUS(
-        ONNXRUNTIME, FAIL, "Squeeze is not supported on API level ", model_builder.GetAndroidSdkVer());
+        ONNXRUNTIME, FAIL, "Squeeze is not supported on API level ", model_builder.GetNNAPIFeatureLevel());
   }
 
   auto& shaper(model_builder.GetShaper());
@@ -717,7 +718,7 @@ void CreateSharedOpBuilderImpl(const std::string& op_type,
   if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
     return;
 
-  op_registrations.builders.push_back(onnxruntime::make_unique<T>());
+  op_registrations.builders.push_back(std::make_unique<T>());
   for (const auto& op : op_types) {
     op_registrations.op_builder_map.emplace(op, op_registrations.builders.back().get());
   }
@@ -739,7 +740,7 @@ class BaseOpBuilder : public IOpBuilder {
 
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node) const {
   OpSupportCheckParams params{
-      model_builder.GetAndroidSdkVer(),
+      model_builder.GetNNAPIFeatureLevel(),
       model_builder.UseNCHW(),
   };
 
@@ -1310,7 +1311,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   ADD_SCALAR_OPERAND(model_builder, input_indices, kernel_shape[0]);
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
-  if (model_builder.GetAndroidSdkVer() > 28) {  // nchw only supported on api 29+
+  if (model_builder.GetNNAPIFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_2) {  // nchw only supported on api 29+
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
   }
 
@@ -1554,7 +1555,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   int32_t fuse_code = model_builder.FindActivation(node, *node.OutputDefs()[0]);
   ADD_SCALAR_OPERAND(model_builder, input_indices, fuse_code);
 
-  if (model_builder.GetAndroidSdkVer() > 28) {
+  if (model_builder.GetNNAPIFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_2) {
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
 
     // 1. NNAPI Grouped Conv does not support dilations
@@ -1644,13 +1645,13 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   auto& shaper(model_builder.GetShaper());
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
-  const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
+  const auto android_feature_level = model_builder.GetNNAPIFeatureLevel();
   NodeAttrHelper helper(node);
 
   auto input = node.InputDefs()[0]->Name();
   bool input_is_nhwc = model_builder.IsOperandNHWC(input);
   bool output_is_nhwc = input_is_nhwc;
-  if (android_sdk_ver < 29) {
+  if (android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
     if (model_builder.IsOperandNHWC(input)) {
       output_is_nhwc = false;
       // We want to transpose nhwc operand back to nchw before softmax
@@ -1670,7 +1671,7 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   input_indices.push_back(operand_indices.at(input));
   ADD_SCALAR_OPERAND(model_builder, input_indices, beta);
 
-  if (android_sdk_ver > 28) {
+  if (android_feature_level > ANEURALNETWORKS_FEATURE_LEVEL_2) {
     // you can only specify axis for android api level 29+
     ADD_SCALAR_OPERAND(model_builder, input_indices, axis);
   }
@@ -2227,12 +2228,12 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   const auto& operand_indices(model_builder.GetOperandIndices());
   const auto& operand_types(model_builder.GetOperandTypes());
   NodeAttrHelper helper(node);
-  const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
+  const auto android_feature_level = model_builder.GetNNAPIFeatureLevel();
 
   auto input = node.InputDefs()[0]->Name();
   const auto& output = node.OutputDefs()[0]->Name();
   bool output_is_nhwc = model_builder.IsOperandNHWC(input);
-  if (android_sdk_ver < 29) {
+  if (android_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
     // on android api level 28, we need to transpose the nchw input to nhwc
     output_is_nhwc = true;
     if (!model_builder.IsOperandNHWC(input)) {
@@ -2256,7 +2257,7 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   ADD_SCALAR_OPERAND(model_builder, input_indices, beta);
 
   // specify axis is only available on api level >= 29
-  if (android_sdk_ver > 28) {
+  if (android_feature_level > ANEURALNETWORKS_FEATURE_LEVEL_2) {
     // ONNX LRN is always performed on C dimension
     int32_t axis = output_is_nhwc
                        ? 3   // nhwc
@@ -2310,7 +2311,7 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   float min, max;
-  GetClipMinMax(model_builder.GetInitializerTensors(), node, min, max);
+  GetClipMinMax(model_builder.GetInitializerTensors(), node, min, max, logging::LoggingManager::DefaultLogger());
 
   int32_t op_code;
   if (min == 0.0f && max == 6.0f)
@@ -2359,7 +2360,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   const auto& initializers(model_builder.GetInitializerTensors());
   NodeAttrHelper helper(node);
   const auto input_defs = node.InputDefs();
-  const auto android_sdk_ver = model_builder.GetAndroidSdkVer();
+  const auto android_feature_level = model_builder.GetNNAPIFeatureLevel();
   const auto& output = node.OutputDefs()[0]->Name();
 
   auto input = input_defs[0]->Name();
@@ -2409,7 +2410,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   ADD_SCALAR_OPERAND(model_builder, input_indices, output_w);
   ADD_SCALAR_OPERAND(model_builder, input_indices, output_h);
 
-  if (android_sdk_ver > 28) {
+  if (android_feature_level > ANEURALNETWORKS_FEATURE_LEVEL_2) {
     // using nchw is only available on API level 29
     ADD_SCALAR_OPERAND(model_builder, input_indices, use_nchw);
   }
@@ -2417,7 +2418,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   // Currently we only support align_corners and half_pixel on bilinear resize
   // TODO, investigate nearest neighbor resize difference between NNAPI(based on TF) and ONNX
   if (is_linear_resize) {
-    if (android_sdk_ver > 29 && (using_align_corners || using_half_pixel)) {
+    if (android_feature_level > ANEURALNETWORKS_FEATURE_LEVEL_3 && (using_align_corners || using_half_pixel)) {
       ADD_SCALAR_OPERAND(model_builder, input_indices, using_align_corners);
       if (using_half_pixel)
         ADD_SCALAR_OPERAND(model_builder, input_indices, using_half_pixel);
@@ -2533,6 +2534,206 @@ Status MinMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 
 #pragma endregion
 
+#pragma region op_elu
+
+class EluOpBuilder : public BaseOpBuilder {
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+};
+
+Status EluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  const auto& input = node.InputDefs()[0]->Name();
+  const auto& output = node.OutputDefs()[0]->Name();
+  bool output_is_nhwc = model_builder.IsOperandNHWC(input);
+  ORT_RETURN_IF_ERROR(shaper.Identity(input, output));
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+  NodeAttrHelper helper(node);
+  const auto alpha = helper.Get("alpha", 1.0f);
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));
+  ADD_SCALAR_OPERAND(model_builder, input_indices, alpha);
+  return model_builder.AddOperation(ANEURALNETWORKS_ELU, input_indices,
+                                    {output}, {output_operand_type}, {output_is_nhwc});
+}
+
+#pragma endregion
+
+#pragma region op_slice
+
+class SliceOpBuilder : public BaseOpBuilder {
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+
+ private:
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const override ORT_MUST_USE_RESULT;
+};
+
+void SliceOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  // Skip everything except input0 for Slice
+  const auto input_defs = node.InputDefs();
+  model_builder.AddInitializerToSkip(input_defs[1]->Name());  // starts
+  model_builder.AddInitializerToSkip(input_defs[2]->Name());  // ends
+  if (input_defs.size() > 3) {
+    model_builder.AddInitializerToSkip(input_defs[3]->Name());  // axes
+    if (input_defs.size() > 4) {
+      model_builder.AddInitializerToSkip(input_defs[4]->Name());  // steps
+    }
+  }
+}
+
+Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node) const {
+  auto& shaper(model_builder.GetShaper());
+  const auto& operand_indices(model_builder.GetOperandIndices());
+  const auto& operand_types(model_builder.GetOperandTypes());
+  const auto input_defs = node.InputDefs();
+  const auto& input_shape = shaper[input_defs[0]->Name()];
+  std::vector<int64_t> input_shape_64(input_shape.cbegin(), input_shape.cend());
+  SliceOp::PrepareForComputeMetadata compute_metadata(input_shape_64);
+
+  {
+    // We need to copy the data from the starts/ends/axes/steps initializers to int64 vectors
+    // to be used in shared PrepareForCompute function to calculate the output shape
+    // and normalize inputs, for example, input can be starts/ends/steps for certain axes,
+    // PrepareForCompute can generate standard starts/ends/steps/axes for each axes
+    std::vector<int64_t> input_starts;
+    std::vector<int64_t> input_ends;
+    std::vector<int64_t> input_axes;
+    std::vector<int64_t> input_steps;
+
+    const auto CopyInputData = [&node, &model_builder](size_t input_idx, std::vector<int64_t>& data) {
+      data.clear();
+      const auto input_defs = node.InputDefs();
+
+      // This is an optional input, return empty vector
+      if (input_defs.size() <= input_idx)
+        return Status::OK();
+
+      const auto& input_name = input_defs[input_idx]->Name();
+      const auto& initializers(model_builder.GetInitializerTensors());
+
+      const auto& tensor = *initializers.at(input_name);
+      std::unique_ptr<uint8_t[]> unpacked_tensor;
+      size_t tensor_byte_size;
+      ORT_RETURN_IF_ERROR(
+          onnxruntime::utils::UnpackInitializerData(tensor, model_builder.GetGraphViewer().ModelPath(),
+                                                    unpacked_tensor, tensor_byte_size));
+      const auto data_type = tensor.data_type();
+      if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+        const int64_t* tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.get());
+        size_t size = tensor_byte_size / sizeof(int64_t);
+        data.insert(data.end(), tensor_data, tensor_data + size);
+      } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+        const int32_t* tensor_data = reinterpret_cast<const int32_t*>(unpacked_tensor.get());
+        size_t size = tensor_byte_size / sizeof(int32_t);
+        data.insert(data.end(), tensor_data, tensor_data + size);
+      } else {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Data type for starts and ends inputs' is not supported in this build. Got ",
+                               data_type);
+      }
+
+      return Status::OK();
+    };
+
+    ORT_RETURN_IF_ERROR(CopyInputData(1, input_starts));
+    ORT_RETURN_IF_ERROR(CopyInputData(2, input_ends));
+    ORT_RETURN_IF_ERROR(CopyInputData(3, input_axes));
+    ORT_RETURN_IF_ERROR(CopyInputData(4, input_steps));
+    ORT_RETURN_IF_ERROR(
+        SliceOp::PrepareForComputeHelper(input_starts, input_ends, input_axes, input_steps, compute_metadata));
+  }
+
+  // output shape is of type uint32_t, convert from int64 compute_metadata.output_dims_
+  Shape nnapi_output_shape;
+  nnapi_output_shape.reserve(compute_metadata.output_dims_.size());
+  std::transform(compute_metadata.output_dims_.cbegin(), compute_metadata.output_dims_.cend(),
+                 std::back_inserter(nnapi_output_shape),
+                 [](int64_t i) { return SafeInt<uint32_t>(i); });
+
+  const auto& input = node.InputDefs()[0]->Name();
+  const auto& output = node.OutputDefs()[0]->Name();
+  bool output_is_nhwc = model_builder.IsOperandNHWC(input);
+
+  // No shape inference for Slice, everything is calculated here, we only need to add the output shape
+  // to the shaper
+  shaper.AddShape(output, nnapi_output_shape);
+  const OperandType output_operand_type(operand_types.at(input).type, shaper[output]);
+
+  std::vector<uint32_t> input_indices;
+  input_indices.push_back(operand_indices.at(input));
+
+  // begin/end/strides of ANEURALNETWORKS_STRIDED_SLICE have the same shape
+  Shape param_dimen = {static_cast<uint32_t>(input_shape.size())};
+
+  // helper function to add begin/end/strides of ANEURALNETWORKS_STRIDED_SLICE
+  const auto AddOperand = [&model_builder, &node, &input_indices, &operand_indices](
+                              const char* name, const Shape& shape, const std::vector<int64_t>& param_raw_data) {
+    std::vector<int32_t> param_data;
+    param_data.reserve(param_raw_data.size());
+    std::transform(param_raw_data.cbegin(), param_raw_data.cend(),
+                   std::back_inserter(param_data),
+                   [](int64_t i) { return SafeInt<int32_t>(i); });
+    std::string param_name = model_builder.GetUniqueName(node.Name() + name);
+    OperandType param_operand_type(Type::TENSOR_INT32, shape);
+    ORT_RETURN_IF_ERROR(
+        model_builder.AddOperandFromPersistMemoryBuffer(param_name, param_data.data(), param_operand_type));
+    input_indices.push_back(operand_indices.at(param_name));
+    return Status::OK();
+  };
+
+  ORT_RETURN_IF_ERROR(AddOperand("starts", param_dimen, compute_metadata.starts_));  //nnapi_begin
+
+  // NNAPI has 2 slice operations
+  // - ANEURALNETWORKS_SLICE
+  //    Simpler and faster version of slice without steps, available from ANEURALNETWORKS_FEATURE_LEVEL_3
+  //    Use this one if no step other than 1 is used in ONNX slice
+  // - ANEURALNETWORKS_STRIDED_SLICE
+  //    More comprehensive version, available from ANEURALNETWORKS_FEATURE_LEVEL_2
+  int op_code = ANEURALNETWORKS_STRIDED_SLICE;
+  if (std::all_of(compute_metadata.steps_.cbegin(),
+                  compute_metadata.steps_.cend(),
+                  [](int64_t i) { return i == 1; }) &&
+      model_builder.GetNNAPIFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_2) {
+    op_code = ANEURALNETWORKS_SLICE;
+    // the nnapi size of the slice in this case is the output shape
+    ORT_RETURN_IF_ERROR(AddOperand("sizes", param_dimen, compute_metadata.output_dims_));  //nnapi_sizes
+  } else {
+    // ** The special treatment of ends **
+    // The nnapi_end need some special handling, based on the current undocumented design of
+    // ANEURALNETWORKS_STRIDED_SLICE
+    // For ORT, for a single axis, after SliceOp::PrepareForCompute, and the step is negative,
+    // and the last element for slice is at the beginning of the axis (we are slicing backwards)
+    // The end for this axis will be -1
+    // For NNAPI, it is not documented that end can be negative,
+    // see https://developer.android.com/ndk/reference/group/neural-networks#group___neural_networks_1ggaabbe492c60331b13038e39d4207940e0a89695302f8b1e7ae7ce8f4d8c0b8a752
+    // However, the actual NNAPI StridedSlice has some odd implementations,
+    // See https://android.googlesource.com/platform/frameworks/ml/+/5b525d4d9100819d87447bd2c2a0bcfdd62899ee/nn/common/operations/StridedSlice.cpp#177
+    // and, https://android.googlesource.com/platform/frameworks/ml/+/5b525d4d9100819d87447bd2c2a0bcfdd62899ee/nn/common/include/OperationsUtils.h#262
+    // If a negative end is no less than -dim (dimension of the axis), it will be treated as an index counting from
+    // the end, for example, dim = 5, and end = -1, the end will be normalized to 4, which will cause
+    // incorrect result, so here we have to make the end = -dim - 1 such that it will not be treated as
+    // an index counting from the end.
+    std::vector<int64_t> ends = compute_metadata.ends_;
+    for (size_t i = 0; i < ends.size(); ++i) {
+      if (ends[i] == -1) {
+        ends[i] = -static_cast<int32_t>(input_shape[i] + 1);
+      }
+    }
+    ORT_RETURN_IF_ERROR(AddOperand("ends", param_dimen, ends));                      //nnapi_end
+    ORT_RETURN_IF_ERROR(AddOperand("steps", param_dimen, compute_metadata.steps_));  //nnapi_strides
+    // We do not use the following inputs in ANEURALNETWORKS_STRIDED_SLICE, set them all to 0
+    ADD_SCALAR_OPERAND(model_builder, input_indices, 0);  // begin_mask
+    ADD_SCALAR_OPERAND(model_builder, input_indices, 0);  // end_mask
+    ADD_SCALAR_OPERAND(model_builder, input_indices, 0);  // shrink_axis_mask
+  }
+  return model_builder.AddOperation(op_code, input_indices, {output}, {output_operand_type}, {output_is_nhwc});
+}
+
+#pragma endregion
+
 #pragma region CreateGetOpBuilders
 
 // The reason we use macros to create OpBuilders is for easy exclusion in build if certain op(s) are not used
@@ -2544,31 +2745,46 @@ Status MinMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
 // This is for ops with dedicated OpBuilder
 #define NNAPI_EP_ADD_SINGLE_OP_BUILDER(OP_TYPE, BUILDER_NAME)                                 \
   {                                                                                           \
-    op_registrations.builders.push_back(onnxruntime::make_unique<BUILDER_NAME>());            \
+    op_registrations.builders.push_back(std::make_unique<BUILDER_NAME>());                    \
     op_registrations.op_builder_map.emplace(OP_TYPE, op_registrations.builders.back().get()); \
   }
 
 static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   OpBuilderRegistrations op_registrations;
 
+  // Builders handle a single op
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("BatchNormalization", BatchNormalizationOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Cast", CastOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Clip", ClipOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Concat", ConcatOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("DequantizeLinear", DequantizeLinearOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Elu", EluOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Flatten", FlattenOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Identity", IdentityOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("LRN", LRNOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("QuantizeLinear", QuantizeLinearOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Relu", ReluOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Reshape", ReshapeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Resize", ResizeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Slice", SliceOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Softmax", SoftMaxOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Squeeze", SqueezeOpBuilder);
+  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Transpose", TransposeOpBuilder);
+
+  // Builders shared among similar ops
   {
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Add", BinaryOpBuilder);
-    NNAPI_EP_ADD_SHARED_OP_BUILDER("Sub", BinaryOpBuilder);
-    NNAPI_EP_ADD_SHARED_OP_BUILDER("Mul", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Div", BinaryOpBuilder);
-    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearAdd", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Mul", BinaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Pow", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearAdd", BinaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Sub", BinaryOpBuilder);
   }
 
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Relu", ReluOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Transpose", TransposeOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Reshape", ReshapeOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("BatchNormalization", BatchNormalizationOpBuilder);
-
   {
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("AveragePool", PoolOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("GlobalAveragePool", PoolOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("GlobalMaxPool", PoolOpBuilder);
-    NNAPI_EP_ADD_SHARED_OP_BUILDER("AveragePool", PoolOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("MaxPool", PoolOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearAveragePool", PoolOpBuilder);
   }
@@ -2577,10 +2793,6 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Conv", ConvOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearConv", ConvOpBuilder);
   }
-
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Cast", CastOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Softmax", SoftMaxOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Identity", IdentityOpBuilder);
 
   {
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Gemm", GemmOpBuilder);
@@ -2593,26 +2805,17 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Exp", UnaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Floor", UnaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Log", UnaryOpBuilder);
-    NNAPI_EP_ADD_SHARED_OP_BUILDER("Sigmoid", UnaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Neg", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearSigmoid", UnaryOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Sigmoid", UnaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Sin", UnaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Sqrt", UnaryOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Tanh", UnaryOpBuilder);
-    NNAPI_EP_ADD_SHARED_OP_BUILDER("QLinearSigmoid", UnaryOpBuilder);
   }
 
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Concat", ConcatOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Squeeze", SqueezeOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("QuantizeLinear", QuantizeLinearOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("DequantizeLinear", DequantizeLinearOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("LRN", LRNOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Clip", ClipOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Resize", ResizeOpBuilder);
-  NNAPI_EP_ADD_SINGLE_OP_BUILDER("Flatten", FlattenOpBuilder);
-
   {
-    NNAPI_EP_ADD_SHARED_OP_BUILDER("Min", MinMaxOpBuilder);
     NNAPI_EP_ADD_SHARED_OP_BUILDER("Max", MinMaxOpBuilder);
+    NNAPI_EP_ADD_SHARED_OP_BUILDER("Min", MinMaxOpBuilder);
   }
 
   return op_registrations;

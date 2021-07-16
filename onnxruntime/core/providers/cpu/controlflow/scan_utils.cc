@@ -292,7 +292,7 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
 }
 
 OrtValue AllocateTensorInMLValue(const MLDataType data_type, const TensorShape& shape, AllocatorPtr& allocator) {
-  auto new_tensor = onnxruntime::make_unique<Tensor>(data_type,
+  auto new_tensor = std::make_unique<Tensor>(data_type,
                                                      shape,
                                                      allocator);
 

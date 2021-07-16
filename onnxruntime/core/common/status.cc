@@ -20,14 +20,14 @@ Status::Status(StatusCategory category, int code, const std::string& msg) {
   // state_ will be allocated here causing the status to be treated as a failure
   ORT_ENFORCE(code != static_cast<int>(common::OK));
 
-  state_ = onnxruntime::make_unique<State>(category, code, msg);
+  state_ = std::make_unique<State>(category, code, msg);
 }
 
 Status::Status(StatusCategory category, int code, const char* msg) {
   // state_ will be allocated here causing the status to be treated as a failure
   ORT_ENFORCE(code != static_cast<int>(common::OK));
 
-  state_ = onnxruntime::make_unique<State>(category, code, msg);
+  state_ = std::make_unique<State>(category, code, msg);
 }
 
 Status::Status(StatusCategory category, int code)

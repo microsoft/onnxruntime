@@ -17,7 +17,7 @@ class Dropout final: public OpKernel {
   Dropout(const OpKernelInfo& info) : OpKernel{info} {
     int64_t seed = 0;
     if (info.GetAttr<int64_t>("seed", &seed).IsOK()) {
-      generator_ = onnxruntime::make_unique<RandomGenerator>(seed);
+      generator_ = std::make_unique<RandomGenerator>(seed);
     }
   }
 
@@ -58,7 +58,7 @@ Status Dropout<T1, T2>::Compute(OpKernelContext* context) const {
   std::unique_ptr<bool[]> temp_mask_buffer{};  // temporary buffer to use if mask input is not provided
   auto mask_span = [&X_shape, mask, &temp_mask_buffer]() {
     if (mask) return mask->MutableDataAsSpan<bool>();
-    temp_mask_buffer = onnxruntime::make_unique<bool[]>(X_shape.Size());
+    temp_mask_buffer = std::make_unique<bool[]>(X_shape.Size());
     return gsl::make_span(temp_mask_buffer.get(), X_shape.Size());
   }();
 

@@ -120,8 +120,11 @@ LoggingManager::~LoggingManager() {
   if (owns_default_logger_) {
     // lock mutex to reset DefaultLoggerManagerInstance() and free default logger from this instance.
     std::lock_guard<OrtMutex> guard(DefaultLoggerMutex());
-
+#if ((__cplusplus >= 201703L) || (defined(_MSVC_LANG) && (_MSVC_LANG >= 201703L)))
+    DefaultLoggerManagerInstance().store(nullptr, std::memory_order_release);
+#else
     DefaultLoggerManagerInstance().store(nullptr, std::memory_order::memory_order_release);
+#endif
 
     delete s_default_logger_;
     s_default_logger_ = nullptr;
@@ -145,7 +148,7 @@ std::unique_ptr<Logger> LoggingManager::CreateLogger(const std::string& logger_i
                                                      const Severity severity,
                                                      bool filter_user_data,
                                                      int vlog_level) {
-  auto logger = onnxruntime::make_unique<Logger>(*this, logger_id, severity, filter_user_data, vlog_level);
+  auto logger = std::make_unique<Logger>(*this, logger_id, severity, filter_user_data, vlog_level);
   return logger;
 }
 

@@ -8,7 +8,7 @@ ARG PYTHON_VERSION=3.8
 ARG DEBIAN_FRONTEND=noninteractive
 
 ADD scripts /tmp/scripts
-RUN /tmp/scripts/install_ubuntu.sh -p $PYTHON_VERSION && /tmp/scripts/install_deps.sh -p $PYTHON_VERSION && rm -rf /tmp/scripts \
+RUN /tmp/scripts/install_ubuntu.sh -p $PYTHON_VERSION && /tmp/scripts/install_os_deps.sh && /tmp/scripts/install_python_deps.sh -p $PYTHON_VERSION && rm -rf /tmp/scripts \
     && rm /usr/local/bin/cmake && rm /usr/local/bin/ctest && rm -r /usr/local/share/cmake-3.14
 
 WORKDIR /root
@@ -21,8 +21,6 @@ RUN _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2) && \
     mkdir -p /usr/local/cudnn-$_CUDNN_VERSION/cuda/lib64 && \
     ln -s /etc/alternatives/libcudnn_so /usr/local/cudnn-$_CUDNN_VERSION/cuda/lib64/libcudnn.so && \
     ln -s /usr/local/cudnn{-$_CUDNN_VERSION,}
-
-ENV LD_LIBRARY_PATH /usr/local/openblas/lib:$LD_LIBRARY_PATH
 
 ARG BUILD_USER=onnxruntimedev
 ARG BUILD_UID=1000

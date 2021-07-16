@@ -28,7 +28,7 @@ static tvm_codegen::CodeGenContext demo_codegen_ctx(&demo_handle);
 DemoTVMTensorCtx BuildTVMIR(const onnxruntime::Graph& graph) {
   // Create OpIRRegistry that holds all OpIRCreators
   std::unique_ptr<tvm_codegen::OpIRRegistry> op_ir_registry =
-      onnxruntime::make_unique<tvm_codegen::OpIRRegistry>();
+      std::make_unique<tvm_codegen::OpIRRegistry>();
 
   // Register all generic OpIRCreators
   tvm_codegen::RegisterAllGenericOpIRCreators(op_ir_registry.get());
@@ -110,7 +110,7 @@ bool TVM_SCHEDULER_CLASS(AlwaysInline, DemoTVM)::Evaluate(
 // Register the always inline Scheduler to sched_registry
 static void RegisterAlwaysInlineScheduler(tvm_codegen::TVMScheduleRegistry* sched_registry) {
   sched_registry->Register(
-      onnxruntime::make_unique<TVM_SCHEDULER_CLASS(AlwaysInline, DemoTVM)>());
+      std::make_unique<TVM_SCHEDULER_CLASS(AlwaysInline, DemoTVM)>());
 }
 
 // Declare a schedule dispatcher that always dispatches the always inline Scheduler
@@ -135,7 +135,7 @@ tvm_codegen::Scheduler* SCHEDULE_DISPATCHER_CLASS(DemoTVM)::Find(
 // and then attach the dispatcher to the scheduler builder
 static void AttachAlwaysInlineScheduler(const std::shared_ptr<tvm_codegen::TVMScheduleBuilder>& builder,
                                         const tvm_codegen::TVMScheduleRegistry* registry) {
-  auto dispatcher = onnxruntime::make_unique<SCHEDULE_DISPATCHER_CLASS(DemoTVM)>("DemoSchedulers");
+  auto dispatcher = std::make_unique<SCHEDULE_DISPATCHER_CLASS(DemoTVM)>("DemoSchedulers");
 
   // Using a predefined_key
   dispatcher->Register(predefined_key,
@@ -170,7 +170,7 @@ static void TraverseAndSchedule(
 tvm::Schedule CreateSchedule(const DemoTVMTensorCtx& ctx) {
   // Create TVMScheduleRegistry that holds all Scheduler
   std::unique_ptr<tvm_codegen::TVMScheduleRegistry> schedule_registry =
-      onnxruntime::make_unique<tvm_codegen::TVMScheduleRegistry>();
+      std::make_unique<tvm_codegen::TVMScheduleRegistry>();
 
   // Register the always inline Scheduler to schedule_registry
   RegisterAlwaysInlineScheduler(schedule_registry.get());

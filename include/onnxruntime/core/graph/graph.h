@@ -1,3 +1,4 @@
+
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -19,7 +20,13 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
-#include "core/graph/onnx_protobuf.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "onnx/defs/schema.h"
+#else
+#include "onnx/defs/data_type_utils.h"
+#endif
+#include "onnx/onnx_pb.h"
+#include "onnx/onnx-operators_pb.h"
 #include "core/graph/function.h"
 #include "gsl/gsl"
 
@@ -325,6 +332,7 @@ class Node {
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TensorProto)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::GraphProto)
   ADD_ATTR_INTERFACES(ONNX_NAMESPACE::SparseTensorProto)
+  ADD_ATTR_INTERFACES(ONNX_NAMESPACE::TypeProto)
 
   /** Gets the Node's attributes. */
   const NodeAttributes& GetAttributes() const noexcept { return attributes_; }
@@ -674,6 +682,19 @@ class Graph {
     return std::find(graph_outputs_.begin(), graph_outputs_.end(), node_arg) != graph_outputs_.end();
   }
 
+  /** Returns true if one or more of the Node outputs are Graph outputs. 
+  @remarks Cheaper than calling GetNodeOutputsInGraphOutputs.
+  */
+  bool NodeProducesGraphOutput(const Node& node) const {
+    auto end_outputs = graph_outputs_.cend();
+    for (auto output_def : node.OutputDefs()) {
+      if (std::find(graph_outputs_.cbegin(), end_outputs, output_def) != end_outputs) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /** Returns a vector with the indexes of the outputs of the given Node that are also Graph outputs. */
   std::vector<int> GetNodeOutputsInGraphOutputs(const Node& node) const {
     int output_idx = 0;
@@ -760,7 +781,7 @@ class Graph {
     if (iter != node_args_.end()) {
       return *(iter->second);
     }
-    auto result = node_args_.insert(std::make_pair(name, onnxruntime::make_unique<NodeArg>(name, p_arg_type)));
+    auto result = node_args_.insert(std::make_pair(name, std::make_unique<NodeArg>(name, p_arg_type)));
     return *(result.first->second);
   }
 
@@ -1031,6 +1052,16 @@ class Graph {
     for (Node* node : nodes) {
       node_arg_to_consumer_nodes_[node_arg_name].insert(node->Index());
     }
+  }
+
+  // Without removing the existing consumers, add a consumer to the give node arg name.
+  void AddConsumerNode(const std::string& node_arg_name, Node* consumer) {
+    node_arg_to_consumer_nodes_[node_arg_name].insert(consumer->Index());
+  }
+
+  // Remove a consumer from the set
+  void RemoveConsumerNode(const std::string& node_arg_name, Node* consumer) {
+    node_arg_to_consumer_nodes_[node_arg_name].erase(consumer->Index());
   }
 
   /** During constant folding it may become possible to infer the shape for a node.

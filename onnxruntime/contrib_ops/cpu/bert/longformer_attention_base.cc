@@ -6,16 +6,6 @@
 namespace onnxruntime {
 namespace contrib {
 
-LongformerAttentionBase::LongformerAttentionBase(const OpKernelInfo& info) {
-  int64_t num_heads = 0;
-  ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
-  num_heads_ = static_cast<int>(num_heads);
-
-  int64_t window = 0;
-  ORT_ENFORCE(info.GetAttr("window", &window).IsOK() && window > 0);
-  window_ = static_cast<int>(window);
-}
-
 Status LongformerAttentionBase::CheckInputs(const TensorShape& input_shape,
                                             const TensorShape& weights_shape,
                                             const TensorShape& bias_shape,

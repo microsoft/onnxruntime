@@ -4,8 +4,6 @@
 #include "attention_quantization.h"
 #include "attention_quantization_impl.cuh"
 #include "contrib_ops/cuda/bert/attention_impl.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/providers/common.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/shared_inc/integer_gemm.h"
@@ -25,11 +23,11 @@ namespace cuda {
       1,                                                                 \
       T##_##TQuant,                                                      \
       kCudaExecutionProvider,                                            \
-      KernelDefBuilder()                                                 \
-          .InputMemoryType<OrtMemTypeCPUInput>(3)                        \
-          .InputMemoryType<OrtMemTypeCPUInput>(4)                        \
-          .InputMemoryType<OrtMemTypeCPUInput>(6)                        \
-          .InputMemoryType<OrtMemTypeCPUInput>(7)                        \
+      (*KernelDefBuilder::Create())                                      \
+          .InputMemoryType(OrtMemTypeCPUInput, 3)                        \
+          .InputMemoryType(OrtMemTypeCPUInput, 4)                        \
+          .InputMemoryType(OrtMemTypeCPUInput, 6)                        \
+          .InputMemoryType(OrtMemTypeCPUInput, 7)                        \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<TQuant>())   \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<TQuant>())   \
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<T>())        \

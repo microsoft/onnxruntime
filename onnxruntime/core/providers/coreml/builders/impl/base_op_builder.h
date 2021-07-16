@@ -24,15 +24,18 @@ class BaseOpBuilder : public IOpBuilder {
   virtual Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                        const logging::Logger& logger) const ORT_MUST_USE_RESULT = 0;
 
-  static std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> CreateNNLayer(const Node& node);
+  static std::unique_ptr<COREML_SPEC::NeuralNetworkLayer>
+  CreateNNLayer(ModelBuilder& model_builder, const Node& node);
+
+  static std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> CreateNNLayer(const std::string& layer_name);
 
   // Operator support related
  public:
-  bool IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupported(const Node& node, const OpBuilderInputParams& input_params,
                      const logging::Logger& logger) const override;
 
  protected:
-  virtual bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& /* node */,
+  virtual bool IsOpSupportedImpl(const Node& /* node */, const OpBuilderInputParams& /* input_params */,
                                  const logging::Logger& /* logger */) const {
     return true;
   }

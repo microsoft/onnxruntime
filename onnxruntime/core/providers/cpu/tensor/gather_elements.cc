@@ -261,7 +261,7 @@ Status GatherElements::ValidateInputShapes(const TensorShape& input_data_shape,
   for (int64_t i = 0; i < indices_rank; ++i) {
     // for all axes except the axis of interest,
     // make sure that the corresponding 'indices' shape
-    // value if within bounds of the corresponding 'data' shape
+    // value is within bounds of the corresponding 'data' shape
     if (i != axis) {
       if (indices_shape[i] < 0 || indices_shape[i] > input_data_shape[i])
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

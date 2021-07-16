@@ -50,7 +50,7 @@ static void BM_ThreadPoolParallelFor(benchmark::State& state) {
   const size_t len = state.range(0);
   const int cost = static_cast<int>(state.range(1));
   OrtThreadPoolParams tpo;
-  auto tp = onnxruntime::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
+  auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
                                                  onnxruntime::ThreadOptions(),
                                                  nullptr,
                                                  NUM_THREADS, ALLOW_SPINNING);
@@ -95,7 +95,7 @@ static void BM_ThreadPoolSimpleParallelFor(benchmark::State& state) {
   const size_t len = state.range(1);
   const size_t body = state.range(2);
   OrtThreadPoolParams tpo;
-  auto tp = onnxruntime::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
+  auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
                                                  onnxruntime::ThreadOptions(),
                                                  nullptr,
                                                  num_threads, ALLOW_SPINNING);

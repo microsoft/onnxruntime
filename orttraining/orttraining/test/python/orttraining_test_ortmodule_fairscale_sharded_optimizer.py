@@ -9,8 +9,7 @@ from torchvision import datasets, transforms
 import time
 from torch.nn.parallel import DistributedDataParallel as DDP
 import os
-import onnxruntime
-from onnxruntime.training import ORTModule
+from onnxruntime.training.ortmodule import ORTModule
 import numpy as np
 
 # Usage : 

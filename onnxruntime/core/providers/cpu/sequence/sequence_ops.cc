@@ -209,10 +209,10 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
 
   const auto* I = context->Input<Tensor>(2);
   int64_t num_tensors_input_seq = static_cast<int64_t>(S->Size());
-  int64_t input_seq_idx = num_tensors_input_seq + 1;  // default is append
-  if (I) {                                            // position is optional
+  int64_t input_seq_idx = num_tensors_input_seq;  // default is append
+  if (I) {                                        // position is optional
     input_seq_idx = GetSeqIdx(*I);
-    if (!ValidateSeqIdx(input_seq_idx, static_cast<int64_t>(num_tensors_input_seq))) {
+    if (!ValidateSeqIdx(input_seq_idx, num_tensors_input_seq) && input_seq_idx != num_tensors_input_seq) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Invalid sequence index (", input_seq_idx, ") specified for sequence of size (", num_tensors_input_seq, ")");
     }
@@ -234,7 +234,7 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
       CreateCopyAndAppendCpuTensor(S->Get(i), context, tensors);
     }
   }
-  if (input_seq_idx == num_tensors_input_seq + 1) {
+  if (input_seq_idx == num_tensors_input_seq) {
     CreateCopyAndAppendCpuTensor(*X, context, tensors);
   }
 

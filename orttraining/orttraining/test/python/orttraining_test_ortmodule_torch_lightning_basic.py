@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 
 import onnxruntime
-from onnxruntime.training import ORTModule
+from onnxruntime.training.ortmodule import ORTModule
 
 
 class LitAutoEncoder(pl.LightningModule):

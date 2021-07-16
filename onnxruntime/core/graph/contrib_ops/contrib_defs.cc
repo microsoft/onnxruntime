@@ -1,17 +1,25 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "core/graph/contrib_ops/contrib_defs.h"
+
+#include <cmath>
+#if !defined(ORT_MINIMAL_BUILD)
+#include "onnx/defs/schema.h"
+#else
+#include "onnx/defs/data_type_utils.h"
+#endif
+#include "onnx/defs/shape_inference.h"
+#include "onnx/defs/tensor_proto_util.h"
 
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/attn_lstm_schema_defs.h"
-#include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/range_schema_defs.h"
-#include "core/graph/onnx_protobuf.h"
 #include "core/graph/op.h"
-#include "onnx/defs/shape_inference.h"
-#include "onnx/defs/tensor_proto_util.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/graph/signal_ops/signal_defs.h"
+#include "core/graph/contrib_ops/onnx_function_util.h"
+#include "onnx/defs/function.h"
 
 namespace ONNX_NAMESPACE {
 void convPoolShapeInference(
@@ -158,10 +166,107 @@ void convTransposeWithDynamicPadsShapeInference(InferenceContext& ctx) {
     return;
   }
 }
+
+void embedLayerNormalizationShapeInference(InferenceContext& ctx) {
+  propagateElemTypeFromInputToOutput(ctx, 2, 0);
+  propagateElemTypeFromInputToOutput(ctx, 0, 1);
+  if (!hasInputShape(ctx, 0)) {
+    // TODO(kreeger): In this case update the output to (?, ?, hidden_size).
+    return;
+  }
+
+  auto& input_ids_shape = getInputShape(ctx, 0);
+  auto& input_ids_dims = input_ids_shape.dim();
+
+  // Note that both batch size and sequence length could be symbolic.
+  // So we only check dimension size here.
+  if (input_ids_dims.size() != 2) {
+    fail_shape_inference("input_ids shall be 2 dimensions");
+  }
+
+  bool has_segment = hasInputShape(ctx, 1);
+  if (has_segment) {
+    // Ensure that segment_ids has the same shape.
+    auto& segment_ids_shape = getInputShape(ctx, 1);
+    auto& segment_ids_dims = segment_ids_shape.dim();
+    if (segment_ids_dims.size() != 2) {
+      fail_shape_inference("segment_ids input shall be 2 dimensions");
+    }
+  }
+
+  // get hidden_size from the last dimension of embedding
+  auto& word_embedding_shape = getInputShape(ctx, 2);
+  auto& word_embedding_dims = word_embedding_shape.dim();
+  if (word_embedding_dims.size() != 2 ||
+      !word_embedding_dims[1].has_dim_value() ||
+      word_embedding_shape.dim(1).dim_value() <= 0) {
+    fail_shape_inference("word_embedding should have 2 dimensions and dimension size is known.");
+  }
+  int64_t hidden_size = word_embedding_shape.dim(1).dim_value();
+
+  // Ensure that all embeddings + the gamma/beta tensors have the same hidden_size:
+  auto& position_embedding_shape = getInputShape(ctx, 3);
+  auto& position_embedding_dims = position_embedding_shape.dim();
+  if (position_embedding_dims.size() != 2 ||
+      !position_embedding_dims[1].has_dim_value() ||
+      position_embedding_shape.dim(1).dim_value() != hidden_size) {
+    fail_shape_inference(
+        "position_embedding should have 2 dimensions, dimension size known, "
+        "and same hidden size as word_embedding.");
+  }
+
+  if (has_segment) {
+    auto& segment_embedding_shape = getInputShape(ctx, 4);
+    auto& segment_embedding_dims = segment_embedding_shape.dim();
+    if (segment_embedding_dims.size() != 2 ||
+        !segment_embedding_dims[1].has_dim_value() ||
+        segment_embedding_shape.dim(1).dim_value() != hidden_size) {
+      fail_shape_inference(
+          "segment_embedding should have 2 dimensions, dimension size known, "
+          "and same hidden size as word_embedding.");
+    }
+  }
+
+  auto& gamma_shape = getInputShape(ctx, 5);
+  auto& gamma_dims = gamma_shape.dim();
+  if (gamma_dims.size() != 1 ||
+      !gamma_dims[0].has_dim_value() ||
+      gamma_shape.dim(0).dim_value() != hidden_size) {
+    fail_shape_inference(
+        "gamma should have 2 dimension, dimension size known, "
+        "and same hidden size as word_embedding.");
+  }
+  
+  auto& beta_shape = getInputShape(ctx, 6);
+  auto& beta_dims = gamma_shape.dim();
+  if (beta_dims.size() != 1 ||
+      !beta_dims[0].has_dim_value() ||
+      beta_shape.dim(0).dim_value() != hidden_size) {
+    fail_shape_inference(
+        "beta should have 1 dimension, dimension size known, "
+        "and same hidden size as word_embedding.");
+  }
+
+  // input shape is (batch_size, sequence_length), output shape is (batch_size, sequence_length, hidden_size)
+  ONNX_NAMESPACE::TensorShapeProto output_shape;
+  *output_shape.add_dim() = input_ids_dims[0];
+  *output_shape.add_dim() = input_ids_dims[1];
+
+  output_shape.add_dim();
+  output_shape.mutable_dim(2)->set_dim_value(hidden_size);
+
+  updateOutputShape(ctx, 0, output_shape);
+
+  // mask_index shape is (batch_size)
+  ONNX_NAMESPACE::TensorShapeProto mask_index_shape;
+  *mask_index_shape.add_dim() = input_ids_dims[0];
+  updateOutputShape(ctx, 1, mask_index_shape);
+}
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
 namespace contrib {
+using namespace ONNX_NAMESPACE;
 using ONNX_NAMESPACE::AttributeProto;
 using ONNX_NAMESPACE::OpSchema;
 using ONNX_NAMESPACE::OPTIONAL_VALUE;
@@ -351,7 +456,8 @@ and present state are optional. Present state could appear in output even when p
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, input_hidden_size)", "T")
       .Input(1, "weight", "2D input tensor with shape (input_hidden_size, 3 * hidden_size), where hidden_size = num_heads * head_size", "T")
       .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
-      .Input(3, "mask_index", "Attention mask with shape (batch_size, past_sequence_length + sequence_length) or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).", "M", OpSchema::Optional)
+      .Input(3, "mask_index", "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, past_sequence_length + sequence_length)"
+                "or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).", "M", OpSchema::Optional)
       .Input(4, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "T", OpSchema::Optional)
       .Output(0, "output", "3D output tensor with shape (batch_size, append_length, hidden_size)", "T")
       .Output(1, "present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)", "T", OpSchema::Optional)
@@ -394,7 +500,8 @@ and present state are optional. Present state could appear in output even when p
       .Input(
           4,
           "weight_scale",
-          "scale of weight scale. It's a scalar, which means a per-tensor/layer quantization.",
+          "scale of weight scale. It's a scalar or a 1D tensor, which means a per-tensor/per-column quantization."
+          "Its size should be 3 * hidden_size if it is per-column quantization",
           "T3")
       .Input(
           5,
@@ -411,7 +518,8 @@ and present state are optional. Present state could appear in output even when p
       .Input(
           7,
           "weight_zero_point",
-          "zero point of quantized weight tensor. It's a scalar, which means a per-tensor/layer quantization.",
+          "zero point of quantized weight tensor. It's a scalar or a 1D tensor, which means a per-tensor/per-column quantization."
+          "Its size should be 3 * hidden_size if it is per-column quantization",
           "T2",
           OpSchema::Optional)
       .Input(
@@ -493,46 +601,45 @@ will be calculated.)DOC";
       .Output(1, "mask_index", "1D mask_index tensor with shape (batch_size)", "T1")
       .TypeConstraint("T1", {"tensor(int32)"}, "Constrain input and output integer tensors types")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output float tensors types.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        propagateElemTypeFromInputToOutput(ctx, 2, 0);
-        propagateElemTypeFromInputToOutput(ctx, 0, 1);
-        if (!hasInputShape(ctx, 0))
-          return;
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::embedLayerNormalizationShapeInference);
 
-        auto& input_ids_shape = getInputShape(ctx, 0);
-        auto& input_ids_dims = input_ids_shape.dim();
+  static const char* QEmbedLayerNormalization_ver1_doc = R"DOC(
+QEmbedLayerNormalization is the quantized fusion of embedding layer in BERT model, with optional mask processing.
+The embedding layer takes input_ids (word IDs) and segment_ids (sentence IDs) to look up word_embedding, position_embedding,
+and segment_emedding; the embeddings are added then applied layer normalization using gamma and beta tensors. The input_ids
+and segment_ids remain int32. All embeddings, gamma, and beta tensors are converted to int8/uint8. The last input mask is optional.
+If mask is provided, mask index (that is position of first 0 in mask, or number of words will be calculated.)DOC";
 
-        // Note that both batch size and sequence length could be symbolic.
-        // So we only check dimension size here.
-        if (input_ids_dims.size() != 2) {
-          fail_shape_inference("Inputs 0 shall be 2 dimensions");
-        }
-
-        // get hidden_size from the last dimension of embedding
-        auto& word_embedding_shape = getInputShape(ctx, 3);
-        auto& word_embedding_dims = word_embedding_shape.dim();
-        if (word_embedding_dims.size() != 2 ||
-            !word_embedding_dims[1].has_dim_value() ||
-            word_embedding_shape.dim(1).dim_value() <= 0) {
-          fail_shape_inference("word_embedding should have 2 dimensions and dimension size is known.");
-        }
-        int64_t hidden_size = word_embedding_shape.dim(1).dim_value();
-
-        // input shape is (batch_size, sequence_length), output shape is (batch_size, sequence_length, hidden_size)
-        ONNX_NAMESPACE::TensorShapeProto output_shape;
-        for (auto& dim : input_ids_dims) {
-          *output_shape.add_dim() = dim;
-        }
-        output_shape.add_dim();
-        output_shape.mutable_dim(2)->set_dim_value(hidden_size);
-
-        updateOutputShape(ctx, 0, output_shape);
-
-        // mask_index shape is (batch_size)
-        ONNX_NAMESPACE::TensorShapeProto mask_index_shape;
-        *mask_index_shape.add_dim() = input_ids_dims[0];
-        updateOutputShape(ctx, 1, mask_index_shape);
-      });
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QEmbedLayerNormalization)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
+      .SetDoc(QEmbedLayerNormalization_ver1_doc)
+      .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
+      .Input(0, "input_ids", "2D words IDs with shape (batch_size, sequence_length)", "T1")
+      .Input(1, "segment_ids", "2D segment IDs with shape (batch_size, sequence_length)", "T1", OpSchema::Optional)
+      .Input(2, "word_embedding_quant", "2D with shape (,hidden_size)", "T2")
+      .Input(3, "position_embedding_quant", "2D with shape (, hidden_size)", "T2")
+      .Input(4, "segment_embedding", "2D with shape (, hidden_size)", "T2", OpSchema::Optional)
+      .Input(5, "gamma_quant", "1D gamma tensor for layer normalization with shape (hidden_size)", "T2")
+      .Input(6, "beta_quant", "1D beta tensor for layer normalization  with shape (hidden_size)", "T2")
+      .Input(7, "mask", "Mask", "T1", OpSchema::Optional)
+      .Input(8, "word_embedding_scale", "Scale for word embeddings", "T")
+      .Input(9, "position_embedding_scale", "Scale for position embeddings", "T")
+      .Input(10, "segment_embedding_scale", "Scale for segment embeddings", "T", OpSchema::Optional)
+      .Input(11, "gamma_scale", "Scale for 1D gamma tensor", "T")
+      .Input(12, "beta_scale", "Scale for 1D beta tensor", "T")
+      .Input(13, "word_embedding_zero_point", "Zero point for word embeddings", "T2")
+      .Input(14, "position_embedding_zero_point", "Zero point for position embeddings", "T2")
+      .Input(15, "segment_embedding_zero_point", "Zero Point for segment embeddings", "T2", OpSchema::Optional)
+      .Input(16, "gamma_zero_point", "Zero Point for 1D gamma tensor", "T2")
+      .Input(17, "beta_zero_point", "Zero Point for 1D beta tensor", "T2")
+      .Output(0, "layernorm_out", "LayerNorm Output", "T")
+      .Output(1, "mask_index_out", "Mask Index Output", "T1")
+      .TypeConstraint("T1", {"tensor(int32)"}, "Constrain mask index to integer types")
+      .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float32 tensors.")
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::embedLayerNormalizationShapeInference);
 
   static const char* FastGelu_ver1_doc = R"DOC(
 GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.035677*X*X*X)) with an optional input of bias that will be added to X before GELU.)DOC";
@@ -545,7 +652,46 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .Input(1, "bias", "bias tensor", "T", OpSchema::Optional)
       .Output(0, "Y", "output tensor", "T")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float or half tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
+      .SetContextDependentFunctionBodyBuilder([](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+        // fastgelu(x) =
+        auto* tp = ctx.getInputType(0);
+        if ((tp == nullptr) || (!tp->has_tensor_type()))
+          return false;
+        auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
+
+        // Optional input 1 indicates a bias to be added to input 0.
+        auto hasBias = ctx.hasInput(1);
+
+        std::string xb(hasBias ? "X_bias" : "X");
+
+        std::vector<FunctionBodyHelper::NodeDef> body{
+            // Constants:
+            ONNX_NAMESPACE::Const("a", 0.5f, elem_type),
+            ONNX_NAMESPACE::Const("b", 0.797885f, elem_type),
+            ONNX_NAMESPACE::Const("c", 0.035677f, elem_type),
+            ONNX_NAMESPACE::Const("one", 1.0f, elem_type),
+            // nodes: {outputs, op, inputs, attributes}
+            // Following node to be added only if bias is specified.
+            // {{xb}, "Add", {"X", "bias"}},
+            {{"T1"}, "Mul", {xb, xb}},
+            {{"T2"}, "Mul", {"c", "T1"}},
+            {{"T3"}, "Add", {"b", "T2"}},
+            {{"T4"}, "Mul", {xb, "T3"}},
+            {{"T5"}, "Tanh", {"T4"}},
+            {{"T6"}, "Add", {"one", "T5"}},
+            {{"T7"}, "Mul", {xb, "T6"}},
+            {{"Y"}, "Mul", {"a", "T7"}}};
+
+        if (hasBias)
+          body.insert(body.begin(), {{xb}, "Add", {"X", "bias"}});
+
+        ONNX_NAMESPACE::OperatorSetIdProto onnx_opset_13;
+        onnx_opset_13.set_domain("");
+        onnx_opset_13.set_version(13);
+
+        return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+      });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SkipLayerNormalization)
       .SetDomain(kMSDomain)
@@ -563,6 +709,29 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float or half tensors.")
       .TypeConstraint("U", {"tensor(float)"}, "Constrain mean and inv_std_var to float tensors.")
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+
+
+  static const char* NGramRepeatBlock_ver1_doc = R"DOC(
+Enforce no repetition of n-grams. Scores are set to `-inf` for tokens that form a repeated n-gram if added to the back of the input_ids.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(NGramRepeatBlock)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(NGramRepeatBlock_ver1_doc)
+      .Attr("ngram_size", "The NGram size.", AttributeProto::INT)
+      .Input(0, "input_ids", "2D input tensor with shape (batch_size, sequence_length)", "Tid")
+      .Input(1, "scores", "2D input tensor with shape (batch_size, vocab_size)", "T")
+      .Output(0, "scores_out", "2D output tensor with shape (batch_size, vocab_size)", "T")
+      .TypeConstraint("Tid", {"tensor(int64)"}, "Constrain indices to integer types")
+      .TypeConstraint("T", {"tensor(float)"}, "Constrain scores input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        if (!hasInputShape(ctx, 1)) {
+          return;
+        }
+        propagateShapeFromInputToOutput(ctx, 1, 0);
+      });
 }
 
 void RegisterContribSchemas() {
@@ -1029,7 +1198,6 @@ value at X[t][n] >= seqLengths[n].
 
           auto* w_output_dim = output_shape->add_dim();
           w_output_dim->set_dim_value(right_limit - left_border);
-
         } else {
           // Rank Inference at the very least
           // (We know that the output is going to be 4-D)
@@ -2093,19 +2261,19 @@ Example 4:
             AttributeProto::INT, static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT))
       .AllowUncheckedAttributes()
       .Input(0, "X", "Input data tensor from the previous layer.", "T")
-      .Input(1, "scale", "Scale tensor.", "T")
+      .Input(1, "Scale", "Scale tensor.", "T")
       .Input(2, "B", "Bias tensor.", "T", OpSchema::Optional)
       .Output(0, "Y", "Output data tensor.", "T")
-      .Output(1, "mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
-      .Output(2, "inv_std_var", "Saved inverse standard variance used during training to speed up gradient computation.", "U", OpSchema::Optional)
+      .Output(1, "Mean", "Saved mean used during training to speed up gradient computation", "U", OpSchema::Optional)
+      .Output(2, "InvStdDev", "Saved inverse standard deviation used during training to speed up gradient computation.", "U", OpSchema::Optional)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types (except mean and inv_std_var) to float tensors.")
+          "Constrain input types and output Y type to float tensors.")
       .TypeConstraint(
           "U",
           {"tensor(float)", "tensor(bfloat16)"},
-          "Constrain mean and inv_std_var to be float tensors.")
+          "Type of Mean and InvStdDev tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -2139,11 +2307,83 @@ Example 4:
         }
 
         if (ctx.getNumOutputs() > 2) {
-          auto saved_inv_std_var_shape = ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
-          saved_inv_std_var_shape->CopyFrom(input_shape);
-          saved_inv_std_var_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
+          auto saved_inv_std_dev_shape = ctx.getOutputType(2)->mutable_tensor_type()->mutable_shape();
+          saved_inv_std_dev_shape->CopyFrom(input_shape);
+          saved_inv_std_dev_shape->mutable_dim(static_cast<int>(axis))->set_dim_value(1);
         }
-      });
+      })
+      .SetContextDependentFunctionBodyBuilder(
+          [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+            // LayerNormalization <axis, epsilon, stash_type> (X, Scale, B) => (Y, Mean?, InvStdDev?)
+
+            auto* tp = ctx.getInputType(0);
+            if ((tp == nullptr) || (!tp->has_tensor_type()))
+              return false;
+            int64_t T = tp->tensor_type().elem_type();
+
+            auto type_attr = ctx.getAttribute("stash_type");
+            int64_t U = (type_attr != nullptr) ? type_attr->i() : static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+            if ((U != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) && (U != ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16))
+              return false;  // Error
+
+            auto* axis_attr = ctx.getAttribute("axis");
+            int64_t axis = (axis_attr != nullptr) ? axis_attr->i() : -1;
+            auto* epsilon_attr = ctx.getAttribute("epsilon");
+            float epsilon = (epsilon_attr != nullptr) ? epsilon_attr->f() : 1e-5f;
+
+            auto mktensor = [](int64_t val) -> ONNX_NAMESPACE::TensorProto {
+              auto tp = ONNX_NAMESPACE::ToTensor(std::vector<int64_t>{val});
+              tp.add_dims(1);
+              return tp;
+            };
+
+            std::vector<FunctionBodyHelper::NodeDef> body{
+                ONNX_NAMESPACE::Const("Epsilon", epsilon, (ONNX_NAMESPACE::TensorProto_DataType)U),
+                // The treatment of "axis" is different in "LayerNormalization" and in Reduction operations.
+                // This complicates the function definition, requiring reshaping inputs/outputs.
+                // Input X shape: [d[0], ..., d[axis-1], d[axis], ..., d[rank-1]]
+                // This is treated as a 2D shape [d[0] * ... * d[axis-1], d[axis] * ... * d[rank-1]]
+                // Normalization is applied to the second dimension.
+                // Output Y has same shape as X
+                // Outputs Mean and InvStdDev have shape: [d[0], ..., d[axis-1], 1, ..., 1]
+                {{"XShape"}, "Shape", {"X"}},                                                          // shape of input tensor: 1D tensor
+                {{"Rank"}, "Size", {"XShape"}},                                                        // rank of input tensor: scalar
+                {{"Zero1D"}, "Constant", {}, {{"value", mktensor(0)}}},                                // [0] : 1D tensor
+                {{"Axis1D"}, "Constant", {}, {{"value", mktensor(axis)}}},                             // [axis] : 1D tensor
+                {{"PrefixShape"}, "Slice", {"XShape", "Zero1D", "Axis1D"}},                            // [d[0], ..., d[axis-1]]
+                (axis > 0) ?                                                                           // number of axes that are reduced =
+                    FunctionBodyHelper::NodeDef({"NumReducedAxes"}, "Sub", {"Rank", "Axis1D"})         // [rank - axis]: 1D tensor
+                           : FunctionBodyHelper::NodeDef({"NumReducedAxes"}, "Neg", {"Axis1D"}),       // [-axis] : 1D tensor
+                {{"SuffixShape"}, "ConstantOfShape", {"NumReducedAxes"},                               //
+                 {{"value", mktensor(1)}}},                                                            // [1, ..., 1] for reduced axes
+                {{"ReducedShape"}, "Concat", {"PrefixShape", "SuffixShape"}, {{"axis", int64_t(0)}}},  // [d[0], ..., d[axis-1], 1, ..., 1]
+                {{"X2D"}, "Flatten", {"X"}, {{"axis", axis}}},
+                {{"XU"}, "Cast", {"X2D"}, {{"to", U}}},
+                {{"Mean2D"}, "ReduceMean", {"XU"}, {{"axes", std::vector<int64_t>{1}}}},
+                {{"Square"}, "Mul", {"XU", "XU"}},
+                {{"MeanOfSquare"}, "ReduceMean", {"Square"}, {{"axes", std::vector<int64_t>{1}}}},
+                {{"SquareOfMean"}, "Mul", {"Mean2D", "Mean2D"}},
+                {{"Var"}, "Sub", {"MeanOfSquare", "SquareOfMean"}},
+                {{"VarPlusEpsilon"}, "Add", {"Var", "Epsilon"}},
+                {{"StdDev"}, "Sqrt", {"VarPlusEpsilon"}},
+                {{"Deviation"}, "Sub", {"XU", "Mean2D"}},
+                {{"Normalized"}, "Div", {"Deviation", "StdDev"}},
+                {{"NormalizedT"}, "Cast", {"Normalized"}, {{"to", T}}},
+                {{"Scaled"}, "Mul", {"NormalizedT", "Scale"}},
+                {{"Biased"}, "Add", {"Scaled", "B"}},
+                {{"Y"}, "Reshape", {"Biased", "XShape"}},
+                {{"InvStdDev2D"}, "Reciprocal", {"StdDev"}}};
+            if (ctx.hasOutput(1))
+              body.push_back({{"Mean"}, "Reshape", {"Mean2D", "ReducedShape"}});
+            if (ctx.hasOutput(2))
+              body.push_back({{"InvStdDev"}, "Reshape", {"InvStdDev2D", "ReducedShape"}});
+
+            OperatorSetIdProto onnx_opset_13;
+            onnx_opset_13.set_domain("");
+            onnx_opset_13.set_version(13);
+
+            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+          });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SimplifiedLayerNormalization)
       .SetDomain(kOnnxDomain)
@@ -2193,13 +2433,6 @@ Example 4:
         }
       });
 
-  // Register the NCHWc schemas if supported by the platform.
-  if (MlasNchwcGetBlockSize() > 1) {
-    RegisterNchwcSchemas();
-  }
-
-  RegisterNhwcSchemas();
-
   static const char* Gelu_ver1_doc =
       R"DOC(Gaussian Error Linear Unit.
 A high-performing neural network activation function.The GELU nonlinearity is
@@ -2217,7 +2450,33 @@ inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)D
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
-      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
+      .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
+      .SetContextDependentFunctionBodyBuilder([](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
+        // gelu(x) = x * Phi(x) = x * 1/2(1+erf(x/sqrt(2)))
+        auto* tp = ctx.getInputType(0);
+        if ((tp == nullptr) || (!tp->has_tensor_type()))
+          return false;
+        auto elem_type = (ONNX_NAMESPACE::TensorProto_DataType)tp->tensor_type().elem_type();
+
+        std::vector<FunctionBodyHelper::NodeDef> body{
+            // Constants:
+            ONNX_NAMESPACE::Const("Half", 0.5, elem_type),
+            ONNX_NAMESPACE::Const("One", 1.0, elem_type),
+            ONNX_NAMESPACE::Const("C", std::sqrt(0.5), elem_type),
+            // ONNX_NAMESPACE::Const("C", M_SQRT1_2, elem_type),
+            // nodes: {outputs, op, inputs, attributes}
+            {{"CX"}, "Mul", {"C", "X"}},
+            {{"ERFCX"}, "Erf", {"CX"}},
+            {{"ERFCXPlus1"}, "Add", {"ERFCX", "One"}},
+            {{"PhiX"}, "Mul", {"ERFCXPlus1", "Half"}},
+            {{"Y"}, "Mul", {"X", "PhiX"}}};
+
+        ONNX_NAMESPACE::OperatorSetIdProto onnx_opset_13;
+        onnx_opset_13.set_domain("");
+        onnx_opset_13.set_version(13);
+
+        return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+      });
 
   static const char* BiasGelu_ver1_doc =
       R"DOC(Bias Gelu.
@@ -2542,10 +2801,178 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
         updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::BOOL);
       });
 
+  static const char* Optional_ver1_doc = R"DOC(
+      Construct an optional type containing either an empty optional of a certain type specified by the attribute, "
+      "or an optional type containing the 'input' element."
+      )DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(Optional)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(Optional_ver1_doc)
+      .Input(0, "input", "The input element.", "V", OpSchema::Optional)
+      .Attr("type", "Type of the element in the optional output", AttributeProto::TYPE_PROTO, OPTIONAL_VALUE)
+      .Output(0, "output", "The optional output enclosing the input element.", "O")
+      .TypeConstraint(
+          "V",
+          {"tensor(uint8)", "tensor(uint16)", "tensor(uint32)",
+           "tensor(uint64)", "tensor(int8)", "tensor(int16)",
+           "tensor(int32)", "tensor(int64)", "tensor(float16)",
+           "tensor(float)", "tensor(double)", "tensor(string)",
+           "tensor(bool)", "tensor(complex64)", "tensor(complex128)",
+           "seq(tensor(uint8))", "seq(tensor(uint16))", "seq(tensor(uint32))",
+           "seq(tensor(uint64))", "seq(tensor(int8))", "seq(tensor(int16))",
+           "seq(tensor(int32))", "seq(tensor(int64))", "seq(tensor(float16))",
+           "seq(tensor(float))", "seq(tensor(double))", "seq(tensor(string))",
+           "seq(tensor(bool))", "seq(tensor(complex64))","seq(tensor(complex128))"},
+          "Constrains input type to all tensor and sequence types.")
+      .TypeConstraint(
+          "O",
+          {"optional(tensor(uint8))", "optional(tensor(uint16))", "optional(tensor(uint32))",
+           "optional(tensor(uint64))", "optional(tensor(int8))", "optional(tensor(int16))",
+           "optional(tensor(int32))", "optional(tensor(int64))", "optional(tensor(float16))",
+           "optional(tensor(float))", "optional(tensor(double))", "optional(tensor(string))",
+           "optional(tensor(bool))", "optional(tensor(complex64))", "optional(tensor(complex128))",
+           "optional(seq(tensor(uint8)))", "optional(seq(tensor(uint16)))", "optional(seq(tensor(uint32)))",
+           "optional(seq(tensor(uint64)))", "optional(seq(tensor(int8)))", "optional(seq(tensor(int16)))",
+           "optional(seq(tensor(int32)))", "optional(seq(tensor(int64)))", "optional(seq(tensor(float16)))",
+           "optional(seq(tensor(float)))", "optional(seq(tensor(double)))", "optional(seq(tensor(string)))",
+           "optional(seq(tensor(bool)))", "optional(seq(tensor(complex64)))", "optional(seq(tensor(complex128)))"},
+          "Constrains output type to all optional tensor or optional sequence types.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+          const size_t numOutputs = ctx.getNumOutputs();
+          if (numOutputs != 1) {
+            fail_type_inference("Optional is expected to have an output.");
+          }
+
+          const size_t numInputs = ctx.getNumInputs();
+          const auto* attr_proto = ctx.getAttribute("type");
+
+          if ((numInputs == 0) && (attr_proto != nullptr)) {
+            if (!attr_proto->has_tp())
+              fail_type_inference(
+                  "Attribute 'type' should be a TypeProto and it should specify a type.");
+            auto attr_tp = attr_proto->tp();
+            ctx.getOutputType(0)
+                ->mutable_optional_type()
+                ->mutable_elem_type()
+                ->CopyFrom(attr_tp);
+          } else if (numInputs == 1) {
+            auto input_type = ctx.getInputType(0);
+            if(input_type == nullptr){
+              fail_type_inference("Input type is null. Type information is expected for the input.");
+            }
+            ctx.getOutputType(0)
+                ->mutable_optional_type()
+                ->mutable_elem_type()
+                ->CopyFrom(*input_type);
+          } else {
+            fail_type_inference("Optional is expected to have either an input or the type attribute set.");
+          }
+        });
+
+  static const char* OptionalHasElement_ver1_doc = R"DOC(
+      Returns true if the optional-type input contains an element. If it is an empty optional-type, this op returns false.
+      )DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(OptionalHasElement)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(OptionalHasElement_ver1_doc)
+      .Input(0, "input", "The optional input.", "O")
+      .Output(0, "output", "A scalar boolean tensor. If true, it indicates that optional-type input contains an element. Otherwise, it is empty.", "B")
+      .TypeConstraint(
+          "O",
+          {"optional(tensor(uint8))", "optional(tensor(uint16))", "optional(tensor(uint32))",
+           "optional(tensor(uint64))", "optional(tensor(int8))", "optional(tensor(int16))",
+           "optional(tensor(int32))", "optional(tensor(int64))", "optional(tensor(float16))",
+           "optional(tensor(float))", "optional(tensor(double))", "optional(tensor(string))",
+           "optional(tensor(bool))", "optional(tensor(complex64))", "optional(tensor(complex128))",
+           "optional(seq(tensor(uint8)))", "optional(seq(tensor(uint16)))", "optional(seq(tensor(uint32)))",
+           "optional(seq(tensor(uint64)))", "optional(seq(tensor(int8)))", "optional(seq(tensor(int16)))",
+           "optional(seq(tensor(int32)))", "optional(seq(tensor(int64)))", "optional(seq(tensor(float16)))",
+           "optional(seq(tensor(float)))", "optional(seq(tensor(double)))", "optional(seq(tensor(string)))",
+           "optional(seq(tensor(bool)))", "optional(seq(tensor(complex64)))", "optional(seq(tensor(complex128)))"},
+          "Constrains input type to optional tensor and optional sequence types.")
+      .TypeConstraint(
+          "B",
+          {"tensor(bool)"},
+          "Constrains output to a boolean tensor.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+          const size_t numInputs = ctx.getNumInputs();
+          if (numInputs != 1) {
+            fail_type_inference("OptionalHasElement is expected to have 1 input.");
+          }
+          const size_t numOutputs = ctx.getNumOutputs();
+          if (numOutputs != 1) {
+            fail_type_inference("OptionalHasElement is expected to have 1 output.");
+          }
+          auto* output_tensor_type = ctx.getOutputType(0)->mutable_tensor_type();
+          output_tensor_type->set_elem_type(TensorProto::BOOL);
+          output_tensor_type->mutable_shape()->Clear();
+          });
+
+  static const char* OptionalGetElement_ver1_doc = R"DOC(
+      Outputs the element in the optional-type input'. It is an error if the input value does not have an element "
+      "and the behavior is undefined in this case."
+      )DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(OptionalGetElement)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(OptionalGetElement_ver1_doc)
+      .Input(0, "input", "The optional input.", "O")
+      .Output(0, "output", "Output element in the optional input.", "V")
+      .TypeConstraint(
+          "O",
+          {"optional(tensor(uint8))", "optional(tensor(uint16))", "optional(tensor(uint32))",
+           "optional(tensor(uint64))", "optional(tensor(int8))", "optional(tensor(int16))",
+           "optional(tensor(int32))", "optional(tensor(int64))", "optional(tensor(float16))",
+           "optional(tensor(float))", "optional(tensor(double))", "optional(tensor(string))",
+           "optional(tensor(bool))", "optional(tensor(complex64))", "optional(tensor(complex128))",
+           "optional(seq(tensor(uint8)))", "optional(seq(tensor(uint16)))", "optional(seq(tensor(uint32)))",
+           "optional(seq(tensor(uint64)))", "optional(seq(tensor(int8)))", "optional(seq(tensor(int16)))",
+           "optional(seq(tensor(int32)))", "optional(seq(tensor(int64)))", "optional(seq(tensor(float16)))",
+           "optional(seq(tensor(float)))", "optional(seq(tensor(double)))", "optional(seq(tensor(string)))",
+           "optional(seq(tensor(bool)))", "optional(seq(tensor(complex64)))", "optional(seq(tensor(complex128)))"},
+          "Constrains input type to optional tensor and optional sequence types.")
+      .TypeConstraint(
+          "V",
+          {"tensor(uint8)", "tensor(uint16)", "tensor(uint32)",
+           "tensor(uint64)", "tensor(int8)", "tensor(int16)",
+           "tensor(int32)", "tensor(int64)", "tensor(float16)",
+           "tensor(float)", "tensor(double)", "tensor(string)",
+           "tensor(bool)", "tensor(complex64)", "tensor(complex128)",
+           "seq(tensor(uint8))", "seq(tensor(uint16))", "seq(tensor(uint32))",
+           "seq(tensor(uint64))", "seq(tensor(int8))", "seq(tensor(int16))",
+           "seq(tensor(int32))", "seq(tensor(int64))", "seq(tensor(float16))",
+           "seq(tensor(float))", "seq(tensor(double))", "seq(tensor(string))",
+           "seq(tensor(bool))", "seq(tensor(complex64))","seq(tensor(complex128))"},
+          "Constrain output type to all tensor or sequence types.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+          const size_t numInputs = ctx.getNumInputs();
+          if (numInputs != 1) {
+            fail_type_inference("OptionalGetElement must have an input element.");
+          }
+          auto input_type = ctx.getInputType(0);
+          if (input_type == nullptr) {
+            fail_type_inference("Input type is null. Input must have Type information.");
+          }
+          if (!input_type->has_optional_type() || !input_type->optional_type().has_elem_type()) {
+            fail_type_inference("Input must be an optional-type value containing an element with type information.");
+          }
+          ctx.getOutputType(0)
+              ->CopyFrom(input_type->optional_type().elem_type());
+          });
+  
+#ifndef _OPSCHEMA_LIB_
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();
   }
+#endif
+
+  RegisterNhwcSchemas();
   RegisterBertSchemas();
 
 #ifdef BUILD_MS_EXPERIMENTAL_OPS

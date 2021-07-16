@@ -5,7 +5,14 @@
 
 #include "gsl/gsl"
 
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4127)
+#endif
 #include "unsupported/Eigen/SpecialFunctions"
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 #include "core/util/math_cpuonly.h"
 

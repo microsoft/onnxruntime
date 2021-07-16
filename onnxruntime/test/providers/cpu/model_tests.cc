@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <iterator>
+#include <gtest/gtest.h>
+
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_env.h"
 #include "asserts.h"
-#include <iterator>
-#include "gtest/gtest.h"
 #include <core/platform/path_lib.h>
 #include "default_providers.h"
 
@@ -26,6 +27,7 @@ namespace onnxruntime {
 namespace test {
 // parameter is provider_name + "_" + model_path
 class ModelTest : public testing::TestWithParam<std::basic_string<ORTCHAR_T>> {};
+
 namespace {
 struct BrokenTest {
   std::string test_name_;
@@ -43,6 +45,9 @@ struct BrokenTest {
   }
 };
 }  // namespace
+#ifdef GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(ModelTest);
+#endif
 TEST_P(ModelTest, Run) {
   std::basic_string<ORTCHAR_T> param = GetParam();
   size_t pos = param.find(ORT_TSTR("_"));
@@ -57,7 +62,7 @@ TEST_P(ModelTest, Run) {
     relative_per_sample_tolerance = 0.009;
   }
 
-  std::unique_ptr<OnnxModelInfo> model_info = onnxruntime::make_unique<OnnxModelInfo>(model_path.c_str());
+  std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
   if (model_info->GetONNXOpSetVersion() != 8 && provider_name == "tensorrt") {
     // TensorRT can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
@@ -710,7 +715,8 @@ TEST_P(ModelTest, Run) {
       ORT_TSTR("fp16_test_tiny_yolov2-Candy"),
       ORT_TSTR("fp16_coreml_FNS-Candy"),
       ORT_TSTR("fp16_test_tiny_yolov2"),
-      ORT_TSTR("fp16_test_shufflenet")};
+      ORT_TSTR("fp16_test_shufflenet"),
+      ORT_TSTR("keras2coreml_SimpleRNN_ImageNet")};
   static const ORTCHAR_T* openvino_disabled_tests[] = {ORT_TSTR("tf_mobilenet_v1_1.0_224"),
                                                        ORT_TSTR("bertsquad"),
                                                        ORT_TSTR("yolov3"),

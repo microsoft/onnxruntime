@@ -95,7 +95,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
     if (it == buffers_.end()) {
       if (block != nullptr && block->size_ == 0) {
         // Because the size is 0, this miss find is expected. we won't allocate a buffer with size of zero.
-        buf_out = onnxruntime::make_unique<MemBuffer>(nullptr, 0, location);
+        buf_out = std::make_unique<MemBuffer>(nullptr, 0, location);
         return Status::OK();
       }
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Weight buffer for initializer '", name, "' is not found");
@@ -105,7 +105,7 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Get preallocated buffer for initializer '", name, "' failed");
     }
 
-    buf_out = onnxruntime::make_unique<MemBuffer>(reinterpret_cast<char*>(it->second) + block->offset_, block->size_, location);
+    buf_out = std::make_unique<MemBuffer>(reinterpret_cast<char*>(it->second) + block->offset_, block->size_, location);
     return Status::OK();
   }
   common::Status Trace(int id, const ONNX_NAMESPACE::TensorProto* value) override {

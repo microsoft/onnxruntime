@@ -1,19 +1,21 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/onnxruntime_c_api.h"
-#include "core/session/ort_apis.h"
-#include "core/framework/tensor_shape.h"
+#include "core/framework/tensor_type_and_shape.h"
+
+#include <assert.h>
+#include <atomic>
+#include <stdexcept>
+
+#include "core/common/safeint.h"
+#include "core/framework/error_code_helper.h"
 #include "core/framework/ml_value.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/framework/sparse_tensor.h"
-#include "core/framework/tensor_type_and_shape.h"
+#include "core/framework/tensor_shape.h"
 #include "core/graph/onnx_protobuf.h"
-#include "core/framework/error_code_helper.h"
-
-#include <assert.h>
-#include <stdexcept>
-#include <atomic>
+#include "core/session/onnxruntime_c_api.h"
+#include "core/session/ort_apis.h"
 
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
@@ -72,8 +74,10 @@ ORT_API_STATUS_IMPL(OrtApis::GetSymbolicDimensions, _In_ const struct OrtTensorT
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetTensorShapeElementCount, _In_ const OrtTensorTypeAndShapeInfo* this_ptr, _Out_ size_t* out) {
-  *out = static_cast<size_t>(this_ptr->shape.Size());
+  API_IMPL_BEGIN
+  *out = SafeInt<size_t>{this_ptr->shape.Size()};
   return nullptr;
+  API_IMPL_END
 }
 
 struct OrtValue;

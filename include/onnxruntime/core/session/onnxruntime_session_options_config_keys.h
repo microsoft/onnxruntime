@@ -51,6 +51,10 @@ static const char* const kOrtSessionOptionsDisableQuantQDQ = "session.disable_qu
 // GeluApproximation has side effects which may change the inference results. It is disabled by default due to this.
 static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";
 
+// Enable or disable using device allocator for allocating initialized tensor memory. "1": enable; "0": disable. The default is "0".
+// Using device allocators means the memory allocation is made using malloc/new.
+static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "session.use_device_allocator_for_initializers";
+
 // Configure whether to allow the inter_op/intra_op threads spinning a number of times before blocking
 // "0": thread will block if found no job to run
 // "1": default, thread will spin a number of times before blocking

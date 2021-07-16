@@ -104,6 +104,7 @@ struct EinsumEquationPreprocessor {
 // Subscript labels (letter) and subcript indices (a unique id to the letter) are interchangeable
 
 // This is a pre-processor class that maps subscript labels to a dimension value, etc.
+#ifndef SHARED_PROVIDER
 class EinsumComputePreprocessor final {
  public:
   explicit EinsumComputePreprocessor(EinsumEquationPreprocessor& equation_preprocessor,
@@ -224,5 +225,5 @@ class EinsumComputePreprocessor final {
   // Holds EP-specific assets required for (auxiliary) ops that need to be executed on non-CPU EPs
   void* einsum_ep_assets_;
 };
-
+#endif
 }  // namespace onnxruntime

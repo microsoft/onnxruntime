@@ -80,8 +80,7 @@ void OrtValueTensorSlicer<T>::Iterator::MaterializeMLValue() const {
   //
   // TODO: Ideally we could avoid the overhead of creating a new Tensor (mainly cost of copying type and shape info)
   // and would simply update Tensor::p_data_ given all other info remains constant for each slice.
-  auto sub_tensor = onnxruntime::make_unique<Tensor>(tensor_data_type_, per_iteration_shape_,
-                                                     const_cast<void*>(tensor_slice_data_raw), *tensor_location_);
+  auto sub_tensor = Tensor::Create(tensor_data_type_, per_iteration_shape_, const_cast<void*>(tensor_slice_data_raw), *tensor_location_);
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   current_ = OrtValue{sub_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc()};
 }

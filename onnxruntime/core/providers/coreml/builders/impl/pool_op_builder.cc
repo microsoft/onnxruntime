@@ -21,7 +21,7 @@ class PoolOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 };
 
@@ -30,7 +30,7 @@ class PoolOpBuilder : public BaseOpBuilder {
 Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                             const Node& node,
                                             const logging::Logger& logger) const {
-  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(node);
+  std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
 
   auto* coreml_pool = layer->mutable_pooling();
   const auto& op_type = node.OpType();
@@ -107,7 +107,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related
-bool PoolOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool PoolOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& /* input_params */,
                                       const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
@@ -172,7 +172,7 @@ void CreatePoolOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
           "MaxPool",
       };
 
-  op_registrations.builders.push_back(onnxruntime::make_unique<PoolOpBuilder>());
+  op_registrations.builders.push_back(std::make_unique<PoolOpBuilder>());
   for (const auto& op_type : op_types) {
     op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
   }

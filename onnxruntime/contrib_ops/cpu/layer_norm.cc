@@ -60,13 +60,13 @@ Status LayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   Tensor* Y = p_ctx->Output(0, x_shape);
   auto Y_data = Y->template MutableData<T>();
 
-  std::vector<int64_t> mean_inv_std_var_dim;
-  mean_inv_std_var_dim.reserve(x_shape.NumDimensions());
+  std::vector<int64_t> mean_inv_std_dev_dim;
+  mean_inv_std_dev_dim.reserve(x_shape.NumDimensions());
   for (int i = 0; i < static_cast<int>(x_shape.NumDimensions()); ++i) {
     if (i < axis) {
-      mean_inv_std_var_dim.emplace_back(x_shape.GetDims()[i]);
+      mean_inv_std_dev_dim.emplace_back(x_shape.GetDims()[i]);
     } else {
-      mean_inv_std_var_dim.emplace_back(1);
+      mean_inv_std_dev_dim.emplace_back(1);
     }
   }
 
@@ -79,7 +79,7 @@ Status LayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
   int output_index = 1;
 
   if (!simplified) {
-    Tensor* mean = p_ctx->Output(output_index++, TensorShape(mean_inv_std_var_dim));
+    Tensor* mean = p_ctx->Output(output_index++, TensorShape(mean_inv_std_dev_dim));
     if (mean != nullptr) {
       mean_data = mean->template MutableData<T>();
     } else {
@@ -89,53 +89,55 @@ Status LayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
     }
   }
 
-  T* inv_std_var_data = nullptr;
-  BufferUniquePtr inv_std_var_data_buf_ptr;
+  T* inv_std_dev_data = nullptr;
+  BufferUniquePtr inv_std_dev_data_buf_ptr;
 
-  Tensor* inv_std_var = p_ctx->Output(output_index, TensorShape(mean_inv_std_var_dim));
-  if (inv_std_var != nullptr) {
-    inv_std_var_data = inv_std_var->template MutableData<T>();
+  Tensor* inv_std_dev = p_ctx->Output(output_index, TensorShape(mean_inv_std_dev_dim));
+  if (inv_std_dev != nullptr) {
+    inv_std_dev_data = inv_std_dev->template MutableData<T>();
   } else {
-    auto inv_std_var_data_buf = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * norm_count);
-    inv_std_var_data_buf_ptr = BufferUniquePtr(inv_std_var_data_buf, BufferDeleter(alloc));
-    inv_std_var_data = static_cast<T*>(inv_std_var_data_buf_ptr.get());
+    auto inv_std_dev_data_buf = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * norm_count);
+    inv_std_dev_data_buf_ptr = BufferUniquePtr(inv_std_dev_data_buf, BufferDeleter(alloc));
+    inv_std_dev_data = static_cast<T*>(inv_std_dev_data_buf_ptr.get());
   }
 
-  concurrency::ThreadPool::TryBatchParallelFor(p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(norm_count),
-                                               [&](ptrdiff_t task_idx) {
-                                                 const T* p_input = X_data + task_idx * norm_size;
-                                                 T* p_output = Y_data + task_idx * norm_size;
+  concurrency::ThreadPool::TryBatchParallelFor(
+      p_ctx->GetOperatorThreadPool(), static_cast<int32_t>(norm_count),
+      [&](ptrdiff_t task_idx) {
+        const T* p_input = X_data + task_idx * norm_size;
+        T* p_output = Y_data + task_idx * norm_size;
 
-                                                 T mean = 0;
-                                                 T mean_square = 0;
+        T mean = 0;
+        T mean_square = 0;
 
-                                                 for (int64_t h = 0; h < norm_size; h++) {
-                                                   mean += p_input[h];
-                                                   mean_square += p_input[h] * p_input[h];
-                                                 }
+        for (int64_t h = 0; h < norm_size; h++) {
+          mean += p_input[h];
+          mean_square += p_input[h] * p_input[h];
+        }
 
-                                                 mean = mean / norm_size;
-                                                 if (simplified) {
-                                                   mean_square = sqrt(mean_square / norm_size + epsilon_);
-                                                 } else {
-                                                   mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon_);
-                                                 }
+        mean = mean / norm_size;
+        if (simplified) {
+          mean_square = sqrt(mean_square / norm_size + epsilon_);
+        } else {
+          mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon_);
+        }
 
-                                                 for (int64_t h = 0; h < norm_size; h++) {
-                                                   if (simplified) {
-                                                     p_output[h] = p_input[h] / mean_square * scale_data[h];
-                                                   } else if (nullptr == bias){
-                                                     p_output[h] = (p_input[h] - mean) / mean_square * scale_data[h];
-                                                   } else {
-                                                     p_output[h] = (p_input[h] - mean) / mean_square * scale_data[h] + bias_data[h];
-                                                   }
-                                                 }
+        for (int64_t h = 0; h < norm_size; h++) {
+          if (simplified) {
+            p_output[h] = p_input[h] / mean_square * scale_data[h];
+          } else if (nullptr == bias) {
+            p_output[h] = (p_input[h] - mean) / mean_square * scale_data[h];
+          } else {
+            p_output[h] = (p_input[h] - mean) / mean_square * scale_data[h] + bias_data[h];
+          }
+        }
 
-                                                 if (mean_data != nullptr) {
-                                                   mean_data[task_idx] = mean;
-                                                 }
-                                                 inv_std_var_data[task_idx] = 1 / mean_square;
-                                               }, 0);
+        if (mean_data != nullptr) {
+          mean_data[task_idx] = mean;
+        }
+        inv_std_dev_data[task_idx] = 1 / mean_square;
+      },
+      0);
 
   return Status::OK();
 }

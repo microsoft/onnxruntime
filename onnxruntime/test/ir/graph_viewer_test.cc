@@ -21,7 +21,7 @@ TEST(GraphViewer, FilteredGraph) {
 
   // create a GraphViewer that filters to the first 2 nodes.
   IndexedSubGraph subgraph;
-  std::unique_ptr<IndexedSubGraph::MetaDef> metadef = onnxruntime::make_unique<IndexedSubGraph::MetaDef>();
+  std::unique_ptr<IndexedSubGraph::MetaDef> metadef = std::make_unique<IndexedSubGraph::MetaDef>();
   metadef->name = "TestSubgraph";
   metadef->status = ONNX_NAMESPACE::EXPERIMENTAL;
   metadef->since_version = 1;

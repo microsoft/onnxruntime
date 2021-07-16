@@ -50,8 +50,8 @@ def check_and_normalize_provider_args(providers, provider_options, available_pro
 
     def set_provider_options(name, options):
         if name not in available_provider_names:
-            raise ValueError("Specified provider '{}' is unavailable. Available providers: '{}'".format(
-                name, ", ".join(available_provider_names)))
+            warnings.warn("Specified provider '{}' is not in available provider names."
+                          "Available providers: '{}'".format(name, ", ".join(available_provider_names)))
 
         if name in provider_name_to_options:
             warnings.warn("Duplicate provider '{}' encountered, ignoring.".format(name))
@@ -355,7 +355,7 @@ class IOBinding:
     '''
     def __init__(self, session):
         self._iobinding = C.SessionIOBinding(session._sess)
-        self._numpy_obj_references = []
+        self._numpy_obj_references = {}
 
     def bind_cpu_input(self, name, arr_on_cpu):
         '''
@@ -366,7 +366,7 @@ class IOBinding:
         # Hold a reference to the numpy object as the bound OrtValue is backed
         # directly by the data buffer of the numpy object and so the numpy object
         # must be around until this IOBinding instance is around
-        self._numpy_obj_references.append(arr_on_cpu)
+        self._numpy_obj_references[name] = arr_on_cpu
         self._iobinding.bind_input(name, arr_on_cpu)
 
     def bind_input(self, name, device_type, device_id, element_type, shape, buffer_ptr):

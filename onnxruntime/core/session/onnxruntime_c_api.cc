@@ -35,6 +35,11 @@
 #include "abi_session_options_impl.h"
 #include "core/framework/TensorSeq.h"
 #include "core/platform/ort_mutex.h"
+
+#ifdef ENABLE_EXTENSION_CUSTOM_OPS
+#include "ortcustomops.h"
+#endif
+
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #endif
@@ -157,7 +162,7 @@ ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t
     shapes[i] = shape[i];
   }
   std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::AllocatorWrapper>(allocator);
-  *out = onnxruntime::make_unique<Tensor>(ml_type, onnxruntime::TensorShape(shapes), alloc_ptr);
+  *out = std::make_unique<Tensor>(ml_type, onnxruntime::TensorShape(shapes), alloc_ptr);
   return nullptr;
 }
 
@@ -202,7 +207,7 @@ ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t
     oss << "not enough space: expected " << size_to_allocate << ", got " << p_data_len;
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
   }
-  *out = onnxruntime::make_unique<Tensor>(ml_type, onnxruntime::TensorShape(shapes), p_data, *info);
+  *out = std::make_unique<Tensor>(ml_type, onnxruntime::TensorShape(shapes), p_data, *info);
   return nullptr;
 }
 
@@ -281,7 +286,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorWithDataAsOrtValue, _In_ const OrtMemor
       return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, errmsg.c_str());
     }
   }
-  auto value = onnxruntime::make_unique<OrtValue>();
+  auto value = std::make_unique<OrtValue>();
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   value->Init(tensor.release(),
               ml_tensor,
@@ -348,7 +353,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorAsOrtValue, _Inout_ OrtAllocator* alloc
       return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, errmsg.c_str());
     }
   }
-  auto value = onnxruntime::make_unique<OrtValue>();
+  auto value = std::make_unique<OrtValue>();
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   value->Init(tensor.release(),
               ml_tensor,
@@ -360,7 +365,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorAsOrtValue, _Inout_ OrtAllocator* alloc
 
 ORT_API_STATUS_IMPL(OrtApis::CreateCustomOpDomain, _In_ const char* domain, _Outptr_ OrtCustomOpDomain** out) {
   API_IMPL_BEGIN
-  auto custom_op_domain = onnxruntime::make_unique<OrtCustomOpDomain>();
+  auto custom_op_domain = std::make_unique<OrtCustomOpDomain>();
   custom_op_domain->domain_ = domain;
   *out = custom_op_domain.release();
   return nullptr;
@@ -389,7 +394,7 @@ ORT_API_STATUS_IMPL(OrtApis::AddCustomOpDomain, _Inout_ OrtSessionOptions* optio
 ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path, void** library_handle) {
   API_IMPL_BEGIN
 
-  Env::Default().LoadDynamicLibrary(library_path, library_handle);
+  Env::Default().LoadDynamicLibrary(library_path, false, library_handle);
   if (!*library_handle)
     return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Failed to load library");
 
@@ -403,6 +408,21 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::EnableOrtCustomOps, _Inout_ OrtSessionOptions* options) {
+  API_IMPL_BEGIN
+
+  if (options) {
+#ifdef ENABLE_EXTENSION_CUSTOM_OPS
+  return RegisterCustomOps(options, OrtGetApiBase());
+#else
+  return OrtApis::CreateStatus(ORT_FAIL, "EnableOrtCustomOps: Custom operators in onnxruntime-extensions are not enabled");
+#endif
+  }
+  return nullptr;
+
+  API_IMPL_END
+}
+
 namespace {
 // provider either model_path, or modal_data + model_data_length.
 static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
@@ -410,6 +430,7 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
                                                 _In_opt_z_ const ORTCHAR_T* model_path,
                                                 _In_opt_ const void* model_data,
                                                 size_t model_data_length,
+
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {
   // quick check here to decide load path. InferenceSession will provide error message for invalid values.
   // TODO: Could move to a helper
@@ -420,12 +441,12 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
   if (load_config_from_model) {
 #if !defined(ORT_MINIMAL_BUILD)
     if (model_path != nullptr) {
-      sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
+      sess = std::make_unique<onnxruntime::InferenceSession>(
           options == nullptr ? onnxruntime::SessionOptions() : options->value,
           env->GetEnvironment(),
           model_path);
     } else {
-      sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
+      sess = std::make_unique<onnxruntime::InferenceSession>(
           options == nullptr ? onnxruntime::SessionOptions() : options->value,
           env->GetEnvironment(),
           model_data, static_cast<int>(model_data_length));
@@ -434,7 +455,7 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
     return OrtApis::CreateStatus(ORT_FAIL, "Loading config from ONNX models is not supported in this build.");
 #endif
   } else {
-    sess = onnxruntime::make_unique<onnxruntime::InferenceSession>(
+    sess = std::make_unique<onnxruntime::InferenceSession>(
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         env->GetEnvironment());
   }
@@ -463,7 +484,8 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
 }
 
 static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
-                                        _In_ std::unique_ptr<::onnxruntime::InferenceSession>& sess) {
+                                        _In_ std::unique_ptr<::onnxruntime::InferenceSession>& sess,
+                                        _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container = nullptr) {
   // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of
   // byte addressable memory
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
@@ -479,6 +501,11 @@ static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
     if (provider) {
       ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterExecutionProvider(std::move(provider)));
     }
+  }
+
+  if (prepacked_weights_container != nullptr) {
+    ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddPrePackedWeightsContainer(
+        reinterpret_cast<PrepackedWeightsContainer*>(prepacked_weights_container)));
   }
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Initialize());
@@ -608,7 +635,13 @@ ORT_API_STATUS_IMPL(OrtApis::RunWithBinding, _Inout_ OrtSession* sess, _In_ cons
                     _In_ const OrtIoBinding* binding_ptr) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
-  auto status = session->Run(*run_options, *binding_ptr->binding_);
+  Status status;
+  if (run_options == nullptr) {
+    OrtRunOptions default_run_options;
+    status = session->Run(default_run_options, *binding_ptr->binding_);
+  } else {
+    status = session->Run(*run_options, *binding_ptr->binding_);
+  }
   if (!status.IsOK()) {
     return ToOrtStatus(status);
   }
@@ -1214,8 +1247,8 @@ static ORT_STATUS_PTR OrtGetValueImplSeqOfMap(const OrtValue* p_ml_value, int in
   using MapType = std::map<TKey, TVal>;
   auto& data_vec = p_ml_value->Get<T>();
   auto& data_elem = data_vec.at(index);
-  auto copy_data_elem = onnxruntime::make_unique<MapType>(data_elem);
-  auto value = onnxruntime::make_unique<OrtValue>();
+  auto copy_data_elem = std::make_unique<MapType>(data_elem);
+  auto value = std::make_unique<OrtValue>();
   auto ml_type = DataTypeImpl::GetType<MapType>();
   value->Init(copy_data_elem.release(),
               ml_type,
@@ -1421,14 +1454,14 @@ template <typename T>
 static OrtStatus* OrtCreateValueImplSeqHelperMap(const OrtValue* const* in, size_t num_values,
                                                  _Outptr_ OrtValue** out) {
   using SeqType = std::vector<T>;
-  auto seq_ptr = onnxruntime::make_unique<SeqType>();
+  auto seq_ptr = std::make_unique<SeqType>();
   seq_ptr->reserve(num_values);
   for (size_t idx = 0; idx < num_values; ++idx) {
     auto& m = reinterpret_cast<const OrtValue*>(in[idx])->Get<T>();
     seq_ptr->push_back(m);
   }
   // create OrtValue with this vector
-  auto value = onnxruntime::make_unique<OrtValue>();
+  auto value = std::make_unique<OrtValue>();
   auto ml_type = DataTypeImpl::GetType<SeqType>();
   value->Init(seq_ptr.release(),
               ml_type,
@@ -1503,9 +1536,9 @@ static ORT_STATUS_PTR OrtCreateValueImplSeqHelper(const OrtValue* const* in, siz
     }
   }
   // create OrtValue with this vector
-  auto value = onnxruntime::make_unique<OrtValue>();
+  auto value = std::make_unique<OrtValue>();
   auto ml_type = DataTypeImpl::GetType<TensorSeq>();
-  auto seq_ptr = onnxruntime::make_unique<TensorSeq>(dtype);
+  auto seq_ptr = std::make_unique<TensorSeq>(dtype);
   seq_ptr->SetElements(std::move(tensors));
   value->Init(seq_ptr.release(),
               ml_type,
@@ -1572,7 +1605,7 @@ static ORT_STATUS_PTR OrtCreateValueImplSeq(_In_reads_(num_values) const OrtValu
 template <typename KeyType, typename ValueType>
 static OrtStatus* OrtCreateMapMLValue(const Tensor& key_tensor, const Tensor& value_tensor, _Outptr_ OrtValue** out) {
   using MapType = std::map<KeyType, ValueType>;
-  auto map_ptr = onnxruntime::make_unique<MapType>();
+  auto map_ptr = std::make_unique<MapType>();
   // iterate through the key and value tensors and populate map
   auto key_data = key_tensor.Data<KeyType>();
   auto value_data = value_tensor.Data<ValueType>();
@@ -1583,7 +1616,7 @@ static OrtStatus* OrtCreateMapMLValue(const Tensor& key_tensor, const Tensor& va
     map_ptr->insert({*key_data, *value_data});
   }
   // create ort_value with this map
-  auto value = onnxruntime::make_unique<OrtValue>();
+  auto value = std::make_unique<OrtValue>();
   auto ml_type = DataTypeImpl::GetType<MapType>();
   value->Init(map_ptr.release(),
               ml_type,
@@ -1819,25 +1852,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ const OrtSessi
 
 // End support for non-tensor types
 
-#ifndef USE_CUDA
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA,
-                    _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* cuda_options) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(cuda_options);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
-}
-
-ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
-  ORT_UNUSED_PARAMETER(device_id);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
-}
-
-ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
-  ORT_UNUSED_PARAMETER(device_id);
-  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
-}
-#endif
-
 #ifndef USE_ROCM
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM,
                     _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* rocm_options) {
@@ -1856,6 +1870,24 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO,
 }
 #endif
 
+#if defined(ORT_MINIMAL_BUILD)
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, _In_ const OrtCUDAProviderOptions* provider_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(provider_options);
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
+  ORT_UNUSED_PARAMETER(device_id);
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
+  ORT_UNUSED_PARAMETER(device_id);
+  return CreateStatus(ORT_FAIL, "CUDA execution provider is not enabled.");
+}
+#endif
+
 ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
                     int max_dead_bytes_per_chunk, _Outptr_ OrtArenaCfg** out) {
   API_IMPL_BEGIN
@@ -1868,8 +1900,99 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_exte
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* const* arena_config_keys, _In_reads_(num_keys) const size_t* arena_config_values,
+                    _In_ size_t num_keys, _Outptr_ OrtArenaCfg** out) {
+  API_IMPL_BEGIN
+  auto cfg = std::make_unique<OrtArenaCfg>();
+
+  for (size_t i = 0; i < num_keys; ++i) {
+    if (strcmp(arena_config_keys[i], "max_mem") == 0) {
+      cfg->max_mem = arena_config_values[i];
+    } else if (strcmp(arena_config_keys[i], "arena_extend_strategy") == 0) {
+      cfg->arena_extend_strategy = static_cast<int>(arena_config_values[i]);
+    } else if (strcmp(arena_config_keys[i], "initial_chunk_size_bytes") == 0) {
+      cfg->initial_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
+    } else if (strcmp(arena_config_keys[i], "max_dead_bytes_per_chunk") == 0) {
+      cfg->max_dead_bytes_per_chunk = static_cast<int>(arena_config_values[i]);
+    } else if (strcmp(arena_config_keys[i], "initial_growth_chunk_size_bytes") == 0) {
+      cfg->initial_growth_chunk_size_bytes = static_cast<int>(arena_config_values[i]);
+    } else {
+      std::ostringstream oss;
+      oss << "Invalid key found: " << arena_config_keys[i];
+
+      return CreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
+    }
+  }
+
+  *out = cfg.release();
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API(void, OrtApis::ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg* ptr) {
   delete ptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreatePrepackedWeightsContainer, _Outptr_ OrtPrepackedWeightsContainer** out) {
+  API_IMPL_BEGIN
+  std::unique_ptr<PrepackedWeightsContainer> container(new PrepackedWeightsContainer());
+  *out = reinterpret_cast<OrtPrepackedWeightsContainer*>(container.release());
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleasePrepackedWeightsContainer, _Frees_ptr_opt_ OrtPrepackedWeightsContainer* ptr) {
+  delete reinterpret_cast<PrepackedWeightsContainer*>(ptr);
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateSessionWithPrepackedWeightsContainer, _In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path,
+                    _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
+                    _Outptr_ OrtSession** out) {
+  API_IMPL_BEGIN
+  std::unique_ptr<onnxruntime::InferenceSession> sess;
+  OrtStatus* status = nullptr;
+  *out = nullptr;
+
+  ORT_TRY {
+    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, model_path, nullptr, 0, sess));
+    ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess, prepacked_weights_container));
+
+    *out = reinterpret_cast<OrtSession*>(sess.release());
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = OrtApis::CreateStatus(ORT_FAIL, e.what());
+    });
+  }
+
+  return status;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer, _In_ const OrtEnv* env,
+                    _In_ const void* model_data, size_t model_data_length,
+                    _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
+                    _Outptr_ OrtSession** out) {
+  API_IMPL_BEGIN
+  std::unique_ptr<onnxruntime::InferenceSession> sess;
+  OrtStatus* status = nullptr;
+  *out = nullptr;
+
+  ORT_TRY {
+    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(options, env, nullptr, model_data,
+                                                      model_data_length, sess));
+    ORT_API_RETURN_IF_ERROR(InitializeSession(options, sess, prepacked_weights_container));
+
+    *out = reinterpret_cast<OrtSession*>(sess.release());
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = OrtApis::CreateStatus(ORT_FAIL, e.what());
+    });
+  }
+
+  return status;
+  API_IMPL_END
 }
 
 #if defined(ORT_MINIMAL_BUILD)
@@ -1878,6 +2001,42 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT,
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(tensorrt_options);
   return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled.");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2,
+                    _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled.");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptionsV2** out) {
+  ORT_UNUSED_PARAMETER(out);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
+                    _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys) {
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Inout_ OrtAllocator* allocator,
+                    _Outptr_ char** ptr) {
+  ORT_UNUSED_PARAMETER(tensorrt_options);
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "TensorRT execution provider is not enabled in this build.");
+}
+
+ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptionsV2* ptr) {
+  ORT_UNUSED_PARAMETER(ptr);
 }
 #endif
 
@@ -1925,7 +2084,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
 	In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_8 = {
+static constexpr OrtApi ort_api_1_to_9 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -2120,9 +2279,23 @@ static constexpr OrtApi ort_api_1_to_8 = {
     &OrtApis::GetCurrentGpuDeviceId,
     // End of Version 7 - DO NOT MODIFY ABOVE (see above text for more information)
 
-    // Version 8 - In development, feel free to add/remove/rearrange here
     &OrtApis::KernelInfoGetAttributeArray_float,
     &OrtApis::KernelInfoGetAttributeArray_int64,
+    &OrtApis::CreateArenaCfgV2,
+    &OrtApis::AddRunConfigEntry,
+    &OrtApis::CreatePrepackedWeightsContainer,
+    &OrtApis::ReleasePrepackedWeightsContainer,
+    &OrtApis::CreateSessionWithPrepackedWeightsContainer,
+    &OrtApis::CreateSessionFromArrayWithPrepackedWeightsContainer,
+    // End of Version 8 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Version 9 - In development, feel free to add/remove/rearrange here
+    &OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2,
+    &OrtApis::CreateTensorRTProviderOptions,
+    &OrtApis::UpdateTensorRTProviderOptions,
+    &OrtApis::GetTensorRTProviderOptionsAsString,
+    &OrtApis::ReleaseTensorRTProviderOptions,
+    &OrtApis::EnableOrtCustomOps,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
@@ -2131,7 +2304,7 @@ static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "S
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_8;
+    return &ort_api_1_to_9;
 
   fprintf(stderr, "The given version [%u] is not supported, only version 1 to %u is supported in this build.\n",
           version, ORT_API_VERSION);

@@ -38,6 +38,10 @@ class ModelTest : public testing::TestWithParam<std::tuple<ITestCase*, winml::Le
 #ifdef USE_DML
     if (m_deviceKind == winml::LearningModelDeviceKind::DirectX) {
       m_relativePerSampleTolerance = 0.009;  // tolerate up to 0.9% difference of expected result.
+      auto gpuSampleTolerancePerTestsItr = gpuSampleTolerancePerTests.find(m_testCase->GetTestCaseName());
+      if (gpuSampleTolerancePerTestsItr != gpuSampleTolerancePerTests.end()) {
+        m_perSampleTolerance = gpuSampleTolerancePerTestsItr->second;
+      }
     }
 #endif
   }

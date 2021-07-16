@@ -75,7 +75,7 @@ ThreadPoolProfiler::MainThreadStat& ThreadPoolProfiler::GetMainThreadStat() {
 
 std::string ThreadPoolProfiler::Stop() {
   ORT_ENFORCE(enabled_, "Profiler not started yet");
-  std::stringstream ss;
+  std::ostringstream ss;
   ss << "{\"main_thread\": {"
      << "\"thread_pool_name\": \""
      << thread_pool_name_ << "\", "
@@ -379,7 +379,7 @@ ThreadPool::ThreadPool(Env* env,
   if (degree_of_parallelism >= 2) {
     int threads_to_create = degree_of_parallelism - 1;
     extended_eigen_threadpool_ =
-        onnxruntime::make_unique<ThreadPoolTempl<Env> >(name,
+        std::make_unique<ThreadPoolTempl<Env> >(name,
                                                         threads_to_create,
                                                         low_latency_hint,
                                                         *env,

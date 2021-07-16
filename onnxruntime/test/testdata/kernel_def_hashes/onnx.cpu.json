@@ -89,6 +89,22 @@
     ],
     [
         "Add ai.onnx CPUExecutionProvider",
+        2809400508152416640
+    ],
+    [
+        "Add ai.onnx CPUExecutionProvider",
+        4765849540931245312
+    ],
+    [
+        "Add ai.onnx CPUExecutionProvider",
+        7755855355830999664
+    ],
+    [
+        "Add ai.onnx CPUExecutionProvider",
+        9430048329647241312
+    ],
+    [
+        "Add ai.onnx CPUExecutionProvider",
         2811294571843125440
     ],
     [
@@ -230,6 +246,14 @@
     [
         "BatchNormalization ai.onnx CPUExecutionProvider",
         18128921553709069152
+    ],
+    [
+        "BatchNormalization ai.onnx CPUExecutionProvider",
+        13094179255141648608
+    ],
+    [
+        "BatchNormalization ai.onnx CPUExecutionProvider",
+        17832136363477464736
     ],
     [
         "BitShift ai.onnx CPUExecutionProvider",
@@ -406,6 +430,22 @@
     [
         "Det ai.onnx CPUExecutionProvider",
         4355346295804324544
+    ],
+    [
+        "Div ai.onnx CPUExecutionProvider",
+        3765227735719542728
+    ],
+    [
+        "Div ai.onnx CPUExecutionProvider",
+        6096830237778328064
+    ],
+    [
+        "Div ai.onnx CPUExecutionProvider",
+        8806467529483118056
+    ],
+    [
+        "Div ai.onnx CPUExecutionProvider",
+        10863732091582123872
     ],
     [
         "Div ai.onnx CPUExecutionProvider",
@@ -841,6 +881,10 @@
     ],
     [
         "GRU ai.onnx CPUExecutionProvider",
+        5656895183302764352
+    ],
+    [
+        "GRU ai.onnx CPUExecutionProvider",
         2706165712066264784
     ],
     [
@@ -861,11 +905,15 @@
     ],
     [
         "Identity ai.onnx CPUExecutionProvider",
-        14918681384698747488
+        16879814636194901248
     ],
     [
         "Identity ai.onnx CPUExecutionProvider",
         18001636502361632792
+    ],
+    [
+        "Identity ai.onnx CPUExecutionProvider",
+        16515685968327103576
     ],
     [
         "If ai.onnx CPUExecutionProvider",
@@ -1041,6 +1089,10 @@
     ],
     [
         "LSTM ai.onnx CPUExecutionProvider",
+        4392316607181063320
+    ],
+    [
+        "LSTM ai.onnx CPUExecutionProvider",
         5860801277476873352
     ],
     [
@@ -1170,6 +1222,22 @@
     [
         "Mod ai.onnx CPUExecutionProvider",
         10733303722078722368
+    ],
+    [
+        "Mul ai.onnx CPUExecutionProvider",
+        6564441461158321512
+    ],
+    [
+        "Mul ai.onnx CPUExecutionProvider",
+        12026653868244773992
+    ],
+    [
+        "Mul ai.onnx CPUExecutionProvider",
+        12682993328532509792
+    ],
+    [
+        "Mul ai.onnx CPUExecutionProvider",
+        15671930608208592024
     ],
     [
         "Mul ai.onnx CPUExecutionProvider",
@@ -1393,7 +1461,7 @@
     ],
     [
         "Pad ai.onnx CPUExecutionProvider",
-        9596174091174553032
+        12904240253005862936
     ],
     [
         "Pad ai.onnx CPUExecutionProvider",
@@ -1932,6 +2000,18 @@
         17992752176767437224
     ],
     [
+        "Relu ai.onnx CPUExecutionProvider",
+        800813007613791272
+    ],
+    [
+        "Relu ai.onnx CPUExecutionProvider",
+        8895401642537447048
+    ],
+    [
+        "Reshape ai.onnx CPUExecutionProvider",
+        15585679549439997664
+    ],
+    [
         "Reshape ai.onnx CPUExecutionProvider",
         312434585414181376
     ],
@@ -1982,6 +2062,10 @@
     [
         "ReverseSequence ai.onnx CPUExecutionProvider",
         777686786711298232
+    ],
+    [
+        "RNN ai.onnx CPUExecutionProvider",
+        1524012948315159160
     ],
     [
         "RNN ai.onnx CPUExecutionProvider",
@@ -2226,6 +2310,22 @@
     [
         "StringNormalizer ai.onnx CPUExecutionProvider",
         14259324427750852648
+    ],
+    [
+        "Sub ai.onnx CPUExecutionProvider",
+        2039033718071997632
+    ],
+    [
+        "Sub ai.onnx CPUExecutionProvider",
+        4778873438453976024
+    ],
+    [
+        "Sub ai.onnx CPUExecutionProvider",
+        10264597047275083736
+    ],
+    [
+        "Sub ai.onnx CPUExecutionProvider",
+        12226892770165869472
     ],
     [
         "Sub ai.onnx CPUExecutionProvider",

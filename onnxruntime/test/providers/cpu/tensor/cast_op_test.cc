@@ -105,11 +105,11 @@ struct CastNonStringTester {
     const size_t size = gsl::narrow<size_t>(shape.Size());
     ASSERT_EQ(input_int_values.size(), size);
 
-    auto input_buffer = onnxruntime::make_unique<SrcType[]>(size);
+    auto input_buffer = std::make_unique<SrcType[]>(size);
     auto input_span = gsl::make_span<SrcType>(input_buffer.get(), size);
     CastSpan<int, SrcType>(gsl::make_span(input_int_values), input_span);
 
-    auto output_buffer = onnxruntime::make_unique<DstType[]>(size);
+    auto output_buffer = std::make_unique<DstType[]>(size);
     auto output_span = gsl::make_span<DstType>(output_buffer.get(), size);
     CastSpan<SrcType, DstType>(input_span, output_span);
 

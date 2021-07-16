@@ -16,7 +16,7 @@ namespace cuda {
       9,                                                            \
       TName,                                                        \
       kCudaExecutionProvider,                                       \
-      KernelDefBuilder()                                            \
+      (*KernelDefBuilder::Create())                                 \
           .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()) \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),   \
       Where<T>);

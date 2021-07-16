@@ -126,13 +126,34 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   return Status::OK();
 }
 
-Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, bool& is_packed) {
+Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
+                              /*out*/ bool& is_packed,
+                              /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
 
   // only pack Matrix B
   if (input_idx == 1) {
-    is_packed = GemmPackBFp32(Info(), tensor, trans_b_attr_, packed_b_, b_shape_);
+    size_t packed_b_size;
+    is_packed = GemmPackBFp32(alloc, tensor, trans_b_attr_, packed_b_, packed_b_size, b_shape_);
+    bool share_prepacked_weights = (prepacked_weights != nullptr);
+    if (is_packed && share_prepacked_weights) {
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size);
+    }
   }
+  return Status::OK();
+}
+
+Status MatMul<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                int input_idx,
+                                                /*out*/ bool& used_shared_buffers) {
+  used_shared_buffers = false;
+
+  if (input_idx == 1) {
+    used_shared_buffers = true;
+    packed_b_ = std::move(prepacked_buffers[0]);
+  }
+
   return Status::OK();
 }
 
@@ -159,38 +180,27 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   const auto* b_data = b ? b->Data<float>() : nullptr;
   auto* y_data = y->MutableData<float>();
 
-  // TODO: replace it with GemmBatch for performance, it's OK for now as GemmBatch unrolls as well
-  size_t max_len = helper.OutputOffsets().size();
+  const size_t max_len = helper.OutputOffsets().size();
+  const size_t M = static_cast<size_t>(helper.M());
+  const size_t N = static_cast<size_t>(helper.N());
+  const size_t K = static_cast<size_t>(helper.K());
+  const size_t lda = static_cast<int>(trans_a ? M : K);
+  const size_t ldb = static_cast<int>(trans_b ? K : N);
+
+  std::vector<MLAS_SGEMM_DATA_PARAMS> data(max_len);
   for (size_t i = 0; i < max_len; i++) {
-    if (packed_b_) {
-      MlasGemm(
-          trans_a ? CblasTrans : CblasNoTrans,
-          static_cast<size_t>(helper.M()),
-          static_cast<size_t>(helper.N()),
-          static_cast<size_t>(helper.K()),
-          alpha_attr_,
-          a_data + helper.LeftOffsets()[i],
-          static_cast<size_t>(trans_a ? helper.M() : helper.K()),
-          packed_b_.get(),
-          0.0f,
-          y_data + helper.OutputOffsets()[i],
-          static_cast<size_t>(helper.N()),
-          thread_pool);
-      continue;
-    }
-    math::Gemm<float, concurrency::ThreadPool>(
-        trans_a ? CblasTrans : CblasNoTrans,
-        trans_b ? CblasTrans : CblasNoTrans,
-        helper.M(),
-        helper.N(),
-        helper.K(),
-        alpha_attr_,
-        a_data + helper.LeftOffsets()[i],
-        b_data + helper.RightOffsets()[i],
-        0.0f,
-        y_data + helper.OutputOffsets()[i],
-        thread_pool);
+    data[i].BIsPacked = bool(packed_b_);
+    data[i].A = a_data + helper.LeftOffsets()[i];
+    data[i].lda = lda;
+    data[i].B = data[i].BIsPacked ? (float*)packed_b_.get() : b_data + helper.RightOffsets()[i];
+    data[i].ldb = ldb;
+    data[i].C = y_data + helper.OutputOffsets()[i];
+    data[i].ldc = N;
+    data[i].alpha = alpha_attr_;
+    data[i].beta = 0.0f;
   }
+  MlasGemmBatch(trans_a ? CblasTrans : CblasNoTrans, trans_b ? CblasTrans : CblasNoTrans,
+                M, N, K, data.data(), max_len, thread_pool);
 
   return Status::OK();
 }

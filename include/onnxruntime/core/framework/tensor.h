@@ -12,37 +12,13 @@
 #include "core/common/common.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor_shape.h"
+#include "core/framework/buffer_deleter.h"
 #include "onnxruntime_config.h"
 #include "core/framework/data_types.h"
 #include "core/framework/data_types_internal.h"
 
 namespace onnxruntime {
-// TODO: Do we need this class or is IAllocator::MakeUniquePtr sufficient/better
-class BufferDeleter {
- public:
-  BufferDeleter() : alloc_(nullptr) {}
-  BufferDeleter(AllocatorPtr alloc)
-      : alloc_(alloc) {}
 
-  void operator()(void* p) const {
-    if (alloc_)
-      alloc_->Free(p);
-  }
-
- private:
-  // TODO: we may need consider the lifetime of alloc carefully
-  // The alloc_ here is the allocator that used to allocate the buffer
-  // And need go with the unique_ptr together. If it is using our internal
-  // allocator, it is ok as our allocators are global managed. But if it
-  // is provide by user, user need to be very careful about it.
-  // A weak_ptr may be a choice to reduce the impact, but that require to
-  // change our current allocator mgr to use shared_ptr. Will revisit it
-  // later.
-  AllocatorPtr alloc_;
-};
-
-using BufferUniquePtr = std::unique_ptr<void, BufferDeleter>;
-using BufferNakedPtr = void*;
 //TODO:ensure dtype_!=nullptr
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -58,14 +34,23 @@ using BufferNakedPtr = void*;
 */
 class Tensor final {
  public:
+  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator) {
+    return std::make_unique<Tensor>(p_type, shape, allocator);
+  }
+  static std::unique_ptr<Tensor> Create(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc, ptrdiff_t offset = 0) {
+    return std::make_unique<Tensor>(p_type, shape, p_data, alloc, offset);
+  }
+
   Tensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
 
   /**
    * Create tensor with given type, shape, pre-allocated memory and allocator info.
    * This function won't check if the preallocated buffer(p_data) has enough room for the shape.
-   * \param data A preallocated buffer. Can be NULL if the shape is empty.
+   * \param p_type Data type of the tensor
+   * \param shape Shape of the tensor
+   * \param p_data A preallocated buffer. Can be NULL if the shape is empty.
    *              Tensor does not own the data and will not delete it
-   * \param alloc Where the buffer('data') was allocated from
+   * \param alloc Where the buffer('p_data') was allocated from
    * \param offset Offset in bytes to start of Tensor within p_data. 
    */
   Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, const OrtMemoryInfo& alloc,
@@ -76,6 +61,20 @@ class Tensor final {
    * However, this function will allocate the buffer for the shape, and do placement new if p_type is string tensor.
    */
   Tensor(MLDataType p_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator);
+
+  /**
+   * Create tensor with given type, shape, pre-allocated memory and allocator which will be used to free the pre-allocated memory.
+   * This function won't check if the preallocated buffer(p_data) has enough room for the shape.
+   * However, this function will de-allocate the buffer upon the tensor getting destructed.
+   * \param p_type Data type of the tensor
+   * \param shape Shape of the tensor
+   * \param p_data A preallocated buffer. Can be NULL if the shape is empty.
+   *              Tensor does not own the data and will not delete it
+   * \param deleter Allocator used to free the pre-allocated memory
+   * \param offset Offset in bytes to start of Tensor within p_data. 
+   */
+  Tensor(MLDataType p_type, const TensorShape& shape, void* p_data, std::shared_ptr<IAllocator> deleter,
+         ptrdiff_t offset = 0);
 
   ~Tensor();
 

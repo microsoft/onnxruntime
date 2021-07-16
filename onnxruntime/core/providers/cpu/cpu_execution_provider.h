@@ -40,7 +40,7 @@ class CPUExecutionProvider : public IExecutionProvider {
     create_arena = false;
 #endif
 
-    AllocatorCreationInfo device_info{[](int) { return onnxruntime::make_unique<TAllocator>(); },
+    AllocatorCreationInfo device_info{[](int) { return std::make_unique<TAllocator>(); },
                                       0, create_arena};
 
     InsertAllocator(CreateAllocator(device_info));

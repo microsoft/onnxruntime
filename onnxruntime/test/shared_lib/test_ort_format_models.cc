@@ -8,7 +8,6 @@
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
 #include "core/common/common.h"
-#include "core/common/make_unique.h"
 #include "core/graph/constants.h"
 #include "core/session/onnxruntime_cxx_api.h"
 

@@ -7,6 +7,7 @@
 #include "core/util/math_cpuonly.h"
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
+#include "core/providers/common.h"
 #include "core/mlas/inc/mlas.h"
 
 using onnxruntime::concurrency::ThreadPool;
@@ -71,6 +72,12 @@ void PrepareMask(const int32_t* mask_index,
 
   // mask_data has been filled with 0, and its shape is BxSxS*
   T* p_mask = mask_data;
+
+  // 4D mask in Megatron GPT2 is currently not support in CPU kernel
+  if (nullptr != mask_index_dims && mask_index_dims->size() == 4) {
+    ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "4D mask in attention cpu kernel is not supported");
+    return;
+  }
 
   // For 3D mask, convert values 0 to -10000.0, and 1 to 0.0, then apply unidirectional mask if any.
   if (nullptr != mask_index_dims && mask_index_dims->size() == 3) {

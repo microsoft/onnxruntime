@@ -45,11 +45,6 @@ steps:
     condition: ne('${{ parameters.BuildArch }}', 'x64')
 
   - powershell: |
-     Write-Host "##vso[task.setvariable variable=BuildFlags]$(BuildFlags) --use_dml"
-    displayName: Add DML flags
-    condition: or(eq('${{ parameters.BuildArch }}', 'x64'), eq('${{ parameters.BuildArch }}', 'x86'))
-
-  - powershell: |
      Write-Host "##vso[task.setvariable variable=BuildFlags]$(BuildFlags) --enable_wcos"
     displayName: Add OneCore flags
     condition: eq('${{ parameters.BuildForStore }}', 'false')
@@ -70,7 +65,7 @@ steps:
     displayName: 'Generate CMake Configuration'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests $(TelemetryOption) --ms_experimental --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --disable_rtti $(BuildFlags)'
+      arguments: '--build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests $(TelemetryOption) --ms_experimental --use_dml --use_winml --cmake_generator "Visual Studio 16 2019" --update --config RelWithDebInfo --enable_lto --disable_rtti $(BuildFlags)'
       workingDirectory: '$(Build.BinariesDirectory)'
 
   - ${{ if or(notIn(parameters['sln_platform'], 'Win32', 'x64'), eq(parameters.BuildForStore, 'true')) }}:

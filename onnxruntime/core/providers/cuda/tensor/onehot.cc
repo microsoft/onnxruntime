@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/tensor/onehot.h"
-#include "core/providers/cpu/tensor/onehot.h"
 
 using namespace onnxruntime::common;
 
@@ -17,9 +16,9 @@ namespace cuda {
       11,                                                                  \
       in_type##_##out_type##_##depth_type,                                 \
       kCudaExecutionProvider,                                              \
-      KernelDefBuilder()                                                   \
-          .InputMemoryType<OrtMemTypeCPUInput>(1) /* Keep depth in CPU */  \
-          .InputMemoryType<OrtMemTypeCPUInput>(2) /* Keep values in CPU */ \
+      (*KernelDefBuilder::Create())                                        \
+          .InputMemoryType(OrtMemTypeCPUInput, 1) /* Keep depth in CPU */  \
+          .InputMemoryType(OrtMemTypeCPUInput, 2) /* Keep values in CPU */ \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<in_type>())    \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<depth_type>()) \
           .TypeConstraint("T3", DataTypeImpl::GetTensorType<out_type>()),  \

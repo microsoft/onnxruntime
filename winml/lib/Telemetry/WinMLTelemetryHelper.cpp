@@ -147,6 +147,22 @@ void WinMLTelemetryHelper::SetIntraOpNumThreadsOverride(
       TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
 }
 
+void WinMLTelemetryHelper::SetIntraOpThreadSpinning(
+    bool allow_spinning) {
+    if (!telemetry_enabled_) 
+      return;
+    WinMLTraceLoggingWrite(
+        provider_,
+        "SetIntraOpThreadSpinning",
+        TraceLoggingKeyword(WINML_PROVIDER_KEYWORD_DEFAULT),
+        TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+        //Telemetry info
+        TraceLoggingUInt8(WINML_TLM_NATIVE_API_INTRAOP_THREAD_SPINNING_VERSION, "schemaVersion"),
+        // thread spinning info
+        TraceLoggingBoolean(allow_spinning, "threadSpinningAllowed"),
+        TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES));
+}
+
 void WinMLTelemetryHelper::SetNamedDimensionOverride(
     winrt::hstring name, uint32_t value) {
   if (!telemetry_enabled_)

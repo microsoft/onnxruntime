@@ -4,8 +4,6 @@
 #include "quantize_linear.h"
 #include "quantize_linear.cuh"
 
-#include "core/providers/common.h"
-
 namespace onnxruntime {
 namespace cuda {
 
@@ -72,7 +70,7 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
       10,                                                             \
       T,                                                              \
       kCudaExecutionProvider,                                         \
-      KernelDefBuilder()                                              \
+      (*KernelDefBuilder::Create())                                   \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
       QuantizeLinear<T, float>);
@@ -88,7 +86,7 @@ REGISTER_Q_KERNEL_TYPED(uint8_t)
       10,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
-      KernelDefBuilder()                                          \
+      (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       DequantizeLinear<T, float>);
 

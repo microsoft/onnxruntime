@@ -42,7 +42,7 @@ TEST(OptimizerTest, Basic) {
 
   for (int i = 0; i < input_num; i++) {
     string name("input_" + std::to_string(i));
-    inputs[i] = onnxruntime::make_unique<NodeArg>(name, &tensor_int32);
+    inputs[i] = std::make_unique<NodeArg>(name, &tensor_int32);
 
     initializer_tensor[i].set_name(inputs[i]->Name());
     initializer_tensor[i].add_dims(tensor_dim);
@@ -52,7 +52,7 @@ TEST(OptimizerTest, Basic) {
     }
     initialized_tensor_set[name] = &initializer_tensor[i];
   }
-  outputs[0] = onnxruntime::make_unique<NodeArg>("out", &tensor_int32);
+  outputs[0] = std::make_unique<NodeArg>("out", &tensor_int32);
 
   std::vector<NodeArg*> tmp_inputs{inputs[0].get(), inputs[1].get()};
   std::vector<NodeArg*> tmp_outputs{outputs[0].get()};
@@ -65,7 +65,7 @@ TEST(OptimizerTest, Basic) {
   }
 
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
-      onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+      std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set, graph.ModelPath(), *cpu_execution_provider.get());
   std::vector<int> fetch_mlvalue_idxs{info.GetMLValueIndex("out")};
   OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);

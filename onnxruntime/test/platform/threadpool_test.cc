@@ -5,8 +5,6 @@
 #include "core/platform/EigenNonBlockingThreadPool.h"
 #include "core/platform/ort_mutex.h"
 
-#include <core/common/make_unique.h>
-
 #include "gtest/gtest.h"
 #include <algorithm>
 #include <memory>
@@ -31,7 +29,7 @@ struct TestData {
 // the function should be called exactly once for each element.
 
 std::unique_ptr<TestData> CreateTestData(int num) {
-  return onnxruntime::make_unique<TestData>(num);
+  return std::make_unique<TestData>(num);
 }
 
 void IncrementElement(TestData& test_data, ptrdiff_t i) {
@@ -50,7 +48,7 @@ void ValidateTestData(TestData& test_data, int expected=1) {
 // static methods and should operate across all of these cases.
 void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::function<void(ThreadPool*)>& test_body) {
   if (num_threads > 0) {
-    auto tp = onnxruntime::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr,
+    auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr,
                                                    num_threads, true);
     test_body(tp.get());
   } else {
@@ -157,7 +155,7 @@ void TestPoolCreation(const std::string&, int iter) {
   constexpr std::ptrdiff_t per_iter = 1024;
   constexpr int num_threads = 4;
   for (auto i = 0; i < iter; i++) {
-    auto tp = onnxruntime::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
+    auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(),
                                                    onnxruntime::ThreadOptions(),
                                                    nullptr,
                                                    num_threads,
@@ -170,6 +168,7 @@ void TestPoolCreation(const std::string&, int iter) {
   ASSERT_EQ(ctr, iter * per_iter);
 }
 
+// Test multi-loop parallel sections, with a series of fixed-size loops
 void TestMultiLoopSections(const std::string& name, int num_threads, int num_loops) {
   for (int rep = 0; rep < 5; rep++) {
     const int num_tasks = 1024;
@@ -185,6 +184,35 @@ void TestMultiLoopSections(const std::string& name, int num_threads, int num_loo
 	}
       });
     ValidateTestData(*test_data, num_loops);
+  }
+}
+
+// Test multi-loop parallel sections, with alternating larger and
+// smaller loops.  This helps test that we can dispatch work to
+// differing numbers of threads over time.
+void TestStagedMultiLoopSections(const std::string& name, int num_threads, int num_loops) {
+  for (int rep = 0; rep < 5; rep++) {
+    auto test_data1 = CreateTestData(num_threads/2);
+    auto test_data2 = CreateTestData(num_threads);
+    CreateThreadPoolAndTest(name, num_threads, [&](ThreadPool* tp) {
+	ThreadPool::ParallelSection ps(tp);
+	for (int l = 0; l < num_loops; l++) {
+          // Loop needing few threads
+          ThreadPool::TrySimpleParallelFor(tp,
+                                           num_threads / 2,
+                                           [&](std::ptrdiff_t i) {
+                                             IncrementElement(*test_data1, i);
+                                           });
+          // Loop needing more threads, forcing growth of set of threads in use
+          ThreadPool::TrySimpleParallelFor(tp,
+                                           num_threads,
+                                           [&](std::ptrdiff_t i) {
+                                             IncrementElement(*test_data2, i);
+                                           });
+	}
+      });
+    ValidateTestData(*test_data1, num_loops);
+    ValidateTestData(*test_data2, num_loops);
   }
 }
 
@@ -353,6 +381,10 @@ TEST(ThreadPoolTest, TestMultiLoopSections_1Thread_1Loop) {
   TestMultiLoopSections("TestMultiLoopSections_1Thread_1Loop", 1, 1);
 }
 
+TEST(ThreadPoolTest, TestMultiLoopSections_1Thread_2Loop) {
+  TestMultiLoopSections("TestMultiLoopSections_1Thread_2Loop", 1, 2);
+}
+
 TEST(ThreadPoolTest, TestMultiLoopSections_2Thread_0Loop) {
   TestMultiLoopSections("TestMultiLoopSections_2Thread_0Loop", 2, 0);
 }
@@ -381,13 +413,26 @@ TEST(ThreadPoolTest, TestMultiLoopSections_4Thread_100Loop) {
   TestMultiLoopSections("TestMultiLoopSections_4Thread_100Loop", 4, 100);
 }
 
+TEST(ThreadPoolTest, TestStagedMultiLoopSections_4Thread_1Loop) {
+  TestStagedMultiLoopSections("TestStagedMultiLoopSections_4Thread_1Loop", 4, 1);
+}
+
+TEST(ThreadPoolTest, TestStagedMultiLoopSections_4Thread_10Loop) {
+  TestStagedMultiLoopSections("TestStagedMultiLoopSections_4Thread_10Loop", 4, 10);
+}
+
+TEST(ThreadPoolTest, TestStagedMultiLoopSections_4Thread_100Loop) {
+  TestStagedMultiLoopSections("TestStagedMultiLoopSections_4Thread_100Loop", 4, 100);
+}
 #ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 6387)
 TEST(ThreadPoolTest, TestStackSize) {
   ThreadOptions to;
   // For ARM, x86 and x64 machines, the default stack size is 1 MB
   // We change it to a different value to see if the setting works
   to.stack_size = 8 * 1024 * 1024;
-  auto tp = onnxruntime::make_unique<ThreadPool>(&onnxruntime::Env::Default(), to, nullptr, 2, true);
+  auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), to, nullptr, 2, true);
   typedef void(WINAPI * FnGetCurrentThreadStackLimits)(_Out_ PULONG_PTR LowLimit, _Out_ PULONG_PTR HighLimit);
 
   Notification n;
@@ -408,6 +453,7 @@ TEST(ThreadPoolTest, TestStackSize) {
   if (has_thread_limit_info)
     ASSERT_EQ(high_limit - low_limit, to.stack_size);
 }
+#pragma warning(pop)
 #endif
 
 }  // namespace onnxruntime

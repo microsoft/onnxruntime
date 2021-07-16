@@ -109,7 +109,7 @@ void WriteDataToFile(FILE* fp, const std::vector<T>& test_data) {
 }
 
 std::unique_ptr<bool[]> BoolDataFromVector(const std::vector<bool>& test_data) {
-  auto arr = onnxruntime::make_unique<bool[]>(test_data.size());
+  auto arr = std::make_unique<bool[]>(test_data.size());
   std::copy(std::begin(test_data), std::end(test_data), arr.get());
   return arr;
 }
@@ -158,7 +158,7 @@ template <>
 void UnpackAndValidate<bool>(const TensorProto& tensor_proto, const Path& model_path,
                              const std::vector<bool>& test_data) {
   // Unpack tensor with external data
-  auto arr = onnxruntime::make_unique<bool[]>(test_data.size());
+  auto arr = std::make_unique<bool[]>(test_data.size());
   auto st = utils::UnpackTensor(tensor_proto, model_path, arr.get(), test_data.size());
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
 

@@ -1,0 +1,34 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "chrome",
+      "request": "attach",
+      "name": "Attach to Chrome",
+      "port": 9333,
+      "webRoot": "${workspaceFolder}",
+      "sourceMapPathOverrides": {
+        "webpack://ort/*": "${webRoot}/common/*",
+        "webpack:///*": "${webRoot}/web/*"
+      },
+      "sourceMaps": true,
+      "smartStep": true
+    },
+    {
+      "name": "Remote Browser via Webkit Adaptor",
+      "type": "chrome",
+      "request": "attach",
+      "port": 9000,
+      "webRoot": "${workspaceFolder}",
+      "sourceMapPathOverrides": {
+        "webpack://ort/*": "${webRoot}/common/*",
+        "webpack:///*": "${webRoot}/web/*"
+      },
+      "sourceMaps": true,
+      "smartStep": true
+    }
+  ]
+}

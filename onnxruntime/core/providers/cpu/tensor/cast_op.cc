@@ -96,7 +96,7 @@ CastToString(const SrcType& input, std::string& output) {
 
     if (required_buffer_size > buffer_span.size()) {
       // didn't get it all, allocate a bigger buffer and retry
-      dynamic_buffer = onnxruntime::make_unique<char[]>(required_buffer_size);
+      dynamic_buffer = std::make_unique<char[]>(required_buffer_size);
       buffer_span = gsl::make_span(dynamic_buffer.get(), required_buffer_size);
       snprintf_result = std::snprintf(buffer_span.data(), buffer_span.size(), format, value);
       ORT_ENFORCE(
@@ -317,12 +317,6 @@ Status Cast::Compute(OpKernelContext* context) const {
 
   return Status::OK();
 }
-
-const auto src_type_constraints = BuildKernelDefConstraintsFromTypeList<SrcTypes>();
-const auto dst_type_constraints = BuildKernelDefConstraintsFromTypeList<DstTypes>();
-const auto enabled_src_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>();
-const auto enabled_dst_type_constraints = BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>();
-
 }  // namespace
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -330,8 +324,8 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     6,
     12,
     KernelDefBuilder()
-        .TypeConstraint("T1", src_type_constraints, enabled_src_type_constraints)
-        .TypeConstraint("T2", dst_type_constraints, enabled_dst_type_constraints)
+        .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<SrcTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>())
+        .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<DstTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>())
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
     Cast);
 
@@ -339,8 +333,8 @@ ONNX_CPU_OPERATOR_KERNEL(
     Cast,
     13,
     KernelDefBuilder()
-        .TypeConstraint("T1", src_type_constraints, enabled_src_type_constraints)
-        .TypeConstraint("T2", dst_type_constraints, enabled_dst_type_constraints)
+        .TypeConstraint("T1", BuildKernelDefConstraintsFromTypeList<SrcTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledSrcTypes>())
+        .TypeConstraint("T2", BuildKernelDefConstraintsFromTypeList<DstTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledDstTypes>())
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
     Cast);
 

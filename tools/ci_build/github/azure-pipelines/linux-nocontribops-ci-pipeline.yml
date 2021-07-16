@@ -38,8 +38,7 @@ jobs:
               --parallel \
               --build_wheel \
               --enable_onnx_tests \
-              --disable_contrib_ops  --disable_ml_ops \
-              --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp37-cp37m/include/python3.7m PYTHON_LIBRARY=/usr/lib64/librt.so
+              --disable_contrib_ops  --disable_ml_ops
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishTestResults@2
