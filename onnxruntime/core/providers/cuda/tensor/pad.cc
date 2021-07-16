@@ -4,7 +4,6 @@
 #include "pad.h"
 #include "pad_impl.h"
 #include "core/providers/cpu/tensor/utils.h"
-#include <iostream>
 
 namespace onnxruntime {
 namespace cuda {
