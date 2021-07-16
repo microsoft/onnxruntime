@@ -66,6 +66,8 @@ void ComputeSkipLayerNorm(int64_t hidden_size,
 }
 
 // TODO(kreeger): This is mostly a vector dot product vs. a full matmul.
+// TODO(kreeger): change the var names of hidden_size and bias_size since those
+//                vary based on the matmul that is getting run.
 template <typename T>
 void ComputeMatMul(const int64_t hidden_size,
                    const int64_t bias_size,
@@ -79,6 +81,30 @@ void ComputeMatMul(const int64_t hidden_size,
       sum += a_data[j] * b_data[i + (bias_size * j)];
     }
     output_data[i] = sum;
+  }
+}
+
+template <typename T>
+void ComputeBiasGelu(const int64_t bias_size,
+                     const T* input_data,
+                     const T* bias_data,
+                     T* output_data) {
+  // TODO(kreeger): Handle bias_data == nullptr (FastGelu?)
+  // TODO(kreeger): Consider allocating buffer if bias_size is too big:
+  std::vector<T> temp;
+  temp.resize(bias_size);
+
+  for (int64_t i = 0; i < bias_size; ++i) {
+    T cur_value = input_data[i] + bias_data[i];
+    output_data[i] = cur_value * static_cast<T>(M_SQRT1_2);
+    temp[i] = cur_value * 0.5f;  // TODO(kreeger): const here.
+  }
+
+  // TODO(kreeger): what is this?
+  MlasComputeErf(output_data, output_data, bias_size);
+
+  for (int64_t i = 0; i < bias_size; ++i) {
+    output_data[i] = temp[i] * (output_data[i] + 1.0f);  // TODO(kreeger): const here.
   }
 }
 
@@ -147,11 +173,10 @@ Status EmbedLayerNormBiasGelu<T>::Compute(OpKernelContext* context) const {
 
   // Scratch buffer for the SkipLayerNorm output:
   auto skip_layer_norm_output_data =
-      alloc->Alloc(SafeInt<size_t>(output_shape.Size()));
+      alloc->Alloc(SafeInt<size_t>(output_shape.Size() * sizeof(T)));
   BufferUniquePtr skip_layer_norm_output_buffer(skip_layer_norm_output_data,
                                                 BufferDeleter(alloc));
   T* skip_layer_norm_output = reinterpret_cast<T*>(skip_layer_norm_output_data);
-
 
   T* output_data = output->MutableData<T>();
 
@@ -165,13 +190,20 @@ Status EmbedLayerNormBiasGelu<T>::Compute(OpKernelContext* context) const {
 
   // Scratch buffer for matmul1 output:
   auto matmul_1_output_data =
-      alloc->Alloc(SafeInt<size_t>(helper_1.OutputShape().Size()));
+      alloc->Alloc(SafeInt<size_t>(helper_1.OutputShape().Size() * sizeof(T)));
   BufferUniquePtr matmul_1_output_buffer(matmul_1_output_data,
                                          BufferDeleter(alloc));
   T* matmul_1_output = reinterpret_cast<T*>(matmul_1_output_data);
 
   // BiasGelu shape is the output of matmul #1:
+  const T* bias_gelu_bias_data = bias_gelu_bias->Data<T>();
+
   auto bias_gelu_shape = helper_1.OutputShape();
+  auto bias_gelu_output_data =
+      alloc->Alloc(SafeInt<size_t>(bias_gelu_shape.Size() * sizeof(T)));
+  BufferUniquePtr bias_gelu_output_buffer(bias_gelu_output_data,
+                                          BufferDeleter(alloc));
+  T* bias_gelu_output = reinterpret_cast<T*>(bias_gelu_output_data);
 
   // Determine shape and size for matmul #2:
   MatMulComputeHelper helper_2;
@@ -179,46 +211,49 @@ Status EmbedLayerNormBiasGelu<T>::Compute(OpKernelContext* context) const {
                                        matmul_2_b->Shape(),
                                        /*transa=*/false,
                                        /*transb=*/false));
-
+  const T* matmul_2_b_data = matmul_2_b->Data<T>();
 
   int64_t task_count = batch_size * sequence_length;
   concurrency::ThreadPool::TryBatchParallelFor(
       context->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
       [&](ptrdiff_t task_idx) {
-
         // TODO(kreeger): Add some ASCII art to help with the breakup of this
         //                work as it filters through the graph.
-        
+
+        // First, calculate the SkipLayerNorm output for the current task
+        ComputeSkipLayerNorm(hidden_size,
+                             epsilon(),
+                             input_data + (task_idx * hidden_size),
+                             skip_data + (task_idx * hidden_size),
+                             gamma_data,
+                             beta_data,
+                             bias_data,
+                             skip_layer_norm_output + (task_idx * hidden_size));
+
         // Now perform MatMul on the 1 row that was calculated in the call to
         // ComputeSkipLayerNorm():
-        if (task_idx == 0) {
-          ComputeSkipLayerNorm(hidden_size,
-                               epsilon(),
-                               input_data + (task_idx * hidden_size),
-                               skip_data + (task_idx * hidden_size),
-                               gamma_data,
-                               beta_data,
-                               bias_data,
-                               skip_layer_norm_output + (task_idx * hidden_size));
+        // TODO(kreeger): rename this var:
+        size_t offset = task_idx * bias_size;
+        ComputeMatMul(hidden_size,
+                      bias_size,
+                      skip_layer_norm_output + (task_idx * hidden_size),
+                      matmul_1_b_data,
+                      matmul_1_output + offset);
 
-          // TODO(kreeger): Need to calculate the output offset at each point
-          //                in the last output. Probably should do this before
-          //                trying to fix up biasgelu.
-          ComputeMatMul(hidden_size,
-                        bias_size,
-                        skip_layer_norm_output + (task_idx * hidden_size),
-                        matmul_1_b_data,
-                        matmul_1_output);   // TODO what is the offset here???
-        }
+        // Use the row calculated in the MatMul #1 and pass through for BiasGelu
+        // calculation:
+        ComputeBiasGelu(bias_size,
+                        matmul_1_output + offset,
+                        bias_gelu_bias_data,
+                        bias_gelu_output + offset);
 
-        // Now perform BiasGelu
-
-        //
-        // TODO(kreeger): LEFT OFF RIGHT HERE. NEED TO STITCH BIAS GELU RESULTS
-        //                HERE.
-        //
-
-        // Now perform MatMul
+        // Finally, perform one more MatMul on the row calculated at the start
+        // of this batch:
+        ComputeMatMul(bias_size,
+                      hidden_size,
+                      bias_gelu_output + offset,
+                      matmul_2_b_data,
+                      output_data + (task_idx * hidden_size));
       },
       0);
 
