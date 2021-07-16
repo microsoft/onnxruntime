@@ -2,7 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
-
+import onnxruntime
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
 from onnxruntime.capi import _pybind_state as C
 
@@ -97,3 +97,38 @@ def _create_iobinding(io_binding, inputs, model, device):
 
     for value_info in model.graph.output:
         io_binding.bind_output(value_info.name, device.type, device_id=get_device_index(device))
+
+
+def get_session_config(device: torch.device, use_external_gpu_allocator: bool = True,
+                       is_rocm_pytorch: bool = False, loglevel: int = 2):
+    """Creates and returns the session configuration to be used for the ExecutionAgent"""
+    providers = None
+    provider_options = None
+    if device.type == 'cuda':
+        # Configure the InferenceSessions to use the specific GPU on which the model is placed.
+        providers = (["ROCMExecutionProvider"] if is_rocm_pytorch else ["CUDAExecutionProvider"])
+        providers.append("CPUExecutionProvider")
+        if use_external_gpu_allocator and torch.cuda.is_available():
+            # CPP extension to get torch GPU allocator's alloc and free function addresses
+            from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_gpu_allocator
+            torch_alloc = torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
+            torch_free = torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
+            provider_options = [{"device_id": str(device.index),
+                                 "gpu_external_alloc": str(torch_alloc),
+                                 "gpu_external_free": str(torch_free)}, {}]
+        else:
+            provider_options = [{"device_id": str(device.index)}, {}]
+    elif device.type == 'cpu':
+        providers = ["CPUExecutionProvider"]
+        provider_options = [{}]
+
+    session_options = onnxruntime.SessionOptions()
+    session_options.enable_mem_pattern = False
+    session_options.enable_mem_reuse = False
+    session_options.use_deterministic_compute = False
+    # default to PRIORITY_BASED execution order
+    session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
+    # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
+    session_options.log_severity_level = int(loglevel)
+
+    return session_options, providers, provider_options
