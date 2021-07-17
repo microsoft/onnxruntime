@@ -180,8 +180,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
   # it is better to not keep a daemon running
   set(GRADLE_ARGS ${GRADLE_ARGS} --no-daemon)
 endif()
-string(JOIN " " GRADLE_EP_FLAGS ${ORT_PROVIDER_FLAGS})
-set(GRADLE_ARGS ${GRADLE_ARGS} ${GRADLE_EP_FLAGS})
+set(GRADLE_ARGS ${GRADLE_ARGS} ${ORT_PROVIDER_FLAGS})
 
 message(STATUS "GRADLE_ARGS: ${GRADLE_ARGS}")
 add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} ${GRADLE_ARGS} WORKING_DIRECTORY ${JAVA_ROOT})
