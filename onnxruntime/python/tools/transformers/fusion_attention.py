@@ -12,6 +12,7 @@ from onnx import helper, numpy_helper, TensorProto, NodeProto
 from onnx_model import OnnxModel
 from fusion_base import Fusion
 from fusion_utils import FusionUtils, NumpyHelper
+from shape_infer_helper import SymbolicShapeInferenceHelper, get_shape_from_type_proto
 
 logger = getLogger(__name__)
 
@@ -125,6 +126,26 @@ class FusionAttention(Fusion):
             logger.warn("--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value.")
 
         return num_heads, hidden_size
+
+    def get_add_qk_str(self, add_qk: NodeProto):
+        # Note: Does not work for dynamic models, reshape node shape inference would fail with more than 2 dims being -1
+        # inputs_ids has to be the name of input, this may be changes if needed
+        inputs_ids = self.model.find_graph_input("input_ids")
+        if inputs_ids == None:
+            logger.debug("no input with name \"input_ids\"")
+            return None
+        batch_size, seq_len = get_shape_from_type_proto(inputs_ids.type)
+
+        if batch_size < 0 or seq_len < 0:
+            logger.debug(f"batch_size: {batch_size} and seq_len {seq_len} cannot be -ve")
+            return None
+        shape_infer_helper = SymbolicShapeInferenceHelper(self.model.model)
+        shape_infer_helper.infer({"batch_size": batch_size, "seq_len": seq_len})
+        if shape_infer_helper.get_edge_shape(add_qk.input[0]) != shape_infer_helper.get_edge_shape(add_qk.input[1]):
+            logger.debug(f"the shape of two inputs of {add_qk} is not same")
+            return None
+
+        return add_qk.input[1]
 
     def create_attention_node(self, mask_index: str, q_matmul: NodeProto, k_matmul: NodeProto, v_matmul: NodeProto,
                               q_add: NodeProto, k_add: NodeProto, v_add: NodeProto, num_heads: int, hidden_size: int,
@@ -408,7 +429,10 @@ class FusionAttention(Fusion):
                 where_qk, [(['Cast', 'Equal', 'Unsqueeze', 'Unsqueeze'], [0, 0, 0, 0]),
                            (['Equal', 'Unsqueeze', 'Unsqueeze'], [0, 0, 0])], output_name_to_node)
             if add_qk is not None:
-                add_qk_str = add_qk.input[1]
+                add_qk_str = self.get_add_qk_str(add_qk)
+                if add_qk_str is None:
+                    logger.debug(f"fuse_attention: failed to verify shape inference of {add_qk}")
+                    return
         else:
             _, mask_nodes, _ = self.model.match_parent_paths(
                 add_qk, [(['Mul', 'Sub', 'Cast', 'Unsqueeze', 'Unsqueeze'], [None, 0, 1, 0, 0]),
