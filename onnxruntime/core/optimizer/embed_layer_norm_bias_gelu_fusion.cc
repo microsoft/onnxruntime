@@ -99,9 +99,10 @@ Status EmbedLayerNormBiasGeluFusion::ApplyImpl(
         /*attributes=*/nullptr,
         /*domain=*/kMSDomain);
 
-    // TODO - stick in attributes here. They are not presently in the graph.
+    new_node.SetExecutionProviderType(
+        skip_layer_norm_node.GetExecutionProviderType());
 
-    // TODO - note that EP should be only CPU.
+    // TODO - stick in attributes here. They are not presently in the graph.
 
     std::vector<std::reference_wrapper<Node>> nodes_to_remove;
     nodes_to_remove.push_back(skip_layer_norm_node);
@@ -109,7 +110,19 @@ Status EmbedLayerNormBiasGeluFusion::ApplyImpl(
     nodes_to_remove.push_back(bias_gelu_child);
     nodes_to_remove.push_back(matmul_child_2);
 
-    graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, new_node);
+    //
+    //
+    // TODO LEFT OFF RIGHT HERE - I THINK I NEED TO MAKE THE OUTPUT NODE FROM
+    //                            MATMUL MARKED AS AN INPUT NOW!
+    //
+    //
+
+    // NOTE: this does not work as well?!!
+    for (const auto& node : nodes_to_remove) {
+      graph_utils::RemoveNodeOutputEdges(graph, node);
+      graph.RemoveNode(node.get().Index());
+    }
+    //graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, new_node);
     
     modified = true;
   }
