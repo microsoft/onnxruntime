@@ -112,6 +112,9 @@ class Profiler {
   void AddEpProfilers(std::unique_ptr<EpProfiler> ep_profiler) {
     if (ep_profiler) {
       ep_profilers_.push_back(std::move(ep_profiler));
+      if (enabled_) {
+        ep_profilers_.back()->StartProfiling();
+      }
     }
   }
 
