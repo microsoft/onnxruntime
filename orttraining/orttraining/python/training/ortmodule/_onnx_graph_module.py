@@ -1,13 +1,22 @@
-from typing import Dict, Iterator, Optional, Sequence, Tuple, Union
+from functools import lru_cache
+from typing import Sequence, Tuple
 
 from onnx import ModelProto
 import torch
 
-from onnxruntime import SessionOptions
 from ._execution_agent import InferenceAgent, TrainingAgent
 from ._io import _combine_input_buffers_initializers, _InputInfo
 from ._ort_module_function_factory import ort_module_function_factory
-from ._utils import get_session_config
+from ._utils import get_device_from_module, get_session_config
+
+def _encode_param_name(name: str):
+    """ Encode a parameter name because torch doesn't like '.' in parameter names """
+    return name.replace(".", "%")
+
+def _decode_param_name(name: str):
+    """ Decode a parameter name """
+    return name.replace("%", ".")
+
 
 class OnnxGraphModule(torch.nn.Module):
     """Wraps inference / training onnx models and acts as a torch.nn.Module
@@ -23,13 +32,12 @@ class OnnxGraphModule(torch.nn.Module):
         module_output_indices_requires_save_for_backward: Sequence[int] = (),
     ):
         super().__init__()
-        self._device = torch.device("cpu")
-        session_config = get_session_config(self._device)
-        self._inference_agent = InferenceAgent(inference_model, self._device, **session_config._asdict())
-        self._training_agent = TrainingAgent(training_model, self._device, **session_config._asdict())
+        self._inference_model = inference_model
+        self._training_model = training_model
         self._user_input_names = user_input_names
         self._require_grad_names = require_grad_names
-        self._named_parameters = named_parameters
+        for name, param in named_parameters:
+            self.register_parameter(_encode_param_name(name), param)
         self._initializer_names_to_train = initializer_names_to_train
         self._module_output_indices_requires_save_for_backward = module_output_indices_requires_save_for_backward
         self._train = False
@@ -44,6 +52,18 @@ class OnnxGraphModule(torch.nn.Module):
             keyword_names=[]
         )
 
+    @lru_cache(maxsize=1)
+    def inference_agent(self, device: torch.device):
+        print("OnnxGraphModule: (re)-creating an InferenceAgent...")
+        session_config = get_session_config(device)
+        return InferenceAgent(self._inference_model, device, **session_config._asdict())
+
+    @lru_cache(maxsize=1)
+    def training_agent(self, device: torch.device):
+        print("OnnxGraphModule: (re)-creating a TrainingAgent...")
+        session_config = get_session_config(device)
+        return TrainingAgent(self._training_model, device, **session_config._asdict())
+
     def train(self, mode: bool = True):
         self._train = mode
         return self
@@ -52,27 +72,12 @@ class OnnxGraphModule(torch.nn.Module):
         self._train = False
         return self
 
-    def to(self, device: torch.device): # pylint: disable=arguments-differ
-        assert isinstance(device, torch.device), "Currently the only operation supported is device movement."
-        if self._device == device:
-            # Nothing to do
-            return self
-        super().to(device)
-        self._device = device
-        session_config = get_session_config(self._device)
-        self._inference_agent = InferenceAgent(self._inference_agent._onnx_model, device, **session_config._asdict())
-        self._training_agent = TrainingAgent(self._training_agent._onnx_model, device, **session_config._asdict())
-        return self
-
-    def parameters(self, _recurse: bool = True) -> Iterator[torch.Tensor]:
-        return (param for _, param in self._named_parameters)
-
-    def named_parameters(self, prefix: str = "", _recurse: bool = True) -> Iterator[Tuple[str, torch.Tensor]]:
-        return ((f"{prefix}{name}", param) for name, param in self._named_parameters)
-
     def forward(self, *args):
         """Performs forward computation
         """
+        # Note that device is a property of a tensor not of a module.
+        # to() method may have changed the device in between forward calls.
+        device = get_device_from_module(self)
         # TODO: Can we allow kwargs?
         inputs = _combine_input_buffers_initializers(
             self.parameters(),
@@ -81,21 +86,21 @@ class OnnxGraphModule(torch.nn.Module):
             [], # TODO: support buffers (named_buffers())
             args,
             kwargs={},
-            device=self._device
+            device=device
         )
-        if self._train:        
+        if self._train:
             # Create a torch.autograd.Function
             _ORTModuleFunction = ort_module_function_factory(
-                self._training_agent,
+                self.training_agent(device),
                 self._user_input_names,
                 self._require_grad_names,
-                [name for name, _ in self.named_parameters()],
+                [_decode_param_name(name) for name, _ in self.named_parameters()],
                 self._initializer_names_to_train,
                 self._module_output_indices_requires_save_for_backward
             )
             outputs = _ORTModuleFunction.apply(*inputs)
         else:
-            outputs, _ = self._inference_agent.forward(*inputs)
+            outputs, _ = self.inference_agent(device).forward(*inputs)
 
         # Outputs is a sequence of tensors. Handle the special case of
         # single tensor return
