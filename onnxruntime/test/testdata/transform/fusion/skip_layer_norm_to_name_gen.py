@@ -25,7 +25,7 @@ def generate_nodes():
                          domain="com.microsoft"),
         helper.make_node('MatMul', ['bias_gelu_1_output', 'matmul_2_b'], ['matmul_2_output']),
         helper.make_node('SkipLayerNormalization',
-                         ['sln_2_input', 'matmul_2_output', 'sln_2_gamma', 'sln_2_beta', 'sln_2_bias'],
+                         ['sln_1_output', 'matmul_2_output', 'sln_2_gamma', 'sln_2_beta', 'sln_2_bias'],
                          ['sln_2_output'],
                          domain="com.microsoft",
                          **kwargs),
@@ -68,8 +68,8 @@ def generate_model(model_name):
                                           [batch_size, sequence_size, something_something]),
             helper.make_tensor_value_info('sln_1_skip', TensorProto.FLOAT,
                                           [batch_size, sequence_size, something_something]),
-            helper.make_tensor_value_info('sln_2_input', TensorProto.FLOAT,
-                                          [batch_size, sequence_size, something_something])
+            # helper.make_tensor_value_info('sln_2_input', TensorProto.FLOAT,
+            #                               [batch_size, sequence_size, something_something])
         ],
         [  # outputs
             helper.make_tensor_value_info('sln_2_output', TensorProto.FLOAT,
