@@ -11,7 +11,7 @@ namespace test {
 
 namespace {
 
-constexpr float kEpsilon =  1e-12f;
+constexpr float kEpsilon = 1e-12f;
 
 class OpData {
  public:
@@ -28,6 +28,7 @@ class OpData {
       const std::vector<float>& matmul_1_b_data,
       const std::vector<float>& bias_gelu_bias_data,
       const std::vector<float>& matmul_2_b_data,
+      const std::vector<float>& sln_output_data,
       const std::vector<float>& output_data)
       : batch_size(batch_size)
       , sequence_length(sequence_length)
@@ -41,6 +42,7 @@ class OpData {
       , matmul_1_b_data(matmul_1_b_data)
       , bias_gelu_bias_data(bias_gelu_bias_data)
       , matmul_2_b_data(matmul_2_b_data)
+      , sln_output_data(sln_output_data)
       , output_data(output_data) {}
 
   OpData() = delete;
@@ -58,6 +60,7 @@ class OpData {
   const std::vector<float>& matmul_1_b_data;
   const std::vector<float>& bias_gelu_bias_data;
   const std::vector<float>& matmul_2_b_data;
+  const std::vector<float>& sln_output_data;
   const std::vector<float>& output_data;
 };
 
@@ -97,7 +100,10 @@ void TestInvokeOp(const OpData& data) {
                          matmul_2_b_dims,
                          data.matmul_2_b_data,
                          /*is_initializer=*/true);
+
+  tester.AddOutput<float>("sln_output", output_dims, data.sln_output_data);
   tester.AddOutput<float>("output", output_dims, data.output_data);
+
   tester.AddAttribute("epsilon", kEpsilon);
 
   tester.Run();
@@ -191,6 +197,17 @@ TEST(EmbedLayerNormBiasGelu, ShouldWork) {
       0.166295f, 0.744470f, 0.210401f, 0.175204f,
   };
 
+  const std::vector<float> output_sln_data = {
+      0.786918f, 1.702514f, 0.401460f, 0.665608f,
+      1.247161f, 0.849697f, 1.429863f, 0.558395f,
+      0.299163f, 1.069245f, 1.773361f, 0.614356f,
+      0.013958f, 0.266809f, 2.025405f, 0.815123f,
+      -0.400726f, 1.348580f, 1.486918f, 0.746819f,
+      -0.244618f, 1.645864f, 0.528844f, 0.855335f,
+      0.192687f, 1.213589f, 1.672494f, 0.621827f,
+      -0.232022f, 0.541804f, 1.979367f, 0.805291f,
+  };
+
   const std::vector<float> output_data = {
       17.5914f, 16.4445f, 15.9567f, 18.5582f,
       17.5164f, 16.6691f, 16.0294f, 18.271f,
@@ -215,6 +232,7 @@ TEST(EmbedLayerNormBiasGelu, ShouldWork) {
               matmul_1_b_data,
               bias_gelu_bias_data,
               matmul_2_b_data,
+              output_sln_data,
               output_data);
 
   TestInvokeOp(data);

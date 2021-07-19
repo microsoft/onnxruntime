@@ -3317,12 +3317,6 @@ TEST_F(GraphTransformationTests, EmbedLayerNormBiasGeluFusion1) {
   ASSERT_TRUE(op_to_count["BiasGelu"] == 0);
   // Preserve the SkipLayerNorm layer without a matching subgraph:
   ASSERT_TRUE(op_to_count["com.microsoft.SkipLayerNormalization"] == 1);
-
-  //
-  // TODO(kreeger): LEFT OFF RIGHT HERE. THIS UNIT TEST WILL CATCH THE EXCEPTION!
-  //
-
-  //Model::Save(*p_model.get(), "sln_embed_all.onnx");
 }
 
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat1) {
