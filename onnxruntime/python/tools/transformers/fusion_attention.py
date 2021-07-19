@@ -132,7 +132,14 @@ class FusionAttention(Fusion):
         if shape_infer is None:
             return
 
-        if shape_infer.get_edge_shape(add_qk.input[0]) != shape_infer.get_edge_shape(add_qk.input[1]):
+        input_0_shape = shape_infer.get_edge_shape(add_qk.input[0])
+        input_1_shape = shape_infer.get_edge_shape(add_qk.input[1])
+
+        if input_0_shape is None or input_1_shape is None:
+            logger.debug(f"one of the inputs of {add_qk} is None")
+            return None
+
+        if input_0_shape != input_1_shape:
             logger.debug(f"the shape of two inputs of {add_qk} is not same")
             return None
 
