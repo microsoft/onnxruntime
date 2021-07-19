@@ -103,6 +103,7 @@ class DnnlPoolNodeCapability : public DnnlDefaultNodeCapability {
  private:
   bool IsAttributeSupported(const Node* node) const;
   bool IsDimensionSupported(const Node* node) const;
+  bool IsMaxPoolIndicesSupported(const Node* node) const;
 };
 
 /**

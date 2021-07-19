@@ -1147,7 +1147,7 @@ TEST(GradientCheckerTest, ConcatTrainingGrad) { /*also test w/o shape inferencin
   TestConcatOpGrad("ConcatTraining", kMSDomain, 1, true);
 }
 
-TEST(GradientCheckerTest, AveragePoolGrad) {
+void AveragepoolGradientCheckerTest(std::vector<std::unique_ptr<IExecutionProvider>>* execution_provider) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{"AveragePool"};
@@ -1156,7 +1156,10 @@ TEST(GradientCheckerTest, AveragePoolGrad) {
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 3, 8}}, {{2, 3, 4}}, &max_error,
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{2}),
-                                           MakeAttribute("strides", std::vector<int64_t>{2})});
+                                           MakeAttribute("strides", std::vector<int64_t>{2})},
+                                          true, false,
+                                          execution_provider);
+
     EXPECT_IS_TINY(max_error);
   }
 
@@ -1164,7 +1167,10 @@ TEST(GradientCheckerTest, AveragePoolGrad) {
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 3, 8, 8}}, {{2, 3, 7, 7}}, &max_error,
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2}),
-                                           MakeAttribute("strides", std::vector<int64_t>{1, 1})});
+                                           MakeAttribute("strides", std::vector<int64_t>{1, 1})},
+                                          true, false,
+                                          execution_provider);
+
     EXPECT_IS_TINY(max_error);
   }
 
@@ -1172,7 +1178,10 @@ TEST(GradientCheckerTest, AveragePoolGrad) {
   {
     gradient_checker.ComputeGradientError(op_def, {{2, 3, 8, 8, 8}}, {{2, 3, 4, 4, 4}}, &max_error,
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2, 2}),
-                                           MakeAttribute("strides", std::vector<int64_t>{2, 2, 2})});
+                                           MakeAttribute("strides", std::vector<int64_t>{2, 2, 2})},
+                                          true, false,
+                                          execution_provider);
+
     EXPECT_IS_TINY(max_error);
   }
 
@@ -1181,7 +1190,10 @@ TEST(GradientCheckerTest, AveragePoolGrad) {
     gradient_checker.ComputeGradientError(op_def, {{1, 3, 8}}, {{1, 3, 3}}, &max_error,
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3}),
                                            MakeAttribute("strides", std::vector<int64_t>{3}),
-                                           MakeAttribute("pads", std::vector<int64_t>{1, 0})});
+                                           MakeAttribute("pads", std::vector<int64_t>{1, 0})},
+                                          true, false,
+                                          execution_provider);
+
     EXPECT_IS_TINY(max_error);
   }
 
@@ -1191,7 +1203,10 @@ TEST(GradientCheckerTest, AveragePoolGrad) {
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 2}),
                                            MakeAttribute("strides", std::vector<int64_t>{3, 2}),
                                            MakeAttribute("pads", std::vector<int64_t>{1, 0, 1, 0}),
-                                           MakeAttribute("count_include_pad", int64_t(1))});
+                                           MakeAttribute("count_include_pad", int64_t(1))},
+                                          true, false,
+                                          execution_provider);
+
     EXPECT_IS_TINY(max_error);
   }
 
@@ -1200,7 +1215,10 @@ TEST(GradientCheckerTest, AveragePoolGrad) {
     gradient_checker.ComputeGradientError(op_def, {{1, 3, 7, 7}}, {{1, 3, 3, 3}}, &max_error,
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3}),
                                            MakeAttribute("strides", std::vector<int64_t>{3, 3}),
-                                           MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1})});
+                                           MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1})},
+                                          true, false,
+                                          execution_provider);
+
     EXPECT_IS_TINY(max_error);
   }
 
@@ -1209,7 +1227,10 @@ TEST(GradientCheckerTest, AveragePoolGrad) {
     gradient_checker.ComputeGradientError(op_def, {{1, 3, 8, 8, 8}}, {{1, 3, 3, 3, 3}}, &max_error,
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3}),
                                            MakeAttribute("strides", std::vector<int64_t>{3, 3, 3}),
-                                           MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 0, 0, 0})});
+                                           MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 0, 0, 0})},
+                                          true, false,
+                                          execution_provider);
+
     EXPECT_IS_TINY(max_error);
   }
 
@@ -1219,10 +1240,24 @@ TEST(GradientCheckerTest, AveragePoolGrad) {
                                           {MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3}),
                                            MakeAttribute("strides", std::vector<int64_t>{3, 3, 3}),
                                            MakeAttribute("pads", std::vector<int64_t>{1, 1, 1, 1, 1, 1}),
-                                           MakeAttribute("count_include_pad", int64_t(1))});
+                                           MakeAttribute("count_include_pad", int64_t(1))},
+                                          true, false,
+                                          execution_provider);
+
     EXPECT_IS_TINY(max_error);
   }
 }
+
+TEST(GradientCheckerTest, AveragePoolGrad) {
+  AveragepoolGradientCheckerTest(nullptr);
+
+#ifdef USE_DNNL
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+  AveragepoolGradientCheckerTest(&execution_providers);
+#endif  //USE_DNNL
+}
+
 
 TEST(GradientCheckerTest, TransposeGrad) {
   float max_error;

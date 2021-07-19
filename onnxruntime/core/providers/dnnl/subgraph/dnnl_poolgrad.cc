@@ -1,83 +1,126 @@
 // Copyright(C) 2021 Intel Corporation
 // Licensed under the MIT License
 
-#include "dnnl_pool.h"
+#include "dnnl_poolgrad.h"
 #include "dnnl_subgraph.h"
 #include "dnnl_subgraph_primitive.h"
+#include <cassert>
 
 namespace onnxruntime {
 namespace ort_dnnl {
 
-DnnlPool::DnnlPool() {}
+DnnlPoolGrad::DnnlPoolGrad() {}
 
-void DnnlPool::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
+/*
+MaxPoolGrad: (According to OnnxRuntime discovered using code inspection and Onnx documentation)
+  Inputs:
+    0) dY - Gradient of output Y
+    1) indices - indices
+  Outputs:
+    0) dX - Gradient of Input
+
+                        +-----------------+
+    (dY) diff_dst       |                 |
+    ------------------->+                 | (dX ) diff_src
+    (indices) workspace | MaxPoolGrad     +----------------->
+    ------------------->+                 |
+                        |                 |
+                        +-----------------+
+
+  diff_dst  = DNNL_ARG_DIFF_DST
+  workspace = DNNL_ARG_WORKSPACE
+
+  diff_src  = DNNL_ARG_DIFF_SRC
+
+Attributes (auto_pad, ceil_mode, dilations, kernel_shap, pads, storage_order, and strides) should be the same as the forward pass Pool operator
+
+The indices must come from the forward pool operator the indices input from OnnxRuntime will be ignored. For that reason the
+forward and backward operators must run using dnnl endpoint.
+
+AveragePoolGrad:
+  Inputs:
+    0) dY - Gradient of output Y
+  Outputs:
+    0) dX - Gradient of Input
+
+                        +-----------------+
+    (dY) diff_dst       |                 | (dX ) diff_src
+    ------------------->+ AveragePoolGrad +----------------->
+                        |                 |
+                        +-----------------+
+
+  diff_dst  = DNNL_ARG_DIFF_DST
+  diff_src  = DNNL_ARG_DIFF_SRC
+
+Attributes (auto_pad, ceil_mode, count_include_pad, kernel_shap, pads, and strides) should be the same as the forward pass Pool operator
+*/
+void DnnlPoolGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dnnl_engine = sp.GetEngine();
 
-  auto pool_src_mem = sp.GetMemory(node.Input(IN_X).Name());
-  auto src_md = pool_src_mem.get_desc();
-  auto src_dims = pool_src_mem.get_desc().dims();
+  auto dy_mem = sp.GetMemory(node.Input(IN_DY).Name());
+  auto dy_md = dy_mem.get_desc();
+  auto dy_dims = dy_mem.get_desc().dims();
 
-  #ifdef ENABLE_TRAINING
-  auto prop_kind = dnnl::prop_kind::forward;
-#else
-  auto prop_kind = dnnl::prop_kind::forward_inference;
-#endif  // ENABLE_TRAINING
+  dnnl::memory indices_mem;
+  dnnl::memory::desc indices_md;
+  dnnl::memory::dims indices_dims;
+  bool maxpoolgrad_optype = (node.OpType() == "MaxPoolGrad");
+
+  if (maxpoolgrad_optype) {
+    indices_mem = sp.GetMemory(node.Input(IN_INDICES).Name());
+    indices_md = indices_mem.get_desc();
+    indices_dims = indices_mem.get_desc().dims();
+  }
+
+  auto dx_dims = node.Output(OUT_DX).Dim();
+  dnnl::memory::desc dx_md(dx_dims, node.Input(IN_DY).Type(), dnnl::memory::format_tag::any);
+
+  //Read the attributes
+  auto kernel_shape = GetKernelShape(node);
+  PoolShape shape = static_cast<PoolShape>(kernel_shape.size());
+  auto strides = GetStrides(node, shape);
+  auto padding = GetPadding(node, shape);
+  auto padding_left = GetPaddingLeft(padding);
+  auto padding_right = GetPaddingRight(padding);
 
   dnnl::algorithm algo = dnnl::algorithm::pooling_max;
-  if (node.OpType() == "AveragePool" || node.OpType() == "GlobalAveragePool") {
+  if (node.OpType() == "AveragePoolGrad" /*|| node.OpType() == "GlobalAveragePoolGrad"*/) {
     algo = dnnl::algorithm::pooling_avg_exclude_padding;
     if (GetCountIncludePadding(node) != 0) {
       algo = dnnl::algorithm::pooling_avg_include_padding;
     }
   }
 
-  auto kernel_shape = GetKernelShape(node);
-  PoolShape shape = static_cast<PoolShape>(kernel_shape.size());
-  auto strides = GetStrides(node, shape);
+  dnnl::pooling_forward::desc pool_forward_desc(dnnl::prop_kind::forward, algo,
+                                                dx_md, dy_md,
+                                                strides, kernel_shape,
+                                                padding_left, padding_right);
+  dnnl::pooling_forward::primitive_desc pool_forward_pd(pool_forward_desc, dnnl_engine);
 
-  auto dst_mem_dims = InferOutputDims(node, src_dims, kernel_shape, strides);
-  dnnl::memory::desc dst_md = dnnl::memory::desc(dst_mem_dims, node.Input(IN_X).Type(), dnnl::memory::format_tag::any);
+  dnnl::pooling_backward::desc pool_backword_desc(algo, dx_md, dy_md,
+                                                  strides, kernel_shape, padding_left, padding_right);
+  dnnl::pooling_backward::primitive_desc pool_backward_pd(pool_backword_desc, dnnl_engine, pool_forward_pd);
 
-  auto padding = InferPadding(node, src_dims, kernel_shape, strides);
-  auto padding_left = GetPaddingLeft(padding);
-  auto padding_right = GetPaddingRight(padding);
+  dnnl::pooling_backward pool_backward_op(pool_backward_pd);
 
-
-
-  auto pool_desc = dnnl::pooling_forward::desc(prop_kind, algo,
-                                               src_md, dst_md,
-                                               strides, kernel_shape,
-                                               padding_left, padding_right);
-
-  auto pool_pd = dnnl::pooling_forward::primitive_desc(pool_desc, dnnl_engine);
-
-  // If using GPU this will move the memory from the CPU to the GPU.
-  pool_src_mem = sp.GetMemoryAndReshape(node.Input(IN_X), pool_pd.src_desc(), dnnl_engine);
-  dnnl::memory pool_dst_mem = dnnl::memory(pool_pd.dst_desc(), dnnl_engine);
-
-  auto pool_op = dnnl::pooling_forward(pool_pd);
-#ifdef ENABLE_TRAINING
-  auto pool_workspace_mem = dnnl::memory(pool_pd.workspace_desc(), dnnl_engine);
-
-  sp.AddPrimitive(pool_op, {{DNNL_ARG_SRC, pool_src_mem},
-                            {DNNL_ARG_WORKSPACE, pool_workspace_mem},
-                            {DNNL_ARG_DST, pool_dst_mem}});
-#else
-  sp.AddPrimitive(pool_op, {{DNNL_ARG_SRC, pool_src_mem},
-                            {DNNL_ARG_DST, pool_dst_mem}});
-#endif  //ENABLE_TRAINING
-
-
-  sp.SetMemory(node.Output(OUT_Y), pool_dst_mem);
-#ifdef ENABLE_TRAINING
-  if (node.OutputCount() == 2) {
-    sp.SetMemory(node.Output(OUT_INDICES), pool_workspace_mem);
+  dy_mem = sp.GetMemoryAndReshape(node.Input(IN_DY), pool_backward_pd.diff_dst_desc(), dnnl_engine);
+  if (maxpoolgrad_optype) {
+    indices_mem = sp.GetMemoryAndReshape(node.Input(IN_INDICES), pool_backward_pd.workspace_desc(), dnnl_engine);
   }
-#endif  // ENABLE_TRAINING
+
+  dnnl::memory dx_mem(pool_backward_pd.diff_src_desc(), dnnl_engine);
+  if (maxpoolgrad_optype) {
+  sp.AddPrimitive(pool_backward_op, {{DNNL_ARG_DIFF_DST, dy_mem},
+                                     {DNNL_ARG_DIFF_SRC, dx_mem},
+                                     {DNNL_ARG_WORKSPACE, indices_mem}});
+  } else {
+    sp.AddPrimitive(pool_backward_op, {{DNNL_ARG_DIFF_DST, dy_mem},
+                                       {DNNL_ARG_DIFF_SRC, dx_mem}});
+  }
+  sp.SetMemory(node.Output(OUT_DX), dx_mem);
 }
 
-
-AutoPadType DnnlPool::GetAutoPad(DnnlNode& node) {
+AutoPadType DnnlPoolGrad::GetAutoPad(DnnlNode& node) {
   std::string auto_pad;
   auto attr = node.Attributes().find("auto_pad");
   if (attr != node.Attributes().end() &&
@@ -87,7 +130,7 @@ AutoPadType DnnlPool::GetAutoPad(DnnlNode& node) {
   return ((auto_pad != "") ? StringToAutoPadType(auto_pad) : AutoPadType::NOTSET);
 }
 
-int64_t DnnlPool::GetCeilMode(DnnlNode& node) {
+int64_t DnnlPoolGrad::GetCeilMode(DnnlNode& node) {
   auto attr = node.Attributes().find("ceil_mode");
   if (attr != node.Attributes().end()) {
     return attr->second().i();
@@ -95,7 +138,7 @@ int64_t DnnlPool::GetCeilMode(DnnlNode& node) {
   return false;
 }
 
-int64_t DnnlPool::GetCountIncludePadding(DnnlNode& node) {
+int64_t DnnlPoolGrad::GetCountIncludePadding(DnnlNode& node) {
   auto attr = node.Attributes().find("count_include_pad");
   if (attr != node.Attributes().end()) {
     return attr->second().i();
@@ -103,7 +146,7 @@ int64_t DnnlPool::GetCountIncludePadding(DnnlNode& node) {
   return 0;
 }
 
-dnnl::memory::dims DnnlPool::GetDilations(DnnlNode& node, PoolShape shape) {
+dnnl::memory::dims DnnlPoolGrad::GetDilations(DnnlNode& node, PoolShape shape) {
   auto attr = node.Attributes().find("dilations");
   std::vector<int64_t> dilations;
   if (attr != node.Attributes().end()) {
@@ -118,7 +161,7 @@ dnnl::memory::dims DnnlPool::GetDilations(DnnlNode& node, PoolShape shape) {
   return dnnl::memory::dims(dilations.begin(), dilations.end());
 }
 
-dnnl::memory::dims DnnlPool::GetKernelShape(DnnlNode& node) {
+dnnl::memory::dims DnnlPoolGrad::GetKernelShape(DnnlNode& node) {
   auto attr = node.Attributes().find("kernel_shape");
   std::vector<int64_t> kernel_shape;
   if (attr != node.Attributes().end()) {
@@ -128,18 +171,15 @@ dnnl::memory::dims DnnlPool::GetKernelShape(DnnlNode& node) {
     }
     return kernel_shape;
   }
-  // Infer the Kernel shape from the input weights
-  auto weight_dims = node.Input(IN_X).Dim();
-  kernel_shape = std::vector<int64_t>(weight_dims.begin() + 2, weight_dims.end());
-  return kernel_shape;
+  return {};
 }
 
-std::vector<int64_t> DnnlPool::InferPadding(DnnlNode& node, const dnnl::memory::dims& src_dims, const dnnl::memory::dims& kernel_shape, const dnnl::memory::dims& strides) {
+std::vector<int64_t> DnnlPoolGrad::InferPadding(DnnlNode& node, const dnnl::memory::dims& src_dims, const dnnl::memory::dims& kernel_shape, const dnnl::memory::dims& strides) {
   auto auto_pad = GetAutoPad(node);
   PoolShape shape = static_cast<PoolShape>(kernel_shape.size());
   std::vector<int64_t> padding;
   switch (auto_pad) {
-    case onnxruntime::AutoPadType::NOTSET:{
+    case onnxruntime::AutoPadType::NOTSET: {
       padding = GetPadding(node, shape);
       return padding;
       break;
@@ -181,7 +221,7 @@ std::vector<int64_t> DnnlPool::InferPadding(DnnlNode& node, const dnnl::memory::
   }
 }
 
-std::vector<int64_t> DnnlPool::GetPadding(DnnlNode& node, PoolShape shape) {
+std::vector<int64_t> DnnlPoolGrad::GetPadding(DnnlNode& node, PoolShape shape) {
   auto attr = node.Attributes().find("pads");
   std::vector<int64_t> pads;
   if (attr != node.Attributes().end() && !IsGlobalPooling(node)) {
@@ -197,15 +237,15 @@ std::vector<int64_t> DnnlPool::GetPadding(DnnlNode& node, PoolShape shape) {
   return pads;
 }
 
-dnnl::memory::dims DnnlPool::GetPaddingLeft(const std::vector<int64_t> padding) {
+dnnl::memory::dims DnnlPoolGrad::GetPaddingLeft(const std::vector<int64_t> padding) {
   return dnnl::memory::dims(padding.begin(), padding.begin() + (padding.size() / 2));
 }
 
-dnnl::memory::dims DnnlPool::GetPaddingRight(const std::vector<int64_t> padding) {
+dnnl::memory::dims DnnlPoolGrad::GetPaddingRight(const std::vector<int64_t> padding) {
   return dnnl::memory::dims(padding.begin() + (padding.size() / 2), padding.end());
 }
 
-int64_t DnnlPool::GetStorageOrder(DnnlNode& node) {
+int64_t DnnlPoolGrad::GetStorageOrder(DnnlNode& node) {
   auto attr = node.Attributes().find("storage_order");
   if (attr != node.Attributes().end()) {
     return static_cast<int>(attr->second().i());
@@ -213,7 +253,7 @@ int64_t DnnlPool::GetStorageOrder(DnnlNode& node) {
   return 0;
 }
 
-dnnl::memory::dims DnnlPool::GetStrides(DnnlNode& node, PoolShape shape) {
+dnnl::memory::dims DnnlPoolGrad::GetStrides(DnnlNode& node, PoolShape shape) {
   auto attr = node.Attributes().find("strides");
   std::vector<int64_t> strides;
   if (attr != node.Attributes().end() && !IsGlobalPooling(node)) {
@@ -227,7 +267,7 @@ dnnl::memory::dims DnnlPool::GetStrides(DnnlNode& node, PoolShape shape) {
   return dnnl::memory::dims(strides.begin(), strides.end());
 }
 
-dnnl::memory::dims DnnlPool::InferOutputDims(DnnlNode& node, const dnnl::memory::dims& src_dims, const dnnl::memory::dims& kernel_shape, const dnnl::memory::dims& strides) {
+dnnl::memory::dims DnnlPoolGrad::InferOutputDims(DnnlNode& node, const dnnl::memory::dims& src_dims, const dnnl::memory::dims& kernel_shape, const dnnl::memory::dims& strides) {
   ORT_ENFORCE(src_dims.size() >= 2);
 
   dnnl::memory::dims output_dims;
@@ -246,7 +286,7 @@ dnnl::memory::dims DnnlPool::InferOutputDims(DnnlNode& node, const dnnl::memory:
       PoolShape shape = static_cast<PoolShape>(kernel_shape.size());
       std::vector<int64_t> padding = GetPadding(node, shape);
       for (size_t dim = 0; dim < src_dims.size() - 2; ++dim) {
-        output_dims.push_back(static_cast<int64_t>( static_cast<float>(src_dims[dim + 2] + padding[dim] + padding[dim + shape] - kernel_shape[dim]) / strides[dim] + 1));
+        output_dims.push_back(static_cast<int64_t>(static_cast<float>(src_dims[dim + 2] + padding[dim] + padding[dim + shape] - kernel_shape[dim]) / strides[dim] + 1));
       }
       return output_dims;
       break;
@@ -285,7 +325,7 @@ dnnl::memory::dims DnnlPool::InferOutputDims(DnnlNode& node, const dnnl::memory:
 }
 
 // Note OneDNN does not yet support LpPool or GlobalLpPool even though GlobalLpPool is included here.
-bool DnnlPool::IsGlobalPooling(DnnlNode& node) const {
+bool DnnlPoolGrad::IsGlobalPooling(DnnlNode& node) const {
   return (node.OpType() == "GlobalAveragePool" || node.OpType() == "GlobalMaxPool" || node.OpType() == "GlobalLpPool");
 }
 

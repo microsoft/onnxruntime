@@ -11,6 +11,7 @@
 
 #if defined(ENABLE_TRAINING)
 #include "dnnl_convgrad.h"
+#include "dnnl_poolgrad.h"
 #endif
 
 namespace onnxruntime {
@@ -173,6 +174,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
     } else if (node.OpType() == "Sum") {
       DnnlSum().CreatePrimitive(*this, node);
 #if defined(ENABLE_TRAINING)
+    } else if (node.OpType() == "AveragePoolGrad" || node.OpType() == "MaxPoolGrad") {
+      DnnlPoolGrad().CreatePrimitive(*this, node);
     } else if (node.OpType() == "ConvGrad") {
       DnnlConvGrad().CreatePrimitive(*this, node);
 #endif
