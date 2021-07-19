@@ -1479,7 +1479,12 @@ class SymbolicShapeInference:
         shape = self._get_shape(node, 0)
         shape_bias = self._get_shape(node, 2)
         assert len(shape) == 3 and len(shape_bias) == 1
-        shape[2] = int(shape_bias[0] / 3)
+        qkv_hidden_sizes_attr = get_attribute(node, 'qkv_hidden_sizes')
+        if qkv_hidden_sizes_attr is not None:
+            assert len(qkv_hidden_sizes_attr) == 3
+            shape[2] = int(qkv_hidden_sizes_attr[2])
+        else:
+            shape[2] = int(shape_bias[0] / 3)
         output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, shape))
