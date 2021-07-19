@@ -180,6 +180,9 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   const auto* b_data = b ? b->Data<float>() : nullptr;
   auto* y_data = y->MutableData<float>();
 
+  //
+  // TODO(kreeger): Move this to a shared location (e.g. gemm_matmul_common.h)
+  //
   const size_t max_len = helper.OutputOffsets().size();
   const size_t M = static_cast<size_t>(helper.M());
   const size_t N = static_cast<size_t>(helper.N());
