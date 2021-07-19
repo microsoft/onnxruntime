@@ -82,3 +82,7 @@
 [submodule "cmake/external/onnxruntime-extensions"]
 	path = cmake/external/onnxruntime-extensions
 	url = https://github.com/microsoft/onnxruntime-extensions.git
+[submodule "cmake/external/pytorch_cpuinfo"]
+	path = cmake/external/pytorch_cpuinfo
+	url = https://github.com/pytorch/cpuinfo.git
+
