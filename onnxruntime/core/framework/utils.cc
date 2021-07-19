@@ -736,7 +736,7 @@ bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index)
   }
 
 #ifdef ENABLE_TRAINING
-  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATenOp") {
+  if (node.GetExecutionProviderType() == kCudaExecutionProvider && node.OpType() == "ATenOp" && node.Domain() == kMSDomain) {
     const auto& attrs = node.GetAttributes();
     ORT_ENFORCE(utils::HasString(attrs.at("name")));
     std::string op_name = attrs.at("name").s();
