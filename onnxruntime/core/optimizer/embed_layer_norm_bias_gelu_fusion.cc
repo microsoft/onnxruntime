@@ -12,16 +12,12 @@ namespace {
 }  // namespace
 
 // TODO(kreeger): Add ASCII art to document fusion process:
-#pragma warning(disable: 4100)
+#pragma warning(disable : 4100)
 Status EmbedLayerNormBiasGeluFusion::ApplyImpl(
     Graph& graph,
     bool& modified,
     int graph_level,
     const logging::Logger& logger) const {
-
-
-  std::cerr << "Hello From EmbedLayerNormBiasGeluFusion!\n";
-
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   for (auto node_index : node_topology_list) {
@@ -58,7 +54,7 @@ Status EmbedLayerNormBiasGeluFusion::ApplyImpl(
       continue;
     }
     Node& bias_gelu_child = *graph.GetNode(p_node->Index());
-    
+
     p_node = graph_utils::FirstChildByType(bias_gelu_child, "MatMul");
     if (p_node == nullptr) {
       continue;
@@ -92,10 +88,6 @@ Status EmbedLayerNormBiasGeluFusion::ApplyImpl(
     new_output_defs.push_back(skip_layer_norm_node.MutableOutputDefs()[0]);
     new_output_defs.push_back(matmul_child_2.MutableOutputDefs()[0]);
 
-    for (auto node : new_output_defs) {
-      std::cerr << "  output_node: " << node->Name().c_str() << std::endl;
-    }
-
     Node& new_node = graph.AddNode(
         /*name=*/graph.GenerateNodeName("EmbedLayerNormBiasGelu"),
         /*op_type=*/"EmbedLayerNormBiasGelu",
@@ -116,22 +108,16 @@ Status EmbedLayerNormBiasGeluFusion::ApplyImpl(
     nodes_to_remove.push_back(bias_gelu_child);
     nodes_to_remove.push_back(matmul_child_2);
 
-    //
-    //
-    // TODO LEFT OFF RIGHT HERE - I THINK I NEED TO MAKE THE OUTPUT NODE FROM
-    //                            MATMUL MARKED AS AN INPUT NOW!
-    //
-    // NEED TO FIGURE OUT HOW TO MAKE THE OLD OUTPUT OF SLN! AN INPUT OF SLN2?
-    //
+    for (const auto& node : nodes_to_remove) {
+      graph_utils::RemoveNodeOutputEdges(graph, node);
+      graph.RemoveNode(node.get().Index());
+    }
 
-    graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, new_node);
-    
     modified = true;
   }
 
   return Status::OK();
 }
-#pragma warning(default: 4100)
+#pragma warning(default : 4100)
 
 }  // namespace onnxruntime
-
