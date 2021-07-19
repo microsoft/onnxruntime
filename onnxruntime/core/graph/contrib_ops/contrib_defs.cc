@@ -657,7 +657,8 @@ TODO(kreeger): Write me!)DOC";
       .Input(5, "MatMul #1 Input 1", "TODO(kreeger)", "T")
       .Input(6, "BiasGelu Input 1", "TODO(kreeger)", "T")
       .Input(7, "MatMul #2 Input 1", "TODO(kreeger)", "T")
-      .Output(0, "output", "TODO(kreeger)", "T")
+      .Output(0, "output 0", "TODO(kreeger)", "T")
+      .Output(1, "output 1", "TODO(kreeger)", "T")
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output float tensors types.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         if (ctx.getNumInputs() > 0) {

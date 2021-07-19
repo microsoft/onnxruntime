@@ -86,9 +86,15 @@ Status EmbedLayerNormBiasGeluFusion::ApplyImpl(
     new_input_defs[7] = matmul_child_2.MutableInputDefs()[1];
 
     // New Node Outputs:
+    // 1: SLN Ouput 0
     // 0: MatMul #2 Output 0
     std::vector<NodeArg*> new_output_defs;
+    new_output_defs.push_back(skip_layer_norm_node.MutableOutputDefs()[0]);
     new_output_defs.push_back(matmul_child_2.MutableOutputDefs()[0]);
+
+    for (auto node : new_output_defs) {
+      std::cerr << "  output_node: " << node->Name().c_str() << std::endl;
+    }
 
     Node& new_node = graph.AddNode(
         /*name=*/graph.GenerateNodeName("EmbedLayerNormBiasGelu"),
@@ -115,14 +121,10 @@ Status EmbedLayerNormBiasGeluFusion::ApplyImpl(
     // TODO LEFT OFF RIGHT HERE - I THINK I NEED TO MAKE THE OUTPUT NODE FROM
     //                            MATMUL MARKED AS AN INPUT NOW!
     //
+    // NEED TO FIGURE OUT HOW TO MAKE THE OLD OUTPUT OF SLN! AN INPUT OF SLN2?
     //
 
-    // NOTE: this does not work as well?!!
-    for (const auto& node : nodes_to_remove) {
-      graph_utils::RemoveNodeOutputEdges(graph, node);
-      graph.RemoveNode(node.get().Index());
-    }
-    //graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, new_node);
+    graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, new_node);
     
     modified = true;
   }

@@ -100,7 +100,6 @@ void ComputeBiasGelu(const int64_t bias_size,
     temp[i] = cur_value * 0.5f;  // TODO(kreeger): const here.
   }
 
-  // TODO(kreeger): what is this?
   MlasComputeErf(output_data, output_data, bias_size);
 
   for (int64_t i = 0; i < bias_size; ++i) {
@@ -142,7 +141,8 @@ Status EmbedLayerNormBiasGelu<T>::Compute(OpKernelContext* context) const {
 
   const TensorShape& output_shape = input->Shape();
 
-  Tensor* output = context->Output(0, output_shape);
+  Tensor* skip_layer_norm_output = context->Output(0, output_shape);
+  Tensor* output = context->Output(1, output_shape);
 
   ORT_RETURN_IF_ERROR(CheckInputs(input,
                                   skip,
@@ -171,13 +171,7 @@ Status EmbedLayerNormBiasGelu<T>::Compute(OpKernelContext* context) const {
   const T* beta_data = beta == nullptr ? nullptr : beta->Data<T>();
   const T* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
 
-  // Scratch buffer for the SkipLayerNorm output:
-  auto skip_layer_norm_output_data =
-      alloc->Alloc(SafeInt<size_t>(output_shape.Size() * sizeof(T)));
-  BufferUniquePtr skip_layer_norm_output_buffer(skip_layer_norm_output_data,
-                                                BufferDeleter(alloc));
-  T* skip_layer_norm_output = reinterpret_cast<T*>(skip_layer_norm_output_data);
-
+  T* skip_layer_norm_output_data = skip_layer_norm_output->MutableData<T>();
   T* output_data = output->MutableData<T>();
 
   // Determine shape and size for matmul #1:
@@ -228,7 +222,7 @@ Status EmbedLayerNormBiasGelu<T>::Compute(OpKernelContext* context) const {
                              gamma_data,
                              beta_data,
                              bias_data,
-                             skip_layer_norm_output + (task_idx * hidden_size));
+                             skip_layer_norm_output_data + (task_idx * hidden_size));
 
         // Now perform MatMul on the 1 row that was calculated in the call to
         // ComputeSkipLayerNorm():
@@ -236,7 +230,7 @@ Status EmbedLayerNormBiasGelu<T>::Compute(OpKernelContext* context) const {
         size_t offset = task_idx * bias_size;
         ComputeMatMul(hidden_size,
                       bias_size,
-                      skip_layer_norm_output + (task_idx * hidden_size),
+                      skip_layer_norm_output_data + (task_idx * hidden_size),
                       matmul_1_b_data,
                       matmul_1_output + offset);
 
