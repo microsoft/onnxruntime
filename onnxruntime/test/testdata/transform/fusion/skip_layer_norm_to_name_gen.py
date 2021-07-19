@@ -68,8 +68,6 @@ def generate_model(model_name):
                                           [batch_size, sequence_size, something_something]),
             helper.make_tensor_value_info('sln_1_skip', TensorProto.FLOAT,
                                           [batch_size, sequence_size, something_something]),
-            # helper.make_tensor_value_info('sln_2_input', TensorProto.FLOAT,
-            #                               [batch_size, sequence_size, something_something])
         ],
         [  # outputs
             helper.make_tensor_value_info('sln_2_output', TensorProto.FLOAT,
