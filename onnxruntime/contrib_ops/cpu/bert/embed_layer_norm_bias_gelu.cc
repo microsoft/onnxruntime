@@ -75,13 +75,14 @@ void ComputeMatMul(const int64_t hidden_size,
                    const T* b_data,
                    T* output_data) {
   // TODO - check inputs needs to make sure the dimensions are safe here.
-  for (int64_t i = 0; i < bias_size; ++i) {
-    T sum = 0;
-    for (int64_t j = 0; j < hidden_size; ++j) {
-      sum += a_data[j] * b_data[i + (bias_size * j)];
-    }
-    output_data[i] = sum;
-  }
+  // TODO(kreeger): This is ungodly slow - need to throw this into mlas and pack?
+  //for (int64_t i = 0; i < bias_size; ++i) {
+  //  T sum = 0;
+  //  for (int64_t j = 0; j < hidden_size; ++j) {
+  //    sum += a_data[j] * b_data[i + (bias_size * j)];
+  //  }
+  //  output_data[i] = sum;
+  //}
 }
 
 template <typename T>
