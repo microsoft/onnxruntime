@@ -26,9 +26,6 @@ Status GraphTransformer::Apply(Graph& graph, bool& modified, const logging::Logg
   ORT_UNUSED_PARAMETER(logger);
   Status status(ONNXRUNTIME, FAIL, "Transformers are not supported in this build");
 #endif
-  if (!status.IsOK()) {
-    printf("error: %s\n", status.ErrorMessage().c_str());
-  }
   return status;
 }
 
