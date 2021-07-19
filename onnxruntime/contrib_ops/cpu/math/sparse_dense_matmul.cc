@@ -44,7 +44,7 @@ struct ComputeCtx {
   float alpha;
 };
 
-#if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__)
+#if !defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 template <typename T>
 inline void SparseDenseMatMulImpl(const ComputeCtx& ctx, const ConstSparseMatrixMap<T>& map_A,
                                   const ConstEigenMatrixMapRowMajor<T>& map_B, EigenMatrixMapRowMajor<T>& output_map) {
@@ -94,7 +94,7 @@ struct SparseToDenseCsr {
   }
 };
 
-#endif  //!defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__)
+#endif  //!defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 
 template<typename T> inline
 T Mul(T a_value, float, T b_value) {
@@ -201,7 +201,7 @@ Status SparseToDenseMatMul::Compute(OpKernelContext* ctx) const {
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "WASM and 32-bit builds support only COO format");
   }
-#endif
+#endif //!defined(__i386__) && !defined(_M_IX86) && !defined(__wasm__) && !defined(__ANDROID__)
 
   return Status::OK();
 }

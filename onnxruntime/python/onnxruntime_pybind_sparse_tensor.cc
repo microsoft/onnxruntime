@@ -19,8 +19,8 @@
 #include "core/framework/data_types_internal.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/framework/kernel_registry.h"
-#include "core/framework/provider_bridge_ort.h"
 #include "core/framework/provider_options_utils.h"
+#include "core/session/provider_bridge_ort.h"
 
 namespace onnxruntime {
 namespace python {
@@ -116,7 +116,6 @@ void addSparseTensorMethods(pybind11::module& m) {
       // types are copied and supported only on CPU.
       // Use numpy.ascontiguousarray() to obtain contiguous array of values and indices if necessary
       // py_dense_shape - numpy dense shape of the sparse tensor
-      // ort_device - desribes the allocation. Only primitive types allocations can be mapped to
       // py_values - contiguous and homogeneous numpy array of values
       // py_indices - contiguous numpy array of int64_t indices
       // ort_device - where the value and indices buffers are allocated. For non-primitive types,
@@ -284,11 +283,11 @@ void addSparseTensorMethods(pybind11::module& m) {
         if (sparse_tensor.IsDataTypeString()) {
           // Strings can not be on GPU and require conversion UTF-8 to Python UNICODE
           // We need to create a copy.
-          const auto& values_shape = sparse_tensor.Values().Shape();
           const int numpy_type = OnnxRuntimeTensorToNumpyType(DataTypeImpl::GetType<std::string>());
           ORT_ENFORCE(NPY_OBJECT == numpy_type, "We are expecting to map strings to NPY_OBJECT type");
-          py::array result = py::reinterpret_steal<py::array>(PyArray_SimpleNew(
-              gsl::narrow<npy_int>(values_shape.NumDimensions()), values_shape.GetDims().data(), numpy_type));
+          const auto& values_shape = sparse_tensor.Values().Shape();
+          py::dtype dtype("object");
+          py::array result(dtype, values_shape.GetDims(), {});
           auto* out_ptr = static_cast<py::object*>(
               PyArray_DATA(reinterpret_cast<PyArrayObject*>(result.ptr())));
           const std::string* src = sparse_tensor.Values().Data<std::string>();
