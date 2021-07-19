@@ -129,15 +129,24 @@ jobs:
         displayName: 'Run memory test'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
   
+    - script: 'mkdir $(Build.SourcesDirectory)/Artifact'
+      displayName: 'Prepare Artifacts Directory'
+      workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+
     - ${{ if not(eq(length(parameters.ModelGroups), 0)) }}:
-      - script: 'mkdir $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact && cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/result $(Build.SourcesDirectory)/Artifact/result_mem_test'
-        displayName: 'Prepare Artifacts'
+      - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
+        displayName: 'Copy Artifacts'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
+    
+    - ${{ if eq(parameters.MemTest, true) }}:
+      - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/result $(Build.SourcesDirectory)/Artifact/result_mem_test'
+        displayName: 'Copy Artifacts'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
-      - task: PublishBuildArtifacts@1
-        inputs:
-          pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
-          artifactName: 'result-$(Build.BuildNumber)'
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathtoPublish: '$(Build.SourcesDirectory)/Artifact'
+        artifactName: 'result-$(Build.BuildNumber)'
 
     - script: sudo rm -rf $(Agent.BuildDirectory)
       displayName: Clean build files (POSIX)
