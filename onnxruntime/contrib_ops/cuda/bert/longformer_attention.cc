@@ -3,7 +3,7 @@
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
-#include "core/platform/env_var_utils.h"
+#include "core/platform/parse_env_var.h"
 #include "longformer_attention.h"
 #include "longformer_global_impl.h"
 #include "longformer_attention_impl.h"

@@ -72,7 +72,7 @@
 #include "core/common/path_string.h"
 #include "core/framework/kernel_registry.h"
 #include "core/mlas/inc/mlas.h"
-#include "core/platform/env_var_utils.h"
+#include "core/platform/parse_env_var.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 
 using json = nlohmann::json;

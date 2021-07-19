@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_common.h"
-#include "core/platform/env_var_utils.h"
+#include "core/platform/parse_env_var.h"
 
 namespace onnxruntime {
 namespace cuda {

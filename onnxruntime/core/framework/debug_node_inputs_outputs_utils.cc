@@ -11,7 +11,7 @@
 #include "core/common/path_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/platform/env.h"
-#include "core/platform/env_var_utils.h"
+#include "core/platform/parse_env_var.h"
 
 namespace onnxruntime {
 namespace utils {
