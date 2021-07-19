@@ -33,13 +33,9 @@ class Attention : public OpKernel, public AttentionCPUBase {
                                    /*out*/ bool& used_shared_buffers) override;
 
  private:
-  BufferUniquePtr q_packed_weights_;
-  BufferUniquePtr k_packed_weights_;
-  BufferUniquePtr v_packed_weights_;
+  BufferUniquePtr packed_weights_[3];
+  size_t packed_weights_size_[3] = {0, 0, 0};
 
-  size_t q_packed_weights_size_ = 0;
-  size_t k_packed_weights_size_ = 0;
-  size_t v_packed_weights_size_ = 0;
   TensorShape weight_shape_;
 };
 
@@ -297,22 +293,8 @@ bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
   // buffer memory and we don not want it uninitialized and generate different hashes
   // if and when we try to cache this pre-packed buffer for sharing between sessions.
   memset(packed_weights_data, 0, packed_weights_data_size);
-  switch (qkv_index) {
-    case 0:
-      q_packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
-      q_packed_weights_size_ = packb_size;
-      break;
-    case 1:
-      k_packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
-      k_packed_weights_size_ = packb_size;
-      break;
-    case 2:
-      v_packed_weights_ = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
-      v_packed_weights_size_ = packb_size;
-      break;
-    default:
-      return false;
-  }
+  packed_weights_[qkv_index] = BufferUniquePtr(packed_weights_data, BufferDeleter(alloc));
+  packed_weights_size_[qkv_index] = packb_size;
 
   for (size_t i = 0; i < loop_len; i++) {
     MlasGemmPackB(CblasNoTrans, head_size, input_hidden_size, weights_data, weight_matrix_col_size, packed_weights_data);
@@ -322,20 +304,7 @@ bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
 
   bool share_prepacked_weights = (prepacked_weights != nullptr);
   if (share_prepacked_weights) {
-    switch (qkv_index) {
-      case 0:
-        prepacked_weights->buffers_.push_back(std::move(q_packed_weights_));
-        break;
-      case 1:
-        prepacked_weights->buffers_.push_back(std::move(k_packed_weights_));
-        break;
-      case 2:
-        prepacked_weights->buffers_.push_back(std::move(v_packed_weights_));
-        break;
-      default:
-        break;
-    }
-
+    prepacked_weights->buffers_.push_back(std::move(packed_weights_[qkv_index]));
     prepacked_weights->buffer_sizes_.push_back(packed_weights_data_size);
   }
   return true;
@@ -411,9 +380,9 @@ Status Attention<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& pre
   }
 
   used_shared_buffers = true;
-  q_packed_weights_ = std::move(prepacked_buffers[0]);
-  k_packed_weights_ = std::move(prepacked_buffers[1]);
-  v_packed_weights_ = std::move(prepacked_buffers[2]);
+  packed_weights_[0] = std::move(prepacked_buffers[0]);
+  packed_weights_[1] = std::move(prepacked_buffers[1]);
+  packed_weights_[2] = std::move(prepacked_buffers[2]);
 
   return Status::OK();
 }
@@ -421,7 +390,7 @@ Status Attention<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& pre
 template <typename T>
 Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
-  const Tensor* weights = q_packed_weights_ ? nullptr : context->Input<Tensor>(1);
+  const Tensor* weights = packed_weights_[0] ? nullptr : context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
 
   const Tensor* mask_index = context->Input<Tensor>(3);
@@ -512,7 +481,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         int weights_offset = 0;
         int bias_offset = qkv_index * q_hidden_size + head_index * head_size;
 
-        if (q_packed_weights_ == nullptr) {
+        if (packed_weights_[0] == nullptr) {
           weights_offset = bias_offset;
         } else {
           weights_offset = head_index * head_size;
@@ -534,15 +503,9 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         // A: input          (BxSxD)            (B.)S x D             S x D
         // B: weights        (DxNxT)             D x (N.)T            D x H
         // C: QKV[qkv_index] (BxNxSxT)          (B.N.)S x T           S x H
-        if (q_packed_weights_) {
+        if (packed_weights_[0]) {
           uint8_t* packed_weight;
-          if (qkv_index == 0) {
-            packed_weight = static_cast<uint8_t*>(q_packed_weights_.get()) + q_packed_weights_size_ * (weights_offset / head_size);
-          } else if (qkv_index == 1) {
-            packed_weight = static_cast<uint8_t*>(k_packed_weights_.get()) + k_packed_weights_size_ * (weights_offset / head_size);
-          } else {
-            packed_weight = static_cast<uint8_t*>(v_packed_weights_.get()) + v_packed_weights_size_ * (weights_offset / head_size);
-          }
+          packed_weight = static_cast<uint8_t*>(packed_weights_[qkv_index].get()) + packed_weights_size_[qkv_index] * (weights_offset / head_size);
 
           MlasGemm(
               CblasNoTrans,               // TransA = no
