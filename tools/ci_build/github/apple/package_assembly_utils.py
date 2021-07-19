@@ -7,6 +7,7 @@ import pathlib
 import re
 import shutil
 
+from typing import Dict, List
 
 _script_dir = pathlib.Path(__file__).parent.resolve(strict=True)
 repo_root = _script_dir.parents[3]
@@ -15,7 +16,7 @@ _template_variable_pattern = re.compile(r"@(\w+)@")  # match "@var@"
 
 
 def gen_file_from_template(template_file: pathlib.Path, output_file: pathlib.Path,
-                           variable_substitutions: dict[str, str]):
+                           variable_substitutions: Dict[str, str]):
     '''
     Generates a file from a template file.
     The template file may contain template variables that will be substituted
@@ -40,7 +41,7 @@ def gen_file_from_template(template_file: pathlib.Path, output_file: pathlib.Pat
         output.write(content)
 
 
-def copy_repo_relative_to_dir(patterns: list[str], dest_dir: pathlib.Path):
+def copy_repo_relative_to_dir(patterns: List[str], dest_dir: pathlib.Path):
     '''
     Copies file paths relative to the repo root to a directory.
     The given paths or path patterns are relative to the repo root, and the
