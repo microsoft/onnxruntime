@@ -149,7 +149,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   if (is_1d_conv) {
-    std::string conv_output_name = model_builder.GetUniqueName(MakeString(node.Name(), "_conv_output"));
+    std::string conv_output_name = model_builder.GetUniqueName(node.Name() + "_conv_output");
     *layer->mutable_input()->Add() = expand_output_name;
     *layer->mutable_output()->Add() = conv_output_name;
     model_builder.AddLayer(std::move(layer));
