@@ -154,22 +154,9 @@ class ATenOperatorCache {
     return ops_.at(key);
   }
 
-  void SetGradientDefinition(const std::string& op_name, const std::string& overload_name,
-                             const std::string& gradient_def_json) {
-    auto key = std::make_pair(op_name, overload_name);
-    TORCH_INTERNAL_ASSERT(gradient_definitions_.find(key) == gradient_definitions_.end());
-    gradient_definitions_.emplace(key, gradient_def_json);
-  }
-
-  const char* GetGradientDefinition(const std::string& op_name, const std::string& overload_name) {
-    auto it = gradient_definitions_.find(std::make_pair(op_name, overload_name));
-    return it != gradient_definitions_.end() ? it->second.c_str() : nullptr;
-  }
-
  private:
   ATenOperatorCache() = default;
   std::unordered_map<std::pair<std::string, std::string>, ATenOperator, PairHash> ops_;
-  std::unordered_map<std::pair<std::string, std::string>, std::string, PairHash> gradient_definitions_;
 };
 
 // Backend uses this function to check if an argument is CPU input (non-tensor argument) or not.
@@ -177,11 +164,6 @@ bool IsTensorArgument(const char* op_name, const char* overload_name, size_t ind
   const auto& aten_op = ATenOperatorCache::Instance().GetOperator(op_name, overload_name);
   TORCH_INTERNAL_ASSERT(index < aten_op.argument_size);
   return aten_op.elem_kinds[index] == c10::TypeKind::TensorType;
-}
-
-// Backend uses this function to get gradient definition JSON to build gradient for ATenOp.
-const char* GetGradientDefinition(const char* op_name, const char* overload_name) {
-  return ATenOperatorCache::Instance().GetGradientDefinition(op_name, overload_name);
 }
 
 std::vector<DLManagedTensor*> ExecuteATenOperator(const char* op_name, const char* overload_name,
@@ -210,14 +192,8 @@ std::vector<DLManagedTensor*> ExecuteATenOperator(const char* op_name, const cha
 
 size_t is_tensor_argument_address() { return reinterpret_cast<size_t>(&IsTensorArgument); }
 size_t execute_aten_operator_address() { return reinterpret_cast<size_t>(&ExecuteATenOperator); }
-size_t get_gradient_definition_address() { return reinterpret_cast<size_t>(&GetGradientDefinition); }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("is_tensor_argument_address", &is_tensor_argument_address, "Address of tensor argument check.");
   m.def("execute_aten_operator_address", &execute_aten_operator_address, "Address of Aten operator executor");
-  m.def("get_gradient_definition_address", &get_gradient_definition_address, "Address of getting gradient definition.");
-  m.def("set_gradient_definition",
-        [](const std::string& op_name, const std::string& overload_name, const std::string& gradient_def_json) {
-          return ATenOperatorCache::Instance().SetGradientDefinition(op_name, overload_name, gradient_def_json);
-        });
 }

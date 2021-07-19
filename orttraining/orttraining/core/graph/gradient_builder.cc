@@ -1679,18 +1679,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
   return result;
 }
 
-IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
+IMPLEMENT_GRADIENT_BUILDER(GetExternalGradient) {
   std::vector<NodeDef> result;
-  const auto& src_attrs = SrcNodeAttributes();
-  ORT_ENFORCE(utils::HasString(src_attrs.at("name")));
-  std::string op_name = src_attrs.at("name").s();
-  std::string overload_name = "";
-  if (src_attrs.find("overload_name") != src_attrs.end() && utils::HasString(src_attrs.at("overload_name"))) {
-    overload_name = src_attrs.at("overload_name").s();
-  }
-
-  const auto& grad_def = ATenOpGradientDefinitionGetter::Instance()(op_name, overload_name);
-  ORT_ENFORCE(!grad_def.empty());
+  const auto& p_grad_def = GradientDefinitionRegistry::Instance().GetGradientDefinition(GetGradientDefinitionKey());
+  ORT_ENFORCE(p_grad_def);
+  const auto& grad_def = *p_grad_def;
 
   std::unordered_set<std::string> seen_outputs;
   for (const auto& node_def : grad_def) {
@@ -1734,7 +1727,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
 
     std::vector<AttributeProto> attrs;
     for (const auto& attribute : node_def.attributes) {
-      attrs.emplace_back(AttributeDefinitionToAttributeProto(attribute.first, attribute.second));
+      attrs.emplace_back(AttributeDefinitionToAttributeProto(attribute));
     }
 
     if (is_aten_op) {
