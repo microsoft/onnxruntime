@@ -59,7 +59,7 @@ parameters:
     - "partner-models"
 
 - name: MemTest
-  displayName: Run memory test
+  displayName: Run Memory Test
   type: boolean
   default: true
 
@@ -126,7 +126,7 @@ jobs:
 
     - ${{ if eq(parameters.MemTest, true) }}:
       - script: '$(run_conda) && $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/run_mem_test_docker.sh -d $(mem_test_docker_image) -p $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
-        displayName: 'Run memory test'
+        displayName: 'Run Memory Test'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/'
   
     - script: 'mkdir $(Build.SourcesDirectory)/Artifact'
