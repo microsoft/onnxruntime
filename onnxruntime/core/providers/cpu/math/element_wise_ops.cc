@@ -259,7 +259,8 @@ REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sqrt, 6, 12, double, Sqrt);
 REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 13, float, Sqrt);
 REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 13, double, Sqrt);
 
-REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Pow, 7, 11, Pow, BuildKernelDefConstraintsFromTypeList<Pow7Types>(),
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Pow, 7, 11, Pow,
+                                      BuildKernelDefConstraintsFromTypeList<Pow7Types>(),
                                       BuildKernelDefConstraintsFromTypeList<EnabledPow7Types>());
 
 REG_ELEMENTWISE_VERSIONED_KERNEL_NONT_2(Pow, 12, 12, Pow,
