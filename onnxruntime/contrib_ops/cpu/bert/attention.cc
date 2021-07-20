@@ -325,9 +325,9 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
   /* The PrePack() massages the weights to speed up Compute(), there is an option to
    * use shared prepacked weights in which case prepacked_weights parameter would be non-null.
    *
-   * We use an array of buffers for Q, K, V for the sake of simplicity and easy offset management
-   * in Compute(). They are packed one after the other being successful. In case of failure,
-   *    1. With shared pre-pack weights the caller of this fn() frees up the memory.
+   * We use an array of buffers to store prepacked Q, K, V weights for the sake of simplicity
+   * and easy offset management in Compute(). They are packed one after the other. In case of failure,
+   *    1. With shared pre-pack weights the caller of this fn() frees up the memory so far allocated.
    *    2. When weights are held by kernel, it will be freed before returning.
    */
   is_packed = false;
