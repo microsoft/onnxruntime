@@ -134,7 +134,8 @@ struct ProviderHost {
 
   virtual logging::Logger* LoggingManager_GetDefaultLogger() = 0;
 
-  virtual std::string GetEnvironmentVar(const std::string& var_name) = 0;
+  virtual optional<std::string> GetEnvironmentVar(const std::string& var_name) = 0;
+  virtual std::string GetEnvironmentVarOrEmpty(const std::string& var_name) = 0;
 
   virtual void LogRuntimeError(uint32_t session_id, const common::Status& status,
                                const char* file, const char* function, uint32_t line) = 0;

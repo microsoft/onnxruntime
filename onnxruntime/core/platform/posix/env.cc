@@ -463,12 +463,6 @@ class PosixEnv : public Env {
     return telemetry_provider_;
   }
 
-  // \brief returns a value for the queried variable name (var_name)
-  std::string GetEnvironmentVar(const std::string& var_name) const override {
-    char* val = getenv(var_name.c_str());
-    return val == NULL ? std::string() : std::string(val);
-  }
-
  private:
   PosixEnv() = default;
   Telemetry telemetry_provider_;

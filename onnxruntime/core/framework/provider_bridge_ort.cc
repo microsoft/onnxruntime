@@ -14,6 +14,7 @@
 #include "core/framework/provider_shutdown.h"
 #include "core/graph/model.h"
 #include "core/platform/env.h"
+#include "core/platform/get_env_var.h"
 #include "core/providers/common.h"
 #include "core/session/inference_session.h"
 #include "core/session/abi_session_options_impl.h"
@@ -209,7 +210,8 @@ struct ProviderHostImpl : ProviderHost {
   bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_true(retCode, exprString, libName, successCode, msg); }
 #endif
 
-  std::string GetEnvironmentVar(const std::string& var_name) override { return Env::Default().GetEnvironmentVar(var_name); }
+  optional<std::string> GetEnvironmentVar(const std::string& var_name) override { return onnxruntime::GetEnvironmentVar(var_name); }
+  std::string GetEnvironmentVarOrEmpty(const std::string& var_name) override { return onnxruntime::GetEnvironmentVarOrEmpty(var_name); }
 
   std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                      const std::string& provider_type,

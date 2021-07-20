@@ -35,6 +35,7 @@
 #include "abi_session_options_impl.h"
 #include "core/framework/TensorSeq.h"
 #include "core/platform/ort_mutex.h"
+#include "core/platform/get_env_var.h"
 
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS
 #include "ortcustomops.h"
@@ -434,9 +435,8 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {
   // quick check here to decide load path. InferenceSession will provide error message for invalid values.
   // TODO: Could move to a helper
-  const Env& os_env = Env::Default();  // OS environment (!= ORT environment)
   bool load_config_from_model =
-      os_env.GetEnvironmentVar(inference_session_utils::kOrtLoadConfigFromModelEnvVar) == "1";
+      GetEnvironmentVarOrEmpty(inference_session_utils::kOrtLoadConfigFromModelEnvVar) == "1";
 
   if (load_config_from_model) {
 #if !defined(ORT_MINIMAL_BUILD)

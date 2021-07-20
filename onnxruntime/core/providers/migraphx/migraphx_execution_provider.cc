@@ -10,7 +10,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/graph_utils.h"
-#include "core/platform/env.h"
+#include "core/platform/get_env_var.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "migraphx_inc.h"
 #include "migraphx_execution_provider.h"
@@ -107,11 +107,8 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
 
   t_ = migraphx::target(info.target_device.c_str());
 
-  // Get environment variables
-  const Env& env_instance = Env::Default();
-
   // whether fp16 is enable
-  const std::string fp16_enable_env = env_instance.GetEnvironmentVar(migraphx_env_vars::kFP16Enable);
+  const std::string fp16_enable_env = GetEnvironmentVarOrEmpty(migraphx_env_vars::kFP16Enable);
   if (!fp16_enable_env.empty()) {
     fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
   }

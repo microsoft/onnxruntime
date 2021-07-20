@@ -37,6 +37,7 @@
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/platform/Barrier.h"
+#include "core/platform/get_env_var.h"
 #include "core/platform/ort_mutex.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/controlflow/utils.h"
@@ -134,14 +135,11 @@ static Status FinalizeSessionOptions(const SessionOptions& user_provided_session
 #if !defined(ORT_MINIMAL_BUILD)
   const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
 
-  // By now the environment should have initialized. (It is enforced prior to this.)
-  const Env& env_instance = Env::Default();
-
   bool session_options_from_model = false;
 
   // Get the value held by the environment variable - kOrtLoadConfigFromModelEnvVar
   const std::string load_config_from_model_env_var_value =
-      env_instance.GetEnvironmentVar(inference_session_utils::kOrtLoadConfigFromModelEnvVar);
+      GetEnvironmentVarOrEmpty(inference_session_utils::kOrtLoadConfigFromModelEnvVar);
 
   // Ascertain if the model is to be read for the ORT config from the afore parsed env var
   if (!load_config_from_model_env_var_value.empty()) {

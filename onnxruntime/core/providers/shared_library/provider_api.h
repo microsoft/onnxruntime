@@ -44,6 +44,7 @@ struct DeleteOnUnloadPtr {
 #include "onnx/common/stl_backports.h"
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
+#include "core/common/optional.h"
 #include "core/common/type_list.h"
 #include "core/common/logging/severity.h"
 #include "core/framework/allocator.h"
@@ -256,7 +257,8 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
                                                    const std::vector<const KernelRegistry*>& kernel_registries,
                                                    const std::vector<NodeIndex>& tentative_nodes);
 
-std::string GetEnvironmentVar(const std::string& var_name);
+optional<std::string> GetEnvironmentVar(const std::string& var_name);
+std::string GetEnvironmentVarOrEmpty(const std::string& var_name);
 
 namespace logging {
 

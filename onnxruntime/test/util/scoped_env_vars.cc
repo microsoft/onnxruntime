@@ -9,11 +9,14 @@
 #include <Windows.h>
 #endif
 
+#include "core/platform/get_env_var.h"
+
 namespace onnxruntime {
 namespace test {
 
 namespace {
 #ifndef _WIN32
+
 Status SetEnvironmentVar(const std::string& name, const optional<std::string>& value) {
   if (value.has_value()) {
     ORT_RETURN_IF_NOT(
@@ -27,12 +30,8 @@ Status SetEnvironmentVar(const std::string& name, const optional<std::string>& v
   return Status::OK();
 }
 
-Status GetEnvironmentVar(const std::string& name, optional<std::string>& value) {
-  const char* val = getenv(name.c_str());
-  value = val == nullptr ? optional<std::string>{} : optional<std::string>{std::string{val}};
-  return Status::OK();
-}
 #else  // _WIN32
+
 Status SetEnvironmentVar(const std::string& name, const optional<std::string>& value) {
   ORT_RETURN_IF_NOT(
       SetEnvironmentVariableA(name.c_str(), value.has_value() ? value.value().c_str() : nullptr) != 0,
@@ -40,24 +39,6 @@ Status SetEnvironmentVar(const std::string& name, const optional<std::string>& v
   return Status::OK();
 }
 
-Status GetEnvironmentVar(const std::string& name, optional<std::string>& value) {
-  constexpr DWORD kBufferSize = 32767;
-
-  char buffer[kBufferSize];
-
-  const auto char_count = GetEnvironmentVariableA(name.c_str(), buffer, kBufferSize);
-  if (char_count > 0) {
-    value = std::string{buffer, buffer + char_count};
-    return Status::OK();
-  }
-
-  if (GetLastError() == ERROR_ENVVAR_NOT_FOUND) {
-    value = optional<std::string>{};
-    return Status::OK();
-  }
-
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetEnvironmentVariableA() failed: ", GetLastError());
-}
 #endif
 
 void SetEnvironmentVars(const EnvVarMap& env_vars) {
@@ -69,10 +50,7 @@ void SetEnvironmentVars(const EnvVarMap& env_vars) {
 EnvVarMap GetEnvironmentVars(const std::vector<std::string>& env_var_names) {
   EnvVarMap result{};
   for (const auto& env_var_name : env_var_names) {
-    // TODO update Env::GetEnvironmentVar() to distinguish between empty and undefined variables and use that instead
-    optional<std::string> env_var_value{};
-    ORT_THROW_IF_ERROR(GetEnvironmentVar(env_var_name, env_var_value));
-    result.insert({env_var_name, env_var_value});
+    result.insert({env_var_name, GetEnvironmentVar(env_var_name)});
   }
   return result;
 }

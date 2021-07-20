@@ -92,7 +92,7 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
 
   if (vpu_status == true || openvino_ep::backend_utils::UseCompiledNetwork()) {
     const std::string model_blob_path = ov_compiled_blobs_dir + "/" + model_blob_name;
-    const std::string compiled_blob_path = onnxruntime::GetEnvironmentVar("OV_BLOB_PATH");
+    const std::string compiled_blob_path = onnxruntime::GetEnvironmentVarOrEmpty("OV_BLOB_PATH");
     try {
       if(vpu_status == true) {
         LOGS_DEFAULT(INFO) << log_tag << "Importing the pre-compiled blob for this model which already exists in the directory 'ov_compiled_blobs'";

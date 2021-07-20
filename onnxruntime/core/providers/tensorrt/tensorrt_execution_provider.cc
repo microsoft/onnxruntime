@@ -420,86 +420,86 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     }
     force_sequential_engine_build_ = info.force_sequential_engine_build;
   } else {
-    const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
+    const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVarOrEmpty(tensorrt_env_vars::kMaxPartitionIterations);
     if (!max_partition_iterations_env.empty()) {
       max_partition_iterations_ = std::stoi(max_partition_iterations_env);
     }
 
-    const std::string min_subgraph_size_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMinSubgraphSize);
+    const std::string min_subgraph_size_env = onnxruntime::GetEnvironmentVarOrEmpty(tensorrt_env_vars::kMinSubgraphSize);
     if (!min_subgraph_size_env.empty()) {
       min_subgraph_size_ = std::stoi(min_subgraph_size_env);
     }
 
-    const std::string max_workspace_size_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxWorkspaceSize);
+    const std::string max_workspace_size_env = onnxruntime::GetEnvironmentVarOrEmpty(tensorrt_env_vars::kMaxWorkspaceSize);
     if (!max_workspace_size_env.empty()) {
       max_workspace_size_ = std::stoull(max_workspace_size_env);
     }
 
-    const std::string fp16_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kFP16Enable);
+    const std::string fp16_enable_env = onnxruntime::GetEnvironmentVarOrEmpty(tensorrt_env_vars::kFP16Enable);
     if (!fp16_enable_env.empty()) {
       fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
     }
 
-    const std::string int8_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8Enable);
+    const std::string int8_enable_env = onnxruntime::GetEnvironmentVarOrEmpty(tensorrt_env_vars::kINT8Enable);
     if (!int8_enable_env.empty()) {
       int8_enable_ = (std::stoi(int8_enable_env) == 0 ? false : true);
     }
 
     if (int8_enable_) {
-      const std::string int8_calibration_cache_name_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8CalibrationTableName);
+      const std::string int8_calibration_cache_name_env = onnxruntime::GetEnvironmentVarOrEmpty(tensorrt_env_vars::kINT8CalibrationTableName);
       if (!int8_calibration_cache_name_env.empty()) {
         int8_calibration_cache_name_ = int8_calibration_cache_name_env;
       }
 
-      const std::string int8_use_native_tensorrt_calibration_table_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8UseNativeTensorrtCalibrationTable);
+      const std::string int8_use_native_tensorrt_calibration_table_env = onnxruntime::GetEnvironmentVarOrEmpty(tensorrt_env_vars::kINT8UseNativeTensorrtCalibrationTable);
       if (!int8_use_native_tensorrt_calibration_table_env.empty()) {
         int8_use_native_tensorrt_calibration_table_ = (std::stoi(int8_use_native_tensorrt_calibration_table_env) == 0 ? false : true);
       }
     }
 
     if (fp16_enable_ || int8_enable_) {  // DLA can only be enabled with FP16 or INT8
-      const std::string dla_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDLAEnable);
+      const std::string dla_enable_env = onnxruntime::GetEnvironmentVarOrEmpty(tensorrt_env_vars::kDLAEnable);
       if (!dla_enable_env.empty()) {
         dla_enable_ = (std::stoi(dla_enable_env) == 0 ? false : true);
       }
 
       if (dla_enable_) {
-        const std::string dla_core_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDLACore);
+        const std::string dla_core_env = onnxruntime::GetEnvironmentVarOrEmpty(tensorrt_env_vars::kDLACore);
         if (!dla_core_env.empty()) {
           dla_core_ = std::stoi(dla_core_env);
         }
       }
     }
 
-    const std::string dump_subgraphs_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDumpSubgraphs);
+    const std::string dump_subgraphs_env = onnxruntime::GetEnvironmentVarOrEmpty(tensorrt_env_vars::kDumpSubgraphs);
     if (!dump_subgraphs_env.empty()) {
       dump_subgraphs_ = (std::stoi(dump_subgraphs_env) == 0 ? false : true);
     }
 
-    const std::string engine_cache_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCacheEnable);
+    const std::string engine_cache_enable_env = onnxruntime::GetEnvironmentVarOrEmpty(tensorrt_env_vars::kEngineCacheEnable);
     if (!engine_cache_enable_env.empty()) {
       engine_cache_enable_ = (std::stoi(engine_cache_enable_env) == 0 ? false : true);
     }
 
     if (engine_cache_enable_ || int8_enable_) {
-      const std::string engine_cache_path = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCachePath);
-      cache_path_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kCachePath);
+      const std::string engine_cache_path = onnxruntime::GetEnvironmentVarOrEmpty(tensorrt_env_vars::kEngineCachePath);
+      cache_path_ = onnxruntime::GetEnvironmentVarOrEmpty(tensorrt_env_vars::kCachePath);
       if (!engine_cache_path.empty() && cache_path_.empty()) {
         cache_path_ = engine_cache_path;
         LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_ENGINE_CACHE_PATH is deprecated! Please use ORT_TENSORRT_CACHE_PATH to specify engine cache path";
       }
     }
 
-    const std::string engine_decryption_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDecryptionEnable);
+    const std::string engine_decryption_enable_env = onnxruntime::GetEnvironmentVarOrEmpty(tensorrt_env_vars::kDecryptionEnable);
     if (!engine_decryption_enable_env.empty()) {
       engine_decryption_enable_ = (std::stoi(engine_decryption_enable_env) == 0 ? false : true);
     }
 
     if (engine_decryption_enable_) {
-      engine_decryption_lib_path_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDecryptionLibPath);
+      engine_decryption_lib_path_ = onnxruntime::GetEnvironmentVarOrEmpty(tensorrt_env_vars::kDecryptionLibPath);
     }
 
-    const std::string force_sequential_engine_build_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kForceSequentialEngineBuild);
+    const std::string force_sequential_engine_build_env = onnxruntime::GetEnvironmentVarOrEmpty(tensorrt_env_vars::kForceSequentialEngineBuild);
     if (!force_sequential_engine_build_env.empty()) {
       force_sequential_engine_build_ = (std::stoi(force_sequential_engine_build_env) == 0 ? false : true);
     }

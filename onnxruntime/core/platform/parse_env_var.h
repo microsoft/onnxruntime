@@ -6,7 +6,10 @@
 #include "core/common/common.h"
 #include "core/common/optional.h"
 #include "core/common/parse_string.h"
-#include "core/platform/env.h"
+
+#ifndef SHARED_PROVIDER
+#include "core/platform/get_env_var.h"
+#endif
 
 namespace onnxruntime {
 /**
@@ -14,19 +17,15 @@ namespace onnxruntime {
  */
 template <typename T>
 optional<T> ParseEnvironmentVariable(const std::string& name) {
-#ifndef SHARED_PROVIDER
-  const std::string value_str = Env::Default().GetEnvironmentVar(name);
-#else
-  const std::string value_str = GetEnvironmentVar(name);
-#endif
-  if (value_str.empty()) {
-    return {};
+  const auto value_str = GetEnvironmentVar(name);
+  if (!value_str.has_value()) {
+    return nullopt;
   }
 
   T parsed_value;
   ORT_ENFORCE(
-      TryParseStringWithClassicLocale(value_str, parsed_value),
-      "Failed to parse environment variable - name: \"", name, "\", value: \"", value_str, "\"");
+      TryParseStringWithClassicLocale(value_str.value(), parsed_value),
+      "Failed to parse environment variable - name: \"", name, "\", value: \"", value_str.value(), "\"");
 
   return parsed_value;
 }
@@ -36,11 +35,6 @@ optional<T> ParseEnvironmentVariable(const std::string& name) {
  */
 template <typename T>
 T ParseEnvironmentVariableWithDefault(const std::string& name, const T& default_value) {
-  const auto parsed = ParseEnvironmentVariable<T>(name);
-  if (parsed.has_value()) {
-    return parsed.value();
-  }
-
-  return default_value;
+  return ParseEnvironmentVariable<T>(name).value_or(default_value);
 }
 }  // namespace onnxruntime

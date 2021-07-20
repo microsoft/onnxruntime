@@ -11,6 +11,7 @@
 #include "core/common/path_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/platform/env.h"
+#include "core/platform/get_env_var.h"
 #include "core/platform/parse_env_var.h"
 
 namespace onnxruntime {
@@ -192,15 +193,15 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
       opts.dump_flags |= NodeDumpOptions::DumpFlags::OutputData;
     }
 
-    opts.filter.name_pattern = Env::Default().GetEnvironmentVar(env_vars::kNameFilter);
-    opts.filter.op_type_pattern = Env::Default().GetEnvironmentVar(env_vars::kOpTypeFilter);
+    opts.filter.name_pattern = GetEnvironmentVarOrEmpty(env_vars::kNameFilter);
+    opts.filter.op_type_pattern = GetEnvironmentVarOrEmpty(env_vars::kOpTypeFilter);
 
     if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpDataToFiles, false)) {
       opts.data_destination = NodeDumpOptions::DataDestination::TensorProtoFiles;
     }
 
     if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kAppendRankToFileName, false)) {
-      std::string rank = Env::Default().GetEnvironmentVar("OMPI_COMM_WORLD_RANK");
+      std::string rank = GetEnvironmentVarOrEmpty("OMPI_COMM_WORLD_RANK");
       if (rank.empty()) {
         opts.file_suffix = "_default_rank_0";
       } else {
@@ -208,7 +209,7 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
       }
     }
 
-    opts.output_dir = Path::Parse(ToPathString(Env::Default().GetEnvironmentVar(env_vars::kOutputDir)));
+    opts.output_dir = Path::Parse(ToPathString(GetEnvironmentVarOrEmpty(env_vars::kOutputDir)));
 
     // check for confirmation for dumping data to files for all nodes
     const bool is_input_or_output_requested = ((opts.dump_flags & NodeDumpOptions::DumpFlags::InputData) != 0) ||

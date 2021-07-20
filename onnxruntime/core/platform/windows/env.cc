@@ -541,33 +541,6 @@ class WindowsEnv : public Env {
     return telemetry_provider_;
   }
 
-  // \brief returns a value for the queried variable name (var_name)
-  std::string GetEnvironmentVar(const std::string& var_name) const override {
-    // Why getenv() should be avoided on Windows:
-    // https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/getenv-wgetenv
-    // Instead use the Win32 API: GetEnvironmentVariableA()
-
-    // Max limit of an environment variable on Windows including the null-terminating character
-    constexpr DWORD kBufferSize = 32767;
-
-    // Create buffer to hold the result
-    char buffer[kBufferSize];
-
-    auto char_count = GetEnvironmentVariableA(var_name.c_str(), buffer, kBufferSize);
-
-    // Will be > 0 if the API call was successful
-    if (char_count) {
-      return std::string(buffer, buffer + char_count);
-    }
-
-    // TODO: Understand the reason for failure by calling GetLastError().
-    // If it is due to the specified environment variable being found in the environment block,
-    // GetLastError() returns ERROR_ENVVAR_NOT_FOUND.
-    // For now, we assume that the environment variable is not found.
-
-    return std::string();
-  }
-
  private:
   typedef VOID(WINAPI* FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
   WindowsTelemetry telemetry_provider_;

@@ -29,7 +29,7 @@ namespace backend_utils {
 
 #ifndef NDEBUG
 bool IsDebugEnabled() {
-  const std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_DEBUG");
+  const std::string env_name = onnxruntime::GetEnvironmentVarOrEmpty("ORT_OPENVINO_ENABLE_DEBUG");
   if (!env_name.empty()) {
     return true;
   }
@@ -43,7 +43,7 @@ void DumpOnnxModelProto(const ONNX_NAMESPACE::ModelProto& model_proto, std::stri
 #endif
 
 bool UseCompiledNetwork() {
-  const std::string env_name = onnxruntime::GetEnvironmentVar("OV_USE_COMPILED_NETWORK");
+  const std::string env_name = onnxruntime::GetEnvironmentVarOrEmpty("OV_USE_COMPILED_NETWORK");
   if (!env_name.empty()) {
     return true;
   }
