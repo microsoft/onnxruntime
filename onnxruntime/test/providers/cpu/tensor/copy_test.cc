@@ -114,5 +114,108 @@ TEST_F(CopyTest, Concat2D) {
   delete[] dst;
 }
 
+TEST_F(CopyTest, CoalesceTensorsTest) {
+  {
+    std::vector<int64_t> strides_a{3, 1};
+    std::vector<int64_t> strides_b{3, 1};
+    std::vector<int64_t> shape{5, 3};
+
+    CoalesceDimensions({strides_a, strides_b}, shape);
+
+    ASSERT_THAT(strides_a, testing::ElementsAre(1));
+    ASSERT_THAT(strides_b, testing::ElementsAre(1));
+    ASSERT_THAT(shape, testing::ElementsAre(15));
+  }
+
+  {
+    std::vector<int64_t> strides_a{3, 3, 1};
+    std::vector<int64_t> strides_b{3, 3, 1};
+    std::vector<int64_t> shape{5, 1, 3};
+
+    CoalesceDimensions({strides_a, strides_b}, shape);
+
+    ASSERT_THAT(strides_a, testing::ElementsAre(1));
+    ASSERT_THAT(strides_b, testing::ElementsAre(1));
+    ASSERT_THAT(shape, testing::ElementsAre(15));
+  }
+  {
+    std::vector<int64_t> strides_a{3, 3, 3, 1};
+    std::vector<int64_t> strides_b{3, 3, 3, 1};
+    std::vector<int64_t> shape{1, 5, 1, 3};
+
+    CoalesceDimensions({strides_a, strides_b}, shape);
+
+    ASSERT_THAT(strides_a, testing::ElementsAre(1));
+    ASSERT_THAT(strides_b, testing::ElementsAre(1));
+    ASSERT_THAT(shape, testing::ElementsAre(15));
+  }
+  {
+    std::vector<int64_t> strides_a{3, 3, 3, 1};
+    std::vector<int64_t> strides_b{3, 3, 3, 1};
+    std::vector<int64_t> shape{1, 5, 1, 3};
+
+    CoalesceDimensions({strides_a, strides_b}, shape);
+
+    ASSERT_THAT(strides_a, testing::ElementsAre(1));
+    ASSERT_THAT(strides_b, testing::ElementsAre(1));
+    ASSERT_THAT(shape, testing::ElementsAre(15));
+  }
+  {
+    std::vector<int64_t> strides_a{320, 1};
+    std::vector<int64_t> strides_b{320, 1};
+    std::vector<int64_t> shape{20, 10};
+
+    CoalesceDimensions({strides_a, strides_b}, shape);
+
+    ASSERT_THAT(strides_a, testing::ElementsAre(320, 1));
+    ASSERT_THAT(strides_b, testing::ElementsAre(320, 1));
+    ASSERT_THAT(shape, testing::ElementsAre(20, 10));
+  }
+  {
+    std::vector<int64_t> strides_a{320, 20, 1};
+    std::vector<int64_t> strides_b{320, 20, 1};
+    std::vector<int64_t> shape{10, 2, 20};
+
+    CoalesceDimensions({strides_a, strides_b}, shape);
+
+    ASSERT_THAT(strides_a, testing::ElementsAre(320, 1));
+    ASSERT_THAT(strides_b, testing::ElementsAre(320, 1));
+    ASSERT_THAT(shape, testing::ElementsAre(10, 40));
+  }
+  {
+    std::vector<int64_t> strides_a{3, 1};
+    std::vector<int64_t> strides_b{6, 1};
+    std::vector<int64_t> shape{5, 3};
+
+    CoalesceDimensions({strides_a, strides_b}, shape);
+
+    ASSERT_THAT(strides_a, testing::ElementsAre(3, 1));
+    ASSERT_THAT(strides_b, testing::ElementsAre(6, 1));
+    ASSERT_THAT(shape, testing::ElementsAre(5, 3));
+  }
+  {
+    std::vector<int64_t> strides_a{3, 1};
+    std::vector<int64_t> strides_b{6, 1};
+    std::vector<int64_t> shape{5, 3};
+
+    CoalesceDimensions({strides_a, strides_b}, shape);
+
+    ASSERT_THAT(strides_a, testing::ElementsAre(3, 1));
+    ASSERT_THAT(strides_b, testing::ElementsAre(6, 1));
+    ASSERT_THAT(shape, testing::ElementsAre(5, 3));
+  }
+  {
+    std::vector<int64_t> strides_a{4, 1};
+    std::vector<int64_t> strides_b{1, 1};
+    std::vector<int64_t> shape{4, 1};
+
+    CoalesceDimensions({strides_a, strides_b}, shape);
+
+    ASSERT_THAT(strides_a, testing::ElementsAre(4));
+    ASSERT_THAT(strides_b, testing::ElementsAre(1));
+    ASSERT_THAT(shape, testing::ElementsAre(4));
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime

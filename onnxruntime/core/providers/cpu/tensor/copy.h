@@ -4,6 +4,9 @@
 
 namespace onnxruntime {
 
+void CoalesceDimensions(
+    std::initializer_list<std::reference_wrapper<std::vector<int64_t>>>&& tensors_strides, std::vector<int64_t>& shape);
+
 Status DispatchStridedCopy(concurrency::ThreadPool* thread_pool,
                            Tensor& dst,
                            std::ptrdiff_t dst_offset,
@@ -21,5 +24,4 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
                  const std::vector<int64_t>& src_strides);
 
 std::vector<int64_t> StridesForTensor(const Tensor& tensor);
-std::vector<int64_t> StridesForTensor(const Tensor& tensor, size_t skip_dim);
 }  // namespace onnxruntime
