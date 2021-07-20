@@ -134,12 +134,16 @@ Return Value:
 //                           |  ...                              ...   |
 //                           |v0.b[3] ... v0.b[15] v1.b[3] ... v1.b[15]|
 //                           \-----------------------------------------/
-//    int8 LHS 4x4 block
+//    int8 LHS 4x8 block
 //  /---------------------\  /-----------------------------------------|
-//  |d4.b[0]  ... d4.b[3] |  |v16.s[0] .. v16.s[3] v17.s[0] .. v17.s[3]|
-//  |d4.b[4]  ... d4.b[7] |  |v18.s[0] .. v18.s[3] v19.s[0] .. v19.s[3]|
-//  |d5.b[0]  ... d5.b[3] |  |v20.s[0] .. v20.s[3] v21.s[0] .. v21.s[3]|
-//  |d5.b[4]  ... d5.b[7] |  |v22.s[0] .. v22.s[3] v23.s[0] .. v23.s[3]|
+//  |v4.b[0]  ... v4.b[3] |  |v16.s[0] .. v16.s[3] v17.s[0] .. v17.s[3]|
+//  |v4.b[4]  ... v4.b[7] |  |v18.s[0] .. v18.s[3] v19.s[0] .. v19.s[3]|
+//  |v4.b[8]  ... v4.b[11]|  |v20.s[0] .. v20.s[3] v21.s[0] .. v21.s[3]|
+//  |v4.b[12] ... v4.b[15]|  |v22.s[0] .. v22.s[3] v23.s[0] .. v23.s[3]|
+//  |v5.b[0]  ... v5.b[3] |  |v24.s[0] .. v24.s[3] v25.s[0] .. v25.s[3]|
+//  |v5.b[4]  ... v5.b[7] |  |v26.s[0] .. v26.s[3] v27.s[0] .. v27.s[3]|
+//  |v5.b[8]  ... v5.b[11]|  |v28.s[0] .. v28.s[3] v29.s[0] .. v29.s[3]|
+//  |v5.b[12] ... v5.b[15]|  |v30.s[0] .. v30.s[3] v31.s[0] .. v31.s[3]|
 //  \---------------------/  \-----------------------------------------/
 //////////////////////////
 //  unroll for the next 4 in k dimension
@@ -149,10 +153,14 @@ Return Value:
 //                           |v2.b[3] ... v2.b[15] v3.b[3] ... v3.b[15]|
 //                           \-----------------------------------------/
 //  /---------------------\  /-----------------------------------------\
-//  |d6.b[0]  ... d6.b[3] |  |v16.s[0] .. v16.s[3] v17.s[0] .. v17.s[3]|
-//  |d6.b[4]  ... d6.b[7] |  |v18.s[0] .. v18.s[3] v19.s[0] .. v19.s[3]|
-//  |d7.b[0]  ... d7.b[3] |  |v20.s[0] .. v20.s[3] v21.s[0] .. v21.s[3]|
-//  |d7.b[4]  ... d7.b[7] |  |v22.s[0] .. v22.s[3] v23.s[0] .. v23.s[3]|
+//  |v6.b[0]  ... v6.b[3] |  |v16.s[0] .. v16.s[3] v17.s[0] .. v17.s[3]|
+//  |v6.b[4]  ... v6.b[7] |  |v18.s[0] .. v18.s[3] v19.s[0] .. v19.s[3]|
+//  |v6.b[8]  ... v6.b[11]|  |v20.s[0] .. v20.s[3] v21.s[0] .. v21.s[3]|
+//  |v6.b[12] ... v6.b[15]|  |v22.s[0] .. v22.s[3] v23.s[0] .. v23.s[3]|
+//  |v7.b[0]  ... v7.b[3] |  |v24.s[0] .. v24.s[3] v25.s[0] .. v25.s[3]|
+//  |v7.b[4]  ... v7.b[7] |  |v26.s[0] .. v26.s[3] v27.s[0] .. v27.s[3]|
+//  |v7.b[8]  ... v7.b[11]|  |v28.s[0] .. v28.s[3] v29.s[0] .. v29.s[3]|
+//  |v7.b[12] ... v7.b[15]|  |v30.s[0] .. v30.s[3] v31.s[0] .. v31.s[3]|
 //  \---------------------/  \-----------------------------------------/
 //                                  int32 accumulators 8x8 block
 
@@ -199,55 +207,51 @@ SkipScaleByZeroPointBM4
 
 ComputeBlockLoopStartM4
         ld1     {v0.16b},[x1],#16           // load packed B0
-        ldr     d4,[x0],#32                 // load packed A0.l
+        ldr     q4,[x0],#32                 // load packed A0
         ld1     {v1.16b},[x1],#16           // load packed B1
-        ldur    d5,[x0,#-24]                // load packed A0.h
-        ldur    d6,[x0,#-16]                // load packed A1.l
+        ldur    q6,[x0,#-16]                // load packed A1
         ld1     {v2.16b},[x1],#16           // load packed B0_next4k
-        ld1     {v3.16b},[x1],#16           // load packed B1_next4k
 
 ComputeBlockLoopM4
         sub     x3,x3,#1
         UdotByElement 16, 0, 4, 0
         UdotByElement 18, 0, 4, 1
-        ldur    d7,[x0,#-8]                 // load packed A1.h
-        UdotByElement 20, 0, 5, 0
-        UdotByElement 22, 0, 5, 1
+        ld1     {v3.16b},[x1],#16           // load packed B1_next4k
+        UdotByElement 20, 0, 4, 2
+        UdotByElement 22, 0, 4, 3
         cbz     x3,ComputeBlockLoopFinishM4
         ld1     {v0.16b},[x1],#16           // load packed B0 for next iteration
         UdotByElement 17, 1, 4, 0
         UdotByElement 19, 1, 4, 1
-        ldr     d4,[x0],#32                 // load packed A0.l for next iteration
-        UdotByElement 21, 1, 5, 0
-        UdotByElement 23, 1, 5, 1
-        ld1     {v1.16b},[x1],#16           // load packed B1 for next iteration
+        UdotByElement 21, 1, 4, 2
+        UdotByElement 23, 1, 4, 3
+        ldr     q4,[x0],#32                 // load packed A0 for next iteration
         UdotByElement 16, 2, 6, 0
         UdotByElement 18, 2, 6, 1
-        ldur    d5,[x0,#-24]                // load packed A0.h for next iteration
-        UdotByElement 20, 2, 7, 0
-        UdotByElement 22, 2, 7, 1
+        ld1     {v1.16b},[x1],#16           // load packed B1 for next iteration
+        UdotByElement 20, 2, 6, 2
+        UdotByElement 22, 2, 6, 3
         ld1     {v2.16b},[x1],#16           // load packed B0_next4k for next iteration
         UdotByElement 17, 3, 6, 0
         UdotByElement 19, 3, 6, 1
-        ldur    d6,[x0,#-16]                // load packed A1.l for next iteration
-        UdotByElement 21, 3, 7, 0
-        UdotByElement 23, 3, 7, 1
-        ld1     {v3.16b},[x1],#16           // load packed B1_next4k for next iteration
+        UdotByElement 21, 3, 6, 2
+        UdotByElement 23, 3, 6, 3
+        ldur    q6,[x0,#-16]                // load packed A1 for next iteration
         b       ComputeBlockLoopM4
 
 ComputeBlockLoopFinishM4
         UdotByElement 17, 1, 4, 0
         UdotByElement 19, 1, 4, 1
-        UdotByElement 21, 1, 5, 0
-        UdotByElement 23, 1, 5, 1
+        UdotByElement 21, 1, 4, 2
+        UdotByElement 23, 1, 4, 3
         UdotByElement 16, 2, 6, 0
         UdotByElement 18, 2, 6, 1
-        UdotByElement 20, 2, 7, 0
-        UdotByElement 22, 2, 7, 1
+        UdotByElement 20, 2, 6, 2
+        UdotByElement 22, 2, 6, 3
         UdotByElement 17, 3, 6, 0
         UdotByElement 19, 3, 6, 1
-        UdotByElement 21, 3, 7, 0
-        UdotByElement 23, 3, 7, 1
+        UdotByElement 21, 3, 6, 2
+        UdotByElement 23, 3, 6, 3
         add     x10,x2,x6,lsl #2            // compute output row 2
         add     x11,x10,x6,lsl #2           // compute output row 3
         add     x12,x11,x6,lsl #2           // compute output row 4
