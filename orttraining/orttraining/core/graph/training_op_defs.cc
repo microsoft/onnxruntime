@@ -2802,21 +2802,7 @@ Return true if all elements are true and false otherwise.
               /*min_arity*/ 1)
       .Attr("name", "Name of ATen operator.", AttributeProto::STRING)
       .Attr("overload_name", "Overload name of ATen operator.", AttributeProto::STRING, false)
-      .Attr("output_types", "Output types of ATenOp's gradient op.", AttributeProto::INTS, false)
-      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        // Load and set output types if there is attribute 'output_type'.
-        // This is usually set in gradient nodes to help resolving graph.
-        const auto output_types_proto = ctx.getAttribute("output_types");
-        if (output_types_proto) {
-          ORT_ENFORCE(static_cast<size_t>(output_types_proto->ints_size()) == ctx.getNumOutputs(),
-                      "ATenOpGrad's output list and \"output_types\" attribute should have same length.");
-          // Set inferred output types.
-          for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
-            updateOutputElemType(ctx, i, static_cast<int>(output_types_proto->ints(static_cast<int>(i))));
-          }
-        }
-      });
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.");
 #endif
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(PythonOp)

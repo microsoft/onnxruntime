@@ -1688,7 +1688,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetExternalGradient) {
   std::unordered_set<std::string> seen_outputs;
   for (const auto& node_def : grad_def) {
     OpDef op_def(node_def.op_type, node_def.domain);
-    bool is_aten_op = node_def.op_type == "ATenOp" && node_def.domain == kMSDomain;
     std::vector<ArgDef> input_args;
     for (const auto& input : node_def.inputs) {
       if (input.find("GO(") == 0) {
@@ -1707,19 +1706,11 @@ IMPLEMENT_GRADIENT_BUILDER(GetExternalGradient) {
     }
 
     std::vector<ArgDef> output_args;
-    std::vector<int64_t> grad_output_types;
     for (const auto& output : node_def.outputs) {
       if (output.find("GI(") == 0) {
         size_t index = static_cast<size_t>(std::stoi(output.substr(3, output.length() - 4)));
         output_args.emplace_back(GI(index));
-        if (is_aten_op) {
-          grad_output_types.emplace_back(IElemType(index));
-        }
       } else {
-        // For ATenOp, we need to set "output_types" attribute to help graph resolving. Current gradient definition
-        // cannot tell the data type of intermediate outputs. If we want to support this case in the future,
-        // we will need to add the data type information to the gradient definition.
-        ORT_ENFORCE(!is_aten_op, "ATenOp in gradient graph supports only gradient inputs as node outputs for now.");
         seen_outputs.insert(output);
         output_args.emplace_back(IA(output));
       }
@@ -1728,10 +1719,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetExternalGradient) {
     std::vector<AttributeProto> attrs;
     for (const auto& attribute : node_def.attributes) {
       attrs.emplace_back(AttributeDefinitionToAttributeProto(attribute));
-    }
-
-    if (is_aten_op) {
-      attrs.emplace_back(MakeAttribute("output_types", grad_output_types));
     }
 
     result.emplace_back(NodeDef(op_def, input_args, output_args, attrs));
