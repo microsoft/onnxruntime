@@ -61,7 +61,7 @@ TEST(GridsamplerContribOpTest, gridsampler_paddingmode_border) {
      5.0000f, 5.0000f, 10.0000f, 10.0000f
     });
   test.AddAttribute("padding_mode", "border");
-  test.AddOutput<float>("Y", {1, 1, 2, 4}, {5.0000f, 0.0000f, 1.7000f, 5.0000f, 5.0000f, 1.7000f, 5.0000f, 5.0000f});
+  test.AddOutput<float>("Y", {1, 1, 2, 4}, {0.0000f, 0.0000f, 1.7000f, 5.0000f, 5.0000f, 1.7000f, 5.0000f, 5.0000f});
   test.Run();
 }
 
