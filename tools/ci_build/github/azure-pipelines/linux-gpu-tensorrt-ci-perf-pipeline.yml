@@ -139,7 +139,7 @@ jobs:
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
     
     - ${{ if eq(parameters.MemTest, true) }}:
-      - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/result $(Build.SourcesDirectory)/Artifact/result_mem_test'
+      - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/build/result $(Build.SourcesDirectory)/Artifact/result_mem_test'
         displayName: 'Copy Artifacts'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
