@@ -221,7 +221,6 @@ class TrainingManager(GraphExecutionManager):
     def _create_execution_agent(self):
         """Creates a TrainingAgent that can run the forward and backward graph on the training model"""
 
-        session_options, providers, provider_options = self._get_session_config()
         fw_feed_names = [input.name for input in self._optimized_onnx_model.graph.input]
         fw_outputs_device_info = [
             C.OrtDevice(get_ort_device_type(self._device.type),
@@ -241,9 +240,7 @@ class TrainingManager(GraphExecutionManager):
                                               fw_outputs_device_info,
                                               bw_fetches_names,
                                               bw_outputs_device_info,
-                                              session_options,
-                                              providers,
-                                              provider_options)
+                                              self._get_session_config())
 
     def _reinitialize_graph_builder(self, input_info):
         """Return true if the module graph builder was reinitialized"""

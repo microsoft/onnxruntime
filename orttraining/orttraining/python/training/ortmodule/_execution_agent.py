@@ -8,6 +8,7 @@ from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import IOBinding, OrtValue
 from onnxruntime.capi._pybind_state import TrainingAgent as C_TrainingAgent
 
+from ._utils import SessionConfig
 
 class ExecutionAgentOutput(object):
     def __init__(self, ortvalues, run_id=None):
@@ -20,16 +21,10 @@ class InferenceAgent(object):
     This is the main class used to run an ORTModule model inferencing.
     """
 
-    def __init__(self, path_or_bytes, session_options=None, providers=None, provider_options=None):
+    def __init__(self, path_or_bytes, session_config: SessionConfig):
         """
         :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
-        :param sess_options: session options
-        :param providers: Optional sequence of providers in order of decreasing
-            precedence. Values can either be provider names or tuples of
-            (provider name, options dict). If not provided, then all available
-            providers are used with the default precedence.
-        :param provider_options: Optional sequence of options dicts corresponding
-            to the providers listed in 'providers'.
+        :param session_config: session config
 
         The model type will be inferred unless explicitly set in the SessionOptions.
         To explicitly set:
@@ -39,21 +34,15 @@ class InferenceAgent(object):
 
         A file extension of '.ort' will be inferred as an ORT format model.
         All other filenames are assumed to be ONNX format models.
-
-        'providers' can contain either names or names and options. When any options
-        are given in 'providers', 'provider_options' should not be used.
-
-        The list of providers is ordered by precedence. For example ['CUDAExecutionProvider', 'CPUExecutionProvider']
-        means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
         """
 
         self._inference_session = None
 
-        self.create_inference_agent(path_or_bytes, session_options, providers, provider_options)
+        self.create_inference_agent(path_or_bytes, session_config)
 
-    def create_inference_agent(self, path_or_bytes, session_options, providers, provider_options):
-        self._inference_session = onnxruntime.InferenceSession(path_or_bytes, session_options,
-                                                               providers, provider_options)
+    def create_inference_agent(self, path_or_bytes, session_config: SessionConfig):
+        self._inference_session = onnxruntime.InferenceSession(path_or_bytes, session_config.session_options,
+                                                               session_config.providers, session_config.provider_options)
 
     def io_binding(self):
         """Return an onnxruntime.IOBinding object`."""
@@ -78,21 +67,14 @@ class TrainingAgent(object):
     """
 
     def __init__(self, path_or_bytes, fw_feed_names, fw_outputs_device_info,
-                 bw_fetches_names, bw_outputs_device_info, session_options=None,
-                 providers=None, provider_options=None):
+                 bw_fetches_names, bw_outputs_device_info, session_config: SessionConfig):
         """
         :param path_or_bytes: filename or serialized ONNX or ORT format model in a byte string
         :param fw_feed_names: Feed names for foward pass.
         :param fw_outputs_device_info: Device info for fetches in forward pass.
         :param bw_fetches_names: Fetch names for backward pass.
         :param bw_outputs_device_info: Device info for fetches in backward pass.
-        :param sess_options: session options
-        :param providers: Optional sequence of providers in order of decreasing
-            precedence. Values can either be provider names or tuples of
-            (provider name, options dict). If not provided, then all available
-            providers are used with the default precedence.
-        :param provider_options: Optional sequence of options dicts corresponding
-            to the providers listed in 'providers'.
+        :param sess_config: session config
 
         The model type will be inferred unless explicitly set in the SessionOptions.
         To explicitly set:
@@ -102,16 +84,10 @@ class TrainingAgent(object):
 
         A file extension of '.ort' will be inferred as an ORT format model.
         All other filenames are assumed to be ONNX format models.
-
-        'providers' can contain either names or names and options. When any options
-        are given in 'providers', 'provider_options' should not be used.
-
-        The list of providers is ordered by precedence. For example ['CUDAExecutionProvider', 'CPUExecutionProvider']
-        means execute a node using CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider.
         """
 
-        self._inference_session = onnxruntime.InferenceSession(path_or_bytes, session_options,
-                                                               providers, provider_options)
+        self._inference_session = onnxruntime.InferenceSession(path_or_bytes, session_config.session_options,
+                                                               session_config.providers, session_config.provider_options)
 
         self._training_agent = C_TrainingAgent(self._inference_session._sess, fw_feed_names, fw_outputs_device_info,
                                                bw_fetches_names, bw_outputs_device_info)

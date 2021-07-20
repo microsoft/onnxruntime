@@ -2,7 +2,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
-from typing import Dict, NamedTuple, Sequence, Tuple, Union
+from dataclasses import dataclass
+from typing import Dict, Sequence, Tuple, Union
 
 import onnxruntime
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
@@ -11,6 +12,7 @@ from onnxruntime.capi import _pybind_state as C
 import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
+from torch.utils.cpp_extension import ROCM_HOME
 
 def _ortvalue_to_torch_tensor(ortvalue):
     # PyTorch's to_dlpack() uses same config for both torch.bool and torch.uint8,
@@ -101,42 +103,71 @@ def _create_iobinding(io_binding, inputs, model, device):
         io_binding.bind_output(value_info.name, device.type, device_id=get_device_index(device))
 
 
-class SessionConfig(NamedTuple):
+@dataclass(frozen=True)
+class SessionConfig:
+    """Dataclass containing session_options, providers and provider_options.
+
+    Attributes:
+        session_options: session options (log level, optimization options, etc see session_options.h)
+        providers: Sequence of providers in order of decreasing precedence. For example
+            ['CUDAExecutionProvider', 'CPUExecutionProvider'] means execute a node using
+            CUDAExecutionProvider if capable, otherwise execute using CPUExecutionProvider. Values can
+            either be provider names or tuples of (provider name, options dict). When any options are
+            given in providers, provider_options should not be used.
+        provider_options: Sequence of options dicts corresponding to providers in 'providers' attribute.
+    """
     session_options: onnxruntime.SessionOptions
     providers: Sequence[Union[str, Tuple[str, Dict]]]
     provider_options: Sequence[Dict]
 
 
-def get_session_config(device: torch.device, use_external_gpu_allocator: bool = True,
-                       is_rocm_pytorch: bool = False, loglevel: int = 2) -> SessionConfig:
-    """Creates and returns the session configuration to be used for the ExecutionAgent"""
-    providers = None
-    provider_options = None
-    if device.type == 'cuda':
-        # Configure the InferenceSessions to use the specific GPU on which the model is placed.
-        providers = (["ROCMExecutionProvider"] if is_rocm_pytorch else ["CUDAExecutionProvider"])
-        providers.append("CPUExecutionProvider")
-        if use_external_gpu_allocator and torch.cuda.is_available():
-            # CPP extension to get torch GPU allocator's alloc and free function addresses
-            from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_gpu_allocator
-            torch_alloc = torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
-            torch_free = torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
-            provider_options = [{"device_id": str(device.index),
-                                 "gpu_external_alloc": str(torch_alloc),
-                                 "gpu_external_free": str(torch_free)}, {}]
-        else:
-            provider_options = [{"device_id": str(device.index)}, {}]
-    elif device.type == 'cpu':
-        providers = ["CPUExecutionProvider"]
-        provider_options = [{}]
+class SessionConfigFactory:
+    def __init__(self, use_external_gpu_allocator: bool = True, loglevel: int = 2):
+        """Initializes a SessionConfigFactory
 
-    session_options = onnxruntime.SessionOptions()
-    session_options.enable_mem_pattern = False
-    session_options.enable_mem_reuse = False
-    session_options.use_deterministic_compute = False
-    # default to PRIORITY_BASED execution order
-    session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
-    # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
-    session_options.log_severity_level = int(loglevel)
+        Args:
+            use_external_gpu_allocator: Use GPU memory allocator from torch (requires torch_gpu_allocator c++ extension)
+            loglevel: onnxruntime log level (0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2)
+        """
+        self._use_external_gpu_allocator = use_external_gpu_allocator
+        self._is_rocm_pytorch = (torch.version.hip is not None) and (ROCM_HOME is not None)
+        self._loglevel = loglevel
 
-    return SessionConfig(session_options, providers, provider_options)
+    def session_config_from_device(self, device: torch.device) -> SessionConfig:
+        """Creates and returns the session configuration to be used for the ExecutionAgent.
+
+        Args:
+            device: torch device indicating where the computation should happen.
+
+        Currently onnxruntime inference session needs to be re-initialized when the priority of the
+        device to execute the computation changes. This is why this method takes a device.
+        """
+        providers = None
+        provider_options = None
+        if device.type == 'cuda':
+            # Configure the InferenceSessions to use the specific GPU on which the model is placed.
+            providers = (["ROCMExecutionProvider"] if self._is_rocm_pytorch else ["CUDAExecutionProvider"])
+            providers.append("CPUExecutionProvider")
+            if self._use_external_gpu_allocator and torch.cuda.is_available():
+                # CPP extension to get torch GPU allocator's alloc and free function addresses
+                from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_gpu_allocator
+                torch_alloc = torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
+                torch_free = torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
+                provider_options = [{"device_id": str(device.index),
+                                    "gpu_external_alloc": str(torch_alloc),
+                                    "gpu_external_free": str(torch_free)}, {}]
+            else:
+                provider_options = [{"device_id": str(device.index)}, {}]
+        elif device.type == 'cpu':
+            providers = ["CPUExecutionProvider"]
+            provider_options = [{}]
+
+        session_options = onnxruntime.SessionOptions()
+        session_options.enable_mem_pattern = False
+        session_options.enable_mem_reuse = False
+        session_options.use_deterministic_compute = False
+        # default to PRIORITY_BASED execution order
+        session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
+        session_options.log_severity_level = self._loglevel
+
+        return SessionConfig(session_options, providers, provider_options)

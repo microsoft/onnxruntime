@@ -10,16 +10,13 @@ from onnxruntime.training.ortmodule import ONNX_OPSET_VERSION
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 import copy
 import io
 import inspect
 import onnx
-import onnxruntime
 import torch
 import warnings
-
-from torch.utils.cpp_extension import ROCM_HOME
 
 
 class RunStateInfo(object):
@@ -116,9 +113,8 @@ class GraphExecutionManager(GraphExecutionInterface):
                     warnings.warn("The model's forward method has **kwargs parameter which has EXPERIMENTAL support!",
                                   UserWarning)
 
-        self.is_rocm_pytorch = (True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
-
-        self._use_external_gpu_allocator = True
+        self._session_config_factory = _utils.SessionConfigFactory(use_external_gpu_allocator=True,
+                                                                   loglevel=self._loglevel)
 
         # WIP feature to enable caching in Gradient accumulation scenario.
         self._enable_grad_acc_optimization = False
@@ -169,14 +165,13 @@ class GraphExecutionManager(GraphExecutionInterface):
 
     def _get_session_config(self):
         """Creates and returns the session configuration to be used for the ExecutionAgent"""
-        session_options, providers, provider_options = _utils.get_session_config(self._device, self._use_external_gpu_allocator,
-                                                                                 self.is_rocm_pytorch, self._loglevel)
+        session_config = self._session_config_factory.session_config_from_device(self._device)
 
         # enable dumping optimized training graph
         if self._save_onnx:
-            session_options.optimized_model_filepath = self._save_onnx_prefix + '_training_optimized.onnx'
+            session_config.session_options.optimized_model_filepath = self._save_onnx_prefix + '_training_optimized.onnx'
 
-        return session_options, providers, provider_options
+        return session_config
 
     def _export_model(self, *inputs, **kwargs):
         # 1. Set the self._device from the user module
