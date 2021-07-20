@@ -48,8 +48,8 @@ namespace cuda {
       kCudaExecutionProvider,                                      \
       (*KernelDefBuilder::Create())                                \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())   \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()), \
-      .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),     \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())  \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
       BatchNorm<T>);
 
 template <typename T>

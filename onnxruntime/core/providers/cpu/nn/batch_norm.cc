@@ -51,7 +51,7 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(BatchNormalization, 14, 14, double,
                                              .Alias(3, 1)
                                              .Alias(4, 2)
                                              .TypeConstraint("T", DataTypeImpl::GetTensorType<double>())
-                                             .TypeConstraint("T", DataTypeImpl::GetTensorType<double>()),
+                                             .TypeConstraint("U", DataTypeImpl::GetTensorType<double>()),
                                          BatchNorm<double>);
 
 ONNX_CPU_OPERATOR_TYPED_KERNEL(BatchNormalization, 15, float,
