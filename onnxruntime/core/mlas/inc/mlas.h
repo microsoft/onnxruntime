@@ -540,6 +540,7 @@ struct MLAS_GEMM_U8X8_DATA_PARAMS {
     bool PerColumnZeroPoints = false;
     int32_t* C = nullptr;
     size_t ldc = 0;
+    bool IsAccumulateMode = false;
     const MLAS_QGEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr;
 };
 
