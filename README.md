@@ -9,13 +9,13 @@
 
 ## Get Started
 
-**https://onnxruntime.ai/**
+**General Information**: [onnxruntime.ai](https://onnxruntime.ai)
 
-**Usage documention and tutorials** can be found on [onnxruntime.ai/docs](https://onnxruntime.ai/docs).
+**Usage documention and tutorials**: [onnxruntime.ai/docs](https://onnxruntime.ai/docs)
 
-Companion sample repositories: 
-- ORT Inferencing: [microsoft/onnxruntime-inference-examples](https://github.com/microsoft/onnxruntime-inference-examples)
-- ORT Training: [microsoft/onnxruntime-training-examples](https://github.com/microsoft/onnxruntime-training-examples)
+**Companion sample repositories**: 
+- ONNX Runtime Inferencing: [microsoft/onnxruntime-inference-examples](https://github.com/microsoft/onnxruntime-inference-examples)
+- ONNX Runtime Training: [microsoft/onnxruntime-training-examples](https://github.com/microsoft/onnxruntime-training-examples)
 
 
 ## Build Pipeline Status
