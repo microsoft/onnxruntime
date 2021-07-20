@@ -75,7 +75,7 @@ def generate_model(model_name):
         ],
         generate_initializers())
 
-    model = helper.make_model(graph);
+    model = helper.make_model(graph)
     onnx.save(model, model_name)
     pass
 

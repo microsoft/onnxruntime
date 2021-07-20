@@ -182,8 +182,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<MatMulIntegerToFloatFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<DynamicQuantizeMatMulFusion>(cpu_ep));
 
-      transformers.emplace_back(std::make_unique<EmbedLayerNormBiasGeluFusion>(cpu_ep));
-
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_cuda_rocm_acl_armnn_eps));
 
       transformers.emplace_back(std::make_unique<GeluFusion>(cpu_cuda_rocm_eps));
@@ -201,6 +199,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_rocm_eps));
 
       transformers.emplace_back(std::make_unique<MatMulScaleFusion>(cpu_cuda_rocm_eps));
+
+      transformers.emplace_back(std::make_unique<EmbedLayerNormBiasGeluFusion>(cpu_ep));
 
       // GeluApproximation has side effects which may change results. It needs to be manually enabled,
       // or alternatively the model can be updated offline using a model conversion script

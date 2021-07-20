@@ -6,6 +6,7 @@
 
 import onnx
 import math
+import numpy as np
 from typing import List
 from packaging import version
 from onnx import helper, TensorProto
@@ -240,6 +241,66 @@ def create_tf2onnx_attention_3d(input_hidden_size=16, num_heads=4, head_size=4, 
     return model
 
 
+# TODO(kreeger) - does this make sense or should we have a conversion script for SLN?
+# TODO(kreeger): Pass in batch_size, sequence_size, and something_something?!
+def create_bert_skip_layer_norm():
+    kwargs = {}
+    kwargs['epsilon'] = 1e-12
+    nodes = [
+        helper.make_node('SkipLayerNormalization',
+                         ['sln_1_input', 'sln_1_skip', 'sln_1_gamma', 'sln_1_beta', 'sln_1_bias'], ['sln_1_output'],
+                         domain="com.microsoft",
+                         **kwargs),
+        helper.make_node('MatMul', ['sln_1_output', 'matmul_1_b'], ['matmul_1_output']),
+        helper.make_node('BiasGelu', ['matmul_1_output', 'bias_gelu_1_bias'], ['bias_gelu_1_output'],
+                         domain="com.microsoft"),
+        helper.make_node('MatMul', ['bias_gelu_1_output', 'matmul_2_b'], ['matmul_2_output']),
+        helper.make_node('SkipLayerNormalization',
+                         ['sln_1_output', 'matmul_2_output', 'sln_2_gamma', 'sln_2_beta', 'sln_2_bias'],
+                         ['sln_2_output'],
+                         domain="com.microsoft",
+                         **kwargs),
+    ]
+
+    initializers = [
+        helper.make_tensor('sln_1_gamma', TensorProto.FLOAT, [4], np.random.rand(4)),
+        helper.make_tensor('sln_1_beta', TensorProto.FLOAT, [4], np.random.rand(4)),
+        helper.make_tensor('sln_1_bias', TensorProto.FLOAT, [4], np.random.rand(4)),
+
+        helper.make_tensor('matmul_1_b', TensorProto.FLOAT, [4, 16], np.random.rand(4 * 16)),
+
+        helper.make_tensor('bias_gelu_1_bias', TensorProto.FLOAT, [16], np.random.rand(16)),
+
+        helper.make_tensor('matmul_2_b', TensorProto.FLOAT, [16, 4], np.random.rand(16 * 4)),
+
+        helper.make_tensor('sln_2_gamma', TensorProto.FLOAT, [4], np.random.rand(4)),
+        helper.make_tensor('sln_2_beta', TensorProto.FLOAT, [4], np.random.rand(4)),
+        helper.make_tensor('sln_2_bias', TensorProto.FLOAT, [4], np.random.rand(4)),
+    ]
+
+    batch_size = 1
+    sequence_size = 8
+    something_something = 4
+
+    graph = helper.make_graph(
+        nodes,
+        'SkipLayerNorm_MatMulBiasGeluMatMul_Subgraph',
+        [  # inputs
+            helper.make_tensor_value_info('sln_1_input', TensorProto.FLOAT,
+                                          [batch_size, sequence_size, something_something]),
+            helper.make_tensor_value_info('sln_1_skip', TensorProto.FLOAT,
+                                          [batch_size, sequence_size, something_something]),
+        ],
+        [  # outputs
+            helper.make_tensor_value_info('sln_2_output', TensorProto.FLOAT,
+                                          [batch_size, sequence_size, something_something])
+        ],
+        initializers)
+
+    model = helper.make_model(graph)
+    return model
+
+
 if __name__ == "__main__":
     model = create_bert_attention()
     onnx.save(model, "pruned_bert_attention.onnx")
@@ -247,3 +308,5 @@ if __name__ == "__main__":
     onnx.save(model, "bert_attention_reverse_add_order.onnx")
     model = create_tf2onnx_attention_3d()
     onnx.save(model, "bert_3d_attention.onnx")
+    model = create_bert_skip_layer_norm()
+    onnx.save(model, 'bert_skip_layer_norm.onnx')
