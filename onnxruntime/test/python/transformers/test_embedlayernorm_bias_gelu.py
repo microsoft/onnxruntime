@@ -30,7 +30,13 @@ class TestEmbedLayerNormBiasGeluFusions(unittest.TestCase):
 
         #print(str(optimized_model.model.graph))
 
-        onnx.save(optimized_model, os.path.join(dir, 'embedlayernorm_bias_gelu_opt.onnx'))
+        #
+        #
+        # TODO - left off right here. Model is serialized. Now is the time to start working on the fusion
+        #        here. Not sure if this test is really great - something to consider.
+        #
+        #
+        onnx.save(optimized_model.model, os.path.join(dir, 'embedlayernorm_bias_gelu_opt.onnx'))
 
         #os.remove(model_path)
         #expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models',

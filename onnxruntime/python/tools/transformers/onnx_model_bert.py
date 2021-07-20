@@ -11,6 +11,7 @@ from fusion_reshape import FusionReshape
 from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
 from fusion_skiplayernorm import FusionSkipLayerNormalization, FusionBiasSkipLayerNormalization
 from fusion_embedlayer import FusionEmbedLayerNormalization
+from fusion_embedlayernorm_bias_gelu import FusionEmbedLayerNormBiasGelu
 from fusion_attention import FusionAttention, AttentionMask, AttentionMaskFormat
 from fusion_gelu import FusionGelu
 from fusion_fastgelu import FusionFastGelu
@@ -27,6 +28,7 @@ class BertOptimizationOptions:
         self.enable_layer_norm = True
         self.enable_attention = True
         self.enable_skip_layer_norm = True
+        self.enable_embed_layer_bias_gelu = True
         self.enable_embed_layer_norm = True
         self.enable_bias_skip_layer_norm = True
         self.enable_bias_gelu = True
@@ -35,6 +37,7 @@ class BertOptimizationOptions:
 
         if model_type == 'gpt2':
             self.enable_skip_layer_norm = False
+            self.enable_embed_layer_bias_gelu = False
 
     def use_raw_attention_mask(self, use_raw_mask=True):
         if use_raw_mask:
@@ -103,6 +106,10 @@ class BertOnnxModel(OnnxModel):
 
     def fuse_skip_layer_norm(self):
         fusion = FusionSkipLayerNormalization(self)
+        fusion.apply()
+
+    def fuse_embed_layer_bias_gelu(self):
+        fusion = FusionEmbedLayerNormBiasGelu(self)
         fusion.apply()
 
     def get_graph_inputs_from_node_type(self, op_type: str, input_indices: List[int], casted: bool):
@@ -277,6 +284,9 @@ class BertOnnxModel(OnnxModel):
 
         if (options is None) or options.enable_skip_layer_norm:
             self.fuse_skip_layer_norm()
+
+        if (options is None) or options.enable_embed_layer_bias_gelu:
+            self.fuse_embed_layer_bias_gelu()
 
         if (options is None) or options.enable_attention:
             if options is not None:
