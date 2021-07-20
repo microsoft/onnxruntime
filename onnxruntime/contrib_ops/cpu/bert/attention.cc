@@ -281,8 +281,15 @@ bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
                                            const T* weights_data,
                                            size_t weight_matrix_col_size,
                                            /*out*/ PrePackedWeights* prepacked_weights) {
+  bool share_prepacked_weights = (prepacked_weights != nullptr);
   size_t packb_size = MlasGemmPackBSize(head_size, input_hidden_size);
   if (packb_size == 0) {
+    if (!share_prepacked_weights) {
+      for (int i = 0; i < qkv_index; i++) {
+        packed_weights_[i].~unique_ptr();
+      }
+    }
+
     return false;
   }
 
@@ -303,7 +310,6 @@ bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
     weights_data += head_size;
   }
 
-  bool share_prepacked_weights = (prepacked_weights != nullptr);
   if (share_prepacked_weights) {
     prepacked_weights->buffers_.push_back(std::move(packed_weights_[qkv_index]));
     prepacked_weights->buffer_sizes_.push_back(packed_weights_data_size);
@@ -322,8 +328,7 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
    * We use an array of buffers for Q, K, V for the sake of simplicity and easy offset management
    * in Compute(). They are packed one after the other being successful. In case of failure,
    *    1. With shared pre-pack weights the caller of this fn() frees up the memory.
-   *    2. TODO (better this) With weights held by kernel, packed_weights_[0]  will not be freed even
-   *       when packed_weights_[1] and [2] are never allocated.
+   *    2. When weights are held by kernel, it will be freed before returning.
    */
   is_packed = false;
 
@@ -366,15 +371,12 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
     v_hidden_size = hidden_size;
   }
 
-  const size_t q_head_size = q_hidden_size / num_heads_;
-  const size_t k_head_size = k_hidden_size / num_heads_;
-  const size_t v_head_size = v_hidden_size / num_heads_;
+  const size_t qkv_head_size[3] = {q_hidden_size / num_heads_, k_hidden_size / num_heads_, v_hidden_size / num_heads_};
   const size_t weight_matrix_col_size = q_hidden_size + k_hidden_size + v_hidden_size;
 
-  if (!IsPackWeightsSuccessful(0, alloc, q_head_size, input_hidden_size, weights_data, weight_matrix_col_size, prepacked_weights) ||
-      !IsPackWeightsSuccessful(1, alloc, k_head_size, input_hidden_size, weights_data + (num_heads_ * q_head_size), weight_matrix_col_size, prepacked_weights) ||
-      !IsPackWeightsSuccessful(2, alloc, v_head_size, input_hidden_size, weights_data + (num_heads_ * (q_head_size + k_head_size)), weight_matrix_col_size, prepacked_weights)) {
-    // we are not cleaning up anything, assuming caller takes care of this
+  if (!IsPackWeightsSuccessful(0, alloc, qkv_head_size[0], input_hidden_size, weights_data, weight_matrix_col_size, prepacked_weights) ||
+      !IsPackWeightsSuccessful(1, alloc, qkv_head_size[1], input_hidden_size, weights_data + (num_heads_ * qkv_head_size[0]), weight_matrix_col_size, prepacked_weights) ||
+      !IsPackWeightsSuccessful(2, alloc, qkv_head_size[2], input_hidden_size, weights_data + (num_heads_ * (qkv_head_size[0] + qkv_head_size[1])), weight_matrix_col_size, prepacked_weights)) {
     return Status::OK();
   }
 
