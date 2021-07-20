@@ -39,7 +39,7 @@ int main(int argc, char* argv[]) {
   g_ort->SetSessionGraphOptimizationLevel(session_options, ORT_ENABLE_BASIC);
 
   // Optionally add more execution providers via session_options
-  // E.g. for CUDA include cuda_provider_factory.h and uncomment the following line:
+  // E.g. for CUDA uncomment the following line:
   // OrtSessionOptionsAppendExecutionProvider_CUDA(sessionOptions, 0);
 
   //*************************************************************************
