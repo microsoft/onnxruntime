@@ -1502,6 +1502,14 @@ struct OrtCustomOp {
   OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetOutputCharacteristic)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
 };
 
+/*
+ * This is the old way to add the CUDA provider to the session, please use SessionOptionsAppendExecutionProvider_CUDA above to access the latest functionality
+ * This function always exists, but will only succeed if Onnxruntime was built with CUDA support and the CUDA provider shared library exists
+ * 
+ * \param device_id cuda device id, starts from zero.
+*/
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id);
+
 #ifdef __cplusplus
 }
 #endif
