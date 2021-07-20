@@ -305,6 +305,43 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
   }
   attributes.insert({full_shape_outputs_name, full_shape_outputs});
 
+  // Handle potential duplciated output_gradient names
+  std::unordered_map<std::string, std::vector<size_t>> name_to_idx;
+  for (size_t i = 0; i < yield_output_node_args.size(); ++i) {
+    const std::string& name = yield_output_node_args[i]->Name();
+    auto it = name_to_idx.find(name);
+    if (it == name_to_idx.end()) {
+      name_to_idx.insert(std::make_pair(name, std::vector<size_t>{i}));
+    } else {
+      it->second.push_back(i);
+    }
+  }
+
+  for (auto& name_idx_pair : name_to_idx) {
+    // Only process if there is a duplicated name
+    if (name_idx_pair.second.size() > 1) {
+      const std::string& arg_name = name_idx_pair.first;
+      const std::vector<size_t>& indices = name_idx_pair.second;
+
+      // Replace duplicated names with indexed names
+      std::vector<NodeArg*> sum_input_node_args;
+      std::vector<NodeArg*> sum_output_node_arg;
+      sum_output_node_arg.push_back(gradient_graph.GetNodeArg(arg_name));
+
+      int duplicate_counter = 0;
+      for (size_t idx : indices) {
+        std::string indexed_arg_name = arg_name + "_" + std::to_string(duplicate_counter++);
+        auto& indexed_node_arg = gradient_graph.GetOrCreateNodeArg(indexed_arg_name, yield_output_node_args[idx]->TypeAsProto());
+        sum_input_node_args.push_back(&indexed_node_arg);
+        yield_output_node_args[idx] = &indexed_node_arg;
+      }
+
+      // Insert the Sum node to sum-up the duplicated gradients
+      gradient_graph.AddNode("Sum_for_" + arg_name, "Sum", "Sum up duplicated gradient",
+                             sum_input_node_args, sum_output_node_arg, {}, kOnnxDomain);
+    }
+  }
+
   gradient_graph.AddNode("YieldOp", "YieldOp", "Yield Op", yield_input_node_args, yield_output_node_args, &attributes,
                          kMSDomain);
 }
