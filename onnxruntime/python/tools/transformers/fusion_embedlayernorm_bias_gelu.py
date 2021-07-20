@@ -16,8 +16,6 @@ class FusionEmbedLayerNormBiasGelu(Fusion):
         super().__init__(model, "EmbedLayerNormBiasGelu", "SkipLayerNormalization")
 
     def fuse(self, skip_layer_norm_node, input_name_to_nodes, output_name_to_node):
-        print("Fuse EmbedLayerNormFusionBiasGelu from Python")
-
         if len(skip_layer_norm_node.input) != 5:
             return
 
@@ -53,7 +51,6 @@ class FusionEmbedLayerNormBiasGelu(Fusion):
         children = input_name_to_nodes[matmul_2_node.output[0]]
         if len(children) != 1 or children[0].op_type != 'SkipLayerNormalization':
             return
-        # I don't think I need the final SLN node?
 
         # Build the new list of inputs for the 'EmbedLayerNormBiasGelu' node:
         # 0: SLN Input 0 (input)

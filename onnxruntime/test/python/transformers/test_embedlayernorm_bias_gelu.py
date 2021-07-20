@@ -15,6 +15,7 @@ if os.path.exists(transformers_dir):
 else:
     from onnxruntime.transformers.optimizer import optimize_model
 
+
 #
 #
 # TODO(kreeger): write me!
@@ -26,7 +27,7 @@ class TestEmbedLayerNormBiasGeluFusions(unittest.TestCase):
         dir = '.'
         model_path = os.path.join(dir, 'embedlayernorm_bias_gelu.onnx')
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path)
+        # optimized_model = optimize_model(model_path)
 
         #print(str(optimized_model.model.graph))
 
@@ -36,7 +37,7 @@ class TestEmbedLayerNormBiasGeluFusions(unittest.TestCase):
         #        here. Not sure if this test is really great - something to consider.
         #
         #
-        onnx.save(optimized_model.model, os.path.join(dir, 'embedlayernorm_bias_gelu_opt.onnx'))
+        # onnx.save(optimized_model.model, os.path.join(dir, 'embedlayernorm_bias_gelu_opt.onnx'))
 
         #os.remove(model_path)
         #expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models',
