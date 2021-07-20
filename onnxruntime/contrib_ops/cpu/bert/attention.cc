@@ -35,6 +35,7 @@ class Attention : public OpKernel, public AttentionCPUBase {
  private:
   BufferUniquePtr packed_weights_[3];
   size_t packed_weights_size_[3] = {0, 0, 0};
+  bool is_prepack_ = false;
 
   TensorShape weight_shape_;
 };
@@ -368,6 +369,7 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
   }
 
   is_packed = true;
+  is_prepack_ = true;
   return Status::OK();
 }
 
@@ -390,7 +392,7 @@ Status Attention<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& pre
 template <typename T>
 Status Attention<T>::Compute(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
-  const Tensor* weights = packed_weights_[0] ? nullptr : context->Input<Tensor>(1);
+  const Tensor* weights = is_prepack_ ? nullptr : context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
 
   const Tensor* mask_index = context->Input<Tensor>(3);
@@ -481,7 +483,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         int weights_offset = 0;
         int bias_offset = qkv_index * q_hidden_size + head_index * head_size;
 
-        if (packed_weights_[0] == nullptr) {
+        if (!is_prepack_) {
           weights_offset = bias_offset;
         } else {
           weights_offset = head_index * head_size;
@@ -503,7 +505,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         // A: input          (BxSxD)            (B.)S x D             S x D
         // B: weights        (DxNxT)             D x (N.)T            D x H
         // C: QKV[qkv_index] (BxNxSxT)          (B.N.)S x T           S x H
-        if (packed_weights_[0]) {
+        if (is_prepack_) {
           uint8_t* packed_weight;
           packed_weight = static_cast<uint8_t*>(packed_weights_[qkv_index].get()) + packed_weights_size_[qkv_index] * (weights_offset / head_size);
 
