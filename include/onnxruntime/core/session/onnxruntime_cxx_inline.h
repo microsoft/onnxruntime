@@ -798,7 +798,7 @@ inline bool Value::IsTensor() const {
   return out != 0;
 }
 
-inline bool Value::HasElement() const {
+inline bool Value::HasValue() const {
   int out;
   ThrowOnError(GetApi().HasElement(p_, &out));
   return out != 0;

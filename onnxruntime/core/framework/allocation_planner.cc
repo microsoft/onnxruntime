@@ -741,21 +741,18 @@ class PlannerImpl {
               }
             }
           }
-        } else if (IsNonTensor(*node_output)) {
+        } else if (!context_.IsParallelExecutionEnabled() &&
+                   IsOptionalType(*node_output) &&
+                   FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
           // For optional type outputs, certain kernels allow re-using input OrtValues.
           // Check if re-using is feasible.
-          if (!context_.IsParallelExecutionEnabled() &&
-              IsOptionalType(*node_output) &&
-              FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
-            // Reuse one of this node's input's as its output
-            Reuse(reused, current, AllocKind::kReuse);
+          Reuse(reused, current, AllocKind::kReuse);
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-            InplaceReuse(reused, current);
+          InplaceReuse(reused, current);
 #endif
-          } else {  // we do not try sharing-optimization for other non-tensors
-            AllocPlan(current).alloc_kind = AllocKind::kAllocate;
-            AllocPlan(current).program_counter.AddStart(program_counter);
-          }
+        } else if (IsNonTensor(*node_output)) {
+          AllocPlan(current).alloc_kind = AllocKind::kAllocate;
+          AllocPlan(current).program_counter.AddStart(program_counter);
         } else if (!context_.IsParallelExecutionEnabled() &&
                    FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
           // Reuse one of this node's input buffers as the output buffer (for in-place update)
@@ -780,7 +777,7 @@ class PlannerImpl {
 
       // determine if inputs of *pnode can be freed:
       for (auto node_input : pnode->InputDefs()) {
-        if (node_input->Exists()) {
+        if (node_input->Exists() && !IsOptionalType(*node_input)) {
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
@@ -802,7 +799,7 @@ class PlannerImpl {
       }
 
       for (auto node_input : pnode->ImplicitInputDefs()) {
-        if (node_input->Exists()) {
+        if (node_input->Exists() && !IsOptionalType(*node_input)) {
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
@@ -825,7 +822,7 @@ class PlannerImpl {
 
       // determine if any outputs of *pnode are unused and can be freed:
       for (auto node_output : pnode->OutputDefs()) {
-        if (node_output->Exists()) {
+        if (node_output->Exists() && !IsOptionalType(*node_output)) {
           auto& sym = node_output->Name();
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.

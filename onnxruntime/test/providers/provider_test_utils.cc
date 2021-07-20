@@ -486,7 +486,7 @@ void OpTester::FillFeeds(std::unordered_map<std::string, OrtValue>& feeds) {
         // We don't include optional type OrtValues of None because this is
         // how we expect users to deal with sending through "None"s as graph inputs
         // (i.e.) don't send them through at all
-        input_data_[i].data_.HasElement()) {
+        input_data_[i].data_.HasValue()) {
       feeds[input_data_[i].def_.Name()] = input_data_[i].data_;
     }
   }
@@ -686,8 +686,8 @@ std::vector<OrtValue> OpTester::ExecuteModel(
               onnxruntime::kCpuExecutionProvider, 0);
 
         if (expected_data.def_.Exists()) {          // optional edges won't exist (so skip them)
-          if (!expected_data.data_.HasElement()) {  // optional type output (None)
-            EXPECT_TRUE(!ort_value.HasElement())
+          if (!expected_data.data_.HasValue()) {  // optional type output (None)
+            EXPECT_TRUE(!ort_value.HasValue())
                 << "Expected to see an output of None "
                 << "but instead got an output that wasn't None";
 

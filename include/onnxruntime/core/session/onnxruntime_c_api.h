@@ -1458,7 +1458,7 @@ struct OrtApi {
    * If the optional type Ortvalue has element, use the OrtValue just like
    * any other OrtValue.
    * For example, if you get an OrtValue that corresponds to Optional(tensor) and 
-   * if HasElement() returns true, use it as tensor and so on.
+   * if HasValue() returns true, use it as tensor and so on.
    */
   ORT_API2_STATUS(HasElement, _In_ const OrtValue* value, _Out_ int* out);
 };

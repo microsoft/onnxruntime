@@ -1465,8 +1465,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
     auto& input_ml_value = feeds.at(i);
     if (input_ml_value.IsTensor()) {
       if (!expected_type->IsTensorType() &&
-          !(expected_type->IsOptionalType() &&
-            expected_type->AsOptionalType()->GetElementType()->IsTensorType())) {
+          !utils::IsOptionalTensor(expected_type)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
                                " is not expected to be of type tensor.");
       }
@@ -1504,8 +1503,7 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
       }
     } else if (input_ml_value.IsTensorSequence()) {
       if (!expected_type->IsTensorSequenceType() &&
-          !(expected_type->IsOptionalType() &&
-            expected_type->AsOptionalType()->GetElementType()->IsTensorSequenceType())) {
+          !utils::IsOptionalSeqTensor(expected_type)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input with name: ", feed_name,
                                " is not expected to be of type tensor sequence.");
       }

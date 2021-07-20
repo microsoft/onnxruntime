@@ -15,6 +15,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/utils.h"
+#include "core/framework/mldata_type_utils.h"
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
 #endif
@@ -628,7 +629,7 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       return status;
   }
 
-  if (ml_type->IsTensorType()) {
+  if (ml_type->IsTensorType() || utils::IsOptionalTensor(ml_type)) {
     ORT_ENFORCE(shape, "Allocation of tensor types requires a shape.");
 
     // tensors
@@ -679,18 +680,26 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
   } else if (ml_type->IsSparseTensorType()) {
     return AllocateSparseTensor(ort_value, *ml_type, GetAllocator(alloc_info),
                                 *shape, nnz, per_alloc_plan.create_fence_if_async, session_state_);
-  } else if (ml_type->IsTensorSequenceType()) {
-    return AllocateTensorSequence(ort_value);
-  } else if (ml_type->IsOptionalType()) {
+  } else if (ml_type->IsTensorSequenceType() ||
+             utils::IsOptionalSeqTensor(ml_type)) {
     AllocKind alloc_kind = per_alloc_plan.alloc_kind;
+
+    // Allocation planner had provided an OrtValue to re-use
     if (alloc_kind == AllocKind::kReuse) {
       int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
-      ort_value = GetMutableMLValue(reuse_mlvalue_index);
+
+      // In case OrtRunOptions.only_execute_path_to_fetches == true, it is possible that 'reuse_value'
+      // is not allocated (its upstream op is not executed due to the option).
+      // In this case we need to allocate 'reuse_value' and then let 'ort_value' to reuse it.
+      OrtValue& reuse_value = GetMutableMLValue(reuse_mlvalue_index);
+      if (!reuse_value.IsAllocated()) {
+        ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(reuse_value, reuse_mlvalue_index, shape, nnz));
+      }
+
+      return Status::OK();
     }
 
-    // No action needed to "allocate" optional types if not re-using another OrtValue.
-    // They are "allocated" within the ops based on the "runtime" type and shape.
-    return Status::OK();
+    return AllocateTensorSequence(ort_value);
   } else {
     return AllocateTraditionalMLValue(ort_value, *static_cast<const NonTensorTypeBase*>(ml_type));
   }

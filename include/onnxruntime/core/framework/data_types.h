@@ -398,7 +398,7 @@ struct SetOptionalType {
       elem_proto = dt->GetTypeProto();
     } else {
       // Will not reach here
-      ORT_ENFORCE(false, "Unsupproted type for optional type");
+      ORT_ENFORCE(false, "Unsupported type for optional type");
     }
 
 #ifdef ORT_NO_RTTI

@@ -40,13 +40,13 @@ struct OrtValue {
   }
 
   bool IsAllocated() const {
-    return HasElement() && type_;
+    return HasValue() && type_;
   }
 
   template <typename T>
   const T& Get() const {
     ORT_ENFORCE(onnxruntime::DataTypeImpl::GetType<T>() == type_, onnxruntime::DataTypeImpl::GetType<T>(), " != ", type_);
-    ORT_ENFORCE(HasElement(), "This optional type ortValue is None");
+    ORT_ENFORCE(HasValue(), "OrtValue contains no data");
     return *static_cast<T*>(data_.get());
   }
 
@@ -85,7 +85,7 @@ struct OrtValue {
     fence_ = v.fence_;
   }
 
-  bool HasElement() const noexcept {
+  bool HasValue() const noexcept {
     return data_ != nullptr;
   }
 
