@@ -291,7 +291,7 @@ void StridedCopy(concurrency::ThreadPool* thread_pool,
           if (inner != 0) {
             auto elements_to_copy = contiguous_span_size - inner;
             // never copy more than what is in our partition
-            elements_to_copy = std::min(elements_to_copy, last - first);
+            elements_to_copy = std::min<std::ptrdiff_t>(elements_to_copy, last - first);
             Copy1DContiguous<T>(dst + dst_idx, src + src_idx, elements_to_copy);
             inner = 0;
             outer++;
