@@ -16,34 +16,21 @@ else:
     from onnxruntime.transformers.optimizer import optimize_model
 
 
-#
-#
-# TODO(kreeger): write me!
-#
-#
 class TestEmbedLayerNormBiasGeluFusions(unittest.TestCase):
     def test_fusions(self):
         model = create_bert_skip_layer_norm()
         dir = '.'
         model_path = os.path.join(dir, 'embedlayernorm_bias_gelu.onnx')
         onnx.save(model, model_path)
-        # optimized_model = optimize_model(model_path)
+        optimized_model = optimize_model(model_path)
 
-        #print(str(optimized_model.model.graph))
+        #onnx.save(optimized_model.model, os.path.join(dir, 'embedlayernorm_bias_gelu_opt.onnx'))
+        os.remove(model_path)
 
-        #
-        #
-        # TODO - left off right here. Model is serialized. Now is the time to start working on the fusion
-        #        here. Not sure if this test is really great - something to consider.
-        #
-        #
-        # onnx.save(optimized_model.model, os.path.join(dir, 'embedlayernorm_bias_gelu_opt.onnx'))
-
-        #os.remove(model_path)
-        #expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models',
-        #                                   'embedlayernorm_bias_gelu_opt.onnx')
-        #expected = onnx.load(expected_model_path)
-        #self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
+        expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models',
+                                           'embedlayernorm_bias_gelu_opt.onnx')
+        expected = onnx.load(expected_model_path)
+        self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
 
 
 if __name__ == '__main__':
