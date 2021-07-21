@@ -135,12 +135,12 @@ jobs:
 
     - ${{ if not(eq(length(parameters.ModelGroups), 0)) }}:
       - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/result/ $(Build.SourcesDirectory)/Artifact'
-        displayName: 'Copy Artifacts'
+        displayName: 'Copy Perf Artifacts'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
     
     - ${{ if eq(parameters.MemTest, true) }}:
       - script: 'cp -r $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/mem_test/build/result $(Build.SourcesDirectory)/Artifact/result_mem_test'
-        displayName: 'Copy Artifacts'
+        displayName: 'Copy Memory Leak Artifacts'
         workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/'
 
     - task: PublishBuildArtifacts@1
@@ -166,7 +166,7 @@ jobs:
       inputs:
         artifact: 'result-$(Build.BuildNumber)'
 
-    - script: conda activate clean && python $(Build.SourcesDirectory)\onnxruntime\python\tools\tensorrt\perf\post.py -r $(Pipeline.Workspace)\result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId)"
+    - script: conda activate clean && python $(Build.SourcesDirectory)\onnxruntime\python\tools\tensorrt\perf\post.py -r $(Pipeline.Workspace)\result -c $(Build.SourceVersion) -u "https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=$(Build.BuildId) -t  ${{ parameters.TrtVersion }}"
       displayName: 'Post to Dashboard'
       env:
         DASHBOARD_MYSQL_ORT_PASSWORD: $(dashboard-mysql-ort-password)
