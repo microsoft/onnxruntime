@@ -1,8 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+/* eslint-disable no-invalid-this */
+
 import {Clip} from '../../../ops/clip';
 import {Tensor} from '../../../tensor';
+import {FunctionType} from '../glsl-definitions';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, WebGLOperator} from '../types';
@@ -38,4 +41,17 @@ export class WebGLClip extends Clip implements WebGLOperator {
       uniformData: {}
     };
   }
+}
+// used for fusion
+export function glslClip() {
+  const name = 'clip_';
+  const body = `
+    float ${name}(float a, float max, float min) {
+      return clamp(a, min, max);
+    }
+    vec4 ${name}(vec4 v, float max, float min) {
+      return clamp(v, min, max);
+    }
+    `;
+  return {body, name, type: FunctionType.ValueBased};
 }

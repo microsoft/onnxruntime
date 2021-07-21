@@ -6,6 +6,7 @@
 
 import onnx
 import math
+import numpy as np
 from typing import List
 from packaging import version
 from onnx import helper, TensorProto
@@ -17,7 +18,7 @@ def float_tensor(name: str, shape: List[int], random=False):
     total_elements = 1
     for x in shape:
         total_elements *= x
-    weights = [random.uniform(low, high) for _ in range(total_elements)] if random else [1.0] * total_elements
+    weights = [np.random.uniform(low, high) for _ in range(total_elements)] if random else [1.0] * total_elements
     return helper.make_tensor(name, TensorProto.FLOAT, shape, weights)
 
 
@@ -28,8 +29,9 @@ def reverse_if(inputs, reverse=False):
 
 
 def create_bert_attention(input_hidden_size=16,
-                          pruned_num_heads=2,
-                          pruned_head_size=4,
+                          num_heads=2,
+                          pruned_qk_hidden_size=16,
+                          pruned_v_hidden_size=16,
                           use_float_mask=False,
                           switch_add_inputs=False):
     # unsqueeze in opset version 13 has two inputs (axis is moved from attribute to input).
@@ -47,13 +49,13 @@ def create_bert_attention(input_hidden_size=16,
         # q nodes
         helper.make_node("MatMul", ["layernorm_out", "matmul_q_weight"], ["matmul_q_out"], "matmul_q"),
         helper.make_node("Add", reverse_if(["matmul_q_out", "add_q_weight"], switch_add_inputs), ["add_q_out"], "add_q"),
-        helper.make_node("Reshape", ["add_q_out", "reshape_weight_1"], ["reshape_q_out"], "reshape_q"),
+        helper.make_node("Reshape", ["add_q_out", "reshape_weight_qk"], ["reshape_q_out"], "reshape_q"),
         helper.make_node("Transpose", ["reshape_q_out"], ["transpose_q_out"], "transpose_q", perm=[0, 2, 1, 3]),
 
         # k nodes
         helper.make_node("MatMul", ["layernorm_out", "matmul_k_weight"], ["matmul_k_out"], "matmul_k"),
         helper.make_node("Add", reverse_if(["matmul_k_out", "add_k_weight"], switch_add_inputs), ["add_k_out"], "add_k"),
-        helper.make_node("Reshape", ["add_k_out", "reshape_weight_1"], ["reshape_k_out"], "reshape_k"),
+        helper.make_node("Reshape", ["add_k_out", "reshape_weight_qk"], ["reshape_k_out"], "reshape_k"),
         helper.make_node("Transpose", ["reshape_k_out"], ["transpose_k_out"], "transpose_k", perm=[0, 2, 3, 1]),
 
         # mask nodes
@@ -76,13 +78,13 @@ def create_bert_attention(input_hidden_size=16,
         # v nodes
         helper.make_node("MatMul", ["layernorm_out", "matmul_v_weight"], ["matmul_v_out"], "matmul_v"),
         helper.make_node("Add", ["matmul_v_out", "add_v_weight"], ["add_v_out"], "add_v"),
-        helper.make_node("Reshape", ["add_v_out", "reshape_weight_1"], ["reshape_v_out"], "reshape_v"),
+        helper.make_node("Reshape", ["add_v_out", "reshape_weight_v"], ["reshape_v_out"], "reshape_v"),
         helper.make_node("Transpose", ["reshape_v_out"], ["transpose_v_out"], "transpose_v", perm=[0, 2, 1, 3]),
 
         # qkv nodes
         helper.make_node("MatMul", ["softmax_qk_out", "transpose_v_out"], ["matmul_qkv_1_out"], "matmul_qkv_1"),
         helper.make_node("Transpose", ["matmul_qkv_1_out"], ["transpose_qkv_out"], "transpose_qkv", perm=[0, 2, 1, 3]),
-        helper.make_node("Reshape", ["transpose_qkv_out", "reshape_weight_2"], ["reshape_qkv_out"], "reshape_qkv"),
+        helper.make_node("Reshape", ["transpose_qkv_out", "reshape_weight_qkv"], ["reshape_qkv_out"], "reshape_qkv"),
         helper.make_node("MatMul", ["reshape_qkv_out", "matmul_qkv_weight"], ["matmul_qkv_2_out"], "matmul_qkv_2"),
         helper.make_node("Add", reverse_if(["matmul_qkv_2_out", "add_qkv_weight"], switch_add_inputs), ["add_qkv_out"], "add_qkv"),
         helper.make_node("Add", reverse_if(["add_qkv_out", "layernorm_out"], switch_add_inputs), ["skip_output"], "add_skip"),
@@ -92,23 +94,25 @@ def create_bert_attention(input_hidden_size=16,
                          epsion=0.000009999999747378752),
     ]
 
-    pruned_hidden_size = pruned_num_heads * pruned_head_size
+    pruned_qk_head_size = int(pruned_qk_hidden_size / num_heads)
+    pruned_v_head_size = int(pruned_v_hidden_size / num_heads)
     initializers = [  # initializers
         float_tensor('layer_norm_weight', [input_hidden_size]),
         float_tensor('layer_norm_bias', [input_hidden_size]),
-        float_tensor('matmul_q_weight', [input_hidden_size, pruned_hidden_size]),
-        float_tensor('matmul_k_weight', [input_hidden_size, pruned_hidden_size]),
-        float_tensor('matmul_v_weight', [input_hidden_size, pruned_hidden_size]),
-        float_tensor('matmul_qkv_weight', [pruned_hidden_size, input_hidden_size]),
-        float_tensor('add_q_weight', [pruned_hidden_size]),
-        float_tensor('add_k_weight', [pruned_hidden_size]),
-        float_tensor('add_v_weight', [pruned_hidden_size]),
+        float_tensor('matmul_q_weight', [input_hidden_size, pruned_qk_hidden_size]),
+        float_tensor('matmul_k_weight', [input_hidden_size, pruned_qk_hidden_size]),
+        float_tensor('matmul_v_weight', [input_hidden_size, pruned_v_hidden_size]),
+        float_tensor('matmul_qkv_weight', [pruned_v_hidden_size, input_hidden_size]),
+        float_tensor('add_q_weight', [pruned_qk_hidden_size]),
+        float_tensor('add_k_weight', [pruned_qk_hidden_size]),
+        float_tensor('add_v_weight', [pruned_v_hidden_size]),
         float_tensor('add_qkv_weight', [input_hidden_size]),
-        helper.make_tensor('div_weight', TensorProto.FLOAT, [1], [math.sqrt(pruned_head_size)]),
+        helper.make_tensor('div_weight', TensorProto.FLOAT, [1], [math.sqrt(pruned_qk_head_size)]),
         helper.make_tensor('sub_weight', TensorProto.FLOAT, [1], [1.0]),
         helper.make_tensor('mul_weight', TensorProto.FLOAT, [1], [-10000]),
-        helper.make_tensor('reshape_weight_1', TensorProto.INT64, [4], [0, 0, pruned_num_heads, pruned_head_size]),
-        helper.make_tensor('reshape_weight_2', TensorProto.INT64, [3], [0, 0, pruned_hidden_size]),
+        helper.make_tensor('reshape_weight_qk', TensorProto.INT64, [4], [0, 0, num_heads, pruned_qk_head_size]),
+        helper.make_tensor('reshape_weight_v', TensorProto.INT64, [4], [0, 0, num_heads, pruned_v_head_size]),
+        helper.make_tensor('reshape_weight_qkv', TensorProto.INT64, [3], [0, 0, pruned_v_hidden_size]),
     ]
 
     if has_unsqueeze_two_inputs:

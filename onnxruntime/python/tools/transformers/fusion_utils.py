@@ -5,7 +5,7 @@
 from logging import getLogger
 from typing import Tuple
 from onnx import helper, numpy_helper, TensorProto
-from numpy import ndarray
+from numpy import ndarray, array_equal
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -57,9 +57,53 @@ class FusionUtils:
                     self.model.remove_node(node)
                     self.model.replace_input_of_all_nodes(output_name, input_name)
 
+    @staticmethod
+    def check_node_attribute(node, attribute_name: str, expected_value, default_value=None):
+        """Verify that a node has expected value for an attribute.
+
+        Args:
+            node (NodeProto): a node to check
+            attribute_name (str): name of attribute
+            expected_value (Any): expected value of the attribute
+            default_value (Any, optional): default value if the attribute does not exist. Defaults to None.
+
+        Returns:
+            bool: whether the check is passed or not
+        """
+        value = default_value
+        for attr in node.attribute:
+            if attr.name == attribute_name:
+                value = helper.get_attribute_value(attr)
+
+        if isinstance(expected_value, list):
+            return isinstance(value, ndarray) and array_equal(expected_value, value, equal_nan=False)
+        else:
+            return value == expected_value
+
+    def check_node_input_value(self, node, input_index: int, expected_value):
+        """Verify that a node has expected input value
+
+        Args:
+            node (NodeProto): a node to check
+            input_index (int): index of its input to be verified
+            expected_value (Any): expected value of the input
+
+        Returns:
+            bool: whether the check is passed or not
+        """
+        assert len(node.input) > input_index
+
+        value = self.model.get_constant_value(node.input[input_index])
+
+        if isinstance(expected_value, list):
+            return isinstance(value, ndarray) and array_equal(expected_value, value, equal_nan=False)
+        else:
+            return value == expected_value
+
+
 class NumpyHelper:
-    @staticmethod    
-    def to_array(tensor:TensorProto, fill_zeros:bool = False) -> ndarray:
+    @staticmethod
+    def to_array(tensor: TensorProto, fill_zeros: bool = False) -> ndarray:
         # When weights are in external data format but not presented, we can still test the optimizer with two changes:
         # (1) set fill_zeros = True  (2) change load_external_data=False in optimizer.py
         if fill_zeros:

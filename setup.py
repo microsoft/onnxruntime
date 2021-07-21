@@ -54,8 +54,8 @@ rocm_version = None
 # The following arguments are mutually exclusive
 if parse_arg_remove_boolean(sys.argv, '--use_tensorrt'):
     package_name = 'onnxruntime-gpu-tensorrt' if not nightly_build else 'ort-trt-nightly'
-elif parse_arg_remove_boolean(sys.argv, '--use_cuda'):
-    package_name = 'onnxruntime-gpu' if not nightly_build else 'ort-gpu-nightly'
+elif wheel_name_suffix == 'gpu':
+    #TODO: how to support multiple CUDA versions?
     cuda_version = parse_arg_remove_string(sys.argv, '--cuda_version=')
 elif parse_arg_remove_boolean(sys.argv, '--use_rocm'):
     package_name = 'onnxruntime-rocm' if not nightly_build else 'ort-rocm-nightly'
@@ -72,8 +72,7 @@ elif parse_arg_remove_boolean(sys.argv, '--use_acl'):
     package_name = 'onnxruntime-acl'
 elif parse_arg_remove_boolean(sys.argv, '--use_armnn'):
     package_name = 'onnxruntime-armnn'
-elif parse_arg_remove_boolean(sys.argv, '--use_dml'):
-    package_name = 'onnxruntime-dml'
+
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -99,7 +98,6 @@ manylinux_tags = [
     'manylinux2014_s390x',
 ]
 is_manylinux = environ.get('AUDITWHEEL_PLAT', None) in manylinux_tags
-
 
 class build_ext(_build_ext):
     def build_extension(self, ext):
@@ -164,7 +162,8 @@ try:
                     args.append(dest)
                     if len(args) > 3:
                         subprocess.run(args, check=True, stdout=subprocess.PIPE)
-                    self._rewrite_ld_preload(to_preload)
+
+                self._rewrite_ld_preload(to_preload)
             _bdist_wheel.run(self)
             if is_manylinux:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
@@ -272,11 +271,19 @@ local_version = None
 enable_training = parse_arg_remove_boolean(sys.argv, '--enable_training')
 default_training_package_device = parse_arg_remove_boolean(sys.argv, '--default_training_package_device')
 
+package_data = {}
+data_files = []
+
 if enable_training:
     packages.extend(['onnxruntime.training',
                      'onnxruntime.training.amp',
                      'onnxruntime.training.optim',
-                     'onnxruntime.training.ortmodule'])
+                     'onnxruntime.training.ortmodule',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.aten_op_executor',
+                     'onnxruntime.training.ortmodule.torch_cpp_extensions.torch_gpu_allocator'])
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.aten_op_executor'] = ['*.cc']
+    package_data['onnxruntime.training.ortmodule.torch_cpp_extensions.torch_gpu_allocator'] = ['*.cc']
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
     # stable:
@@ -289,17 +296,36 @@ if enable_training:
 
     # we want put default training packages to pypi. pypi does not accept package with a local version.
     if not default_training_package_device:
+        def get_torch_version():
+            try:
+                import torch
+                torch_version = torch.__version__
+                torch_version_plus_pos = torch_version.find('+')
+                if torch_version_plus_pos != -1:
+                    torch_version = torch_version[:torch_version_plus_pos]
+                torch_version = torch_version.replace('.', '')
+                return torch_version
+            except ImportError as error:
+                print("Error importing torch to get torch version:")
+                print(error)
+                return None
+
+        torch_version = get_torch_version()
         if cuda_version:
             # removing '.' to make local Cuda version number in the same form as Pytorch.
-            local_version = '+cu' + cuda_version.replace('.', '')
+            if torch_version:
+                local_version = '+torch' + torch_version + '.'\
+                    + 'cu' + cuda_version.replace('.', '')
+            else:
+                local_version = '+cu' + cuda_version.replace('.', '')
         if rocm_version:
             # removing '.' to make Cuda version number in the same form as Pytorch.
             rocm_version = rocm_version.replace('.', '')
-            local_version = '+rocm' + rocm_version
-
-
-package_data = {}
-data_files = []
+            if torch_version:
+                local_version = '+torch' + torch_version + '.'\
+                    + 'rocm' + rocm_version
+            else:
+                local_version = '+rocm' + rocm_version
 
 if package_name == 'onnxruntime-nuphar':
     packages += ["onnxruntime.nuphar"]
@@ -369,10 +395,13 @@ if nightly_build:
         # alternatively we may bump up version number right after every release.
         ort_version = version.parse(version_number)
         if isinstance(ort_version, Version):
-            version_number = '{major}.{minor}.{macro}'.format(
-                major=ort_version.major,
-                minor=ort_version.minor + 1,
-                macro=ort_version.micro)
+            # TODO: this is the last time we have to do this!!!
+            # We shall bump up release number right after release cut.
+            if ort_version.major == 1 and ort_version.minor == 8 and ort_version.micro == 0:
+                version_number = '{major}.{minor}.{macro}'.format(
+                    major=ort_version.major,
+                    minor=ort_version.minor + 1,
+                    macro=ort_version.micro)
 
     version_number = version_number + ".dev" + build_suffix
 
@@ -380,7 +409,9 @@ if local_version:
     version_number = version_number + local_version
 
 if wheel_name_suffix:
-    package_name = "{}_{}".format(package_name, wheel_name_suffix)
+    if not (enable_training and wheel_name_suffix == 'gpu'):
+        # for training packages, local version is used to indicate device types
+        package_name = "{}-{}".format(package_name, wheel_name_suffix)
 
 cmd_classes = {}
 if bdist_wheel is not None:
@@ -397,17 +428,8 @@ with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 
 
-if is_manylinux:
-    AUDITWHEEL_PLAT = environ.get('AUDITWHEEL_PLAT', None)
-    if AUDITWHEEL_PLAT == 'manylinux2014_aarch64':
-        for i in range(len(install_requires)):
-            req = install_requires[i]
-            if req.startswith("numpy"):
-                install_requires[i] = "numpy >= 1.19.5"
-
 if enable_training:
-    def save_build_and_package_info(package_name, version_number, cuda_version):
-
+    def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version):
         sys.path.append(path.join(path.dirname(__file__), 'onnxruntime', 'python'))
         from onnxruntime_collect_build_info import find_cudart_versions
 
@@ -429,11 +451,10 @@ if enable_training:
                         "did not find any cudart library"
                         if not cudart_versions or len(cudart_versions) == 0
                         else "found multiple cudart libraries")
-            else:
-                # TODO: rocm
-                pass
+            elif rocm_version:
+                f.write("rocm_version = '{}'\n".format(rocm_version))
 
-    save_build_and_package_info(package_name, version_number, cuda_version)
+    save_build_and_package_info(package_name, version_number, cuda_version, rocm_version)
 
 # Setup
 setup(

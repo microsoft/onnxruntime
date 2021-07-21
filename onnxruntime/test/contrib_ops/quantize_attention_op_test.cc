@@ -6,80 +6,35 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "test/common/quantization_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/util/qmath.h"
+#include "core/quantization/quantization.h"
 
 namespace onnxruntime {
 namespace test {
-
-static float RoundHalfToEven(float input) {
-  std::fesetround(FE_TONEAREST);
-  auto result = std::nearbyintf(input);
-  return result;
-}
-
-template <typename Integer, bool symmetric, typename = typename std::enable_if<std::is_integral<Integer>::value, Integer>::type>
-inline std::vector<Integer> QuantizeLinear(const std::vector<float>& data, float& scale, Integer& zp) {
-  std::vector<Integer> result;
-  result.reserve(data.size());
-
-  // find quantization range min and max
-  float qmax = std::numeric_limits<Integer>::max();
-  float qmin = std::numeric_limits<Integer>::min();
-  // Adjust the int8 range to -127 to 127 so that zero point can be 0
-  if (qmin == -128) {
-    qmin = -127;
-  }
-
-  const auto minmax = std::minmax_element(data.begin(), data.end());
-  float min = std::min(*minmax.first, 0.0f);  // ensure the input range includes zero
-  float max = std::max(*minmax.second, 0.0f);
-  if (symmetric) {
-    scale = std::max(std::abs(max), std::abs(min)) / 127;
-    zp = 0;
-  } else {
-    scale = (max - min) / (qmax - qmin);
-    zp = static_cast<Integer>(RoundHalfToEven(std::max(qmin, std::min(qmax, qmin - min / scale))));
-  }
-
-  for (size_t i = 0; i < data.size(); i++) {
-    result.push_back(static_cast<Integer>(RoundHalfToEven(std::max(qmin, std::min(qmax, data[i] / scale + zp)))));
-  }
-  return result;
-}
-
-template <typename Integer, typename = typename std::enable_if<std::is_integral<Integer>::value, Integer>::type>
-inline std::vector<Integer> ToInteger(const std::vector<float>& data, float scale, Integer zero_point = 0) {
-  std::vector<Integer> result;
-  result.reserve(data.size());
-  for (size_t i = 0; i < data.size(); i++) {
-    result.push_back(static_cast<Integer>(std::round(data[i] / scale) + zero_point));
-  }
-  return result;
-}
 
 enum class EP : char {
   CPU,
   CUDA
 };
 
-template <typename QInput, typename QWeight>
-struct QuantizeParameters {
-  float input_scale;
-  float weight_scale;
-  QInput input_zero_point;
-  QWeight weight_zero_point;
-};
 
+// input:      [batch_size, sequence_length, hidden_size]
+// weights:    [hidden_size, 3 * hidden_size]
+// bias:       [3 * hidden_size]
+// mask_index: [batch_size]
+// output:     [batch_size, sequence_length, hidden_size]
 template <typename QInput, typename QWeight, EP ep>
-void RunQAttention(const std::vector<float>& input_data,         // input:      [batch_size, sequence_length, hidden_size]
-                   const std::vector<float>& weights_data,       // weights:    [hidden_size, 3 * hidden_size]
-                   const std::vector<float>& bias_data,          // bias:       [3 * hidden_size]
-                   const std::vector<int32_t>& mask_index_data,  // mask_index: [batch_size]
-                   const std::vector<float>& output_data,        // output:     [batch_size, sequence_length, hidden_size]
-                   const QuantizeParameters<QInput, QWeight>& quantize_parameters,
+void RunQAttention(const std::vector<float>& input_data,
+                   const std::vector<float>& weights_data,
+                   const std::vector<float>& bias_data,
+                   const std::vector<int32_t>& mask_index_data,
+                   const std::vector<float>& output_data,
+                   quantization::Params<QInput>& input_quant_params,
+                   quantization::Params<QWeight>& weight_quant_params,
                    int batch_size,
                    int sequence_length,
                    int hidden_size,
@@ -96,31 +51,41 @@ void RunQAttention(const std::vector<float>& input_data,         // input:      
   }
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, input_hidden_size};
-  std::vector<int64_t> weights_dims = {input_hidden_size, 3 * hidden_size};
-  std::vector<int64_t> bias_dims = {3 * hidden_size};
+  std::vector<int64_t> weights_dims = {input_hidden_size, static_cast<int64_t>(3 * hidden_size)};
+  std::vector<int64_t> bias_dims = {static_cast<int64_t>(3 * hidden_size)};
   std::vector<int64_t> mask_index_dims = {batch_size};
   std::vector<int64_t> output_dims = {batch_size, sequence_length, hidden_size};
 
-  float input_scale = quantize_parameters.input_scale;
-  float weight_scale = quantize_parameters.weight_scale;
-  QInput input_zero_point = quantize_parameters.input_zero_point;
-  QWeight weight_zero_point = quantize_parameters.weight_zero_point;
-  if (input_scale != 0.0f) {
-    tester.AddInput<QInput>("input", input_dims, ToInteger<QInput>(input_data, input_scale, input_zero_point));
-    tester.AddInput<QWeight>("weight", weights_dims, ToInteger<QWeight>(weights_data, weight_scale, weight_zero_point));
+  if (input_quant_params.scale != 0.0f) {
+    tester.AddInput<QInput>("input",
+                            input_dims,
+                            QuantizeTestVector<QInput>(input_data, input_quant_params));
+    tester.AddInput<QWeight>("weight",
+                             weights_dims,
+                             QuantizeTestVector<QWeight>(weights_data, weight_quant_params));
   } else {
-    tester.AddInput<QInput>("input", input_dims, QuantizeLinear<QInput, ep == EP::CUDA>(input_data, input_scale, input_zero_point));
-    tester.AddInput<QWeight>("weight", weights_dims, QuantizeLinear<QWeight, ep == EP::CUDA>(weights_data, weight_scale, weight_zero_point));
+    bool force_symmetric = false;
+    if constexpr (ep == EP::CUDA) {
+      force_symmetric = true;
+    }
+    tester.AddInput<QInput>(
+        "input",
+        input_dims,
+        QuantizeLinearTestVector<QInput>(input_data, input_quant_params, force_symmetric));
+    tester.AddInput<QWeight>(
+        "weight",
+        weights_dims,
+        QuantizeLinearTestVector<QWeight>(weights_data, weight_quant_params, force_symmetric));
   }
   if (use_float16) {
     tester.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
-    tester.AddInput<MLFloat16>("input_scale", {1}, ToFloat16({input_scale}));
-    tester.AddInput<MLFloat16>("weight_scale", {1}, ToFloat16({weight_scale}));
+    tester.AddInput<MLFloat16>("input_scale", {1}, ToFloat16({input_quant_params.scale}));
+    tester.AddInput<MLFloat16>("weight_scale", {1}, ToFloat16({weight_quant_params.scale}));
     tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
   } else {
     tester.AddInput<float>("bias", bias_dims, bias_data);
-    tester.AddInput<float>("input_scale", {1}, {input_scale});
-    tester.AddInput<float>("weight_scale", {1}, {weight_scale});
+    tester.AddInput<float>("input_scale", {1}, {input_quant_params.scale});
+    tester.AddInput<float>("weight_scale", {1}, {weight_quant_params.scale});
     tester.AddOutput<float>("output", output_dims, output_data);
   }
 
@@ -128,13 +93,13 @@ void RunQAttention(const std::vector<float>& input_data,         // input:      
     tester.AddInput<int32_t>("mask_index", mask_index_dims, mask_index_data);
   } else {
     // mask index is optional.
-    tester.AddMissingOptionalInput<int32_t>();
+    tester.AddOptionalInputEdge<int32_t>();
   }
 
-  tester.AddInput<QInput>("input_zero_point", {1}, {input_zero_point});
-  tester.AddInput<QWeight>("weight_zero_point", {1}, {weight_zero_point});
+  tester.AddInput<QInput>("input_zero_point", {1}, {input_quant_params.zero_point});
+  tester.AddInput<QWeight>("weight_zero_point", {1}, {weight_quant_params.zero_point});
 
-  if (ep == EP::CUDA) {
+  if constexpr (ep == EP::CUDA) {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -163,13 +128,14 @@ static void RunQAttentionCUDA(
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
 
   if (enable_cuda) {
-    QuantizeParameters<int8_t, int8_t> qp{0.0f, 0.0f, 0, 0};
+    quantization::Params<int8_t> input_quant_params = {0.0f, 0};
+    quantization::Params<int8_t> weights_quant_params = {0.0f, 0};
     if (use_special_quantize_parameter) {
-      qp.input_scale = 0.1f;
-      qp.weight_scale = 0.1f;
+      input_quant_params.scale = 0.1f;
+      weights_quant_params.scale = 0.1f;
     }
     RunQAttention<int8_t, int8_t, EP::CUDA>(
-        input_data, weights_data, bias_data, mask_index_data, output_data, qp,
+        input_data, weights_data, bias_data, mask_index_data, output_data, input_quant_params, weights_quant_params,
         batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional, use_float16, input_hidden_size);
   }
 }
@@ -187,16 +153,17 @@ static void RunQAttentionU8U8(
     bool use_special_quantize_parameter = true,
     bool is_unidirectional = false,
     int input_hidden_size = 0) {
-  QuantizeParameters<uint8_t, uint8_t> qp_uint8{0.0f, 0.0f, 0, 0};
+  quantization::Params<uint8_t> input_quant_params = {0.0f, 0};
+  quantization::Params<uint8_t> weights_quant_params = {0.0f, 0};
   if (use_special_quantize_parameter) {
-    qp_uint8.input_scale = 0.1f;
-    qp_uint8.weight_scale = 0.1f;
-    qp_uint8.input_zero_point = 128;
-    qp_uint8.weight_zero_point = 128;
+    input_quant_params.scale = 0.1f;
+    weights_quant_params.scale = 0.1f;
+    input_quant_params.zero_point = 128;
+    weights_quant_params.zero_point = 128;
   }
 
   RunQAttention<uint8_t, uint8_t, EP::CPU>(
-      input_data, weights_data, bias_data, mask_index_data, output_data, qp_uint8,
+      input_data, weights_data, bias_data, mask_index_data, output_data, input_quant_params, weights_quant_params,
       batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional, false, input_hidden_size);
 }
 
@@ -213,16 +180,17 @@ static void RunQAttentionU8S8(
     bool use_special_quantize_parameter = true,
     bool is_unidirectional = false,
     int input_hidden_size = 0) {
-  QuantizeParameters<uint8_t, int8_t> qp_int8{0.0f, 0.0f, 0, 0};
+  quantization::Params<uint8_t> input_quant_params(/*scale=*/0.0f, /*zero_point=*/0);
+  quantization::Params<int8_t> weights_quant_params(/*scale=*/0.0f, /*zero_point=*/0);
   if (use_special_quantize_parameter) {
-    qp_int8.input_scale = 0.1f;
-    qp_int8.weight_scale = 0.1f;
-    qp_int8.input_zero_point = 128;
-    qp_int8.weight_zero_point = 1;
+    input_quant_params.scale = 0.1f;
+    weights_quant_params.scale = 0.1f;
+    input_quant_params.zero_point = 128;
+    weights_quant_params.zero_point = 1;
   }
 
   RunQAttention<uint8_t, int8_t, EP::CPU>(
-      input_data, weights_data, bias_data, mask_index_data, output_data, qp_int8,
+      input_data, weights_data, bias_data, mask_index_data, output_data, input_quant_params, weights_quant_params,
       batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional, false, input_hidden_size);
 }
 
@@ -766,7 +734,7 @@ void TestQuantizedAttentionPastState(int64_t batch,
   test.AddInput<float>("bias", bias_dims, bias_data);
   test.AddInput<float>("input_scale", {1}, input_scale);
   test.AddInput<float>("weight_scale", {weight_scale_zp_size}, weight_scale);
-  test.AddMissingOptionalInput<int32_t>();
+  test.AddOptionalInputEdge<int32_t>();
   test.AddInput<InputT>("input_zero_point", {1}, input_zero_point);
   test.AddInput<WeightT>("weight_zero_point", {weight_scale_zp_size}, weight_zero_point);
   test.AddInput<float>("past", past_dims, past_data);
@@ -892,9 +860,20 @@ TEST(QAttentionTest, SharedPrepackedWeights) {
   OpTester tester("QAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
 
-  tester.AddInput<uint8_t>("input", input_dims, ToInteger<uint8_t>(input_data, 0.1f, 128));
-  auto weight_data_converted_to_int = ToInteger<uint8_t>(weight_data, 0.1f, 128);
-  tester.AddInput<uint8_t>("weight", weights_dims, weight_data_converted_to_int, true);  // Trigger pre-packing
+  tester.AddInput<uint8_t>(
+      "input",
+      input_dims,
+      QuantizeTestVector<uint8_t>(
+          input_data,
+          quantization::Params<uint8_t>(/*scale=*/0.1f, /*zero_point=*/128)));
+
+  auto weight_data_converted_to_int = QuantizeTestVector<uint8_t>(
+      weight_data,
+      quantization::Params<uint8_t>(/*scale=*/0.1f, /*zero_point=*/128));
+  tester.AddInput<uint8_t>("weight",
+                           weights_dims,
+                           weight_data_converted_to_int,
+                           /*is_initializer=*/true);  // Trigger pre-packing
 
   tester.AddInput<float>("bias", bias_dims, bias_data);
   tester.AddInput<float>("input_scale", {1}, {0.1f});

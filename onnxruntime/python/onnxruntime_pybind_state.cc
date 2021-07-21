@@ -17,7 +17,6 @@
 #include "core/framework/data_types_internal.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/framework/kernel_registry.h"
-#include "core/framework/provider_bridge_ort.h"
 #include "core/framework/provider_options_utils.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/sparse_tensor.h"
@@ -27,6 +26,7 @@
 #include "core/platform/env.h"
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/provider_bridge_ort.h"
 
 #ifdef ENABLE_TRAINING
 #include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
@@ -470,24 +470,33 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-      const auto it = provider_options_map.find(type);
-      CUDAExecutionProviderInfo info{};
-      if (it != provider_options_map.end())
-        GetProviderInfo_CUDA()->CUDAExecutionProviderInfo__FromProviderOptions(it->second, info);
-      else {
-        info.device_id = cuda_device_id;
-        info.gpu_mem_limit = gpu_mem_limit;
-        info.arena_extend_strategy = arena_extend_strategy;
-        info.cudnn_conv_algo_search = cudnn_conv_algo_search;
-        info.do_copy_in_default_stream = do_copy_in_default_stream;
-        info.external_allocator_info = external_allocator_info;
-      }
+      if(auto* cuda_provider_info = TryGetProviderInfo_CUDA())
+      {
+        const auto it = provider_options_map.find(type);
+        CUDAExecutionProviderInfo info{};
+        if (it != provider_options_map.end())
+          cuda_provider_info->CUDAExecutionProviderInfo__FromProviderOptions(it->second, info);
+        else {
+          info.device_id = cuda_device_id;
+          info.gpu_mem_limit = gpu_mem_limit;
+          info.arena_extend_strategy = arena_extend_strategy;
+          info.cudnn_conv_algo_search = cudnn_conv_algo_search;
+          info.do_copy_in_default_stream = do_copy_in_default_stream;
+          info.external_allocator_info = external_allocator_info;
+        }
 
-      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
-      // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
-      // since FromProviderOptions might contain external CUDA allocator.
-      external_allocator_info = info.external_allocator_info;
-      RegisterExecutionProvider(sess, *GetProviderInfo_CUDA()->CreateExecutionProviderFactory(info));
+        // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
+        // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
+        // since FromProviderOptions might contain external CUDA allocator.
+        external_allocator_info = info.external_allocator_info;
+        RegisterExecutionProvider(sess, *cuda_provider_info->CreateExecutionProviderFactory(info));
+      }
+      else
+      {
+        if(!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
+          ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page, make sure they're in the PATH, and that your GPU is supported.");
+        }
+      }
 #endif
     } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
@@ -840,6 +849,13 @@ void addGlobalMethods(py::module& m, Environment& env) {
 #else
         ORT_UNUSED_PARAMETER(key);
         ORT_UNUSED_PARAMETER(obj);
+#endif
+  });
+  m.def("unregister_python_functions", []() -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    // Release all custom python functions registered.
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.UnRegisterFunctions();
 #endif
   });
 #endif
@@ -1610,7 +1626,7 @@ static struct {
 void addObjectMethodsForTraining(py::module& m);
 #endif
 
-PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
+void CreatePybindStateModule(py::module& m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
 
@@ -1671,7 +1687,8 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   addOrtValueMethods(m);
   addIoBindingMethods(m);
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#if !defined(__APPLE__) && \
+    (!defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
   Ort::SessionOptions tmp_options;
   if (!InitProvidersSharedLibrary()) {
     const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
