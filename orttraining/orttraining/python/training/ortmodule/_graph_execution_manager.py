@@ -3,8 +3,9 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from . import _utils, _io, _logger, _cpp_extensions as _cpp_ext
+from . import _utils, _io, _logger, torch_cpp_extensions as _cpp_ext
 from ._custom_autograd_function_exporter import _post_process_after_export
+from ._graph_execution_interface import GraphExecutionInterface
 from onnxruntime.training.ortmodule import ONNX_OPSET_VERSION
 
 from onnxruntime.capi import _pybind_state as C
@@ -30,7 +31,7 @@ class RunStateInfo(object):
         self.state = state
         self.output_info = output_info
 
-class GraphExecutionManager(ABC):
+class GraphExecutionManager(GraphExecutionInterface):
     def __init__(self, module):
         """Manages building and execution of onnx graphs
 
@@ -41,8 +42,9 @@ class GraphExecutionManager(ABC):
         the onnx graph, and ExecutionAgent to run the onnx graph.
         """
 
+        super(GraphExecutionManager, self).__init__(module._original_module)
+
         # Original and flattened (tranformed) output module
-        self._original_module = module._original_module
         self._flattened_module = module
 
         # Exported model
@@ -117,12 +119,20 @@ class GraphExecutionManager(ABC):
         self.is_rocm_pytorch = (True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
 
         self._use_external_gpu_allocator = True
-        if self._use_external_gpu_allocator:
+        if self._use_external_gpu_allocator and torch.cuda.is_available():
             # CPP extension to get torch GPU allocator's alloc and free function addresses
-            self._torch_gpu_allocator = _cpp_ext._load_torch_gpu_allocator_cpp_extension(self._loglevel < _logger.LogLevel.WARNING,
-                                                                                         self.is_rocm_pytorch)
-            self._torch_alloc = self._torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
-            self._torch_free = self._torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
+            from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_gpu_allocator
+            self._torch_alloc = torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
+            self._torch_free = torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
+
+        # WIP feature to enable caching in Gradient accumulation scenario.
+        self._enable_grad_acc_optimization = False
+
+    def _validate_module_type(self, module):
+        """Raises a TypeError if the module is not a torch.nn.Module"""
+
+        if not isinstance(module, torch.nn.Module):
+            raise TypeError(f"ORTModule only supports torch.nn.Module as input. {type(module)} is not supported.")
 
     @staticmethod
     def execution_session_run_forward(execution_session, onnx_model, device, *inputs):
@@ -214,7 +224,7 @@ class GraphExecutionManager(ABC):
 
         self._set_device_from_module(inputs, kwargs)
         self._onnx_model = self._get_exported_model(*inputs, **kwargs)
-        _cpp_ext._load_aten_op_executor_cpp_extension_if_needed(self._onnx_model, self._loglevel < _logger.LogLevel.WARNING, self.is_rocm_pytorch)
+        _cpp_ext._load_aten_op_executor_cpp_extension_if_needed(self._onnx_model, self._loglevel < _logger.LogLevel.WARNING)
         if self._save_onnx:
             onnx.save(self._onnx_model, self._save_onnx_prefix + '_torch_exporter.onnx')
 
@@ -273,8 +283,8 @@ class GraphExecutionManager(ABC):
         except RuntimeError as e:
             raise RuntimeError('There was an error while exporting the PyTorch model to ONNX: {}'.format(e))
         exported_model = onnx.load_model_from_string(f.getvalue())
-        if self._enable_custom_autograd_function:
-            exported_model = _post_process_after_export(exported_model)
+
+        exported_model = _post_process_after_export(exported_model, self._enable_custom_autograd_function)
 
         return exported_model
 
@@ -317,6 +327,7 @@ class GraphExecutionManager(ABC):
         grad_builder_config.input_names_require_grad = self._input_info.require_grad_names
         grad_builder_config.build_gradient_graph = training
         grad_builder_config.graph_transformer_config = self._get_graph_transformer_config()
+        grad_builder_config.enable_caching = self._enable_grad_acc_optimization
         grad_builder_config.loglevel = _logger.ortmodule_loglevel_to_onnxruntime_c_loglevel(self._loglevel)
         self._graph_builder = C.OrtModuleGraphBuilder()
 

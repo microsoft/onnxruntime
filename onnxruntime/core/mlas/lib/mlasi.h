@@ -497,6 +497,7 @@ extern "C" {
 #endif
 #elif defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernel;
+    MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelPOWER10;
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
@@ -702,8 +703,10 @@ struct MLAS_PLATFORM {
 
     MLAS_PLATFORM(void);
 
-#if defined(MLAS_TARGET_AMD64_IX86)
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
+    const MLAS_GEMM_U8X8_DISPATCH* GemmU8S8Dispatch;
+    const MLAS_GEMM_U8X8_DISPATCH* GemmU8U8Dispatch;
 #endif
 
 #if defined(MLAS_TARGET_AMD64)
@@ -711,10 +714,8 @@ struct MLAS_PLATFORM {
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1TransposeBRoutine;
     MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* TransposePackB16x4Routine;
     MLAS_GEMM_DOUBLE_KERNEL* GemmDoubleKernel;
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8S8Dispatch;
     MLAS_GEMM_U8S8_KERNEL* GemmU8S8Kernel;
     MLAS_GEMV_U8S8_KERNEL* GemvU8S8Kernel;
-    const MLAS_GEMM_U8X8_DISPATCH* GemmU8U8Dispatch;
     MLAS_GEMM_U8U8_KERNEL* GemmU8U8Kernel;
     MLAS_CONV_FLOAT_KERNEL* ConvNchwFloatKernel;
     MLAS_CONV_FLOAT_KERNEL* ConvNchwcFloatKernel;

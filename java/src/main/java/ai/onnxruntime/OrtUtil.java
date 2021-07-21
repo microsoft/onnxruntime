@@ -383,15 +383,48 @@ public final class OrtUtil {
   }
 
   /**
-   * Stores a boxed primitive in a single element array of the boxed type. Otherwise returns the
-   * input.
+   * Stores a boxed primitive in a single element array of the unboxed type.
    *
+   * <p>If it's not a boxed primitive then it returns null.
+   *
+   * @param javaType The type of the boxed primitive.
    * @param data The boxed primitive.
-   * @return The boxed primitive in an array.
+   * @return The primitive in an array.
    */
-  static Object convertBoxedPrimitiveToArray(Object data) {
-    Object array = Array.newInstance(data.getClass(), 1);
-    Array.set(array, 0, data);
-    return array;
+  static Object convertBoxedPrimitiveToArray(OnnxJavaType javaType, Object data) {
+    switch (javaType) {
+      case FLOAT:
+        float[] floatArr = new float[1];
+        floatArr[0] = (Float) data;
+        return floatArr;
+      case DOUBLE:
+        double[] doubleArr = new double[1];
+        doubleArr[0] = (Double) data;
+        return doubleArr;
+      case INT8:
+        byte[] byteArr = new byte[1];
+        byteArr[0] = (Byte) data;
+        return byteArr;
+      case INT16:
+        short[] shortArr = new short[1];
+        shortArr[0] = (Short) data;
+        return shortArr;
+      case INT32:
+        int[] intArr = new int[1];
+        intArr[0] = (Integer) data;
+        return intArr;
+      case INT64:
+        long[] longArr = new long[1];
+        longArr[0] = (Long) data;
+        return longArr;
+      case BOOL:
+        boolean[] booleanArr = new boolean[1];
+        booleanArr[0] = (Boolean) data;
+        return booleanArr;
+      case STRING:
+      case UNKNOWN:
+      default:
+        return null;
+    }
   }
 }
