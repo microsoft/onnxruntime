@@ -65,6 +65,12 @@ class GraphExecutionManager(GraphExecutionInterface):
         # TODO - move it to config API
         self._freeze = False
         # enabled only when _freeze is True and after execution session is created the first time
+        # when _fast_path is enabled, these checks will be turned off:
+        # - schema check in _export_model() to determine whether to build gradient graph again
+        #   -- since there is no need to rebuild gradient graph, the following two functions can be skipped as well:
+        #      parse_inputs_for_onnx_export() and _reinitialize_graph_builder()
+        # - logic to determine whether to create execution session again
+        # - further checks on device change in both forward and backward pass
         self._fast_path = False
 
         # Debug flags
