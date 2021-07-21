@@ -139,7 +139,7 @@ class SessionConfigFactory:
         Args:
             device: torch device indicating where the computation should happen.
 
-        Currently onnxruntime inference session needs to be re-initialized when the priority of the
+        onnxruntime inference session needs to be re-initialized when the priority of the
         device to execute the computation changes. This is why this method takes a device.
         """
         providers = None
