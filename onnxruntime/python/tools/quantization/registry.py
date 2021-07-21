@@ -4,6 +4,7 @@ from .operators.qdq_base_operator import QDQOperatorBase
 from .operators.matmul import MatMulInteger, QLinearMatMul
 from .operators.attention import AttentionQuant
 from .operators.embed_layernorm import EmbedLayerNormalizationQuant
+from .operators.embed_layer_norm_bias_gelu import EmbedLayerNormBiasGeluQuant
 from .operators.gather import GatherQuant
 from .operators.conv import QLinearConv, ConvInteger, QDQConv
 from .operators.activation import QLinearActivation, QDQRemovableActivation
@@ -21,6 +22,7 @@ from .operators.concat import QLinearConcat, QDQConcat
 CommonOpsRegistry = {
     "Gather": GatherQuant,
     "EmbedLayerNormalization": EmbedLayerNormalizationQuant,
+    "EmbedLayerNormBiasGelu": EmbedLayerNormBiasGeluQuant,
 }
 
 IntegerOpsRegistry = {
