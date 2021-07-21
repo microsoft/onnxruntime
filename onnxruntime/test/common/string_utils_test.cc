@@ -130,9 +130,11 @@ TEST(StringUtilsTest, SplitString) {
   run_test(",", ",", {"", ""});
 }
 
+#ifndef ORT_NO_EXCEPTIONS
 TEST(StringUtilsTest, SplitStringWithEmptyDelimiter) {
   EXPECT_THROW(utils::SplitString("a", ""), OnnxRuntimeException);
 }
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
