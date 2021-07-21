@@ -270,12 +270,17 @@ def load_pt_model(model_name, model_class, cache_dir):
 
 def load_tf_model(model_name, model_class, cache_dir):
     config = AutoConfig.from_pretrained(model_name, cache_dir=cache_dir)
-
+    
+    # Loading tf model from transformers limits the cpu affinity to {0} when KMP_AFFINITY is set
+    # Restore the affinity after model loading for expected ORT performance
+    pid = os.getpid()
+    affinity = os.sched_getaffinity(pid)
     model = load_pretrained_model(model_name,
                                   config=config,
                                   cache_dir=cache_dir,
                                   custom_model_class=model_class,
                                   is_tf_model=True)
+    os.sched_setaffinity(pid, affinity)
 
     return config, model
 
