@@ -1,4 +1,14 @@
+"""
+Usage:
+deepspeed --num_gpus 2 orttraining_test_onnx_graph_module_deepspeed_pipeline_parallel.py \
+    --deepspeed_config orttraining_test_onnx_graph_module_deepspeed_pipeline_parallel_config.json \
+    --pipeline-parallel-size 2 --steps 1000
+"""
+
 import argparse
+import time
+from typing import Iterable
+import numpy as np
 import onnx
 import torch
 from torch import nn
@@ -6,26 +16,10 @@ import torch.distributed as dist
 import deepspeed
 from deepspeed.pipe import PipelineModule
 
+from torchvision import datasets, transforms
+
 from onnxruntime.training.ortmodule import ORTModule
 from onnxruntime.training.ortmodule._onnx_graph_module import OnnxGraphModule
-
-
-# USAGE:
-# pip install deepspeed
-# deepspeed orttraining_test_ortmodule_deepspeed_pipeline_parallel.py --deepspeed_config=orttraining_test_ortmodule_deepspeed_pipeline_parallel_config.json --pipeline-parallel-size 2 --steps=100
-# expected output : steps: 100 loss: 0.0585 iter time (s): 0.186 samples/sec: 53.694
-
-
-class SampleData(torch.utils.data.Dataset):
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-
-    def __len__(self):
-        return self.x.size()[0]
-
-    def __getitem__(self, idx):
-        return self.x[idx], self.y[idx]
 
 
 def wrap_model_as_onnx_graph_module(model, d_in, save_prefix=""):
@@ -83,11 +77,32 @@ def get_args():
     return args
 
 
+def group_every_n(iterable: Iterable, n):
+    """ Groups every n elements from a iterable and yields iterators over them.
+    """
+    group = []
+    for batch in iterable:
+        group.append(batch)
+        if len(group) == n:
+            yield iter(group)
+            group.clear()
+
+
+def get_mnist_dataset_with_download(**kwargs):
+    if dist.get_rank() == 0:
+        # This may take a while
+        return datasets.MNIST("./mnist", download=True, **kwargs)
+    while True:
+        try:
+            return datasets.MNIST("./mnist", **kwargs)
+        except RuntimeError:
+            time.sleep(3)
+
+
 def main():
-    n = 10
-    d_in = 4
-    d_hidden = 8
-    d_out = 3
+    d_in = 784
+    d_hidden = 512
+    d_out = 10
     args = get_args()
     torch.cuda.set_device(args.local_rank)
 
@@ -140,23 +155,39 @@ def main():
 
     params = [p for p in model.parameters() if p.requires_grad]
 
-    # Input.
-    x = torch.rand((n, d_in))
-    if args.fp16:
-        x = x.half()
-    # Output.
-    y = torch.randint(0, d_out, (n,))
-    ds = SampleData(x, y)
+    transform = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Normalize((0.1307,), (0.3081,)),
+            transforms.Lambda(lambda t: t.view(-1)),
+        ]
+    )
+    dataset = get_mnist_dataset_with_download(train=True, transform=transform)
 
     print("Initialize deepspeed")
     model_engine, _, _, _ = deepspeed.initialize(
-        args=args, model=model, model_parameters=params, training_data=ds  # (x,y)#
+        args=args, model=model, model_parameters=params, training_data=dataset
     )
 
-    for step in range(args.steps):
-        loss = model_engine.train_batch()
-        if step % 10 == 0:
-            print("step = ", step, ", loss = ", loss)
+    for _ in range(args.steps):
+        model_engine.train_batch()
+
+    # inference
+    test_loader = torch.utils.data.DataLoader(
+        datasets.MNIST("./mnist", train=False, transform=transform),
+        batch_size=64,
+        shuffle=False,
+    )
+
+    """
+    Currently inference following training doesn't work. Need help from DeepSpeed people.
+    test_losses = []
+    for batch_iter in group_every_n(test_loader, n=2):
+        test_loss = model_engine.eval_batch(batch_iter)
+        print(test_loss)
+        test_losses.append(test_loss.cpu().detach().numpy())
+    print(f"Test loss: {np.mean(test_losses)}")
+    """
 
 
 if __name__ == "__main__":
