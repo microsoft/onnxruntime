@@ -40,18 +40,18 @@ class EmbedLayerNormBiasGeluQuant(QuantOperatorBase):
         [5] MatMul #1 Input 1
         [6] BiasGelu Input 1
         [7] MatMul #2 Input 1
-	[8] SLN Input 2 (gamma) scale (float)
-	[9] SLN Input 3 (beta) scale (float)
-	[10] SLN Input 4 (bias) scale (float)
-	[11] MatMul #1 Input 1 scale (float)
-	[12] BiasGelu Input 1 scale (float)
-	[13] MatMul #2 Input 1 scale (float)
-	[14] SLN Input 2 (gamma) zero point (uint8)
-	[15] SLN Input 3 (beta) zero point (uint8)
-	[10] SLN Input 4 (bias) zero point (uint8)
-	[11] MatMul #1 Input 1 zero point (uint8)
-	[12] BiasGelu Input 1 zero point (uint8)
-	[13] MatMul #2 Input 1 zero point (uint8)
+	    [8] SLN Input 2 (gamma) scale (float)
+	    [9] SLN Input 3 (beta) scale (float)
+	    [10] SLN Input 4 (bias) scale (float)
+	    [11] MatMul #1 Input 1 scale (float)
+	    [12] BiasGelu Input 1 scale (float)
+	    [13] MatMul #2 Input 1 scale (float)
+	    [14] SLN Input 2 (gamma) zero point (uint8)
+	    [15] SLN Input 3 (beta) zero point (uint8)
+	    [16] SLN Input 4 (bias) zero point (uint8)
+	    [17] MatMul #1 Input 1 zero point (uint8)
+	    [18] BiasGelu Input 1 zero point (uint8)
+	    [19] MatMul #2 Input 1 zero point (uint8)
         '''
         inputs = []
         # 'SLN Input 0 (input)'

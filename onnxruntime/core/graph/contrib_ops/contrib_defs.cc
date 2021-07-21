@@ -667,6 +667,46 @@ TODO(kreeger): Write me!)DOC";
         // TODO(kreeger): write me!
         //
       });
+  
+static const char* QEmbedLayerNormBiasGelu_ver1_doc = R"DOC(
+TODO(kreeger): Write me!)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(QEmbedLayerNormBiasGelu)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(QEmbedLayerNormBiasGelu_ver1_doc)
+      .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultEmbedLayerNormEpsilon)
+      .Input(0, "SLN input 0 (input)", "TODO(kreeger)", "T")
+      .Input(1, "SLN input 1 (skip)", "TODO(kreeger)", "T")
+      .Input(2, "SLN input 2 (gamma)", "TODO(kreeger)", "T1")
+      .Input(3, "SLN input 3 (beta)", "TODO(kreeger)", "T1")
+      .Input(4, "SLN input 4 (bias)", "TODO(kreeger)", "T1")
+      .Input(5, "MatMul #1 Input 1", "TODO(kreeger)", "T1")
+      .Input(6, "BiasGelu Input 1", "TODO(kreeger)", "T1")
+      .Input(7, "MatMul #2 Input 1", "TODO(kreeger)", "T1")
+      .Input(8, "SLN input 2 (gamma) scale", "TODO(kreeger)", "T")
+      .Input(9, "SLN input 3 (beta) scale", "TODO(kreeger)", "T")
+      .Input(10, "SLN input 4 (bias) scale", "TODO(kreeger)", "T")
+      .Input(11, "MatMul #1 Input 1 scale", "TODO(kreeger)", "T")
+      .Input(12, "BiasGelu Input 1 scale", "TODO(kreeger)", "T")
+      .Input(13, "MatMul #2 Input 1 scale", "TODO(kreeger)", "T")
+      .Input(14, "SLN input 2 (gamma) zero point", "TODO(kreeger)", "T1")
+      .Input(15, "SLN input 3 (beta) zero point", "TODO(kreeger)", "T1")
+      .Input(16, "SLN input 4 (bias) zero point", "TODO(kreeger)", "T1")
+      .Input(17, "MatMul #1 Input 1 zero point", "TODO(kreeger)", "T1")
+      .Input(18, "BiasGelu Input 1 zero point", "TODO(kreeger)", "T1")
+      .Input(19, "MatMul #2 Input 1 zero point", "TODO(kreeger)", "T1")
+      .Output(0, "output 0", "TODO(kreeger)", "T")
+      .Output(1, "output 1", "TODO(kreeger)", "T")
+      .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float32 tensors.")
+      .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input and output types to int8 tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        if (ctx.getNumInputs() > 0) {
+        }
+        //
+        // TODO(kreeger): write me!
+        //
+      });
 
   static const char* FastGelu_ver1_doc = R"DOC(
 GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.035677*X*X*X)) with an optional input of bias that will be added to X before GELU.)DOC";
