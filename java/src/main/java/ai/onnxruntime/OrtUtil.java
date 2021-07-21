@@ -380,11 +380,15 @@ public final class OrtUtil {
    * @return A single dimensional String array.
    */
   public static String[] flattenString(Object o) {
-    ArrayList<String> output = new ArrayList<>();
+    if (o instanceof String[]) {
+      return (String[]) o;
+    } else {
+      ArrayList<String> output = new ArrayList<>();
 
-    flattenString((Object[]) o, output);
+      flattenString((Object[]) o, output);
 
-    return output.toArray(new String[0]);
+      return output.toArray(new String[0]);
+    }
   }
 
   /**
