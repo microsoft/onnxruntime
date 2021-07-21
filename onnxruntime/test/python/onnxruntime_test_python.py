@@ -879,7 +879,7 @@ class TestInferenceSession(unittest.TestCase):
         indices = np.array([3, 5, 15], dtype=np.int64)
         sparse_tensor = onnxrt.SparseTensor.sparse_coo_from_numpy(shape, values, indices, cpu_device)
         self.assertEqual(sparse_tensor.format(), onnxrt.OrtSparseFormat.ORT_SPARSE_COO)
-        self.assertEqual(sparse_tensor.shape(), shape)
+        self.assertEqual(sparse_tensor.dense_shape(), shape)
         self.assertEqual(sparse_tensor.data_type(), "sparse_tensor(float)")
         self.assertEqual(sparse_tensor.device_name(), 'cpu')
 
@@ -906,7 +906,7 @@ class TestInferenceSession(unittest.TestCase):
         str_values = np.array(['xyz', 'yxz', 'zyx'], dtype=str)
         str_sparse_tensor = onnxrt.SparseTensor.sparse_coo_from_numpy(shape, str_values, indices, cpu_device)
         self.assertEqual(str_sparse_tensor.format(), onnxrt.OrtSparseFormat.ORT_SPARSE_COO)
-        self.assertEqual(str_sparse_tensor.shape(), shape)
+        self.assertEqual(str_sparse_tensor.dense_shape(), shape)
         self.assertEqual(str_sparse_tensor.data_type(), "sparse_tensor(string)")
         self.assertEqual(str_sparse_tensor.device_name(), 'cpu')
 
@@ -923,7 +923,7 @@ class TestInferenceSession(unittest.TestCase):
         if 'CUDAExecutionProvider' in onnxrt.get_available_providers():
             # Test to_cuda
             copy_on_cuda = sparse_tensor.to_cuda(cuda_device)
-            self.assertEqual(copy_on_cuda.shape(), shape)
+            self.assertEqual(copy_on_cuda.dense_shape(), shape)
             self.assertEqual(copy_on_cuda.data_type(), "sparse_tensor(float)")
             self.assertEqual(copy_on_cuda.device_name(), 'cuda')
 
@@ -946,7 +946,7 @@ class TestInferenceSession(unittest.TestCase):
         outer_indices = np.array([0, 1, 2, 3, 3, 3, 3, 3, 3, 3], dtype=np.int64)
         sparse_tensor = onnxrt.SparseTensor.sparse_csr_from_numpy(shape, values, inner_indices, outer_indices, cpu_device)
         self.assertEqual(sparse_tensor.format(), onnxrt.OrtSparseFormat.ORT_SPARSE_CSRC)
-        self.assertEqual(sparse_tensor.shape(), shape)
+        self.assertEqual(sparse_tensor.dense_shape(), shape)
         self.assertEqual(sparse_tensor.data_type(), "sparse_tensor(float)")
         self.assertEqual(sparse_tensor.device_name(), 'cpu')
 
@@ -963,7 +963,7 @@ class TestInferenceSession(unittest.TestCase):
         str_values = np.array(['xyz', 'yxz', 'zyx'], dtype=str)
         str_sparse_tensor = onnxrt.SparseTensor.sparse_csr_from_numpy(shape, str_values, inner_indices, outer_indices, cpu_device)
         self.assertEqual(str_sparse_tensor.format(), onnxrt.OrtSparseFormat.ORT_SPARSE_CSRC)
-        self.assertEqual(str_sparse_tensor.shape(), shape)
+        self.assertEqual(str_sparse_tensor.dense_shape(), shape)
         self.assertEqual(str_sparse_tensor.data_type(), "sparse_tensor(string)")
         self.assertEqual(str_sparse_tensor.device_name(), 'cpu')
 
@@ -972,7 +972,7 @@ class TestInferenceSession(unittest.TestCase):
             cuda_sparse_tensor = sparse_tensor.to_cuda(cuda_device)
             self.assertEqual(cuda_sparse_tensor.device_name(), 'cuda')
             self.assertEqual(cuda_sparse_tensor.format(), onnxrt.OrtSparseFormat.ORT_SPARSE_CSRC)
-            self.assertEqual(cuda_sparse_tensor.shape(), shape)
+            self.assertEqual(cuda_sparse_tensor.dense_shape(), shape)
             self.assertEqual(cuda_sparse_tensor.data_type(), "sparse_tensor(float)")
 
 

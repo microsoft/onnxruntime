@@ -153,7 +153,7 @@ Status SparseTensor::AllocateBuffer(int64_t buffer_size, size_t num_values) {
   if (buffer_size > 0) {
     SafeInt<size_t> buffer_size_t(buffer_size);
     const auto values_bytes = SafeInt<size_t>(num_values) * ml_data_type_->Size();
-    ORT_ENFORCE(buffer_size_t > values_bytes,
+    ORT_RETURN_IF_NOT(buffer_size_t > values_bytes,
                 "Values size ", static_cast<size_t>(values_bytes), " must be less than total buffer size: ", buffer_size);
     auto data_ptr = IAllocator::MakeUniquePtr<void>(allocator_, buffer_size_t);
     ORT_RETURN_IF(data_ptr == nullptr, "SparseTensor Allocation failed for size: ", buffer_size);
@@ -198,10 +198,10 @@ std::vector<int64_t> SparseTensor::GetCooIndexDims(size_t values_count, size_t i
   return index_dims;
 }
 
-void SparseTensor::InitCooIndex(const TensorShape& index_shape, const int64_t* index_data) {
+void SparseTensor::InitCooIndex(const TensorShape& index_shape, int64_t* index_data) {
   format_data_.resize(1);
   format_data_[0] = Tensor(DataTypeImpl::GetType<int64_t>(), index_shape,
-                           const_cast<int64_t*>(index_data), Location());
+                           index_data, Location());
   format_ = SparseFormat::kCoo;
 }
 
@@ -251,13 +251,14 @@ SparseTensor::CsrView SparseTensor::AsCsr() const {
   return CsrView(format_data_[0], format_data_[1]);
 }
 
-void SparseTensor::ValidateCsrIndices(size_t values_count, size_t inner_size, size_t outer_size) const {
-  ORT_ENFORCE(dense_shape_.NumDimensions() == 2U, "dense shape must 2-D. Got: ", dense_shape_.NumDimensions());
-  ORT_ENFORCE(inner_size == values_count,
+Status SparseTensor::ValidateCsrIndices(size_t values_count, size_t inner_size, size_t outer_size) const {
+  ORT_RETURN_IF_NOT(dense_shape_.NumDimensions() == 2U, "dense shape must 2-D. Got: ", dense_shape_.NumDimensions());
+  ORT_RETURN_IF_NOT(inner_size == values_count,
               "Expecting inner index size: ", inner_size, " the same as values size: ", values_count);
   const auto rows = dense_shape_.GetDims()[0];
-  ORT_ENFORCE(outer_size == 0 || outer_size == static_cast<size_t>(rows + 1),
+  ORT_RETURN_IF_NOT(outer_size == 0 || outer_size == static_cast<size_t>(rows + 1),
               "Outer index count must be rows + 1 or zero. Got: ", outer_size, " rows: ", rows);
+  return Status::OK();
 }
 
 void SparseTensor::InitCsrIndices(size_t inner_size, const int64_t* inner, size_t outer_size, const int64_t* outer) {
@@ -272,14 +273,14 @@ void SparseTensor::InitCsrIndices(size_t inner_size, const int64_t* inner, size_
 }
 
 Status SparseTensor::UseCsrIndices(gsl::span<int64_t> inner_index, gsl::span<int64_t> outer_index) {
-  ORT_ENFORCE(allocator_ == nullptr, "This method does not expect allocator to be set");
-  ValidateCsrIndices(NumValues(), inner_index.size(), outer_index.size());
+  ORT_RETURN_IF_NOT(allocator_ == nullptr, "This method does not expect allocator to be set");
+  ORT_RETURN_IF_ERROR(ValidateCsrIndices(NumValues(), inner_index.size(), outer_index.size()));
   InitCsrIndices(inner_index.size(), inner_index.data(), outer_index.size(), outer_index.data());
   return Status::OK();
 }
 
 Status SparseTensor::MakeCsrData(const IDataTransfer& data_transfer, const OrtMemoryInfo& data_location,
-                                 size_t values_count, void* values_data,
+                                 size_t values_count, const void* values_data,
                                  gsl::span<const int64_t> inner_index, gsl::span<const int64_t> outer_index) {
   auto mutator = MakeCsrData(values_count, inner_index.size(), outer_index.size());
   if (values_count > 0) {
@@ -287,7 +288,7 @@ Status SparseTensor::MakeCsrData(const IDataTransfer& data_transfer, const OrtMe
     auto& dst_inner = mutator.Inner();
     auto& dst_outer = mutator.Outer();
 
-    Tensor src_values(dst_values.DataType(), dst_values.Shape(), values_data, data_location);
+    Tensor src_values(dst_values.DataType(), dst_values.Shape(), const_cast<void*>(values_data), data_location);
     Tensor src_inner(dst_inner.DataType(), dst_inner.Shape(), const_cast<int64_t*>(inner_index.data()), data_location);
     Tensor src_outer(dst_outer.DataType(), dst_outer.Shape(), const_cast<int64_t*>(outer_index.data()), data_location);
     ORT_RETURN_IF_ERROR(CopyData(data_transfer, MakeListConst(src_values, src_inner, src_outer),
@@ -300,7 +301,7 @@ SparseTensor::CsrMutator SparseTensor::MakeCsrData(size_t values_count,
                                                    size_t inner_index_count,
                                                    size_t outer_index_count) {
   ORT_ENFORCE(allocator_ != nullptr, "This method should follow a call to constructor that supplies the allocator");
-  ValidateCsrIndices(values_count, inner_index_count, outer_index_count);
+  ORT_THROW_IF_ERROR(ValidateCsrIndices(values_count, inner_index_count, outer_index_count));
 
   if (values_count > 0) {
     const auto data_size = SafeInt<size_t>(values_count) * ml_data_type_->Size();

@@ -54,9 +54,8 @@ class SparseTensor final {
   /// This constructs an instance that points to user defined buffers.
   /// Make use of Use* functions to supply format specific indices that
   /// reside in the user supplied buffers. The instance constructed this way
-  /// will not copy data and will use the supplied buffers in read-only way.
-  /// The lifespan of supplied buffers is expected to eclipse the lifespan of the
-  /// sparse tensor instance.
+  /// will not copy data. The lifespan of supplied buffers is expected to eclipse
+  ///  the lifespan of the sparse tensor instance.
   /// </summary>
   /// <param name="elt_type">MlDataType</param>
   /// <param name="dense_shape">a shape of original tensor in dense form</param>
@@ -86,7 +85,6 @@ class SparseTensor final {
 
   ~SparseTensor();
 
-  // For now, disallow copy and assignment.
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(SparseTensor);
 
   /// <summary>
@@ -242,7 +240,7 @@ class SparseTensor final {
   CooMutator MakeCooData(size_t values_count, size_t index_count);
 
   /// <summary>
-  /// Radonly access to Csr indices
+  /// Read only access to Csr indices
   /// </summary>
   class CsrView {
    public:
@@ -284,7 +282,7 @@ class SparseTensor final {
   /// <returns></returns>
   Status MakeCsrData(const IDataTransfer& data_transfer,
                      const OrtMemoryInfo& data_location,
-                     size_t values_count, void* values_data,
+                     size_t values_count, const void* values_data,
                      gsl::span<const int64_t> inner_index,
                      gsl::span<const int64_t> outer_index);
 
@@ -414,9 +412,9 @@ class SparseTensor final {
   Status ValidateBlockSparseShapes(const TensorShape& values_shape, const TensorShape& index_shape) const;
 
   std::vector<int64_t> GetCooIndexDims(size_t values_count, size_t index_size) const;
-  void InitCooIndex(const TensorShape& index_shape, const int64_t* index_data);
+  void InitCooIndex(const TensorShape& index_shape, int64_t* index_data);
 
-  void ValidateCsrIndices(size_t values_count, size_t inner_size, size_t outer_size) const;
+  Status ValidateCsrIndices(size_t values_count, size_t inner_size, size_t outer_size) const;
   void InitCsrIndices(size_t inner_size, const int64_t* inner, size_t outer_size, const int64_t* outer);
 
   SparseFormat format_;                        // sparse format enum value

@@ -361,7 +361,7 @@ void addSparseTensorMethods(pybind11::module& m) {
         ORT_THROW("Cuda is not available in this build");
 #endif  // USE_CUDA
       })
-      .def("shape", [](const PySparseTensor* py_tensor) -> py::list {
+      .def("dense_shape", [](const PySparseTensor* py_tensor) -> py::list {
         const SparseTensor& st = py_tensor->Instance();
         const auto& dims = st.DenseShape().GetDims();
         // We create a copy of dimensions, it is small

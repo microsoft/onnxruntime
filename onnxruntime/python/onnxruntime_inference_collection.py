@@ -658,10 +658,10 @@ class SparseTensor:
         return self._tensor
 
     @staticmethod
-    def sparse_coo_from_numpy(shape, values, coo_indices, ort_device):
+    def sparse_coo_from_numpy(dense_shape, values, coo_indices, ort_device):
         '''
         Factory method to construct a SparseTensor in COO format from given arguments
-        :param shape: 1-D  numpy array(int64) or a python list that contains a dense_shape of the sparse tensor
+        :param dense_shape: 1-D  numpy array(int64) or a python list that contains a dense_shape of the sparse tensor
          must be on cpu memory
         :param values: a homogeneous, contiguous 1-D numpy array that contains non-zero elements of the tensor
          of a type.
@@ -678,14 +678,14 @@ class SparseTensor:
          For strings and objects, it will create a copy of the arrays in CPU memory as ORT does not support those
          on other devices and their memory can not be mapped.
         '''
-        return SparseTensor(C.SparseTensor.sparse_coo_from_numpy(shape, values, coo_indices,
+        return SparseTensor(C.SparseTensor.sparse_coo_from_numpy(dense_shape, values, coo_indices,
                             ort_device._get_c_device()))
 
     @staticmethod
-    def sparse_csr_from_numpy(shape, values, inner_indices, outer_indices, ort_device):
+    def sparse_csr_from_numpy(dense_shape, values, inner_indices, outer_indices, ort_device):
         '''
         Factory method to construct a SparseTensor in CSR format from given arguments
-        :param shape: 1-D numpy array(int64) or a python list that contains a dense_shape of the
+        :param dense_shape: 1-D numpy array(int64) or a python list that contains a dense_shape of the
          sparse tensor (rows, cols) must be on cpu memory
         :param values: a  contiguous, homogeneous 1-D numpy array that contains non-zero elements of the tensor
          of a type.
@@ -702,7 +702,7 @@ class SparseTensor:
          For strings and objects, it will create a copy of the arrays in CPU memory as ORT does not support those
          on other devices and their memory can not be mapped.
         '''
-        return SparseTensor(C.SparseTensor.sparse_csr_from_numpy(shape, values, inner_indices, outer_indices,
+        return SparseTensor(C.SparseTensor.sparse_csr_from_numpy(dense_shape, values, inner_indices, outer_indices,
                             ort_device._get_c_device()))
 
     def values(self):
@@ -762,11 +762,11 @@ class SparseTensor:
         '''
         return self._tensor.format
 
-    def shape(self):
+    def dense_shape(self):
         '''
         Returns a numpy array(int64) containing a dense shape of a sparse tensor
         '''
-        return self._tensor.shape()
+        return self._tensor.dense_shape()
 
     def data_type(self):
         '''

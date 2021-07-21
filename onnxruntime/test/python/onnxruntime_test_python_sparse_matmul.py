@@ -31,7 +31,7 @@ class TestSparseToDenseMatmul(unittest.TestCase):
         self.assertTrue(isinstance(ort_value, onnxrt.OrtValue))
         sparse_output = ort_value.as_sparse_tensor()
         self.assertTrue(isinstance(sparse_output, onnxrt.SparseTensor))
-        self.assertEqual(dense_shape, sparse_output.shape())
+        self.assertEqual(dense_shape, sparse_output.dense_shape())
         self.assertTrue(np.array_equal(values, sparse_output.values()))
         self.assertTrue(np.array_equal(indices, sparse_output.as_coo_rep().indices()))
 
