@@ -3,9 +3,11 @@
 
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 
+#include "core/common/string_utils.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
 #include "core/graph/graph_viewer.h"
+#include "core/platform/env.h"
 #include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_support_checker.h"
@@ -20,17 +22,44 @@
 
 namespace onnxruntime {
 
+namespace {
+
 constexpr const char* NNAPI = "Nnapi";
+
+namespace nnapi_env_vars {
+// Specifies a list of stop op types.
+// Nodes of a type in the stop op types and nodes downstream from them will not be run by the NNAPI EP.
+// The value should be a ","-delimited list of op types. For example, "Add,Sub".
+// An empty value is interpreted as specifying the default set of stop op types.
+// To specify an empty stop ops types list and disable stop op exclusion, set the value to ",".
+constexpr const char* kPartitioningStopOps = "ORT_NNAPI_PARTITIONING_STOP_OPS";
+}  // namespace nnapi_env_vars
 
 constexpr std::array kDefaultPartitioningStopOps{
     "NonMaxSuppression",
 };
 
+constexpr const char* kPartitioningStopOpsListDelimiter = ",";
+
+std::unordered_set<std::string> GetPartitioningStopOps() {
+  const auto stop_ops_list_value = Env::Default().GetEnvironmentVar(nnapi_env_vars::kPartitioningStopOps);
+  if (stop_ops_list_value.empty()) {
+    LOGS_DEFAULT(VERBOSE) << "Using default partitioning stop ops list.";
+    return std::unordered_set<std::string>(kDefaultPartitioningStopOps.begin(), kDefaultPartitioningStopOps.end());
+  }
+
+  LOGS_DEFAULT(INFO) << "Using partitioning stop ops list specified in environment variable "
+                     << nnapi_env_vars::kPartitioningStopOps;
+  const auto stop_ops = utils::SplitString(stop_ops_list_value, kPartitioningStopOpsListDelimiter);
+  return std::unordered_set<std::string>(stop_ops.begin(), stop_ops.end());
+}
+
+}  // namespace
+
 NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags)
     : IExecutionProvider{onnxruntime::kNnapiExecutionProvider, true},
       nnapi_flags_(nnapi_flags),
-      // TODO make this configurable
-      partitioning_stop_ops_(kDefaultPartitioningStopOps.begin(), kDefaultPartitioningStopOps.end()) {
+      partitioning_stop_ops_(GetPartitioningStopOps()) {
   AllocatorCreationInfo device_info(
       [](int) {
         return std::make_unique<CPUAllocator>(OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator));
