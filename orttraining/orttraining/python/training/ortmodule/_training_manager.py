@@ -27,12 +27,8 @@ class TrainingManager(GraphExecutionManager):
         self._export_mode = torch.onnx.TrainingMode.TRAINING
 
     @staticmethod
-    def execution_session_run_forward(execution_session, onnx_model, device, fast_path, *inputs):
+    def execution_session_run_forward(execution_session, onnx_model, *inputs):
         """Runs the forward graph on execution_session with given model inputs and device"""
-
-        if fast_path == False:
-            # Assert that the input and model device match
-            _utils._check_same_device(device, "Input argument to forward", *inputs)
 
         # TODO: Try to reuse the output buffers as some of the output tensors are same sizes,
         #   especially the backward graph outputs.
@@ -63,12 +59,13 @@ class TrainingManager(GraphExecutionManager):
         '''
 
         # Exporting module to ONNX for the first time
-        build_gradient_graph = self._export_model(*inputs, **kwargs)
-        if build_gradient_graph:
-            # If model was exported, then initialize the graph builder
-            self._initialize_graph_builder(training=True)
+        build_gradient_graph = False
+        if self._skip_check.skip_build_gradient_graph == False:
+            build_gradient_graph = self._export_model(*inputs, **kwargs)
+            if build_gradient_graph:
+                # If model was exported, then initialize the graph builder
+                self._initialize_graph_builder(training=True)
 
-        if self._fast_path == False:
             input_info = _io.parse_inputs_for_onnx_export(self._module_parameters,
                                                         self._onnx_model,
                                                         inputs,
@@ -79,12 +76,12 @@ class TrainingManager(GraphExecutionManager):
             # _reinitialize_graph_builder irrespective of the value of build_gradient_graph.
             build_gradient_graph = self._reinitialize_graph_builder(input_info) or build_gradient_graph
 
-        # Build the gradient graph
-        if build_gradient_graph:
-            self._build_graph()
+            # Build the gradient graph
+            if build_gradient_graph:
+                self._build_graph()
 
         create_execution_session = False
-        if self._fast_path == False:
+        if self._skip_check.skip_create_execution_agent == False:
             device = _utils.get_device_from_module(self._original_module) or \
                 _utils.get_device_from_inputs(inputs, kwargs)
             # The _training_session/_inference_session should be created every time
@@ -97,11 +94,14 @@ class TrainingManager(GraphExecutionManager):
             # Create execution session creates the training_session
             self._create_execution_agent()
 
-            if self._freeze:
-                # enabled fast path when execution session is created the first time
-                self._fast_path = True
+            # enabled fast path when execution session is created the first time
+            if self._fast_path:              
+                self._skip_check.skip_build_gradient_graph = True
+                self._skip_check.skip_create_execution_agent = True
+                self._skip_check.skip_device_check = True
+
                 if self._loglevel <= _logger.LogLevel.WARNING:
-                    warnings.warn("Fast path enabled, some checks will be skipped by assuming model's schema remains unchanged during training.",
+                    warnings.warn("Fast path enabled - skipping checks for rebuilding gradient graph, execution agent creation, and device during training.",
                                   UserWarning)
 
         class _ORTModuleFunction(torch.autograd.Function):
@@ -119,10 +119,12 @@ class TrainingManager(GraphExecutionManager):
                 Module outputs are returned to the user
                 '''
 
+                if self._skip_check.skip_device_check == False:
+                    # Assert that the input and model device match
+                    _utils._check_same_device(device, "Input argument to forward", *inputs)
+
                 user_outputs, ctx.run_info = TrainingManager.execution_session_run_forward(self._execution_agent,
                                                                                            self._optimized_onnx_model,
-                                                                                           self._device,
-                                                                                           self._fast_path,
                                                                                            *inputs)
 
                 # Disable materializing grads then None object will not be
@@ -144,7 +146,7 @@ class TrainingManager(GraphExecutionManager):
                 '''Performs backward pass based on grad wrt module output'''
 
                 assert ctx.run_info is not None, 'forward() or __call__() methods must be called before backward()'
-                if self._fast_path == False:
+                if self._skip_check.skip_device_check == False:
                     _utils._check_same_device(self._device, "Input argument to backward", *grad_outputs)
 
                 # Unpack saved_tensor to trigger version detection that catches inplace corruption

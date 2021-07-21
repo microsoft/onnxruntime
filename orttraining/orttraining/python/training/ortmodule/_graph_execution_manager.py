@@ -18,6 +18,7 @@ import onnx
 import onnxruntime
 import torch
 import warnings
+from dataclasses import dataclass
 
 from torch.utils.cpp_extension import ROCM_HOME
 
@@ -30,6 +31,12 @@ class RunStateInfo(object):
         """
         self.state = state
         self.output_info = output_info
+
+@dataclass
+class SkipCheck():
+    skip_build_gradient_graph: bool = False
+    skip_create_execution_agent: bool = False
+    skip_device_check: bool = False
 
 class GraphExecutionManager(GraphExecutionInterface):
     def __init__(self, module):
@@ -61,17 +68,11 @@ class GraphExecutionManager(GraphExecutionInterface):
         # TrainingAgent or InferenceAgent
         self._execution_agent = None
 
-        # enable fast path to skip some repeated logic if user knows that there will be no change for the entire training
-        # TODO - move it to config API
-        self._freeze = False
-        # enabled only when _freeze is True and after execution session is created the first time
-        # when _fast_path is enabled, these checks will be turned off:
-        # - schema check in _export_model() to determine whether to build gradient graph again
-        #   -- since there is no need to rebuild gradient graph, the following two functions can be skipped as well:
-        #      parse_inputs_for_onnx_export() and _reinitialize_graph_builder()
-        # - logic to determine whether to create execution session again
-        # - further checks on device change in both forward and backward pass
-        self._fast_path = False
+        # this flag is to indicate some logic have been executed previously and could be skipped for the rest of the training
+        # see dataclass SkipCheck for list of logic get turned off when this flag is enabled
+        # the list currently is All or None, we may consider to turn on/off each one with more granular settings as needed 
+        self._fast_path = False 
+        self._skip_check = SkipCheck()
 
         # Debug flags
         self._save_onnx = False
@@ -228,9 +229,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         #       2. Model input schema has changed (changes in inputs requiring gradient, shape, boolean inputs values change, etc)
         #       Model is not re-exported when the model parameters change. This can happen when the model is a stateful model,
         #       or the user explicitly changed model parameters after the onnx export.
-
-        if self._fast_path == True:
-            return False
 
         schema = _io._extract_schema({'args': copy.copy(inputs), 'kwargs': copy.copy(kwargs)})
         if self._onnx_model and schema == self._input_info.schema:
