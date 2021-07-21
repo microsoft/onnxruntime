@@ -27,8 +27,7 @@ Status DispatchStridedCopy(concurrency::ThreadPool* thread_pool,
                            const TensorShape& copy_shape,
                            const Tensor& src,
                            const std::vector<int64_t> src_strides) {
-  ORT_RETURN_IF_NOT(dst.DataType() == src.DataType(), "src and dst types must match");
-  ORT_RETURN_IF_NOT(dst_strides.size() == src_strides.size() && src_strides.size() == copy_shape.NumDimensions(), "src and dst must have same shape");
+  ORT_ENFORCE(dst.DataType() == src.DataType(), "src and dst types must match");
 
   // Manual dispatching: DispatchOnTensorType doesn't work here because we need to pass the type to the MutableData call
 #define CALL_FOR_TYPE(T)                                                                                               \

@@ -211,23 +211,30 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
   return Status::OK();
 }
 
+namespace {
+std::vector<int64_t> StridesForStack(const std::vector<int64_t>& full_strides, uint64_t axis) {
+  // if we are stacking, skip the dimension that will be stacked along in the output strides
+  // (the striding for that dimension is handled by the initial_output_offset)
+  auto num_dims = full_strides.size();
+
+  std::vector<int64_t> strides(num_dims - 1);
+
+  for (size_t i = 0; i < num_dims - 1; i++) {
+    auto read_i = (i >= axis) ? i + 1 : i;
+    strides[i] = full_strides[read_i];
+  }
+  return strides;
+}
+}  // namespace
+
 // This method computes the output tensor for Concat/ConcatFromSequence ops
 Status ConcatBase::ComputeImpl(Prepare& p, OpKernelContext* ctx) const {
   int input_count = static_cast<int>(p.inputs.size());
   int64_t initial_output_offset = 0;  // initial offset for each input
 
   auto output_strides_full = StridesForTensor(*p.output_tensor);
-  auto num_dims = p.output_tensor->Shape().NumDimensions();
-  // if we are stacking, skip the dimension that will be stacked along in the output strides
-  // (the striding for that dimension is handled by the initial_output_offset)
   // Note that output_strides_full is only used later when is_stack_ is true, so it's safe to move
-  auto output_strides_for_copy = is_stack_ ? std::vector<int64_t>(num_dims - 1) : std::move(output_strides_full);
-  if (is_stack_) {
-    for (size_t i = 0; i < num_dims - 1; i++) {
-      auto read_i = (i >= p.axis) ? i + 1 : i;
-      output_strides_for_copy[i] = output_strides_full[read_i];
-    }
-  }
+  auto output_strides_for_copy = is_stack_ ? StridesForStack(output_strides_full, p.axis) : std::move(output_strides_full);
 
   for (int input_index = 0; input_index < input_count; input_index++) {
     const auto& prep = p.inputs[input_index];
