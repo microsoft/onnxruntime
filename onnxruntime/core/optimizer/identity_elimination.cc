@@ -40,7 +40,7 @@ namespace onnxruntime {
       X (def0/arg0) ---> Identity ---> Y
  */
 Status EliminateIdentity::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
-  if (graph.GetNodeOutputsInGraphOutputs(node).empty()) {
+  if (!graph.NodeProducesGraphOutput(node)) {
     if (graph_utils::RemoveNode(graph, node)) {
       rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
     }
@@ -65,7 +65,7 @@ bool EliminateIdentity::SatisfyCondition(const Graph& graph, const Node& node, c
     return true;
   }
 
-  bool node_output_is_graph_output = !graph.GetNodeOutputsInGraphOutputs(node).empty();
+  bool node_output_is_graph_output = graph.NodeProducesGraphOutput(node);
 
   // relax the condition if Identity is connecting to graph output
   if (node.GetOutputEdgesCount() != 0 ||

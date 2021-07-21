@@ -578,7 +578,7 @@ class PlannerImpl {
 
     const KernelCreateInfo& kernel_create_info = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
 
-    if (kernel_create_info.kernel_def->IsInputOnCpu(input_index))
+    if (utils::IsInputOnCpu(node, &kernel_create_info, input_index))
       // weights are not output from any node, so it's OK to put its location on CPU provider
       return execution_providers_.GetDefaultCpuMemoryInfo();
     return p_provider->GetAllocator(0, OrtMemTypeDefault)->Info();

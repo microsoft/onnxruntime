@@ -222,6 +222,9 @@ def hipify(src_file_path, dst_file_path):
         subprocess.run([HIPIFY_PERL, src_file_path], stdout=f)
     with open(dst_file_path) as f:
         s = f.read().replace('kCudaExecutionProvider', 'kRocmExecutionProvider')
+        s = s.replace('CublasHandle', 'RocblasHandle')
+        s = s.replace('cublas_handle', 'rocblas_handle_var')
+        s = s.replace('hipblasHandle_t', 'rocblas_handle')
         s = s.replace('CudaAsyncBuffer', 'RocmAsyncBuffer')
         s = s.replace('CudaKernel', 'RocmKernel')
         s = s.replace('ToCudaType', 'ToHipType')

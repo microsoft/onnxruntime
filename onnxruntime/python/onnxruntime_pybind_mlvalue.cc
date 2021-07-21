@@ -21,7 +21,6 @@
 #include "core/framework/data_types_internal.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/framework/kernel_registry.h"
-#include "core/framework/provider_bridge_ort.h"
 #include "core/framework/provider_options_utils.h"
 
 namespace onnxruntime {
@@ -67,11 +66,11 @@ void CpuToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
 
 #ifdef USE_CUDA
 void CpuToCudaMemCpy(void* dst, const void* src, size_t num_bytes) {
-  GetProviderInfo_CUDA()->cudaMemcpy_HostToDevice(dst, src, num_bytes);
+  GetProviderInfo_CUDA().cudaMemcpy_HostToDevice(dst, src, num_bytes);
 }
 
 void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
-  GetProviderInfo_CUDA()->cudaMemcpy_DeviceToHost(dst, src, num_bytes);
+  GetProviderInfo_CUDA().cudaMemcpy_DeviceToHost(dst, src, num_bytes);
 }
 
 const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpyFunction() {
@@ -82,7 +81,7 @@ const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetCudaToHostMemCpy
 }
 
 bool IsCudaDeviceIdValid(const onnxruntime::logging::Logger& logger, int id) {
-  int num_devices = GetProviderInfo_CUDA()->cudaGetDeviceCount();
+  int num_devices = GetProviderInfo_CUDA().cudaGetDeviceCount();
 
   if (0 == num_devices) {
     LOGS(logger, WARNING) << "your system does not have a CUDA capable device.";
@@ -105,7 +104,7 @@ AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
 
   if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
     // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
-    id_to_allocator_map->insert({id, GetProviderInfo_CUDA()->CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, nullptr)});
+    id_to_allocator_map->insert({id, GetProviderInfo_CUDA().CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, nullptr)});
   }
 
   return (*id_to_allocator_map)[id];

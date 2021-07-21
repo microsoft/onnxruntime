@@ -3,7 +3,7 @@
 
 #pragma once
 #include <mutex>
-#include "core/dlpack/python_common.h"
+#include "orttraining/core/framework/torch/python_common.h"
 
 #ifndef SHARED_PROVIDER
 #include "core/framework/ml_value.h"
@@ -49,7 +49,6 @@ class TorchProxy {
 
   void Backward(
       void* callback,
-      const std::vector<int64_t>& requires_grads,
       const std::vector<OrtValue>& tensor_args,
       const std::vector<int64_t>& tensor_indices,
       const std::vector<void*>& obj_args,

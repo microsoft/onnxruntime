@@ -16,9 +16,16 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
                                   std::vector<OrtValue>& outputs,
                                   const NodeAttributes* attributes,
                                   const std::string& domain,
-                                  const int /*version*/) {
+                                  const int version) {
   //create a graph
-  Model model("test", false, logger_);
+  Model model("test", 
+              false, 
+              ModelMetaData(),
+              "",
+              custom_op_registries_,
+              {},
+              {},
+              logger_);
 
   std::vector<onnxruntime::NodeArg*> input_args;
   std::vector<onnxruntime::NodeArg*> output_args;
@@ -54,7 +61,7 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
   OptimizerExecutionFrame::Info info({&node}, initializer_map, graph.ModelPath(), *execution_provider_);
   auto kernel = info.CreateKernel(&node);
   if (!kernel) {
-    ORT_THROW("Could not find kernel");
+    ORT_THROW("Could not find kernel name:", op_name, ", domain:", domain, ", version:", version);
   }
 
   std::vector<int> fetch_mlvalue_idxs;

@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/language_interop_ops/torch/torch_proxy.h"
-#include "core/dlpack/python_common.h"
-#include "core/dlpack/dlpack_python.h"
+#include "orttraining/core/framework/torch/python_common.h"
+#include "orttraining/core/framework/torch/dlpack_python.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/language_interop_ops/torch/custom_function_register.h"
 #include "core/language_interop_ops/torch/refcount_tracker.h"
@@ -171,10 +171,15 @@ void InvokeRunner(
   // first element.
   for (; i < static_cast<size_t>(PyTuple_Size(result_ptr.get())); ++i) {
     PyObject* dl_tensor_pointer = PyTuple_GetItem(result_ptr.get(), i);
-    ORT_ENFORCE(Py_REFCNT(dl_tensor_pointer) == 1, "Ref count of dl_tensor_pointer should be 1.");
-    // Todo: be noted we did not pass whether tensor is bool or not.
-    // Currently we assume we don't pass boolean data.
-    returned_ortvalues.push_back(dlpack::FromDlpack(dl_tensor_pointer, false));
+    if (dl_tensor_pointer == Py_None) {
+      OrtValue empty_ort_value;
+      returned_ortvalues.push_back(empty_ort_value);
+    } else {
+      ORT_ENFORCE(Py_REFCNT(dl_tensor_pointer) == 1, "Ref count of dl_tensor_pointer should be 1.");
+      // Todo (pengwa): be noted we did not pass whether tensor is bool or not.
+      // Currently we assume we don't pass boolean data.
+      returned_ortvalues.push_back(training::framework::torch::FromDlpack(dl_tensor_pointer, false));
+    }
   }
 }
 
@@ -211,7 +216,7 @@ PythonObjectPtr CreatePythonCallArguments(
   // Tensor inputs to call autograd.Function.apply or autograd.Function.backward.
   for (size_t i = 0; i < tensor_args.size(); ++i) {
     // Wrap with DLPack, then transfer to Python for its release.
-    PyObject* dl_tensor = dlpack::ToDlpack(tensor_args[i]);
+    PyObject* dl_tensor = training::framework::torch::ToDlpack(tensor_args[i]);
     Ort_PyTuple_SetItem_NoIncref(args.get(), num_control_args + tensor_indices[i], dl_tensor,
                                  "dltensor");
   }
@@ -294,7 +299,6 @@ void TorchProxy::Forward(
 
 void TorchProxy::Backward(
     void* callback,
-    const std::vector<int64_t>& requires_grads,
     const std::vector<OrtValue>& tensor_args,
     const std::vector<int64_t>& tensor_indices,
     const std::vector<void*>& obj_args,
@@ -308,6 +312,10 @@ void TorchProxy::Backward(
   // Python-related calls should happen only if guard is alive.
   GilGuard guard;
   auto runner = OrtTorchFunctionPool::GetInstance().GetBackwardRunner();
+
+  // Pass all zero since backward inputs don't require gradients.
+  const auto all_input_count = tensor_args.size() + obj_args.size();
+  const std::vector<int64_t> requires_grads(all_input_count, 0);
   Invoke(
       runner,
       reinterpret_cast<PyObject*>(callback),

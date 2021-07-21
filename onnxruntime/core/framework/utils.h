@@ -31,6 +31,7 @@ class KernelRegistryManager;
 class IExecutionProvider;
 class Node;
 class Tensor;
+struct KernelCreateInfo;
 
 namespace logging {
 class Logger;
@@ -86,6 +87,8 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
                                const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger);
+
+bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index);
 
 template <typename T>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType() {

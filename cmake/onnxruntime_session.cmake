@@ -7,6 +7,14 @@ file(GLOB onnxruntime_session_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/session/*.cc"
     )
 
+if (onnxruntime_MINIMAL_BUILD)
+  set(onnxruntime_session_src_exclude
+    "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc"
+  )
+
+  list(REMOVE_ITEM onnxruntime_session_srcs ${onnxruntime_session_src_exclude})
+endif()
+
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_session_srcs})
 
 onnxruntime_add_static_library(onnxruntime_session ${onnxruntime_session_srcs})
@@ -17,6 +25,9 @@ if(onnxruntime_ENABLE_INSTRUMENT)
 endif()
 target_include_directories(onnxruntime_session PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
 target_link_libraries(onnxruntime_session PRIVATE nlohmann_json::nlohmann_json)
+if(onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS)
+  target_link_libraries(onnxruntime_session PRIVATE ortcustomops)
+endif()
 add_dependencies(onnxruntime_session ${onnxruntime_EXTERNAL_DEPENDENCIES})
 set_target_properties(onnxruntime_session PROPERTIES FOLDER "ONNXRuntime")
 if (onnxruntime_USE_CUDA)

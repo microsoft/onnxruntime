@@ -204,8 +204,16 @@ public class TensorInfo implements ValueInfo {
    */
   public static TensorInfo constructFromJavaArray(Object obj) throws OrtException {
     Class<?> objClass = obj.getClass();
-    if (!objClass.isArray() && !objClass.isPrimitive() && !objClass.equals(String.class)) {
-      throw new OrtException("Cannot convert " + objClass + " to a OnnxTensor.");
+    // Check if it's an array or a scalar.
+    if (!objClass.isArray()) {
+      // Check if it's a valid non-array type
+      OnnxJavaType javaType = OnnxJavaType.mapFromClass(objClass);
+      if (javaType == OnnxJavaType.UNKNOWN) {
+        throw new OrtException("Cannot convert " + objClass + " to a OnnxTensor.");
+      } else {
+        // scalar primitive
+        return new TensorInfo(new long[0], javaType, OnnxTensorType.mapFromJavaType(javaType));
+      }
     }
     // Figure out base type and number of dimensions.
     int dimensions = 0;
