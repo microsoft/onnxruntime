@@ -16,89 +16,6 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
   QGemm(const OpKernelInfo& info) : GemmBase(info), MatMulIntegerBase(info) {
   }
 
-  enum InputTensors : int {
-    IN_A = 0,
-    IN_A_SCALE = 1,
-    IN_A_ZERO_POINT = 2,
-    IN_B = 3,
-    IN_B_SCALE = 4,
-    IN_B_ZERO_POINT = 5,
-    IN_C = 6,
-    IN_Y_SCALE = 7,
-    IN_Y_ZERO_POINT = 8
-  };
-
-  enum OutputTensors : int {
-    OUT_Y = 0
-  };
-
-  static void CheckInputs(const Tensor* a_zp, const Tensor* b_zp, const Tensor* y_zp,
-                          const Tensor* a_scale, const Tensor* b_scale, const Tensor* y_scale, const GemmHelper& helper) {
-    ORT_ENFORCE(IsScalarOr1ElementVector(a_scale),
-                "QGemm : scale of input a must be a scalar or 1D tensor of size 1");
-    ORT_ENFORCE(IsScalarOr1ElementVector(a_zp),
-                "QGemm : zero point of input a must be a scalar or 1D tensor of size 1");
-
-    const auto& b_zp_shape = b_zp->Shape();
-    const auto& b_scale_shape = b_scale->Shape();
-    ORT_ENFORCE(b_zp_shape.NumDimensions() == 0 ||
-                    (b_zp_shape.NumDimensions() == 1 && (b_zp_shape[0] == 1 || b_zp_shape[0] == helper.N())),
-                "QGemm : zero point of input b must be a scalar or 1D tensor of size 1 or N");
-    ORT_ENFORCE(b_scale_shape.NumDimensions() == 0 ||
-                    (b_scale_shape.NumDimensions() == 1 && (b_scale_shape[0] == 1 || b_scale_shape[0] == helper.N())),
-                "QGemm : scale of input b must be a scalar or 1D tensor of size 1 or N");
-    ORT_ENFORCE(b_scale_shape.NumDimensions() == b_zp_shape.NumDimensions() &&
-                    (b_scale_shape.NumDimensions() == 0 || (b_scale_shape[0] == b_zp_shape[0])),
-                "QGemm : zero point and scale of input b should have same shape size");
-
-    ORT_ENFORCE(y_zp == nullptr || IsScalarOr1ElementVector(y_zp),
-                "QGemm : zero point of y must be null or a scalar or 1D tensor of size 1");
-    ORT_ENFORCE(y_scale == nullptr || IsScalarOr1ElementVector(y_scale),
-                "QGemm : scale of y must be null or a scalar or 1D tensor of size 1");
-  }
-
-  std::vector<float> ComputeOutputScale(const Tensor* a_scale, const Tensor* b_scale, const Tensor* y_scale) const {
-    const int64_t output_scale_size = b_scale->Shape().Size();
-    std::vector<float> output_scales(output_scale_size);
-    auto a_scale_value = *(a_scale->template Data<float>());
-    const auto* b_scale_data = b_scale->template Data<float>();
-    for (int64_t i = 0; i < output_scale_size; i++) {
-      output_scales[i] = (alpha_ * a_scale_value * b_scale_data[i]);
-      if (nullptr != y_scale) {
-        output_scales[i] /= *(y_scale->template Data<float>());
-      }
-    }
-    return output_scales;
-  }
-
-  static void SetPostProcessor(const Tensor* y_zp,
-                               size_t out_lda,
-                               const std::vector<float>& output_scales,
-                               Tensor* y,
-                               MLAS_GEMM_U8X8_DATA_PARAMS& gemm_param,
-                               std::unique_ptr<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR>& scale_bias_proc_ptr,
-                               std::unique_ptr<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR>& requant_proc_ptr) {
-    if (nullptr != y_zp) {
-      requant_proc_ptr = std::make_unique<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR>(
-          static_cast<uint8_t*>(y->MutableDataRaw()),
-          out_lda,
-          nullptr,
-          output_scales.data(),
-          output_scales.size() > 1,
-          *y_zp->template Data<uint8_t>());
-      gemm_param.OutputProcessor = requant_proc_ptr.get();
-    } else {
-      scale_bias_proc_ptr = std::make_unique<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR>(
-          static_cast<float*>(y->MutableDataRaw()),
-          out_lda,
-          output_scales.data(),
-          nullptr,
-          MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
-          output_scales.size() > 1 ? MLAS_QUANTIZATION_GRANULARITY::PerColumn : MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
-      gemm_param.OutputProcessor = scale_bias_proc_ptr.get();
-    }
-  }
-
   Status Compute(OpKernelContext* context) const {
     const auto* a = context->Input<Tensor>(IN_A);
     const auto* b = packed_b_ ? nullptr : context->Input<Tensor>(IN_B);
@@ -197,8 +114,92 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
     return IN_B;
   }
 
-  virtual bool IsBTransposed() const {
+  virtual bool IsBTransposed() const override {
     return trans_B_ == CblasTrans;
+  }
+
+ private:
+  enum InputTensors : int {
+    IN_A = 0,
+    IN_A_SCALE = 1,
+    IN_A_ZERO_POINT = 2,
+    IN_B = 3,
+    IN_B_SCALE = 4,
+    IN_B_ZERO_POINT = 5,
+    IN_C = 6,
+    IN_Y_SCALE = 7,
+    IN_Y_ZERO_POINT = 8
+  };
+
+  enum OutputTensors : int {
+    OUT_Y = 0
+  };
+
+  static void CheckInputs(const Tensor* a_zp, const Tensor* b_zp, const Tensor* y_zp,
+                          const Tensor* a_scale, const Tensor* b_scale, const Tensor* y_scale, const GemmHelper& helper) {
+    ORT_ENFORCE(IsScalarOr1ElementVector(a_scale),
+                "QGemm : scale of input a must be a scalar or 1D tensor of size 1");
+    ORT_ENFORCE(IsScalarOr1ElementVector(a_zp),
+                "QGemm : zero point of input a must be a scalar or 1D tensor of size 1");
+
+    const auto& b_zp_shape = b_zp->Shape();
+    const auto& b_scale_shape = b_scale->Shape();
+    ORT_ENFORCE(b_zp_shape.NumDimensions() == 0 ||
+                    (b_zp_shape.NumDimensions() == 1 && (b_zp_shape[0] == 1 || b_zp_shape[0] == helper.N())),
+                "QGemm : zero point of input b must be a scalar or 1D tensor of size 1 or N");
+    ORT_ENFORCE(b_scale_shape.NumDimensions() == 0 ||
+                    (b_scale_shape.NumDimensions() == 1 && (b_scale_shape[0] == 1 || b_scale_shape[0] == helper.N())),
+                "QGemm : scale of input b must be a scalar or 1D tensor of size 1 or N");
+    ORT_ENFORCE(b_scale_shape.NumDimensions() == b_zp_shape.NumDimensions() &&
+                    (b_scale_shape.NumDimensions() == 0 || (b_scale_shape[0] == b_zp_shape[0])),
+                "QGemm : zero point and scale of input b should have same shape size");
+
+    ORT_ENFORCE(y_zp == nullptr || IsScalarOr1ElementVector(y_zp),
+                "QGemm : zero point of y must be null or a scalar or 1D tensor of size 1");
+    ORT_ENFORCE(y_scale == nullptr || IsScalarOr1ElementVector(y_scale),
+                "QGemm : scale of y must be null or a scalar or 1D tensor of size 1");
+  }
+
+  std::vector<float> ComputeOutputScale(const Tensor* a_scale, const Tensor* b_scale, const Tensor* y_scale) const {
+    const int64_t output_scale_size = b_scale->Shape().Size();
+    std::vector<float> output_scales(output_scale_size);
+    auto a_scale_value = *(a_scale->template Data<float>());
+    const auto* b_scale_data = b_scale->template Data<float>();
+    for (int64_t i = 0; i < output_scale_size; i++) {
+      output_scales[i] = (alpha_ * a_scale_value * b_scale_data[i]);
+      if (nullptr != y_scale) {
+        output_scales[i] /= *(y_scale->template Data<float>());
+      }
+    }
+    return output_scales;
+  }
+
+  static void SetPostProcessor(const Tensor* y_zp,
+                               size_t out_lda,
+                               const std::vector<float>& output_scales,
+                               Tensor* y,
+                               MLAS_GEMM_U8X8_DATA_PARAMS& gemm_param,
+                               std::unique_ptr<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR>& scale_bias_proc_ptr,
+                               std::unique_ptr<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR>& requant_proc_ptr) {
+    if (nullptr != y_zp) {
+      requant_proc_ptr = std::make_unique<MLAS_QGEMM_REQUANT_OUTPUT_PROCESSOR>(
+          static_cast<uint8_t*>(y->MutableDataRaw()),
+          out_lda,
+          nullptr,
+          output_scales.data(),
+          output_scales.size() > 1,
+          *y_zp->template Data<uint8_t>());
+      gemm_param.OutputProcessor = requant_proc_ptr.get();
+    } else {
+      scale_bias_proc_ptr = std::make_unique<MLAS_QGEMM_SCALE_BIAS_OUTPUT_PROCESSOR>(
+          static_cast<float*>(y->MutableDataRaw()),
+          out_lda,
+          output_scales.data(),
+          nullptr,
+          MLAS_QGEMM_OUTPUT_MODE::ZeroMode,
+          output_scales.size() > 1 ? MLAS_QUANTIZATION_GRANULARITY::PerColumn : MLAS_QUANTIZATION_GRANULARITY::PerMatrix);
+      gemm_param.OutputProcessor = scale_bias_proc_ptr.get();
+    }
   }
 };
 
