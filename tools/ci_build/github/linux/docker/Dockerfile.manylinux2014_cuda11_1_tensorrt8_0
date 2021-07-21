@@ -1,4 +1,4 @@
-ARG BASEIMAGE=nvcr.io/nvidia/cuda:11.1-cudnn8-devel-centos7
+ARG BASEIMAGE=nvcr.io/nvidia/cuda:11.3-cudnn8-devel-centos7
 ARG POLICY=manylinux2014
 ARG PLATFORM=x86_64
 ARG DEVTOOLSET_ROOTPATH=
@@ -174,11 +174,11 @@ CMD ["/bin/bash"]
 #Build manylinux2014 docker image end
 
 #Install TensorRT 8.0.1.6
-RUN yum install -y wget
-RUN cd /tmp &&\
-    wget --no-check-certificate https://developer.download.nvidia.com/compute/machine-learning/repos/rhel7/x86_64/nvidia-machine-learning-repo-rhel7-1.0.0-1.x86_64.rpm &&\
-    rpm -Uvh nvidia-machine-learning-repo-*.rpm
-RUN yum install -y libnvinfer8-8.0.1.6-1.cuda11.1 libnvparsers8-8.0.1.6-1.cuda11.1 libnvinfer-plugin8-8.0.1.6-1.cuda11.1 libnvonnxparsers8-8.0.1.6-1.cuda11.1 libnvinfer-devel-8.0.1.6-1.cuda11.1 libnvparsers-devel-8.0.1.6-1.cuda11.1 libnvonnxparsers-devel-8.0.1.6-1.cuda11.1 libnvinfer-plugin-devel-8.0.1.6-1.cuda11.1
+#RUN yum install -y wget
+RUN v="8.0.1-1.cuda11.3" &&\
+    yum-config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-rhel7.repo &&\
+    yum -y install libnvinfer8-${v} libnvparsers8-${v} libnvonnxparsers8-${v} libnvinfer-plugin8-${v} \
+        libnvinfer-devel-${v} libnvparsers-devel-${v} libnvonnxparsers-devel-${v} libnvinfer-plugin-devel-${v}
 
 #Add our own dependencies
 ADD scripts /tmp/scripts
