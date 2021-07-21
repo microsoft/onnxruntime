@@ -40,6 +40,12 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 namespace onnxruntime {
 
 namespace {
+
+std::wstring Basename(const std::wstring& path) {
+  auto basename_index = path.find_last_of(L"/\\") + 1;  // results in 0 if no separator is found
+  return path.substr(basename_index);
+}
+
 class WindowsThread : public EnvThread {
  private:
   struct Param {
@@ -190,13 +196,13 @@ class WindowsEnv : public Env {
         CreateFileW(file_path, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
 #endif
     if (file_handle.get() == INVALID_HANDLE_VALUE) {
-      const int err = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(file_path), " fail, errcode = ", err);
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
     }
     LARGE_INTEGER filesize;
     if (!GetFileSizeEx(file_handle.get(), &filesize)) {
-      const int err = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileSizeEx ", ToMBString(file_path), " fail, errcode = ", err);
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileSizeEx ", ToMBString(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
     }
     if (static_cast<ULONGLONG>(filesize.QuadPart) > std::numeric_limits<size_t>::max()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetFileLength: File is too large");
@@ -242,8 +248,8 @@ class WindowsEnv : public Env {
         CreateFileW(file_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)};
 #endif
     if (file_handle.get() == INVALID_HANDLE_VALUE) {
-      const int err = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(file_path), " fail, errcode = ", err);
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
     }
 
     if (length == 0)
@@ -253,8 +259,8 @@ class WindowsEnv : public Env {
       LARGE_INTEGER current_position;
       current_position.QuadPart = offset;
       if (!SetFilePointerEx(file_handle.get(), current_position, &current_position, FILE_BEGIN)) {
-        const int err = GetLastError();
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SetFilePointerEx ", ToMBString(file_path), " fail, errcode = ", err);
+        const auto error_code = GetLastError();
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "SetFilePointerEx ", ToMBString(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
       }
     }
 
@@ -266,12 +272,12 @@ class WindowsEnv : public Env {
       DWORD bytes_read;
 
       if (!ReadFile(file_handle.get(), buffer.data() + total_bytes_read, bytes_to_read, &bytes_read, nullptr)) {
-        const int err = GetLastError();
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(file_path), " fail, errcode = ", err);
+        const auto error_code = GetLastError();
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(Basename(file_path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
       }
 
       if (bytes_read != bytes_to_read) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(file_path), " fail: unexpected end");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ReadFile ", ToMBString(Basename(file_path)), " fail: unexpected end");
       }
 
       total_bytes_read += bytes_read;
@@ -344,11 +350,11 @@ class WindowsEnv : public Env {
             }
           } else {  // not directory
             if (!DeleteFileW(child_path.c_str())) {
-              const auto err = GetLastError();
+              const auto error_code = GetLastError();
               final_status = ORT_MAKE_STATUS(
                   ONNXRUNTIME, FAIL,
-                  "DeleteFile() failed - path: ", ToMBString(child_path),
-                  ", error code: ", err);
+                  "DeleteFile() failed - path: ", ToMBString(Basename(child_path)),
+                  ", error code: ", error_code, " - ", std::system_category().message(error_code));
             }
           }
 
@@ -358,11 +364,11 @@ class WindowsEnv : public Env {
     ORT_RETURN_IF_ERROR(final_status);
 
     if (!RemoveDirectoryW(path.c_str())) {
-      const auto err = GetLastError();
+      const auto error_code = GetLastError();
       final_status = ORT_MAKE_STATUS(
           ONNXRUNTIME, FAIL,
-          "RemoveDirectory() failed - path: ", ToMBString(path),
-          ", error code: ", err);
+          "RemoveDirectory() failed - path: ", ToMBString(Basename(path)),
+          ", error code: ", error_code, " - ", std::system_category().message(error_code));
     }
 
     return final_status;
@@ -434,8 +440,8 @@ class WindowsEnv : public Env {
 #endif
 
     if (file_handle.get() == INVALID_HANDLE_VALUE) {
-      const int err = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(path), " fail, errcode = ", err);
+      const auto error_code = GetLastError();
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "open file ", ToMBString(Basename(path)), " fail, errcode = ", error_code, " - ", std::system_category().message(error_code));
     }
 
     constexpr DWORD initial_buffer_size = MAX_PATH;
@@ -502,7 +508,7 @@ class WindowsEnv : public Env {
 #endif
     if (!*handle) {
       const auto error_code = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load library, error code: ", error_code);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "LoadLibrary failed with error ", error_code, " \"", std::system_category().message(error_code), "\" when trying to load \"", library_filename, "\"");
     }
     return Status::OK();
   }
@@ -510,7 +516,7 @@ class WindowsEnv : public Env {
   virtual Status UnloadDynamicLibrary(void* handle) const override {
     if (::FreeLibrary(reinterpret_cast<HMODULE>(handle)) == 0) {
       const auto error_code = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to unload library, error code: ", error_code);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "FreeLibrary failed with error ", error_code, " - ", std::system_category().message(error_code));
     }
     return Status::OK();
   }
@@ -519,8 +525,7 @@ class WindowsEnv : public Env {
     *symbol = ::GetProcAddress(reinterpret_cast<HMODULE>(handle), symbol_name.c_str());
     if (!*symbol) {
       const auto error_code = GetLastError();
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to find symbol in library, error code: ",
-                             error_code);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to find symbol in library, error code: ", error_code, " - ", std::system_category().message(error_code));
     }
     return Status::OK();
   }

@@ -205,7 +205,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "d10b27fe37736d2944630ecd7557cefa95cf87c9",
+          "commitHash": "1f4c0311cda3403999b702c996898af5707973a9",
           "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
         },
         "comments": "git submodule at cmake/external/eigen"
@@ -305,7 +305,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "adeb09b3af63939c507355f1ef6bca9c32e7e244",
+          "commitHash": "d75fb0502c9d8fef817d82c15223b4aaae8e8b6e",
           "repositoryUrl": "https://github.com/onnx/onnx"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -385,6 +385,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "b708aeaaf44416bba84b87206fb550196fc60d5a",
+          "repositoryUrl": "https://github.com/microsoft/onnxruntime-extensions.git"
+        },
+        "comments": "git submodule at cmake/external/onnxruntime-extensions"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "4acf4553baa886e10e6613fe1452b706b0250e78",
           "repositoryUrl": "https://github.com/martinmoene/optional-lite.git"
         },
@@ -425,7 +435,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "30cad267151fa8f1b17da8c1ef0571da6da9a8f1",
+          "commitHash": "4244cd1cb492fa1d10986ec67f862964c073f844",
           "repositoryUrl": "https://github.com/google/re2.git"
         },
         "comments": "git submodule at cmake/external/re2"
@@ -509,6 +519,16 @@
           "repositoryUrl": "https://github.com/gabime/spdlog.git"
         },
         "comments": "git submodule at server/external/spdlog"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "5916273f79a21551890fd3d56fc5375a78d1598d",
+          "repositoryUrl": "https://github.com/pytorch/cpuinfo.git"
+        },
+        "comments": "git submodule at cmake/external/pytorch_cpuinfo"
       }
     }
   ]

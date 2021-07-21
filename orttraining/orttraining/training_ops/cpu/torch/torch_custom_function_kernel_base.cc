@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 
-#include "core/dlpack/python_common.h"
+#include "orttraining/core/framework/torch/python_common.h"
 #ifndef SHARED_PROVIDER
 #include "core/framework/op_kernel_context_internal.h"
 #endif
@@ -28,13 +28,16 @@ std::vector<OrtValue> CreateOrtValueArgs(OpKernelContext* context,
 
 void PythonOpBase::Init(const OpKernelInfo& info) {
   ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
-  inplace_ = info.GetAttrOrDefault("inplace", static_cast<int64_t>(0));
+  ORT_THROW_IF_ERROR(info.GetAttr("inplace", &inplace_));
+
   is_training_mode_ = static_cast<bool>(info.GetAttrOrDefault("training_mode", static_cast<int64_t>(0)));
-  ORT_THROW_IF_ERROR(info.GetAttr("call_convention", &call_convention_));
+  ORT_THROW_IF_ERROR(info.GetAttr("input_convention", &input_convention_));
+
+  ORT_THROW_IF_ERROR(info.GetAttrs("input_requires_grads", input_requires_grads_));
+  ORT_ENFORCE(input_requires_grads_.size() == input_convention_.size());
 
   // Input tensors.
-  input_tensor_types_ = info.GetAttrsOrDefault("input_tensor_types", std::vector<int64_t>());
-  input_tensor_requires_grads_ = info.GetAttrsOrDefault("input_tensor_requires_grads", std::vector<int64_t>());
+  ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_tensor_types_));
 
   ORT_ENFORCE(input_tensor_types_.size() == info.node().InputDefs().size());
 
@@ -68,10 +71,15 @@ void PythonOpBase::Init(const OpKernelInfo& info) {
   input_pointer_scalar_positions_ = info.GetAttrsOrDefault("input_pointer_scalar_positions", std::vector<int64_t>());
 
   ORT_ENFORCE(input_pointer_scalars_.size() == input_pointer_scalar_positions_.size());
+  auto non_tensor_input_count = input_int_scalars_.size() + input_float_scalars_.size() +
+                                input_int_tuple_positions_.size() + input_float_tuple_positions_.size() +
+                                input_pointer_scalars_.size();
+  ORT_ENFORCE(non_tensor_input_count + input_tensor_types_.size() == input_convention_.size(),
+              "Total input (tensor + non-tensor) count did not match.");
 
   // Output tensors.
-  output_tensor_types_ = info.GetAttrsOrDefault("output_tensor_types", std::vector<int64_t>());
-  output_tensor_requires_grads_ = info.GetAttrsOrDefault("output_tensor_requires_grads", std::vector<int64_t>());
+  ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_tensor_types_));
+  ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_requires_grads", output_tensor_requires_grads_));
 
   CreateConstArgs();
   CreateArgPositions();
@@ -94,7 +102,7 @@ void PythonOpBase::RunForward(OpKernelContext* context,
   std::string err;
   TorchProxy::GetInstance().Forward(
       OrtTorchFunctionPool::GetInstance().GetForwardCore(name_),
-      input_tensor_requires_grads_,
+      input_requires_grads_,
       args,
       arg_positions_,
       const_args_,
@@ -225,14 +233,18 @@ void PythonOpGradBase::Init(const OpKernelInfo& info) {
   ORT_THROW_IF_ERROR(info.GetAttr("name", &name_));
   ORT_THROW_IF_ERROR(info.GetAttr("inplace", &inplace_));
   ORT_THROW_IF_ERROR(info.GetAttrs("input_tensor_types", input_tensor_types_));
+  ORT_THROW_IF_ERROR(info.GetAttr("output_convention", &output_convention_));
   ORT_THROW_IF_ERROR(info.GetAttrs("output_tensor_types", output_tensor_types_));
-  input_tensor_requires_grads_ = info.GetAttrsOrDefault("input_tensor_requires_grads", std::vector<int64_t>());
   output_tensor_requires_grads_ = info.GetAttrsOrDefault("output_tensor_requires_grads", std::vector<int64_t>());
+  ORT_ENFORCE(output_tensor_types_.size() == output_tensor_requires_grads_.size(), "backward tensor output count mismatch");
+
   SetPositions();
 }
 
 void PythonOpGradBase::RunBackward(OpKernelContext* context,
                                    std::vector<OrtValue>& returned_ortvalues) const {
+  // Todo (pengwa): this is fragile once we added more inputs, re-visist this
+  // for more robustness.
   auto args = CreateOrtValueArgs(context, 1, (context->InputCount() - 1) / 2);
   // This is called "const" because that's how Pytorch calls all non-tensor inputs.
   const Tensor* context_id_tensor = context->Input<Tensor>(0);
@@ -245,7 +257,6 @@ void PythonOpGradBase::RunBackward(OpKernelContext* context,
   TorchProxy::GetInstance().Backward(
       OrtTorchFunctionPool::GetInstance()
           .GetBackwardCore(name_),
-      input_tensor_requires_grads_,
       args,
       arg_positions_,
       const_args,
@@ -258,13 +269,18 @@ void PythonOpGradBase::RunBackward(OpKernelContext* context,
 
 void PythonOpGradBase::SetOutputs(OpKernelContext* context, std::vector<OrtValue>& returned_ortvalues) const {
   auto* ctx_internal = reinterpret_cast<onnxruntime::OpKernelContextInternal*>(context);
-  auto outputs_count = static_cast<size_t>(ctx_internal->OutputCount());
-  // It's possible that Pytorch returns None as gradient and ORT Python side may skip them.
-  // In that case, returned_args may contain less arguments.
-  outputs_count = outputs_count > returned_ortvalues.size() ? returned_ortvalues.size() : outputs_count;
-  for (size_t i = 0; i < outputs_count; ++i) {
-    ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(static_cast<int>(i), returned_ortvalues.at(i)));
+  ORT_ENFORCE(output_convention_.size() == returned_ortvalues.size(), "backward output count mismatch.");
+  int tensor_output_index = 0;
+  for (size_t i = 0; i < returned_ortvalues.size(); ++i) {
+    if (output_convention_[i] == 'd') {
+      if (output_tensor_requires_grads_[tensor_output_index]) {
+        ORT_THROW_IF_ERROR(ctx_internal->SetOutputMLValue(tensor_output_index, returned_ortvalues.at(i)));
+      }
+      ++tensor_output_index;
+    }
   }
+
+  ORT_ENFORCE(tensor_output_index == ctx_internal->OutputCount(), "backward tensor output count mismatch.");
 }
 
 void PythonOpGradBase::SetPositions() {

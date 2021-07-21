@@ -6,9 +6,15 @@ import torch
 from numpy.testing import assert_allclose
 from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
 from onnxruntime.training import orttrainer
-from onnxruntime.training.ortmodule import ORTModule
-from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory
-
+try:
+    from onnxruntime.training.ortmodule import ORTModule
+    from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory
+except ImportError:
+    # Some pipelines do not contain ORTModule
+    pass
+except EnvironmentError:
+    # Some pipelines do not contain ORTModule
+    pass
 
 def assert_model_outputs(output_a, output_b, verbose=False, rtol=1e-7, atol=0):
     r"""Asserts whether output_a and output_b difference is within specified tolerance
@@ -118,7 +124,7 @@ def assert_optim_state(expected_state, actual_state, rtol=1e-7, atol=0):
 
 def is_dynamic_axes(model):
     # Check inputs
-    for inp in model._execution_manager(model._is_training())._optimized_onnx_model.graph.input:
+    for inp in model._torch_module._execution_manager(model._is_training())._optimized_onnx_model.graph.input:
         shape = inp.type.tensor_type.shape
         if shape:
             for dim in shape.dim:
@@ -126,7 +132,7 @@ def is_dynamic_axes(model):
                     return False
 
     # Check outputs
-    for out in model._execution_manager(model._is_training())._optimized_onnx_model.graph.output:
+    for out in model._torch_module._execution_manager(model._is_training())._optimized_onnx_model.graph.output:
         shape = out.type.tensor_type.shape
         if shape:
             for dim in shape.dim:
@@ -182,7 +188,7 @@ def assert_values_are_close(input, other, rtol=1e-05, atol=1e-06):
 
 def enable_custom_autograd_function(module):
     for mode in [True, False]:
-        module._execution_manager(mode)._enable_custom_autograd_function = True
+        module._torch_module._execution_manager(mode)._enable_custom_autograd_function = True
 
 def run_with_pytorch_on_device(device, model, input_list, label_input, is_eval_mode=False):
     model.to(device)

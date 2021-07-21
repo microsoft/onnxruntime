@@ -8,7 +8,6 @@
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 
-#include "core/dlpack/dlpack_python.h"
 #include "core/session/environment.h"
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/agent/training_agent.h"
@@ -71,7 +70,7 @@ struct TrainingParameters {
   bool enable_adasum = false;
 
   // transformation
-  int propagate_cast_ops_level = -1;
+  int propagate_cast_ops_level = 1;
   std::vector<std::string> propagate_cast_ops_allow;
   GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy propagate_cast_ops_strategy =
       GraphTransformerConfiguration::PropagateCastOpsConfiguration::Strategy::None;
@@ -311,21 +310,20 @@ void addObjectMethodsForTraining(py::module& m) {
         v->push_back(ortvalue);
       })
       .def("push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor, const bool is_bool_tensor) {
-        v->push_back(dlpack::FromDlpack(dlpack_tensor.ptr(), is_bool_tensor));
+        v->push_back(FromDlpack(dlpack_tensor.ptr(), is_bool_tensor));
       })
       .def("reserve", [](std::vector<OrtValue>* v, const size_t len) { v->reserve(len); })
       .def("shrink_to_fit", [](std::vector<OrtValue>* v) { v->shrink_to_fit(); })
       .def("__len__", [](const std::vector<OrtValue>& v) { return v.size(); })
-      .def(
-          "__iter__", [](const std::vector<OrtValue>& v) {
-            return py::make_iterator(v.cbegin(), v.cend());
-          },
-          py::keep_alive<0, 1>())
+      .def("__iter__", [](const std::vector<OrtValue>& v) {
+        return py::make_iterator(v.cbegin(), v.cend());
+      },
+           py::keep_alive<0, 1>())
       .def("__getitem__", [](const std::vector<OrtValue>& v, const size_t idx) {
         return v.at(idx);
       })
       .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) {
-        return py::reinterpret_steal<py::object>(dlpack::ToDlpack(v->at(idx)));
+        return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx)));
       });
 
   py::class_<TrainingParameters> parameters(m, "TrainingParameters", R"pbdoc(Configuration information for training.)pbdoc");
@@ -602,6 +600,7 @@ void addObjectMethodsForTraining(py::module& m) {
                      &OrtModuleGraphBuilderConfiguration::use_invertible_layernorm_grad)
       .def_readwrite("build_gradient_graph", &OrtModuleGraphBuilderConfiguration::build_gradient_graph)
       .def_readwrite("graph_transformer_config", &OrtModuleGraphBuilderConfiguration::graph_transformer_config)
+      .def_readwrite("enable_caching", &OrtModuleGraphBuilderConfiguration::enable_caching)
       .def_readwrite("loglevel", &OrtModuleGraphBuilderConfiguration::loglevel);
 
   py::class_<GraphInfo> graph_info(m, "GraphInfo",
@@ -616,6 +615,7 @@ void addObjectMethodsForTraining(py::module& m) {
       .def_readwrite("output_grad_indices_non_differentiable", &GraphInfo::output_grad_indices_non_differentiable)
       .def_readwrite("output_grad_indices_require_full_shape", &GraphInfo::output_grad_indices_require_full_shape)
       .def_readwrite("module_output_indices_requires_save_for_backward", &GraphInfo::module_output_indices_requires_save_for_backward)
+      .def_readwrite("frontier_node_arg_map", &GraphInfo::frontier_node_arg_map)
       .def_readwrite("module_output_gradient_name", &GraphInfo::module_output_gradient_name);
 
   py::class_<OrtModuleGraphBuilder> ortmodule_graph_builder(m, "OrtModuleGraphBuilder");

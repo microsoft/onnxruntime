@@ -33,14 +33,3 @@ target_include_directories(ort_opschema_lib PRIVATE ${ONNXRUNTIME_ROOT} ${ORTTRA
 onnxruntime_add_include_to_target(ort_opschema_lib onnxruntime_common onnx onnx_proto protobuf::libprotobuf flatbuffers)
 add_dependencies(ort_opschema_lib ${OPSCHEMA_LIB_DEPENDENCIES})
 
-# Test schema library using toy application
-
-set(OPSCHEMA_LIB_TEST ${REPO_ROOT}/samples/c_cxx/opschema_lib_use)
-
-file(GLOB_RECURSE opschema_lib_test_src "${OPSCHEMA_LIB_TEST}/main.cc")
-
-add_executable(opschema_lib_test ${opschema_lib_test_src})
-
-target_include_directories(opschema_lib_test PRIVATE ${ORTTRAINING_ROOT})
-
-target_link_libraries(opschema_lib_test ort_opschema_lib ${OPSCHEMA_LIB_DEPENDENCIES}) 

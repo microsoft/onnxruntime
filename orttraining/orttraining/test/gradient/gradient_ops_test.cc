@@ -507,7 +507,6 @@ void RunGemmGradTests(const OpDef& op_def) {
   GradientChecker<float, float, float> gradient_checker;
   const std::vector<ONNX_NAMESPACE::AttributeProto> attributes = {};
 
-
   // Single Batch no third input
   {
     gradient_checker.ComputeGradientError(op_def, {{1, 4}, {4, 3}}, {{1, 3}}, &max_error, attributes, true, true);
@@ -708,6 +707,9 @@ TEST(GradientCheckerTest, SplitGrad) {
 template <typename T>
 static std::vector<std::vector<T>> GetRandomValuesForMaxPool(const std::vector<TensorInfo>& infos) {
   std::vector<std::vector<T>> datas(infos.size());
+  const uint32_t seed = GetTestRandomSeed();
+
+  std::default_random_engine generator{gsl::narrow_cast<decltype(generator)::result_type>(seed)};
   for (size_t i = 0; i < infos.size(); i++) {
     const TensorInfo& info = infos[i];
 
@@ -720,7 +722,7 @@ static std::vector<std::vector<T>> GetRandomValuesForMaxPool(const std::vector<T
     }
 
     // Next, shuffle the sequence.
-    std::random_shuffle(datas[i].begin(), datas[i].end());
+    std::shuffle(datas[i].begin(), datas[i].end(), generator);
   }
 
   return datas;
@@ -1960,7 +1962,7 @@ void TestDropoutGradOp(float ratio, TensorShape& x_shape, bool default_ratio = t
   if (!default_ratio) {
     test.AddInput<float>("ratio", {1}, ratio_data);
   } else {
-    test.AddMissingOptionalInput<float>();
+    test.AddOptionalInputEdge<float>();
   }
 
   test.AddInput("training_mode", {}, {true});
@@ -2650,6 +2652,90 @@ TEST(GradientCheckerTest, PadGrad) {
   }
 }
 #endif  // USE_CUDA
+
+TEST(GradientCheckerTest, ScatterNDGrad) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{"ScatterND", kOnnxDomain, 11};
+
+  {
+    TensorInfo data_info({8}, true);
+    TensorInfo indices_info({4, 1}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo updates_info({4}, true);
+    std::vector<std::vector<float>> input_datas = {{0, 1, 2, 3, 4, 5, 6, 7}, {4, 3, 1, 7}, {8, 9, 10, 11}};
+
+    TensorInfo output_info({8}, true);
+
+    gradient_checker.ComputeGradientError(op_def, {data_info, indices_info, updates_info},
+                                          {output_info}, &max_error, input_datas);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {
+    TensorInfo data_info({2, 2}, true);
+    TensorInfo indices_info({2, 2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo updates_info({2}, true);
+    std::vector<std::vector<float>> input_datas = {{0, 1, 2, 3}, {0, 0, 1, 1}, {4, 5}};
+
+    TensorInfo output_info({2, 2}, true);
+
+    gradient_checker.ComputeGradientError(op_def, {data_info, indices_info, updates_info},
+                                          {output_info}, &max_error, input_datas);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {
+    TensorInfo data_info({2, 2}, true);
+    TensorInfo indices_info({2, 1}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo updates_info({2, 2}, true);
+    std::vector<std::vector<float>> input_datas = {{0, 1, 2, 3}, {1, 0}, {4, 5, 6, 7}};
+
+    TensorInfo output_info({2, 2}, true);
+
+    gradient_checker.ComputeGradientError(op_def, {data_info, indices_info, updates_info},
+                                          {output_info}, &max_error, input_datas);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {
+    TensorInfo data_info({2, 2, 2}, true);
+    TensorInfo indices_info({2, 2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo updates_info({2, 2}, true);
+    std::vector<std::vector<float>> input_datas = {{0, 1, 2, 3, 4, 5, 6, 7}, {0, 1, 1, 0}, {8, 9, 10, 11}};
+
+    TensorInfo output_info({2, 2, 2}, true);
+
+    gradient_checker.ComputeGradientError(op_def, {data_info, indices_info, updates_info},
+                                          {output_info}, &max_error, input_datas);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {
+    TensorInfo data_info({2, 2, 2}, true);
+    TensorInfo indices_info({2, 1, 2}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo updates_info({2, 1, 2}, true);
+    std::vector<std::vector<float>> input_datas = {{0, 1, 2, 3, 4, 5, 6, 7}, {0, 1, 1, 0}, {8, 9, 10, 11}};
+
+    TensorInfo output_info({2, 2, 2}, true);
+
+    gradient_checker.ComputeGradientError(op_def, {data_info, indices_info, updates_info},
+                                          {output_info}, &max_error, input_datas);
+    EXPECT_IS_TINY(max_error);
+  }
+
+  {
+    TensorInfo data_info({2, 2, 2}, true);
+    TensorInfo indices_info({2, 1}, false, nullptr, DataTypeImpl::GetTensorType<int64_t>());
+    TensorInfo updates_info({2, 2, 2}, true);
+    std::vector<std::vector<float>> input_datas = {{0, 1, 2, 3, 4, 5, 6, 7}, {0, 1}, {8, 9, 10, 11, 12, 13, 14, 15}};
+
+    TensorInfo output_info({2, 2, 2}, true);
+
+    gradient_checker.ComputeGradientError(op_def, {data_info, indices_info, updates_info},
+                                          {output_info}, &max_error, input_datas);
+    EXPECT_IS_TINY(max_error);
+  }
+}
 
 }  // namespace test
 }  // namespace onnxruntime

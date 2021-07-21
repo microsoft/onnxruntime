@@ -350,6 +350,11 @@ def parse_arguments():
     parser.add_argument(
         "--emsdk_version", default="2.0.23", help="Specify version of emsdk")
 
+    # Enable onnxruntime-extensions
+    parser.add_argument(
+        "--enable_onnxruntime_extensions", action='store_true',
+        help="Enable custom operators in onnxruntime-extensions")
+
     # Arguments needed by CI
     parser.add_argument(
         "--cmake_path", default="cmake", help="Path to the CMake program.")
@@ -668,11 +673,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         # of them to get the best compatibility.
         "-DPython_EXECUTABLE=" + sys.executable,
         "-DPYTHON_EXECUTABLE=" + sys.executable,
-        "-Donnxruntime_USE_CUDA=" + ("ON" if args.use_cuda else "OFF"),
-        "-Donnxruntime_CUDA_VERSION=" + (args.cuda_version if args.use_cuda else ""),
         "-Donnxruntime_ROCM_VERSION=" + (args.rocm_version if args.use_rocm else ""),
-        "-Donnxruntime_CUDA_HOME=" + (cuda_home if args.use_cuda else ""),
-        "-Donnxruntime_CUDNN_HOME=" + (cudnn_home if args.use_cuda else ""),
         "-Donnxruntime_USE_FEATURIZERS=" + ("ON" if args.use_featurizers else "OFF"),
         "-Donnxruntime_USE_MIMALLOC_STL_ALLOCATOR=" + (
             "ON" if args.use_mimalloc == "stl" or args.use_mimalloc == "all" else "OFF"),
@@ -759,8 +760,13 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
+        # enable custom operators in onnxruntime-extensions
+        "-Donnxruntime_ENABLE_EXTENSION_CUSTOM_OPS=" + ("ON" if args.enable_onnxruntime_extensions else "OFF"),
     ]
-
+    if args.use_cuda:
+        cmake_args += ["-Donnxruntime_USE_CUDA=ON", "-Donnxruntime_CUDA_VERSION=" + args.cuda_version,
+                       "-Donnxruntime_CUDA_HOME="+cudnn_home,
+                       "-Donnxruntime_CUDNN_HOME="+cudnn_home]
     if args.enable_msvc_static_runtime:
         cmake_args += ["-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>",
                        "-DONNX_USE_MSVC_STATIC_RUNTIME=ON",
@@ -1292,8 +1298,17 @@ def run_ios_tests(args, source_dir, config, cwd):
 
     if args.build_apple_framework:
         package_test_py = os.path.join(source_dir, 'tools', 'ci_build', 'github', 'apple', 'test_ios_packages.py')
-        framework_dir = os.path.join(cwd, config + '-' + args.ios_sysroot)
-        run_subprocess([sys.executable, package_test_py, '--c_framework_dir', framework_dir], cwd=cwd)
+        framework_info_file = os.path.join(cwd, 'framework_info.json')
+        dynamic_framework_dir = os.path.join(cwd, config + '-' + args.ios_sysroot)
+        static_framework_dir = os.path.join(cwd, config + '-' + args.ios_sysroot, 'static_framework')
+        # test dynamic framework
+        run_subprocess([sys.executable, package_test_py,
+                        '--c_framework_dir', dynamic_framework_dir,
+                        '--framework_info_file', framework_info_file], cwd=cwd)
+        # test static framework
+        run_subprocess([sys.executable, package_test_py,
+                        '--c_framework_dir', static_framework_dir,
+                        '--framework_info_file', framework_info_file], cwd=cwd)
 
 
 def run_orttraining_test_orttrainer_frontend_separately(cwd):
@@ -1592,16 +1607,6 @@ def build_python_wheel(
         args = [sys.executable, os.path.join(source_dir, 'setup.py'),
                 'bdist_wheel']
 
-        # We explicitly override the platform tag in the name of the generated build wheel
-        # so that we can install the wheel on Mac OS X versions 10.12+.
-        # Without this explicit override, we will something like this while building on MacOS 10.14 -
-        # [WARNING] MACOSX_DEPLOYMENT_TARGET is set to a lower value (10.12)
-        # than the version on which the Python interpreter was compiled (10.14) and will be ignored.
-        # Since we need to support 10.12+, we explicitly override the platform tag.
-        # See PR #3626 for more details
-        if is_macOS():
-            args += ['-p', 'macosx_10_12_x86_64']
-
         # Any combination of the following arguments can be applied
         if nightly_build:
             args.append('--nightly_build')
@@ -1618,7 +1623,8 @@ def build_python_wheel(
         if use_tensorrt:
             args.append('--use_tensorrt')
         elif use_cuda:
-            args.append('--use_cuda')
+            # The following line assumes no other EP is enabled
+            args.append('--wheel_name_suffix=gpu')
             if cuda_version:
                 args.append('--cuda_version={}'.format(cuda_version))
         elif use_rocm:
