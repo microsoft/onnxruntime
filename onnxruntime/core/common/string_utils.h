@@ -16,6 +16,7 @@ namespace utils {
  * @param string_to_split The string to split.
  * @param delimiter The delimiter string.
  * @param keep_empty Whether to keep empty substrings.
+ * @return The split substrings.
  */
 inline std::vector<std::string_view> SplitString(std::string_view string_to_split, std::string_view delimiter,
                                                  bool keep_empty = false) {
