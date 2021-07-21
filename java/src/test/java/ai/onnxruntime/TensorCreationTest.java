@@ -81,4 +81,17 @@ public class TensorCreationTest {
       }
     }
   }
+
+  @Test
+  public void testStringCreation() throws OrtException {
+    try (OrtEnvironment env = OrtEnvironment.getEnvironment()) {
+      String[][] stringValues =
+          new String[][] {{"this", "is", "a"}, {"multi", "dimensional", "string"}};
+      try (OnnxTensor t = OnnxTensor.createTensor(env, stringValues)) {
+        Assertions.assertEquals(new long[] {2, 3}, t.getInfo().shape);
+        String[][] output = (String[][]) t.getValue();
+        Assertions.assertEquals(stringValues, output);
+      }
+    }
+  }
 }
