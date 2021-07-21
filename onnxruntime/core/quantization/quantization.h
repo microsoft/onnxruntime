@@ -28,9 +28,7 @@ namespace quantization {
 template <typename T>
 struct Params {
  public:
-  Params() {
-    Params(/*scale=*/0.0f, /*zero_point=*/0);
-  }
+  Params() : Params(/*scale=*/0.0f, /*zero_point=*/0) {}
 
   Params(float scale, T zero_point) : scale(scale), zero_point(zero_point) {
     ORT_STATIC_ASSERT_QUANTIZATION_TYPES(T)
