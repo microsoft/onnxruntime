@@ -133,4 +133,5 @@ TEST(GridsamplerContribOpTest, gridsampler_mode_bicubic) {
 }  // namespace test
 }  // namespace onnxruntime
 
-#endif  // GridSamplerKernal
+#endif
+

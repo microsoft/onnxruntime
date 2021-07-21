@@ -3049,29 +3049,28 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain output types to float tensors.")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
-          size_t input_param = 0, grid_param = 1;
+        size_t input_param = 0, grid_param = 1;
 
-          checkInputRank(ctx, input_param, 4);
-          checkInputRank(ctx, grid_param, 4);
+        checkInputRank(ctx, input_param, 4);
+        checkInputRank(ctx, grid_param, 4);
 
-          // Output dimensions, initialized to an unknown-dimension-value
-          Dim N, C, H_out, W_out;
+        // Output dimensions, initialized to an unknown-dimension-value
+        Dim N, C, H_out, W_out;
 
-          // Get value of N from dim 0 of input_param, if available
+        // Get value of N from dim 0 of input_param, if available
+        unifyInputDim(ctx, input_param, 0, N);
+        // Get value of C from dim 1 of input_param, if available
+        unifyInputDim(ctx, input_param, 1, C);
 
-          unifyInputDim(ctx, input_param, 0, N);
-          // Get value of C from dim 1 of input_param, if available
-          unifyInputDim(ctx, input_param, 1, C);
+        // Get value of H_out from dim 1 of grid_param, if available
+        unifyInputDim(ctx, grid_param, 1, H_out);
+        // Get value of W_out from dim 2 of grid_param, if available
+        unifyInputDim(ctx, grid_param, 2, W_out);
 
-          // Get value of H_out from dim 1 of grid_param, if available
-          unifyInputDim(ctx, grid_param, 1, H_out);
-          // Get value of W_out from dim 2 of grid_param, if available
-          unifyInputDim(ctx, grid_param, 2, W_out);
-
-          // set output shape:
-          updateOutputShape(ctx, 0, {N, C, H_out, W_out});
+        // set output shape:
+        updateOutputShape(ctx, 0, {N, C, H_out, W_out});
       });
 
 #ifndef _OPSCHEMA_LIB_
