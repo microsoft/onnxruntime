@@ -121,7 +121,7 @@ class TrainingManager(GraphExecutionManager):
 
                 if self._skip_check.skip_device_check == False:
                     # Assert that the input and model device match
-                    _utils._check_same_device(device, "Input argument to forward", *inputs)
+                    _utils._check_same_device(self._device, "Input argument to forward", *inputs)
 
                 user_outputs, ctx.run_info = TrainingManager.execution_session_run_forward(self._execution_agent,
                                                                                            self._optimized_onnx_model,
