@@ -3,9 +3,11 @@
 
 #include "embed_layer_norm_bias_gelu.h"
 
+#include "contrib_ops/cpu/skip_layer_norm.h"
 #include "core/common/safeint.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/math/gemm_matmul_common.h"
+#include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 
 namespace onnxruntime {
@@ -14,6 +16,8 @@ namespace contrib {
 namespace {
 
 #pragma warning(disable : 4189 4100)
+
+template <typename T>
 Status CheckInputs(const Tensor* input,
                    const Tensor* skip,
                    const Tensor* gamma,
@@ -21,11 +25,55 @@ Status CheckInputs(const Tensor* input,
                    const Tensor* bias,
                    const Tensor* matmul_1_b,
                    const Tensor* bias_gelu_bias,
-                   const Tensor* matmul_2_b,
-                   const Tensor* output) {
-  //
-  // TODO(kreeger): write me
-  //
+                   const Tensor* matmul_2_b) {
+  // First set of inputs should match existing requirements for SkipLayerNorm:
+  ORT_RETURN_IF_ERROR(
+      SkipLayerNorm<T>::CheckInputs(input, skip, gamma, beta, bias));
+
+  const auto& input_dims = input->Shape().GetDims();
+
+  // TODO(kreeger): handle packed weights (check nullptr on packed tensors).
+
+  // Ensure that MatMul #1, BiasGelu, and MatMul #2 match the dimension
+  // requirements of the SkipLayerNorm.
+  const auto matmul_1_b_shape = matmul_1_b->Shape().GetDims();
+  if (matmul_1_b_shape.size() != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "MatMul #1 is not a 2 dimensional tensor");
+  }
+  if (matmul_1_b_shape[0] != input_dims[2]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "MatMul #1 first dim: ", matmul_1_b_shape[0],
+                           " does not match hidden size: ", input_dims[2]);
+  }
+
+  const auto& bias_gelu_bias_shape = bias_gelu_bias->Shape().GetDims();
+  if (bias_gelu_bias_shape.size() != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Bias Gelu bias is not a 1 dimensional tensor");
+  }
+  if (bias_gelu_bias_shape[0] != matmul_1_b_shape[1]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Bias Gelu second dim: ", bias_gelu_bias_shape[0],
+                           " does not match bias size: ", matmul_1_b_shape[1]);
+  }
+
+  const auto matmul_2_b_shape = matmul_2_b->Shape().GetDims();
+  if (matmul_2_b_shape.size() != 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "MatMul #2 is not a 2 dimensional tensor");
+  }
+  if (matmul_2_b_shape[0] != matmul_1_b_shape[1]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "MatMul #2 first dim: ", matmul_2_b_shape[0],
+                           " does not match bias size: ", matmul_1_b_shape[1]);
+  }
+  if (matmul_2_b_shape[1] != input_dims[2]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "MatMul #2 first dim: ", matmul_2_b_shape[1],
+                           " does not match hidden size: ", input_dims[2]);
+  }
+
   return Status::OK();
 }
 
@@ -240,20 +288,19 @@ Status EmbedLayerNormBiasGelu<T>::Compute(OpKernelContext* context) const {
   const Tensor* bias_gelu_bias = context->Input<Tensor>(6);
   const Tensor* matmul_2_b = matmul_1_packed_b_ ? nullptr : context->Input<Tensor>(7);
 
+  ORT_RETURN_IF_ERROR(CheckInputs<T>(input,
+                                     skip,
+                                     gamma,
+                                     beta,
+                                     bias,
+                                     matmul_1_b,
+                                     bias_gelu_bias,
+                                     matmul_2_b));
+
   const TensorShape& output_shape = input->Shape();
 
   Tensor* skip_layer_norm_output = context->Output(0, output_shape);
   Tensor* output = context->Output(1, output_shape);
-
-  ORT_RETURN_IF_ERROR(CheckInputs(input,
-                                  skip,
-                                  gamma,
-                                  beta,
-                                  bias,
-                                  matmul_1_b,
-                                  bias_gelu_bias,
-                                  matmul_2_b,
-                                  output));
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));

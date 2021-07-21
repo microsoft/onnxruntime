@@ -16,6 +16,12 @@ class SkipLayerNorm final : public OpKernel {
   SkipLayerNorm(const OpKernelInfo& op_kernel_info);
   Status Compute(OpKernelContext* p_op_kernel_context) const override;
 
+  static Status CheckInputs(const Tensor* input,
+                            const Tensor* skip,
+                            const Tensor* gamma,
+                            const Tensor* beta,
+                            const Tensor* bias);
+
  private:
   float epsilon_;
 };

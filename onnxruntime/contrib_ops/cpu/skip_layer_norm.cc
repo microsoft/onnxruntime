@@ -32,14 +32,11 @@ SkipLayerNorm<T>::SkipLayerNorm(const OpKernelInfo& op_kernel_info)
 }
 
 template <typename T>
-Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
-  const Tensor* input = p_ctx->Input<Tensor>(0);
-  const Tensor* skip = p_ctx->Input<Tensor>(1);
-  const Tensor* gamma = p_ctx->Input<Tensor>(2);
-  const Tensor* beta = p_ctx->Input<Tensor>(3);
-  const Tensor* bias = p_ctx->Input<Tensor>(4);
-  Tensor* output = p_ctx->Output(0, input->Shape());
-
+/*static*/ Status SkipLayerNorm<T>::CheckInputs(const Tensor* input,
+                                                const Tensor* skip,
+                                                const Tensor* gamma,
+                                                const Tensor* beta,
+                                                const Tensor* bias) {
   const auto& input_dims = input->Shape().GetDims();
   if (input_dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -84,7 +81,21 @@ Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
                              "Last dimension of bias and input does not match");
     }
   }
+  return Status::OK();
+}
 
+template <typename T>
+Status SkipLayerNorm<T>::Compute(OpKernelContext* p_ctx) const {
+  const Tensor* input = p_ctx->Input<Tensor>(0);
+  const Tensor* skip = p_ctx->Input<Tensor>(1);
+  const Tensor* gamma = p_ctx->Input<Tensor>(2);
+  const Tensor* beta = p_ctx->Input<Tensor>(3);
+  const Tensor* bias = p_ctx->Input<Tensor>(4);
+  Tensor* output = p_ctx->Output(0, input->Shape());
+
+  ORT_RETURN_IF_ERROR(CheckInputs(input, skip, gamma, beta, bias));
+
+  const auto& input_dims = input->Shape().GetDims();
   int64_t batch_size = input_dims[0];
   int64_t sequence_length = input_dims[1];
   int64_t hidden_size = input_dims[2];
