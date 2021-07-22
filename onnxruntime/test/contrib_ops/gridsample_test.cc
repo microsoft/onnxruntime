@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef GridSamplerKernal  // disable the unit tests until the kernel is added and remove it.
+#ifdef GridSampleKernal  // disable the unit tests until the kernel is added and remove it.
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
@@ -10,8 +10,8 @@
 namespace onnxruntime {
 namespace test {
 
-TEST(GridsamplerContribOpTest, gridsampler_default) {
-  OpTester test("GridSampler", 1, kMSDomain);
+TEST(GridsampleContribOpTest, gridsample_default) {
+  OpTester test("GridSample", 1, kMSDomain);
   test.AddInput<float>("X", {1, 1, 4, 4}, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f});
   test.AddInput<float>("Grid", {1, 6, 6, 2},
                        {-1.0000f, -1.0000f, -0.6000f, -1.0000f, -0.2000f, -1.0000f, 0.2000f, -1.0000f,
@@ -37,8 +37,8 @@ TEST(GridsamplerContribOpTest, gridsampler_default) {
   test.Run();
 }
 
-TEST(GridsamplerContribOpTest, gridsampler_paddingmode_zeros) {
-  OpTester test("GridSampler", 1, kMSDomain);
+TEST(GridsampleContribOpTest, gridsample_paddingmode_zeros) {
+  OpTester test("GridSample", 1, kMSDomain);
   test.AddInput<float>("X", {1, 1, 3, 2}, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
   test.AddInput<float>("Grid", {1, 2, 4, 2},
                        {-10.0000f, -10.0000f, -5.0000f, -5.0000f,
@@ -50,8 +50,8 @@ TEST(GridsamplerContribOpTest, gridsampler_paddingmode_zeros) {
   test.Run();
 }
 
-TEST(GridsamplerContribOpTest, gridsampler_paddingmode_border) {
-  OpTester test("GridSampler", 1, kMSDomain);
+TEST(GridsampleContribOpTest, gridsample_paddingmode_border) {
+  OpTester test("GridSample", 1, kMSDomain);
   test.AddInput<float>("X", {1, 1, 3, 2}, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
   test.AddInput<float>("Grid", {1, 2, 4, 2},
                        {-10.0000f, -10.0000f, -5.0000f, -5.0000f,
@@ -63,8 +63,8 @@ TEST(GridsamplerContribOpTest, gridsampler_paddingmode_border) {
   test.Run();
 }
 
-TEST(GridsamplerContribOpTest, gridsampler_paddingmode_reflection) {
-  OpTester test("GridSampler", 1, kMSDomain);
+TEST(GridsampleContribOpTest, gridsample_paddingmode_reflection) {
+  OpTester test("GridSample", 1, kMSDomain);
   test.AddInput<float>("X", {1, 1, 3, 2}, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
   test.AddInput<float>("Grid", {1, 2, 4, 2},
                        {-10.0000f, -10.0000f, -5.0000f, -5.0000f,
@@ -76,8 +76,8 @@ TEST(GridsamplerContribOpTest, gridsampler_paddingmode_reflection) {
   test.Run();
 }
 
-TEST(GridsamplerContribOpTest, gridsampler_aligncorners_true) {
-  OpTester test("GridSampler", 1, kMSDomain);
+TEST(GridsampleContribOpTest, gridsample_aligncorners_true) {
+  OpTester test("GridSample", 1, kMSDomain);
   test.AddInput<float>("X", {1, 1, 3, 2}, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
   test.AddInput<float>("Grid", {1, 2, 4, 2},
                        {-1.0000f, -1.0000f, -0.5000f, -0.5000f,
@@ -91,8 +91,8 @@ TEST(GridsamplerContribOpTest, gridsampler_aligncorners_true) {
   test.Run();
 }
 
-TEST(GridsamplerContribOpTest, gridsampler_mode_bilinear) {
-  OpTester test("GridSampler", 1, kMSDomain);
+TEST(GridsampleContribOpTest, gridsample_mode_bilinear) {
+  OpTester test("GridSample", 1, kMSDomain);
   test.AddInput<float>("X", {1, 1, 3, 2}, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
   test.AddInput<float>("Grid", {1, 2, 4, 2},
                        {-1.0000f, -1.0000f, -0.5000f, -0.5000f,
@@ -104,8 +104,8 @@ TEST(GridsamplerContribOpTest, gridsampler_mode_bilinear) {
   test.Run();
 }
 
-TEST(GridsamplerContribOpTest, gridsampler_mode_nearest) {
-  OpTester test("GridSampler", 1, kMSDomain);
+TEST(GridsampleContribOpTest, gridsample_mode_nearest) {
+  OpTester test("GridSample", 1, kMSDomain);
   test.AddInput<float>("X", {1, 1, 3, 2}, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
   test.AddInput<float>("Grid", {1, 2, 4, 2},
                        {-1.0000f, -1.0000f, -0.5000f, -0.5000f,
@@ -117,8 +117,8 @@ TEST(GridsamplerContribOpTest, gridsampler_mode_nearest) {
   test.Run();
 }
 
-TEST(GridsamplerContribOpTest, gridsampler_mode_bicubic) {
-  OpTester test("GridSampler", 1, kMSDomain);
+TEST(GridsampleContribOpTest, gridsample_mode_bicubic) {
+  OpTester test("GridSample", 1, kMSDomain);
   test.AddInput<float>("X", {1, 1, 3, 2}, {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
   test.AddInput<float>("Grid", {1, 2, 4, 2},
                        {-1.0000f, -1.0000f, -0.5000f, -0.5000f,
