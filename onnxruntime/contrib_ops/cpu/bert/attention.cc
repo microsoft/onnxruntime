@@ -22,6 +22,8 @@ class Attention : public OpKernel, public AttentionCPUBase {
 
   bool IsPackWeightsSuccessful(int qkv_index, AllocatorPtr alloc, size_t head_size, size_t input_hidden_size, const T* weights_data, size_t weight_matrix_col_size, PrePackedWeights* prepacked_weights);
 
+  //void FreePackedWeights();
+
   Status Compute(OpKernelContext* context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
@@ -269,9 +271,14 @@ Tensor* AttentionBase::GetPresent(OpKernelContext* context,
   return present;
 }
 
+/*
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info) {
+void Attention<T>::FreePackedWeights() {
+  for (int i = 0; i < qkv_hidden_sizes_.size(); i++) {
+    packed_weights_[i].reset();
+  }
 }
+*/
 
 template <typename T>
 bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
@@ -281,15 +288,8 @@ bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
                                            const T* weights_data,
                                            size_t weight_matrix_col_size,
                                            /*out*/ PrePackedWeights* prepacked_weights) {
-  bool share_prepacked_weights = (prepacked_weights != nullptr);
   size_t packb_size = MlasGemmPackBSize(head_size, input_hidden_size);
   if (packb_size == 0) {
-    if (!share_prepacked_weights) {
-      for (int i = 0; i < qkv_index; i++) {
-        packed_weights_[i].~unique_ptr();
-      }
-    }
-
     return false;
   }
 
@@ -310,7 +310,7 @@ bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
     weights_data += head_size;
   }
 
-  if (share_prepacked_weights) {
+  if (prepacked_weights != nullptr) {
     prepacked_weights->buffers_.push_back(std::move(packed_weights_[qkv_index]));
     prepacked_weights->buffer_sizes_.push_back(packed_weights_data_size);
   }
@@ -377,6 +377,9 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
   if (!IsPackWeightsSuccessful(0, alloc, qkv_head_size[0], input_hidden_size, weights_data, weight_matrix_col_size, prepacked_weights) ||
       !IsPackWeightsSuccessful(1, alloc, qkv_head_size[1], input_hidden_size, weights_data + (num_heads_ * qkv_head_size[0]), weight_matrix_col_size, prepacked_weights) ||
       !IsPackWeightsSuccessful(2, alloc, qkv_head_size[2], input_hidden_size, weights_data + (num_heads_ * (qkv_head_size[0] + qkv_head_size[1])), weight_matrix_col_size, prepacked_weights)) {
+    //if (prepacked_weights == nullptr) {
+    //  FreePackedWeights();
+    //}
     return Status::OK();
   }
 
