@@ -178,10 +178,11 @@ CMD ["/bin/bash"]
 RUN yum install -y yum-utils
 RUN v="8.0.1-1.cuda11.3" &&\
     yum-config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel7/x86_64/cuda-rhel7.repo &&\
-    yumdownloader libnvinfer8-${v} libnvparsers8-${v} libnvonnxparsers8-${v} libnvinfer-plugin8-${v} \
-        libnvinfer-devel-${v} libnvparsers-devel-${v} libnvonnxparsers-devel-${v} libnvinfer-plugin-devel-${v} --destdir /tmp
+    yum install -y libnvinfer8-${v} libnvinfer-plugin8-${v}
+    #yumdownloader libnvinfer8-${v} libnvparsers8-${v} libnvonnxparsers8-${v} libnvinfer-plugin8-${v} \
+    #    libnvinfer-devel-${v} libnvparsers-devel-${v} libnvonnxparsers-devel-${v} libnvinfer-plugin-devel-${v} --destdir /tmp
 #RUN yum --disablerepro=* --skip-broken install /tmp/*.rpm
-RUN rpm -ivh --nodeps /tmp/*.rpm
+#RUN rpm -ivh --nodeps /tmp/*.rpm
 
 #Add our own dependencies
 ADD scripts /tmp/scripts
