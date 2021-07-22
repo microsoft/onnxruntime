@@ -3,19 +3,12 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+from .configuration.debug_options import LogLevel
 from onnxruntime.capi._pybind_state import Severity
 from contextlib import contextmanager
-from enum import IntEnum
 import io
 import sys
 import warnings
-
-class LogLevel(IntEnum):
-    VERBOSE = 0
-    INFO = 1
-    WARNING = 2
-    ERROR = 3
-    FATAL = 4
 
 
 @contextmanager
