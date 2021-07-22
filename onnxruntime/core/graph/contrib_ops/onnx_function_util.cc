@@ -102,7 +102,10 @@ bool BuildFunctionProto(FunctionProto& functionProto, const OpSchema& schema,
                         const std::vector<FunctionBodyHelper::NodeDef>& node_defs,
                         const std::vector<OperatorSetIdProto>& relied_opsets) {
   BuildNodes(functionProto, node_defs);
-  schema.BuildFunction(functionProto, relied_opsets);
+  for (auto& relied_opset : relied_opsets) {
+    *(functionProto.mutable_opset_import()->Add()) = relied_opset;
+  }
+  schema.BuildFunction(functionProto);
   return true;
 }
 
