@@ -26,9 +26,9 @@ class AffinitySetting():
         if self.is_os_supported:
             current_affinity = os.sched_getaffinity(self.pid)
             if (self.affinity != current_affinity):
-                logger.warning("Setting new affinity to %s in replace of the current one %s", str(self.affinity),
-                               str(current_affinity))
-            os.sched_setaffinity(self.pid, self.affinity)
+                logger.warning("Replacing affinity setting %s with %s", str(current_affinity),
+                               str(self.affinity))
+                os.sched_setaffinity(self.pid, self.affinity)
 
 
 if __name__ == '__main__':
