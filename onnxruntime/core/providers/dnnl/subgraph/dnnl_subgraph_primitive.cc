@@ -9,6 +9,9 @@
 #include "dnnl_pool.h"
 #include "dnnl_relu.h"
 #include "dnnl_sum.h"
+//#include "dnnl_softmax.h"
+//#include "dnnl_batchnorm.h"
+#include "dnnl_reducemean.h"
 
 #if defined(ENABLE_TRAINING)
 #include "dnnl_convgrad.h"
@@ -172,6 +175,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlMatMul().CreatePrimitive(*this, node);
     } else if (node.OpType() == "MatMulInteger") {
       DnnlMatMulInteger().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "ReduceMean") {
+      DnnlReduceMean().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Relu") {
       DnnlRelu().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Sum") {
@@ -183,7 +188,7 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlConvGrad().CreatePrimitive(*this, node);
 #endif
     } else {
-      throw std::invalid_argument("not supported");
+      throw std::invalid_argument("Kernel not found");
     }
   }
 }

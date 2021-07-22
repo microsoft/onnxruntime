@@ -132,6 +132,22 @@ class DnnlReduceMeanNodeCapability : public DnnlDefaultNodeCapability {
 
  private:
   bool IsAttributeSupported(const Node* node) const;
+  bool IsDimensionSupported(const Node* node) const;
+};
+
+/**
+ * Decide if a Softmax op is supported by DnnlExecutionProvider
+ *
+ * Dnnl Softmax doesnt support few attribute values for opset < 13 with axis values anything other than 2
+ */
+class DnnlSoftmaxNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlSoftmaxNodeCapability() : DnnlDefaultNodeCapability({"float"}) {}
+
+  bool Supported(const Node* node) const override;
+
+ private:
+  bool IsAttributeSupported(const Node* node) const;
 };
 
 /**

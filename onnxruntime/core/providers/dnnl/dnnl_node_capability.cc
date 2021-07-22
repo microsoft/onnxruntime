@@ -129,6 +129,18 @@ bool DnnlBatchNormalizationNodeCapability::IsDimensionSupported(const Node* node
   if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() == 3) {
     return false;
   }
+  if (node_inputs[1]->Shape() != nullptr && node_inputs[1]->Shape()->dim_size() != 1) {
+    return false;
+  }
+  if (node_inputs[2]->Shape() != nullptr && node_inputs[2]->Shape()->dim_size() != 1) {
+    return false;
+  }
+  if (node_inputs[3]->Shape() != nullptr && node_inputs[3]->Shape()->dim_size() != 1) {
+    return false;
+  }
+  if (node_inputs[4]->Shape() != nullptr && node_inputs[4]->Shape()->dim_size() != 1) {
+    return false;
+  }
   return true;
 }
 
@@ -137,6 +149,7 @@ bool DnnlBatchNormalizationNodeCapability::IsDimensionSupported(const Node* node
 bool DnnlReduceMeanNodeCapability::Supported(const Node* node) const {
   if (!IsTypeSupported(node)) return false;
   if (!IsAttributeSupported(node)) return false;
+  if (!IsDimensionSupported(node)) return false;
   return true;
 }
 
@@ -146,6 +159,34 @@ bool DnnlReduceMeanNodeCapability::IsAttributeSupported(const Node* node) const 
   if (attr != attributes.end() && attr->second().i() == 0) {
     return false;
   }
+  return true;
+}
+
+bool DnnlReduceMeanNodeCapability::IsDimensionSupported(const Node* node) const {
+  auto node_inputs = node->InputDefs();
+  if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() == 0) {
+    return false;
+  }
+  return true;
+}
+
+// DnnlSoftmaxNodeCapability class
+bool DnnlSoftmaxNodeCapability::Supported(const Node* node) const {
+  if (!IsTypeSupported(node)) return false;
+  if (!IsAttributeSupported(node)) return false;
+  return true;
+}
+
+bool DnnlSoftmaxNodeCapability::IsAttributeSupported(const Node* node) const {
+  const NodeAttributes& attributes = node->GetAttributes();
+  auto opset = node->SinceVersion();
+  auto attr = attributes.find("axis");
+  int64_t axis = 1;
+  if (attr != attributes.end() && attr->second().i() == 0) {
+    axis = attr->second().i();
+  }
+  if (opset < 13 && axis != 2)
+    return false;
   return true;
 }
 
