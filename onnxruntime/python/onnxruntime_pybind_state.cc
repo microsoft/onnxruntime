@@ -17,7 +17,6 @@
 #include "core/framework/data_types_internal.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/framework/kernel_registry.h"
-#include "core/framework/provider_bridge_ort.h"
 #include "core/framework/provider_options_utils.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/sparse_tensor.h"
@@ -27,12 +26,13 @@
 #include "core/platform/env.h"
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/provider_bridge_ort.h"
 
 #ifdef ENABLE_TRAINING
 #include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
-#include "core/language_interop_ops/torch/custom_function_register.h"
+#include "orttraining/core/framework/torch/custom_function_register.h"
 #endif
 
 #endif
@@ -846,6 +846,13 @@ void addGlobalMethods(py::module& m, Environment& env) {
 #else
         ORT_UNUSED_PARAMETER(key);
         ORT_UNUSED_PARAMETER(obj);
+#endif
+  });
+  m.def("unregister_python_functions", []() -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    // Release all custom python functions registered.
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.UnRegisterFunctions();
 #endif
   });
 #endif

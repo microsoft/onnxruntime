@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_c_api.h"
-#include "core/session/allocator_impl.h"
+#include "core/session/allocator_adapters.h"
 #include "core/session/inference_session_utils.h"
 #include "core/session/IOBinding.h"
 #include "core/framework/allocator.h"
@@ -38,10 +38,6 @@
 
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS
 #include "ortcustomops.h"
-#endif
-
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_provider_factory.h"
 #endif
 
 using namespace onnxruntime::logging;
@@ -161,7 +157,7 @@ ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t
   for (size_t i = 0; i != shape_len; ++i) {
     shapes[i] = shape[i];
   }
-  std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::AllocatorWrapper>(allocator);
+  std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator);
   *out = std::make_unique<Tensor>(ml_type, onnxruntime::TensorShape(shapes), alloc_ptr);
   return nullptr;
 }
@@ -178,7 +174,7 @@ ORT_STATUS_PTR CreateTensorImplForSeq(MLDataType elem_type, const int64_t* shape
   if (st) {
     return st;
   }
-  std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::AllocatorWrapper>(allocator);
+  std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator);
   out = Tensor(elem_type, onnxruntime::TensorShape(shapes), alloc_ptr);
   return nullptr;
 }
@@ -799,10 +795,11 @@ ORT_API_STATUS_IMPL(OrtApis::IsTensor, _In_ const OrtValue* value, _Out_ int* ou
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::HasElement, _In_ const OrtValue* value, _Out_ int* out) {
+ORT_API_STATUS_IMPL(OrtApis::HasValue, _In_ const OrtValue* value, _Out_ int* out) {
   auto v = reinterpret_cast<const ::OrtValue*>(value);
   *out = v->HasValue() ? 1 : 0;
-  return nullptr;
+  >>
+      return nullptr;
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetTensorMutableData, _Inout_ OrtValue* value, _Outptr_ void** output) {
@@ -2302,7 +2299,9 @@ static constexpr OrtApi ort_api_1_to_9 = {
     &OrtApis::GetTensorRTProviderOptionsAsString,
     &OrtApis::ReleaseTensorRTProviderOptions,
     &OrtApis::EnableOrtCustomOps,
-    &OrtApis::HasElement,
+    &OrtApis::RegisterAllocator,
+    &OrtApis::UnregisterAllocator,
+    &OrtApis::HasValue,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

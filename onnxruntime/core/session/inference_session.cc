@@ -14,7 +14,7 @@
 #include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
 #include "core/common/parse_string.h"
-#include "core/framework/arena.h"
+#include "core/framework/bfc_arena.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_frame.h"
@@ -1961,7 +1961,7 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
 
 void InferenceSession::ShrinkMemoryArenas(const std::vector<AllocatorPtr>& arenas_to_shrink) {
   for (auto& alloc : arenas_to_shrink) {
-    auto status = static_cast<IArenaAllocator*>(alloc.get())->Shrink();
+    auto status = static_cast<BFCArena*>(alloc.get())->Shrink();
 
     if (!status.IsOK()) {
       LOGS(*session_logger_, WARNING) << "Unable to shrink arena: " << alloc->Info().ToString()

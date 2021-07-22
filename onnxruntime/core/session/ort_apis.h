@@ -125,7 +125,7 @@ ORT_API_STATUS_IMPL(CreateTensorWithDataAsOrtValue, _In_ const OrtMemoryInfo* in
                     _Inout_ void* p_data, size_t p_data_len, _In_ const int64_t* shape, size_t shape_len,
                     ONNXTensorElementDataType type, _Outptr_ OrtValue** out);
 ORT_API_STATUS_IMPL(IsTensor, _In_ const OrtValue* value, _Out_ int* out);
-ORT_API_STATUS_IMPL(HasElement, _In_ const OrtValue* value, _Out_ int* out);
+ORT_API_STATUS_IMPL(HasValue, _In_ const OrtValue* value, _Out_ int* out);
 ORT_API_STATUS_IMPL(GetTensorMutableData, _Inout_ OrtValue* value, _Outptr_ void** out);
 ORT_API_STATUS_IMPL(FillStringTensor, _Inout_ OrtValue* value, _In_ const char* const* s, size_t s_len);
 ORT_API_STATUS_IMPL(FillStringTensorElement, _Inout_ OrtValue* value, _In_ const char* s, size_t index);
@@ -287,4 +287,6 @@ ORT_API_STATUS_IMPL(UpdateTensorRTProviderOptions, _Inout_ OrtTensorRTProviderOp
 ORT_API_STATUS_IMPL(GetTensorRTProviderOptionsAsString, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 ORT_API(void, ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptionsV2*);
 ORT_API_STATUS_IMPL(EnableOrtCustomOps, _Inout_ OrtSessionOptions* options);
+ORT_API_STATUS_IMPL(RegisterAllocator, _Inout_ OrtEnv* env, _In_ OrtAllocator* allocator);
+ORT_API_STATUS_IMPL(UnregisterAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info);
 }  // namespace OrtApis

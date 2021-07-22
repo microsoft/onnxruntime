@@ -800,7 +800,7 @@ inline bool Value::IsTensor() const {
 
 inline bool Value::HasValue() const {
   int out;
-  ThrowOnError(GetApi().HasElement(p_, &out));
+  ThrowOnError(GetApi().HasValue(p_, &out));
   return out != 0;
 }
 
