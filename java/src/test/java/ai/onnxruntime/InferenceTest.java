@@ -1476,13 +1476,15 @@ public class InferenceTest {
         OnnxValue firstOutput = outputs.get(0);
         assertTrue(firstOutput instanceof OnnxTensor);
 
-        String[] labelOutput = (String[]) firstOutput.getValue();
+        String[][] labelOutput = (String[][]) firstOutput.getValue();
 
-        assertEquals("this", labelOutput[0]);
-        assertEquals("is", labelOutput[1]);
-        assertEquals("identity", labelOutput[2]);
-        assertEquals("test \u263A", labelOutput[3]);
-        assertEquals(4, labelOutput.length);
+        assertEquals("this", labelOutput[0][0]);
+        assertEquals("is", labelOutput[0][1]);
+        assertEquals("identity", labelOutput[1][0]);
+        assertEquals("test \u263A", labelOutput[1][1]);
+        assertEquals(2, labelOutput.length);
+        assertEquals(2, labelOutput[0].length);
+        assertEquals(2, labelOutput[1].length);
 
         OnnxValue.close(container);
         container.clear();
@@ -1498,13 +1500,15 @@ public class InferenceTest {
         OnnxValue firstOutput = outputs.get(0);
         assertTrue(firstOutput instanceof OnnxTensor);
 
-        String[] labelOutput = (String[]) firstOutput.getValue();
+        String[][] labelOutput = (String[][]) firstOutput.getValue();
 
-        assertEquals("this", labelOutput[0]);
-        assertEquals("is", labelOutput[1]);
-        assertEquals("identity", labelOutput[2]);
-        assertEquals("test \u263A", labelOutput[3]);
-        assertEquals(4, labelOutput.length);
+        assertEquals("this", labelOutput[0][0]);
+        assertEquals("is", labelOutput[0][1]);
+        assertEquals("identity", labelOutput[1][0]);
+        assertEquals("test \u263A", labelOutput[1][1]);
+        assertEquals(2, labelOutput.length);
+        assertEquals(2, labelOutput[0].length);
+        assertEquals(2, labelOutput[1].length);
       }
     }
   }

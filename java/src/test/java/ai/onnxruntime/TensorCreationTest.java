@@ -81,4 +81,35 @@ public class TensorCreationTest {
       }
     }
   }
+
+  @Test
+  public void testStringCreation() throws OrtException {
+    try (OrtEnvironment env = OrtEnvironment.getEnvironment()) {
+      String[] arrValues = new String[] {"this", "is", "a", "single", "dimensional", "string"};
+      try (OnnxTensor t = OnnxTensor.createTensor(env, arrValues)) {
+        Assertions.assertArrayEquals(new long[] {6}, t.getInfo().shape);
+        String[] output = (String[]) t.getValue();
+        Assertions.assertArrayEquals(arrValues, output);
+      }
+
+      String[][] stringValues =
+          new String[][] {{"this", "is", "a"}, {"multi", "dimensional", "string"}};
+      try (OnnxTensor t = OnnxTensor.createTensor(env, stringValues)) {
+        Assertions.assertArrayEquals(new long[] {2, 3}, t.getInfo().shape);
+        String[][] output = (String[][]) t.getValue();
+        Assertions.assertArrayEquals(stringValues, output);
+      }
+
+      String[][][] deepStringValues =
+          new String[][][] {
+            {{"this", "is", "a"}, {"multi", "dimensional", "string"}},
+            {{"with", "lots", "more"}, {"dimensions", "than", "before"}}
+          };
+      try (OnnxTensor t = OnnxTensor.createTensor(env, deepStringValues)) {
+        Assertions.assertArrayEquals(new long[] {2, 2, 3}, t.getInfo().shape);
+        String[][][] output = (String[][][]) t.getValue();
+        Assertions.assertArrayEquals(deepStringValues, output);
+      }
+    }
+  }
 }

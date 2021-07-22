@@ -210,9 +210,21 @@ struct TypeProto_Tensor final {
   PROVIDER_DISALLOW_ALL(TypeProto_Tensor)
 };
 
+struct TypeProto_SparseTensor final {
+  bool has_shape() const { return g_host->TypeProto_SparseTensor__has_shape(this); }
+  const TensorShapeProto& shape() const { return g_host->TypeProto_SparseTensor__shape(this); }
+  TensorShapeProto* mutable_shape() { return g_host->TypeProto_SparseTensor__mutable_shape(this); }
+  int32_t elem_type() const { return g_host->TypeProto_SparseTensor__elem_type(this); }
+
+  PROVIDER_DISALLOW_ALL(TypeProto_SparseTensor)
+};
+
 struct TypeProto final {
   const TypeProto_Tensor& tensor_type() const { return g_host->TypeProto__tensor_type(this); }
   TypeProto_Tensor* mutable_tensor_type() { return g_host->TypeProto__mutable_tensor_type(this); }
+
+  const TypeProto_SparseTensor& sparse_tensor_type() const { return g_host->TypeProto__sparse_tensor_type(this); }
+  TypeProto_SparseTensor* mutable_sparse_tensor_type() { return g_host->TypeProto__mutable_sparse_tensor_type(this); }
 
   enum ValueCase {
     kTensorType = 1,
@@ -279,7 +291,9 @@ struct ComputeCapability final {
 struct DataTransferManager final {
   Status CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const { return g_host->DataTransferManager__CopyTensor(this, src, dst, exec_queue_id); }
   Status CopyTensor(const Tensor& src, Tensor& dst) const { return g_host->DataTransferManager__CopyTensor(this, src, dst); }
-
+  Status CopySparseTensor(const SparseTensor& src, SparseTensor& dst) const { return g_host->DataTransferManager__CopySparseTensor(this, src, dst); }
+  Status CopySparseTensor(const SparseTensor& src, SparseTensor& dst, int exec_queue_id) const { return g_host->DataTransferManager__CopySparseTensor(this, src, dst, exec_queue_id); }
+  Status CopySparseTensors(const std::vector<IDataTransfer::SparseSrcDstPair>& src_dst_pairs) const { return g_host->DataTransferManager__CopySparseTensors(this, src_dst_pairs); }
   const IDataTransfer* GetDataTransfer(const OrtDevice& src_device, const OrtDevice& dst_device) const { return g_host->DataTransferManager__GetDataTransfer(this, src_device, dst_device); }
 
   PROVIDER_DISALLOW_ALL(DataTransferManager)
@@ -452,6 +466,9 @@ class DataTypeImpl final {
   static MLDataType GetType();
   template <typename elemT>
   static MLDataType GetTensorType();
+  template <typename elemT>
+  static MLDataType GetSparseTensorType();
+
   static MLDataType GetTypeFromOnnxType(int);
 
   bool IsTensorType() const { return g_host->DataTypeImpl__IsTensorType(this); }
@@ -663,6 +680,7 @@ struct OpKernelContext final {
   T* Output(int index);
 
   Tensor* Output(int index, const TensorShape& shape) { return g_host->OpKernelContext__Output(this, index, shape); }
+  SparseTensor* OutputSparse(int index, const TensorShape& shape) { return g_host->OpKernelContext__OutputSparse(this, index, shape); } 
   int OutputCount() const { return g_host->OpKernelContext__OutputCount(this); }
 
   Status GetTempSpaceAllocator(AllocatorPtr* output) const { return g_host->OpKernelContext__GetTempSpaceAllocator(this, output); }
@@ -678,6 +696,11 @@ struct OpKernelContext final {
 template <>
 inline const Tensor* OpKernelContext::Input<Tensor>(int index) const {
   return g_host->OpKernelContext__Input_Tensor(this, index);
+}
+
+template <>
+inline const SparseTensor* OpKernelContext::Input<SparseTensor>(int index) const {
+  return g_host->OpKernelContext__Input_SparseTensor(this, index);
 }
 
 template <>
@@ -886,6 +909,12 @@ template <>
 inline const BFloat16* Tensor::Data<BFloat16>() const { return g_host->Tensor__Data_BFloat16(this); }
 template <>
 inline const MLFloat16* Tensor::Data<MLFloat16>() const { return g_host->Tensor__Data_MLFloat16(this); }
+
+// SparseTensor
+struct SparseTensor final {
+  const TensorShape& DenseShape() const noexcept { return g_host->SparseTensor__DenseShape(this); }
+  Status Copy(const DataTransferManager& dtm, int exec_q_id, SparseTensor& dst) const { return g_host->SparseTensor__Copy(this, dtm, exec_q_id, dst); }
+};
 
 //TensorSeq
 struct TensorSeq final {

@@ -603,7 +603,7 @@ ORT_REGISTER_TENSOR_TYPE(BFloat16);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(int32_t);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(float);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(bool);
-// ORT_REGISTER_SPARSE_TENSOR_TYPE(std::string);
+ORT_REGISTER_SPARSE_TENSOR_TYPE(std::string);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(int8_t);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(uint8_t);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(uint16_t);
@@ -717,7 +717,7 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_SPARSE_TENSOR_PROTO(int32_t, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(float, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(bool, reg_fn);
-  // REGISTER_SPARSE_TENSOR_PROTO(std::string, reg_fn);
+  REGISTER_SPARSE_TENSOR_PROTO(std::string, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(int8_t, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(uint8_t, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(uint16_t, reg_fn);
@@ -928,9 +928,15 @@ const SparseTensorTypeBase* DataTypeImpl::SparseTensorTypeFromONNXEnum(int type)
     case TensorProto_DataType_INT32:
       return DataTypeImpl::GetSparseTensorType<int32_t>()->AsSparseTensorType();
     case TensorProto_DataType_DOUBLE:
+<<<<<<< HEAD
       return DataTypeImpl::GetSparseTensorType<double>()->AsSparseTensorType();
     // case TensorProto_DataType_STRING:
     // return DataTypeImpl::GetSparseTensorType<std::string>()->AsSparseTensorType();
+=======
+      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<double>());
+    case TensorProto_DataType_STRING:
+     return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<std::string>());
+>>>>>>> origin/update_onnx
     case TensorProto_DataType_UINT8:
       return DataTypeImpl::GetSparseTensorType<uint8_t>()->AsSparseTensorType();
     case TensorProto_DataType_UINT16:
