@@ -1145,18 +1145,13 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
           -DGRADLE_EXECUTABLE=${GRADLE_EXECUTABLE}
           -DBIN_DIR=${CMAKE_CURRENT_BINARY_DIR}
           -DREPO_ROOT=${REPO_ROOT}
-          ${ORT_PROVIDER_CMAKE_FLAGS}
+          ${ORT_PROVIDER_FLAGS}
           -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
       else()
         add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
                         ${JAVA_NATIVE_TEST_DIR}/$<TARGET_LINKER_FILE_NAME:custom_op_library>)
-        if (onnxruntime_USE_CUDA)
-          add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} -DUSE_CUDA=1
-                  WORKING_DIRECTORY ${REPO_ROOT}/java)
-        else()
-          add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR}
-                  WORKING_DIRECTORY ${REPO_ROOT}/java)
-        endif()
+        add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} ${ORT_PROVIDER_FLAGS}
+              WORKING_DIRECTORY ${REPO_ROOT}/java)
       endif()
       set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
   endif()

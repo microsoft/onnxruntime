@@ -749,6 +749,39 @@ def test_module_with_non_differential_output():
         _test_helpers.assert_values_are_close(ort_mask2, pt_mask2)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
+@pytest.mark.parametrize("loss_with_duplicated_output", [False, True])
+def test_duplicated_output(loss_with_duplicated_output):
+    class NeuralNet(torch.nn.Module):
+        def __init__(self):
+            super(NeuralNet, self).__init__()
+            self.fc1 = torch.nn.Linear(128, 16)
+
+        def forward(self, input):
+            out = self.fc1(input)
+            return out, out     # duplicated output
+
+    N, C, H = 8, 4, 128
+    device = 'cuda'
+    pt_model = NeuralNet().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        out, out_dup = model(input)
+        loss = out.sum() 
+        if loss_with_duplicated_output:
+            loss = loss + (2 * out_dup).sum()
+        loss.backward()
+        return out, out_dup
+
+    for _ in range(10):
+        input = torch.randn(N, C, H, device=device)
+        pt_prediction1, pt_prediction2 = run_step(pt_model, input)
+        ort_prediction1, ort_prediction2 = run_step(ort_model, input)
+
+        _test_helpers.assert_values_are_close(ort_prediction1, pt_prediction1)
+        _test_helpers.assert_values_are_close(ort_prediction2, pt_prediction2)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-5)
+        
 def test_multiple_forward_only_calls():
     device = 'cuda'
     N, D_in, H, D_out = 32, 784, 500, 10
