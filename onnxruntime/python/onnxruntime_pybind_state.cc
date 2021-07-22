@@ -60,6 +60,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(uint32_t flags);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CoreML(uint32_t flags);
 
 constexpr const char* kExecutionProviderSharedLibraryPath = "shared_lib_path";
 }  // namespace onnxruntime
@@ -655,6 +656,13 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #ifdef USE_RKNPU
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Rknpu());
 #endif
+    } else if (type == kCoreMLExecutionProvider) {
+#if defined(USE_COREML)
+#if !defined(__APPLE__)
+      LOGS_DEFAULT(WARNING) << "CoreML execution provider can only be used to generate ORT format model in this build.";
+#endif
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CoreML(0));
+#endif
     } else {
       // check whether it is a dynamic load EP:
       const auto it = provider_options_map.find(type);
@@ -963,6 +971,9 @@ void addGlobalMethods(py::module& m, Environment& env) {
 #endif
 #ifdef USE_RKNPU
             onnxruntime::CreateExecutionProviderFactory_Rknpu(),
+#endif
+#ifdef USE_COREML
+            onnxruntime::CreateExecutionProviderFactory_CoreML(0),
 #endif
         };
 
