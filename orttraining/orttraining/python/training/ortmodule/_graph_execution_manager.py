@@ -84,7 +84,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._execution_agent = None
 
         # indicators of some logic have been executed previously thus could be skipped for faster training
-        self._skip_check = _SkipCheck(1)
+        self._skip_check = _SkipCheck.SKIP_CHECK_DISABLED
 
         # Debug flags
         self._save_onnx = False

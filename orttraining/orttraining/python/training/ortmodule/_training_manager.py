@@ -96,9 +96,7 @@ class TrainingManager(GraphExecutionManager):
 
             # disable some checks after execution session is created the first time
             if self._skip_check.is_disabled() == False:
-                self._skip_check = self._skip_check.SKIP_CHECK_BUILD_GRADIENT | \
-                    self._skip_check.SKIP_CHECK_EXECUTION_AGENT | \
-                    self._skip_check.SKIP_CHECK_DEVICE
+                self._skip_check = _SkipCheck.SKIP_CHECK_BUILD_GRADIENT | _SkipCheck.SKIP_CHECK_EXECUTION_AGENT | _SkipCheck.SKIP_CHECK_DEVICE
 
                 if self._loglevel <= _logger.LogLevel.WARNING:
                     warnings.warn("Fast path enabled - skipping checks for rebuilding gradient graph, execution agent creation, and device during training.",
