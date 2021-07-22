@@ -16,8 +16,10 @@ from collections import OrderedDict
 from collections import namedtuple
 from inspect import signature
 import tempfile
+import os
 
 from onnxruntime.training.ortmodule import ORTModule, _utils, _io
+from onnxruntime.training.ortmodule.configuration import DebugOptions, LogLevel
 import _test_helpers
 
 # Import autocasting libs
@@ -2662,10 +2664,10 @@ def test_changing_bool_input_re_exports_model(bool_arguments):
 
     input1 = torch.randn(N, D_in, device=device)
     ort_model(input1, bool_arguments[0])
-    exported_model1 = ort_model._torch_module._execution_manager(ort_model._is_training())._onnx_model
+    exported_model1 = ort_model._torch_module._execution_manager(ort_model._is_training())._onnx_models.exported_model
 
     ort_model(input1, bool_arguments[1])
-    exported_model2 = ort_model._torch_module._execution_manager(ort_model._is_training())._onnx_model
+    exported_model2 = ort_model._torch_module._execution_manager(ort_model._is_training())._onnx_models.exported_model
 
     assert exported_model1 != exported_model2
 
@@ -2825,7 +2827,7 @@ def test_unused_parameters_does_not_unnecssarily_reinitilize(model):
     _ = ort_model(x)
 
     input_info = _io.parse_inputs_for_onnx_export(training_manager._module_parameters,
-                                                  training_manager._onnx_model,
+                                                  training_manager._onnx_models.exported_model,
                                                   x,
                                                   {})
 
@@ -2986,3 +2988,78 @@ def test_ortmodule_nested_list_input():
     y = copy.deepcopy(x)
 
     _test_helpers.assert_values_are_close(pt_model(x), ort_model(y))
+
+@pytest.mark.parametrize("mode", ['training', 'inference'])
+def test_debug_options_save_intermediate_onnx_models(mode):
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    # Create a temporary directory for the onnx_models
+    with tempfile.TemporaryDirectory() as temporary_dir:
+        debug_options = DebugOptions()
+        debug_options.save_intermediate_onnx_models.configure(save=True, prefix='my_model', dst_directory=temporary_dir)
+        model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+        ort_model = ORTModule(model, debug_options)
+        if mode == 'inference':
+            ort_model.eval()
+        x = torch.randn(N, D_in, device=device)
+        _ = ort_model(x)
+
+        # assert that the onnx models have been saved
+        assert os.path.exists(os.path.join(temporary_dir, f"my_model_torch_exported_{mode}.onnx"))
+        assert os.path.exists(os.path.join(temporary_dir, f"my_model_optimized_{mode}.onnx"))
+
+def test_debug_options_save_intermediate_onnx_models_validate_fail_on_non_writable_dir():
+
+    debug_options = DebugOptions()
+
+    with pytest.raises(Exception) as ex_info:
+        debug_options.save_intermediate_onnx_models.configure(save=True, prefix='my_model', dst_directory='/non/existent/directory')
+    assert "Directory /non/existent/directory is not writable." in str(ex_info.value)
+
+def test_debug_options_save_intermediate_onnx_models_validate_fail_on_non_str_prefix():
+
+    debug_options = DebugOptions()
+    prefix = 23
+
+    with pytest.raises(Exception) as ex_info:
+        debug_options.save_intermediate_onnx_models.configure(save=True, prefix=prefix)
+    assert f"Expected prefix of type str, got {type(prefix)}." in str(ex_info.value)
+
+def test_debug_options_log_level():
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    debug_options = DebugOptions()
+    debug_options.logging.configure(loglevel=LogLevel.VERBOSE)
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModule(model, debug_options)
+    x = torch.randn(N, D_in, device=device)
+    _ = ort_model(x)
+
+    # assert that the logging is done in verbose mode
+    ort_model._torch_module._execution_manager(True)._debug.logging.loglevel == LogLevel.VERBOSE
+
+def test_debug_options_log_level():
+    # NOTE: This test will output verbose logging
+
+    device = 'cuda'
+    N, D_in, H, D_out = 64, 784, 500, 10
+    debug_options = DebugOptions()
+    debug_options.logging.configure(loglevel=LogLevel.VERBOSE)
+    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
+    ort_model = ORTModule(model, debug_options)
+    x = torch.randn(N, D_in, device=device)
+    _ = ort_model(x)
+
+    # assert that the logging is done in verbose mode
+    ort_model._torch_module._execution_manager(True)._debug.logging.loglevel == LogLevel.VERBOSE
+
+def test_debug_options_log_level_validation_fails_on_type_mismatch():
+
+    debug_options = DebugOptions()
+    loglevel = 'some_string'
+
+    with pytest.raises(Exception) as ex_info:
+        debug_options.logging.configure(loglevel=loglevel)
+    assert f"Expected loglevel of type LogLevel, got {type(loglevel)}." in str(ex_info.value)
