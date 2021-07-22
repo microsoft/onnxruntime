@@ -296,11 +296,17 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   // as we might make some modifications to the FunctionProto along the way
 
   const auto* node_in_parent_graph = parent_graph_->GetNode(node_index);
+  // For schema defined functions get the version from the node in parent graph.
+  // For the functions which do not have schema defined (model local functions) 
+  // get the since version from the version in opset imports using the domain.
+  auto since_version = node_in_parent_graph->SinceVersion() == -1 
+      ? GetVersionForDomain(node_in_parent_graph->Domain(), body_.MainGraph().DomainToVersionMap()) 
+      : node_in_parent_graph->SinceVersion();
   op_schema_ = std::make_unique<ONNX_NAMESPACE::OpSchema>();
   op_schema_->SetName(onnx_func_proto_.name());
   op_schema_->SetDomain(node_in_parent_graph->Domain());
   op_schema_->SetDoc(onnx_func_proto_.doc_string());
-  op_schema_->SinceVersion(static_cast<ONNX_NAMESPACE::OperatorSetVersion>(GetVersionForDomain(node_in_parent_graph->Domain(), body_.MainGraph().DomainToVersionMap())));
+  op_schema_->SinceVersion(static_cast<ONNX_NAMESPACE::OperatorSetVersion>(since_version));
   std::unordered_map<std::string, int> input_name_idx_map;
   std::unordered_map<std::string, int> output_name_idx_map;
   for (int i = 0; i < onnx_func_proto_.input_size(); ++i) {

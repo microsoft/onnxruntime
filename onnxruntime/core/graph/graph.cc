@@ -2352,8 +2352,12 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       auto maxInclusiveVersion = DomainToVersionMap().find(domain)->second;
       node.op_ = schema_registry_->GetSchema(node.OpType(), maxInclusiveVersion, node.Domain());
 
-      if (node.op_ && node.op_->Deprecated()) {
-        node.op_ = nullptr;
+      if (node.op_) {
+        node.since_version_ = node.op_->since_version();
+
+        if (node.op_->Deprecated()) {
+            node.op_ = nullptr;
+        }
       }
 
       InitFunctionBodyForNode(node);
@@ -2362,7 +2366,11 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
       }
 
-      node.since_version_ = node.op_->since_version();
+      // For ops without schema (like model local functions set the since version after constructing the schema.
+      // schema construction will happen during function body initialization.
+      if (node.since_version_ == -1) {
+        node.since_version_ = node.op_->since_version();
+      }
     }
 
     ORT_RETURN_IF_ERROR(node.UpdateInputArgCount());
@@ -2429,23 +2437,12 @@ void Graph::InitFunctionBodyForNode(Node& node) {
       onnx_function_proto = *(node.op_->GetFunction());
     }
 
-    auto status = Status::OK();
-    ORT_TRY {
-      CheckerContext ctx;
-      InitCheckerContext(ctx);
-
-      LexicalScopeContext lsc;
-      InitLexicalScopeContext(lsc);
-
-      checker::check_function(onnx_function_proto, ctx, lsc);
-    }
-    ORT_CATCH(const std::exception& ex) {
-      ORT_HANDLE_EXCEPTION([&]() {
-        status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "This is an invalid model. Error in Node:", node.Name(), " : ", ex.what());
-      });
-    }
-    if (!status.IsOK()) {
-        return;
+    // Check function's opset requirements are compatible with model's opset.
+    auto& graphImports = DomainToVersionMap();
+    for (const auto& fn_import : onnx_function_proto.opset_import()) {
+      auto it = graphImports.find(fn_import.domain());
+      if ((it != graphImports.end()) && (it->second != fn_import.version()))
+        return;  // Incompatible. Do not use this function expansion.
     }
 
     auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
