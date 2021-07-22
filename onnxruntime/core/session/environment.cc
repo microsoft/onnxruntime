@@ -56,14 +56,12 @@ Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_mana
   return status;
 }
 
-namespace OrtMemoryInfoUtils {
-
 // Ugly but necessary for instances where we want to check equality of two OrtMemoryInfos
 // without accounting for OrtAllocatorType in the equality checking process.
 // TODO: Should we remove the OrtAllocatorType field from the OrtMemoryInfo struct to
 // avoid such problems and also remove the unintuitive phenomenon of binding an allocator
 // type to OrtMemoryInfo (which loosely is just device info) ?
-bool Equals(
+static bool AreOrtMemoryInfosEquivalent(
     const OrtMemoryInfo& left, const OrtMemoryInfo& right,
     bool include_allocator_type_for_equality_checking = true) {
   if (include_allocator_type_for_equality_checking) {
@@ -75,10 +73,15 @@ bool Equals(
   }
 }
 
-}  // namespace OrtMemoryInfoUtils
-
 Status Environment::RegisterAllocator(AllocatorPtr allocator) {
   const auto& mem_info = allocator->Info();
+
+  if (mem_info.device.Type() != OrtDevice::CPU) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Only CPU allocators can be shared between "
+                           "multiple sessions for now.");
+  }
+
   // We don't expect millions of allocators getting registered. Hence linear search should be fine.
   auto ite = std::find_if(std::begin(shared_allocators_),
                           std::end(shared_allocators_),
@@ -92,7 +95,7 @@ Status Environment::RegisterAllocator(AllocatorPtr allocator) {
                             // OrtDeviceAllocator (which is the only accepted value while registering a custom allocator).
                             // If we allowed this, it could potentially cause a lot of confusion as to which shared allocator
                             // to use for that device and we want to avoid having any ugly logic around this.
-                            return OrtMemoryInfoUtils::Equals(alloc_ptr->Info(), mem_info, false);
+                            return AreOrtMemoryInfosEquivalent(alloc_ptr->Info(), mem_info, false);
                           });
 
   if (ite != shared_allocators_.end()) {
@@ -174,7 +177,7 @@ Status Environment::UnregisterAllocator(const OrtMemoryInfo& mem_info) {
                           [&mem_info](const AllocatorPtr& alloc_ptr) {
                             // See comment in RegisterAllocator() as to why we
                             // use this method of OrtMemoryInfo equality checking
-                            return OrtMemoryInfoUtils::Equals(alloc_ptr->Info(), mem_info, false);
+                            return AreOrtMemoryInfosEquivalent(alloc_ptr->Info(), mem_info, false);
                           });
 
   if (ite == shared_allocators_.end()) {
