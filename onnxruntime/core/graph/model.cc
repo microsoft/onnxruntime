@@ -706,7 +706,7 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
   if (const auto* fbs_metadata_props = fbs_model.metadata_props()) {
     model->model_metadata_.reserve(fbs_metadata_props->size());
     for (const auto* prop : *fbs_metadata_props) {
-      ORT_RETURN_IF(nullptr == prop, "Null entry in meta_props. Invalid ORT format model.");
+      ORT_RETURN_IF(nullptr == prop, "Null entry in metadata_props. Invalid ORT format model.");
       std::string key, value;
       experimental::utils::LoadStringFromOrtFormat(key, prop->key());
       experimental::utils::LoadStringFromOrtFormat(value, prop->value());

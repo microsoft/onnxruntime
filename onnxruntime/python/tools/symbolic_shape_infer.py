@@ -1331,6 +1331,7 @@ class SymbolicShapeInference:
         vi = self.known_vi_[node.output[0]]
         elem_type = self.known_vi_[node.input[0]].type.tensor_type.elem_type
         vi.type.tensor_type.elem_type = elem_type
+        vi.type.tensor_type.shape.CopyFrom(onnx.TensorShapeProto())
 
         if len(node.output) > 1:
             data_shape = self._get_shape(node, 0)
@@ -1474,14 +1475,29 @@ class SymbolicShapeInference:
         vi.CopyFrom(new_vi)
 
     def _infer_Attention(self, node):
-        #TODO: shape inference for the other output (present).
         shape = self._get_shape(node, 0)
         shape_bias = self._get_shape(node, 2)
         assert len(shape) == 3 and len(shape_bias) == 1
-        shape[2] = int(shape_bias[0] / 3)
+        qkv_hidden_sizes_attr = get_attribute(node, 'qkv_hidden_sizes')
+        if qkv_hidden_sizes_attr is not None:
+            assert len(qkv_hidden_sizes_attr) == 3
+            shape[2] = int(qkv_hidden_sizes_attr[2])
+        else:
+            shape[2] = int(shape_bias[0] / 3)
         output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, shape))
+
+        if len(node.output) > 1:
+            # past shape: (2, batch_size, num_heads, past_sequence_length, head_size)
+            # mask shape: (batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length)
+            # present shape: (2, batch_size, num_heads, total_sequence_length, head_size)
+            past_shape = self._get_shape(node, 4)
+            mask_shape = self._get_shape(node, 3)
+            if len(past_shape) == 5 and len(mask_shape) in [2, 3]:
+                past_shape[3] = mask_shape[-1]
+                vi = self.known_vi_[node.output[1]]
+                vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
 
     def _infer_BiasGelu(self, node):
         self._propagate_shape_and_type(node)
