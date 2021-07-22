@@ -97,7 +97,13 @@ public class OnnxTensor implements OnnxValue {
     } else {
       Object carrier = info.makeCarrier();
       getArray(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle, carrier);
-      return carrier;
+      if ((info.type == OnnxJavaType.STRING) && (info.shape.length != 1)) {
+        // We read the strings out from native code in a flat array and then reshape
+        // to the desired output shape.
+        return OrtUtil.reshape((String[]) carrier, info.shape);
+      } else {
+        return carrier;
+      }
     }
   }
 
