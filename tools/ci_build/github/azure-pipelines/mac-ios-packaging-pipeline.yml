@@ -53,6 +53,7 @@ jobs:
   - script: |
       python tools/ci_build/github/apple/test_ios_packages.py \
         --fail_if_cocoapods_missing \
+        --framework_info_file "$(Build.BinariesDirectory)/ios_framework/framework_info.json" \
         --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out"
     displayName: "Test iOS framework"
 
@@ -89,7 +90,7 @@ jobs:
         --output "$(Build.BinariesDirectory)/staging/objc_api_docs" \
         --module-version ${ORT_POD_VERSION}
     displayName: "Generate Objective-C API docs"
-  
+
   - task: AzureCLI@2
     inputs:
       azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'

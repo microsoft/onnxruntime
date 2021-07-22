@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/language_interop_ops/torch/torch_proxy.h"
+#include "orttraining/core/framework/torch/torch_proxy.h"
 #include "orttraining/core/framework/torch/python_common.h"
 #include "orttraining/core/framework/torch/dlpack_python.h"
 #include "core/framework/tensorprotoutils.h"
-#include "core/language_interop_ops/torch/custom_function_register.h"
-#include "core/language_interop_ops/torch/refcount_tracker.h"
-#include "core/language_interop_ops/torch/gil.h"
+#include "orttraining/core/framework/torch/custom_function_register.h"
+#include "orttraining/core/framework/torch/refcount_tracker.h"
+#include "orttraining/core/framework/torch/gil.h"
 #include "core/platform/env.h"
 
 namespace onnxruntime {
