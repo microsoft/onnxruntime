@@ -63,8 +63,8 @@ Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_mana
 // type to OrtMemoryInfo (which loosely is just device info) ?
 static bool AreOrtMemoryInfosEquivalent(
     const OrtMemoryInfo& left, const OrtMemoryInfo& right,
-    bool include_allocator_type_for_equality_checking = true) {
-  if (include_allocator_type_for_equality_checking) {
+    bool include_allocator_type_for_equivalence_checking = true) {
+  if (include_allocator_type_for_equivalence_checking) {
     return left == right;
   } else {
     return left.mem_type == right.mem_type &&
