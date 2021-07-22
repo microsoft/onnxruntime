@@ -141,7 +141,8 @@ if (WIN32)
     if (NOT CUDNN_DLL_PATH)
       message(FATAL_ERROR "cuDNN not found in ${onnxruntime_CUDNN_HOME}")
     endif()
-    get_filename_component(CUDNN_DLL_NAME ${CUDNN_DLL_PATH} NAME_WE)
+	set(CUDNN_DLL_NAME "cudnn64_8")
+    #get_filename_component(CUDNN_DLL_NAME ${CUDNN_DLL_PATH} NAME_WE)
     string(REPLACE "cudnn64_" "" CUDNN_VERSION "${CUDNN_DLL_NAME}")
 
     file(APPEND "${VERSION_INFO_FILE}"

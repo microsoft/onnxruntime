@@ -29,7 +29,7 @@ Status IsAllFiniteOp<TSrc>::ComputeInternal(OpKernelContext* context) const {
 
   // Initialize the output to true.  GPU kernel will set it
   // to false if any value in any tensor is non-finite.
-  Tensor& output = *context->Output(0, {});
+  Tensor& output = *context->Output(0, TensorShape{});
   auto* output_data = reinterpret_cast<ToCudaType<bool>::MappedType*>(output.template MutableData<bool>());
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output_data, int(true), sizeof(bool), Stream()));
 

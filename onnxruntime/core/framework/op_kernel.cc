@@ -49,6 +49,15 @@ Tensor* OpKernelContext::Output(int index, const std::initializer_list<int64_t>&
   return Output(index, TensorShape(shape));
 }
 
+void OpKernelContext::Output(int index, std::unique_ptr<Tensor> tensor) {
+  auto output_arg_index = GetOutputArgIndex(index);
+  OrtValue* p_ml_value = const_cast<OrtValue*>(execution_frame_->GetNodeInputOrOutputMLValue(output_arg_index));
+  ORT_ENFORCE(p_ml_value && !p_ml_value->IsAllocated());
+  static std::function<void(void*)> deleter = [](void* t) { delete t; };
+  p_ml_value->Init(tensor.get(), DataTypeImpl::GetType<Tensor>(), deleter);
+  tensor.release();
+}
+
 SparseTensor* OpKernelContext::Output(int index, size_t nnz, const TensorShape& shape) {
   auto p_ml_value = OutputMLValue(index, shape, nnz);
   return p_ml_value ? p_ml_value->GetMutable<SparseTensor>() : nullptr;

@@ -61,6 +61,7 @@ class OpKernelContext {
   Tensor* Output(int index, const TensorShape& shape);
   Tensor* Output(int index, const std::vector<int64_t>& shape);
   Tensor* Output(int index, const std::initializer_list<int64_t>& shape);
+  void Output(int index, std::unique_ptr<Tensor> tensor);
 
   // Fetch a required tensor output, enforcing that it is present.
   Tensor& RequiredOutput(int index, const TensorShape& shape) {

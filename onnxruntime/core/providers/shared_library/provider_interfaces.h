@@ -586,6 +586,7 @@ struct ProviderHost {
   virtual Tensor* OpKernelContext__Output_Tensor(OpKernelContext* p, int index) = 0;
   virtual TensorSeq* OpKernelContext__Output_TensorSeq(OpKernelContext* p, int index) = 0;
   virtual Tensor* OpKernelContext__Output(OpKernelContext* p, int index, const TensorShape& shape) = 0;
+  virtual void OpKernelContext__Output(OpKernelContext* p, int index, std::unique_ptr<Tensor> tensor) = 0;
   virtual Tensor& OpKernelContext__RequiredOutput(OpKernelContext* p, int index, const TensorShape& shape) = 0;
   virtual MLDataType OpKernelContext__InputType(const OpKernelContext* p, int index) = 0;
   virtual int OpKernelContext__InputCount(const OpKernelContext* p) = 0;
@@ -1498,6 +1499,7 @@ struct OpKernelContext final {
   T* Output(int index);
 
   Tensor* Output(int index, const TensorShape& shape) { return g_host->OpKernelContext__Output(this, index, shape); }
+  void Output(int index, std::unique_ptr<Tensor> tensor) { return g_host->OpKernelContext__Output(this, index, std::move(tensor)); }
   int OutputCount() const { return g_host->OpKernelContext__OutputCount(this); }
 
   Status GetTempSpaceAllocator(AllocatorPtr* output) const { return g_host->OpKernelContext__GetTempSpaceAllocator(this, output); }
