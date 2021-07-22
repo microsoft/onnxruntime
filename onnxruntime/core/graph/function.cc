@@ -300,7 +300,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   op_schema_->SetName(onnx_func_proto_.name());
   op_schema_->SetDomain(node_in_parent_graph->Domain());
   op_schema_->SetDoc(onnx_func_proto_.doc_string());
-  op_schema_->SinceVersion(static_cast<ONNX_NAMESPACE::OperatorSetVersion>(node_in_parent_graph->SinceVersion()));
+  op_schema_->SinceVersion(static_cast<ONNX_NAMESPACE::OperatorSetVersion>(GetVersionForDomain(node_in_parent_graph->Domain(), body_.MainGraph().DomainToVersionMap())));
   std::unordered_map<std::string, int> input_name_idx_map;
   std::unordered_map<std::string, int> output_name_idx_map;
   for (int i = 0; i < onnx_func_proto_.input_size(); ++i) {
