@@ -2,7 +2,8 @@
 // Licensed under the MIT License
 
 #include "dnnl_subgraph_primitive.h"
-//#include "dnnl_batchnorm.h"
+
+#include "dnnl_batchnorm.h"
 #include "dnnl_conv.h"
 #include "dnnl_lrn.h"
 #include "dnnl_matmul.h"
@@ -167,6 +168,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
     if (node.OpType() == "AveragePool" || node.OpType() == "GlobalAveragePool" ||
         node.OpType() == "GlobalMaxPool" || node.OpType() == "MaxPool") {
       DnnlPool().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "BatchNormalization") {
+      DnnlBatchNorm().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Conv") {
       DnnlConv().CreatePrimitive(*this, node);
     } else if (node.OpType() == "LRN") {
