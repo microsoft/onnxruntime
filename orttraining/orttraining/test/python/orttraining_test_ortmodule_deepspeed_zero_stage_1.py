@@ -9,7 +9,6 @@ $ deepspeed orttraining_test_ortmodule_deepspeed_zero_stage_1.py \
 ```
 """
 import argparse
-import logging
 import torch
 import time
 from torchvision import datasets, transforms
@@ -17,6 +16,7 @@ import torch.distributed as dist
 
 import onnxruntime
 from onnxruntime.training.ortmodule import ORTModule
+from onnxruntime.training.ortmodule.configuration import DebugOptions, LogLevel
 
 import deepspeed
 
@@ -190,17 +190,24 @@ def main():
     model = NeuralNet(input_size=784, hidden_size=500, num_classes=10).to(device)
     if not args.pytorch_only:
         print('Training MNIST on ORTModule....')
-        model = ORTModule(model)
 
-        # TODO: change it to False to stop saving ONNX models
-        model._save_onnx = True
-        model._save_onnx_prefix = 'MNIST'
+        debug = DebugOptions()
+        debug.save_intermediate_onnx_models.configure(save=False, prefix='MNIST')
 
         # Set log level
-        numeric_level = getattr(logging, args.log_level.upper(), None)
-        if not isinstance(numeric_level, int):
+        loglevel_mapping = {"DEBUG": LogLevel.VERBOSE,
+                            "INFO": LogLevel.INFO,
+                            "WARNING": LogLevel.WARNING,
+                            "ERROR": LogLevel.ERROR,
+                            "CRITICAL": LogLevel.FATAL}
+        loglevel = loglevel_mapping.get(args.log_level.upper(), None)
+        if not isinstance(loglevel, LogLevel):
             raise ValueError('Invalid log level: %s' % args.log_level)
-        logging.basicConfig(level=numeric_level)
+
+        debug.logging.configure(loglevel=loglevel)
+
+        model = ORTModule(model, debug)
+
     else:
         print('Training MNIST on vanilla PyTorch....')
 

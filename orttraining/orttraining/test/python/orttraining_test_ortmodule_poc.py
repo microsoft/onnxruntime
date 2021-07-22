@@ -6,6 +6,7 @@ from torchvision import datasets, transforms
 
 import onnxruntime
 from onnxruntime.training.ortmodule import ORTModule
+from onnxruntime.training.ortmodule.configuration import DebugOptions
 
 
 class NeuralNet(torch.nn.Module):
@@ -167,11 +168,12 @@ def main():
     model = NeuralNet(input_size=784, hidden_size=500, num_classes=10).to(device)
     if not args.pytorch_only:
         print('Training MNIST on ORTModule....')
-        model = ORTModule(model)
 
-        # TODO: change it to False to stop saving ONNX models
-        model._save_onnx = True
-        model._save_onnx_prefix = 'MNIST'
+        # Just for future debugging
+        debug = DebugOptions()
+        debug.save_intermediate_onnx_models.configure(save=False, prefix='MNIST')
+
+        model = ORTModule(model)
 
         # Set log level
         numeric_level = getattr(logging, args.log_level.upper(), None)
