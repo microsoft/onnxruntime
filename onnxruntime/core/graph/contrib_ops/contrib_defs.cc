@@ -397,17 +397,32 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
 
     auto& bias_shape = getInputShape(ctx, 2);
     auto& bias_dims = bias_shape.dim();
-    if (bias_dims.size() != 1 || bias_shape.dim(0).dim_value() % 3 != 0) {
+    if (bias_dims.size() != 1) {
       fail_shape_inference("Invalid bias shape");
+    }
+
+    std::vector<int64_t> qkv_hidden_sizes;
+    getRepeatedAttribute(ctx, "qkv_hidden_sizes", qkv_hidden_sizes);
+
+    int64_t output_hidden_size;
+    if (qkv_hidden_sizes.size() != 0) {
+      if (qkv_hidden_sizes.size() != 3) {
+        fail_shape_inference("qkv_hidden_sizes should have 3 elements")
+      }
+      output_hidden_size = qkv_hidden_sizes[2];
+    } else {
+      output_hidden_size = bias_shape.dim(0).dim_value() / 3;
     }
 
     ONNX_NAMESPACE::TensorShapeProto output_shape;
     for (auto& dim : input_dims) {
       *output_shape.add_dim() = dim;
     }
-    output_shape.mutable_dim(2)->set_dim_value(bias_shape.dim(0).dim_value() / 3);
+
+    output_shape.mutable_dim(2)->set_dim_value(output_hidden_size);
     updateOutputShape(ctx, 0, output_shape);
 
+    // TODO does the extra output need any changes?
     if (ctx.getNumOutputs() > 1) {
       if (hasInputShape(ctx, past_input_index)) {
         auto& past_shape = getInputShape(ctx, past_input_index);
@@ -453,12 +468,17 @@ and present state are optional. Present state could appear in output even when p
             "Whether every token can only attend to previous tokens. Default value is 0.",
             AttributeProto::INT,
             static_cast<int64_t>(0))
+      .Attr("qkv_hidden_sizes",
+            "Hidden layer sizes of Q, K, V paths in Attention",
+            AttributeProto::INTS,
+            OPTIONAL_VALUE)
       .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, input_hidden_size)", "T")
       .Input(1, "weight", "2D input tensor with shape (input_hidden_size, 3 * hidden_size), where hidden_size = num_heads * head_size", "T")
       .Input(2, "bias", "1D input tensor with shape (3 * hidden_size)", "T")
       .Input(3, "mask_index", "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, past_sequence_length + sequence_length)"
                 "or (batch_size, sequence_length, past_sequence_length + sequence_length), or index with shape (batch_size) or (2 * batch_size).", "M", OpSchema::Optional)
       .Input(4, "past", "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).", "T", OpSchema::Optional)
+      .Input(5, "extra_add", "additional add to QxK' with shape (batch_size, num_heads, sequence_length, sequence_length).", "T", OpSchema::Optional)
       .Output(0, "output", "3D output tensor with shape (batch_size, append_length, hidden_size)", "T")
       .Output(1, "present", "present state for key and value with shape (2, batch_size, num_heads, past_sequence_length + sequence_length, head_size)", "T", OpSchema::Optional)
       .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
@@ -545,6 +565,7 @@ and present state are optional. Present state could appear in output even when p
       .TypeConstraint("T4", {"tensor(int32)"}, "Constrain mask index to integer types")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         constexpr int past_input_index = 8;
+
         AttentionTypeAndShapeInference(ctx, past_input_index);
       });
 
@@ -2964,7 +2985,94 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           ctx.getOutputType(0)
               ->CopyFrom(input_type->optional_type().elem_type());
           });
-  
+
+  static const char* GridSample_ver1_doc = R"DOC(
+      Given an `input` and a flow-field `grid`, computes the `output` using `input` values and pixel locations from `grid`.
+      Currently, only spatial (4-D) inputs are supported. For `input` with shape (N, C, H, W) and `grid` with shape (N, H_out, W_out, 2),
+      the `output` will have shape (N, C, H_out, W_out).
+      For each output location `output[n, :, h, w]`, the size-2 vector `grid[n, h, w]` specifies `input` pixel locations `x` and `y`,
+      which are used to interpolate the output value `output[n, :, h, w]`.
+      The GridSample operator is often used in doing grid generator and sampler in the [Spatial Transformer Networks](https://arxiv.org/abs/1506.02025).
+      See also in [torch.nn.functional.grid_sample](https://pytorch.org/docs/master/generated/torch.nn.functional.grid_sample.html#torch-nn-functional-grid-sample).
+      )DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GridSample)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(GridSample_ver1_doc)
+      .Attr(
+          "mode",
+          "Three interpolation modes: bilinear (default), nearest and bicubic.",
+          AttributeProto::STRING,
+          std::string("bilinear"))
+      .Attr(
+          "padding_mode",
+          "Support padding modes for outside grid values: `zeros`(default), `border`, `reflection`. "
+          "zeros: use 0 for out-of-bound grid locations, "
+          "border: use border values for out-of-bound grid locations, "
+          "reflection: use values at locations reflected by the border for out-of-bound grid locations.",
+          AttributeProto::STRING,
+          std::string("zeros"))
+      .Attr(
+          "align_corners",
+          "If align_corners=1, the extrema (-1 and 1) are considered as referring to the center points of the input's corner pixels. "
+          "If align_corners=0, they are instead considered as referring to the corner points of the input's corner pixels, making the sampling more resolution agnostic.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Input(
+          0,
+          "X",
+          "4-D tensor of shape (N, C, H, W), "
+          "where N is the batch size, C is the numbers of channels, "
+          "H and W are the height and width of the input data.",
+          "T1")
+      .Input(
+          1,
+          "Grid",
+          "Input offset, 4-D tensor of shape (N, H_out, W_out, 2), "
+          "where H_out and W_out are the height and width of grid and output, "
+          "Grid specifies the sampling pixel locations normalized by the input spatial dimensions. "
+          "Therefore, it should have most values in the range of [-1, 1]. "
+          "If grid has values outside the range of [-1, 1], the corresponding outputs will be handled as defined by padding_mode.",
+          "T1")
+      .Output(
+          0,
+          "Y",
+          "4-D tensor of shape (N, C, H_out, W_out).",
+          "T2")
+      .TypeConstraint(
+          "T1",
+          OpSchema::all_tensor_types(),
+          "Constrain input types to all tensor types.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        size_t input_param = 0, grid_param = 1;
+
+        checkInputRank(ctx, input_param, 4);
+        checkInputRank(ctx, grid_param, 4);
+
+        // Output dimensions, initialized to an unknown-dimension-value
+        Dim N, C, H_out, W_out;
+
+        // Get value of N from dim 0 of input_param, if available
+        unifyInputDim(ctx, input_param, 0, N);
+        // Get value of C from dim 1 of input_param, if available
+        unifyInputDim(ctx, input_param, 1, C);
+
+        // Get value of H_out from dim 1 of grid_param, if available
+        unifyInputDim(ctx, grid_param, 1, H_out);
+        // Get value of W_out from dim 2 of grid_param, if available
+        unifyInputDim(ctx, grid_param, 2, W_out);
+
+        // set output shape:
+        updateOutputShape(ctx, 0, {N, C, H_out, W_out});
+      });
+
 #ifndef _OPSCHEMA_LIB_
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
