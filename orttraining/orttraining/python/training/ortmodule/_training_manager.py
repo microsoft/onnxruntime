@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 from . import _utils, _io, _logger
-from ._graph_execution_manager import GraphExecutionManager, RunStateInfo
+from ._graph_execution_manager import GraphExecutionManager, RunStateInfo, _SkipCheck
 from ._execution_agent import TrainingAgent
 
 from onnxruntime.capi import _pybind_state as C
@@ -60,7 +60,7 @@ class TrainingManager(GraphExecutionManager):
 
         # Exporting module to ONNX for the first time
         build_gradient_graph = False
-        if self._skip_check.skip_build_gradient_graph == False:
+        if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_BUILD_GRADIENT) == False:
             build_gradient_graph = self._export_model(*inputs, **kwargs)
             if build_gradient_graph:
                 # If model was exported, then initialize the graph builder
@@ -81,7 +81,7 @@ class TrainingManager(GraphExecutionManager):
                 self._build_graph()
 
         create_execution_session = False
-        if self._skip_check.skip_create_execution_agent == False:
+        if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_EXECUTION_AGENT) == False:
             device = _utils.get_device_from_module(self._original_module) or \
                 _utils.get_device_from_inputs(inputs, kwargs)
             # The _training_session/_inference_session should be created every time
@@ -94,11 +94,11 @@ class TrainingManager(GraphExecutionManager):
             # Create execution session creates the training_session
             self._create_execution_agent()
 
-            # enabled fast path when execution session is created the first time
-            if self._fast_path:              
-                self._skip_check.skip_build_gradient_graph = True
-                self._skip_check.skip_create_execution_agent = True
-                self._skip_check.skip_device_check = True
+            # disable some checks after execution session is created the first time
+            if self._skip_check.is_disabled() == False:
+                self._skip_check = self._skip_check.SKIP_CHECK_BUILD_GRADIENT | \
+                    self._skip_check.SKIP_CHECK_EXECUTION_AGENT | \
+                    self._skip_check.SKIP_CHECK_DEVICE
 
                 if self._loglevel <= _logger.LogLevel.WARNING:
                     warnings.warn("Fast path enabled - skipping checks for rebuilding gradient graph, execution agent creation, and device during training.",
@@ -119,7 +119,7 @@ class TrainingManager(GraphExecutionManager):
                 Module outputs are returned to the user
                 '''
 
-                if self._skip_check.skip_device_check == False:
+                if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) == False:
                     # Assert that the input and model device match
                     _utils._check_same_device(self._device, "Input argument to forward", *inputs)
 
@@ -146,7 +146,7 @@ class TrainingManager(GraphExecutionManager):
                 '''Performs backward pass based on grad wrt module output'''
 
                 assert ctx.run_info is not None, 'forward() or __call__() methods must be called before backward()'
-                if self._skip_check.skip_device_check == False:
+                if self._skip_check.is_set(_SkipCheck.SKIP_CHECK_DEVICE) == False:
                     _utils._check_same_device(self._device, "Input argument to backward", *grad_outputs)
 
                 # Unpack saved_tensor to trigger version detection that catches inplace corruption

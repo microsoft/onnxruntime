@@ -18,7 +18,7 @@ import onnx
 import onnxruntime
 import torch
 import warnings
-from dataclasses import dataclass
+from enum import IntFlag
 
 from torch.utils.cpp_extension import ROCM_HOME
 
@@ -32,11 +32,26 @@ class RunStateInfo(object):
         self.state = state
         self.output_info = output_info
 
-@dataclass
-class SkipCheck():
-    skip_build_gradient_graph: bool = False
-    skip_create_execution_agent: bool = False
-    skip_device_check: bool = False
+class _SkipCheck(IntFlag):
+    """Enumeration to specify which checks should be skipped, allowing faster execution"""
+
+    SKIP_CHECK_DISABLED = 1
+    SKIP_CHECK_DEVICE = 2
+    SKIP_CHECK_BUILD_GRADIENT = 4
+    SKIP_CHECK_EXECUTION_AGENT = 8
+
+    def is_set(self, check):
+        """Check whether `check` is set on the `_SkipCheck instance
+
+        SKIP_CHECK_DISABLED implies the check will return False
+        """
+
+        return not _SkipCheck.is_disabled(self) and check in self
+
+    def is_disabled(self):
+        """Check whether `_SkipCheck.SKIP_CHECK_DISABLED is set on the `_SkipCheck instance"""
+
+        return _SkipCheck.SKIP_CHECK_DISABLED in self
 
 class GraphExecutionManager(GraphExecutionInterface):
     def __init__(self, module):
@@ -68,11 +83,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         # TrainingAgent or InferenceAgent
         self._execution_agent = None
 
-        # this flag is to indicate some logic have been executed previously and could be skipped for the rest of the training
-        # see dataclass SkipCheck for list of logic get turned off when this flag is enabled
-        # the list currently is All or None, we may consider to turn on/off each one with more granular settings as needed 
-        self._fast_path = False 
-        self._skip_check = SkipCheck()
+        # indicators of some logic have been executed previously thus could be skipped for faster training
+        self._skip_check = _SkipCheck(1)
 
         # Debug flags
         self._save_onnx = False
