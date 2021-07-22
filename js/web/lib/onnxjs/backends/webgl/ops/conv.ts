@@ -13,7 +13,7 @@ import {WebGLContext} from '../webgl-context';
 
 import {WebGLConvPacked} from './conv-pack';
 import {getActicationSnippet} from './fuse-utils';
-import {WebGLMatMul} from './matmul';
+import {WebGLUnpackedMatMul} from './matmul';
 import {reshape} from './reshape';
 
 export class WebGLConv extends Conv {
@@ -43,9 +43,9 @@ export class WebGLConv extends Conv {
     const isPointwise = this.kernelShape[0] === 1 && this.kernelShape[1] === 1;
     if (this.group > 1) {
       return this.unpackedGroupedConvImpl.run(inferenceHandler, inputs);
-    } else if (isPointwise) {
+    } else if (isPointwise && packMode) {
       return this.unpackedPointwiseConvImpl.run(inferenceHandler, inputs);
-    } else if (packMode && inputs[0].dims.length === 4 && inputs[0].dims[0] === 1 && !isPointwise) {
+    } else if (packMode && inputs[0].dims.length === 4 && inputs[0].dims[0] === 1) {
       return this.packedConvImpl.run(inferenceHandler, inputs);
     } else {
       return this.unpackedConvImpl.run(inferenceHandler, inputs);
@@ -72,7 +72,7 @@ export class WebGLConv extends Conv {
 export class WebGLUnpackedPointwiseConv extends Conv {
   private programInfo: ProgramInfo[];
   private artifacts: Artifact[];
-  private matmul = new WebGLMatMul();
+  private matmul = new WebGLUnpackedMatMul();
   private outputShape: number[];
 
   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
@@ -118,7 +118,12 @@ export class WebGLUnpackedPointwiseConv extends Conv {
     programManager.run(this.artifacts[0], runDataMatmul);
     const matmulOutput = runDataMatmul.outputTextureData.tensor;
 
-    return [reshape(inferenceHandler, matmulOutput, this.outputShape)];
+    const res = [reshape(inferenceHandler, matmulOutput, this.outputShape)];
+    // eslint-disable-next-line no-console
+    // console.log(
+    //     'res[0]=', res[0].data[0], ' res[1]=', res[0].data[1], ' res[1]=', res[0].data[2], ' res[3]=',
+    //     res[0].data[3]);
+    return res;
   }
 }
 
