@@ -22,7 +22,7 @@ class Attention : public OpKernel, public AttentionCPUBase {
 
   bool IsPackWeightsSuccessful(int qkv_index, AllocatorPtr alloc, size_t head_size, size_t input_hidden_size, const T* weights_data, size_t weight_matrix_col_size, PrePackedWeights* prepacked_weights);
 
-  //void FreePackedWeights();
+  void FreePackedWeights();
 
   Status Compute(OpKernelContext* context) const override;
 
@@ -271,14 +271,16 @@ Tensor* AttentionBase::GetPresent(OpKernelContext* context,
   return present;
 }
 
-/*
+template <typename T>
+Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPUBase(info) {
+}
+
 template <typename T>
 void Attention<T>::FreePackedWeights() {
   for (int i = 0; i < qkv_hidden_sizes_.size(); i++) {
     packed_weights_[i].reset();
   }
 }
-*/
 
 template <typename T>
 bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
@@ -377,9 +379,9 @@ Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr 
   if (!IsPackWeightsSuccessful(0, alloc, qkv_head_size[0], input_hidden_size, weights_data, weight_matrix_col_size, prepacked_weights) ||
       !IsPackWeightsSuccessful(1, alloc, qkv_head_size[1], input_hidden_size, weights_data + (num_heads_ * qkv_head_size[0]), weight_matrix_col_size, prepacked_weights) ||
       !IsPackWeightsSuccessful(2, alloc, qkv_head_size[2], input_hidden_size, weights_data + (num_heads_ * (qkv_head_size[0] + qkv_head_size[1])), weight_matrix_col_size, prepacked_weights)) {
-    //if (prepacked_weights == nullptr) {
-    //  FreePackedWeights();
-    //}
+    if (prepacked_weights == nullptr) {
+      FreePackedWeights();
+    }
     return Status::OK();
   }
 
