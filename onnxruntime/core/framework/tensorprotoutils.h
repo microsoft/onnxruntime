@@ -189,7 +189,6 @@ inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_Sequence& seq_proto) {
   return seq_proto.elem_type().value_case() != ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET;
 }
 
-<<<<<<< HEAD
 inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_SparseTensor& ten_proto) {
   return ten_proto.elem_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
 }
@@ -198,8 +197,6 @@ inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_Optional& opt_proto) {
   return opt_proto.elem_type().value_case() != ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET;
 }
 
-=======
->>>>>>> origin/update_onnx
 inline bool HasName(const ONNX_NAMESPACE::SparseTensorProto& ten_proto) {
   return ten_proto.values().has_name();  // XXX
 }

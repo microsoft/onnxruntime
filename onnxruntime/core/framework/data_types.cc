@@ -928,15 +928,9 @@ const SparseTensorTypeBase* DataTypeImpl::SparseTensorTypeFromONNXEnum(int type)
     case TensorProto_DataType_INT32:
       return DataTypeImpl::GetSparseTensorType<int32_t>()->AsSparseTensorType();
     case TensorProto_DataType_DOUBLE:
-<<<<<<< HEAD
       return DataTypeImpl::GetSparseTensorType<double>()->AsSparseTensorType();
-    // case TensorProto_DataType_STRING:
-    // return DataTypeImpl::GetSparseTensorType<std::string>()->AsSparseTensorType();
-=======
-      return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<double>());
     case TensorProto_DataType_STRING:
-     return reinterpret_cast<const SparseTensorTypeBase*>(DataTypeImpl::GetSparseTensorType<std::string>());
->>>>>>> origin/update_onnx
+      return DataTypeImpl::GetSparseTensorType<std::string>()->AsSparseTensorType();
     case TensorProto_DataType_UINT8:
       return DataTypeImpl::GetSparseTensorType<uint8_t>()->AsSparseTensorType();
     case TensorProto_DataType_UINT16:

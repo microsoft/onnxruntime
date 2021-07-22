@@ -223,19 +223,18 @@ struct SequenceTensorType {
 template <typename ElemType>
 const SequenceTensorTypeProto<ElemType> SequenceTensorType<ElemType>::s_sequence_tensor_type_proto;
 
-<<<<<<< HEAD
 template <typename ElemType>
 struct OptionalTypeProto {
   OptionalTypeProto(const ONNX_NAMESPACE::TypeProto& type_proto) {
     proto.mutable_optional_type()->mutable_elem_type()->CopyFrom(type_proto);
   }
   ONNX_NAMESPACE::TypeProto proto;
-=======
+};
+
 struct CheckParams {
   bool sort_output_ = false;
   optional<float> absolute_error_;
   optional<float> relative_error_;
->>>>>>> origin/update_onnx
 };
 
 // To use OpTester:
@@ -513,7 +512,7 @@ class OpTester {
     AddData(output_data_, name, dims, p_values, size, false,
             sort_output, nullptr /* dim_params */, rel_error, abs_error);
   }
- 
+
   template <typename T>
   void AddSparseCooOutput(const char* name, const std::vector<int64_t>& dims,
                           const std::initializer_list<T>& expected_values,
@@ -623,7 +622,7 @@ class OpTester {
     output_data_.push_back(Data(NodeArg(name, &TTensorType<T>::s_type_proto.proto), OrtValue(), optional<float>(),
                                 optional<float>()));
   }
-  
+
   // Add other registered types, possibly experimental
   template <typename T>
   void AddOutput(const char* name, const T& val) {
@@ -839,52 +838,20 @@ class OpTester {
         }
       }
 
-<<<<<<< HEAD
-      std::vector<int64_t> dims_for_proto{dims};
-      if (add_symbolic_dim_to_tensor_data_ >= 0 &&
-          dims.size() > static_cast<size_t>(add_symbolic_dim_to_tensor_data_)) {
-        dims_for_proto[add_symbolic_dim_to_tensor_data_] = -1;
-      }
+      std::vector<int64_t> dims_for_proto = GetDimsForProto(dims);
 
       TTypeProto<T> tensor_type_proto(add_shape_to_tensor_data_ ? &dims_for_proto : nullptr);
       OptionalTypeProto<T> optional_type_proto(tensor_type_proto.proto);
 
-=======
->>>>>>> origin/update_onnx
       OrtValue value;
 
       // If p_tensor is nullptr, it is a "None", we won't even include it as part of the feeds.
       value.Init(p_tensor ? p_tensor.release() : nullptr, DataTypeImpl::GetType<Tensor>(),
                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
-<<<<<<< HEAD
+
       auto node_arg = NodeArg(name, !is_optional_type_tensor ? &tensor_type_proto.proto : &optional_type_proto.proto);
 
-      if (dim_params && !(dim_params->empty()) && add_shape_to_tensor_data_) {
-        // If dim_params presents, configure node_arg's dim value based on dim_params, which supports symbolic dim and dim broadcast.
-        auto& dim_params_data = *dim_params;
-        onnx::TensorShapeProto new_shape;
-
-        // currently hard-code the reserved symbolic names.
-        // TODO: when the list grows longer, consider move it to a better place.
-        const static std::unordered_set<std::string> reserved_symbolic{"batch", "seq"};
-
-        for (size_t i = 0; i < dim_params_data.size(); ++i) {
-          if (reserved_symbolic.find(dim_params_data[i]) != reserved_symbolic.end()) {
-            new_shape.add_dim()->set_dim_param(dim_params_data[i]);
-          } else {
-            ASSERT_TRUE(std::stoi(dim_params_data[i]) == dims[i]);
-            new_shape.add_dim()->set_dim_value(dims[i]);
-          }
-        }
-        node_arg.SetShape(new_shape);
-      }
-=======
-
-      std::vector<int64_t> dims_for_proto = GetDimsForProto(dims);
-      TTypeProto<T> type_proto(add_shape_to_tensor_data_ ? &dims_for_proto : nullptr);
-      auto node_arg = NodeArg(name, &type_proto.proto);
       AddShapeToTensorData(node_arg, dims, dim_params);
->>>>>>> origin/update_onnx
 
       optional<float> rel;
       optional<float> abs;

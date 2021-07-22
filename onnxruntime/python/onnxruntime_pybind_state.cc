@@ -118,8 +118,8 @@ void CustomOpLibrary::UnloadLibrary() {
 
 template <typename T>
 static py::object AddNonTensor(const OrtValue& val,
-                         const DataTransferManager* /*data_transfer_manager*/,
-                         const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* /*mem_cpy_to_host_functions*/) {
+                               const DataTransferManager* /*data_transfer_manager*/,
+                               const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* /*mem_cpy_to_host_functions*/) {
   return py::cast(val.Get<T>());
 }
 
@@ -226,8 +226,8 @@ py::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value, co
 
 template <>
 py::object AddNonTensor<TensorSeq>(const OrtValue& val,
-                             const DataTransferManager* data_transfer_manager,
-                             const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+                                   const DataTransferManager* data_transfer_manager,
+                                   const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   const auto& seq_tensors = val.Get<TensorSeq>();
   py::list py_list;
   for (const auto& rtensor : seq_tensors) {
@@ -243,12 +243,12 @@ py::object AddNonTensor<TensorSeq>(const OrtValue& val,
 }
 
 py::object AddNonTensorAsPyObj(const OrtValue& val,
-                         const DataTransferManager* data_transfer_manager,
-                         const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+                               const DataTransferManager* data_transfer_manager,
+                               const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   // Should be in sync with core/framework/datatypes.h
   auto val_type = val.Type();
   if (val_type->IsTensorSequenceType()) {
-   return AddNonTensor<TensorSeq>(val, data_transfer_manager, mem_cpy_to_host_functions);
+    return AddNonTensor<TensorSeq>(val, data_transfer_manager, mem_cpy_to_host_functions);
   } else {
 #if !defined(DISABLE_ML_OPS)
     utils::ContainerChecker c_checker(val_type);
@@ -284,7 +284,7 @@ py::object AddNonTensorAsPyObj(const OrtValue& val,
 }
 
 py::object AddTensorAsPyObj(const OrtValue& val, const DataTransferManager* data_transfer_manager,
-                      const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+                            const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   const Tensor& rtensor = val.Get<Tensor>();
   py::object obj;
   GetPyObjFromTensor(rtensor, obj, data_transfer_manager, mem_cpy_to_host_functions);
@@ -1290,7 +1290,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
           OrtPybindThrowIfError(sess->GetSessionHandle()->Load());
 #else
-          ORT_THROW("Loading configuration from an ONNX model is not supported in this build.");
+      ORT_THROW("Loading configuration from an ONNX model is not supported in this build.");
 #endif
         } else {
           sess = std::make_unique<PyInferenceSession>(env, so);
@@ -1322,7 +1322,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                -> std::vector<py::object> {
              NameMLValMap feeds;
 <<<<<<< HEAD
-             for (auto _ : pyfeeds) {
+             for (auto feed : pyfeeds) {
                // No need to process 'None's sent in by the user
                // to feed Optional inputs in the graph.
                // We just won't include anything in the feed and ORT
@@ -1333,21 +1333,10 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                  if (!px.first.IsOK() || !px.second) {
                    throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
                  }
-                 CreateGenericMLValue(px.second, GetAllocator(), _.first, _.second, &ml_value);
+                 CreateGenericMLValue(px.second, GetAllocator(), feed.first, feed.second, &ml_value);
                  ThrowIfPyErrOccured();
-                 feeds.insert(std::make_pair(_.first, ml_value));
+                 feeds.insert(std::make_pair(feed.first, ml_value));
                }
-=======
-             for (auto feed : pyfeeds) {
-               OrtValue ml_value;
-               auto px = sess->GetSessionHandle()->GetModelInputs();
-               if (!px.first.IsOK() || !px.second) {
-                 throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
-               }
-               CreateGenericMLValue(px.second, GetAllocator(), feed.first, feed.second, &ml_value);
-               ThrowIfPyErrOccured();
-               feeds.insert(std::make_pair(feed.first, ml_value));
->>>>>>> origin/update_onnx
              }
 
              std::vector<OrtValue> fetches;
@@ -1365,38 +1354,27 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
              std::vector<py::object> rfetch;
              rfetch.reserve(fetches.size());
-<<<<<<< HEAD
-             for (auto _ : fetches) {
-               if (_.HasElement()) {
-                 if (_.IsTensor()) {
-                   AddTensorAsPyObj(_, rfetch, nullptr, nullptr);
+
+             for (auto fet : fetches) {
+               if (fet.HasValue()) {
+                 if (fet.IsTensor()) {
+                   rfetch.push_back(AddTensorAsPyObj(fet, nullptr, nullptr));
+                 } else if (fet.IsSparseTensor()) {
+                   rfetch.push_back(GetPyObjectFromSparseTensor(pos, fet, nullptr));
                  } else {
-                   AddNonTensorAsPyObj(_, rfetch, nullptr, nullptr);
+                   rfetch.push_back(AddNonTensorAsPyObj(fet, nullptr, nullptr));
                  }
                } else {  // Send back None because the corresponding OrtValue was empty
                  rfetch.push_back(py::none());
-=======
-             size_t pos = 0;
-             for (auto fet : fetches) {
-               if (fet.IsTensor()) {
-                 rfetch.push_back(AddTensorAsPyObj(fet,nullptr, nullptr));
-               } else if (fet.IsSparseTensor()) {
-                 rfetch.push_back(GetPyObjectFromSparseTensor(pos, fet, nullptr));
-               }  else {
-                 rfetch.push_back(AddNonTensorAsPyObj(fet, nullptr, nullptr));
->>>>>>> origin/update_onnx
                }
                ++pos;
              }
              return rfetch;
            })
-       /// This method accepts a dictionary of feeds (name -> OrtValue) and the list of output_names
-       /// and returns a list of python objects representing OrtValues. Each name may represent either
-       /// a Tensor, SparseTensor or a TensorSequence.
-      .def("run_with_ort_values", [](PyInferenceSession* sess, 
-                                     const py::dict& feeds,
-                                     const std::vector<std::string>& output_names,
-                                     RunOptions* run_options = nullptr) ->  std::vector<OrtValue>{
+      /// This method accepts a dictionary of feeds (name -> OrtValue) and the list of output_names
+      /// and returns a list of python objects representing OrtValues. Each name may represent either
+      /// a Tensor, SparseTensor or a TensorSequence.
+      .def("run_with_ort_values", [](PyInferenceSession* sess, const py::dict& feeds, const std::vector<std::string>& output_names, RunOptions* run_options = nullptr) -> std::vector<OrtValue> {
         NameMLValMap ort_feeds;
         // item is always a copy since dict returns a value and not a ref
         // and Apple XToolChain barks
