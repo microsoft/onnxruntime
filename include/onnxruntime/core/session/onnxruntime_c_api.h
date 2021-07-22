@@ -1451,6 +1451,11 @@ struct OrtApi {
   */
   ORT_CLASS_RELEASE2(TensorRTProviderOptions);
 
+  /*
+  * Enable custom operators in onnxruntime-extensions: https://github.com/microsoft/onnxruntime-extensions.git
+  */
+  ORT_API2_STATUS(EnableOrtCustomOps, _Inout_ OrtSessionOptions* options);
+
   /**
    * Registers a custom allocator instance with the env to enable
    * sharing between multiple sessions that use the same env instance.
@@ -1465,12 +1470,12 @@ struct OrtApi {
   ORT_API2_STATUS(RegisterAllocator, _Inout_ OrtEnv* env, _In_ OrtAllocator* allocator);
 
   /**
-   * Removes any registered allocator for sharing across sessions 
+   * Unregisters a registered allocator for sharing across sessions 
    * based on provided OrtMemoryInfo.
    * It is an error if you provide an OrtmemoryInfo not corresponding to any
    * registered allocators for sharing.
   */
-  ORT_API2_STATUS(RemoveRegisteredAllocator, _Inout_ OrtEnv* env,
+  ORT_API2_STATUS(UnregisterAllocator, _Inout_ OrtEnv* env,
                   _In_ const OrtMemoryInfo* mem_info);
 };
 
@@ -1523,6 +1528,14 @@ struct OrtCustomOp {
   OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetInputCharacteristic)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
   OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetOutputCharacteristic)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
 };
+
+/*
+ * This is the old way to add the CUDA provider to the session, please use SessionOptionsAppendExecutionProvider_CUDA above to access the latest functionality
+ * This function always exists, but will only succeed if Onnxruntime was built with CUDA support and the CUDA provider shared library exists
+ * 
+ * \param device_id cuda device id, starts from zero.
+*/
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id);
 
 #ifdef __cplusplus
 }

@@ -76,6 +76,12 @@ function(AddTest)
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd4505>")
       endif()
     endif()
+    if (MSVC)
+      # warning C6326: Potential comparison of a constant with another constant.
+      # Lot of such things came from gtest
+      target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd6326>"
+                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
+    endif()
     target_compile_options(${_UT_TARGET} PRIVATE ${disabled_warnings})
   else()
     target_compile_options(${_UT_TARGET} PRIVATE ${DISABLED_WARNINGS_FOR_TVM})
@@ -181,6 +187,11 @@ file(GLOB onnxruntime_test_common_src CONFIGURE_DEPENDS
   "${TEST_SRC_DIR}/common/*.h"
   "${TEST_SRC_DIR}/common/logging/*.cc"
   "${TEST_SRC_DIR}/common/logging/*.h"
+)
+
+file(GLOB onnxruntime_test_quantiztion_src CONFIGURE_DEPENDS
+  "${TEST_SRC_DIR}/quantization/*.cc"
+  "${TEST_SRC_DIR}/quantization/*.h"
 )
 
 if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
@@ -544,6 +555,8 @@ onnxruntime_add_static_library(onnxruntime_test_utils ${onnxruntime_test_utils_s
 if(MSVC)
   target_compile_options(onnxruntime_test_utils PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
           "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
+  target_compile_options(onnxruntime_test_utils PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd6326>"
+                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
 else()
   target_compile_definitions(onnxruntime_test_utils PUBLIC -DNSYNC_ATOMIC_CPP11)
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
@@ -593,7 +606,7 @@ target_include_directories(onnx_test_runner_common PRIVATE ${eigen_INCLUDE_DIRS}
 set_target_properties(onnx_test_runner_common PROPERTIES FOLDER "ONNXRuntimeTest")
 
 set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxruntime_test_optimizer_src}
-        ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src})
+        ${onnxruntime_test_framework_src} ${onnxruntime_test_providers_src} ${onnxruntime_test_quantiztion_src})
 if(NOT TARGET onnxruntime AND NOT onnxruntime_BUILD_WEBASSEMBLY)
   list(APPEND all_tests ${onnxruntime_shared_lib_test_SRC})
 endif()
@@ -1062,6 +1075,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   if(MSVC)
     target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
+    target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd6326>"
+                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
   endif()
   if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
     set_target_properties(onnxruntime_mlas_test PROPERTIES
@@ -1130,25 +1145,19 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
           -DGRADLE_EXECUTABLE=${GRADLE_EXECUTABLE}
           -DBIN_DIR=${CMAKE_CURRENT_BINARY_DIR}
           -DREPO_ROOT=${REPO_ROOT}
-          ${ORT_PROVIDER_CMAKE_FLAGS}
+          ${ORT_PROVIDER_FLAGS}
           -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
       else()
         add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
                         ${JAVA_NATIVE_TEST_DIR}/$<TARGET_LINKER_FILE_NAME:custom_op_library>)
-        if (onnxruntime_USE_CUDA)
-          add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} -DUSE_CUDA=1
-                  WORKING_DIRECTORY ${REPO_ROOT}/java)
-        else()
-          add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR}
-                  WORKING_DIRECTORY ${REPO_ROOT}/java)
-        endif()
+        add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} ${ORT_PROVIDER_FLAGS}
+              WORKING_DIRECTORY ${REPO_ROOT}/java)
       endif()
       set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
   endif()
 
   # limit to only test on windows first, due to a runtime path issue on linux
   if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
-                                    AND NOT onnxruntime_ENABLE_TRAINING
                                     AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
                                     AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
                                     AND NOT onnxruntime_BUILD_WEBASSEMBLY
@@ -1165,7 +1174,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared)
     target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
     target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
-    target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
+    target_include_directories(test_execution_provider PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${ORTTRAINING_ROOT})
     if(APPLE)
       set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/exported_symbols.lst")
     elseif(UNIX)

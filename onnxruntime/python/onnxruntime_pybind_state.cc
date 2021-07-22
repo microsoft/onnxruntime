@@ -17,7 +17,6 @@
 #include "core/framework/data_types_internal.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/framework/kernel_registry.h"
-#include "core/framework/provider_bridge_ort.h"
 #include "core/framework/provider_options_utils.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/sparse_tensor.h"
@@ -27,6 +26,7 @@
 #include "core/platform/env.h"
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/provider_bridge_ort.h"
 
 #ifdef ENABLE_TRAINING
 #include "orttraining/training_ops/cpu/aten_ops/aten_op_executor.h"
@@ -851,6 +851,13 @@ void addGlobalMethods(py::module& m, Environment& env) {
         ORT_UNUSED_PARAMETER(obj);
 #endif
   });
+  m.def("unregister_python_functions", []() -> void {
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+    // Release all custom python functions registered.
+    auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
+    pool.UnRegisterFunctions();
+#endif
+  });
 #endif
 
 #ifdef USE_NUPHAR
@@ -1619,7 +1626,7 @@ static struct {
 void addObjectMethodsForTraining(py::module& m);
 #endif
 
-void CreatePybindStateModule(py::module& m){
+void CreatePybindStateModule(py::module& m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
 
@@ -1680,7 +1687,8 @@ void CreatePybindStateModule(py::module& m){
   addOrtValueMethods(m);
   addIoBindingMethods(m);
 
-#if !defined(ENABLE_TRAINING) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
+#if !defined(__APPLE__) && \
+    (!defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
   Ort::SessionOptions tmp_options;
   if (!InitProvidersSharedLibrary()) {
     const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();

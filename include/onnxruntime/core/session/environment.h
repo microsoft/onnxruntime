@@ -77,7 +77,7 @@ class Environment {
   /**
    * Removes registered allocator that was previously registered for sharing between multiple sessions.
   */
-  Status RemoveRegisteredAllocator(const OrtMemoryInfo& mem_info);
+  Status UnregisterAllocator(const OrtMemoryInfo& mem_info);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);

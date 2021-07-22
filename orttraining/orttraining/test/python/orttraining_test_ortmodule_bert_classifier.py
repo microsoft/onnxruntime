@@ -379,8 +379,8 @@ def main():
         model = ORTModule(model)
 
     # Just for future debugging
-    model._execution_manager(model._is_training())._save_onnx = False
-    model._execution_manager(model._is_training())._save_onnx_prefix = 'BertForSequenceClassification'
+    model._torch_module._execution_manager(model._is_training())._save_onnx = False
+    model._torch_module._execution_manager(model._is_training())._save_onnx_prefix = 'BertForSequenceClassification'
 
     # Tell pytorch to run this model on the GPU.
     if torch.cuda.is_available() and not args.no_cuda:

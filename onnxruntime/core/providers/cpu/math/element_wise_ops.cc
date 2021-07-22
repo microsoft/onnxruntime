@@ -259,19 +259,13 @@ REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Sqrt, 6, 12, double, Sqrt);
 REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 13, float, Sqrt);
 REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 13, double, Sqrt);
 
-const auto supported_pow7_types = BuildKernelDefConstraintsFromTypeList<Pow7Types>();
-const auto enabled_pow7_types = BuildKernelDefConstraintsFromTypeList<EnabledPow7Types>();
-const auto supported_pow12_base_types = BuildKernelDefConstraintsFromTypeList<Pow12BaseTypes>();
-const auto supported_pow12_exp_types = BuildKernelDefConstraintsFromTypeList<Pow12ExpTypes>();
-const auto enabled_pow12_base_types = BuildKernelDefConstraintsFromTypeList<EnabledPow12BaseTypes>();
-const auto enabled_pow12_exp_types = BuildKernelDefConstraintsFromTypeList<EnabledPow12ExpTypes>();
-REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Pow, 7, 11, Pow, supported_pow7_types, enabled_pow7_types);
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Pow, 7, 11, Pow, BuildKernelDefConstraintsFromTypeList<Pow7Types>(), BuildKernelDefConstraintsFromTypeList<EnabledPow7Types>());
 REG_ELEMENTWISE_VERSIONED_KERNEL_NONT_2(Pow, 12, 12, Pow,
-                                        supported_pow12_base_types, enabled_pow12_base_types,
-                                        supported_pow12_exp_types, enabled_pow12_exp_types);
+                                        BuildKernelDefConstraintsFromTypeList<Pow12BaseTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledPow12BaseTypes>(),
+                                        BuildKernelDefConstraintsFromTypeList<Pow12ExpTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledPow12ExpTypes>());
 REG_ELEMENTWISE_KERNEL_NONT_2(Pow, 13, Pow,
-                              supported_pow12_base_types, enabled_pow12_base_types,
-                              supported_pow12_exp_types, enabled_pow12_exp_types);
+                              BuildKernelDefConstraintsFromTypeList<Pow12BaseTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledPow12BaseTypes>(),
+                              BuildKernelDefConstraintsFromTypeList<Pow12ExpTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledPow12ExpTypes>());
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Exp, 6, 12, float, Exp);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Exp, 6, 12, double, Exp);
@@ -293,24 +287,16 @@ REG_ELEMENTWISE_TYPED_KERNEL(Sum, 13, double, Sum_8);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Max, 6, 7, float, Max_6);
 
-const auto supported_max8_types = BuildKernelDefConstraintsFromTypeList<Max8Types>();
-const auto supported_max12_types = BuildKernelDefConstraintsFromTypeList<Max12Types>();
-const auto enabled_max8_types = BuildKernelDefConstraintsFromTypeList<EnabledMax8Types>();
-const auto enabled_max12_types = BuildKernelDefConstraintsFromTypeList<EnabledMax12Types>();
-REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Max, 8, 11, Max_8, supported_max8_types, enabled_max8_types);
-REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Max, 12, 12, Max_8, supported_max12_types, enabled_max12_types);
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Max, 8, 11, Max_8, BuildKernelDefConstraintsFromTypeList<Max8Types>(), BuildKernelDefConstraintsFromTypeList<EnabledMax8Types>());
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Max, 12, 12, Max_8, BuildKernelDefConstraintsFromTypeList<Max12Types>(), BuildKernelDefConstraintsFromTypeList<EnabledMax12Types>());
 // Supposed to add BFloat16 but we are not supporting now, however, separate registration
-REG_ELEMENTWISE_KERNEL_NONT(Max, 13, Max_8, supported_max12_types, enabled_max12_types);
+REG_ELEMENTWISE_KERNEL_NONT(Max, 13, Max_8, BuildKernelDefConstraintsFromTypeList<Max12Types>(), BuildKernelDefConstraintsFromTypeList<EnabledMax12Types>());
 
-const auto supported_min8_types = BuildKernelDefConstraintsFromTypeList<Min8Types>();
-const auto supported_min12_types = BuildKernelDefConstraintsFromTypeList<Min12Types>();
-const auto enabled_min8_types = BuildKernelDefConstraintsFromTypeList<EnabledMin8Types>();
-const auto enabled_min12_types = BuildKernelDefConstraintsFromTypeList<EnabledMin12Types>();
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Min, 6, 7, float, Min_6);
-REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Min, 8, 11, Min_8, supported_min8_types, enabled_min8_types);
-REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Min, 12, 12, Min_8, supported_min12_types, enabled_min12_types);
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Min, 8, 11, Min_8, BuildKernelDefConstraintsFromTypeList<Min8Types>(), BuildKernelDefConstraintsFromTypeList<EnabledMin8Types>());
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Min, 12, 12, Min_8, BuildKernelDefConstraintsFromTypeList<Min12Types>(), BuildKernelDefConstraintsFromTypeList<EnabledMin12Types>());
 // Supposed to add BFloat16 but we are not supporting now, however, separate registration
-REG_ELEMENTWISE_KERNEL_NONT(Min, 13, Min_8, supported_min12_types, enabled_min12_types);
+REG_ELEMENTWISE_KERNEL_NONT(Min, 13, Min_8, BuildKernelDefConstraintsFromTypeList<Min12Types>(), BuildKernelDefConstraintsFromTypeList<EnabledMin12Types>());
 
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 8, float, Less);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 8, double, Less);

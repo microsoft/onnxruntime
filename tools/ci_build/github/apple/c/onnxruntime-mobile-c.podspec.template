@@ -1,0 +1,23 @@
+Pod::Spec.new do |spec|
+    spec.name                   = "onnxruntime-mobile-c"
+    spec.version                = "@VERSION@"
+    spec.authors                = { "ONNX Runtime" => "onnxruntime@microsoft.com" }
+    spec.license                = { :type => "MIT", :file => @LICENSE_FILE@ }
+    spec.homepage               = "https://github.com/microsoft/onnxruntime"
+    spec.source                 = { :http => "file:///http_source_placeholder" }
+    spec.summary                = "ONNX Runtime Mobile C/C++ Pod"
+    spec.platform               = :ios, "@IOS_DEPLOYMENT_TARGET@"
+    spec.vendored_frameworks    = "onnxruntime.framework"
+    spec.weak_framework         = [ @WEAK_FRAMEWORK@ ]
+    spec.source_files           = "onnxruntime.framework/Headers/*.h"
+    spec.preserve_paths         = [ @LICENSE_FILE@ ]
+    spec.description            = <<-DESC
+    A pod for the ONNX Runtime Mobile C/C++ library.
+                                    DESC
+    spec.library                 = "c++"
+    spec.user_target_xcconfig    = {
+        "OTHER_CPLUSPLUSFLAGS" => "-fvisibility=hidden -fvisibility-inlines-hidden",
+        # TODO workaround - support arm64 iphonesimulator later
+        "EXCLUDED_ARCHS[sdk=iphonesimulator*]" => "arm64"
+    }
+end

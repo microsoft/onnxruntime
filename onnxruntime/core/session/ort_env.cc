@@ -114,6 +114,6 @@ onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocator(const OrtMemoryIn
   return status;
 }
 
-onnxruntime::common::Status OrtEnv::RemoveRegisteredAllocator(const OrtMemoryInfo& mem_info) {
-  return value_->RemoveRegisteredAllocator(mem_info);
+onnxruntime::common::Status OrtEnv::UnregisterAllocator(const OrtMemoryInfo& mem_info) {
+  return value_->UnregisterAllocator(mem_info);
 }

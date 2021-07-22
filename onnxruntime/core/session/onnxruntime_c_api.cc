@@ -35,8 +35,9 @@
 #include "abi_session_options_impl.h"
 #include "core/framework/TensorSeq.h"
 #include "core/platform/ort_mutex.h"
-#ifdef USE_CUDA
-#include "core/providers/cuda/cuda_provider_factory.h"
+
+#ifdef ENABLE_EXTENSION_CUSTOM_OPS
+#include "ortcustomops.h"
 #endif
 
 using namespace onnxruntime::logging;
@@ -403,6 +404,21 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::EnableOrtCustomOps, _Inout_ OrtSessionOptions* options) {
+  API_IMPL_BEGIN
+
+  if (options) {
+#ifdef ENABLE_EXTENSION_CUSTOM_OPS
+    return RegisterCustomOps(options, OrtGetApiBase());
+#else
+    return OrtApis::CreateStatus(ORT_FAIL, "EnableOrtCustomOps: Custom operators in onnxruntime-extensions are not enabled");
+#endif
+  }
+  return nullptr;
+
+  API_IMPL_END
+}
+
 namespace {
 // provider either model_path, or modal_data + model_data_length.
 static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
@@ -615,7 +631,13 @@ ORT_API_STATUS_IMPL(OrtApis::RunWithBinding, _Inout_ OrtSession* sess, _In_ cons
                     _In_ const OrtIoBinding* binding_ptr) {
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
-  auto status = session->Run(*run_options, *binding_ptr->binding_);
+  Status status;
+  if (run_options == nullptr) {
+    OrtRunOptions default_run_options;
+    status = session->Run(default_run_options, *binding_ptr->binding_);
+  } else {
+    status = session->Run(*run_options, *binding_ptr->binding_);
+  }
   if (!status.IsOK()) {
     return ToOrtStatus(status);
   }
@@ -2269,8 +2291,9 @@ static constexpr OrtApi ort_api_1_to_9 = {
     &OrtApis::UpdateTensorRTProviderOptions,
     &OrtApis::GetTensorRTProviderOptionsAsString,
     &OrtApis::ReleaseTensorRTProviderOptions,
+    &OrtApis::EnableOrtCustomOps,
     &OrtApis::RegisterAllocator,
-    &OrtApis::RemoveRegisteredAllocator,
+    &OrtApis::UnregisterAllocator,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)

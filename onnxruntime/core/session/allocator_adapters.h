@@ -17,7 +17,7 @@ struct OrtAllocatorImpl : public OrtAllocator {
 // The following are "adapters" to allow using an IAllocator implementation wrapped as an OrtAllocator
 // and vice versa to plug into any ORT internal code/ API implementation as necessary
 
-struct OrtAllocatorImplWrappingIAllocator : public OrtAllocatorImpl {
+struct OrtAllocatorImplWrappingIAllocator final : public OrtAllocatorImpl {
   explicit OrtAllocatorImplWrappingIAllocator(onnxruntime::AllocatorPtr&& i_allocator);
 
   ~OrtAllocatorImplWrappingIAllocator() override = default;
@@ -34,7 +34,7 @@ struct OrtAllocatorImplWrappingIAllocator : public OrtAllocatorImpl {
   onnxruntime::AllocatorPtr i_allocator_;
 };
 
-class IAllocatorImplWrappingOrtAllocator : public IAllocator {
+class IAllocatorImplWrappingOrtAllocator final : public IAllocator {
  public:
   explicit IAllocatorImplWrappingOrtAllocator(OrtAllocator* ort_allocator);
 

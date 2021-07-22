@@ -53,22 +53,15 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
 }
 
 // Returns true if an allocator was found and replaced
-// Optionally user can provide an OrtMemoryInfo to swap in place
-// of an OrtMemoryInfo whose corresponding allocator is being replaced.
 static bool FindAndReplaceAllocator(const OrtMemoryInfo& mem_info,
-                                    MemoryInfoSet& mem_info_set,
+                                    const MemoryInfoSet& mem_info_set,
                                     AllocatorMap& allocators,
-                                    AllocatorPtr replacing_allocator,
-                                    const OrtMemoryInfo* mem_info_to_be_swapped_in = nullptr) {
+                                    AllocatorPtr replacing_allocator) {
   auto ite = mem_info_set.find(mem_info);
+
   if (ite != mem_info_set.end()) {
     const int key = MakeKey(mem_info.id, mem_info.mem_type);
     allocators[key] = replacing_allocator;
-
-    if (mem_info_to_be_swapped_in != nullptr) {
-      mem_info_set.erase(ite);
-      mem_info_set.insert(*mem_info_to_be_swapped_in);
-    }
     return true;
   }
 
@@ -81,7 +74,9 @@ void IExecutionProvider::ReplaceAllocator(AllocatorPtr allocator) {
 
   if (FindAndReplaceAllocator(info, mem_info_set_, allocators_, allocator)) {
     // We found an allocator corresponding to the provided
-    // allocator's OrtmemoryInfo, we hence return
+    // allocator's OrtMemoryInfo and we replaced it with the
+    // provided allocator.
+    // We return back.
     return;
   }
 
@@ -98,9 +93,9 @@ void IExecutionProvider::ReplaceAllocator(AllocatorPtr allocator) {
     // allocator. We don't allow users to use OrtAllocatorType as
     // OrtArenaAllocator for their allocators because we reserve its usage
     // for our internal BFCArena.
-    // TODO: Should we remove the OrtAllocatorType field from OrtmemoryArena to
+    // TODO: Should we remove the OrtAllocatorType field from OrtMemoryInfo to
     // avoid such problems and also remove the unintuitive phenomenon of binding
-    // the allocator type info to OrtmemoryInfo (which loosely is just device info) ?
+    // the allocator type info to OrtMemoryInfo (which loosely is just device info) ?
     const auto& original_info = allocator->Info();
 
     // If the alloc_type was OrtArenaAllocator already, then it is a no-op
@@ -113,9 +108,20 @@ void IExecutionProvider::ReplaceAllocator(AllocatorPtr allocator) {
     // Mutate the alloc_type
     check_info.alloc_type = OrtAllocatorType::OrtArenaAllocator;
 
-    FindAndReplaceAllocator(check_info, mem_info_set_,
-                            allocators_, allocator,
-                            &allocator->Info());
+    if (FindAndReplaceAllocator(check_info, mem_info_set_,
+                                allocators_, allocator)) {
+      // We found an allocator corresponding to the mutated OrtMemoryInfo
+      // and we replaced it with the provided allocator.
+      // Before we return back, we need to do some house-keeping
+      // (i.e.) update the EP's OrtMemoryInfo set
+
+      // Delete the existing OrtMemoryInfo  corresponding to the allocator
+      // that was replaced
+      mem_info_set_.erase(check_info);
+
+      // Replace it with the provided allocator's OrtMemoryInfo
+      mem_info_set_.insert(allocator->Info());
+    }
   }
 }
 

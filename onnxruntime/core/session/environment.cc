@@ -6,6 +6,7 @@
 #include "core/framework/allocatormgr.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
+
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/operator_sets.h"
 #include "onnx/defs/operator_sets_ml.h"
@@ -89,7 +90,7 @@ Status Environment::RegisterAllocator(AllocatorPtr allocator) {
                             // and registers the ORT-internal arena allocator and then tries to register their own custom
                             // allocator using RegisterAllocator() for the same device that has an OrtAllocatorType as
                             // OrtDeviceAllocator (which is the only accepted value while registering a custom allocator).
-                            // If we allowed this, its could potentially cause a lot of confusion as to which shared allocator
+                            // If we allowed this, it could potentially cause a lot of confusion as to which shared allocator
                             // to use for that device and we want to avoid having any ugly logic around this.
                             return OrtMemoryInfoUtils::Equals(alloc_ptr->Info(), mem_info, false);
                           });
@@ -167,7 +168,7 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
   return RegisterAllocator(allocator_ptr);
 }
 
-Status Environment::RemoveRegisteredAllocator(const OrtMemoryInfo& mem_info) {
+Status Environment::UnregisterAllocator(const OrtMemoryInfo& mem_info) {
   auto ite = std::find_if(std::begin(shared_allocators_),
                           std::end(shared_allocators_),
                           [&mem_info](const AllocatorPtr& alloc_ptr) {

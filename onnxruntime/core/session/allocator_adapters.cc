@@ -43,7 +43,7 @@ void IAllocatorImplWrappingOrtAllocator::Free(void* p) {
 
 ORT_API_STATUS_IMPL(OrtApis::CreateAllocator, const OrtSession* sess, const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out) {
   API_IMPL_BEGIN
-  auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
+  auto* session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
   auto allocator_ptr = session->GetAllocator(*mem_info);
   if (!allocator_ptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
@@ -101,7 +101,7 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterAllocator, _Inout_ OrtEnv* env, _In_ OrtAll
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::RemoveRegisteredAllocator, _Inout_ OrtEnv* env,
+ORT_API_STATUS_IMPL(OrtApis::UnregisterAllocator, _Inout_ OrtEnv* env,
                     _In_ const OrtMemoryInfo* mem_info) {
   using namespace onnxruntime;
   if (!env) {
@@ -112,7 +112,7 @@ ORT_API_STATUS_IMPL(OrtApis::RemoveRegisteredAllocator, _Inout_ OrtEnv* env,
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Provided OrtMemoryInfo is null");
   }
 
-  auto st = env->RemoveRegisteredAllocator(*mem_info);
+  auto st = env->UnregisterAllocator(*mem_info);
 
   if (!st.IsOK()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());

@@ -233,17 +233,17 @@ class TrainingRunner {
                                   LearningRateScheduler* lr_scheduler,
                                   const size_t batch_index,
                                   std::vector<std::string>& feed_names,
-                                  std::vector<MLValue>& feeds);
+                                  std::vector<OrtValue>& feeds);
   Status PrepareFetchNamesAndFetches(const SessionMode mode,
                                      std::vector<std::string>& fetch_names,
-                                     std::vector<MLValue>& fetches);
+                                     std::vector<OrtValue>& fetches);
   void RunWithUpdate(VectorString& feed_names,
                      VectorString& fetch_names,
-                     std::vector<MLValue>& feeds,
-                     std::vector<MLValue>& fetches);
+                     std::vector<OrtValue>& feeds,
+                     std::vector<OrtValue>& fetches);
   void RunWithoutUpdate(VectorString& feed_names,
                         VectorString& fetch_names,
-                        std::vector<MLValue>& feeds,
+                        std::vector<OrtValue>& feeds,
                         size_t& gradient_accumulation_step_count);
   void CheckWorkerException(const std::exception_ptr& p);
   Status TrainingLoop(IDataLoader& training_data_loader, IDataLoader* test_data_loader,

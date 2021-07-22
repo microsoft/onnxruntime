@@ -25,7 +25,6 @@ endif()
 
 if (onnxruntime_MINIMAL_BUILD)
   set(onnxruntime_framework_src_exclude
-    "${ONNXRUNTIME_ROOT}/core/framework/provider_bridge_ort.cc"
     "${ONNXRUNTIME_ROOT}/core/framework/fallback_cpu_capability.h"
     "${ONNXRUNTIME_ROOT}/core/framework/fallback_cpu_capability.cc"
   )
@@ -47,8 +46,9 @@ onnxruntime_add_static_library(onnxruntime_framework ${onnxruntime_framework_src
 if(onnxruntime_ENABLE_INSTRUMENT)
   target_compile_definitions(onnxruntime_framework PRIVATE ONNXRUNTIME_ENABLE_INSTRUMENT)
 endif()
-if(onnxruntime_USE_TENSORRT)
+if(onnxruntime_USE_TENSORRT OR onnxruntime_USE_NCCL)
 # TODO: for now, core framework depends on CUDA. It should be moved to TensorRT EP
+# TODO: provider_bridge_ort.cc should not include nccl.h
 target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} ${onnxruntime_CUDNN_HOME}/include PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 else()
 target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
