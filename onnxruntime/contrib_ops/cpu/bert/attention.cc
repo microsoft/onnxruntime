@@ -277,7 +277,7 @@ Attention<T>::Attention(const OpKernelInfo& info) : OpKernel(info), AttentionCPU
 
 template <typename T>
 void Attention<T>::FreePackedWeights() {
-  for (int i = 0; i < qkv_hidden_sizes_.size(); i++) {
+  for (size_t i = 0; i < qkv_hidden_sizes_.size(); i++) {
     packed_weights_[i].reset();
   }
 }
