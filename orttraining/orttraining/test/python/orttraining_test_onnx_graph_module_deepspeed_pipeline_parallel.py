@@ -175,19 +175,16 @@ def main():
     # inference
     test_loader = torch.utils.data.DataLoader(
         datasets.MNIST("./mnist", train=False, transform=transform),
-        batch_size=64,
+        batch_size=32,  # this is the micro batch size
         shuffle=False,
     )
 
-    """
-    Currently inference following training doesn't work. Need help from DeepSpeed people.
     test_losses = []
+    # group every gradient_accumulation_steps micro batches
     for batch_iter in group_every_n(test_loader, n=2):
         test_loss = model_engine.eval_batch(batch_iter)
-        print(test_loss)
         test_losses.append(test_loss.cpu().detach().numpy())
     print(f"Test loss: {np.mean(test_losses)}")
-    """
 
 
 if __name__ == "__main__":
