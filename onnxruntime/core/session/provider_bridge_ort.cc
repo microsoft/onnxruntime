@@ -29,7 +29,7 @@
 #ifdef ENABLE_TRAINING
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 #include "orttraining/training_ops/cpu/torch/torch_custom_function_kernel_base.h"
-#include "core/language_interop_ops/torch/refcount_tracker.h"
+#include "orttraining/core/framework/torch/refcount_tracker.h"
 #endif
 #endif
 
