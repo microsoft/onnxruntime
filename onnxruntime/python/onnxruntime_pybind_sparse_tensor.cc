@@ -105,7 +105,7 @@ void addSparseTensorMethods(pybind11::module& m) {
       });
 
   py::class_<PySparseBlockSparseView>(m, "SparseBlockSparseView")
-      .def("index", [](const PySparseBlockSparseView* view) -> py::array {
+      .def("indices", [](const PySparseBlockSparseView* view) -> py::array {
         const auto& indices = view->Indices();
         return MakeNumpyArrayFromIndices(indices, py::cast(*view));
       });

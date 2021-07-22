@@ -350,10 +350,6 @@ class PySparseTensor {
     return ort_value_.Get<SparseTensor>();
   }
 
-  SparseTensor* Instance() {
-    return ort_value_.GetMutable<SparseTensor>();
-  }
-
   std::unique_ptr<OrtValue> AsOrtValue() const {
     return std::make_unique<OrtValue>(ort_value_);
   }
