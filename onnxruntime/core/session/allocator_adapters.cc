@@ -11,9 +11,12 @@ namespace onnxruntime {
 OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxruntime::AllocatorPtr&& i_allocator)
     : i_allocator_(std::move(i_allocator)) {
   OrtAllocator::version = ORT_API_VERSION;
-  OrtAllocator::Alloc = [](OrtAllocator* this_, size_t size) { return static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Alloc(size); };
-  OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Free(p); };
-  OrtAllocator::Info = [](const OrtAllocator* this_) { return static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Info(); };
+  OrtAllocator::Alloc =
+      [](OrtAllocator* this_, size_t size) { return static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Alloc(size); };
+  OrtAllocator::Free =
+      [](OrtAllocator* this_, void* p) { static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Free(p); };
+  OrtAllocator::Info =
+      [](const OrtAllocator* this_) { return static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Info(); };
 }
 
 void* OrtAllocatorImplWrappingIAllocator::Alloc(size_t size) {
@@ -41,7 +44,8 @@ void IAllocatorImplWrappingOrtAllocator::Free(void* p) {
 
 }  // namespace onnxruntime
 
-ORT_API_STATUS_IMPL(OrtApis::CreateAllocator, const OrtSession* sess, const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out) {
+ORT_API_STATUS_IMPL(OrtApis::CreateAllocator, const OrtSession* sess,
+                    const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out) {
   API_IMPL_BEGIN
   auto* session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(sess);
   auto allocator_ptr = session->GetAllocator(*mem_info);
@@ -53,7 +57,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAllocator, const OrtSession* sess, const OrtM
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocator, _Inout_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info,
+ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocator, _Inout_ OrtEnv* env,
+                    _In_ const OrtMemoryInfo* mem_info,
                     _In_ const OrtArenaCfg* arena_cfg) {
   using namespace onnxruntime;
   if (!env) {
@@ -72,7 +77,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocator, _Inout_ OrtEnv* env, _I
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::RegisterAllocator, _Inout_ OrtEnv* env, _In_ OrtAllocator* allocator) {
+ORT_API_STATUS_IMPL(OrtApis::RegisterAllocator, _Inout_ OrtEnv* env,
+                    _In_ OrtAllocator* allocator) {
   using namespace onnxruntime;
   if (!env) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Env is null");
