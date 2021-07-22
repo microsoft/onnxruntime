@@ -41,6 +41,22 @@ namespace utils {
 void* DefaultAlloc(size_t size);
 void DefaultFree(void* p);
 
+/// <summary>
+// Do the placement new for strings on pre-allocated buffer
+// `elements` times.
+/// </summary>
+/// <param name="p_data"></param>
+/// <param name="elements"></param>
+void ConstructStrings(void* p_data, int64_t elements);
+
+/// <summary>
+/// Destroy std::string objects in the contiquous chunk of memory
+/// by explicitely invoking ~string();
+/// </summary>
+/// <param name="p_data"></param>
+/// <param name="elements"></param>
+void DestroyStrings(void* p_data, int64_t elements);
+
 const std::string& GetNodeInputProviderType(const SessionState::NodeInfo& info);
 
 // EP used for internal testing. We define it here as it's used in ProviderIsCpuBased, but we don't want

@@ -1486,12 +1486,12 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
       }
       auto expected_element_type = expected_type->AsSparseTensorType()->GetElementType();
       const SparseTensor& sparse_tensor = input_ml_value.Get<SparseTensor>();
-      auto input_element_type = sparse_tensor.Values().DataType();
+      auto input_element_type = sparse_tensor.DataType();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "sparse_tensor"));
       // Check shape
       const auto& expected_shape = iter->second.tensor_shape;
       if (expected_shape.NumDimensions() > 0) {
-        const auto& input_shape = sparse_tensor.Shape();
+        const auto& input_shape = sparse_tensor.DenseShape();
         ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(feed_name, input_shape, expected_shape));
       }
     } else if (input_ml_value.IsTensorSequence()) {
