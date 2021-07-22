@@ -20,10 +20,6 @@ class Attention : public OpKernel, public AttentionCPUBase {
  public:
   explicit Attention(const OpKernelInfo& info);
 
-  bool IsPackWeightsSuccessful(int qkv_index, AllocatorPtr alloc, size_t head_size, size_t input_hidden_size, const T* weights_data, size_t weight_matrix_col_size, PrePackedWeights* prepacked_weights);
-
-  void FreePackedWeights();
-
   Status Compute(OpKernelContext* context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
@@ -35,10 +31,14 @@ class Attention : public OpKernel, public AttentionCPUBase {
                                    /*out*/ bool& used_shared_buffers) override;
 
  private:
+  bool IsPackWeightsSuccessful(int qkv_index, AllocatorPtr alloc, size_t head_size,
+                               size_t input_hidden_size, const T* weights_data,
+                               size_t weight_matrix_col_size, PrePackedWeights* prepacked_weights);
+  void FreePackedWeights();
+
   BufferUniquePtr packed_weights_[3];
   size_t packed_weights_size_[3] = {0, 0, 0};
   bool is_prepack_ = false;
-
   TensorShape weight_shape_;
 };
 
