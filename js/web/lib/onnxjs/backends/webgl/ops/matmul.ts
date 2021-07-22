@@ -76,7 +76,7 @@ export class WebGLUnpackedMatMul extends MatMul implements WebGLOperator {
     float max = float(${this.clipMax});` :
                                                         '';
     const getBiasForMatmulSnippet =
-        hasBias ? `${getBiasForMatmul(coordsDataType, allGlChannels, inputs[2].dims, outputShape)}` : '';
+        hasBias ? `${getBiasForMatmul(coordsDataType, allGlChannels, inputs[2].dims, outputShape, false)}` : '';
 
     const rank = outputShape.length;
     const arank = aShape.length;
@@ -107,7 +107,7 @@ export class WebGLUnpackedMatMul extends MatMul implements WebGLOperator {
     return {
       inputLayouts: inputs.map(t => handler.getOrCreateTextureLayout(t)),
       outputLayout: handler.createTextureLayoutFromShape(outputShape),
-      samplers: ['A', 'B'],
+      samplers: hasBias ? ['A', 'B', 'Bias'] : ['A', 'B'],
       shaderSource,
     };
   }
@@ -122,8 +122,8 @@ export class WebGLUnpackedMatMul extends MatMul implements WebGLOperator {
 }
 
 export function getBiasForMatmul(
-    coordsDataType: string, allGlChannels: readonly string[], inShape: readonly number[],
-    outShape: readonly number[]): string {
+    coordsDataType: string, allGlChannels: readonly string[], inShape: readonly number[], outShape: readonly number[],
+    isPacked = true): string {
   let unpackedCoordsSnippet = '';
   const inRank = inShape.length;
   const outRank = outShape.length;
@@ -141,14 +141,20 @@ export function getBiasForMatmul(
   if (isInputScalar) {
     output = 'vec4(outputValue.x)';
   }
-  const getBiasForMatmulSource = `
+  const getBiasForMatmulSource = isPacked ? `
 vec4 getBiasForMatmul() {
   ${coordsDataType} coords = getOutputCoords();
   ${coordsSnippet}
   vec4 outputValue = getBias(${unpackedCoordsSnippet});
   return ${output};
-
-}`;
+}` :
+                                            `
+float getBiasForMatmul() {
+  ${coordsDataType} coords = getOutputCoords();
+  ${coordsSnippet}
+  return getBias(coords.x);
+}
+`;
 
   return getBiasForMatmulSource;
 }
