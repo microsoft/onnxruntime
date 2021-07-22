@@ -177,6 +177,7 @@ bool DnnlSoftmaxNodeCapability::Supported(const Node* node) const {
   return true;
 }
 
+//DNNL Softmax supports opset version of 13 and above, or only axis value of 2 for opset version < 13 
 bool DnnlSoftmaxNodeCapability::IsAttributeSupported(const Node* node) const {
   const NodeAttributes& attributes = node->GetAttributes();
   auto opset = node->SinceVersion();

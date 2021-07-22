@@ -2,16 +2,16 @@
 // Licensed under the MIT License
 
 #include "dnnl_subgraph_primitive.h"
+//#include "dnnl_batchnorm.h"
 #include "dnnl_conv.h"
 #include "dnnl_lrn.h"
 #include "dnnl_matmul.h"
 #include "dnnl_matmul_integer.h"
 #include "dnnl_pool.h"
-#include "dnnl_relu.h"
-#include "dnnl_sum.h"
-//#include "dnnl_softmax.h"
-//#include "dnnl_batchnorm.h"
 #include "dnnl_reducemean.h"
+#include "dnnl_relu.h"
+#include "dnnl_softmax.h"
+#include "dnnl_sum.h"
 
 #if defined(ENABLE_TRAINING)
 #include "dnnl_convgrad.h"
@@ -179,6 +179,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlReduceMean().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Relu") {
       DnnlRelu().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Softmax") {
+      DnnlSoftmax().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Sum") {
       DnnlSum().CreatePrimitive(*this, node);
 #if defined(ENABLE_TRAINING)
