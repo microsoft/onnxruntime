@@ -16,7 +16,7 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
   QGemm(const OpKernelInfo& info) : GemmBase(info), MatMulIntegerBase(info) {
   }
 
-  Status Compute(OpKernelContext* context) const {
+  Status Compute(OpKernelContext* context) const override {
     const auto* a = context->Input<Tensor>(IN_A);
     const auto* b = packed_b_ ? nullptr : context->Input<Tensor>(IN_B);
     const auto& b_shape = b ? b->Shape() : b_shape_;
