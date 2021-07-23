@@ -218,7 +218,7 @@ Implicit Arguments:
 
         mov     rbp,rcx                     # reload row length remaining
 
-.if ((\RowCount\() & 1) == 0)
+.if 1
         sub     rbp,4*4
         jb      .LProcessRemainingBlocks\@
 
