@@ -286,8 +286,8 @@ void NodeArg::ClearShape() {
       node_arg_info_.mutable_type()->mutable_sparse_tensor_type()->clear_shape();
       break;
     case TypeProto::kOptionalType:
+      // Clearing shape is only valid for optional tensors
       if (node_arg_info_.type().optional_type().elem_type().has_tensor_type()) {
-        // Set shape only for optional tensors
         node_arg_info_.mutable_type()
             ->mutable_optional_type()
             ->mutable_elem_type()
@@ -2333,7 +2333,7 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
   return Status::OK();
 }
 
-void Graph::InitCheckerContext(CheckerContext & ctx) {
+void Graph::InitCheckerContext(CheckerContext& ctx) {
   ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));
   ctx.set_opset_imports(DomainToVersionMap());
   ctx.set_schema_registry(schema_registry_.get());
@@ -2395,7 +2395,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         node.since_version_ = node.op_->since_version();
 
         if (node.op_->Deprecated()) {
-            node.op_ = nullptr;
+          node.op_ = nullptr;
         }
       }
 

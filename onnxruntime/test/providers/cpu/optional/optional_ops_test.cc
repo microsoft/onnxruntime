@@ -150,10 +150,7 @@ class OptionalOpTester : public OpTester {
                       OptionalGetElement
                          |
                          |
-                       SampleOp  (use something other than Identity because it could be optimized away during Identity elimination)
-                                 Also preferably use something from kMsDomain as it seems like the setup to do cross-domain model creation
-                                 is not complete in OpTester.
-                                 SampleOp is just an Identity behavior-wise. 
+                       Shape
                          |
                          | 
                       Graph output
@@ -169,18 +166,18 @@ class OptionalOpTester : public OpTester {
     auto& optional_node_arg = graph.GetOrCreateNodeArg("optional_output", &optional_type_proto);
     ORT_IGNORE_RETURN_VALUE(graph.AddNode("optional_create", "Optional", "Create optional type",
                                           {graph_input_defs[0]}, {&optional_node_arg},
-                                          nullptr, kMSDomain));
+                                          nullptr));
 
     auto& tensor_node_arg = graph.GetOrCreateNodeArg("tensor_output", &tensor_type_proto);
     ORT_IGNORE_RETURN_VALUE(graph.AddNode("optional_get_element", "OptionalGetElement",
                                           "Parse optional type",
                                           {&optional_node_arg}, {&tensor_node_arg},
-                                          nullptr, kMSDomain));
+                                          nullptr));
 
-    ORT_IGNORE_RETURN_VALUE(graph.AddNode("SampleOp", "SampleOp",
-                                          "Identity",
+    ORT_IGNORE_RETURN_VALUE(graph.AddNode("Size", "Size",
+                                          "Size",
                                           {&tensor_node_arg}, {graph_output_defs[0]},
-                                          nullptr, kMSDomain));
+                                          nullptr));
   }
 };
 
@@ -196,7 +193,7 @@ TEST(OptionalOpTest, OptionalOpsValidateOrtValueReUse) {
   std::initializer_list<float> data = {1.f, 2.f};
 
   test.AddInput<float>("A", {2}, data);
-  test.AddOutput<float>("Y", {2}, {1.f, 2.f});
+  test.AddOutput<int64_t>("Y", {}, {2});
 
   test.Run();
 }

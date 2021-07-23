@@ -17,10 +17,29 @@ bool IsOptionalTensor(MLDataType type) {
          type->AsOptionalType()->GetElementType()->IsTensorType();
 }
 
+MLDataType GetElementTypeFromOptionalTensor(MLDataType type) {
+  ORT_ENFORCE(IsOptionalTensor(type),
+              "Provided type is not an optional tensor");
+
+  return type->AsOptionalType()
+      ->GetElementType()
+      ->AsTensorType()
+      ->GetElementType();
+}
+
 bool IsOptionalSeqTensor(MLDataType type) {
   return type->IsOptionalType() &&
          type->AsOptionalType()->GetElementType()->IsTensorSequenceType();
 }
 
+MLDataType GetElementTypeFromOptionalSeqTensor(MLDataType type) {
+  ORT_ENFORCE(IsOptionalSeqTensor(type),
+              "Provided type is not an optional sequence tensor");
+
+  return type->AsOptionalType()
+      ->GetElementType()
+      ->AsSequenceTensorType()
+      ->GetElementType();
+}
 }  // namespace utils
 }  // namespace onnxruntime

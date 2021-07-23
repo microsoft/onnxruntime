@@ -577,12 +577,12 @@ class OrtValue:
         '''
         return self._ortvalue.data_type()
 
-    def has_element(self):
+    def has_value(self):
         '''
         Returns True if the OrtValue corresponding to an
-        optional type contains an element, else returns False
+        optional type contains data, else returns False
         '''
-        return self._ortvalue.has_element()
+        return self._ortvalue.has_value()
 
     def is_tensor(self):
         '''

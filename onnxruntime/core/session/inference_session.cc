@@ -1472,11 +1472,10 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
 
       // check for type
       auto expected_element_type = expected_type->IsTensorType()
-                                       ? expected_type->AsTensorType()->GetElementType()
-                                       : expected_type->AsOptionalType()
-                                             ->GetElementType()
+                                       ? expected_type
                                              ->AsTensorType()
-                                             ->GetElementType();
+                                             ->GetElementType()
+                                       : utils::GetElementTypeFromOptionalTensor(expected_type);
       auto input_element_type = input_ml_value.Get<Tensor>().DataType();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "tensor"));
 
@@ -1509,11 +1508,11 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
       }
 
       auto expected_element_type = expected_type->IsTensorSequenceType()
-                                       ? expected_type->AsSequenceTensorType()->GetElementType()
-                                       : expected_type->AsOptionalType()
-                                             ->GetElementType()
+                                       ? expected_type
                                              ->AsSequenceTensorType()
-                                             ->GetElementType();
+                                             ->GetElementType()
+                                       : utils::GetElementTypeFromOptionalSeqTensor(expected_type);
+
       auto input_element_type = input_ml_value.Get<TensorSeq>().DataType();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "seq"));
     } else {

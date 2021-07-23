@@ -673,8 +673,10 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
   if (ml_type->IsTensorType() || utils::IsOptionalTensor(ml_type)) {
     ORT_ENFORCE(shape, "Allocation of tensor types requires a shape.");
 
-    // tensors
-    const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+    // tensors / optional tensors
+    const auto* ml_data_type = ml_type->IsTensorType()
+                                   ? static_cast<const TensorTypeBase*>(ml_type)->GetElementType()
+                                   : utils::GetElementTypeFromOptionalTensor(ml_type);
 
     AllocKind alloc_kind = per_alloc_plan.alloc_kind;
     switch (alloc_kind) {

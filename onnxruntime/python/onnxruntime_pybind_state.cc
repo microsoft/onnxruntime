@@ -1290,7 +1290,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
           OrtPybindThrowIfError(sess->GetSessionHandle()->Load());
 #else
-      ORT_THROW("Loading configuration from an ONNX model is not supported in this build.");
+          ORT_THROW("Loading configuration from an ONNX model is not supported in this build.");
 #endif
         } else {
           sess = std::make_unique<PyInferenceSession>(env, so);
@@ -1321,13 +1321,12 @@ including arg name, arg type (contains both type and shape).)pbdoc")
               std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr)
                -> std::vector<py::object> {
              NameMLValMap feeds;
-<<<<<<< HEAD
              for (auto feed : pyfeeds) {
                // No need to process 'None's sent in by the user
                // to feed Optional inputs in the graph.
                // We just won't include anything in the feed and ORT
                // will handle such implicit 'None's internally.
-               if (!_.second.is(py::none())) {
+               if (!feed.second.is(py::none())) {
                  OrtValue ml_value;
                  auto px = sess->GetSessionHandle()->GetModelInputs();
                  if (!px.first.IsOK() || !px.second) {
@@ -1354,6 +1353,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
              std::vector<py::object> rfetch;
              rfetch.reserve(fetches.size());
+             size_t pos = 0;
 
              for (auto fet : fetches) {
                if (fet.HasValue()) {
@@ -1374,28 +1374,32 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       /// This method accepts a dictionary of feeds (name -> OrtValue) and the list of output_names
       /// and returns a list of python objects representing OrtValues. Each name may represent either
       /// a Tensor, SparseTensor or a TensorSequence.
-      .def("run_with_ort_values", [](PyInferenceSession* sess, const py::dict& feeds, const std::vector<std::string>& output_names, RunOptions* run_options = nullptr) -> std::vector<OrtValue> {
-        NameMLValMap ort_feeds;
-        // item is always a copy since dict returns a value and not a ref
-        // and Apple XToolChain barks
-        for (const auto item : feeds) {
-          auto name = item.first.cast<std::string>();
-          const OrtValue* ort_value = item.second.cast<const OrtValue*>();
-          ort_feeds.emplace(name, *ort_value);
-        }
+      .def("run_with_ort_values",
+           [](PyInferenceSession* sess,
+              const py::dict& feeds,
+              const std::vector<std::string>& output_names,
+              RunOptions* run_options = nullptr) -> std::vector<OrtValue> {
+             NameMLValMap ort_feeds;
+             // item is always a copy since dict returns a value and not a ref
+             // and Apple XToolChain barks
+             for (const auto item : feeds) {
+               auto name = item.first.cast<std::string>();
+               const OrtValue* ort_value = item.second.cast<const OrtValue*>();
+               ort_feeds.emplace(name, *ort_value);
+             }
 
-        std::vector<OrtValue> fetches;
-        {
-          // release GIL to allow multiple python threads to invoke Run() in parallel.
-          py::gil_scoped_release release;
-          if (run_options != nullptr) {
-            OrtPybindThrowIfError(sess->GetSessionHandle()->Run(*run_options, ort_feeds, output_names, &fetches));
-          } else {
-            OrtPybindThrowIfError(sess->GetSessionHandle()->Run(ort_feeds, output_names, &fetches));
-          }
-        }
-        return fetches;
-      })
+             std::vector<OrtValue> fetches;
+             {
+               // release GIL to allow multiple python threads to invoke Run() in parallel.
+               py::gil_scoped_release release;
+               if (run_options != nullptr) {
+                 OrtPybindThrowIfError(sess->GetSessionHandle()->Run(*run_options, ort_feeds, output_names, &fetches));
+               } else {
+                 OrtPybindThrowIfError(sess->GetSessionHandle()->Run(ort_feeds, output_names, &fetches));
+               }
+             }
+             return fetches;
+           })
       .def("end_profiling", [](const PyInferenceSession* sess) -> std::string {
         return sess->GetSessionHandle()->EndProfiling();
       })
