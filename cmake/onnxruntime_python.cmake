@@ -524,7 +524,7 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
   )
 endif()
 
-if (onnxruntime_USE_COREML_BUILTIN)
+if (onnxruntime_USE_COREML)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy

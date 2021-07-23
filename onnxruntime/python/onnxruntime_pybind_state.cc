@@ -666,7 +666,8 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #endif
     } else if (type == kCoreMLExecutionProvider) {
 #if defined(USE_COREML)
-#if !defined(__APPLE__)
+# include <TargetConditionals.h>
+# if !TARGET_OS_IPHONE
       LOGS_DEFAULT(WARNING) << "CoreML execution provider can only be used to generate ORT format model in this build.";
 #endif
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CoreML(0));
