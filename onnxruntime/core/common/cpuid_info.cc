@@ -23,7 +23,7 @@
 
 #if defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)
 
-#if defined(_MSC_VER) && defined(CPUIDINFO_ARCH_ARM)
+#if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) || (defined(_MSC_VER) && defined(CPUIDINFO_ARCH_ARM))
 // pytorch cpu info does not work for Windows ARM
 // 1. msvc report syntax error in file src/arm/api.h
 // 2. features reporting micro-arch in Windows is missing
