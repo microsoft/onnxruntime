@@ -719,7 +719,7 @@ class Graph {
   /** Gets the NodeArgs that represent value_info instances in the Graph.
   These are the values that are neither Graph inputs nor outputs.
   @remarks Contains no nullptr values. */
-  const std::vector<const NodeArg*>& GetValueInfo() const noexcept { return value_info_; }
+  const std::unordered_set<const NodeArg*>& GetValueInfo() const noexcept { return value_info_; }
 
 #if !defined(ORT_MINIMAL_BUILD)
   void AddValueInfo(const NodeArg* new_value_info);
@@ -1408,7 +1408,7 @@ class Graph {
   bool graph_outputs_manually_set_ = false;
 
   // Graph value_info.
-  std::vector<const NodeArg*> value_info_;
+  std::unordered_set<const NodeArg*> value_info_;
 
   // All node args owned by <*this> graph. Key is node arg name.
   std::unordered_map<std::string, std::unique_ptr<NodeArg>> node_args_;

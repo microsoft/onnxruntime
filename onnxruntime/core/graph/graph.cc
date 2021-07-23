@@ -1198,7 +1198,7 @@ void Graph::InitializeStateFromModelFileGraphProto() {
     const auto& name = graph_value_info.name();
     const auto* node_arg = GetNodeArg(name);
     if (node_arg != nullptr) {
-      value_info_.push_back(node_arg);
+      value_info_.insert(node_arg);
     }
   }
 
@@ -2778,10 +2778,9 @@ const ONNX_NAMESPACE::TensorProto* Graph::GetConstantInitializer(const std::stri
 
 #if !defined(ORT_MINIMAL_BUILD)
 void Graph::AddValueInfo(const NodeArg* new_value_info) {
-  for (const auto* info : value_info_) {
-    ORT_ENFORCE(info->Name() != new_value_info->Name(), "Error: trying to add an existing value info.");
-  }
-  value_info_.push_back(new_value_info);
+  NodeArg* node_arg = GetNodeArg(new_value_info->Name());
+  ORT_ENFORCE(node_arg && node_arg == new_value_info, "Error: trying to add an value info that are no in graph.");
+  value_info_.insert(new_value_info);
 }
 
 std::vector<NodeArg*> Graph::CreateNodeArgs(const google::protobuf::RepeatedPtrField<std::string>& names,
@@ -3417,9 +3416,7 @@ Status Graph::SetGraphInputsOutputs() {
         // Remove the output arg name from graph outputs since it's
         // the input of this node, which we call it intermediate result
         // and store it in <m_valueinfo>.
-        if (std::find(value_info_.begin(), value_info_.end(), input_arg) == value_info_.end()) {
-          value_info_.push_back(input_arg);
-        }
+        value_info_.insert(input_arg);
       }
     }
   }
