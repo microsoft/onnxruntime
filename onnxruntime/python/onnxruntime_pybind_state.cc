@@ -44,9 +44,6 @@ const OrtDevice::DeviceType OrtDevice::GPU;
 
 namespace onnxruntime {
 
-<<<<<<< HEAD
-=======
->>>>>>> ab5289f10972b9910b15abdb291b232852a473a2
 constexpr const char* kExecutionProviderSharedLibraryPath = "shared_lib_path";
 }  // namespace onnxruntime
 
