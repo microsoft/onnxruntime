@@ -142,13 +142,7 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
     target_mlvalue.Init(target_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
   } else if (source_mlvalue.IsSparseTensor()) {
     const SparseTensor& source_tensor = source_mlvalue.Get<SparseTensor>();
-    auto p_tensor = std::make_unique<SparseTensor>(source_tensor.DataType(),
-                                                   source_tensor.DenseShape(),
-                                                   allocator);
-    auto ml_tensor = DataTypeImpl::GetType<SparseTensor>();
-    target_mlvalue.Init(p_tensor.release(),
-                        ml_tensor,
-                        ml_tensor->GetDeleteFunc());
+    SparseTensor::InitOrtValue(source_tensor.DataType(), source_tensor.DenseShape(), allocator, target_mlvalue);
   } else if (source_mlvalue.IsTensorSequence()) {
     const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
     auto target_tensor_seq = std::make_unique<TensorSeq>(source_tensor_seq.DataType());

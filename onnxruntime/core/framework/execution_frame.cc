@@ -629,9 +629,7 @@ static Status AllocateSparseTensor(OrtValue& mlvalue, const DataTypeImpl& ml_typ
                                    const TensorShape& shape, bool create_fence,
                                    const SessionState& session_state) {
   auto element_type = ml_type.AsSparseTensorType()->GetElementType();
-  auto sparse = std::make_unique<SparseTensor>(element_type, shape, allocator);
-  auto deleter = DataTypeImpl::GetType<SparseTensor>()->GetDeleteFunc();
-  mlvalue.Init(sparse.release(), DataTypeImpl::GetType<SparseTensor>(), deleter);
+  SparseTensor::InitOrtValue(element_type, shape, std::move(allocator), mlvalue);
 
   // create fence if needed
   if (create_fence) {

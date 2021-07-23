@@ -120,7 +120,6 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16     // Non-IEEE floating-point format based on IEEE754 single-precision
 } ONNXTensorElementDataType;
 
-
 // Synced with onnx TypeProto oneof
 typedef enum ONNXType {
   ONNX_TYPE_UNKNOWN,
@@ -132,8 +131,7 @@ typedef enum ONNXType {
 } ONNXType;
 
 // These types are synced with internal
-// SparseFormatFlags but are not exposed
-// as flags
+// SparseFormatFlags
 typedef enum OrtSparseFormat {
   ORT_SPARSE_UNDEFINED = 0,
   ORT_SPARSE_COO = 0x1,
@@ -141,6 +139,13 @@ typedef enum OrtSparseFormat {
   ORT_SPARSE_BLOCK_SPARSE = 0x4
 } OrtSparseFormat;
 
+// Enum allows to query sparse tensor indices
+enum OrtSparseIndicesFormat {
+  ORT_SPARSE_COO_INDICES,
+  ORT_SPARSE_CSR_INNER_INDICES,
+  ORT_SPARSE_CSR_OUTER_INDICES,
+  ORT_SPARSE_BLOCK_SPARSE_INDICES
+};
 
 typedef enum OrtLoggingLevel {
   ORT_LOGGING_LEVEL_VERBOSE,
@@ -589,14 +594,22 @@ struct OrtApi {
   ORT_API2_STATUS(FillStringTensor, _Inout_ OrtValue* value, _In_ const char* const* s, size_t s_len);
 
   /**
+     * Obtain a total length of strings contained within a tensor.
+     * For sparse tensors it returns the total length of values (nnz) strings.
      * \param value A tensor created from OrtCreateTensor... function.
      * \param len total data length, not including the trailing '\0' chars.
      */
   ORT_API2_STATUS(GetStringTensorDataLength, _In_ const OrtValue* value, _Out_ size_t* len);
 
   /**
+     * This API returns a all of of UTF-8 encoded strings that are contained within a tensor
+     * or in non-empty values of a sparse tensor in one single buffer. Use offsets to calculate
+     * the length of each string such as len[i] = offsets[i + 1] - offsets[i] except the last
+     * string for which the length is calculated as total_len - offset[i].
+     * 
      * \param s string contents. Each string is NOT null-terminated.
-     * \param value A tensor created from OrtCreateTensor... function.
+     * \param value A tensor created from OrtCreateTensor... API or a sparse tensor
+     *   created with OrtCreateSparseTensor... API.
      * \param s_len total data length, get it from OrtGetStringTensorDataLength
      */
   ORT_API2_STATUS(GetStringTensorContent, _In_ const OrtValue* value, _Out_writes_bytes_all_(s_len) void* s,
@@ -647,15 +660,17 @@ struct OrtApi {
   ORT_API2_STATUS(GetTensorShapeElementCount, _In_ const OrtTensorTypeAndShapeInfo* info, _Out_ size_t* out);
 
   /**
- * \param out Should be freed by ReleaseTensorTypeAndShapeInfo after use
- */
+   * Returns data type and shape iff OrtValue contains a Tensor or a SparseTensor.
+   * For sparse tensors it returns a dense shape of the tensor.
+   * \param out Should be freed by ReleaseTensorTypeAndShapeInfo after use
+   */
   ORT_API2_STATUS(GetTensorTypeAndShape, _In_ const OrtValue* value, _Outptr_ OrtTensorTypeAndShapeInfo** out);
 
   /**
- * Get the type information of an OrtValue
- * \param value
- * \param out The returned value should be freed by ReleaseTypeInfo after use
- */
+   * Get the type information of an OrtValue. API works for tensors and sparse tensors.
+   * \param value
+   * \param out The returned value should be freed by ReleaseTypeInfo after use
+   */
   ORT_API2_STATUS(GetTypeInfo, _In_ const OrtValue* value, _Outptr_result_maybenull_ OrtTypeInfo** out);
 
   ORT_API2_STATUS(GetValueType, _In_ const OrtValue* value, _Out_ enum ONNXType* out);
@@ -990,13 +1005,21 @@ struct OrtApi {
                   _In_ int providers_length);
 
   /**
+     * This API returns a length of string element at [index]. For sparse tensors
+     * it will return a string element of sparse values. It is an error to request
+     * an out of bounds element.
+     * 
      * \param value - A tensor created from OrtCreateTensor... function.
-     * \param index - index of string tensor element, length of element at index will be returned.
+     * \param index - flat index of string tensor element, length of element at index will be returned.
      * \param out - number of UTF-8 bytes that the string contains
      */
   ORT_API2_STATUS(GetStringTensorElementLength, _In_ const OrtValue* value, size_t index, _Out_ size_t* out);
 
   /**
+     * This API will return a copy of to UTF-8 data of a string element at the specified index.
+     * For sparse tensors it would return a string element of sparse values. It is an error to request an out
+     * of bounds element.
+     * 
      * \param s string element contents in UTF-8 encoding. The string is NOT null-terminated.
      * \param value A tensor created from OrtCreateTensor... function.
      * \param s_len element length, get it from OrtGetStringTensorElementLength.
@@ -1489,6 +1512,205 @@ struct OrtApi {
   */
   ORT_API2_STATUS(UnregisterAllocator, _Inout_ OrtEnv* env,
                   _In_ const OrtMemoryInfo* mem_info);
+
+  /**
+   * \Sets *out to 1 iff an OrtValue is a SparseTensor, and 0 otherwise
+   */
+  ORT_API2_STATUS(IsSparseTensor, _In_ const OrtValue* value, _Out_ int* out);
+
+  /**
+   * Create an OrtValue with a sparse tensor that is empty.
+   * Use FillSparseTensor<Format>() functions to populate sparse tensor with non-zero values and
+   * format specific indices data.
+   * Use ReleaseValue to destroy the sparse tensor, this will also release the buffer inside the output value
+   * if any was allocated.
+   * \param allocator - allocator to use when performing an allocation. Allocation will be performed
+   *   by FillSparseTensor<Format>() APIs. The lifespan of the allocator instance must eclipse the lifespan
+   *   this sparse tensor instance as the same allocator will be used to free memory.
+   * \param dense_shape - shape of the original dense tensor
+   * \param dense_shape_len - number of shape dimensions being passed
+   * \param type must be one of TENSOR_ELEMENT_DATA_TYPE_xxxx
+   * \param out Should be freed by calling ReleaseValue
+   * \return OrtStatus*
+   */
+  ORT_API2_STATUS(CreateSparseTensorAsOrtValue, _Inout_ OrtAllocator* allocator, _In_ const int64_t* dense_shape,
+                  size_t dense_shape_len, ONNXTensorElementDataType type, _Outptr_ OrtValue** out);
+
+  /**
+   * This API fills populates an empty tensor that was created using CreateSparseTensorAsOrtValue API.
+   * The API will allocate required memory and copy the supplied NNZ values and COO indices into that memory allocation.
+   * Memory allocation is performed using the allocator that was specified with CreateSparseTensorAsOrtValue.
+   * 
+   * \param ort_value - OrtValue to populate with data
+   * \param mem_info - serves to identify the location of the data to be copied. If the allocator specified 
+   *  at the creation time has memory info that is not the same as mem_info argument to this function a X-device copy will be performed.
+   *  String data is assumed to be on CPU and will only be copied into a CPU allocated buffer.
+   * \param values_shape - pointer to values shape array
+   * \param values_shape_len - length of the values_shape
+   * \param values - pointer to an array of values. For strings, pass const char**.
+   * \param indices_num - number of COO indices
+   * \param indices_data - pointer to a location of COO indices
+   */
+  ORT_API2_STATUS(FillSparseTensorCoo, _Inout_ OrtValue* ort_value, _In_ const OrtMemoryInfo* data_mem_info,
+                  _In_ const int64_t* values_shape, size_t values_shape_len, _In_ const void* values,
+                  size_t indices_num, const int64_t* indices_data);
+
+  /**
+   * This API fills populates an empty tensor that was created using CreateSparseTensorAsOrtValue API.
+   * The API will allocate required memory and copy the supplied NNZ values and CSR indices into that memory allocation.
+   * Memory allocation is performed using the allocator that was specified with CreateSparseTensorAsOrtValue.
+   * 
+   * \param ort_value - OrtValue to populate with data
+   * \param mem_info - serves to identify the location of the data to be copied. If the allocator specified 
+   *  at the creation time has memory info that is not the same as mem_info argument to this function a X-device copy will be performed.
+   *  String data is assumed to be on CPU and will only be copied into a CPU allocated buffer.
+   * \param values_shape - pointer to values shape array
+   * \param values_shape_len - length of the values_shape
+   * \param values - pointer to an array of values. For strings, pass const char**.
+   * \param inner_indices_num - number of CSR inner indices
+   * \param inner_indices_data - pointer to a location of CSR inner indices
+   * \param outer_indices_num - number of CSR outer indices
+   * \param outer_indices_data - pointer to a location of CSR outer indices
+   */
+  ORT_API2_STATUS(FillSparseTensorCsr, _Inout_ OrtValue* ort_value, _In_ const OrtMemoryInfo* data_mem_info,
+                  _In_ const int64_t* values_shape, size_t values_shape_len, _In_ const void* values,
+                  size_t inner_indices_num, const int64_t* inner_indices_data,
+                  size_t outer_indices_num, const int64_t* outer_indices_data);
+
+  /**
+   * This API fills populates an empty tensor that was created using CreateSparseTensorAsOrtValue API.
+   * The API will allocate required memory and copy the supplied NNZ values and BlockSparse indices into that memory allocation.
+   * Memory allocation is performed using the allocator that was specified with CreateSparseTensorAsOrtValue.
+   * 
+   * \param ort_value - OrtValue to populate with data
+   * \param mem_info - serves to identify the location of the data to be copied. If the allocator specified 
+   *  at the creation time has memory info that is not the same as mem_info argument to this function a X-device copy will be performed.
+   *  String data is assumed to be on CPU and will only be copied into a CPU allocated buffer.
+   * \param values - structure with values information
+   * \param indices_shape_len - length of the block sparse indices shape
+   * \param indices_shape - pointer to a location of indices shape
+   * \param indices_data - pointer to a location of indices data. Shape will determine the length of the indices data.
+   */
+  ORT_API2_STATUS(FillSparseTensorBlockSparse, _Inout_ OrtValue* ort_value, _In_ const OrtMemoryInfo* data_mem_info,
+                  _In_ const int64_t* values_shape, size_t values_shape_len, _In_ const void* values,
+                  size_t indices_shape_len, const int64_t* indices_shape_data,
+                  const int32_t* indices_data);
+
+  /**
+   * Create an OrtValue with a sparse tensor. This is the first step.
+   * Next, use Use<Format>Indices() functions to supply sparse tensor with
+   * format specific indices data and set its sparse format to a specific enum value.
+   * This API will not perform memory allocations. It will
+   * use supplied user buffer which should outlive the created sparse tensor.
+   * Use ReleaseValue to destroy the sparse tensor. It would not release the supplied values buffer.
+   * This API can not be used to map strings from the user allocated memory. Strings must always be copied
+   * and have UTF-8 encoding. Therefore, use CreateSparseTensorAsOrtValue() API above and then fill it with data
+   * using appropriate Make*() function.
+   * \param info - memory info where sparse values reside.
+   * \param p_data - pointer to a user allocated buffer with values. To create a full sparse tensor with no non-zero
+   *   values, pass nullptr
+   * \param dense_shape - shape of the original dense tensor
+   * \param dense_shape_len - number of shape dimensions being passed
+   * \param values_shape - shape of the values data. To create a fully sparse tensor with no non-zero values,
+   *   pass {0} shape.
+   * \param values_shape_len - number of values shape dimensions
+   * \param type must be one of TENSOR_ELEMENT_DATA_TYPE_xxxx
+   * \param out Should be freed by calling ReleaseValue
+   * \return OrtStatus*
+   */
+  ORT_API2_STATUS(CreateSparseTensorWithValuesAsOrtValue, _In_ const OrtMemoryInfo* info, _Inout_ void* p_data,
+                  _In_ const int64_t* dense_shape, size_t dense_shape_len,
+                  _In_ const int64_t* values_shape, size_t values_shape_len,
+                  ONNXTensorElementDataType type, _Outptr_ OrtValue** out);
+
+  /**
+   * The API assigns Coo format indices to the SparseTensor that was created by 
+   * CreateSparseTensorWithValuesAsOrtValue API above. It also sets OrtSparseFormat to 
+   * ORT_SPARSE_COO. The API will not allocate any additional memory for data. The life span of
+   * indices_data buffer should eclipse the life span of this OrtValue.
+   * 
+   * \param ort_value - OrtValue instance constructed with CreateSparseTensorWithValuesAsOrtValue
+   * \param indices_num  - number of COO indices. Should either be 0 for fully sparse tensors, be equal
+   *  to the number of nnz values specified to CreateSparseTensorWithValuesAsOrtValue for 1-D {nnz} indices or
+   *  be twice as number of nnz values for a  2-D indices {nnz, 2}
+   * \param indices_data - pointer to a user pre-allocated buffer or nullptr for fully sparse tensors.
+   */
+  ORT_API2_STATUS(UseCooIndices, _Inout_ OrtValue* ort_value, size_t indices_num, _Inout_ int64_t* indices_data);
+
+  /**
+   * The API assigns CSR format indices to the SparseTensor that was created by 
+   * CreateSparseTensorWithValuesAsOrtValue API above. It also sets OrtSparseFormat to 
+   * ORT_SPARSE_CSRC. The API will not allocate any additional memory for data. The life spans of
+   * indner_data and outer_data buffers should eclipse the life span of this OrtValue.
+   * 
+   * \param ort_value - OrtValue instance constructed with CreateSparseTensorWithValuesAsOrtValue
+   * \param inner_num  - number of inner CSR indices. Should either be 0 for fully sparse tensors or be equal
+   * to the number of nnz values specified to CreateSparseTensorWithValuesAsOrtValue.
+   * \param inner_data - pointer to a user pre-allocated buffer or nullptr for fully sparse tensors.
+   * \param outer_num - number of CSR outer indices. Should either be 0 for fully sparse tensors or
+   * equal to rows + 1 of the dense shape.
+   * \param outer_data - pointer to user pre-allocated buffer or nullptr for fully sparse tensors.
+   */
+  ORT_API2_STATUS(UseCsrIndices, _Inout_ OrtValue* ort_value, size_t inner_num, _Inout_ int64_t* inner_data, size_t outer_num, _Inout_ int64_t* outer_data);
+
+  /**
+   * The API assigns BlockSparse format indices to the SparseTensor that was created by 
+   * CreateSparseTensorWithValuesAsOrtValue API above. It also sets OrtSparseFormat to 
+   * ORT_SPARSE_BLOCK_SPARSE. The API will not allocate any additional memory for data. The life span of
+   * indices_data buffer must eclipse the lifespan of this OrtValue.
+   * 
+   * \param ort_value - OrtValue instance constructed with CreateSparseTensorWithValuesAsOrtValue
+   * \param indices_shape - pointer to indices shape. Use {0} for fully sparse tensors
+   * \param indices_shape_len length of the indices shape
+   * \param indices_data - pointer to user pre-allocated buffer or nullptr for fully sparse tensors.
+   */
+  ORT_API2_STATUS(UseBlockSparseIndices, _Inout_ OrtValue* ort_value, const int64_t* indices_shape, size_t indices_shape_len, _Inout_ int32_t* indices_data);
+
+  /**
+   * The API returns sparse tensor format enum iff a given ort value contains an instance of sparse tensor.
+   * 
+   * \param ort_value - OrtValue that contains an instance of sparse tensor
+   * \param out - pointer to out parameter
+   */
+  ORT_API2_STATUS(GetSparseTensorFormat, _In_ const OrtValue* ort_value, _Out_ enum OrtSparseFormat* out);
+
+  /**
+   *  The API Returns data type and shape of sparse tensor values (nnz) iff OrtValue contains a SparseTensor.
+   * 
+   * \param ort_value an OrtValue that contains a fully constructed sparse tensor
+   * \out Should be freed by ReleaseTensorTypeAndShapeInfo after use
+   */
+  ORT_API2_STATUS(GetSparseTensorValuesTypeAndShape, _In_ const OrtValue* ort_value, _Outptr_ OrtTensorTypeAndShapeInfo** out);
+
+  /**
+   * The API returns numeric data for sparse tensor values (nnz). For string values use GetStringTensor*() API.
+   * 
+   * \param ort_value an instance of OrtValue containing sparse tensor
+   * \param out - returns a pointer to values data.  Do not attempt to free this ptr.
+   */
+  ORT_API2_STATUS(GetSparseTensorValues, _In_ const OrtValue* ort_value, _Outptr_ const void** out);
+
+  /**
+   * The API returns data type, shape for the type of indices specified by
+   * indices_format.
+   * 
+   * \param - ort_value OrtValue containing sparse tensor.
+   * \param - indices_format - one of the indices formats. It is an error to request a format that the sparse
+   * tensor does not contain.
+   */
+  ORT_API2_STATUS(GetSparseTensorIndicesTypeShape, _In_ const OrtValue* ort_value, enum OrtSparseIndicesFormat indices_format, _Outptr_ OrtTensorTypeAndShapeInfo** out);
+
+  /**
+   * The API returns indices data for the type of the indices specified by indices_format.
+   * Do not free the returned ptr as it points directly to the internal sparse tensor buffer.
+   * 
+   * \param - ort_value OrtValue containing sparse tensor.
+   * \param - indices_format - one of the indices formats. It is an error to request a format that the sparse
+   * tensor does not contain.
+   * \param num_indices - ptr where the number of indices entries is returned
+   * \param indices - out param where the pointer to the internal buffer is returned. Do not free this buffer.
+   */
+  ORT_API2_STATUS(GetSparseTensorIndices, _In_ const OrtValue* ort_value, enum OrtSparseIndicesFormat indices_format, _Out_ size_t* num_indices, _Outptr_ const void** indices);
 };
 
 /*
