@@ -232,7 +232,7 @@ SkipScaleByZeroPointBM8
         add     v25.4s,v7.4s,v12.4s
         add     v27.4s,v7.4s,v13.4s
         add     v29.4s,v7.4s,v14.4s
-        add     v30.4s,v7.4s,v15.4s
+        add     v31.4s,v7.4s,v15.4s
 
 
 ComputeBlockLoopStartM8
@@ -479,10 +479,10 @@ StoreOutputPartial2AddModeM8
         ld1     {v1.2s},[x10]
         ld1     {v2.2s},[x11]
         ld1     {v3.2s},[x12]
-        ld1     {v4.4s},[x0]
-        ld1     {v5.4s},[x3]
-        ld1     {v6.4s},[x4]
-        ld1     {v7.4s},[x7]
+        ld1     {v4.2s},[x0]
+        ld1     {v5.2s},[x3]
+        ld1     {v6.2s},[x4]
+        ld1     {v7.2s},[x7]
         add     v16.4s,v16.4s,v0.4s
         add     v18.4s,v18.4s,v1.4s
         st1     {v16.2s},[x2],#8
