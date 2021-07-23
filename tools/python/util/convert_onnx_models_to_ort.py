@@ -217,11 +217,9 @@ def convert_onnx_models_to_ort():
     if args.use_coreml:
         if not is_macOS():
             # Check if the script is run on a Mac Device in this case
-            raise ValueError(
-                '--use_coreml option requires a MacOS environment.')
+            raise ValueError('--use_coreml option requires a MacOS environment.')
         if 'CoreMLExecutionProvider' not in ort.get_available_providers():
-            raise ValueError(
-                'The CoreML Execution Provider was not included in this build of ONNX Runtime.')
+            raise ValueError('The CoreML Execution Provider was not included in this build of ONNX Runtime.')
 
     _convert(model_path_or_dir, args.optimization_level, args.use_nnapi, args.use_coreml, custom_op_library,
              args.save_optimized_onnx_model)
