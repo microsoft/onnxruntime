@@ -13,21 +13,29 @@ ThreadPoolLite::ThreadPoolLite(Env*,
   num_sub_threads_ = num_threads - 1;
   slots_.assign(num_threads - 1, {});
   set_denormal_as_zero_ = options.set_denormal_as_zero;
+  auto cores = static_cast<int>(std::thread::hardware_concurrency()) >> 1;
+  ORT_ENFORCE(cores > 0, "failed to get a valid number of cpu cores");
 #ifdef _WIN32
   size_t affinity_mask = 3;
   for (int i = 0; i < num_sub_threads_; ++i) {
+    if (i > 0 && (i % cores) == 0) {
+      affinity_mask = 3;
+    }
     sub_threads_.emplace_back(&ThreadPoolLite::ThreadLoop, this, i);
-    SetThreadAffinityMask(sub_threads_.back().native_handle(), affinity_mask);
+    ORT_ENFORCE(0 != SetThreadAffinityMask(sub_threads_.back().native_handle(), affinity_mask),
+        "Failed to set thread affinity on windows.");
     affinity_mask <<= 2;
   }
 #else
   for (int i = 0; i < num_sub_threads_; ++i) {
     sub_threads_.emplace_back(&ThreadPoolLite::ThreadLoop, this, i);
+#if !defined(__APPLE__) && !defined(__ANDROID__) && !defined(__wasm__)
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    CPU_SET(i, &cpuset);
+    CPU_SET(i%cores, &cpuset);
     ORT_ENFORCE(0 == pthread_setaffinity_np(sub_threads_.back().native_handle(), sizeof(cpu_set_t), &cpuset),
-                "Failed to set thread affinity in posix system.");
+                "Failed to set thread affinity on posix system.");
+#endif
   }
 #endif
 }
