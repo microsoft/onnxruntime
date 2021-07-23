@@ -31,6 +31,7 @@
 #include "core/graph/function.h"
 #include "core/graph/function_impl.h"
 #include "core/graph/schema_registry.h"
+#include "core/graph/contrib_ops/onnx_function_util.h"
 using namespace ONNX_NAMESPACE::checker;
 #endif
 
@@ -2306,15 +2307,15 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
   return Status::OK();
 }
 
-void Graph::InitCheckerContext(CheckerContext & ctx) {
+Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
+  CheckerContext ctx;
   ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));
   ctx.set_opset_imports(DomainToVersionMap());
   ctx.set_schema_registry(schema_registry_.get());
   // Set the parent directory of model path to load external tensors if exist
   ctx.set_model_dir(ToMBString(ModelPath().ParentPath().ToPathString()));
-}
 
-void Graph::InitLexicalScopeContext(LexicalScopeContext& lsc) {
+  LexicalScopeContext lsc;
   lsc.output_names.insert(resolve_context_.inputs_and_initializers.cbegin(),
                           resolve_context_.inputs_and_initializers.cend());
 
@@ -2329,14 +2330,6 @@ void Graph::InitLexicalScopeContext(LexicalScopeContext& lsc) {
   // we may have some locally defined outer scope args if we're in the middle of constructing a subgraph
   // and need to call Resolve
   lsc.output_names.insert(outer_scope_node_arg_names_.cbegin(), outer_scope_node_arg_names_.cend());
-}
-
-Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
-  CheckerContext ctx;
-  InitCheckerContext(ctx);
-
-  LexicalScopeContext lsc;
-  InitLexicalScopeContext(lsc);
 
   for (auto node_index : nodes_in_topological_order_) {
     // Node verification.
@@ -2447,14 +2440,6 @@ void Graph::InitFunctionBodyForNode(Node& node) {
         return;
     } else {
       onnx_function_proto = *(node.op_->GetFunction());
-    }
-
-    // Check function's opset requirements are compatible with model's opset.
-    auto& graphImports = DomainToVersionMap();
-    for (const auto& fn_import : onnx_function_proto.opset_import()) {
-      auto it = graphImports.find(fn_import.domain());
-      if ((it != graphImports.end()) && (it->second != fn_import.version()))
-        return;  // Incompatible. Do not use this function expansion.
     }
 
     auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,

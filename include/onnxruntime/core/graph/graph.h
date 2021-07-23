@@ -998,12 +998,6 @@ class Graph {
   */
   Status InlineFunction(Node& node);
 
-  // Helper mtd to initialize checker context for the graph
-  void InitCheckerContext(ONNX_NAMESPACE::checker::CheckerContext& ctx);
-
-  // Helper mtd to initialize lexical scope context for the graph
-  void InitLexicalScopeContext(ONNX_NAMESPACE::checker::LexicalScopeContext& ctx);
-
   /** Initialize function body for the given node */
   void InitFunctionBodyForNode(Node& node);
 

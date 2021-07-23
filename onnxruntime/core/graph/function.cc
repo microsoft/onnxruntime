@@ -5,6 +5,7 @@
 #include "core/graph/function_impl.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/graph/contrib_ops/onnx_function_util.h"
 #include "onnx/shape_inference/implementation.h"
 
 namespace onnxruntime {
@@ -194,18 +195,11 @@ static std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph
   return op_schema;
 }
 
-// Creates domain to version map for onnx function by merging graph level opset imports with opset imports from
-// function proto
-static std::unordered_map<std::string, int> CreateFunctionOpsetImports(const ONNX_NAMESPACE::FunctionProto& func_proto,
-                                                              const std::unordered_map<std::string, int>& graph_imports) {
-  // function inherits all graph level opset imports
-  std::unordered_map<std::string, int> function_opset_imports{graph_imports};
-  // merge with opset imports in function proto
+// Creates domain to version map for onnx function
+static std::unordered_map<std::string, int> GetFunctionOpsetImports(const ONNX_NAMESPACE::FunctionProto& func_proto) {
+  std::unordered_map<std::string, int> function_opset_imports;
   for (const auto& opset_import : func_proto.opset_import()) {
-    auto opset_version = static_cast<int>(opset_import.version());
-    // We have already verified that function and graph opset imports are compatible (as part of checker::check_function call)
-    // If graph imports does not contain current opset_import then insert it otherwise the one in graph imports overrides.
-    function_opset_imports.insert({opset_import.domain(), opset_version});
+    function_opset_imports.insert({opset_import.domain(), static_cast<int>(opset_import.version())});
   }
   return function_opset_imports;
 }
@@ -287,7 +281,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     : parent_graph_(&graph),
       body_(onnx_func_proto.name(), false, onnxruntime::ModelMetaData(),
             graph.ModelPath().ToPathString(), IOnnxRuntimeOpSchemaRegistryList(),
-            CreateFunctionOpsetImports(onnx_func_proto, graph.DomainToVersionMap()),
+            onnx_func_proto.opset_import_size() != 0 ? GetFunctionOpsetImports(onnx_func_proto) : graph.DomainToVersionMap(),
             {}, logger),
       onnx_func_proto_(onnx_func_proto) {
   // Make a copy of the FunctionProto.

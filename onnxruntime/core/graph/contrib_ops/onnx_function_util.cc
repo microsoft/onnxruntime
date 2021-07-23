@@ -109,4 +109,54 @@ bool BuildFunctionProto(FunctionProto& functionProto, const OpSchema& schema,
   return true;
 }
 
+bool IsFunctionOpsetCompatible(
+    const ISchemaRegistry* schema_registry,
+    const FunctionProto& func_proto,
+    const std::unordered_map<std::string, int>& graph_imports) {
+  std::unordered_map<std::string, int> func_imports;
+  for (const auto& fn_import : func_proto.opset_import()) {
+    func_imports.insert({fn_import.domain(), static_cast<int>(fn_import.version())});
+  }
+
+  auto get_version = [](const std::string& domain, const std::unordered_map<std::string, int>& opset_imports) {
+    auto it = opset_imports.find(domain);
+    if (it == opset_imports.end()) {
+      return -1;
+    }
+    return it->second;
+  };
+
+  for (const auto& node : func_proto.node()) {
+    auto func_opset_version = get_version(node.domain(), func_imports);
+    auto model_opset_version = get_version(node.domain(), graph_imports);
+
+    if (func_opset_version == -1 && model_opset_version == -1) {
+      // No opset import for domain in graph and function imports.
+      return false;
+    } else if (func_opset_version == model_opset_version || model_opset_version == -1 || func_opset_version == -1) {
+      // If the opset versions are same or opset import for node.domain is present in one of the imports return true.
+      // ONNX allows model_opset_version == -1 but not func_opset_version == -1
+      // We relax the check in ORT to support pre-existing models.
+      continue;
+    } else {
+      const auto* schema_for_graph_import =
+          schema_registry->GetSchema(node.op_type(), model_opset_version, node.domain());
+
+      const auto* schema_for_func_import =
+          schema_registry->GetSchema(node.op_type(), func_opset_version, node.domain());
+
+      if (!schema_for_graph_import && !schema_for_func_import) {
+        // the op belongs to a custom domain (probably a model local function op) so we cannot verify schema
+        continue;
+      }
+
+      if (!schema_for_graph_import || !schema_for_func_import ||
+          schema_for_func_import->since_version() != schema_for_graph_import->since_version()) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
 }  // namespace ONNX_NAMESPACE
