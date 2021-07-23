@@ -224,8 +224,8 @@ const createBinaryProgramInfo =
     }`;
 
         return {
-          inputTypes: [textureType],
           inputNames: ['A', 'B'],
+          inputTypes: [textureType, textureType],
           output: {dims: outputShape, type: outputTensorType, textureType},
           shaderSource,
           hasMain: usePackedTexture
@@ -242,23 +242,13 @@ const createBinaryProgramInfo =
     }
     `;
 
-      if (usePackedTexture) {
-        return {
-          inputTypes: [textureType],
-          inputNames: ['A', 'B'],
-          output: {dims: inputs[0].dims, type: inputs[0].type, textureType},
-          shaderSource,
-          hasMain: true
-        };
-      } else {
-        return {
-          inputTypes: [textureType],
-          inputNames: ['A', 'B'],
-          output: {dims: inputs[0].dims, type: inputs[0].type, textureType},
-          shaderSource,
-          hasMain: true
-        };
-      }
+      return {
+        inputNames: ['A', 'B'],
+        inputTypes: [textureType, textureType],
+        output: {dims: inputs[0].dims, type: outputTensorType, textureType},
+        shaderSource,
+        hasMain: true
+      };
     };
 
 export const add = (handler: WebGLInferenceHandler, inputs: Tensor[]):
