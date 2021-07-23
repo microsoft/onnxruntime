@@ -27,7 +27,7 @@ const createMeanAndVarianceProgramInfo = (inferenceHandler: WebGLInferenceHandle
   const xDims = input.dims.slice();
   const channel = xDims[1];
   const channelSize = xDims[2] * xDims[3];
-  const outputUnpackedShape = [xDims[0], channel * 4];
+  const outputShape = [xDims[0], channel];
 
   const shaderSource = `
       vec4 process(int[2] indices) {
@@ -63,18 +63,19 @@ const createMeanAndVarianceProgramInfo = (inferenceHandler: WebGLInferenceHandle
     name: 'MeanAndVariance',
     inputNames: ['X'],
     inputTypes: [TextureType.unpacked],
-    output: {dims: outputUnpackedShape, type: input.type, textureType: TextureType.packed},
+    output: {dims: outputShape, type: input.type, textureType: TextureType.packedLastDimension},
     shaderSource
   };
 };
 
 const createComputeOutputProgramInfo =
-    (inferenceHandler: WebGLInferenceHandler, input: Tensor, epsilon: number, meanAndVarianceShape: readonly number[]):
-        ProgramInfo => {
-          const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
-          const [meanAndVarianceWidth, meanAndVarianceHeight] =
-              inferenceHandler.calculateTextureWidthAndHeight(meanAndVarianceShape, TextureType.packed);
-          const shaderSource = `
+    (inferenceHandler: WebGLInferenceHandler, input: Tensor, epsilon: number,
+     meanAndVarianceShape: readonly number[]): ProgramInfo => {
+      const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
+      const [textureWidth, textureHeight] =
+          inferenceHandler.calculateTextureWidthAndHeight(meanAndVarianceShape, TextureType.packedLastDimension);
+      const [meanAndVarianceWidth, meanAndVarianceHeight] = [textureWidth / 4, textureHeight];
+      const shaderSource = `
       vec4 get_MeanAndVariance(int[2] mv) {
         int offset = indicesToOffset_MeanAndVariance(mv);
         vec2 coords = offsetToCoords(offset, ${meanAndVarianceWidth}, ${meanAndVarianceHeight});
@@ -96,15 +97,15 @@ const createComputeOutputProgramInfo =
 
         return scale * (_X(indices) - mean) / sqrt(variance + epsilon) + b;
       }`;
-          return {
-            name: 'ComputeOutput',
-            inputNames: ['X', 'MeanAndVariance', 'Scale', 'B'],
-            inputTypes: [TextureType.unpacked, TextureType.packed, TextureType.unpacked, TextureType.unpacked],
-            output: {dims: input.dims, type: input.type, textureType: TextureType.unpacked},
-            variables: [{name: 'epsilon', type: 'float', data: epsilon}],
-            shaderSource
-          };
-        };
+      return {
+        name: 'ComputeOutput',
+        inputNames: ['X', 'MeanAndVariance', 'Scale', 'B'],
+        inputTypes: [TextureType.unpacked, TextureType.packedLastDimension, TextureType.unpacked, TextureType.unpacked],
+        output: {dims: input.dims, type: input.type, textureType: TextureType.unpacked},
+        variables: [{name: 'epsilon', type: 'float', data: epsilon}],
+        shaderSource
+      };
+    };
 
 const validateInputs = (inputs: Tensor[]): void => {
   if (!inputs || inputs.length !== 3) {
