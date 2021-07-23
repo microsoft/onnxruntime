@@ -27,9 +27,7 @@ export function glslCeil(): GlslValueFunction {
 export function glslCos(): GlslValueFunction {
   return glslBuiltinUnary('cos');
 }
-export function glslElu(attributes: Attribute): GlslValueFunction {
-  const alpha = attributes.getFloat('alpha', 1.0);
-
+export function glslElu(alpha: number): GlslValueFunction {
   const name = 'elu';
   const body = `
   const float alpha = float(${alpha});
@@ -49,10 +47,7 @@ export function glslExp(): GlslValueFunction {
 export function glslFloor(): GlslValueFunction {
   return glslBuiltinUnary('floor');
 }
-export function glslClip(attributes: Attribute): GlslValueFunction {
-  const min = attributes.getFloat('min', -3.4028234663852886e+38);
-  const max = attributes.getFloat('max', 3.4028234663852886e+38);
-
+export function glslClip(min: number, max: number): GlslValueFunction {
   const name = 'clip';
   const body = `
   const float min = float(${min});
@@ -199,6 +194,11 @@ const createElementwiseProgramInfo =
           };
         };
 
+export interface ClipAttributes {
+  readonly min: number;
+  readonly max: number;
+}
+
 export const abs = (handler: WebGLInferenceHandler, inputs: Tensor[]):
     Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslAbs()), inputs)];
 
@@ -211,8 +211,14 @@ export const asin = (handler: WebGLInferenceHandler, inputs: Tensor[]):
 export const atan = (handler: WebGLInferenceHandler, inputs: Tensor[]):
     Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslAtan()), inputs)];
 
-export const clip = (handler: WebGLInferenceHandler, inputs: Tensor[], node: Graph.Node):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslClip(node.attributes)), inputs)];
+export const clip =
+    (handler: WebGLInferenceHandler, inputs: Tensor[], attributes: ClipAttributes): Tensor[] => [handler.run(
+        createElementwiseProgramInfo(handler, inputs[0], glslClip(attributes.min, attributes.max)), inputs)];
+
+export const parseClipAttributes = (node: Graph.Node): ClipAttributes => ({
+  min: node.attributes.getFloat('min', -3.4028234663852886e+38),
+  max: node.attributes.getFloat('max', 3.4028234663852886e+38)
+});
 
 export const ceil = (handler: WebGLInferenceHandler, inputs: Tensor[]):
     Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslCeil()), inputs)];
@@ -220,8 +226,10 @@ export const ceil = (handler: WebGLInferenceHandler, inputs: Tensor[]):
 export const cos = (handler: WebGLInferenceHandler, inputs: Tensor[]):
     Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslCos()), inputs)];
 
-export const elu = (handler: WebGLInferenceHandler, inputs: Tensor[], node: Graph.Node):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslElu(node.attributes)), inputs)];
+export const elu = (handler: WebGLInferenceHandler, inputs: Tensor[], alpha: number):
+    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslElu(alpha)), inputs)];
+
+export const parseEluAttributes = (node: Graph.Node): number => node.attributes.getFloat('alpha', 1.0);
 
 export const exp = (handler: WebGLInferenceHandler, inputs: Tensor[]):
     Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslExp()), inputs)];

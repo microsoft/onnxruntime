@@ -39,7 +39,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
     return calculateTextureWidthAndHeight(this.session.layoutStrategy, shape, textureType);
   }
 
-  executeProgram(programInfo: ProgramInfo, inputs: Tensor[]): TextureData {
+  executeProgram(programInfo: ProgramInfo, inputs: readonly Tensor[]): TextureData {
     // create texture info for input
     const inputTextureDatas = inputs.map((tensor, i) => this.getOrCreateTextureData(tensor, programInfo.inputTypes[i]));
 
@@ -59,7 +59,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
     return outputTextureData;
   }
 
-  run(programInfo: ProgramInfo, inputs: Tensor[]): Tensor {
+  run(programInfo: ProgramInfo, inputs: readonly Tensor[]): Tensor {
     const outputTextureData = this.executeProgram(programInfo, inputs);
     return outputTextureData.tensor;
   }
@@ -101,6 +101,35 @@ export class WebGLInferenceHandler implements InferenceHandler {
     let td = this.getTextureData(tensor.dataId, textureType === TextureType.packed);
     if (!td) {
       const layout = createTextureLayoutFromTextureType(this.session.layoutStrategy, tensor.dims, textureType);
+
+      if (textureType === TextureType.packedLastDimension) {
+        const group = 1;
+        const channels = 4;
+        const shape = tensor.dims;
+        if (shape.length === 4 && shape[2] * shape[3] % channels !== 0) {
+          // pre-processing for kernel data of Conv.
+          //
+          // TODO: currently this is a hacking to overwrite Conv's weight. The correct way to do this should be:
+          // 1. implement texture based const-folding
+          // 2. create a WebGL program "preprocessConvWeight" to do the same work as below
+          // 3. run the program before dotProduct.
+          //
+          const adjustedKernelShape = [shape[0], Math.ceil((shape[1] * shape[2] * shape[3]) / channels)];
+          const adjustedLayout =
+              createTextureLayoutFromTextureType(this.session.layoutStrategy, adjustedKernelShape, textureType);
+          const numFeatureMaps = shape[0];
+          const oldRowSize = shape[1] * shape[2] * shape[3];
+          const newRowSize = Math.ceil(oldRowSize * group / channels) * channels;
+          const newSize = numFeatureMaps * newRowSize;
+          const buffer = new Float32Array(newSize);
+          for (let f = 0; f < numFeatureMaps; ++f) {
+            const oldOffset = f * oldRowSize;
+            const newOffset = f * newRowSize + f % group * oldRowSize;
+            buffer.set(tensor.numberData.subarray(oldOffset, oldOffset + oldRowSize), newOffset);
+          }
+          return this.createTextureData(adjustedLayout, tensor.type, buffer, tensor, Encoder.Usage.UploadOnly);
+        }
+      }
 
       if (textureType === TextureType.packed) {
         const unpackedTextureLayout =

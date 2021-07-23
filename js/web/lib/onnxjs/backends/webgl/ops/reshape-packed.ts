@@ -9,54 +9,51 @@ import {ProgramInfo, TextureType} from '../types';
 
 import {unpackFromChannel} from './packing-utils';
 
-export const createPackedReshapeProgramInfo = (
-    handler: WebGLInferenceHandler,
-    input0: Tensor,
-    input1: Tensor,
-    ): ProgramInfo => {
-  // For packed reshape, we need to re-arrange texel data for output shape.
-  // Our pack is designed to pack a 2x2 tile in last h and w dimension, so
-  // for the reshaped new tensor, we just need to re-arrange the last h and
-  // w dimension. For any shape that is not in 3D, i.e. [batch, W, H], we
-  // first convert it to 3D by collapsing other dimension to batch dim, then
-  // process with the last two dimensions.
-  // Note: we only need the shape tensor to calculate output shape, so the
-  // content in shape tensor is never uploaded to GPU. It is always kept in CPU.
-  // TODO: optimize the algorithm -- in some cases, if the last two dims are
-  // the same between input shape and output shape, the packed reshape can be
-  // treated as no-op.
-  // TODO: the implementation is a bit complicated due to the fact tensor shape is
-  // immutable once the tensor is created, plus the tensor shape has a 1-to-1
-  // mapping with texture layout. In the future, we may consider relaxing this
-  // assumption.
+export const reshapePacked = (handler: WebGLInferenceHandler, x: Tensor, shape: readonly number[]): Tensor =>
+    handler.run(createPackedReshapeProgramInfo(handler, x, shape), [x]);
 
-  const originInputShape = input0.dims;
-  const inputShape3D = processDims3D(input0.dims);
+export const createPackedReshapeProgramInfo =
+    (handler: WebGLInferenceHandler, input: Tensor, outputShape: readonly number[]): ProgramInfo => {
+      // For packed reshape, we need to re-arrange texel data for output shape.
+      // Our pack is designed to pack a 2x2 tile in last h and w dimension, so
+      // for the reshaped new tensor, we just need to re-arrange the last h and
+      // w dimension. For any shape that is not in 3D, i.e. [batch, W, H], we
+      // first convert it to 3D by collapsing other dimension to batch dim, then
+      // process with the last two dimensions.
+      // Note: we only need the shape tensor to calculate output shape, so the
+      // content in shape tensor is never uploaded to GPU. It is always kept in CPU.
+      // TODO: optimize the algorithm -- in some cases, if the last two dims are
+      // the same between input shape and output shape, the packed reshape can be
+      // treated as no-op.
+      // TODO: the implementation is a bit complicated due to the fact tensor shape is
+      // immutable once the tensor is created, plus the tensor shape has a 1-to-1
+      // mapping with texture layout. In the future, we may consider relaxing this
+      // assumption.
 
-  const outputShape = ShapeUtil.calculateReshapedDims(originInputShape, input1.integerData);
-  const squeezedOutputShape = processDims3D(outputShape);
+      const inputShape3D = processDims3D(input.dims);
+      const squeezedOutputShape = processDims3D(outputShape);
 
-  let mainLoop = '';
-  for (let i = 0; i < 4; i++) {
-    let outputCoords = '';
-    switch (i) {
-      case 0:
-        outputCoords = 'outputCoords = rc;';
-        break;
-      case 1:
-        outputCoords = 'outputCoords = ivec3(rc.x, rc.y+1, rc.z);';
-        break;
-      case 2:
-        outputCoords = 'outputCoords = ivec3(rc.x, rc.y, rc.z+1);';
-        break;
-      case 3:
-        outputCoords = 'outputCoords = ivec3(rc.x, rc.y+1, rc.z+1);';
-        break;
-      default:
-        throw new Error();
-    }
+      let mainLoop = '';
+      for (let i = 0; i < 4; i++) {
+        let outputCoords = '';
+        switch (i) {
+          case 0:
+            outputCoords = 'outputCoords = rc;';
+            break;
+          case 1:
+            outputCoords = 'outputCoords = ivec3(rc.x, rc.y+1, rc.z);';
+            break;
+          case 2:
+            outputCoords = 'outputCoords = ivec3(rc.x, rc.y, rc.z+1);';
+            break;
+          case 3:
+            outputCoords = 'outputCoords = ivec3(rc.x, rc.y+1, rc.z+1);';
+            break;
+          default:
+            throw new Error();
+        }
 
-    mainLoop += `
+        mainLoop += `
         ${outputCoords}
         ${i > 0 ? 'if(outputCoords.y < rows && outputCoords.z < cols){' : ''}
           int flattenedIndex = getFlattenedIndex(outputCoords);
@@ -68,10 +65,10 @@ export const createPackedReshapeProgramInfo = (
 
         ${i > 0 ? '}' : ''}
       `;
-  }
-  const glsl = getGlsl(handler.session.backend.glContext.version);
+      }
+      const glsl = getGlsl(handler.session.backend.glContext.version);
 
-  const shaderSource = `
+      const shaderSource = `
       ${getReshapedInputCoords(inputShape3D)}
       ${getFlattenedIndexFrom3D(squeezedOutputShape)}
       ${unpackFromChannel()}
@@ -90,24 +87,24 @@ export const createPackedReshapeProgramInfo = (
       }
     `;
 
-  return {
-    inputTypes: [TextureType.packed],
-    inputNames: ['A'],
-    output: {dims: input1.dims, type: input0.type, textureType: TextureType.packed},
-    shaderSource,
-    hasMain: true
-  };
-};
+      return {
+        name: 'Reshape (packed)',
+        inputTypes: [TextureType.packed],
+        inputNames: ['A'],
+        output: {dims: outputShape, type: input.type, textureType: TextureType.packed},
+        shaderSource,
+        hasMain: true
+      };
+    };
 
-function processDims3D(shape: readonly number[]|readonly number[]|Tensor.IntegerType): [number, number, number] {
+function processDims3D(shape: ArrayLike<number>): [number, number, number] {
   if (shape.length === 0) {
     return [1, 1, 1];
   }
   // TODO: squeeze other shapes to 2D case
-  const batchDims = shape.length >= 3 ? shape.slice(0, shape.length - 2) : [1];
   let batch = 1;
-  for (let i = 0; i < batchDims.length; ++i) {
-    batch *= batchDims[i];
+  for (let i = 0; i < shape.length - 2; ++i) {
+    batch *= shape[i];
   }
   return [batch, shape.length > 1 ? shape[shape.length - 2] : 1, shape[shape.length - 1]];
 }

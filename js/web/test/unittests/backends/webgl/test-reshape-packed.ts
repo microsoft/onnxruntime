@@ -134,13 +134,9 @@ describe('#UnitTest# - reshape - packed', () => {
       const inputData = createAscendingArray(elementCount);
       const inputTensorA = new Tensor(inputTensorShape, 'float32', undefined, undefined, inputData);
 
-      // create shape data tensor
-      const inputTensorB =
-          new Tensor([outputTensorShape.length], 'int32', undefined, undefined, new Int32Array(outputTensorShape));
-
       // compile shader code
       const programInfo =
-          createPackedReshapeProgramInfo(inferenceHandler! as WebGLInferenceHandler, inputTensorA, inputTensorB);
+          createPackedReshapeProgramInfo(inferenceHandler! as WebGLInferenceHandler, inputTensorA, outputTensorShape);
 
       // run kernal and get output
       const resultTensor = webglInferenceHandler.executeProgram(programInfo, [inputTensorA]);

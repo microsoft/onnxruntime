@@ -44,7 +44,7 @@ export enum TextureType {
   unpackedReversed,      // <-- unpacked texture used in old ONNX.js implementation (deprecated)
   packed,                // <-- normal packed texture
   downloadUint8AsFloat,  // <-- ONLY used in texture downloading for iOS devices
-  packedConvWeight       // <-- ONLY used in old ONNX.js Conv implementation for input W (deprecated)
+  packedLastDimension    // <-- ONLY used in old ONNX.js Conv implementation for input W (deprecated)
 }
 
 export interface TensorInfo {

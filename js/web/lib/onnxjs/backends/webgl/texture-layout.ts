@@ -11,7 +11,12 @@ export const createTextureLayoutFromTextureType =
       const channel = (textureType === TextureType.unpacked || textureType === TextureType.unpackedReversed) ? 1 : 4;
       const isPacked = textureType === TextureType.packed;
       const reverseWH = (textureType === TextureType.unpackedReversed || textureType === TextureType.packed);
-      return createTextureLayoutFromShape(textureLayoutStrategy, shape, channel, undefined, {isPacked, reverseWH});
+      const breakAxis = textureType === TextureType.packedLastDimension ? shape.length - 1 : undefined;
+      const unpackedShape = textureType === TextureType.packedLastDimension ?
+          shape.map((d, i) => i === shape.length - 1 ? d * 4 : d) :
+          undefined;
+      return createTextureLayoutFromShape(
+          textureLayoutStrategy, shape, channel, unpackedShape, {isPacked, reverseWH, breakAxis});
     };
 
 export const calculateTextureWidthAndHeight =

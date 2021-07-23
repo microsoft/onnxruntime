@@ -1,35 +1,41 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// import {glslClip} from './clip';
-// import {glslRelu, glslSigmoid} from './unary-op';
+import {Attribute} from '../../../attribute';
+import {GlslValueFunction} from '../glsl-definitions';
+import {glslClip, glslRelu, glslSigmoid} from './unary-op';
 
-// export function getActicationSnippet(activation: string) {
-//   let activationFunction = '';
-//   let activationName = '';
-//   switch (activation) {
-//     case 'Relu':
-//       activationName = glslRelu().name;
-//       activationFunction = glslRelu().body;
-//       break;
-//     case 'Sigmoid':
-//       activationName = glslSigmoid().name;
-//       activationFunction = glslSigmoid().body;
-//       break;
-//     case 'Clip':
-//       activationName = glslClip().name;
-//       activationFunction = glslClip().body;
-//       break;
-//     default:
-//       // TODO: adding other activations that can be fused.
-//       activationName = '';
-//       activationFunction = '';
-//   }
+export interface InternalActivationAttributes {
+  readonly activation: string;
+  readonly clipMin: number;
+  readonly clipMax: number;
+}
 
-//   const applyActivation = activation ? (activation === 'Clip' ? `
-//   value = ${activationName}(value, max, min);` :
-//                                                                 `
-//   value = ${activationName}(value);`) :
-//                                        '';
-//   return {activationFunction, applyActivation};
-// }
+export function getActicationSnippet(attributes: InternalActivationAttributes) {
+  let func: GlslValueFunction;
+  switch (attributes.activation) {
+    case 'Relu':
+      func = glslRelu();
+      break;
+    case 'Sigmoid':
+      func = glslSigmoid();
+      break;
+    case 'Clip':
+      func = glslClip(attributes.clipMin, attributes.clipMax);
+      break;
+    // TODO: adding other activations that can be fused.
+    default:
+      return {activationFunction: '', applyActivation: ''};
+  }
+
+  const activationName = func.name;
+  const activationFunction = func.body;
+  const applyActivation = `value = ${activationName}_(value);`;
+  return {activationFunction, applyActivation};
+}
+
+export const parseInternalActivationAttributes = (attributes: Attribute): InternalActivationAttributes => ({
+  activation: attributes.getString('__internal_activation', ''),
+  clipMax: attributes.getFloat('__clip_max', 3.402823e+38),
+  clipMin: attributes.getFloat('__clip_min', -3.402823e+38),
+});

@@ -7,7 +7,7 @@ import {batchNormalization, parseBatchNormalizationAttributes} from './ops/batch
 import * as binaryOps from './ops/binary-op';
 // import {WebGLClip} from './ops/clip';
 import {concat, parseConcatAttributes} from './ops/concat';
-// import {WebGLConv} from './ops/conv';
+import {conv, parseConvAttributes} from './ops/conv';
 import {depthToSpace, parseDepthToSpaceAttributes} from './ops/depth-to-space';
 // import {WebGLDropout} from './ops/dropout';
 // import {WebGLElu} from './ops/elu';
@@ -45,15 +45,15 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // ['AveragePool', '', '7-10', () => new WebGLAveragePool()],  // TODO: support new attributes for AveragePool-10
   ['BatchNormalization', '', '7+', batchNormalization, parseBatchNormalizationAttributes],
   ['Ceil', '', '6+', unaryOps.ceil],
-  ['Clip', '', '6-10', unaryOps.clip],
+  ['Clip', '', '6-10', unaryOps.clip, unaryOps.parseClipAttributes],
   ['Concat', '', '4+', concat, parseConcatAttributes],
-  // ['Conv', '', '1+', () => new WebGLConv()],
+  ['Conv', '', '1+', conv, parseConvAttributes],
   ['Cos', '', '7+', unaryOps.cos],
   ['Div', '', '7+', binaryOps.div],
   ['Dropout', '', '7+', unaryOps.identity],
   ['DepthToSpace', '', '1+', depthToSpace, parseDepthToSpaceAttributes],
   ['Equal', '', '7+', binaryOps.equal],
-  ['Elu', '', '6+', unaryOps.elu],
+  ['Elu', '', '6+', unaryOps.elu, unaryOps.parseEluAttributes],
   ['Exp', '', '6+', unaryOps.exp],
   // ['Flatten', '', '1+', () => new WebGLFlatten()],
   ['Floor', '', '6+', unaryOps.floor],
