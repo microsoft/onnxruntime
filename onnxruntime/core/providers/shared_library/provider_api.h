@@ -169,6 +169,7 @@ struct OpKernelContext;
 struct OpKernelInfo;
 struct PrimitiveDataTypeBase;
 struct Tensor;
+struct SparseTensor;
 struct TensorSeq;
 
 class If;
@@ -188,7 +189,7 @@ template <typename T>
 struct EinsumTypedComputeProcessor;
 
 namespace contrib {
-class ATenOpBase;
+class ATenOp;
 class Group;
 class PassThrough;
 class YieldOp;

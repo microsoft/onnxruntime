@@ -133,7 +133,7 @@ common::Status SaveInitializedTensors(
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const std::vector<OrtValueIndex>& initializer_allocation_order,
     ITensorAllocator& planner,
-    const std::function<Status(int idx, const OrtValue& value, const OrtCallback& d, bool constant)>& save_tensor_func,
+    const SaveTensorFunction& save_tensor_func,
     const logging::Logger& logger, const DataTransferManager& data_transfer_mgr,
     const ExecutionPlanBase& exec_plan,
     const SessionOptions& session_options) {
@@ -252,8 +252,9 @@ common::Status SaveInitializedTensors(
 
     // any outer scope value is shadowed by a local value and can't override it.
     // due to that check_outer_scope is false
-    bool constant = graph.IsConstantInitializer(name, /* check_outer_scope */ false);
-    ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter, constant));
+    const bool constant = graph.IsConstantInitializer(name, /* check_outer_scope */ false);
+    const bool sparse = graph.GetGraph().IsSparseInitializer(name);
+    ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter, constant, sparse));
 
     VLOGS(logger, 1) << "Added weight with name : " << name << " with index: " << ort_value_index;
   }

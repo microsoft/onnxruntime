@@ -4,6 +4,8 @@
 # --------------------------------------------------------------------------
 
 from ._torch_module_factory import TorchModuleFactory
+from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
+from ._custom_gradient_registry import CustomGradientRegistry
 
 from onnxruntime.training import register_custom_ops_pytorch_exporter
 
@@ -46,7 +48,9 @@ class ORTModule(torch.nn.Module):
         super(ORTModule, self).__init__()
 
         # Support contrib OPs
-        register_custom_ops_pytorch_exporter.register_custom_op(is_ortmodule=True)
+        register_custom_ops_pytorch_exporter.register_custom_op()
+        CustomOpSymbolicRegistry.register_all()
+        CustomGradientRegistry.register_all()
 
     # IMPORTANT: DO NOT add code here
     # This declaration is for automatic document generation purposes only

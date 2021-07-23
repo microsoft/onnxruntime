@@ -1248,6 +1248,28 @@ public class InferenceTest {
   }
 
   @Test
+  public void testModelInputUINT8() throws OrtException {
+    String modelPath = getResourcePath("/test_types_UINT8.pb").toString();
+
+    try (OrtEnvironment env = OrtEnvironment.getEnvironment("testModelInputUINT8");
+        SessionOptions options = new SessionOptions();
+        OrtSession session = env.createSession(modelPath, options)) {
+      String inputName = session.getInputNames().iterator().next();
+      Map<String, OnnxTensor> container = new HashMap<>();
+      byte[] flatInput = new byte[] {1, 2, -3, Byte.MIN_VALUE, Byte.MAX_VALUE};
+      ByteBuffer data = ByteBuffer.wrap(flatInput);
+      long[] shape = new long[] {1, 5};
+      OnnxTensor ov = OnnxTensor.createTensor(env, data, shape, OnnxJavaType.UINT8);
+      container.put(inputName, ov);
+      try (OrtSession.Result res = session.run(container)) {
+        byte[] resultArray = TestHelpers.flattenByte(res.get(0).getValue());
+        assertArrayEquals(flatInput, resultArray);
+      }
+      OnnxValue.close(container);
+    }
+  }
+
+  @Test
   public void testModelInputINT16() throws OrtException {
     // model takes 1x5 input of fixed type, echoes back
     String modelPath = getResourcePath("/test_types_INT16.pb").toString();
@@ -1476,13 +1498,15 @@ public class InferenceTest {
         OnnxValue firstOutput = outputs.get(0);
         assertTrue(firstOutput instanceof OnnxTensor);
 
-        String[] labelOutput = (String[]) firstOutput.getValue();
+        String[][] labelOutput = (String[][]) firstOutput.getValue();
 
-        assertEquals("this", labelOutput[0]);
-        assertEquals("is", labelOutput[1]);
-        assertEquals("identity", labelOutput[2]);
-        assertEquals("test \u263A", labelOutput[3]);
-        assertEquals(4, labelOutput.length);
+        assertEquals("this", labelOutput[0][0]);
+        assertEquals("is", labelOutput[0][1]);
+        assertEquals("identity", labelOutput[1][0]);
+        assertEquals("test \u263A", labelOutput[1][1]);
+        assertEquals(2, labelOutput.length);
+        assertEquals(2, labelOutput[0].length);
+        assertEquals(2, labelOutput[1].length);
 
         OnnxValue.close(container);
         container.clear();
@@ -1498,13 +1522,15 @@ public class InferenceTest {
         OnnxValue firstOutput = outputs.get(0);
         assertTrue(firstOutput instanceof OnnxTensor);
 
-        String[] labelOutput = (String[]) firstOutput.getValue();
+        String[][] labelOutput = (String[][]) firstOutput.getValue();
 
-        assertEquals("this", labelOutput[0]);
-        assertEquals("is", labelOutput[1]);
-        assertEquals("identity", labelOutput[2]);
-        assertEquals("test \u263A", labelOutput[3]);
-        assertEquals(4, labelOutput.length);
+        assertEquals("this", labelOutput[0][0]);
+        assertEquals("is", labelOutput[0][1]);
+        assertEquals("identity", labelOutput[1][0]);
+        assertEquals("test \u263A", labelOutput[1][1]);
+        assertEquals(2, labelOutput.length);
+        assertEquals(2, labelOutput[0].length);
+        assertEquals(2, labelOutput[1].length);
       }
     }
   }
