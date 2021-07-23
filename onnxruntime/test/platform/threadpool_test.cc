@@ -424,7 +424,7 @@ TEST(ThreadPoolTest, TestStagedMultiLoopSections_4Thread_10Loop) {
 TEST(ThreadPoolTest, TestStagedMultiLoopSections_4Thread_100Loop) {
   TestStagedMultiLoopSections("TestStagedMultiLoopSections_4Thread_100Loop", 4, 100);
 }
-#ifdef _WIN32
+#if defined(_WIN32) && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 #pragma warning(push)
 #pragma warning(disable : 6387)
 TEST(ThreadPoolTest, TestStackSize) {

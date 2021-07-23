@@ -793,7 +793,7 @@ endif()
 
 # Adding pytorch CPU info library
 # TODO  do we have to add target_include_directories to each project that uses this?
-if(CMAKE_SYSTEM_NAME STREQUAL "WindowsStore" OR (MSVC AND (( CMAKE_SYSTEM_PROCESSOR  MATCHES "^(ARM.*|arm.*)$" ) OR (CMAKE_GENERATOR_PLATFORM  MATCHES "^(ARM.*|arm.*)$" ) )) )
+if(WINDOWS_STORE OR (MSVC AND (( CMAKE_SYSTEM_PROCESSOR  MATCHES "^(ARM.*|arm.*)$" ) OR (CMAKE_GENERATOR_PLATFORM  MATCHES "^(ARM.*|arm.*)$" ) )) )
   # cpuinfo fail to compile with windows arm.
 else()
 set(PYTORCH_CPUINFO_DIR external/pytorch_cpuinfo)

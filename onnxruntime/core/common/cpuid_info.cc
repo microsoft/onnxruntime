@@ -24,7 +24,9 @@
 #if defined(CPUIDINFO_ARCH_X86) || defined(CPUIDINFO_ARCH_ARM)
 
 #if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) || (defined(_MSC_VER) && defined(CPUIDINFO_ARCH_ARM))
-// pytorch cpu info does not work for Windows ARM
+// pytorch cpu info does not work for Windows UWP or ARM
+// UWP: Some APIs are not available
+// ARM:
 // 1. msvc report syntax error in file src/arm/api.h
 // 2. features reporting micro-arch in Windows is missing
 #else
