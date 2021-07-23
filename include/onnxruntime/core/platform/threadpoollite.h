@@ -25,10 +25,7 @@ class ThreadPoolLite : public ThreadPool {
                  const NAME_CHAR_TYPE*,
                  int num_threads,
                  bool);
-  ThreadPoolLite(const ThreadPoolLite&) = delete;
-  ThreadPoolLite& operator=(const ThreadPoolLite&) = delete;
-  ThreadPoolLite(ThreadPoolLite&&) = default;
-  ThreadPoolLite& operator=(ThreadPoolLite&&) = default;
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(ThreadPoolLite);
   ~ThreadPoolLite();
 
   int NumThreads() const override { return static_cast<int>(sub_threads_.size()); }
