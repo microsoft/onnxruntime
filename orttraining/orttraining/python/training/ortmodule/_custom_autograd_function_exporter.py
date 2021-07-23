@@ -20,7 +20,7 @@ def _export(g, n, *args, **kwargs):
         training_mode = symbolic_helper._training_mode
         cconv = n.cconv()
         input_tensor_types = []
-        input_tensor_requires_grads = []
+        input_requires_grads = []
         input_tensor_ranks = []
 
         input_int_scalars = []
@@ -48,7 +48,7 @@ def _export(g, n, *args, **kwargs):
                 tensor_args.append(arg)
 
                 requires_grad = 1 if arg.requires_grad() else 0
-                input_tensor_requires_grads.append(requires_grad)
+                input_requires_grads.append(requires_grad)
 
                 scalar_type = int(symbolic_helper.cast_pytorch_to_onnx[arg.type(
                 ).scalarType()])
@@ -57,7 +57,7 @@ def _export(g, n, *args, **kwargs):
             elif call_type == 'c':
                 # Got a non-tensor variable.
                 # Non-tensor can't have gradient.
-                input_tensor_requires_grads.append(0)
+                input_requires_grads.append(0)
                 if isinstance(arg, float):
                     # A float.
                     input_float_scalar_positions.append(i)
@@ -108,11 +108,11 @@ def _export(g, n, *args, **kwargs):
         attrs = {
             'name_s': name,
             'inplace_i': inplace,
-            'call_convention_s': cconv,
+            'input_convention_s': cconv,
             'outputs': n.outputsSize(),
             'input_tensor_types_i': input_tensor_types,
             'input_tensor_ranks_i': input_tensor_ranks,
-            'input_tensor_requires_grads_i': input_tensor_requires_grads,
+            'input_requires_grads_i': input_requires_grads,
             'output_tensor_types_i': output_tensor_types,
             'output_tensor_ranks_i': output_tensor_ranks,
             'output_tensor_requires_grads_i': output_tensor_requires_grads,
@@ -145,7 +145,24 @@ def _export(g, n, *args, **kwargs):
         sys.stderr.flush()
         raise
 
-def _post_process_after_export(exported_model):
+def _post_process_after_export(exported_model, enable_custom_autograd_function):
+    if enable_custom_autograd_function:
+        return _post_process_enabling_autograd_fallback(exported_model)
+
+    is_fallback_needed = False
+    for node in exported_model.graph.node:
+        if node.domain == 'com.microsoft' and node.op_type in ["PythonOp"]:
+            is_fallback_needed = True
+            break
+
+    if is_fallback_needed:
+        raise RuntimeError('Detected autograd functions usage in current model, the run will fail \
+            without enabling \'_enable_custom_autograd_function\'. Please enable it with: \
+            \'module._execution_manager(is_training_mode)._enable_custom_autograd_function = True\'') 
+
+    return exported_model
+
+def _post_process_enabling_autograd_fallback(exported_model):
     index = 0
     for node in exported_model.graph.node:
         if node.domain == 'com.microsoft' and node.op_type in ["PythonOp"]:

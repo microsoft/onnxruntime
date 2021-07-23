@@ -350,6 +350,11 @@ def parse_arguments():
     parser.add_argument(
         "--emsdk_version", default="2.0.23", help="Specify version of emsdk")
 
+    # Enable onnxruntime-extensions
+    parser.add_argument(
+        "--enable_onnxruntime_extensions", action='store_true',
+        help="Enable custom operators in onnxruntime-extensions")
+
     # Arguments needed by CI
     parser.add_argument(
         "--cmake_path", default="cmake", help="Path to the CMake program.")
@@ -755,6 +760,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
+        # enable custom operators in onnxruntime-extensions
+        "-Donnxruntime_ENABLE_EXTENSION_CUSTOM_OPS=" + ("ON" if args.enable_onnxruntime_extensions else "OFF"),
     ]
     if args.use_cuda:
         cmake_args += ["-Donnxruntime_USE_CUDA=ON", "-Donnxruntime_CUDA_VERSION=" + args.cuda_version,
@@ -1291,8 +1298,17 @@ def run_ios_tests(args, source_dir, config, cwd):
 
     if args.build_apple_framework:
         package_test_py = os.path.join(source_dir, 'tools', 'ci_build', 'github', 'apple', 'test_ios_packages.py')
-        framework_dir = os.path.join(cwd, config + '-' + args.ios_sysroot)
-        run_subprocess([sys.executable, package_test_py, '--c_framework_dir', framework_dir], cwd=cwd)
+        framework_info_file = os.path.join(cwd, 'framework_info.json')
+        dynamic_framework_dir = os.path.join(cwd, config + '-' + args.ios_sysroot)
+        static_framework_dir = os.path.join(cwd, config + '-' + args.ios_sysroot, 'static_framework')
+        # test dynamic framework
+        run_subprocess([sys.executable, package_test_py,
+                        '--c_framework_dir', dynamic_framework_dir,
+                        '--framework_info_file', framework_info_file], cwd=cwd)
+        # test static framework
+        run_subprocess([sys.executable, package_test_py,
+                        '--c_framework_dir', static_framework_dir,
+                        '--framework_info_file', framework_info_file], cwd=cwd)
 
 
 def run_orttraining_test_orttrainer_frontend_separately(cwd):
@@ -1482,6 +1498,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 cwd = os.path.join(cwd, config)
 
             run_subprocess([sys.executable, 'onnxruntime_test_python.py'], cwd=cwd, dll_path=dll_path)
+
+            if not args.disable_contrib_ops:
+                run_subprocess([sys.executable, 'onnxruntime_test_python_sparse_matmul.py'],
+                               cwd=cwd, dll_path=dll_path)
 
             if args.enable_symbolic_shape_infer_tests:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_symbolic_shape_infer.py'],
