@@ -98,7 +98,7 @@ const createComputeOutputProgramInfo =
         return scale * (_X(indices) - mean) / sqrt(variance + epsilon) + b;
       }`;
       return {
-        name: 'ComputeOutput',
+        name: 'InstanceNormalization',
         inputNames: ['X', 'MeanAndVariance', 'Scale', 'B'],
         inputTypes: [TextureType.unpacked, TextureType.packedLastDimension, TextureType.unpacked, TextureType.unpacked],
         output: {dims: input.dims, type: input.type, textureType: TextureType.unpacked},

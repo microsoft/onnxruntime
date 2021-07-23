@@ -5,16 +5,13 @@ import {OpSet} from '../../opset';
 
 import {batchNormalization, parseBatchNormalizationAttributes} from './ops/batch-normalization';
 import * as binaryOps from './ops/binary-op';
-// import {WebGLClip} from './ops/clip';
 import {concat, parseConcatAttributes} from './ops/concat';
 import {conv, parseConvAttributes} from './ops/conv';
 import {depthToSpace, parseDepthToSpaceAttributes} from './ops/depth-to-space';
-// import {WebGLDropout} from './ops/dropout';
-// import {WebGLElu} from './ops/elu';
-// import {WebGLFlatten} from './ops/flatten';
-// import {WebGLGather} from './ops/gather';
-// import {WebGLGemm} from './ops/gemm';
-// import {WebGLImageScaler} from './ops/image-scaler';
+import {flatten, parseFlattenAttributes} from './ops/flatten';
+import {gather, parseGatherAttributes} from './ops/gather';
+import {gemm, parseGemmAttributesV11, parseGemmAttributesV7} from './ops/gemm';
+import {imageScaler, parseImageScalerAttributes} from './ops/image-scaler';
 import {instanceNormalization, parseInstanceNormalizationAttributes} from './ops/instance-normalization';
 import {leakyRelu, parseLeakyReluAttributes} from './ops/leaky-relu';
 // import {WebGLMatMul} from './ops/matmul';
@@ -60,16 +57,16 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Equal', '', '7+', binaryOps.equal],
   ['Elu', '', '6+', unaryOps.elu, unaryOps.parseEluAttributes],
   ['Exp', '', '6+', unaryOps.exp],
-  // ['Flatten', '', '1+', () => new WebGLFlatten()],
+  ['Flatten', '', '1+', flatten, parseFlattenAttributes],
   ['Floor', '', '6+', unaryOps.floor],
-  // ['Gather', '', '1+', () => new WebGLGather()],
-  // ['Gemm', '', '7-10', () => new WebGLGemm(false)],
-  // ['Gemm', '', '11+', () => new WebGLGemm(true)],
+  ['Gather', '', '1+', gather, parseGatherAttributes],
+  ['Gemm', '', '7-10', gemm, parseGemmAttributesV7],
+  ['Gemm', '', '11+', gemm, parseGemmAttributesV11],
   ['GlobalAveragePool', '', '1+', globalAveragePool, parseGlobalAveragePoolAttributes],
   ['GlobalMaxPool', '', '1+', globalMaxPool],
   ['Greater', '', '7+', binaryOps.greater],
   ['Identity', '', '1+', unaryOps.identity],
-  // ['ImageScaler', '', '1+', () => new WebGLImageScaler()],
+  ['ImageScaler', '', '1+', imageScaler, parseImageScalerAttributes],
   ['InstanceNormalization', '', '6+', instanceNormalization, parseInstanceNormalizationAttributes],
   ['LeakyRelu', '', '6+', leakyRelu, parseLeakyReluAttributes],
   ['Less', '', '7+', binaryOps.less],
