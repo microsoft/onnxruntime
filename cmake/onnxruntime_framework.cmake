@@ -8,19 +8,12 @@ file(GLOB_RECURSE onnxruntime_framework_srcs CONFIGURE_DEPENDS
 )
 
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
-  # todo: move those training related files into orttraining/core/framework/torch folder.
-  list(APPEND onnxruntime_framework_srcs
-    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/dlpack_python.cc"
-    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/dlpack_python.h"
-    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/python_common.h"
-    "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/custom_function_register.cc"
-    "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/custom_function_register.h"
-    "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/gil.h"
-    "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/refcount_tracker.cc"
-    "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/refcount_tracker.h"
-    "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/torch_proxy.cc"
-    "${ONNXRUNTIME_ROOT}/core/language_interop_ops/torch/torch_proxy.h"
-  )
+file(GLOB_RECURSE onnxruntime_training_framework_torch_srcs CONFIGURE_DEPENDS
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.h"
+    "${ORTTRAINING_SOURCE_DIR}/core/framework/torch/*.cc"
+)
+
+  list(APPEND onnxruntime_framework_srcs ${onnxruntime_training_framework_torch_srcs})
 endif()
 
 if (onnxruntime_MINIMAL_BUILD)

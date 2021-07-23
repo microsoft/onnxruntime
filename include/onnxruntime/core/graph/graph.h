@@ -625,6 +625,12 @@ class Graph {
   /** Check if a given name is an initializer tensor's name in this graph. */
   bool IsInitializedTensor(const std::string& name) const;
 
+  /** Check if a given name is a sparse initializer's name in the model 
+   * we currently convert sparse_initializer field in the model into dense Tensor instances.
+   * However, we sometimes want to check if this initializer was stored as sparse in the model.
+  */
+  bool IsSparseInitializer(const std::string& name) const;
+
   /** Gets an initializer tensor with the provided name.
   @param[out] value Set to the TensorProto* if the initializer is found, or nullptr if not.
   @returns True if found.
