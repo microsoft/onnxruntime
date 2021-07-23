@@ -959,8 +959,8 @@ class TestInferenceSession(unittest.TestCase):
         check_failure([("a", {1: 2})], [{3: 4}])
 
     def testRegisterCustomEPsLibrary(self):
-        # exclude for macos and linux
-        if not sys.platform.startswith("win"):
+        # exclude for macos
+        if sys.platform.startswith("darwin"):
             return
 
         shared_library = 'test_execution_provider.dll'
