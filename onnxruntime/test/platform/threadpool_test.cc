@@ -49,10 +49,15 @@ void ValidateTestData(TestData& test_data, int expected=1) {
 // static methods and should operate across all of these cases.
 void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::function<void(ThreadPool*)>& test_body, bool test_tplite = false) {
   if (num_threads > 0) {
+#ifdef ORT_MINIMAL_BUILD
+    auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr,
+                                           num_threads, true);
+#else
     auto tp = test_tplite ? std::make_unique<ThreadPoolLite>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr,
                                                              num_threads, true)
                           : std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr,
                                                          num_threads, true);
+#endif
     test_body(tp.get());
   } else {
     test_body(nullptr);
@@ -112,7 +117,9 @@ void TestConcurrentParallelFor(const std::string& name, int num_threads, int num
       td.clear();
     };
     CreateThreadPoolAndTest(name, num_threads, task);
+#if !defined(ORT_MINIMAL_BUILD)
     CreateThreadPoolAndTest(name, num_threads, task, true);
+#endif
   }
 }
 
