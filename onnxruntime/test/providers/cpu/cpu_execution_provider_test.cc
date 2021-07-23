@@ -210,7 +210,7 @@ void OrtModelRunner::Run(const RunParam& param) {
   for (size_t i = 0; i < param.num_runs; i++) {
     auto input_tensors = GetIOTensors(input_data);
     auto output_tensors = GetIOTensors(output_data);
-    session.Run(Ort::RunOptions{nullptr},
+    session.Run(ro,
                 input_names.data(), input_tensors.data(), input_names.size(),
                 output_names.data(), output_tensors.data(), output_names.size());
   }
