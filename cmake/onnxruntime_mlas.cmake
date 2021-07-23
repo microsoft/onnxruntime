@@ -87,11 +87,6 @@ elseif(MSVC)
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
 
-    if (onnxruntime_MINIMAL_BUILD)
-      # exclude AVX512 in minimal build
-      set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512F_UNSUPPORTED")
-    endif()
-
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/dgemm.cpp
       ${mlas_platform_srcs_avx}
@@ -323,81 +318,22 @@ else()
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
 
-    # Some toolchains do not support AVX512 compiler flags but are still able
-    # to build the sources. Other toolchains require the AVX512 compiler flags
-    # to be specified.
-    check_cxx_compiler_flag("-mavx512f" HAS_AVX512F)
-    if(HAS_AVX512F)
-      set(CMAKE_REQUIRED_FLAGS "-mavx512f")
-    else()
-      set(CMAKE_REQUIRED_FLAGS "")
-    endif()
-    check_cxx_source_compiles("
-      int main() {
-        asm(\"vpxord %zmm0,%zmm0,%zmm0\");
-        return 0;
-      }"
-      COMPILES_AVX512F
+    set(mlas_platform_srcs_avx512f
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/DgemmKernelAvx512F.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelAvx512F.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SconvKernelAvx512F.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SpoolKernelAvx512F.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TransKernelAvx512F.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx512/quantize_avx512f.cpp
     )
+    set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f")
 
-    if(COMPILES_AVX512F AND NOT onnxruntime_MINIMAL_BUILD)
-      set(mlas_platform_srcs_avx512f
-        ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/DgemmKernelAvx512F.S
-        ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SgemmKernelAvx512F.S
-        ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SconvKernelAvx512F.S
-        ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SpoolKernelAvx512F.S
-        ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TransKernelAvx512F.S
-      )
-
-      check_cxx_source_compiles("
-        #include <immintrin.h>
-        int main() {
-          __m512 zeros = _mm512_set1_ps(0.f);
-          (void)zeros;
-          return 0;
-        }"
-        COMPILES_AVX512F_INTRINSICS
-      )
-      if(COMPILES_AVX512F_INTRINSICS)
-        set(mlas_platform_srcs_avx512f
-          ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx512/quantize_avx512f.cpp
-          ${mlas_platform_srcs_avx512f}
-        )
-      else()
-        set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512F_INTRINSICS_UNSUPPORTED")
-      endif()
-      if(HAS_AVX512F)
-        set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f")
-      endif()
-
-      check_cxx_compiler_flag("-mavx512bw -mavx512dq -mavx512vl" HAS_AVX512CORE)
-      if(HAS_AVX512CORE)
-        set(CMAKE_REQUIRED_FLAGS "-mavx512bw -mavx512dq -mavx512vl")
-      endif()
-      check_cxx_source_compiles("
-        int main() {
-          asm(\"vpmaddwd %zmm0,%zmm0,%zmm0\"); // AVX512BW feature
-          asm(\"vandnps %xmm31,%xmm31,%xmm31\"); // AVX512DQ/AVX512VL feature
-          return 0;
-        }"
-        COMPILES_AVX512CORE
-      )
-
-      if(COMPILES_AVX512CORE)
-        set(mlas_platform_srcs_avx512core
-          ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemvU8S8KernelAvx512Core.S
-          ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemvU8S8KernelAvx512Vnni.S
-          ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8X8KernelAvx512Core.S
-        )
-        if(HAS_AVX512CORE)
-          set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "-mavx512bw -mavx512dq -mavx512vl")
-        endif()
-      else()
-        set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512CORE_UNSUPPORTED")
-      endif()
-    else()
-      set_source_files_properties(${mlas_common_srcs} PROPERTIES COMPILE_FLAGS "-DMLAS_AVX512F_UNSUPPORTED")
-    endif()
+    set(mlas_platform_srcs_avx512core
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemvU8S8KernelAvx512Core.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemvU8S8KernelAvx512Vnni.S
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/QgemmU8X8KernelAvx512Core.S
+    )
+    set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "-mavx512bw -mavx512dq -mavx512vl")
 
     set(mlas_platform_srcs
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/dgemm.cpp

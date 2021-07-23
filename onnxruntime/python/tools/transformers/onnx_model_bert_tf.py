@@ -288,9 +288,8 @@ class BertOnnxModelTF(BertOnnxModel):
         start_nodes.extend(skip_layer_norm_nodes)
         start_nodes.extend(layer_norm_nodes)
 
-        graph_name = self.get_graph_by_node(start_nodes[0]).name
-
         for normalize_node in start_nodes:
+            graph_name = self.get_graph_by_node(normalize_node).name
             # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
             if normalize_node.op_type == 'LayerNormalization':
                 add_before_layernorm = self.match_parent(normalize_node, 'Add', 0)

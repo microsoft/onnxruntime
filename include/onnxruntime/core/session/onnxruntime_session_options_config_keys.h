@@ -60,3 +60,16 @@ static const char* const kOrtSessionOptionsUseDeviceAllocatorForInitializers = "
 // "1": default, thread will spin a number of times before blocking
 static const char* const kOrtSessionOptionsConfigAllowInterOpSpinning = "session.inter_op.allow_spinning";
 static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session.intra_op.allow_spinning";
+
+// NNAPI EP keys begin
+// Note: These options should be specified prior to appending the NNAPI EP to the session options object in order for
+// them to take effect.
+
+// Specifies a list of stop op types. Nodes of a type in the stop op types and nodes downstream from them will not be
+// run by the NNAPI EP.
+// The value should be a ","-delimited list of op types. For example, "Add,Sub".
+// If not specified, the default set of stop ops is used. To specify an empty stop ops types list and disable stop op
+// exclusion, set the value to "".
+static const char* const kOrtSessionOptionsConfigNnapiEpPartitioningStopOps = "ep.nnapi.partitioning_stop_ops";
+
+// NNAPI EP keys end

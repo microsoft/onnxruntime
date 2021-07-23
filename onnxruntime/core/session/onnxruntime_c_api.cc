@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_c_api.h"
-#include "core/session/allocator_impl.h"
+#include "core/session/allocator_adapters.h"
 #include "core/session/inference_session_utils.h"
 #include "core/session/IOBinding.h"
 #include "core/framework/allocator.h"
@@ -157,7 +157,7 @@ ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t
   for (size_t i = 0; i != shape_len; ++i) {
     shapes[i] = shape[i];
   }
-  std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::AllocatorWrapper>(allocator);
+  std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator);
   *out = std::make_unique<Tensor>(ml_type, onnxruntime::TensorShape(shapes), alloc_ptr);
   return nullptr;
 }
@@ -174,7 +174,7 @@ ORT_STATUS_PTR CreateTensorImplForSeq(MLDataType elem_type, const int64_t* shape
   if (st) {
     return st;
   }
-  std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::AllocatorWrapper>(allocator);
+  std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator);
   out = Tensor(elem_type, onnxruntime::TensorShape(shapes), alloc_ptr);
   return nullptr;
 }
@@ -409,9 +409,9 @@ ORT_API_STATUS_IMPL(OrtApis::EnableOrtCustomOps, _Inout_ OrtSessionOptions* opti
 
   if (options) {
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS
-  return RegisterCustomOps(options, OrtGetApiBase());
+    return RegisterCustomOps(options, OrtGetApiBase());
 #else
-  return OrtApis::CreateStatus(ORT_FAIL, "EnableOrtCustomOps: Custom operators in onnxruntime-extensions are not enabled");
+    return OrtApis::CreateStatus(ORT_FAIL, "EnableOrtCustomOps: Custom operators in onnxruntime-extensions are not enabled");
 #endif
   }
   return nullptr;
@@ -2292,6 +2292,8 @@ static constexpr OrtApi ort_api_1_to_9 = {
     &OrtApis::GetTensorRTProviderOptionsAsString,
     &OrtApis::ReleaseTensorRTProviderOptions,
     &OrtApis::EnableOrtCustomOps,
+    &OrtApis::RegisterAllocator,
+    &OrtApis::UnregisterAllocator,
 };
 
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
