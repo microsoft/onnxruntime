@@ -2297,6 +2297,19 @@ static constexpr OrtApi ort_api_1_to_9 = {
 // Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
 // If this assert hits, read the above 'Rules on how to add a new Ort API version'
 static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseModelMetadata) / sizeof(void*) == 118, "Size of version 2 API cannot change");
+static_assert(offsetof(OrtApi, AddFreeDimensionOverrideByName) / sizeof(void*) == 124, "Size of version 3 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseAvailableProviders) / sizeof(void*) == 126, "Size of version 4 API cannot change");
+static_assert(offsetof(OrtApi, SetGlobalSpinControl) / sizeof(void*) == 149, "Size of version 5 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseArenaCfg) / sizeof(void*) == 157, "Size of version 6 API cannot change");
+static_assert(offsetof(OrtApi, GetCurrentGpuDeviceId) / sizeof(void*) == 161, "Size of version 7 API cannot change");
+static_assert(offsetof(OrtApi, CreateSessionFromArrayWithPrepackedWeightsContainer) / sizeof(void*) == 169, "Size of version 8 API cannot change");
+
+static_assert(std::string_view(ORT_VERSION)=="1.8.1", "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
+// 1. Update the hardcoded version string in above static_assert to silence it
+// 2. If there were any APIs added to ort_api_1_to_9 above:
+//    a. Add the 'End of version #' markers (pattern above should be obvious)
+//    b. Add a static_assert in the above list to ensure nobody adds any functions before the final one
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
