@@ -1,100 +1,125 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// import {Slice, SliceV10} from '../../../ops/slice';
-// import {Tensor} from '../../../tensor';
-// import {ShapeUtil} from '../../../util';
-// import {WebGLInferenceHandler} from '../inference-handler';
-// import {ProgramInfo, RunData, WebGLOperator} from '../types';
+import {Graph} from '../../../graph';
+import {NUMBER_TYPES, OperatorImplementation, OperatorInitialization} from '../../../operators';
+import {Tensor} from '../../../tensor';
+import {ShapeUtil} from '../../../util';
+import {WebGLInferenceHandler} from '../inference-handler';
+import {ProgramInfo, TextureType} from '../types';
 
-// export class WebGLSlice extends Slice implements WebGLOperator {
-//   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
-//     return inferenceHandler.run(this, inputs);
-//   }
+export interface SliceAttributes {
+  axes: number[];
+  ends: number[];
+  starts: number[];
+}
 
-//   createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
-//     return createProgramInfo(handler, inputs[0], this.starts, this.ends, this.axes);
-//   }
-//   createRunData(handler: WebGLInferenceHandler, programInfo: ProgramInfo, inputs: Tensor[]): RunData {
-//     return createRunData(handler, programInfo, inputs);
-//   }
-// }
+export const slice: OperatorImplementation<SliceAttributes> =
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: SliceAttributes): Tensor[] => {
+      validateInputs(inputs);
+      const output = inferenceHandler.run(createSliceProgramInfo(inferenceHandler, inputs[0], attributes), inputs);
+      return [output];
+    };
 
-// export class WebGLSliceV10 extends SliceV10 implements WebGLOperator {
-//   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
-//     return inferenceHandler.run(this, inputs);
-//   }
+export const parseSliceAttributes: OperatorInitialization<SliceAttributes> = (node: Graph.Node): SliceAttributes => {
+  const starts = node.attributes.getInts('starts');
+  const ends = node.attributes.getInts('ends');
+  const axes = node.attributes.getInts('axes', []);
+  return {starts, ends, axes};
+};
 
-//   createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
-//     if (!handler.session.isInitializer(inputs[1].dataId) || !handler.session.isInitializer(inputs[2].dataId) ||
-//         (inputs.length >= 4 && !handler.session.isInitializer(inputs[3].dataId)) ||
-//         (inputs.length >= 5 && !handler.session.isInitializer(inputs[4].dataId))) {
-//       throw new Error('dynamic slice attributes are not allowed');
-//     }
-//     if (inputs.length >= 5 && inputs[4].integerData.some((i: number) => i !== 1)) {
-//       throw new Error('currently non-1 steps is not supported for Slice');
-//     }
-//     const starts = Array.from(inputs[1].integerData);
-//     const ends = Array.from(inputs[2].integerData);
-//     const axes = inputs.length >= 4 ? Array.from(inputs[3].integerData) : [];
+const createSliceProgramInfo =
+    (inferenceHandler: WebGLInferenceHandler, input: Tensor, attributes: SliceAttributes): ProgramInfo => {
+      if (attributes.axes.length === 0) {
+        attributes.axes = input.dims.slice(0).map((val, i) => i);
+      }
+      const axes = ShapeUtil.normalizeAxes(attributes.axes, input.dims.length);
+      const starts = attributes.starts.map((start, i) => {
+        if (start > input.dims[axes[i]] - 1) {
+          return input.dims[axes[i]];
+        }
+        return ShapeUtil.normalizeAxis(start, input.dims[axes[i]]);
+      });
+      const ends = attributes.ends.map((end, i) => {
+        if (end > input.dims[axes[i]] - 1) {
+          return input.dims[axes[i]];
+        }
+        return ShapeUtil.normalizeAxis(end, input.dims[axes[i]]);
+      });
 
-//     return createProgramInfo(handler, inputs[0], starts, ends, axes);
-//   }
+      const outputShape = input.dims.slice();
 
-//   createRunData(handler: WebGLInferenceHandler, programInfo: ProgramInfo, inputs: Tensor[]): RunData {
-//     return createRunData(handler, programInfo, inputs);
-//   }
-// }
+      const sliceOps: string[] = [];
+      for (let i = 0; i < axes.length; i++) {
+        outputShape[axes[i]] = ends[i] - starts[i];
+        if (starts[i] > 0) {
+          sliceOps.push(`outputIdx[${axes[i]}] += ${starts[i]};`);
+        }  // else { sliceOps.push(`outputIdx[${axes[i]}] += 0;`); }
+      }
 
-// function createProgramInfo(
-//     handler: WebGLInferenceHandler, x: Tensor, starts: readonly number[], ends: readonly number[],
-//     axes: readonly number[]): ProgramInfo {
-//   if (axes.length === 0) {
-//     axes = x.dims.slice(0).map((val, ind) => ind);
-//   }
-//   axes = ShapeUtil.normalizeAxes(axes, x.dims.length);
-//   starts = starts.map((start, ind) => {
-//     if (start > x.dims[axes[ind]] - 1) {
-//       return x.dims[axes[ind]];
-//     }
-//     return ShapeUtil.normalizeAxis(start, x.dims[axes[ind]]);
-//   });
-//   ends = ends.map((end, ind) => {
-//     if (end > x.dims[axes[ind]] - 1) {
-//       return x.dims[axes[ind]];
-//     }
-//     return ShapeUtil.normalizeAxis(end, x.dims[axes[ind]]);
-//   });
+      const rank = outputShape.length;
+      const shaderSource = `
+      float process(int outputIdx[${rank}]) {
+        ${sliceOps.join('\n      ')}
+        return _A(outputIdx);
+      }`;
+      return {
+        name: 'Slice',
+        inputNames: ['A'],
+        inputTypes: [TextureType.unpacked],
+        output: {dims: outputShape, type: input.type, textureType: TextureType.unpacked},
+        shaderSource
+      };
+    };
 
-//   const outputShape = x.dims.slice();
+const validateInputs = (inputs: Tensor[]): void => {
+  if (!inputs || inputs.length !== 1) {
+    throw new Error('Slice requires 1 input.');
+  }
+  if (NUMBER_TYPES.indexOf(inputs[0].type) === -1) {
+    throw new Error('Invalid input type.');
+  }
+};
 
-//   const sliceOps: string[] = [];
-//   for (let i = 0; i < axes.length; i++) {
-//     outputShape[axes[i]] = ends[i] - starts[i];
-//     if (starts[i] > 0) {
-//       sliceOps.push(`outputIdx[${axes[i]}] += ${starts[i]};`);
-//     }  // else { sliceOps.push(`outputIdx[${axes[i]}] += 0;`); }
-//   }
+export const sliceV10 = (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+  validateInputsV10(inputs);
+  const output = inferenceHandler.run(createSliceProgramInfoV10(inferenceHandler, inputs), inputs);
+  return [output];
+};
 
-//   const rank = outputShape.length;
-//   const shaderSource = `
-//       float process(int outputIdx[${rank}]) {
-//         ${sliceOps.join('\n      ')}
-//         return _A(outputIdx);
-//       }`;
-//   return {
-//     inputLayouts: [handler.getOrCreateTextureLayout(x)],
-//     outputLayout: handler.createTextureLayoutFromShape(outputShape),
-//     samplers: ['A'],
-//     shaderSource,
-//   };
-// }
+const createSliceProgramInfoV10 = (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo => {
+  if (!inferenceHandler.session.isInitializer(inputs[1].dataId) ||
+      !inferenceHandler.session.isInitializer(inputs[2].dataId) ||
+      (inputs.length >= 4 && !inferenceHandler.session.isInitializer(inputs[3].dataId)) ||
+      (inputs.length >= 5 && !inferenceHandler.session.isInitializer(inputs[4].dataId))) {
+    throw new Error('dynamic slice attributes are not allowed');
+  }
 
-// function createRunData(handler: WebGLInferenceHandler, programInfo: ProgramInfo, inputs: Tensor[]): RunData {
-//   const inputTDs = [handler.getOrCreateTextureData(inputs[0], programInfo.inputLayouts[0])];
-//   return {
-//     inputTextureDatas: inputTDs,
-//     outputTextureData: handler.createTextureDataFromLayout(programInfo.outputLayout, inputTDs[0].tensor.type),
-//     uniformData: {}
-//   };
-// }
+  if (inputs.length >= 5 && inputs[4].integerData.some((i: number) => i !== 1)) {
+    throw new Error('currently non-1 steps is not supported for Slice');
+  }
+
+  const starts = Array.from(inputs[1].integerData);
+  const ends = Array.from(inputs[2].integerData);
+  const axes = inputs.length >= 4 ? Array.from(inputs[3].integerData) : [];
+
+  return createSliceProgramInfo(inferenceHandler, inputs[0], {starts, ends, axes});
+};
+
+const validateInputsV10 = (inputs: Tensor[]): void => {
+  if (!inputs || inputs.length < 3 || inputs.length > 5) {
+    throw new Error('Invalid input shape.');
+  }
+  if (inputs[1].type !== 'int32' || inputs[1].dims.length !== 1) {
+    throw new Error('Invalid input type.');
+  }
+  if (inputs[2].type !== 'int32' || inputs[2].dims.length !== 1) {
+    throw new Error('Invalid input type.');
+  }
+  if (inputs.length >= 4 && (inputs[3].type !== 'int32' || inputs[3].dims.length !== 1)) {
+    throw new Error('Invalid input type.');
+  }
+  if (inputs.length >= 5 && (inputs[4].type !== 'int32' || inputs[4].dims.length !== 1)) {
+    throw new Error('Invalid input type.');
+  }
+};

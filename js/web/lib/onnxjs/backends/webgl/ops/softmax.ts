@@ -1,222 +1,198 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// import {Softmax} from '../../../ops/softmax';
-// import {Tensor} from '../../../tensor';
-// import {ShapeUtil} from '../../../util';
-// import {getGlsl} from '../glsl-source';
-// import {WebGLInferenceHandler} from '../inference-handler';
-// import {Artifact, ProgramInfo, RunData, TextureLayout} from '../types';
+import {Graph} from '../../../graph';
+import {OperatorImplementation, OperatorInitialization} from '../../../operators';
+import {Tensor} from '../../../tensor';
+import {ShapeUtil} from '../../../util';
+import {getGlsl} from '../glsl-source';
+import {WebGLInferenceHandler} from '../inference-handler';
+import {ProgramInfo, TextureType} from '../types';
 
-// export class WebGLSoftmax extends Softmax {
-//   constructor() {
-//     super();
-//   }
-//   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
-//     if (!this.artifacts) {
-//       this.artifacts = [];
-//       const programInfos = this.createProgramInfos(inferenceHandler, inputs);
-//       programInfos.forEach((pi) => {
-//         const artifact = inferenceHandler.session.programManager.build(pi);
-//         this.artifacts.push(artifact);
-//       });
-//     }
+export const softmax: OperatorImplementation<number> =
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], axis: number): Tensor[] => {
+      validateInputs(inputs);
 
-//     const runDatas = this.createRunDatas(inferenceHandler, this.artifacts.map(a => a.programInfo), inputs);
-//     runDatas.forEach((v, i) => inferenceHandler.session.programManager.run(this.artifacts[i], v));
-//     // return only the last output
-//     return [runDatas[runDatas.length - 1].outputTextureData.tensor];
-//   }
-//   createSoftMaxProgramInfo(
-//       // eslint-disable-next-line @typescript-eslint/naming-convention
-//       inferenceHandler: WebGLInferenceHandler, input: Tensor, N: number, D: number,
-//       maxElementPerLogicalRow: TextureLayout, normalizationPerLogicalRow: TextureLayout): ProgramInfo {
-//     const inputShape = input.dims.slice();
-//     const inputLayout = inferenceHandler.createTextureLayoutFromShape(inputShape);
-//     const outputShape = inputShape;
-//     const rank = outputShape.length;
-//     const textureWidth = inputLayout.width;
-//     const textureHeight = inputLayout.height;
+      const inputShape = inputs[0].dims.slice();
+      axis = ShapeUtil.normalizeAxis(axis, inputShape.length);
+      const N = ShapeUtil.sizeToDimension(inputShape, axis);
+      const D = ShapeUtil.sizeFromDimension(inputShape, axis);
 
-//     if (N < 1 || D < 1) {
-//       throw new Error('Logical row count N and feature count D must be greater than or equal to 1');
-//     }
+      const computeMaxProgramInfo = createComputeMaxProgramInfo(inferenceHandler, inputs[0], N, D, [N]);
+      const max = inferenceHandler.run(computeMaxProgramInfo, inputs);
 
-//     if (maxElementPerLogicalRow.shape.length !== 1 || normalizationPerLogicalRow.shape.length !== 1) {
-//       throw new Error('Dimensionality of the intermediate results should be 1');
-//     }
+      const computeScaleProgramInfo =
+          createComputScaleProgramInfo(inferenceHandler, inputs[0], N, D, computeMaxProgramInfo.output.dims, [N]);
+      const scale = inferenceHandler.run(computeScaleProgramInfo, [inputs[0], max]);
 
-//     if (maxElementPerLogicalRow.shape[0] !== N || normalizationPerLogicalRow.shape[0] !== N) {
-//       throw new Error('Shape of the intermediate results should be equal to logical row count');
-//     }
+      const softMaxProgramInfo = createSoftMaxProgramInfo(
+          inferenceHandler, inputs[0], N, D, computeMaxProgramInfo.output.dims, computeScaleProgramInfo.output.dims);
+      const output = inferenceHandler.run(softMaxProgramInfo, [inputs[0], max, scale]);
+      return [output];
+    };
 
-//     const shaderSource = `
-//     float process(int[${rank}] indices) {
+export const parseSoftmaxAttributes: OperatorInitialization<number> = (node: Graph.Node): number =>
+    node.attributes.getInt('axis', 1);
 
-//       // get offset of current logical tensor index from the 2-D texture coordinates (TexCoords)
-//       int offset = coordsToOffset(TexCoords, ${textureWidth}, ${textureHeight});
+/**
+ * Create a texture that contains the maximum value of each of the 'N' rows
+ */
+const createComputeMaxProgramInfo =
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    (inferenceHandler: WebGLInferenceHandler, input: Tensor, N: number, D: number, outputShape: number[]):
+        ProgramInfo => {
+          const [textureWidth, textureHeight] =
+              inferenceHandler.calculateTextureWidthAndHeight(input.dims, TextureType.unpacked);
+          const rank = outputShape.length;
 
-//       //determine the logical row for this index
-//       int logical_row_index[1];
-//       logical_row_index[0] = offset / ${D};
+          if (N < 1 || D < 1) {
+            throw new Error('Logical row count N and feature count D must be greater than or equal to 1');
+          }
 
-//       float norm_factor = _Norm(logical_row_index);
+          if (outputShape.length !== 1) {
+            throw new Error('Dimensionality of the output should be 1');
+          }
 
-//       // avoid possible division by 0
-//       // if norm_facor is 0, all elements are zero
-//       // if so, return 0
-//       if(norm_factor == 0.0)
-//         return 0.0;
+          if (outputShape[0] !== N) {
+            throw new Error('Shape of the output should be equal to logical row count');
+          }
 
-//       return exp(_A(indices) - _Max(logical_row_index)) / norm_factor;
-//     }`;
-//     return {
-//       inputLayouts: [inputLayout, maxElementPerLogicalRow, normalizationPerLogicalRow],
-//       outputLayout: inferenceHandler.createTextureLayoutFromShape(outputShape),
-//       samplers: ['A', 'Max', 'Norm'],
-//       shaderSource,
-//       name: 'SoftMax',
-//     };
-//   }
+          const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
+          const shaderSource = `
+      float process(int[${rank}] indices) {
+        int logical_row_start_offset = indices[0] * ${D};
 
-//   /**
-//    * Create a texture that contains the normalization factor for each of the 'N' rows
-//    */
-//   createComputScaleProgramInfo(
-//       // eslint-disable-next-line @typescript-eslint/naming-convention
-//       inferenceHandler: WebGLInferenceHandler, x: Tensor, N: number, D: number, maxElementPerLogicalRow:
-//       TextureLayout, outputShape: number[]): ProgramInfo {
-//     const xlayout = inferenceHandler.createTextureLayoutFromShape(x.dims.slice());
-//     const rank = outputShape.length;
-//     const textureWidth = xlayout.width;
-//     const textureHeight = xlayout.height;
+        float max = getColorAsFloat(${glsl.texture2D}(A, offsetToCoords(logical_row_start_offset, ${textureWidth},
+        ${textureHeight} )));
+        for(int i=1; i<${D}; ++i)
+        {
+          float current = getColorAsFloat(${glsl.texture2D}(A, offsetToCoords(logical_row_start_offset + i,
+            ${textureWidth}, ${textureHeight})));
+          if(current > max)
+          max = current;
+        }
 
-//     if (N < 1 || D < 1) {
-//       throw new Error('Logical row count N and feature count D must be greater than or equal to 1');
-//     }
+        return max;
+      }`;
+          return {
+            name: 'ComputeMax',
+            inputNames: ['A'],
+            inputTypes: [TextureType.unpacked],
+            output: {dims: outputShape, type: input.type, textureType: TextureType.unpacked},
+            shaderSource
+          };
+        };
 
-//     if (outputShape.length !== 1) {
-//       throw new Error('Dimensionality of the output should be 1');
-//     }
+/**
+ * Create a texture that contains the normalization factor for each of the 'N' rows
+ */
+const createComputScaleProgramInfo =
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    (inferenceHandler: WebGLInferenceHandler, input: Tensor, N: number, D: number,
+     maxElementPerLogicalRow: readonly number[], outputShape: number[]): ProgramInfo => {
+      const [textureWidth, textureHeight] =
+          inferenceHandler.calculateTextureWidthAndHeight(input.dims, TextureType.unpacked);
+      const rank = outputShape.length;
 
-//     if (outputShape[0] !== N) {
-//       throw new Error('Shape of the output should be equal to logical row count');
-//     }
+      if (N < 1 || D < 1) {
+        throw new Error('Logical row count N and feature count D must be greater than or equal to 1');
+      }
 
-//     if (maxElementPerLogicalRow.shape.length !== 1) {
-//       throw new Error('Dimensionality of the intermediate results should be 1');
-//     }
+      if (outputShape.length !== 1) {
+        throw new Error('Dimensionality of the output should be 1');
+      }
 
-//     if (maxElementPerLogicalRow.shape[0] !== N) {
-//       throw new Error('Shape of the intermediate results should be equal to logical row count');
-//     }
+      if (outputShape[0] !== N) {
+        throw new Error('Shape of the output should be equal to logical row count');
+      }
 
-//     const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
-//     const shaderSource = `
-//     float process(int[${rank}] indices) {
+      if (maxElementPerLogicalRow.length !== 1) {
+        throw new Error('Dimensionality of the intermediate results should be 1');
+      }
 
-//       int logical_row_start_offset = indices[0] * ${D};
+      if (maxElementPerLogicalRow[0] !== N) {
+        throw new Error('Shape of the intermediate results should be equal to logical row count');
+      }
 
-//       float norm_factor = 0.0;
-//       float max = _Max(indices);
-//       for(int i=0; i<${D}; ++i)
-//       {
-//         norm_factor += exp(getColorAsFloat(${glsl.texture2D}(A, offsetToCoords(logical_row_start_offset + i, ${
-//         textureWidth}, ${textureHeight}))) - max);
-//       }
+      const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
+      const shaderSource = `
+      float process(int[${rank}] indices) {
+        int logical_row_start_offset = indices[0] * ${D};
 
-//       return norm_factor;
-//     }`;
-//     return {
-//       inputLayouts: [xlayout, maxElementPerLogicalRow],
-//       outputLayout: inferenceHandler.createTextureLayoutFromShape(outputShape),
-//       samplers: ['A', 'Max'],
-//       shaderSource,
-//       name: 'ComputScale',
-//     };
-//   }
-//   /**
-//    * Create a texture that contains the maximum value of each of the 'N' rows
-//    */
-//   createComputeMaxProgramInfo(
-//       // eslint-disable-next-line @typescript-eslint/naming-convention
-//       inferenceHandler: WebGLInferenceHandler, x: Tensor, N: number, D: number, outputShape: number[]): ProgramInfo {
-//     const xlayout = inferenceHandler.createTextureLayoutFromShape(x.dims.slice());
-//     const rank = outputShape.length;
-//     const textureWidth = xlayout.width;
-//     const textureHeight = xlayout.height;
+        float norm_factor = 0.0;
+        float max = _Max(indices);
+        for(int i=0; i<${D}; ++i)
+        {
+          norm_factor += exp(getColorAsFloat(${glsl.texture2D}(A, offsetToCoords(logical_row_start_offset + i,
+            ${textureWidth}, ${textureHeight}))) - max);
+        }
 
-//     if (N < 1 || D < 1) {
-//       throw new Error('Logical row count N and feature count D must be greater than or equal to 1');
-//     }
+        return norm_factor;
+      }`;
+      return {
+        name: 'ComputeScale',
+        inputNames: ['A', 'Max'],
+        inputTypes: [TextureType.unpacked, TextureType.unpacked],
+        output: {dims: outputShape, type: input.type, textureType: TextureType.unpacked},
+        shaderSource
+      };
+    };
 
-//     if (outputShape.length !== 1) {
-//       throw new Error('Dimensionality of the output should be 1');
-//     }
+const createSoftMaxProgramInfo =
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    (inferenceHandler: WebGLInferenceHandler, input: Tensor, N: number, D: number,
+     maxElementPerLogicalRow: readonly number[], normalizationPerLogicalRow: readonly number[]): ProgramInfo => {
+      const [textureWidth, textureHeight] =
+          inferenceHandler.calculateTextureWidthAndHeight(input.dims, TextureType.unpacked);
+      const rank = input.dims.length;
 
-//     if (outputShape[0] !== N) {
-//       throw new Error('Shape of the output should be equal to logical row count');
-//     }
+      if (N < 1 || D < 1) {
+        throw new Error('Logical row count N and feature count D must be greater than or equal to 1');
+      }
 
-//     const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
-//     const shaderSource = `
-//         float process(int[${rank}] indices) {
+      if (maxElementPerLogicalRow.length !== 1 || normalizationPerLogicalRow.length !== 1) {
+        throw new Error('Dimensionality of the intermediate results should be 1');
+      }
 
-//           int logical_row_start_offset = indices[0] * ${D};
+      if (maxElementPerLogicalRow[0] !== N || normalizationPerLogicalRow[0] !== N) {
+        throw new Error('Shape of the intermediate results should be equal to logical row count');
+      }
 
-//           float max = getColorAsFloat(${glsl.texture2D}(A, offsetToCoords(logical_row_start_offset, ${textureWidth},
-//           ${
-//         textureHeight} )));
-//           for(int i=1; i<${D}; ++i)
-//           {
-//             float current = getColorAsFloat(${glsl.texture2D}(A, offsetToCoords(logical_row_start_offset + i, ${
-//         textureWidth}, ${textureHeight})));
-//             if(current > max)
-//               max = current;
-//           }
+      const shaderSource = `
+      float process(int[${rank}] indices) {
 
-//           return max;
-//         }`;
-//     return {
-//       inputLayouts: [xlayout],
-//       outputLayout: inferenceHandler.createTextureLayoutFromShape(outputShape),
-//       samplers: ['A'],
-//       shaderSource,
-//       name: 'ComputeMax',
-//     };
-//   }
-//   createProgramInfos(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo[] {
-//     const inputShape = inputs[0].dims.slice();
-//     const axis = ShapeUtil.normalizeAxis(this.axis, inputShape.length);
-//     const N = ShapeUtil.sizeToDimension(inputShape, axis);
-//     const D = ShapeUtil.sizeFromDimension(inputShape, axis);
-//     const computeMaxProgramInfo = this.createComputeMaxProgramInfo(inferenceHandler, inputs[0], N, D, [N]);
-//     const computeScaleProgramInfo =
-//         this.createComputScaleProgramInfo(inferenceHandler, inputs[0], N, D, computeMaxProgramInfo.outputLayout,
-//         [N]);
-//     const softMaxProgramInfo = this.createSoftMaxProgramInfo(
-//         inferenceHandler, inputs[0], N, D, computeMaxProgramInfo.outputLayout, computeScaleProgramInfo.outputLayout);
+      // get offset of current logical tensor index from the 2-D texture coordinates (TexCoords)
+      int offset = coordsToOffset(TexCoords, ${textureWidth}, ${textureHeight});
 
-//     const programInfos: ProgramInfo[] = [computeMaxProgramInfo, computeScaleProgramInfo, softMaxProgramInfo];
-//     return programInfos;
-//   }
-//   createRunDatas(inferenceHandler: WebGLInferenceHandler, programInfos: ProgramInfo[], inputs: Tensor[]): RunData[] {
-//     const dataType = inputs[0].type;
-//     const inputTD = inferenceHandler.getOrCreateTextureData(inputs[0], programInfos[0].inputLayouts[0]);
-//     const runDatas: RunData[] = [];
-//     runDatas.push({
-//       inputTextureDatas: [inputTD],
-//       outputTextureData: inferenceHandler.createTextureDataFromLayout(programInfos[0].outputLayout, dataType),
-//       uniformData: {}
-//     });
-//     for (let i = 1; i < programInfos.length; ++i) {
-//       runDatas.push({
-//         inputTextureDatas: [...runDatas[i - 1].inputTextureDatas, runDatas[i - 1].outputTextureData],
-//         outputTextureData: inferenceHandler.createTextureDataFromLayout(programInfos[i].outputLayout, dataType),
-//         uniformData: {}
-//       });
-//     }
-//     return runDatas;
-//   }
-//   protected artifacts: Artifact[];
-// }
+      //determine the logical row for this index
+      int logical_row_index[1];
+      logical_row_index[0] = offset / ${D};
+
+      float norm_factor = _Norm(logical_row_index);
+
+      // avoid possible division by 0
+      // if norm_facor is 0, all elements are zero
+      // if so, return 0
+      if(norm_factor == 0.0)
+        return 0.0;
+
+      return exp(_A(indices) - _Max(logical_row_index)) / norm_factor;
+    }`;
+      return {
+        name: 'SoftMax',
+        inputNames: ['A', 'Max', 'Norm'],
+        inputTypes: [TextureType.unpacked, TextureType.unpacked, TextureType.unpacked],
+        output: {dims: input.dims, type: input.type, textureType: TextureType.unpacked},
+        shaderSource
+      };
+    };
+
+const validateInputs = (inputs: Tensor[]): void => {
+  if (!inputs || inputs.length !== 1) {
+    throw new Error('Softmax requires 1 input.');
+  }
+
+  if (inputs[0].type !== 'float32' && inputs[0].type !== 'float64') {
+    throw new Error('Invalid input type');
+  }
+};

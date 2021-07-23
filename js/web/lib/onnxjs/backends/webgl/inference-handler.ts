@@ -40,8 +40,15 @@ export class WebGLInferenceHandler implements InferenceHandler {
   }
 
   executeProgram(programInfo: ProgramInfo, inputs: readonly Tensor[]): TextureData {
+    if (inputs.length < programInfo.inputNames.length) {
+      throw new Error(`Input size must be greater than ${programInfo.inputNames.length}.`);
+    }
+
     // create texture info for input
-    const inputTextureDatas = inputs.map((tensor, i) => this.getOrCreateTextureData(tensor, programInfo.inputTypes[i]));
+    const inputTextureDatas: TextureData[] = [];
+    for (let i = 0; i < programInfo.inputNames.length; ++i) {
+      inputTextureDatas[i] = this.getOrCreateTextureData(inputs[i], programInfo.inputTypes[i]);
+    }
 
     // create texture info for output
     const outputTextureLayout = createTextureLayoutFromTextureType(

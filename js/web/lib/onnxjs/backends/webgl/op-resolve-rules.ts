@@ -15,25 +15,29 @@ import {depthToSpace, parseDepthToSpaceAttributes} from './ops/depth-to-space';
 // import {WebGLGather} from './ops/gather';
 // import {WebGLGemm} from './ops/gemm';
 // import {WebGLImageScaler} from './ops/image-scaler';
-// import {WebGLInstanceNormalization} from './ops/instance-normalization';
-// import {WebGLLeakyRelu} from './ops/leaky-relu';
+import {instanceNormalization, parseInstanceNormalizationAttributes} from './ops/instance-normalization';
+import {leakyRelu, parseLeakyReluAttributes} from './ops/leaky-relu';
 // import {WebGLMatMul} from './ops/matmul';
-// import {WebGLPad} from './ops/pad';
-// import {WebGLAveragePool, WebGLGlobalAveragePool, WebGLGlobalMaxPool, WebGLMaxPool} from './ops/pool';
-// import * as reduceOps from './ops/reduce';
+import {pad, parsePadAttributes} from './ops/pad';
+import {averagePool, parseAveragePoolAttributes} from './ops/pool';
+import {globalAveragePool, parseGlobalAveragePoolAttributes} from './ops/pool';
+import {maxPool, parseMaxPoolAttributes} from './ops/pool';
+import {globalMaxPool} from './ops/pool';
+import {reduceLogSum, reduceLogSumSquare, reduceMax, reduceMean, reduceMin, reduceProd, reduceSum} from './ops/reduce';
+import {parseReduceAttributes} from './ops/reduce';
 import {reshape} from './ops/reshape';
-// import {WebGLResizePacked} from './ops/resize-packed';
-// import {WebGLShape} from './ops/shape';
-// import {WebGLSlice, WebGLSliceV10} from './ops/slice';
-// import {WebGLSoftmax} from './ops/softmax';
-// import {WebGLSplit} from './ops/split';
-// import {WebGLSqueeze} from './ops/squeeze';
-// import {WebGLSum} from './ops/sum';
-// import {WebGLTile} from './ops/tile';
+import {parseResizeAttributesV10, parseResizeAttributesV11, resize} from './ops/resize-packed';
+import {shape} from './ops/shape';
+import {parseSliceAttributes, slice, sliceV10} from './ops/slice';
+import {parseSoftmaxAttributes, softmax} from './ops/softmax';
+import {parseSplitAttributes, split} from './ops/split';
+import {parseSqueezeAttributes, squeeze} from './ops/squeeze';
+import {sum} from './ops/sum';
+import {tile} from './ops/tile';
 import {parseTransposeAttributes, transpose} from './ops/transpose';
 import * as unaryOps from './ops/unary-op';
-// import {WebGLUnsqueeze} from './ops/unsqueeze';
-// import {WebGLUpsample} from './ops/upsample';
+import {parseUnsqueezeAttributes, unsqueeze} from './ops/unsqueeze';
+import {parseUpsampleAttributesV7, parseUpsampleAttributesV9, upsample} from './ops/upsample';
 
 export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Abs', '', '6+', unaryOps.abs],
@@ -42,7 +46,8 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['And', '', '7+', binaryOps.and],
   ['Asin', '', '7+', unaryOps.asin],
   ['Atan', '', '7+', unaryOps.atan],
-  // ['AveragePool', '', '7-10', () => new WebGLAveragePool()],  // TODO: support new attributes for AveragePool-10
+  // TODO: support new attributes for AveragePool-10
+  ['AveragePool', '', '7-10', averagePool, parseAveragePoolAttributes],
   ['BatchNormalization', '', '7+', batchNormalization, parseBatchNormalizationAttributes],
   ['Ceil', '', '6+', unaryOps.ceil],
   ['Clip', '', '6-10', unaryOps.clip, unaryOps.parseClipAttributes],
@@ -60,56 +65,57 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   // ['Gather', '', '1+', () => new WebGLGather()],
   // ['Gemm', '', '7-10', () => new WebGLGemm(false)],
   // ['Gemm', '', '11+', () => new WebGLGemm(true)],
-  // ['GlobalAveragePool', '', '1+', () => new WebGLGlobalAveragePool()],
-  // ['GlobalMaxPool', '', '1+', () => new WebGLGlobalMaxPool()],
+  ['GlobalAveragePool', '', '1+', globalAveragePool, parseGlobalAveragePoolAttributes],
+  ['GlobalMaxPool', '', '1+', globalMaxPool],
   ['Greater', '', '7+', binaryOps.greater],
   ['Identity', '', '1+', unaryOps.identity],
   // ['ImageScaler', '', '1+', () => new WebGLImageScaler()],
-  // ['InstanceNormalization', '', '6+', () => new WebGLInstanceNormalization()],
-  // ['LeakyRelu', '', '6+', () => new WebGLLeakyRelu()],
+  ['InstanceNormalization', '', '6+', instanceNormalization, parseInstanceNormalizationAttributes],
+  ['LeakyRelu', '', '6+', leakyRelu, parseLeakyReluAttributes],
   ['Less', '', '7+', binaryOps.less],
   ['Log', '', '6+', unaryOps.log],
   // ['MatMul', '', '1+', () => new WebGLMatMul()],
-  // ['MaxPool', '', '1-9', () => new WebGLMaxPool()],  // TODO: support new attributes for MaxPool-8 and MaxPool-10
+  // TODO: support new attributes for MaxPool-8 and MaxPool-10
+  ['MaxPool', '', '1-9', maxPool, parseMaxPoolAttributes],
   ['Mul', '', '7+', binaryOps.mul],
   ['Neg', '', '6+', unaryOps.neg],
   ['Not', '', '1+', unaryOps.not],
   ['Or', '', '7+', binaryOps.or],
-  // ['Pad', '', '2-10', () => new WebGLPad()],
+  ['Pad', '', '2-10', pad, parsePadAttributes],
   ['Pow', '', '7+', binaryOps.pow],
   ['PRelu', '', '7+', binaryOps.pRelu],
-  // ['ReduceLogSum', '', '1+', () => new reduceOps.WebGLReduceLogSum()],
-  // ['ReduceMax', '', '1+', () => new reduceOps.WebGLReduceMax()],
-  // ['ReduceMean', '', '1+', () => new reduceOps.WebGLReduceMean()],
-  // ['ReduceMin', '', '1+', () => new reduceOps.WebGLReduceMin()],
-  // ['ReduceProd', '', '1+', () => new reduceOps.WebGLReduceProd()],
-  // ['ReduceSum', '', '1+', () => new reduceOps.WebGLReduceSum()],
-  // ['ReduceSumSquare', '', '1+', () => new reduceOps.WebGLReduceSumSquare()],
+  ['ReduceLogSum', '', '1+', reduceLogSum, parseReduceAttributes],
+  ['ReduceMax', '', '1+', reduceMax, parseReduceAttributes],
+  ['ReduceMean', '', '1+', reduceMean, parseReduceAttributes],
+  ['ReduceMin', '', '1+', reduceMin, parseReduceAttributes],
+  ['ReduceProd', '', '1+', reduceProd, parseReduceAttributes],
+  ['ReduceSum', '', '1+', reduceSum, parseReduceAttributes],
+  ['ReduceSumSquare', '', '1+', reduceLogSumSquare, parseReduceAttributes],
   ['Relu', '', '6+', unaryOps.relu],
   ['Reshape', '', '5+', reshape],
-  // ['Resize', '', '10', () => new WebGLResizePacked(10)],
-  // ['Resize', '', '11+', () => new WebGLResizePacked(11)],
-  // ['Shape', '', '1+', () => new WebGLShape()],
+  ['Resize', '', '10', resize, parseResizeAttributesV10],
+  ['Resize', '', '11+', resize, parseResizeAttributesV11],
+  ['Shape', '', '1+', shape],
   ['Sigmoid', '', '6+', unaryOps.sigmoid],
   ['Sin', '', '7+', unaryOps.sin],
-  // ['Slice', '', '10+', () => new WebGLSliceV10()],  // TODO: support 'steps' for Slice-10
-  // ['Slice', '', '1-9', () => new WebGLSlice()],
-  // ['Softmax', '', '1+', () => new WebGLSoftmax()],
+  ['Slice', '', '10+', sliceV10],  // TODO: support 'steps' for Slice-10
+  ['Slice', '', '1-9', slice, parseSliceAttributes],
+  ['Softmax', '', '1+', softmax, parseSoftmaxAttributes],
   // 'Split' operator has an optional attribute 'split'
-  // this attribute determines how the specified axis of input data
-  // is split. When the attribute is missing, we need the count of number of outputs
+  // this attribute determines how the specified axis of input data is split.
+  // When the attribute is missing, we need the count of number of outputs
   // so that we can determine the 'split' attribute from the runtime input to the Operator
-  // ['Split', '', '2+', (node) => new WebGLSplit(node.outputs.length)],
+  ['Split', '', '2+', split, parseSplitAttributes],
   ['Sqrt', '', '6+', unaryOps.sqrt],
-  // ['Squeeze', '', '1+', () => new WebGLSqueeze()],
+  ['Squeeze', '', '1+', squeeze, parseSqueezeAttributes],
   ['Sub', '', '7+', binaryOps.sub],
-  // ['Sum', '', '6+', () => new WebGLSum()],  // TODO: support multidirectional broadcast for Sum-8
+  ['Sum', '', '6+', sum],
   ['Tan', '', '7+', unaryOps.tan],
   ['Tanh', '', '6+', unaryOps.tanh],
-  // ['Tile', '', '6+', () => new WebGLTile()],
+  ['Tile', '', '6+', tile],
   ['Transpose', '', '1+', transpose, parseTransposeAttributes],
-  // ['Upsample', '', '7-8', () => new WebGLUpsample(7)],
-  // ['Upsample', '', '9', () => new WebGLUpsample(9)],
-  // ['Unsqueeze', '', '1+', () => new WebGLUnsqueeze()],
+  ['Upsample', '', '7-8', upsample, parseUpsampleAttributesV7],
+  ['Upsample', '', '9', upsample, parseUpsampleAttributesV9],
+  ['Unsqueeze', '', '1+', unsqueeze, parseUnsqueezeAttributes],
   ['Xor', '', '7+', binaryOps.xor],
 ];
