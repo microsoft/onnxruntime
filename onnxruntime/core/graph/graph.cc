@@ -69,9 +69,11 @@ static Status MergeShapeInfo(const std::string& output_name,
                              const TypeProto& source, TypeProto& target,
                              bool strict, const logging::Logger& logger) {
   if (!(utils::HasTensorType(source) && utils::HasTensorType(target)) &&
+      !(utils::HasOptionalTensorType(source) && utils::HasOptionalTensorType(target)) &&
       !(utils::HasSparseTensorType(source) && utils::HasSparseTensorType(target))) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Source and target must both be either tensors or sparse tensors");
+                           "Source and target must both be either tensors, "
+                           "optional tensors, or sparse tensors");
   }
 
   auto status = Status::OK();
@@ -79,6 +81,9 @@ static Status MergeShapeInfo(const std::string& output_name,
   ORT_TRY {
     if (utils::HasTensorType(source)) {
       ONNX_NAMESPACE::mergeInShapeInfo(source.tensor_type(), *target.mutable_tensor_type());
+    } else if (utils::HasOptionalTensorType(source)) {
+      ONNX_NAMESPACE::mergeInShapeInfo(utils::GetOptionalTypeProto(source).tensor_type(),
+                                       *utils::GetMutableOptionalTypeProto(target)->mutable_tensor_type());
     } else {
       ONNX_NAMESPACE::mergeInShapeInfo(source.sparse_tensor_type(), *target.mutable_sparse_tensor_type());
     }
@@ -96,6 +101,8 @@ static Status MergeShapeInfo(const std::string& output_name,
                             << ". Falling back to lenient merge.";
       if (utils::HasTensorType(source)) {
         ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *target.mutable_tensor_type());
+      } else if (utils::HasOptionalTensorType(source)) {
+        ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *utils::GetMutableOptionalTypeProto(target)->mutable_tensor_type());
       } else {
         ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *target.mutable_sparse_tensor_type());
       }
@@ -211,10 +218,10 @@ const TensorShapeProto* NodeArg::Shape() const {
       return nullptr;
     }
     case TypeProto::kOptionalType: {
-      // Store shape only for optional types that are tensors
-      if (type->optional_type().elem_type().has_tensor_type() &&
-          utils::HasShape(type->optional_type().elem_type().tensor_type())) {
-        return &(type->optional_type().elem_type().tensor_type().shape());
+      // Shape is applicable only for optional tensor type
+      if (utils::HasOptionalTensorType(*type) &&
+          utils::HasShape(utils::GetOptionalTypeProto(*type).tensor_type())) {
+        return &(utils::GetOptionalTypeProto(*type).tensor_type().shape());
       }
       return nullptr;
     }
@@ -239,6 +246,7 @@ bool NodeArg::HasTensorOrScalarShape() const {
       // check shape here.
       return true;
     case TypeProto::kSequenceType:
+    case TypeProto::kOptionalType:
     case TypeProto::kMapType:
     case TypeProto::kOpaqueType:
     case TypeProto::VALUE_NOT_SET:
@@ -258,11 +266,9 @@ void NodeArg::SetShape(const TensorShapeProto& shape) {
       *(node_arg_info_.mutable_type()->mutable_sparse_tensor_type()->mutable_shape()) = shape;
       break;
     case TypeProto::kOptionalType:
-      if (node_arg_info_.type().optional_type().elem_type().has_tensor_type()) {
-        // Set shape only for optional tensors
-        *(node_arg_info_.mutable_type()
-              ->mutable_optional_type()
-              ->mutable_elem_type()
+      // Set shape only for optional tensors
+      if (utils::HasOptionalTensorType(node_arg_info_.type())) {
+        *(utils::GetMutableOptionalTypeProto(*(node_arg_info_.mutable_type()))
               ->mutable_tensor_type()
               ->mutable_shape()) = shape;
       }
@@ -286,14 +292,13 @@ void NodeArg::ClearShape() {
       node_arg_info_.mutable_type()->mutable_sparse_tensor_type()->clear_shape();
       break;
     case TypeProto::kOptionalType:
-      // Clearing shape is only valid for optional tensors
-      if (node_arg_info_.type().optional_type().elem_type().has_tensor_type()) {
-        node_arg_info_.mutable_type()
-            ->mutable_optional_type()
-            ->mutable_elem_type()
+      // Clear shape only for optional tensors
+      if (utils::HasOptionalTensorType(node_arg_info_.type())) {
+        utils::GetMutableOptionalTypeProto(*(node_arg_info_.mutable_type()))
             ->mutable_tensor_type()
             ->clear_shape();
       }
+      break;
     case TypeProto::kSequenceType:
     case TypeProto::kMapType:
     case TypeProto::kOpaqueType:
@@ -383,10 +388,61 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
           *current_type.mutable_sparse_tensor_type() = input_tensor_type;
         }
       }
-    } break;
+      break;
+    }
+    case TypeProto::kOptionalType: {
+      if (utils::HasOptionalTensorType(input_type) && !utils::HasOptionalTensorType(current_type)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optional Type mismatch. Expected: Seq tensor. Got: Tensor");
+      } else if (!utils::HasOptionalTensorType(input_type) && utils::HasOptionalTensorType(current_type)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optional Type mismatch. Expected: Tensor. Got: Seq Tensor");
+      }
+
+      // Updating element type and shape is only applicable for optional tensors
+      if (utils::HasOptionalTensorType(input_type)) {
+        const auto& optional_input_type = utils::GetOptionalTypeProto(input_type);
+        auto& optional_current_type = *utils::GetMutableOptionalTypeProto(current_type);
+
+        const auto& input_tensor_type = optional_input_type.tensor_type();
+        const auto& input_tensor_elem_type = input_tensor_type.elem_type();
+        const auto& current_tensor_elem_type = optional_current_type.tensor_type().elem_type();
+
+        if (input_tensor_elem_type != current_tensor_elem_type) {
+          if (override_types) {
+            DataType inferred_type = DataTypeUtils::ToType(input_type);
+            // The "SetType" call will override the shape information to empty.
+            // If the original tensor has shape information, need to set it back.
+            if (Shape()) {
+              auto old_shape = *Shape();
+              SetType(inferred_type);
+              SetShape(old_shape);
+            } else {
+              SetType(inferred_type);
+            }
+          } else {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optional Tensor element type mismatch. ",
+                                   static_cast<TensorProto_DataType>(input_tensor_elem_type), " != ",
+                                   static_cast<TensorProto_DataType>(current_tensor_elem_type));
+          }
+        }
+
+        if (utils::HasShape(optional_input_type.tensor_type())) {
+          if (utils::HasShape(optional_current_type.tensor_type())) {
+            ORT_RETURN_IF_ERROR(MergeShapeInfo(Name(), optional_input_type, optional_current_type, strict, logger));
+          } else {
+            *optional_current_type.mutable_tensor_type() = input_tensor_type;
+          }
+        }
+      } else {
+        // TODO: What is the plan for optional sequence tensors ?
+        // Currently, we don't do anything for the generic sequence type
+        // as seen below. This section needs an update if we choose to
+        // change that in the future.
+      }
+
+      break;
+    }
     case TypeProto::kSequenceType:
     case TypeProto::kMapType:
-    case TypeProto::kOptionalType:
     case TypeProto::kOpaqueType:
     case TypeProto::VALUE_NOT_SET:
       break;
@@ -1810,6 +1866,10 @@ bool FullyDefinedType(const TypeProto& type_proto) {
     case TypeProto::kSequenceType: {
       auto& seq_type = type_proto.sequence_type();
       return utils::HasElemType(seq_type) && FullyDefinedType(seq_type.elem_type());
+    }
+    case TypeProto::kOptionalType: {
+      auto& optional_type = type_proto.optional_type();
+      return utils::HasElemType(optional_type) && FullyDefinedType(optional_type.elem_type());
     }
     case TypeProto::kMapType: {
       auto& map_type = type_proto.map_type();

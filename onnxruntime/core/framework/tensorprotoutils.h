@@ -116,6 +116,21 @@ inline bool HasTensorType(const ONNX_NAMESPACE::TypeProto& type_proto) {
   return type_proto.value_case() == ONNX_NAMESPACE::TypeProto::kTensorType;
 }
 
+inline bool HasOptionalTensorType(const ONNX_NAMESPACE::TypeProto& type_proto) {
+  return type_proto.value_case() == ONNX_NAMESPACE::TypeProto::kOptionalType &&
+         type_proto.optional_type().elem_type().value_case() == ONNX_NAMESPACE::TypeProto::kTensorType;
+}
+
+// Does not check if the TypeProto contains an optional - the caller must validate that
+inline const ONNX_NAMESPACE::TypeProto& GetOptionalTypeProto(const ONNX_NAMESPACE::TypeProto& type_proto) {
+  return type_proto.optional_type().elem_type();
+}
+
+// Does not check if the TypeProto contains an optional - the caller must validate that
+inline ONNX_NAMESPACE::TypeProto* GetMutableOptionalTypeProto(ONNX_NAMESPACE::TypeProto& type_proto) {
+  return type_proto.mutable_optional_type()->mutable_elem_type();
+}
+
 inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_Tensor& ten_proto) {
   return ten_proto.elem_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
 }
@@ -141,7 +156,11 @@ inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_SparseTensor& ten_proto)
 inline bool HasShape(const ONNX_NAMESPACE::TypeProto& type_proto) {
   if (HasTensorType(type_proto) && HasShape(type_proto.tensor_type())) {
     return true;
+  } else if (HasOptionalTensorType(type_proto) &&
+             HasShape(GetOptionalTypeProto(type_proto).tensor_type())) {
+    return true;
   }
+
   return HasSparseTensorType(type_proto) && HasShape(type_proto.sparse_tensor_type());
 }
 
@@ -156,6 +175,11 @@ inline const ONNX_NAMESPACE::TensorShapeProto& GetShape(const ONNX_NAMESPACE::Ty
   if (HasTensorType(type_proto) && HasShape(type_proto.tensor_type())) {
     return type_proto.tensor_type().shape();
   }
+
+  if (HasOptionalTensorType(type_proto) && HasShape(GetOptionalTypeProto(type_proto).tensor_type())) {
+    return GetOptionalTypeProto(type_proto).tensor_type().shape();
+  }
+
   if (HasSparseTensorType(type_proto) && HasShape(type_proto.sparse_tensor_type())) {
     return type_proto.sparse_tensor_type().shape();
   }
