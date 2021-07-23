@@ -8,9 +8,7 @@
 namespace onnxruntime {
 namespace training {
 
-GradientDef GetGradientForOp(const GradientGraphConfiguration& gradient_graph_config,
-                             Graph* graph,
-                             const Node* node,
+GradientDef GetGradientForOp(const GradientGraphConfiguration& gradient_graph_config, Graph* graph, const Node* node,
                              const std::unordered_set<std::string>& output_args_need_grad,
                              const std::unordered_set<std::string>& input_args_need_grad,
                              const logging::Logger& logger) {
@@ -18,16 +16,14 @@ GradientDef GetGradientForOp(const GradientGraphConfiguration& gradient_graph_co
   // Current SliceGrad(kMSDomain, 1) only supports Slice(kOnnxDomain, 10/11) because adding grad operator for versions
   // less than 9 is not supported and for Slice we have Slice-1, Slice-10 and Slice-11.
 
-  auto gradient_builder = GradientBuilderRegistry::GetInstance().MakeUnique(node->OpType(),
-                                                                            gradient_graph_config,
-                                                                            graph,
-                                                                            node,
-                                                                            output_args_need_grad,
-                                                                            input_args_need_grad,
-                                                                            logger);
+  std::string op_type = GradientDefinitionRegistry::Instance().Contains(GetGradientDefinitionKeyByNode(*node))
+                            ? "ExternalGradient"
+                            : node->OpType();
+  auto gradient_builder = GradientBuilderRegistry::GetInstance().MakeUnique(
+      op_type, gradient_graph_config, graph, node, output_args_need_grad, input_args_need_grad, logger);
 
-  ORT_ENFORCE(gradient_builder != nullptr,
-              "The gradient builder has not been registered:", node->OpType(), " for node ", node->Name());
+  ORT_ENFORCE(gradient_builder != nullptr, "The gradient builder has not been registered:", node->OpType(),
+              " for node ", node->Name());
 
   return gradient_builder->GetGradientDefs();
 }
@@ -105,11 +101,12 @@ void GradientBuilderRegistry::RegisterGradientBuilders() {
   REGISTER_GRADIENT_BUILDER("Min", GetMinMaxGradient);
   REGISTER_GRADIENT_BUILDER("Max", GetMinMaxGradient);
   REGISTER_GRADIENT_BUILDER("Tile", GetTileGradient);
-  REGISTER_GRADIENT_BUILDER("ATenOp", GetATenOpGradient);
   REGISTER_GRADIENT_BUILDER("Pad", GetPadGradient);
   REGISTER_GRADIENT_BUILDER("Identity", GetIdentityGradient);
   REGISTER_GRADIENT_BUILDER("PythonOp", GetPythonOpGradient);
   REGISTER_GRADIENT_BUILDER("ScatterND", GetScatterNDGradient);
+
+  REGISTER_GRADIENT_BUILDER("ExternalGradient", GetExternalGradient);
 };
 
 }  // namespace training
