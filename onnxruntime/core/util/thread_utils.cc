@@ -54,7 +54,7 @@ CreateThreadPool(Env* env, OrtThreadPoolParams options, ThreadPoolType tpool_typ
   if (tpool_type != ThreadPoolType::INTER_OP) {
     return nullptr;
   } else {
-    return CreateThreadPoolHelper(env, options);
+    return CreateThreadPoolHelper(env, options, tpool_type);
   }
 #else
   //ORT_UNUSED_PARAMETER(tpool_type);
