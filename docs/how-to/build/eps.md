@@ -370,7 +370,7 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 ---
 
 ## DirectML
-See more information on the DirectML execution provider [here](../reference/execution-providers/DirectML-ExecutionProvider.md).
+See more information on the DirectML execution provider [here](../../reference/execution-providers/DirectML-ExecutionProvider.md).
 ### Windows
 {: .no_toc }
 
