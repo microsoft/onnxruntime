@@ -388,7 +388,9 @@ ThreadPool::ThreadPool(Env* env,
   }
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 ThreadPool::ThreadPool() {}
+#endif
 
 ThreadPool::~ThreadPool() = default;
 
