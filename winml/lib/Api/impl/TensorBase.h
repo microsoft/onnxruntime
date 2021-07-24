@@ -350,7 +350,7 @@ struct TensorBase : TBase {
     // get the shape
     RETURN_IF_FAILED_MSG(value->GetTensorShape(shape_), "Failed to get the tensor shape from resource!");
 
-    bool disableCopyGpuInputsToCpu = context.properties.HasKey(L"SuppressCpuCopyback");
+    bool disableCopyGpuInputsToCpu = context.properties != nullptr && context.properties.HasKey(L"SuppressCpuCopyback");
 
     // make sure we always have a CPU resource
     if (!disableCopyGpuInputsToCpu && CpuTensor() == nullptr) {
