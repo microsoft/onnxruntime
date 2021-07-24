@@ -350,8 +350,10 @@ struct TensorBase : TBase {
     // get the shape
     RETURN_IF_FAILED_MSG(value->GetTensorShape(shape_), "Failed to get the tensor shape from resource!");
 
+    bool disableCopyGpuInputsToCpu = context.properties.HasKey(L"SuppressCpuCopyback");
+
     // make sure we always have a CPU resource
-    if (CpuTensor() == nullptr) {
+    if (!disableCopyGpuInputsToCpu && CpuTensor() == nullptr) {
       CpuTensor() = std::make_shared<_winml::Tensor<T>>(shape_);
     }
 
@@ -371,7 +373,7 @@ struct TensorBase : TBase {
         // In that case the underlying buffers will not match the engine output, and they need to be flushed.
         CpuTensor()->flush();
       }
-    } else {
+    } else if (!disableCopyGpuInputsToCpu) {
       // If we got a gpu resource, we should move the data to the cpu so accessors can retrieve the data.
       // We don't need to copy the engine provided dx resource into a local copy since we always preallocate gpu
       // resources for tensors. Therefore we are certain that the returned dxresource is the same as the one we passed in
