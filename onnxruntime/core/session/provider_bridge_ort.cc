@@ -33,7 +33,7 @@
 #include "orttraining/core/framework/torch/refcount_tracker.h"
 #endif
 #endif
-#if defined(USE_CUDA) && defined(ORT_USE_NCCL)
+#if defined(ORT_USE_NCCL)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #endif
