@@ -1,4 +1,9 @@
-﻿#include "core/platform/threadpoollite.h"
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#if !defined(ORT_MINIMAL_BUILD)
+
+#include "core/platform/threadpoollite.h"
 #include "core/common/spin_pause.h"
 
 namespace onnxruntime {
@@ -135,3 +140,5 @@ void ThreadPoolLite::ThreadLoop(int thread_id) {
 
 }  // namespace concurrency
 }  // namespace onnxruntime
+
+#endif
