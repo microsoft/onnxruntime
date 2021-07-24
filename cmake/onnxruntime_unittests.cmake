@@ -1072,10 +1072,17 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     "${TEST_SRC_DIR}/mlas/unittest/*.cpp"
   )
   onnxruntime_add_executable(onnxruntime_mlas_test ${onnxruntime_mlas_test_src})
+
+  onnxruntime_add_executable(onnxruntime_mlas_debug ${TEST_SRC_DIR}/mlas/unittest.cpp)
+
   if(MSVC)
     target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd6326>"
+                "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
+    target_compile_options(onnxruntime_mlas_debug PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>"
+            "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
+    target_compile_options(onnxruntime_mlas_debug PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler /wd6326>"
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
   endif()
   if(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
@@ -1084,6 +1091,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     )
   endif()
   target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
+          ${CMAKE_CURRENT_BINARY_DIR})
+  target_include_directories(onnxruntime_mlas_debug PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
           ${CMAKE_CURRENT_BINARY_DIR})
   set(onnxruntime_mlas_test_libs GTest::gtest GTest::gmock onnxruntime_mlas onnxruntime_common)
   if(NOT WIN32)
@@ -1097,18 +1106,24 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   endif()
   list(APPEND onnxruntime_mlas_test_libs Threads::Threads)
   target_link_libraries(onnxruntime_mlas_test PRIVATE ${onnxruntime_mlas_test_libs})
+  target_link_libraries(onnxruntime_mlas_debug PRIVATE ${onnxruntime_mlas_test_libs})
   if(WIN32)
     target_link_libraries(onnxruntime_mlas_test PRIVATE debug Dbghelp Advapi32)
+    target_link_libraries(onnxruntime_mlas_debug PRIVATE debug Dbghelp Advapi32)
   endif()
   if (onnxruntime_LINK_LIBATOMIC)
     target_link_libraries(onnxruntime_mlas_test PRIVATE atomic)
+    target_link_libraries(onnxruntime_mlas_debug PRIVATE atomic)
   endif()
   set_target_properties(onnxruntime_mlas_test PROPERTIES FOLDER "ONNXRuntimeTest")
+  set_target_properties(onnxruntime_mlas_debug PROPERTIES FOLDER "ONNXRuntimeTest")
   if (onnxruntime_BUILD_WEBASSEMBLY)
     if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
       set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 -s USE_PTHREADS=1 -s PROXY_TO_PTHREAD=1 -s EXIT_RUNTIME=1")
+      set_target_properties(onnxruntime_mlas_debug PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 -s USE_PTHREADS=1 -s PROXY_TO_PTHREAD=1 -s EXIT_RUNTIME=1")
     else()
       set_target_properties(onnxruntime_mlas_test PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1")
+      set_target_properties(onnxruntime_mlas_debug PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1")
     endif()
   endif()
 
