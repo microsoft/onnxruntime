@@ -131,6 +131,10 @@ inline ONNX_NAMESPACE::TypeProto* GetMutableOptionalTypeProto(ONNX_NAMESPACE::Ty
   return type_proto.mutable_optional_type()->mutable_elem_type();
 }
 
+inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_Optional& opt_proto) {
+  return opt_proto.elem_type().value_case() != ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET;
+}
+
 inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_Tensor& ten_proto) {
   return ten_proto.elem_type() != ONNX_NAMESPACE::TensorProto::UNDEFINED;
 }
@@ -213,10 +217,6 @@ inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_Sequence& seq_proto) {
   return seq_proto.elem_type().value_case() != ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET;
 }
 
-inline bool HasElemType(const ONNX_NAMESPACE::TypeProto_Optional& opt_proto) {
-  return opt_proto.elem_type().value_case() != ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET;
-}
-
 inline bool HasName(const ONNX_NAMESPACE::SparseTensorProto& ten_proto) {
   return ten_proto.values().has_name();  // XXX
 }
@@ -246,6 +246,7 @@ inline bool HasDomain(const ONNX_NAMESPACE::TypeProto_Opaque& op_proto) {
 inline bool HasName(const ONNX_NAMESPACE::TypeProto_Opaque& op_proto) {
   return !op_proto.name().empty();
 }
+
 #endif
 
 inline bool HasType(const ONNX_NAMESPACE::AttributeProto& at_proto) {

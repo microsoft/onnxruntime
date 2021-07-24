@@ -2307,6 +2307,10 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
         TypeProto merge_target;
         if (utils::HasTensorType(onnx_inferred_type)) {
           *merge_target.mutable_tensor_type()->mutable_shape() = *output_def->Shape();
+        } else if (utils::HasOptionalTensorType(onnx_inferred_type)) {
+          *utils::GetMutableOptionalTypeProto(merge_target)
+               ->mutable_tensor_type()
+               ->mutable_shape() = *output_def->Shape();
         } else if (utils::HasSparseTensorType(onnx_inferred_type)) {
           *merge_target.mutable_sparse_tensor_type()->mutable_shape() = *output_def->Shape();
         }

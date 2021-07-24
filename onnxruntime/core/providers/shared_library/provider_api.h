@@ -125,6 +125,7 @@ struct TensorProtos;  // RepeatedPtrField
 struct TensorShapeProto_Dimension;
 struct TensorShapeProto_Dimensions;  // RepeatedPtrField
 struct TensorShapeProto;
+struct TypeProto_Optional;
 struct TypeProto_Tensor;
 struct TypeProto_SparseTensor;
 struct TypeProto;

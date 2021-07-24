@@ -40,7 +40,7 @@ struct Capture final {
   void operator=(const Capture&) = delete;
 };
 }  // namespace logging
-}
+}  // namespace onnxruntime
 
 namespace ONNX_NAMESPACE {
 
@@ -219,6 +219,12 @@ struct TypeProto_SparseTensor final {
   PROVIDER_DISALLOW_ALL(TypeProto_SparseTensor)
 };
 
+struct TypeProto_Optional final {
+  const TypeProto& elem_type() const { return g_host->TypeProto_Optional__elem_type(this); }
+  TypeProto* mutable_elem_type() { return g_host->TypeProto_Optional__mutable_elem_type(this); }
+  PROVIDER_DISALLOW_ALL(TypeProto_Optional)
+};
+
 struct TypeProto final {
   const TypeProto_Tensor& tensor_type() const { return g_host->TypeProto__tensor_type(this); }
   TypeProto_Tensor* mutable_tensor_type() { return g_host->TypeProto__mutable_tensor_type(this); }
@@ -226,10 +232,14 @@ struct TypeProto final {
   const TypeProto_SparseTensor& sparse_tensor_type() const { return g_host->TypeProto__sparse_tensor_type(this); }
   TypeProto_SparseTensor* mutable_sparse_tensor_type() { return g_host->TypeProto__mutable_sparse_tensor_type(this); }
 
+  const TypeProto_Optional& optional_type() const { return g_host->TypeProto__optional_type(this); }
+  TypeProto_Optional* TypeProto::mutable_optional_type() { return g_host->TypeProto__mutable_optional_type(this); }
+
   enum ValueCase {
     kTensorType = 1,
     kSequenceType = 4,
     kMapType = 5,
+    kOptionalType = 9,
     kSparseTensorType = 8,
     kOpaqueType = 7,
     VALUE_NOT_SET = 0,
@@ -680,7 +690,7 @@ struct OpKernelContext final {
   T* Output(int index);
 
   Tensor* Output(int index, const TensorShape& shape) { return g_host->OpKernelContext__Output(this, index, shape); }
-  SparseTensor* OutputSparse(int index, const TensorShape& shape) { return g_host->OpKernelContext__OutputSparse(this, index, shape); } 
+  SparseTensor* OutputSparse(int index, const TensorShape& shape) { return g_host->OpKernelContext__OutputSparse(this, index, shape); }
   int OutputCount() const { return g_host->OpKernelContext__OutputCount(this); }
 
   Status GetTempSpaceAllocator(AllocatorPtr* output) const { return g_host->OpKernelContext__GetTempSpaceAllocator(this, output); }
@@ -928,4 +938,4 @@ struct TensorSeq final {
 template <>
 inline gsl::span<const int64_t> Tensor::DataAsSpan() const { return g_host->Tensor__DataAsSpan_int64(this); }
 
-}
+}  // namespace onnxruntime

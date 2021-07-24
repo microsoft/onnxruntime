@@ -209,12 +209,11 @@ struct ProviderHostImpl : ProviderHost {
                                               const AllocatorPtr& dst_allocator, Tensor& dst) override {
     return sparse_utils::SparseCooToDenseTensor(data_manager, src, cpu_allocator, dst_allocator, dst);
   }
-#endif // ORT_MINIMAL_BUILD
+#endif  // ORT_MINIMAL_BUILD
   Status sparse_utils__DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
                                               const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) override {
     return sparse_utils::DenseTensorToSparseCoo(data_manager, src, cpu_allocator, dst_allocator, linear_indexs, dst);
   }
-
 
   // IAllocator (direct)
   bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) override { return IAllocator::CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out); }
@@ -280,6 +279,10 @@ struct ProviderHostImpl : ProviderHost {
   int int64s__size(const ONNX_NAMESPACE::int64s* p) override { return p->size(); }
   const int64_t& int64s__Get(const ONNX_NAMESPACE::int64s* p, int index) override { return p->Get(index); }
 
+  // TypeProto_Optional (wrapped)
+  const ONNX_NAMESPACE::TypeProto& TypeProto_Optional__elem_type(const ONNX_NAMESPACE::TypeProto_Optional* p) override { return p->elem_type(); }
+  ONNX_NAMESPACE::TypeProto* TypeProto_Optional__mutable_elem_type(ONNX_NAMESPACE::TypeProto_Optional* p) override { return p->mutable_elem_type(); }
+
   // TypeProto_Tensor (wrapped)
   bool TypeProto_Tensor__has_shape(const ONNX_NAMESPACE::TypeProto_Tensor* p) override { return p->has_shape(); }
   const ONNX_NAMESPACE::TensorShapeProto& TypeProto_Tensor__shape(const ONNX_NAMESPACE::TypeProto_Tensor* p) override { return p->shape(); }
@@ -302,12 +305,10 @@ struct ProviderHostImpl : ProviderHost {
   const ONNX_NAMESPACE::TypeProto_Tensor& TypeProto__tensor_type(const ONNX_NAMESPACE::TypeProto* p) override { return p->tensor_type(); }
   ONNX_NAMESPACE::TypeProto_Tensor* TypeProto__mutable_tensor_type(ONNX_NAMESPACE::TypeProto* p) override { return p->mutable_tensor_type(); }
   int TypeProto__value_case(const ONNX_NAMESPACE::TypeProto* p) override { return p->value_case(); }
-  const ONNX_NAMESPACE::TypeProto_SparseTensor& TypeProto__sparse_tensor_type(const ONNX_NAMESPACE::TypeProto* p) override {
-    return p->sparse_tensor_type();
-  }
-  ONNX_NAMESPACE::TypeProto_SparseTensor* TypeProto__mutable_sparse_tensor_type(ONNX_NAMESPACE::TypeProto* p) override {
-    return p->mutable_sparse_tensor_type();
-  }
+  const ONNX_NAMESPACE::TypeProto_SparseTensor& TypeProto__sparse_tensor_type(const ONNX_NAMESPACE::TypeProto* p) override { return p->sparse_tensor_type(); }
+  ONNX_NAMESPACE::TypeProto_SparseTensor* TypeProto__mutable_sparse_tensor_type(ONNX_NAMESPACE::TypeProto* p) override { return p->mutable_sparse_tensor_type(); }
+  const ONNX_NAMESPACE::TypeProto_Optional& TypeProto__optional_type(const ONNX_NAMESPACE::TypeProto* p) override { return p->optional_type(); }
+  ONNX_NAMESPACE::TypeProto_Optional* TypeProto__mutable_optional_type(ONNX_NAMESPACE::TypeProto* p) override { return p->mutable_optional_type(); }
 
   // AttributeProto (wrapped)
   std::unique_ptr<ONNX_NAMESPACE::AttributeProto> AttributeProto__construct() override { return std::make_unique<ONNX_NAMESPACE::AttributeProto>(); }

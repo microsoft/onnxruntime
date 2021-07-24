@@ -734,9 +734,11 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       // In this case we need to allocate 'reuse_value' and then let 'ort_value' to reuse it.
       OrtValue& reuse_value = GetMutableMLValue(reuse_mlvalue_index);
       if (!reuse_value.IsAllocated()) {
-        return AllocateAsPerAllocationPlan(reuse_value, reuse_mlvalue_index, shape);
+        ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(reuse_value, reuse_mlvalue_index, shape));
       }
 
+      // copy at the OrtValue level so the shared_ptr for the data is shared between the two OrtValue instances
+      ort_value = reuse_value;
       return Status::OK();
     } else {
       return AllocateTensorSequence(ort_value);

@@ -130,8 +130,8 @@ TEST(OptionalOpTest, OptionalSeqTensorGetElement) {
 
 class OptionalOpTester : public OpTester {
  public:
-  OptionalOpTester()
-      : OpTester("Optional", 15) {}
+  explicit OptionalOpTester(bool is_seq_tensor = false)
+      : is_seq_tensor_(is_seq_tensor), OpTester("Optional", 15) {}
 
  protected:
   void AddNodes(onnxruntime::Graph& graph,
@@ -160,28 +160,48 @@ class OptionalOpTester : public OpTester {
     tensor_type_proto.mutable_tensor_type()
         ->set_elem_type(onnx::TensorProto_DataType::TensorProto_DataType_FLOAT);
 
+    onnx::TypeProto seq_tensor_type_proto;
+    if (is_seq_tensor_) {
+      seq_tensor_type_proto.mutable_sequence_type()->mutable_elem_type()->CopyFrom(tensor_type_proto);
+    }
+
     onnx::TypeProto optional_type_proto;
-    optional_type_proto.mutable_optional_type()->mutable_elem_type()->CopyFrom(tensor_type_proto);
+    optional_type_proto.mutable_optional_type()->mutable_elem_type()->CopyFrom(
+        is_seq_tensor_ ? seq_tensor_type_proto : tensor_type_proto);
 
     auto& optional_node_arg = graph.GetOrCreateNodeArg("optional_output", &optional_type_proto);
     ORT_IGNORE_RETURN_VALUE(graph.AddNode("optional_create", "Optional", "Create optional type",
                                           {graph_input_defs[0]}, {&optional_node_arg},
                                           nullptr));
 
-    auto& tensor_node_arg = graph.GetOrCreateNodeArg("tensor_output", &tensor_type_proto);
+    auto& optional_parsed_node_arg = graph.GetOrCreateNodeArg("parsed_output",
+                                                              is_seq_tensor_
+                                                                  ? &seq_tensor_type_proto
+                                                                  : &tensor_type_proto);
+
     ORT_IGNORE_RETURN_VALUE(graph.AddNode("optional_get_element", "OptionalGetElement",
                                           "Parse optional type",
-                                          {&optional_node_arg}, {&tensor_node_arg},
+                                          {&optional_node_arg}, {&optional_parsed_node_arg},
                                           nullptr));
 
-    ORT_IGNORE_RETURN_VALUE(graph.AddNode("Size", "Size",
-                                          "Size",
-                                          {&tensor_node_arg}, {graph_output_defs[0]},
-                                          nullptr));
+    if (!is_seq_tensor_) {
+      ORT_IGNORE_RETURN_VALUE(graph.AddNode("Size", "Size",
+                                            "Size",
+                                            {&optional_parsed_node_arg}, {graph_output_defs[0]},
+                                            nullptr));
+    } else {
+      ORT_IGNORE_RETURN_VALUE(graph.AddNode("SequenceLength", "SequenceLength",
+                                            "SequenceLength",
+                                            {&optional_parsed_node_arg}, {graph_output_defs[0]},
+                                            nullptr));
+    }
   }
+
+ private:
+  bool is_seq_tensor_;
 };
 
-TEST(OptionalOpTest, OptionalOpsValidateOrtValueReUse) {
+TEST(OptionalOpTest, OptionalOpsValidateOrtValueReUseForOptionalTensors) {
   // We create a simple model with 2 optional ops - Optional and OptionalGetElement
   // that don't produce graph outputs and we have logic in the allocation planner to
   // re-use input OrtValues as output OrtValues for such cases. We test that the model
@@ -198,5 +218,22 @@ TEST(OptionalOpTest, OptionalOpsValidateOrtValueReUse) {
   test.Run();
 }
 
+TEST(OptionalOpTest, OptionalOpsValidateOrtValueReUseForOptionalTensorSequence) {
+  // We create a simple model with 2 optional ops - Optional and OptionalGetElement
+  // that don't produce graph outputs and we have logic in the allocation planner to
+  // re-use input OrtValues as output OrtValues for such cases. We test that the model
+  // executes fine with sch logic.
+  // TODO: How to ensure that re-use took place ?
+
+  OptionalOpTester test(true);
+
+  SeqTensors<float> data;
+  data.AddTensor({3, 2}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+
+  test.AddSeqInput("S", data);
+  test.AddOutput<int64_t>("Y", {}, {1});
+
+  test.Run();
+}
 }  // namespace test
 }  // namespace onnxruntime

@@ -742,10 +742,10 @@ class PlannerImpl {
             }
           }
         } else if (!context_.IsParallelExecutionEnabled() &&
-                   IsOptionalType(*node_output) &&
                    FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
-          // For optional type outputs, certain kernels allow re-using input OrtValues.
-          // Check if re-using is feasible.
+          // Re-using inputs is applicable for tensors, sequence tensors,
+          // and optional types if the kernel has marked certain inputs as
+          // possible candidates for re-use
           Reuse(reused, current, AllocKind::kReuse);
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           InplaceReuse(reused, current);
@@ -753,13 +753,6 @@ class PlannerImpl {
         } else if (IsNonTensor(*node_output)) {
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
           AllocPlan(current).program_counter.AddStart(program_counter);
-        } else if (!context_.IsParallelExecutionEnabled() &&
-                   FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
-          // Reuse one of this node's input buffers as the output buffer (for in-place update)
-          Reuse(reused, current, AllocKind::kReuse);
-#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-          InplaceReuse(reused, current);
-#endif
         } else if (!context_.IsParallelExecutionEnabled() &&
                    FindReusableTensor(*node_output, &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.

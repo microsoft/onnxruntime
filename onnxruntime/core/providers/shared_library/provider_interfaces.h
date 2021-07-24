@@ -176,7 +176,7 @@ struct ProviderHost {
 
   virtual Status sparse_utils__SparseCooToDenseTensor(const DataTransferManager& data_manager, const SparseTensor& src, const AllocatorPtr& cpu_allocator,
                                                       const AllocatorPtr& dst_allocator, Tensor& dst) = 0;
-#endif // ORT_MINIMAL_BUILD
+#endif  // ORT_MINIMAL_BUILD
   virtual Status sparse_utils__DenseTensorToSparseCoo(const DataTransferManager& data_manager, const Tensor& src, const AllocatorPtr& cpu_allocator,
                                                       const AllocatorPtr& dst_allocator, bool linear_indexs, SparseTensor& dst) = 0;
 
@@ -229,6 +229,10 @@ struct ProviderHost {
   virtual int int64s__size(const ONNX_NAMESPACE::int64s* p) = 0;
   virtual const int64_t& int64s__Get(const ONNX_NAMESPACE::int64s* p, int index) = 0;
 
+  // TypeProto_Optional
+  virtual const ONNX_NAMESPACE::TypeProto& TypeProto_Optional__elem_type(const ONNX_NAMESPACE::TypeProto_Optional* p) = 0;
+  virtual ONNX_NAMESPACE::TypeProto* TypeProto_Optional__mutable_elem_type(ONNX_NAMESPACE::TypeProto_Optional* p) = 0;
+
   // TypeProto_Tensor
   virtual bool TypeProto_Tensor__has_shape(const ONNX_NAMESPACE::TypeProto_Tensor* p) = 0;
   virtual const ONNX_NAMESPACE::TensorShapeProto& TypeProto_Tensor__shape(const ONNX_NAMESPACE::TypeProto_Tensor* p) = 0;
@@ -247,6 +251,10 @@ struct ProviderHost {
 
   virtual const ONNX_NAMESPACE::TypeProto_SparseTensor& TypeProto__sparse_tensor_type(const ONNX_NAMESPACE::TypeProto* p) = 0;
   virtual ONNX_NAMESPACE::TypeProto_SparseTensor* TypeProto__mutable_sparse_tensor_type(ONNX_NAMESPACE::TypeProto* p) = 0;
+
+  virtual const ONNX_NAMESPACE::TypeProto_Optional& TypeProto__optional_type(const ONNX_NAMESPACE::TypeProto* p) = 0;
+  virtual ONNX_NAMESPACE::TypeProto_Optional* TypeProto__mutable_optional_type(ONNX_NAMESPACE::TypeProto* p) = 0;
+
   virtual int TypeProto__value_case(const ONNX_NAMESPACE::TypeProto* p) = 0;
 
   // AttributeProto
@@ -749,7 +757,7 @@ struct ProviderHost {
 #endif
 #endif
 
-  virtual ProviderHostCPU& GetProviderHostCPU()=0;
+  virtual ProviderHostCPU& GetProviderHostCPU() = 0;
 };
 
 }  // namespace onnxruntime
