@@ -338,10 +338,11 @@ class TestNuphar(unittest.TestCase):
     def test_bidaf(self):
         cwd = os.getcwd()
 
-        bidaf_dir_src = '/build/models/opset9/test_bidaf'
+        bidaf_dir_src = '../models/opset9/test_bidaf'
 
         bidaf_dir = os.path.join(cwd, 'bidaf')
-        shutil.copytree(bidaf_dir_src, bidaf_dir)
+        if not exists(bidaf_dir):
+            shutil.copytree(bidaf_dir_src, bidaf_dir)
 
         bidaf_dir = os.path.join(cwd, 'bidaf')
         bidaf_model = os.path.join(bidaf_dir, 'model.onnx')
@@ -421,9 +422,10 @@ class TestNuphar(unittest.TestCase):
 
         # run symbolic shape inference on this model
         # set int_max to 1,000,000 to simplify symbol computes for things like min(1000000, seq_len) -> seq_len
-        bert_squad_dir_src = '/build/models/opset10/BERT_Squad'
+        bert_squad_dir_src = '../models/opset10/BERT_Squad'
         bert_squad_dir = os.path.join(cwd, 'BERT_Squad')
-        shutil.copytree(bert_squad_dir_src, bert_squad_dir)
+        if not exists(bert_squad_dir):
+            shutil.copytree(bert_squad_dir_src, bert_squad_dir)
 
         bert_squad_model = os.path.join(bert_squad_dir, 'bertsquad10.onnx')
         subprocess.run([
