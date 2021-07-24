@@ -50,6 +50,7 @@ void ValidateTestData(TestData& test_data, int expected=1) {
 void CreateThreadPoolAndTest(const std::string&, int num_threads, const std::function<void(ThreadPool*)>& test_body, bool test_tplite = false) {
   if (num_threads > 0) {
 #ifdef ORT_MINIMAL_BUILD
+    ORT_UNUSED_PARAMETER(test_tplite);
     auto tp = std::make_unique<ThreadPool>(&onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr,
                                            num_threads, true);
 #else
