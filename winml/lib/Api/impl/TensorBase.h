@@ -350,15 +350,16 @@ struct TensorBase : TBase {
     // get the shape
     RETURN_IF_FAILED_MSG(value->GetTensorShape(shape_), "Failed to get the tensor shape from resource!");
 
-    bool disableCopyGpuInputsToCpu = context.properties != nullptr && context.properties.HasKey(L"SuppressCpuCopyback");
+    bool is_cpu;
+    bool isCpuOutput = SUCCEEDED(value->IsCpu(&is_cpu)) && is_cpu;
+    bool disableCopyGpuInputsToCpu = !isCpuOutput && context.properties != nullptr && context.properties.HasKey(L"SuppressCpuCopyback");
 
     // make sure we always have a CPU resource
     if (!disableCopyGpuInputsToCpu && CpuTensor() == nullptr) {
       CpuTensor() = std::make_shared<_winml::Tensor<T>>(shape_);
     }
 
-    bool is_cpu;
-    if (SUCCEEDED(value->IsCpu(&is_cpu)) && is_cpu) {
+    if (isCpuOutput) {
       // Get the data pointer and size
       auto buffer = CpuTensor()->buffer(false);
 
