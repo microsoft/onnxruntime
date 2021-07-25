@@ -12,7 +12,7 @@ import {ProgramInfo, TextureType} from '../types';
 
 import {createUnpackedGroupedConvProgramInfo} from './conv-grouped';
 import {conv2DPacked} from './conv-pack';
-import {getActicationSnippet, parseInternalActivationAttributes} from './fuse-utils';
+import {getActicationSnippet, InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
 import {calculateIm2ColDims, createIm2ColProgramInfo} from './im2col';
 
 function createDotProductProgramInfo(
@@ -83,16 +83,13 @@ export const calculateOutputShape =
       return outputShape;
     };
 
-export interface ConvAttributes {
+export interface ConvAttributes extends InternalActivationAttributes {
   readonly autoPad: string;
   readonly dilations: readonly number[];
   readonly group: number;
   readonly kernelShape: readonly number[];
   readonly pads: readonly number[];
   readonly strides: readonly number[];
-  readonly activation: string;
-  readonly clipMax: number;
-  readonly clipMin: number;
 }
 
 export const conv: OperatorImplementation<ConvAttributes> =

@@ -14,7 +14,7 @@ import {gemm, parseGemmAttributesV11, parseGemmAttributesV7} from './ops/gemm';
 import {imageScaler, parseImageScalerAttributes} from './ops/image-scaler';
 import {instanceNormalization, parseInstanceNormalizationAttributes} from './ops/instance-normalization';
 import {leakyRelu, parseLeakyReluAttributes} from './ops/leaky-relu';
-// import {WebGLMatMul} from './ops/matmul';
+import {matMul, parseMatMulAttributes} from './ops/matmul';
 import {pad, parsePadAttributes} from './ops/pad';
 import {averagePool, parseAveragePoolAttributes} from './ops/pool';
 import {globalAveragePool, parseGlobalAveragePoolAttributes} from './ops/pool';
@@ -71,7 +71,7 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['LeakyRelu', '', '6+', leakyRelu, parseLeakyReluAttributes],
   ['Less', '', '7+', binaryOps.less],
   ['Log', '', '6+', unaryOps.log],
-  // ['MatMul', '', '1+', () => new WebGLMatMul()],
+  ['MatMul', '', '1+', matMul, parseMatMulAttributes],
   // TODO: support new attributes for MaxPool-8 and MaxPool-10
   ['MaxPool', '', '1-9', maxPool, parseMaxPoolAttributes],
   ['Mul', '', '7+', binaryOps.mul],
