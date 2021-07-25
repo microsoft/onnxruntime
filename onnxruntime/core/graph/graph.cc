@@ -2442,11 +2442,17 @@ void Graph::InitFunctionBodyForNode(Node& node) {
       onnx_function_proto = *(node.op_->GetFunction());
     }
 
-    auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
-                                                                logger_);
-
-    function_container_.emplace_back(std::move(func_ptr));
-    node.SetFunctionBody(*function_container_.back());
+    ORT_TRY {
+      auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
+                                                                  logger_);
+      function_container_.emplace_back(std::move(func_ptr));
+      node.SetFunctionBody(*function_container_.back());
+    }
+    ORT_CATCH(const std::exception& ) {
+      // Return without using this function op's expansion. No need to fail just yet.
+      // If ORT has a specialized kernel for this op then execution will proceed
+      return;
+    }
   }
 }
 

@@ -196,8 +196,8 @@ static std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph
 }
 
 // Creates domain to version map for onnx function
-static std::unordered_map<std::string, int> GetFunctionOpsetImports(const ONNX_NAMESPACE::FunctionProto& func_proto) {
-  std::unordered_map<std::string, int> function_opset_imports;
+static std::unordered_map<std::string, int> GetFunctionOpsetImports(const ONNX_NAMESPACE::FunctionProto& func_proto, const std::unordered_map<std::string, int>& graph_imports) {
+  std::unordered_map<std::string, int> function_opset_imports{graph_imports};
   for (const auto& opset_import : func_proto.opset_import()) {
     function_opset_imports.insert({opset_import.domain(), static_cast<int>(opset_import.version())});
   }
@@ -281,7 +281,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
     : parent_graph_(&graph),
       body_(onnx_func_proto.name(), false, onnxruntime::ModelMetaData(),
             graph.ModelPath().ToPathString(), IOnnxRuntimeOpSchemaRegistryList(),
-            onnx_func_proto.opset_import_size() != 0 ? GetFunctionOpsetImports(onnx_func_proto) : graph.DomainToVersionMap(),
+            onnx_func_proto.opset_import_size() != 0 ? GetFunctionOpsetImports(onnx_func_proto, graph.DomainToVersionMap()) : graph.DomainToVersionMap(),
             {}, logger),
       onnx_func_proto_(onnx_func_proto) {
   // Make a copy of the FunctionProto.
