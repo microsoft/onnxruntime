@@ -18,15 +18,18 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   if (options.affinity_vec_len != 0) {
     to.affinity.assign(options.affinity_vec, options.affinity_vec + options.affinity_vec_len);
   }
-  if (options.thread_pool_size <= 0) {  // default
+  /* if (options.thread_pool_size <= 0) {  // default
     cpu_list = Env::Default().GetThreadAffinityMasks();
     if (cpu_list.empty() || cpu_list.size() == 1)
       return nullptr;
     options.thread_pool_size = static_cast<int>(cpu_list.size());
     if (options.auto_set_affinity)
       to.affinity = cpu_list;
-  }
+  } */
+  printf("Warning: Forcing thread pool size = 1");
+  options.thread_pool_size = 1;
   to.set_denormal_as_zero = options.set_denormal_as_zero;
+
 
   return std::make_unique<ThreadPool>(env, to, options.name, options.thread_pool_size,
                                               options.allow_spinning);
