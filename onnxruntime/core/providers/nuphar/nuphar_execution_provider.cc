@@ -293,12 +293,20 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         return false;
     }
 
-    if (node.OpType() == "ReduceSum" && inputs.size() > 1) {
-      std::vector<int64_t> axes;
-      // ReduceSum-13 changes axes to input, nuphar can only handle axes from initializers
-      bool is_axes_dynamic = !graph_viewer.IsConstantInitializer(inputs[1]->Name(), true);
-      if (is_axes_dynamic)
+    if (node.OpType() == "ReduceSum") {
+      if (inputs.size() > 1) {
+        std::vector<int64_t> axes;
+        // ReduceSum-13 changes axes to input, nuphar can only handle axes from initializers
+        bool is_axes_dynamic = inputs.size() > 1 && !graph_viewer.IsConstantInitializer(inputs[1]->Name(), true);
+        if (is_axes_dynamic)
+          return false;
+      }
+      // some invalid model has axes attribute in opset13, ignore
+      // e.g. onnx181/node/test_sce_mean_weight_ii_expanded/model.onnx
+      const auto& attrs = node.GetAttributes();
+      if (GetDomainVersion(node.Domain()) >= 13 && attrs.find("axes") != attrs.end()) {
         return false;
+      }
     }
 
     if (IsAliasNode(node)) {

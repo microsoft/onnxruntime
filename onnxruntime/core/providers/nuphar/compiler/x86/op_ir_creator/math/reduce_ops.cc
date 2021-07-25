@@ -114,22 +114,27 @@ class FuncReduceV {
     if (node.OpType() == "ReduceSum" && version >= 13) {
       // ReduceSum changed axes from attribute to input in opset 13
       // besides, it added noop_with_empty_axes attribute to do nothing when axes is empty
-      const auto* tensor = ctx_nuphar->GetOrtInitializerTensor(node.InputDefs()[1]->Name());
-      ORT_ENFORCE(tensor);
-      const int64_t* input_axes = tensor->Data<int64_t>();
-      axes_ = std::vector<int64_t>(input_axes, input_axes + tensor->Shape().Size());
+      const auto& inputs = node.InputDefs();
+      if (inputs.size() > 1 && inputs[1] != nullptr) {
+        const auto* tensor = ctx_nuphar->GetOrtInitializerTensor(inputs[1]->Name());
+        ORT_ENFORCE(tensor);
+        const int64_t* input_axes = tensor->Data<int64_t>();
+        axes_ = std::vector<int64_t>(input_axes, input_axes + tensor->Shape().Size());
+      }
       noop_with_empty_axes_ = (info.GetAttrOrDefault<int64_t>("noop_with_empty_axes", 0) != 0);
     } else {
       axes_ = info.GetAttrsOrDefault<int64_t>("axes");
-      if (axes_.size() == 0) {
-        int64_t sz = static_cast<int64_t>(def->Shape()->dim().size());
-        ORT_ENFORCE(sz > 0);
-        for (int64_t i = 0; i < sz; i++) {
-          axes_.push_back(i);
-        }
-      }
       noop_with_empty_axes_ = false;
     }
+
+    if (!noop_with_empty_axes_ && axes_.size() == 0) {
+      int64_t sz = static_cast<int64_t>(def->Shape()->dim().size());
+      ORT_ENFORCE(sz > 0);
+      for (int64_t i = 0; i < sz; i++) {
+        axes_.push_back(i);
+      }
+    }
+
     int64_t keepdims_i = 1;
     ORT_ENFORCE(info.GetAttr("keepdims", &keepdims_i).IsOK());
     keep_dims_ = (keepdims_i == 1);
