@@ -301,12 +301,6 @@ NupharExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         if (is_axes_dynamic)
           return false;
       }
-      // some invalid model has axes attribute in opset13, ignore
-      // e.g. onnx181/node/test_sce_mean_weight_ii_expanded/model.onnx
-      const auto& attrs = node.GetAttributes();
-      if (GetDomainVersion(node.Domain()) >= 13 && attrs.find("axes") != attrs.end()) {
-        return false;
-      }
     }
 
     if (IsAliasNode(node)) {
