@@ -41,7 +41,10 @@ export class WebGLInferenceHandler implements InferenceHandler {
 
   executeProgram(programInfo: ProgramInfo, inputs: readonly Tensor[]): TextureData {
     if (inputs.length < programInfo.inputNames.length) {
-      throw new Error(`Input size must be greater than ${programInfo.inputNames.length}.`);
+      throw new Error(`Input size mustn't be less than ${programInfo.inputNames.length}.`);
+    }
+    if (programInfo.inputNames.length !== programInfo.inputTypes.length) {
+      throw new Error('input names size does not match input types');
     }
 
     // create texture info for input

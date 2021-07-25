@@ -208,10 +208,10 @@ const createBinaryProgramInfo =
         const shaderSource = usePackedTexture ? `
       ${glslFunc.body}
       void main() {
-      vec4 a = getAAtOutCoords();
-      vec4 b = getBAtOutCoords();
-      vec4 result = ${glslFunc.name}(a, b);
-      ${glsl.output} = result;
+        vec4 a = getAAtOutCoords();
+        vec4 b = getBAtOutCoords();
+        vec4 result = ${glslFunc.name}(a, b);
+        ${glsl.output} = result;
       }` :
                                                 `
       ${glslFunc.body}
@@ -221,7 +221,7 @@ const createBinaryProgramInfo =
         ${aBcast}
         ${bBcast}
         return ${glslFunc.name}(_A(aindices), _B(bindices));
-    }`;
+      }`;
 
         return {
           inputNames: ['A', 'B'],
