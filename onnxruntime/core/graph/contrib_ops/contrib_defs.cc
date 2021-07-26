@@ -2508,10 +2508,14 @@ Example 4:
                 {{"Deviation"}, "Sub", {"XU", "Mean2D"}},
                 {{"Normalized"}, "Div", {"Deviation", "StdDev"}},
                 {{"NormalizedT"}, "Cast", {"Normalized"}, {{"to", T}}},
-                {{"Scaled"}, "Mul", {"NormalizedT", "Scale"}},
-                {{"Biased"}, "Add", {"Scaled", "B"}},
-                {{"Y"}, "Reshape", {"Biased", "XShape"}},
-                {{"InvStdDev2D"}, "Reciprocal", {"StdDev"}}};
+                {{"Scaled"}, "Mul", {"NormalizedT", "Scale"}}};
+            if (ctx.hasInput(2)) {
+              body.push_back({{"Biased"}, "Add", {"Scaled", "B"}});
+            } else {
+              body.push_back({{"Biased"}, "Identity", {"Scaled"}});
+            }
+            body.push_back({{"Y"}, "Reshape", {"Biased", "XShape"}});
+            body.push_back({{"InvStdDev2D"}, "Reciprocal", {"StdDev"}});
             if (ctx.hasOutput(1))
               body.push_back({{"Mean"}, "Reshape", {"Mean2D", "ReducedShape"}});
             if (ctx.hasOutput(2))

@@ -22,7 +22,6 @@
 #include "core/graph/node_arg.h"
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
-#include "onnx/checker.h"
 #else
 #include "onnx/defs/data_type_utils.h"
 #endif
@@ -618,7 +617,6 @@ class Graph {
   how initializer tensors are stored and tracked.
   */
   common::Status ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer);
-
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   /** Remove the initializer tensor with the provided name from the Graph. */
@@ -997,12 +995,6 @@ class Graph {
   @returns Status indicating success or providing an error message.
   */
   Status InlineFunction(Node& node);
-
-  // Helper mtd to initialize checker context for the graph
-  void InitCheckerContext(ONNX_NAMESPACE::checker::CheckerContext& ctx);
-
-  // Helper mtd to initialize lexical scope context for the graph
-  void InitLexicalScopeContext(ONNX_NAMESPACE::checker::LexicalScopeContext& ctx);
 
   /** Initialize function body for the given node */
   void InitFunctionBodyForNode(Node& node);

@@ -357,7 +357,7 @@ DeleteFunc TensorTypeBase::GetDeleteFunc() const {
   return &Delete<Tensor>;
 }
 
-ONNX_NAMESPACE::TypeProto& TensorTypeBase::mutable_type_proto() {
+ONNX_NAMESPACE::TypeProto& TensorTypeBase::MutableTypeProto() {
   return impl_->MutableTypeProto();
 }
 
@@ -418,7 +418,7 @@ const ONNX_NAMESPACE::TypeProto* SparseTensorTypeBase::GetTypeProto() const {
   return impl_->GetProto();
 }
 
-ONNX_NAMESPACE::TypeProto& SparseTensorTypeBase::mutable_type_proto() {
+ONNX_NAMESPACE::TypeProto& SparseTensorTypeBase::MutableTypeProto() {
   return impl_->MutableTypeProto();
 }
 
@@ -469,7 +469,7 @@ const ONNX_NAMESPACE::TypeProto* SequenceTensorTypeBase::GetTypeProto() const {
   return impl_->GetProto();
 }
 
-ONNX_NAMESPACE::TypeProto& SequenceTensorTypeBase::mutable_type_proto() {
+ONNX_NAMESPACE::TypeProto& SequenceTensorTypeBase::MutableTypeProto() {
   return impl_->MutableTypeProto();
 }
 
@@ -527,7 +527,7 @@ NonTensorTypeBase::~NonTensorTypeBase() {
   delete impl_;
 }
 
-ONNX_NAMESPACE::TypeProto& NonTensorTypeBase::mutable_type_proto() {
+ONNX_NAMESPACE::TypeProto& NonTensorTypeBase::MutableTypeProto() {
   return impl_->MutableTypeProto();
 }
 

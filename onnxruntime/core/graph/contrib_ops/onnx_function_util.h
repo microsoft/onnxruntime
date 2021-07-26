@@ -28,4 +28,10 @@ bool BuildFunctionProto(FunctionProto& functionProto,
                         const std::vector<FunctionBodyHelper::NodeDef>& node_defs,
                         const std::vector<OperatorSetIdProto>& relied_opsets = {});
 
+// Utility function to validate opset compatibility between function proto
+// and graph.
+bool IsFunctionOpsetCompatible(const ISchemaRegistry* schema_registry,
+                               const FunctionProto& func_proto,
+                               const std::unordered_map<std::string, int>& graph_imports);
+
 }  // namespace ONNX_NAMESPACE
