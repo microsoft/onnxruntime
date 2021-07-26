@@ -813,11 +813,14 @@ class OpTester {
     ORT_TRY {
       TensorShape shape{dims};
 
-      // Value being null means we are creating an optional type tensor of None
-      ORT_ENFORCE(values == nullptr ||
-                      shape.Size() == values_count,
-                  values_count, " input values doesn't match tensor size of ",
-                  shape.Size());
+      if (values == nullptr) {
+        // Value being null means we are creating an optional type tensor of None
+        ORT_ENFORCE(is_optional_type_tensor, "OrtValue needs to have data for non-optional types");
+      } else {
+        ORT_ENFORCE(shape.Size() == values_count,
+                    values_count, " input values doesn't match tensor size of ",
+                    shape.Size());
+      }
 
       auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
       std::unique_ptr<Tensor> p_tensor;
