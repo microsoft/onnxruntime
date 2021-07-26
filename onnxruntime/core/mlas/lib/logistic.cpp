@@ -121,6 +121,11 @@ Return Value:
 
         float Value = *Input++;
 
+	// This odd "if test" exists to ensure an input value of NaN carries through
+        // without modification because "std::min" and "std::max" return unreliable results
+        // when NaNs are involved, and it's clear from the test's reference outputs that
+        // they want a NaN on output whenever the input is a NaN.
+        if (Value == Value)
         Value = std::min(MlasLogisticConstants.UpperRange, std::max(MlasLogisticConstants.LowerRange, Value));
 
         float ValueSquared = Value * Value;

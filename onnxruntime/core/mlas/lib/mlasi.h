@@ -1627,7 +1627,7 @@ MlasMaximumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_max_ps(Vector1, Vector2);
 #elif defined(MLAS_VSX_INTRINSICS)
-    return vec_sel(Vector2, Vector1, vec_cmpgt(Vector1, Vector2));
+    return vec_sel(vec_sel(vec_sel(Vector2, Vector1, vec_cmpgt(Vector1, Vector2)), Vector1, vec_cmpne(Vector1, Vector1)), Vector2, vec_cmpne(Vector2, Vector2));
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_max(Vector1, Vector2);
 #else
@@ -1644,7 +1644,7 @@ MlasMinimumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_min_ps(Vector1, Vector2);
 #elif defined(MLAS_VSX_INTRINSICS)
-    return vec_sel(Vector2, Vector1, vec_cmpgt(Vector2, Vector1));
+    return vec_sel(vec_sel(vec_sel(Vector2, Vector1, vec_cmpgt(Vector2, Vector1)), Vector1, vec_cmpne(Vector1, Vector1)), Vector2, vec_cmpne(Vector2, Vector2));
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_min(Vector1, Vector2);
 #else
