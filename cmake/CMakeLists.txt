@@ -159,6 +159,8 @@ option(onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS "Enable custom operators in onnxr
 # Single output director for all binaries
 set (RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
 
+set(onnxruntime_CUSTOM_OPS_LIBRARIES "" CACHE STRING "Specify custom ops libraries to link with onnxruntime")
+
 function(set_msvc_c_cpp_compiler_warning_level warning_level)
   if (NOT "${warning_level}" MATCHES "^[0-4]$")
     message(FATAL_ERROR "Expected warning_level value of 0-4, got '${warning_level}'.")
@@ -1660,6 +1662,11 @@ endif()
 if (onnxruntime_USE_OPENMP)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES OpenMP::OpenMP_CXX)
 endif()
+
+if (NOT onnxruntime_CUSTOM_OPS_LIBRARIES STREQUAL "")
+  string(REPLACE " " ";" onnxruntime_CUSTOM_OPS_LIBRARIES_LIST ${onnxruntime_CUSTOM_OPS_LIBRARIES})
+  list (APPEND onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_CUSTOM_OPS_LIBRARIES_LIST})
+endif ()
 
 if(WIN32)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SYS_PATH_LIB} Shlwapi)
