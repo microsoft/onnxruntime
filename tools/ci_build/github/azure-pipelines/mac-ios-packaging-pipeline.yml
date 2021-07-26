@@ -4,6 +4,8 @@ parameters:
   type: boolean
   default: false
 
+name: "$(Date:yyyyMMdd)$(Rev:rrr)"  # build number format
+
 jobs:
 - job: IosPackaging
   displayName: "iOS Packaging"
@@ -29,7 +31,7 @@ jobs:
       if [[ "${IS_RELEASE_BUILD}" == "true" ]]; then
         VERSION=${BASE_VERSION}
       else
-        VERSION="${BASE_VERSION}-dev"
+        VERSION="${BASE_VERSION}-dev+$(Build.BuildNumber)"
       fi
 
       set_var() {
