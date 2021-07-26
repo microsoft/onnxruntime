@@ -33,6 +33,8 @@ Status BatchNormalizationGrad<T, T1, T2>::ComputeInternal(OpKernelContext* ctx) 
   const Tensor* X = ctx->Input<Tensor>(1);
   const Tensor* Scale = ctx->Input<Tensor>(2);
   const Tensor* saved_mean = ctx->Input<Tensor>(3);
+  // cudnnBatchNormalizationBackward() claims to use `savedInvVariance`, but the value
+  // is actually equal to the batch inv_std, so we use name `saved_inv_std` here.
   const Tensor* saved_inv_std = ctx->Input<Tensor>(4);
   const TensorShape input_shape = X->Shape();
   const TensorShape channel_shape = saved_mean->Shape();

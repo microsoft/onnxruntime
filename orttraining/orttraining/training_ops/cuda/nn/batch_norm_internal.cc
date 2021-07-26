@@ -47,6 +47,8 @@ Status BatchNormInternal<T, T1, T2>::ComputeInternal(OpKernelContext* p_op_kerne
   Tensor* running_mean = p_op_kernel_context->Output(1, channel_shape);
   Tensor* running_var = p_op_kernel_context->Output(2, channel_shape);
   Tensor* saved_mean = p_op_kernel_context->Output(3, channel_shape);
+  // cudnnBatchNormalizationForwardTraining() claims to output `resultSaveInvVariance`, but the value
+  // is actually equal to the batch inv_std, so we use name `saved_inv_std` here.
   Tensor* saved_inv_std = p_op_kernel_context->Output(4, channel_shape);
 
   auto x_data = reinterpret_cast<const CudaT*>(X->template Data<T>());
