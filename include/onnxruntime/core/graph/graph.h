@@ -22,7 +22,6 @@
 #include "core/graph/node_arg.h"
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
-#include "onnx/checker.h"
 #else
 #include "onnx/defs/data_type_utils.h"
 #endif
@@ -618,7 +617,6 @@ class Graph {
   how initializer tensors are stored and tracked.
   */
   common::Status ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer);
-
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   /** Remove the initializer tensor with the provided name from the Graph. */

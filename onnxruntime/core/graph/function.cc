@@ -5,7 +5,6 @@
 #include "core/graph/function_impl.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
-#include "core/graph/contrib_ops/onnx_function_util.h"
 #include "onnx/shape_inference/implementation.h"
 
 namespace onnxruntime {

@@ -31,7 +31,7 @@
 #include "core/graph/function.h"
 #include "core/graph/function_impl.h"
 #include "core/graph/schema_registry.h"
-#include "core/graph/contrib_ops/onnx_function_util.h"
+#include "onnx/checker.h"
 using namespace ONNX_NAMESPACE::checker;
 #endif
 
