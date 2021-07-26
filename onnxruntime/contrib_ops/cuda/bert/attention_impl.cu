@@ -104,19 +104,18 @@ bool QkvToContext(
     v = present + batches * present_size_per_batch;
   }
 
-  // Raw attention mask could be 2D (BxS) or 3D (BxSxS*)
+  // Raw attention mask could be 2D (BxS) or 3D (BxSxS*) or 4D(Bx1xMxM), where M is the max sequence length.
   bool use_raw_attention_mask = (nullptr != mask_index && nullptr != mask_index_dims && mask_index_dims->size() >= 2);
 
   // compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scratch1: BxNxSxS*
   // Q: BxNxSxH, K (present_k): BxNxS*xH, Q*K': BxNxSxS*
   const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(head_size));
   const int temp_matrix_size = sequence_length * all_sequence_length;
-  T one = (T)(1.0f);
-  T zero = (T)(0.f);
+  float one = 1.0f;
+  float zero = 0.f;
 
   // For raw attention mask, the scalar if 1/sqrt(H) is moved to softmax computation.
-  // TODO: move scalar to softmax computation since converting 1/Sqrt(H) to half might have loss in precision.
-  T alpha = use_raw_attention_mask ? one : (T)(rsqrt_head_size);
+  float alpha = use_raw_attention_mask ? one : rsqrt_head_size;
 
   if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
           cublas, CUBLAS_OP_T, CUBLAS_OP_N, all_sequence_length, sequence_length, head_size, &alpha, k, head_size, present_size_per_batch,
