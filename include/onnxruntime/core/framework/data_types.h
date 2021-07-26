@@ -451,7 +451,7 @@ class TensorTypeBase : public DataTypeImpl {
   TensorTypeBase& operator=(const TensorTypeBase&) = delete;
 
  protected:
-  ONNX_NAMESPACE::TypeProto& mutable_type_proto();
+  ONNX_NAMESPACE::TypeProto& MutableTypeProto();
 
   TensorTypeBase();
   ~TensorTypeBase() override;
@@ -490,7 +490,7 @@ class TensorType : public TensorTypeBase {
  private:
   TensorType() {
     using namespace data_types_internal;
-    TensorElementTypeSetter<elemT>::SetTensorElementType(this->mutable_type_proto());
+    TensorElementTypeSetter<elemT>::SetTensorElementType(this->MutableTypeProto());
   }
 };
 
@@ -524,7 +524,7 @@ class SparseTensorTypeBase : public DataTypeImpl {
   SparseTensorTypeBase& operator=(const SparseTensorTypeBase&) = delete;
 
  protected:
-  ONNX_NAMESPACE::TypeProto& mutable_type_proto();
+  ONNX_NAMESPACE::TypeProto& MutableTypeProto();
 
   SparseTensorTypeBase();
   ~SparseTensorTypeBase() override;
@@ -550,7 +550,7 @@ class SparseTensorType : public SparseTensorTypeBase {
  private:
   SparseTensorType() {
     using namespace data_types_internal;
-    TensorElementTypeSetter<elemT>::SetSparseTensorElementType(this->mutable_type_proto());
+    TensorElementTypeSetter<elemT>::SetSparseTensorElementType(MutableTypeProto());
   }
 };
 
@@ -590,7 +590,7 @@ class OptionalTypeBase : public DataTypeImpl {
   OptionalTypeBase& operator=(const OptionalTypeBase&) = delete;
 
  protected:
-  ONNX_NAMESPACE::TypeProto& mutable_type_proto();
+  ONNX_NAMESPACE::TypeProto& MutableTypeProto();
 
   OptionalTypeBase();
   ~OptionalTypeBase() override;
@@ -624,7 +624,7 @@ class OptionalType : public OptionalTypeBase {
 
  private:
   OptionalType() {
-    data_types_internal::SetOptionalType<T, elemT>::Set(this->mutable_type_proto());
+    data_types_internal::SetOptionalType<T, elemT>::Set(MutableTypeProto());
   }
 };
 
@@ -693,7 +693,7 @@ class NonTensorTypeBase : public DataTypeImpl {
   NonTensorTypeBase();
   ~NonTensorTypeBase() override;
 
-  ONNX_NAMESPACE::TypeProto& mutable_type_proto();
+  ONNX_NAMESPACE::TypeProto& MutableTypeProto();
 
   bool IsMapCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const;
 
@@ -757,7 +757,7 @@ class MapType : public NonTensorType<CPPType> {
  private:
   MapType() {
     using namespace data_types_internal;
-    SetMapTypes<typename CPPType::key_type, typename CPPType::mapped_type>::Set(this->mutable_type_proto());
+    SetMapTypes<typename CPPType::key_type, typename CPPType::mapped_type>::Set(this->MutableTypeProto());
   }
 };
 #endif
@@ -782,7 +782,7 @@ class SequenceType : public NonTensorType<CPPType> {
 
  private:
   SequenceType() {
-    data_types_internal::SetSequenceType<typename CPPType::value_type>::Set(this->mutable_type_proto());
+    data_types_internal::SetSequenceType<typename CPPType::value_type>::Set(this->MutableTypeProto());
   }
 };
 
@@ -823,7 +823,7 @@ class SequenceTensorTypeBase : public DataTypeImpl {
   SequenceTensorTypeBase();
   ~SequenceTensorTypeBase();
 
-  ONNX_NAMESPACE::TypeProto& mutable_type_proto();
+  ONNX_NAMESPACE::TypeProto& MutableTypeProto();
 
  private:
   struct Impl;
@@ -855,7 +855,7 @@ class SequenceTensorType : public SequenceTensorTypeBase {
 
  private:
   SequenceTensorType() {
-    data_types_internal::SetSequenceType<TensorElemType>::Set(this->mutable_type_proto());
+    data_types_internal::SetSequenceType<TensorElemType>::Set(this->MutableTypeProto());
   }
 };
 
@@ -891,7 +891,7 @@ class OpaqueType : public NonTensorType<T> {
 
  private:
   OpaqueType() {
-    data_types_internal::AssignOpaqueDomainName(D, N, this->mutable_type_proto());
+    data_types_internal::AssignOpaqueDomainName(D, N, this->MutableTypeProto());
   }
 };
 

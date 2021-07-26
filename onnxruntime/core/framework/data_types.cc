@@ -322,7 +322,7 @@ struct TypeProtoImpl {
   const TypeProto* GetProto() const {
     return &proto_;
   }
-  TypeProto& mutable_type_proto() {
+  TypeProto& MutableTypeProto() {
     return proto_;
   }
 
@@ -358,7 +358,7 @@ DeleteFunc TensorTypeBase::GetDeleteFunc() const {
 }
 
 ONNX_NAMESPACE::TypeProto& TensorTypeBase::mutable_type_proto() {
-  return impl_->mutable_type_proto();
+  return impl_->MutableTypeProto();
 }
 
 bool TensorTypeBase::IsCompatible(const ONNX_NAMESPACE::TypeProto& type_proto) const {
@@ -419,7 +419,7 @@ const ONNX_NAMESPACE::TypeProto* SparseTensorTypeBase::GetTypeProto() const {
 }
 
 ONNX_NAMESPACE::TypeProto& SparseTensorTypeBase::mutable_type_proto() {
-  return impl_->mutable_type_proto();
+  return impl_->MutableTypeProto();
 }
 
 MLDataType SparseTensorTypeBase::Type() {
@@ -470,7 +470,7 @@ const ONNX_NAMESPACE::TypeProto* SequenceTensorTypeBase::GetTypeProto() const {
 }
 
 ONNX_NAMESPACE::TypeProto& SequenceTensorTypeBase::mutable_type_proto() {
-  return impl_->mutable_type_proto();
+  return impl_->MutableTypeProto();
 }
 
 MLDataType SequenceTensorTypeBase::Type() {
@@ -508,8 +508,8 @@ const ONNX_NAMESPACE::TypeProto* OptionalTypeBase::GetTypeProto() const {
   return impl_->GetProto();
 }
 
-ONNX_NAMESPACE::TypeProto& OptionalTypeBase::mutable_type_proto() {
-  return impl_->mutable_type_proto();
+ONNX_NAMESPACE::TypeProto& OptionalTypeBase::MutableTypeProto() {
+  return impl_->MutableTypeProto();
 }
 
 MLDataType OptionalTypeBase::Type() {
@@ -528,7 +528,7 @@ NonTensorTypeBase::~NonTensorTypeBase() {
 }
 
 ONNX_NAMESPACE::TypeProto& NonTensorTypeBase::mutable_type_proto() {
-  return impl_->mutable_type_proto();
+  return impl_->MutableTypeProto();
 }
 
 const ONNX_NAMESPACE::TypeProto* NonTensorTypeBase::GetTypeProto() const {
