@@ -352,7 +352,10 @@ struct TensorBase : TBase {
 
     bool is_cpu;
     bool isCpuOutput = SUCCEEDED(value->IsCpu(&is_cpu)) && is_cpu;
-    bool disableCopyGpuInputsToCpu = !isCpuOutput && context.properties != nullptr && context.properties.HasKey(L"SuppressCpuCopyback");
+    bool hasProperties = context.properties != nullptr;
+    bool disableCopyGpuInputsToCpu = !isCpuOutput &&
+                                     hasProperties &&
+                                     context.properties.HasKey(L"DisableTensorCpuSync");
 
     // make sure we always have a CPU resource
     if (!disableCopyGpuInputsToCpu && CpuTensor() == nullptr) {
