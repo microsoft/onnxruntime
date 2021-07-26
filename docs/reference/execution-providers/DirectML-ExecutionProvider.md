@@ -21,6 +21,9 @@ The DirectML Execution Provider currently uses DirectML version 1.4.2.
 * TOC placeholder
 {:toc}
 
+## Install
+Pre-built packages of ORT with the DirectML EP is published on Nuget.org. See [How to: Install ORT](https://faxu.github.io/onnxruntime/docs/how-to/install.html).
+
 ## Requirements
 
 The DirectML execution provider requires any DirectX 12 capable device. Almost all commercially-available graphics cards released in the last several years support DirectX 12. Examples of compatible hardware include:

@@ -17,6 +17,10 @@ The CUDA Execution Provider enables hardware accelerated computation on Nvidia C
 * TOC placeholder
 {:toc}
 
+## Install
+Pre-built binaries of ONNX Runtime with CUDA EP are published for most language bindings. Please reference [How to - Install ORT](https://www.onnxruntime.ai/docs/how-to/install.html#inference).
+
+
 ## Requirements
 Please reference table below for official GPU packages dependencies.
 
@@ -29,9 +33,6 @@ Please reference table below for official GPU packages dependencies.
 |1.0-1.1|10.0|7.6.4|CUDA versions from 9.1 up to 10.1, and cuDNN versions from 7.1 up to 7.4 should also work with Visual Studio 2017|
 
 For older versions, please reference the readme and build pages on the release branch.
-
-## Install
-Pre-built binaries of ONNX Runtime with CUDA EP are published for most language bindings. Please reference [How to - Install ORT](https://www.onnxruntime.ai/docs/how-to/install.html#inference).
 
 ## Build
 For build instructions, please see the [BUILD page](../../how-to/build/eps.md#cuda).
