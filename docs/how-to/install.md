@@ -31,7 +31,7 @@ by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
 
 * Please note additional requirements in the table below. 
 
-||Official build|Nightly build|Add'l Requirements|
+||Official build|Nightly build|Reqs|
 |---|---|---|---|
 |Python|If using pip, run `pip install --upgrade pip` prior to downloading.|||
 ||CPU: [**onnxruntime**](https://pypi.org/project/onnxruntime)| [ort-nightly (dev)](https://test.pypi.org/project/ort-nightly)||
