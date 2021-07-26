@@ -16,7 +16,6 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/graph/gradient_builder_registry.h"
 #include "orttraining/core/graph/graph_augmenter.h"
-#include "orttraining/training_ops/cpu/aten_ops/aten_op_config.h"
 
 using namespace ONNX_NAMESPACE;
 
@@ -1680,44 +1679,51 @@ IMPLEMENT_GRADIENT_BUILDER(GetMinMaxGradient) {
   return result;
 }
 
-IMPLEMENT_GRADIENT_BUILDER(GetATenOpGradient) {
+IMPLEMENT_GRADIENT_BUILDER(GetExternalGradient) {
   std::vector<NodeDef> result;
-  const auto& src_attrs = SrcNodeAttributes();
-  std::vector<AttributeProto> attrs;
-  ORT_ENFORCE(utils::HasString(src_attrs.at("name")));
-  const std::string name = src_attrs.at("name").s();
-  attrs.emplace_back(MakeAttribute("name", name));
-  if (src_attrs.find("custom_attributes_json") != src_attrs.end()) {
-    attrs.emplace_back(MakeAttribute("custom_attributes_json", src_attrs.at("custom_attributes_json").s()));
-  }
+  const auto& p_grad_def = GradientDefinitionRegistry::Instance().GetGradientDefinition(GetGradientDefinitionKey());
+  ORT_ENFORCE(p_grad_def);
+  const auto& grad_def = *p_grad_def;
 
-  const auto* op_config_ptr = contrib::aten_ops::ATenOperatorConfigs::Instance().GetConfig(name);
-  ORT_ENFORCE(op_config_ptr, "ATen Op config for ", name, " is not found.");
-  const auto& op_config = *op_config_ptr;
-
-  std::vector<int64_t> grad_output_types;
-  std::vector<ArgDef> input_args;
-  std::vector<ArgDef> output_args;
-
-  for (const auto& config : op_config.backward_input_source_configs) {
-    ArgDef source_arg_def = config.kind == contrib::aten_ops::GRAD_OUTPUT     ? GO(config.index)
-                            : config.kind == contrib::aten_ops::FORWARD_INPUT ? I(config.index)
-                                                                              : O(config.index);
-    input_args.emplace_back(HandleATenOpGradInput(source_arg_def, config.transform_func, result));
-  }
-
-  for (size_t index : op_config.gradient_input_indices) {
-    if (IsGradientRequiredForSrcNodeInput(index)) {
-      output_args.emplace_back(GI(index));
-    } else {
-      output_args.emplace_back(ArgDef("", nullptr));
+  std::unordered_set<std::string> seen_outputs;
+  for (const auto& node_def : grad_def) {
+    OpDef op_def(node_def.op_type, node_def.domain);
+    std::vector<ArgDef> input_args;
+    for (const auto& input : node_def.inputs) {
+      if (input.find("GO(") == 0) {
+        int index = std::stoi(input.substr(3, input.length() - 4));
+        input_args.emplace_back(GO(static_cast<size_t>(index)));
+      } else if (input.find("I(") == 0) {
+        int index = std::stoi(input.substr(2, input.length() - 3));
+        input_args.emplace_back(I(static_cast<size_t>(index)));
+      } else if (input.find("O(") == 0) {
+        int index = std::stoi(input.substr(2, input.length() - 3));
+        input_args.emplace_back(O(static_cast<size_t>(index)));
+      } else {
+        ORT_ENFORCE(seen_outputs.find(input) != seen_outputs.end(), input, " is not a valid intermediate output.");
+        input_args.emplace_back(IA(input));
+      }
     }
 
-    grad_output_types.emplace_back(IElemType(index));
+    std::vector<ArgDef> output_args;
+    for (const auto& output : node_def.outputs) {
+      if (output.find("GI(") == 0) {
+        size_t index = static_cast<size_t>(std::stoi(output.substr(3, output.length() - 4)));
+        output_args.emplace_back(GI(index));
+      } else {
+        seen_outputs.insert(output);
+        output_args.emplace_back(IA(output));
+      }
+    }
+
+    std::vector<AttributeProto> attrs;
+    for (const auto& attribute : node_def.attributes) {
+      attrs.emplace_back(AttributeDefinitionToAttributeProto(attribute));
+    }
+
+    result.emplace_back(NodeDef(op_def, input_args, output_args, attrs));
   }
 
-  attrs.emplace_back(MakeAttribute("output_types", grad_output_types));
-  result.emplace_back(NodeDef(OpDef{"ATenOpGrad", kMSDomain, 1}, input_args, output_args, attrs));
   return result;
 }
 
