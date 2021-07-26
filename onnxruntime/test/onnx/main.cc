@@ -590,6 +590,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"cast_BFLOAT16_to_FLOAT", "onnx generate bfloat tensor as uint16 type", {}},
       {"castlike_FLOAT_to_BFLOAT16", "Depends on cast.", {}},
       {"castlike_BFLOAT16_to_FLOAT", "Depends on cast", {}},
+      {"castlike_FLOAT_to_BFLOAT16_expanded", "Depends on cast.", {}},
+      {"castlike_BFLOAT16_to_FLOAT_expanded", "Depends on cast", {}},
       {"castlike_FLOAT_to_STRING", "Numpy float to string has unexpected rounding for some results.", {}},
       {"castlike_FLOAT_to_STRING_expanded", "Numpy float to string has unexpected rounding for some results.", {}},
       {"bernoulli", "By design. Test data is for informational purpose becasue the generator is non deterministic."},
