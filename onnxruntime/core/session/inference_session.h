@@ -705,13 +705,17 @@ class InferenceSession {
   const Environment& environment_;
 
   // View of the bytes from an ORT format model.
-  // If the session is started with an input byte array contains model data
+  // If the session is started with an input byte array contains model data, and the caller
+  // specify that ORT should not copy the model bytes by setting the session config option
+  // "session.disable_copy_ort_model_bytes" to "1"
   //   We use the the byte array directly without copy to reduce peak memory usage
   //   (Short term) This will require the user to guarantee the life time of the model data
   //   until the session is created.
   //   (Longer term) If we are going to use the memory offsets directly for initializers, the model data
   //   should be alive until the InferenceSession goes away.
-  // If the session is started with a model_uri
+  // If the session is started with an input byte array contains model data, and the caller does not
+  // specify ORT should not copy the model bytes
+  // Or the session is started with a model_uri
   //   We store them currently in the ort_format_model_bytes_data_holder_ to make the Load + Initialize
   //   behave the same way as for an ONNX model, as we need some of the bytes for the Load (create the Model)
   //   and some for the Initialize (create SessionState).

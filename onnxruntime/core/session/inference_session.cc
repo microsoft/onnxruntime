@@ -1005,9 +1005,19 @@ Status InferenceSession::LoadOrtModel(const std::wstring& model_uri) {
 
 Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len) {
   return LoadOrtModel([&]() {
-    // Use the model_data directly to reduce memory consumption
-    // This will require the model_data to be alive until the InferenceSession is initialized
-    ort_format_model_bytes_ = gsl::span<const uint8_t>(reinterpret_cast<const uint8_t*>(model_data), model_data_len);
+    const auto disable_copy_ort_model_bytes =
+        GetSessionOptions().config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisableCopyORTModelBytes, "0");
+    if (disable_copy_ort_model_bytes != "1") {
+      // copy bytes as we need them to be available when InferenceSession::Initialize is called later.
+      ort_format_model_bytes_data_holder_.resize(model_data_len);
+      std::copy_n(reinterpret_cast<const uint8_t*>(model_data), model_data_len,
+                  ort_format_model_bytes_data_holder_.data());
+      ort_format_model_bytes_ = gsl::span<const uint8_t>(ort_format_model_bytes_data_holder_.data(), model_data_len);
+    } else {
+      // Use the model_data directly to reduce memory consumption
+      // This will require the model_data to be alive until the InferenceSession is initialized
+      ort_format_model_bytes_ = gsl::span<const uint8_t>(reinterpret_cast<const uint8_t*>(model_data), model_data_len);
+    }
     return Status::OK();
   });
 }
