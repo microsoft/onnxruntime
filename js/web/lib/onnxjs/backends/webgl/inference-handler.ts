@@ -116,7 +116,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
         const group = 1;
         const channels = 4;
         const shape = tensor.dims;
-        if (shape.length === 4 && shape[2] * shape[3] % channels !== 0) {
+        if (shape.length === 4) {
           // pre-processing for kernel data of Conv.
           //
           // TODO: currently this is a hacking to overwrite Conv's weight. The correct way to do this should be:
@@ -127,15 +127,18 @@ export class WebGLInferenceHandler implements InferenceHandler {
           const adjustedKernelShape = [shape[0], Math.ceil((shape[1] * shape[2] * shape[3]) / channels)];
           const adjustedLayout =
               createTextureLayoutFromTextureType(this.session.layoutStrategy, adjustedKernelShape, textureType);
-          const numFeatureMaps = shape[0];
-          const oldRowSize = shape[1] * shape[2] * shape[3];
-          const newRowSize = Math.ceil(oldRowSize * group / channels) * channels;
-          const newSize = numFeatureMaps * newRowSize;
-          const buffer = new Float32Array(newSize);
-          for (let f = 0; f < numFeatureMaps; ++f) {
-            const oldOffset = f * oldRowSize;
-            const newOffset = f * newRowSize + f % group * oldRowSize;
-            buffer.set(tensor.numberData.subarray(oldOffset, oldOffset + oldRowSize), newOffset);
+          let buffer = tensor.numberData;
+          if (shape[2] * shape[3] % channels !== 0) {
+            const numFeatureMaps = shape[0];
+            const oldRowSize = shape[1] * shape[2] * shape[3];
+            const newRowSize = Math.ceil(oldRowSize * group / channels) * channels;
+            const newSize = numFeatureMaps * newRowSize;
+            buffer = new Float32Array(newSize);
+            for (let f = 0; f < numFeatureMaps; ++f) {
+              const oldOffset = f * oldRowSize;
+              const newOffset = f * newRowSize + f % group * oldRowSize;
+              buffer.set(tensor.numberData.subarray(oldOffset, oldOffset + oldRowSize), newOffset);
+            }
           }
           return this.createTextureData(adjustedLayout, tensor.type, buffer, tensor, Encoder.Usage.UploadOnly);
         }
