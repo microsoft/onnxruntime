@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <roerrorapi.h>
+
 #include "common.h"
 
 #include "winrt/windows.media.h"
