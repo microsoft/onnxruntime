@@ -66,6 +66,7 @@ fi
 DOCKER_CMD="docker"
 
 cd $SCRIPT_DIR/docker
+BUILD_SHARED_LIB=true
 if [ $BUILD_OS = "android" ]; then
     IMAGE="android"
     DOCKER_FILE=Dockerfile.ubuntu_for_android
@@ -92,6 +93,7 @@ elif [ $BUILD_DEVICE = "gpu" ]; then
         fi
         if [[ $ORTMODULE_BUILD = true ]]; then
             INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -u"
+            BUILD_SHARED_LIB=false
         fi
         $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
             --docker-build-args="--build-arg BASEIMAGE=nvcr.io/nvidia/cuda:11.1.1-cudnn8-devel-${BUILD_OS} --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA} --network=host" \
@@ -169,7 +171,7 @@ $DOCKER_CMD run $RUNTIME -h $HOSTNAME $DOCKER_RUN_PARAMETER \
     -e $ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV \
     "onnxruntime-$IMAGE" \
     /bin/bash /onnxruntime_src/tools/ci_build/github/linux/run_build.sh \
-    -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" -o $BUILD_OS -y $YOCTO_VERSION &
+    -d $BUILD_DEVICE -x "$BUILD_EXTR_PAR" -o $BUILD_OS -y $YOCTO_VERSION -s $BUILD_SHARED_LIB &
 wait $!
 
 EXIT_CODE=$?
