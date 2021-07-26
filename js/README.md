@@ -278,7 +278,11 @@ Currently debugging C/C++ code in WebAssembly is not supported in VSCode yet. Pl
 
 ### Generating Document
 
-Use command `npm run build:doc` to generate the latest documents.
+This section describes how to generate latest document for ONNX Runtime Web.
+
+The document contains information about WebGL backend operator support. It should align with the operator resolve rules in code and spec definition from ONNX.
+
+In folder `<ORT_ROOT>/js/web`, use command `npm run build:doc` to generate the latest documents.
 
 ### Distribution
 
