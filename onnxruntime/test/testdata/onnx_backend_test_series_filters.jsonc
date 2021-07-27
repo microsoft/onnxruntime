@@ -68,6 +68,12 @@
         "^test_div_uint8_cpu",
         // Following tests are for opset 15 ops and are not yet implemented in ORT
         "^test_shape_*",
+        // Optional operators are supported in ORT but the ONNX backend test runner
+        // doesn't yet have capability to deal with optional type test data.
+        // These tests have been validated using the onnx_test_runner.
+        // Uncomment here once the ONNX backend test runner is able to handle
+        // optional type test data
+        "^test_optional_*",
         //GPU failures
         "^test_batchnorm_epsilon_training_mode_cuda",
         "^test_batchnorm_example_training_mode_cuda",
