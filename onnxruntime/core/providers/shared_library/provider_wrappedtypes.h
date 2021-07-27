@@ -233,7 +233,7 @@ struct TypeProto final {
   TypeProto_SparseTensor* mutable_sparse_tensor_type() { return g_host->TypeProto__mutable_sparse_tensor_type(this); }
 
   const TypeProto_Optional& optional_type() const { return g_host->TypeProto__optional_type(this); }
-  TypeProto_Optional* TypeProto::mutable_optional_type() { return g_host->TypeProto__mutable_optional_type(this); }
+  TypeProto_Optional* mutable_optional_type() { return g_host->TypeProto__mutable_optional_type(this); }
 
   enum ValueCase {
     kTensorType = 1,

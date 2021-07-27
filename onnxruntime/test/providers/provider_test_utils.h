@@ -833,7 +833,7 @@ class OpTester {
         p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), shape, allocator);
       }
 
-      if (p_tensor) {
+      if (p_tensor && values) {
         auto* data_ptr = p_tensor->template MutableData<T>();
         for (int64_t i = 0; i < values_count; i++) {
           data_ptr[i] = values[i];
