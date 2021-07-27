@@ -33,7 +33,7 @@
 #include "orttraining/core/framework/torch/refcount_tracker.h"
 #endif
 #endif
-#if defined(USE_CUDA) && defined(ORT_USE_NCCL)
+#if defined(ORT_USE_NCCL)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #endif
@@ -135,6 +135,8 @@ struct Node__EdgeIterator_Impl : Node__EdgeIterator {
 // wrapped = The internal object is exposed as an opaque pointer, so we wrap it in a class that forwards every call to the real calls. No members are ever directly accessed
 // direct = Same implementation is used for shared providers & core code, but some of the methods need to be routed through here to make the linker happy
 struct ProviderHostImpl : ProviderHost {
+  const OrtApiBase* OrtGetApiBase() override { return ::OrtGetApiBase(); }
+
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
   void HeapFree(void* p) override { delete[] reinterpret_cast<uint8_t*>(p); }
 
@@ -809,13 +811,13 @@ struct ProviderHostImpl : ProviderHost {
   void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) override { p->AllocatorManager::InsertAllocator(allocator); }
   AllocatorPtr AllocatorManager__GetAllocator(const AllocatorManager* p, int id, OrtMemType mem_type) override { return p->AllocatorManager::GetAllocator(id, mem_type); };
 
-#ifdef USE_CUDA
-
-  PhiloxGenerator& PhiloxGenerator__Default() override { return PhiloxGenerator::Default(); }
-
 #if defined(ENABLE_TRAINING) && defined(ORT_USE_NCCL)
   training::DistributedRunContext& GetDistributedRunContextInstance() override { return training::DistributedRunContext::GetInstance(); }
 #endif
+
+#ifdef USE_CUDA
+
+  PhiloxGenerator& PhiloxGenerator__Default() override { return PhiloxGenerator::Default(); }
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
   void contrib__PythonOpBase__Init(contrib::PythonOpBase* p, const OpKernelInfo& info) override { p->PythonOpBase::Init(info); }

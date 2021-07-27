@@ -4,6 +4,13 @@ parameters:
   type: boolean
   default: false
 
+- name: ShouldUploadArchives
+  displayName: Should the package archives be uploaded? The archives will always be uploaded for a release build.
+  type: boolean
+  default: false
+
+name: "$(Date:yyyyMMdd)$(Rev:rrr)"  # build number format
+
 jobs:
 - job: IosPackaging
   displayName: "iOS Packaging"
@@ -25,11 +32,14 @@ jobs:
   - bash: |
       BASE_VERSION=$(cat VERSION_NUMBER)
       IS_RELEASE_BUILD=$(echo "${{ parameters.IsReleaseBuild }}" | tr "[:upper:]" "[:lower:]")
+      SHOULD_UPLOAD_ARCHIVES=$(echo "${{ parameters.ShouldUploadArchives }}" | tr "[:upper:]" "[:lower:]")
 
       if [[ "${IS_RELEASE_BUILD}" == "true" ]]; then
         VERSION=${BASE_VERSION}
+        # always upload archives for a release build
+        SHOULD_UPLOAD_ARCHIVES="true"
       else
-        VERSION="${BASE_VERSION}-dev"
+        VERSION="${BASE_VERSION}-dev+$(Build.BuildNumber)"
       fi
 
       set_var() {
@@ -40,7 +50,7 @@ jobs:
       }
 
       set_var "ORT_POD_VERSION" "${VERSION}"
-      set_var "ORT_SHOULD_UPLOAD_ARCHIVES" "${IS_RELEASE_BUILD}"
+      set_var "ORT_SHOULD_UPLOAD_ARCHIVES" "${SHOULD_UPLOAD_ARCHIVES}"
     displayName: "Set variables"
 
   - script: |
