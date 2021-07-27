@@ -52,16 +52,6 @@ static winrt::hstring HStringFromUTF8(const char* input, size_t input_length) {
   }
 }
 
-static winrt::hstring HStringFromUTF8(const char* input) {
-  return input != nullptr
-             ? HStringFromUTF8(input, strlen(input))
-             : L"";
-}
-
-static winrt::hstring HStringFromUTF8(const std::string& input) {
-  return HStringFromUTF8(input.c_str(), input.size());
-}
-
 static std::string UTF8FromUnicode(const wchar_t* input, size_t input_length) {
   if (input_length == 0) {
     return {};
@@ -77,16 +67,6 @@ static std::string UTF8FromUnicode(const wchar_t* input, size_t input_length) {
   } else {
     winrt::throw_hresult(E_INVALIDARG);
   }
-}
-
-static std::string UTF8FromHString(const winrt::hstring& input) {
-  return UTF8FromUnicode(input.data(), input.size());
-}
-
-static std::wstring WStringFromString(const std::string& string) {
-  std::wostringstream woss;
-  woss << string.data();
-  return woss.str();
 }
 
 }  // namespace _winml::Strings
