@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from .configuration.debug_options import DebugOptions, LogLevel
+from .debug_options import DebugOptions, LogLevel
 from . import _utils, _io, _logger, torch_cpp_extensions as _cpp_ext, _onnx_models
 from ._custom_autograd_function_exporter import _post_process_after_export
 from ._graph_execution_interface import GraphExecutionInterface
@@ -56,7 +56,7 @@ class _SkipCheck(IntFlag):
         return _SkipCheck.SKIP_CHECK_DISABLED in self
 
 class GraphExecutionManager(GraphExecutionInterface):
-    def __init__(self, module, debug: DebugOptions):
+    def __init__(self, module, debug_options: DebugOptions):
         """Manages building and execution of onnx graphs
 
         This class is an abstract class and should not directly be instantiated.
@@ -72,7 +72,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._flattened_module = module
 
         # onnx models
-        self._onnx_models = _onnx_models.OnnxModels()
+        self._onnx_models = _onnx_models.ONNXModels()
 
         # Model after inference optimization or gradient building.
         self._optimized_onnx_model = None
@@ -89,7 +89,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._skip_check = _SkipCheck.SKIP_CHECK_DISABLED
 
         # Debug flags
-        self._debug = debug
+        self._debug_options = debug_options
 
         # Graph transformer config
         # Specify cast propagation strategy. Currently three strategies are available, NONE, INSERT-AND-REDUCE and FLOOD-FILL
@@ -135,7 +135,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         # TODO: remove after PyTorch ONNX exporter supports VAR_KEYWORD parameters.
         for input_parameter in self._module_parameters:
             if input_parameter.kind == inspect.Parameter.VAR_KEYWORD:
-                if self._debug.logging.loglevel <= LogLevel.WARNING:
+                if self._debug_options.logging.log_level <= LogLevel.WARNING:
                     warnings.warn("The model's forward method has **kwargs parameter which has EXPERIMENTAL support!",
                                   UserWarning)
 
@@ -220,7 +220,13 @@ class GraphExecutionManager(GraphExecutionInterface):
         # default to PRIORITY_BASED execution order
         session_options.execution_order = onnxruntime.ExecutionOrder.PRIORITY_BASED
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
-        session_options.log_severity_level = int(self._debug.logging.loglevel)
+        session_options.log_severity_level = int(self._debug_options.logging.log_level)
+
+        # enable dumping optimized training graph
+        if self._debug_options.save_onnx_models.save:
+            session_options.optimized_model_filepath = \
+                os.path.join(self._debug_options.save_onnx_models.directory,
+                             self._debug_options.save_onnx_models.prefix + '_training_optimized.onnx')
 
         return session_options, providers, provider_options
 
@@ -244,9 +250,9 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._set_device_from_module(inputs, kwargs)
         self._onnx_models.exported_model = self._get_exported_model(*inputs, **kwargs)
         _cpp_ext._load_aten_op_executor_cpp_extension_if_needed(self._onnx_models.exported_model)
-        if self._debug.save_intermediate_onnx_models.save:
-            self._onnx_models.save_exported_model(self._debug.save_intermediate_onnx_models.directory,
-                                                  self._debug.save_intermediate_onnx_models.prefix,
+        if self._debug_options.save_onnx_models.save:
+            self._onnx_models.save_exported_model(self._debug_options.save_onnx_models.directory,
+                                                  self._debug_options.save_onnx_models.prefix,
                                                   self._export_mode)
 
         if self._run_symbolic_shape_infer:
@@ -289,7 +295,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         try:
             with torch.set_grad_enabled(self._enable_custom_autograd_function), \
-                    _logger.suppress_os_stream_output(log_level=self._debug.logging.loglevel):
+                    _logger.suppress_os_stream_output(log_level=self._debug_options.logging.log_level):
                 torch.onnx.export(self._flattened_module,
                                   sample_inputs_as_tuple,
                                   f,
@@ -299,7 +305,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                                   do_constant_folding=False,
                                   training=self._export_mode,
                                   dynamic_axes=self._input_info.dynamic_axes,
-                                  verbose=self._debug.logging.loglevel < LogLevel.WARNING,
+                                  verbose=self._debug_options.logging.log_level < LogLevel.WARNING,
                                   export_params=False,
                                   keep_initializers_as_inputs=True)
         except RuntimeError as e:
@@ -350,7 +356,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         grad_builder_config.build_gradient_graph = training
         grad_builder_config.graph_transformer_config = self._get_graph_transformer_config()
         grad_builder_config.enable_caching = self._enable_grad_acc_optimization
-        grad_builder_config.loglevel = _logger.ortmodule_loglevel_to_onnxruntime_c_loglevel(self._debug.logging.loglevel)
+        grad_builder_config.loglevel = _logger.ortmodule_loglevel_to_onnxruntime_c_loglevel(self._debug_options.logging.log_level)
         self._graph_builder = C.OrtModuleGraphBuilder()
 
         # It is assumed here that the order and names of the inputs and outputs are not modified by the backend in any way

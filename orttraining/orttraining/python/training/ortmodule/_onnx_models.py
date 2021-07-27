@@ -7,28 +7,16 @@ from filelock import SoftFileLock
 import onnx
 import os
 import torch
-import warnings
 
 def _get_onnx_file_name(prefix, name, export_mode):
     suffix = 'training' if export_mode == torch.onnx.TrainingMode.TRAINING else 'inference'
     return f"{prefix}_{name}_{suffix}.onnx"
 
 def _save_model(model: onnx.ModelProto, file_path: str):
-    print("saving file at ", file_path)
-    with SoftFileLock(file_path+'.lock'):
-        # SoftFileLock ensures that multiple processes do not compete with each other
-        # for writing priveleges by using locks by checking the existence of the lock file.
-        try:
-            onnx.save(model, file_path)
-        except Exception as exc:
-            # If the file saving fails, it is possible that the lock file will be left
-            # behind in the directory provided by the user.
-            # Warn the user to delete that file before proceeding.
-            warnings.warn(f"There was an error while saving the onnx model. Please clear the file {file_path}.lock before retrying.")
-            raise exc
+    onnx.save(model, file_path)
 
 @dataclass
-class OnnxModels:
+class ONNXModels:
     """Encapsulates all ORTModule onnx models."""
 
     exported_model: onnx.ModelProto = None

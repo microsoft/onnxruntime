@@ -18,8 +18,8 @@ class InferenceManager(GraphExecutionManager):
     InferenceManager is resposible for building and running the forward graph of the inference model
     """
 
-    def __init__(self, model, debug):
-        super().__init__(model, debug)
+    def __init__(self, model, debug_options):
+        super().__init__(model, debug_options)
         self._export_mode = torch.onnx.TrainingMode.EVAL
 
     @staticmethod
@@ -100,9 +100,9 @@ class InferenceManager(GraphExecutionManager):
         """Build an optimized inference graph using the module_graph_builder"""
 
         super()._build_graph()
-        if self._debug.save_intermediate_onnx_models.save:
-            self._onnx_models.save_optimized_model(self._debug.save_intermediate_onnx_models.directory,
-                                                   self._debug.save_intermediate_onnx_models.prefix,
+        if self._debug_options.save_onnx_models.save:
+            self._onnx_models.save_optimized_model(self._debug_options.save_onnx_models.directory,
+                                                   self._debug_options.save_onnx_models.prefix,
                                                    self._export_mode)
 
     def _create_execution_agent(self):
