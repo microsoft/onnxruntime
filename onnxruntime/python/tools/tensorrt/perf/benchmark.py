@@ -1122,16 +1122,16 @@ def add_improvement_information(model_to_latency):
     for key, value in model_to_latency.items():
         if trt in value and cuda in value:
             gain = calculate_gain(value, trt, cuda)
-            value[trt_cuda_gain] = "{:.2f} %".format(gain)
+            value[trt_cuda_gain] = gain
             if trt_fp16 in value and cuda_fp16 in value:
                 gain = calculate_gain(value, trt_fp16, cuda_fp16)
-                value[trt_cuda_fp16_gain] = "{:.2f} %".format(gain)
+                value[trt_cuda_fp16_gain] = gain
         if trt in value and standalone_trt in value:
             gain = calculate_gain(value, trt, standalone_trt)
-            value[trt_native_gain] = "{:.2f} %".format(gain)
+            value[trt_native_gain] = gain
             if trt_fp16 in value and standalone_trt_fp16 in value:
                 gain = calculate_gain(value, trt_fp16, standalone_trt_fp16)
-                value[trt_native_fp16_gain] = "{:.2f} %".format(gain)
+                value[trt_native_fp16_gain] = gain
 
 def output_details(results, csv_filename):
     need_write_header = True 
