@@ -15,7 +15,7 @@ class Model;
 class NnapiExecutionProvider : public IExecutionProvider {
  public:
   explicit NnapiExecutionProvider(uint32_t nnapi_flags,
-                                  const optional<std::unordered_set<std::string>>& partitioning_stop_ops = nullopt);
+                                  const optional<std::string>& partitioning_stop_ops_list = {});
 
   virtual ~NnapiExecutionProvider();
 
