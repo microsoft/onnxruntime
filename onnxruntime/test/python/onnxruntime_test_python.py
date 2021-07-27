@@ -969,6 +969,17 @@ class TestInferenceSession(unittest.TestCase):
             return
 
         else:
+            # The CPU training image has issue with shared privder lib loading
+            # Exclude for training
+            training_enabled = False
+            try:
+                from onnxruntime.training import ORTTrainer
+                training_enabled = True
+            except:
+                pass
+
+            if training_enabled:
+                return
             shared_library = './libtest_execution_provider.so'
             if not os.path.exists(shared_library):
                 raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
