@@ -17,8 +17,7 @@ import datetime
 
 
 import onnxruntime
-from onnxruntime.training.ortmodule import ORTModule
-from onnxruntime.training.ortmodule.configuration import DebugOptions
+from onnxruntime.training.ortmodule import ORTModule, DebugOptions
 
 def train(model, optimizer, scaler, scheduler, train_dataloader, epoch, device, args):
     # ========================================
@@ -379,10 +378,9 @@ def main():
 
     if not args.pytorch_only:
         # Just for future debugging
-        debug = DebugOptions()
-        debug.save_intermediate_onnx_models.configure(save=False, prefix='BertForSequenceClassificationAutoCast')
+        debug_options = DebugOptions(save_onnx=False, save_onnx_prefix='BertForSequenceClassificationAutoCast')
 
-        model = ORTModule(model)
+        model = ORTModule(model, debug_options)
 
     model._torch_module._execution_manager(is_training=True)._enable_grad_acc_optimization = True
 

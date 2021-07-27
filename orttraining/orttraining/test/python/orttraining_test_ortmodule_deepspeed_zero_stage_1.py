@@ -15,8 +15,7 @@ from torchvision import datasets, transforms
 import torch.distributed as dist
 
 import onnxruntime
-from onnxruntime.training.ortmodule import ORTModule
-from onnxruntime.training.ortmodule.configuration import DebugOptions, LogLevel
+from onnxruntime.training.ortmodule import ORTModule, DebugOptions, LogLevel
 
 import deepspeed
 
@@ -191,22 +190,18 @@ def main():
     if not args.pytorch_only:
         print('Training MNIST on ORTModule....')
 
-        debug = DebugOptions()
-        debug.save_intermediate_onnx_models.configure(save=False, prefix='MNIST')
-
         # Set log level
-        loglevel_mapping = {"DEBUG": LogLevel.VERBOSE,
+        log_level_mapping = {"DEBUG": LogLevel.VERBOSE,
                             "INFO": LogLevel.INFO,
                             "WARNING": LogLevel.WARNING,
                             "ERROR": LogLevel.ERROR,
                             "CRITICAL": LogLevel.FATAL}
-        loglevel = loglevel_mapping.get(args.log_level.upper(), None)
-        if not isinstance(loglevel, LogLevel):
+        log_level = log_level_mapping.get(args.log_level.upper(), None)
+        if not isinstance(log_level, LogLevel):
             raise ValueError('Invalid log level: %s' % args.log_level)
+        debug_options = DebugOptions(log_level=log_level, save_onnx=False, save_onnx_prefix='MNIST')
 
-        debug.logging.configure(loglevel=loglevel)
-
-        model = ORTModule(model, debug)
+        model = ORTModule(model, debug_options)
 
     else:
         print('Training MNIST on vanilla PyTorch....')

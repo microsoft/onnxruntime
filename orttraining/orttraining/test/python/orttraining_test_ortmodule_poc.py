@@ -5,8 +5,7 @@ import time
 from torchvision import datasets, transforms
 
 import onnxruntime
-from onnxruntime.training.ortmodule import ORTModule
-from onnxruntime.training.ortmodule.configuration import DebugOptions
+from onnxruntime.training.ortmodule import ORTModule, DebugOptions
 
 
 class NeuralNet(torch.nn.Module):
@@ -170,10 +169,9 @@ def main():
         print('Training MNIST on ORTModule....')
 
         # Just for future debugging
-        debug = DebugOptions()
-        debug.save_intermediate_onnx_models.configure(save=False, prefix='MNIST')
+        debug_options = DebugOptions(save_onnx=False, save_onnx_prefix='MNIST')
 
-        model = ORTModule(model)
+        model = ORTModule(model, debug_options)
 
         # Set log level
         numeric_level = getattr(logging, args.log_level.upper(), None)

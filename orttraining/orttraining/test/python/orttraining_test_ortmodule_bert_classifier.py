@@ -17,8 +17,7 @@ import datetime
 
 
 import onnxruntime
-from onnxruntime.training.ortmodule import ORTModule
-from onnxruntime.training.ortmodule.configuration import DebugOptions
+from onnxruntime.training.ortmodule import ORTModule, DebugOptions
 
 def train(model, optimizer, scheduler, train_dataloader, epoch, device, args):
     # ========================================
@@ -378,10 +377,9 @@ def main():
 
     if not args.pytorch_only:
         # Just for future debugging
-        debug = DebugOptions()
-        debug.save_intermediate_onnx_models.configure(save=False, prefix='BertForSequenceClassification')
+        debug_options = DebugOptions(save_onnx=False, save_onnx_prefix='BertForSequenceClassification')
 
-        model = ORTModule(model)
+        model = ORTModule(model, debug_options)
 
     # Tell pytorch to run this model on the GPU.
     if torch.cuda.is_available() and not args.no_cuda:
