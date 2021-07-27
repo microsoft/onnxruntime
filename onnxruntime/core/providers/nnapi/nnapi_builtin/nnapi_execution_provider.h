@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/common/optional.h"
 #include "core/framework/execution_provider.h"
 #include "core/providers/nnapi/nnapi_provider_factory.h"
 
@@ -13,7 +14,9 @@ class Model;
 
 class NnapiExecutionProvider : public IExecutionProvider {
  public:
-  NnapiExecutionProvider(uint32_t nnapi_flags);
+  explicit NnapiExecutionProvider(uint32_t nnapi_flags,
+                                  const optional<std::string>& partitioning_stop_ops_list = {});
+
   virtual ~NnapiExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>

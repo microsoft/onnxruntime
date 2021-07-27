@@ -13,7 +13,7 @@
 #include "core/framework/op_kernel.h"
 #endif
 
-#include "core/language_interop_ops/torch/torch_proxy.h"
+#include "orttraining/core/framework/torch/torch_proxy.h"
 
 namespace onnxruntime {
 namespace contrib {

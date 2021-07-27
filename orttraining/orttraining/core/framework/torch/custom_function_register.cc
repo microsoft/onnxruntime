@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/language_interop_ops/torch/custom_function_register.h"
+#include "orttraining/core/framework/torch/custom_function_register.h"
 #include "core/common/common.h"
-#include "core/language_interop_ops/torch/refcount_tracker.h"
+#include "orttraining/core/framework/torch/refcount_tracker.h"
 #include "core/platform/env.h"
 #include <cstdio>
 
