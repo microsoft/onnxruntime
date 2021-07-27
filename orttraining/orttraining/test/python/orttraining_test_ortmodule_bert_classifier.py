@@ -377,7 +377,7 @@ def main():
 
     if not args.pytorch_only:
         # Just for future debugging
-        debug_options = DebugOptions(save_onnx=False, save_onnx_prefix='BertForSequenceClassification')
+        debug_options = DebugOptions(save_onnx=False, onnx_prefix='BertForSequenceClassification')
 
         model = ORTModule(model, debug_options)
 

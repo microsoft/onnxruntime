@@ -169,7 +169,7 @@ def main():
         print('Training MNIST on ORTModule....')
 
         # Just for future debugging
-        debug_options = DebugOptions(save_onnx=False, save_onnx_prefix='MNIST')
+        debug_options = DebugOptions(save_onnx=False, onnx_prefix='MNIST')
 
         model = ORTModule(model, debug_options)
 

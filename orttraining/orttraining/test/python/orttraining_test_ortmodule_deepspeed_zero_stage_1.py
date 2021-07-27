@@ -199,7 +199,7 @@ def main():
         log_level = log_level_mapping.get(args.log_level.upper(), None)
         if not isinstance(log_level, LogLevel):
             raise ValueError('Invalid log level: %s' % args.log_level)
-        debug_options = DebugOptions(log_level=log_level, save_onnx=False, save_onnx_prefix='MNIST')
+        debug_options = DebugOptions(log_level=log_level, save_onnx=False, onnx_prefix='MNIST')
 
         model = ORTModule(model, debug_options)
 

@@ -233,8 +233,8 @@ class TrainingManager(GraphExecutionManager):
         super()._build_graph()
 
         if self._debug_options.save_onnx_models.save:
-            self._onnx_models.save_optimized_model(self._debug_options.save_onnx_models.directory,
-                                                   self._debug_options.save_onnx_models.prefix,
+            self._onnx_models.save_optimized_model(self._debug_options.save_onnx_models.path,
+                                                   self._debug_options.save_onnx_models.name_prefix,
                                                    self._export_mode)
 
     def _create_execution_agent(self):

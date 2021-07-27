@@ -23,8 +23,9 @@ class ORTModule(torch.nn.Module):
     ORTModule specializes the user's :class:`torch.nn.Module` model, providing :meth:`~torch.nn.Module.forward`,
     :meth:`~torch.nn.Module.backward` along with all others :class:`torch.nn.Module`'s APIs.
 
-    :param module: :class:`torch.nn.Module` that ORTModule specializes
-    :param debug_options: :class:`DebugOptions` that controls the configurable debug options.
+    Args:
+        module (torch.nn.Module): User's PyTorch module that ORTModule specializes
+        debug_options (:obj:`DebugOptions`, optional): debugging options for ORTModule.
     """
 
     def __init__(self, module, debug_options=None):

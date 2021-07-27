@@ -17,7 +17,6 @@ import io
 import inspect
 import onnx
 import onnxruntime
-import os
 import torch
 import warnings
 from enum import IntFlag
@@ -222,12 +221,6 @@ class GraphExecutionManager(GraphExecutionInterface):
         # 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
         session_options.log_severity_level = int(self._debug_options.logging.log_level)
 
-        # enable dumping optimized training graph
-        if self._debug_options.save_onnx_models.save:
-            session_options.optimized_model_filepath = \
-                os.path.join(self._debug_options.save_onnx_models.directory,
-                             self._debug_options.save_onnx_models.prefix + '_training_optimized.onnx')
-
         return session_options, providers, provider_options
 
     def _export_model(self, *inputs, **kwargs):
@@ -251,8 +244,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._onnx_models.exported_model = self._get_exported_model(*inputs, **kwargs)
         _cpp_ext._load_aten_op_executor_cpp_extension_if_needed(self._onnx_models.exported_model)
         if self._debug_options.save_onnx_models.save:
-            self._onnx_models.save_exported_model(self._debug_options.save_onnx_models.directory,
-                                                  self._debug_options.save_onnx_models.prefix,
+            self._onnx_models.save_exported_model(self._debug_options.save_onnx_models.path,
+                                                  self._debug_options.save_onnx_models.name_prefix,
                                                   self._export_mode)
 
         if self._run_symbolic_shape_infer:
