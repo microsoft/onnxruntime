@@ -576,9 +576,9 @@ Return Value:
 // Starting the loop: for each 4 colomns
 .LGemmU8X8.M4.ProcessNextColumnLoop:
         mov     x0,x14                      // reload matrix A
-        ld1     {v0.4s},[x8],#16            // load ColumnSumBuffer[0]
+        ld1     {v3.4s},[x8],#16            // load ColumnSumBuffer[0]
         mov     x3,x15                      // reload PackedCountK
-        ld1     {v1.4s},[x8],#16            // load ColumnSumBuffer[4]
+        ld1     {v7.4s},[x8],#16            // load ColumnSumBuffer[4]
         cbz     x9,.LGemmU8X8.M4.SkipScaleByZeroPointB
 
         // accumulator = zero point B * row sum A + column sum B 
@@ -592,37 +592,40 @@ Return Value:
         mul     v19.4s,v23.4s,v9.4s
         mul     v21.4s,v23.4s,v10.4s
         mul     v23.4s,v23.4s,v11.4s
-        add     v16.4s,v0.4s,v16.4s
-        add     v18.4s,v0.4s,v18.4s
-        add     v20.4s,v0.4s,v20.4s
-        add     v22.4s,v0.4s,v22.4s
-        add     v17.4s,v1.4s,v17.4s
-        add     v19.4s,v1.4s,v19.4s
-        add     v21.4s,v1.4s,v21.4s
-        add     v23.4s,v1.4s,v23.4s
+        add     v16.4s,v3.4s,v16.4s
+        add     v18.4s,v3.4s,v18.4s
+        ld1     {v0.16b},[x1],#16           // load packed B0
+        add     v20.4s,v3.4s,v20.4s
+        add     v22.4s,v3.4s,v22.4s
+        ldr     q4,[x0],#32                 // load packed A0
+        add     v17.4s,v7.4s,v17.4s
+        add     v19.4s,v7.4s,v19.4s
+        ld1     {v1.16b},[x1],#16           // load packed B1
+        add     v21.4s,v7.4s,v21.4s
+        add     v23.4s,v7.4s,v23.4s
         b       .LGemmU8X8.M4.ComputeBlockLoopStart
 
 .LGemmU8X8.M4.SkipScaleByZeroPointB:
         // accumulator = row sum A + column sum B 
-        add     v16.4s,v0.4s,v8.4s
-        add     v18.4s,v0.4s,v9.4s
-        add     v20.4s,v0.4s,v10.4s
-        add     v22.4s,v0.4s,v11.4s
-        add     v17.4s,v1.4s,v8.4s
-        add     v19.4s,v1.4s,v9.4s
-        add     v21.4s,v1.4s,v10.4s
-        add     v23.4s,v1.4s,v11.4s
+        add     v16.4s,v3.4s,v8.4s
+        add     v18.4s,v3.4s,v9.4s
+        ld1     {v0.16b},[x1],#16           // load packed B0
+        add     v20.4s,v3.4s,v10.4s
+        add     v22.4s,v3.4s,v11.4s
+        ldr     q4,[x0],#32                 // load packed A0
+        add     v17.4s,v7.4s,v8.4s
+        add     v19.4s,v7.4s,v9.4s
+        ld1     {v1.16b},[x1],#16           // load packed B1
+        add     v21.4s,v7.4s,v10.4s
+        add     v23.4s,v7.4s,v11.4s
 
 
 .LGemmU8X8.M4.ComputeBlockLoopStart:
-        ld1     {v0.16b},[x1],#16           // load packed B0
-        ldr     q4,[x0],#32                 // load packed A0
-        ld1     {v1.16b},[x1],#16           // load packed B1
-        ldur    q6,[x0,#-16]                // load packed A1
         ld1     {v2.16b},[x1],#16           // load packed B0_next4k
 
 .LGemmU8X8.M4.ComputeBlockLoop:
         sub     x3,x3,#1
+        ldur    q6,[x0,#-16]                // load packed A1
         UdotByElement 16, 0, 4, 0
         UdotByElement 18, 0, 4, 1
         ld1     {v3.16b},[x1],#16           // load packed B1_next4k
@@ -645,7 +648,6 @@ Return Value:
         UdotByElement 19, 3, 6, 1
         UdotByElement 21, 3, 6, 2
         UdotByElement 23, 3, 6, 3
-        ldur    q6,[x0,#-16]                // load packed A1 for next iteration
         b       .LGemmU8X8.M4.ComputeBlockLoop
 
 .LGemmU8X8.M4.ComputeBlockLoopFinish:
