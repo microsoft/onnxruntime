@@ -12,8 +12,8 @@
 namespace onnxruntime {
 // Information needed to construct HIP execution providers.
 struct ROCMExecutionProviderExternalAllocatorInfo {
-  const void* alloc{nullptr};
-  const void* free{nullptr};
+  void* alloc{nullptr};
+  void* free{nullptr};
 
   ROCMExecutionProviderExternalAllocatorInfo() {
     alloc = nullptr;

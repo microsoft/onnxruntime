@@ -146,8 +146,6 @@ provider_excluded_files = [
                 'tensor/upsample.h',
                 'tensor/upsample_impl.cu',
                 'tensor/upsample_impl.h',
-                'cuda_allocator.cc',
-                'cuda_allocator.h',
                 'cuda_call.cc',
                 'cuda_common.cc', # implements cublas math modes; no support in HIP
                 'cuda_execution_provider_info.cc',
@@ -303,6 +301,7 @@ def hipify(src_file_path, dst_file_path):
     # Undo where above hipify steps went too far.
     s = s.replace('ROCM error executing', 'HIP error executing')
     s = s.replace('ROCM_PINNED', 'CUDA_PINNED')
+    s = s.replace('rocm_err', 'hip_err')
 
     do_write = True
     if os.path.exists(dst_file_path):
