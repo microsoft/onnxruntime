@@ -137,6 +137,11 @@ class TrainingManager(GraphExecutionManager):
                 for idx in self._graph_info.module_output_indices_requires_save_for_backward:
                     ctx.save_for_backward(user_outputs[idx])
 
+                # Mark the outputs tensors non-differentiable if requires_grad is False in _graph_info
+                # This will return torch the output tensors with correct requires_grad settings
+                for idx in self._graph_info.output_grad_indices_non_differentiable:
+                    ctx.mark_non_differentiable(user_outputs[idx])
+
                 return user_outputs
 
             @staticmethod
