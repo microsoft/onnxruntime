@@ -5,6 +5,7 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/cerr_sink.h"
+#include "core/common/optional.h"
 #include "core/framework/allocator.h"
 #include "core/framework/session_options.h"
 #include "core/session/environment.h"
@@ -448,7 +449,8 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISA
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(uint32_t flags);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(
+    uint32_t flags, const optional<std::string>& partitioning_stop_ops_list);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
 
 }  // namespace onnxruntime
