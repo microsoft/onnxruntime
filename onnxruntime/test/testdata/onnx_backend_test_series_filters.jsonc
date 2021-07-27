@@ -70,9 +70,10 @@
         "^test_shape_*",
         // Optional operators are supported in ORT but the ONNX backend test runner
         // doesn't yet have capability to deal with optional type test data.
-        // These tests have been validated using the onnx_test_runner.
+        // These tests have been validated using the in-house onnx_test_runner.
         // Uncomment here once the ONNX backend test runner is able to handle
-        // optional type test data
+        // optional type test data.
+        // https://github.com/onnx/onnx/issues/3608
         "^test_optional_*",
         //GPU failures
         "^test_batchnorm_epsilon_training_mode_cuda",
