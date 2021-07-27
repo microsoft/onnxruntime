@@ -829,7 +829,7 @@ class OpTester {
       // so we don't even have to create a Tensor.
       // Conversely, if it is an optional tensor type with values,
       // we pass it in as a regular tensor.
-      if (values || !iis_optional_type_tensor) {
+      if (values || !is_optional_type_tensor) {
         p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), shape, allocator);
       }
 
