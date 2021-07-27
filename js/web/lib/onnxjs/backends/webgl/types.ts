@@ -92,7 +92,7 @@ export interface ProgramInfo {
   /**
    * the name of the program. used for debugging and profiling
    */
-  name?: string;
+  name: string;
 }
 
 export interface VariableInfo {

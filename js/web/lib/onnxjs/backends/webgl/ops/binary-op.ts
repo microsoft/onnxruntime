@@ -224,6 +224,7 @@ const createBinaryProgramInfo =
       }`;
 
         return {
+          name: glslFunc.name,
           inputNames: ['A', 'B'],
           inputTypes: [textureType, textureType],
           output: {dims: outputShape, type: outputTensorType, textureType},
@@ -243,6 +244,7 @@ const createBinaryProgramInfo =
     `;
 
       return {
+        name: glslFunc.name,
         inputNames: ['A', 'B'],
         inputTypes: [textureType, textureType],
         output: {dims: inputs[0].dims, type: outputTensorType, textureType},

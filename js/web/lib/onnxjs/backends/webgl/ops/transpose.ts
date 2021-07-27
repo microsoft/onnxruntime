@@ -35,6 +35,7 @@ const createTransposeProgramInfo =
         return _A(a);
       }`;
       return {
+        name: 'Transpose',
         inputNames: ['A'],
         inputTypes: [TextureType.unpacked],
         output: {dims: unpackedOutputShape, type: input.type, textureType: TextureType.unpacked},
