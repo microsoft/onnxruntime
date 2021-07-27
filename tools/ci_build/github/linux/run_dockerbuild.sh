@@ -66,7 +66,7 @@ fi
 DOCKER_CMD="docker"
 
 
-if [[ $ORTMODULE_BUILD = true ]]; then
+if [[ $ORTMODULE_BUILD = false ]]; then
     BUILD_EXTR_PAR=" --build_shared_lib ${BUILD_EXTR_PAR}"
 fi
 
