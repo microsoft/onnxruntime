@@ -1281,7 +1281,7 @@ void Graph::InitializeStateFromModelFileGraphProto() {
     const auto& name = graph_value_info.name();
     const auto* node_arg = GetNodeArg(name);
     if (node_arg != nullptr) {
-      value_info_.insert(node_arg);
+      value_info_.push_back(node_arg);
     }
   }
 
@@ -2398,8 +2398,7 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
   return Status::OK();
 }
 
-Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
-  CheckerContext ctx;
+void Graph::InitCheckerContext(CheckerContext & ctx) {
   ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));
   ctx.set_opset_imports(DomainToVersionMap());
   ctx.set_schema_registry(schema_registry_.get());
@@ -2539,7 +2538,7 @@ void Graph::InitFunctionBodyForNode(Node& node) {
       function_container_.emplace_back(std::move(func_ptr));
       node.SetFunctionBody(*function_container_.back());
     }
-    ORT_CATCH(const std::exception&) {
+    ORT_CATCH(const std::exception& ) {
       // Return without using this function op's expansion. No need to fail just yet.
       // If ORT has a specialized kernel for this op then execution will proceed
       return;
@@ -2880,9 +2879,10 @@ const ONNX_NAMESPACE::TensorProto* Graph::GetConstantInitializer(const std::stri
 
 #if !defined(ORT_MINIMAL_BUILD)
 void Graph::AddValueInfo(const NodeArg* new_value_info) {
-  NodeArg* node_arg = GetNodeArg(new_value_info->Name());
-  ORT_ENFORCE(node_arg && node_arg == new_value_info, "Error: trying to add an value info that are no in graph.");
-  value_info_.insert(new_value_info);
+  for (const auto* info : value_info_) {
+    ORT_ENFORCE(info->Name() != new_value_info->Name(), "Error: trying to add an existing value info.");
+  }
+  value_info_.push_back(new_value_info);
 }
 
 std::vector<NodeArg*> Graph::CreateNodeArgs(const google::protobuf::RepeatedPtrField<std::string>& names,
@@ -3518,7 +3518,9 @@ Status Graph::SetGraphInputsOutputs() {
         // Remove the output arg name from graph outputs since it's
         // the input of this node, which we call it intermediate result
         // and store it in <m_valueinfo>.
-        value_info_.insert(input_arg);
+        if (std::find(value_info_.begin(), value_info_.end(), input_arg) == value_info_.end()) {
+          value_info_.push_back(input_arg);
+        }
       }
     }
   }

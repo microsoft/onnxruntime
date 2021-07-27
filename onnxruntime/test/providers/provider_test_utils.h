@@ -813,10 +813,9 @@ class OpTester {
     ORT_TRY {
       TensorShape shape{dims};
 
-      if (values == nullptr) {
-        // Value being null means we are creating an optional type tensor of None
-        ORT_ENFORCE(is_optional_type_tensor, "OrtValue needs to have data for non-optional types");
-      } else {
+      if (!is_optional_type_tensor || (is_optional_type_tensor && values != nullptr)) {
+        // In case values is nullptr for optional type tensor, it means we are creating
+        // an optional type tensor which is None and we hence skip values count validation
         ORT_ENFORCE(shape.Size() == values_count,
                     values_count, " input values doesn't match tensor size of ",
                     shape.Size());
@@ -830,7 +829,7 @@ class OpTester {
       // so we don't even have to create a Tensor.
       // Conversely, if it is an optional tensor type with values,
       // we pass it in as a regular tensor.
-      if (values != nullptr || !is_optional_type_tensor) {
+      if (values || !iis_optional_type_tensor) {
         p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), shape, allocator);
       }
 
