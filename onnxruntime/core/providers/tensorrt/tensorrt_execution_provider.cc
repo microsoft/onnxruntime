@@ -297,7 +297,7 @@ void Impl_Cast(
 }
 
 template <>
-void Impl_Cast(//slx
+void Impl_Cast(
     cudaStream_t stream,
     const double* input_data, float* output_data,
     size_t count) {
@@ -305,7 +305,7 @@ void Impl_Cast(//slx
 }
 
 template <>
-void Impl_Cast(//slx
+void Impl_Cast(
     cudaStream_t stream,
     const float* input_data, double* output_data,
     size_t count) {
@@ -1781,7 +1781,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             }
             break;
           }
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {//slx
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
             // Cast DOUBLE input to FLOAT because TensorRT doesn't fully support INT64
             auto input_tensor_ptr = ort.GetTensorData<double>(input_tensor);
             if (input_tensor_ptr == nullptr) {
@@ -1915,7 +1915,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
             }
             break;
           }
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {//slx
+          case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {
             // Allocate FLOAT CUDA memory for DOUBLE output type because TensorRT doesn't fully support DOUBLE
             auto output_tensor_ptr = ort.GetTensorMutableData<double>(output_tensor[i]);
             if (output_tensor_ptr == nullptr) {
@@ -1963,24 +1963,12 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<Node*>& fuse
           if (output_tensor_ptr != nullptr) {
             cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(buffers[binding_index]), output_tensor_ptr, output_dim_sizes[i]);
           }
-        } else if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {//slx
+        } else if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
           auto output_tensor_ptr = ort.GetTensorMutableData<double>(output_tensor[i]);
           if (output_tensor_ptr != nullptr) {
             cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(buffers[binding_index]), output_tensor_ptr, output_dim_sizes[i]);
-          }
-/*//slx: print output
-             double* output_tensors =new double[output_dim_sizes[i]];
-             cudaMemcpy(output_tensors, buffers[binding_index], output_dim_sizes[i] * sizeof(double), cudaMemcpyDeviceToHost);
-
-            std::cout << "output: " << std::endl;
-            //const float* output = static_cast<float*>(output_tensors[i].data);
-            for (int j = 0; j < std::min(20, output_dim_sizes[i]); ++j) {//500
-               std::cout << output_tensors[j] << ", ";
-            }
-            std::cout << std::endl;
-            delete[] output_tensors;
-*/			
-	   }
+          }		
+        }
       }
       return Status::OK();
     };
