@@ -706,15 +706,15 @@ class InferenceSession {
 
   // View of the bytes from an ORT format model.
   // If the session is started with an input byte array contains model data, and the caller
-  // specify that ORT should not copy the model bytes by setting the session config option
-  // "session.disable_copy_ort_model_bytes" to "1"
+  // specifies that ORT should use the model bytes directly by setting the session config option
+  // "session.use_ort_model_bytes_directly" to "1"
   //   We use the the byte array directly without copy to reduce peak memory usage
   //   (Short term) This will require the user to guarantee the life time of the model data
   //   until the session is created.
   //   (Longer term) If we are going to use the memory offsets directly for initializers, the model data
   //   should be alive until the InferenceSession goes away.
   // If the session is started with an input byte array contains model data, and the caller does not
-  // specify ORT should not copy the model bytes
+  // specify ORT should use the model bytes directly
   // Or the session is started with a model_uri
   //   We store them currently in the ort_format_model_bytes_data_holder_ to make the Load + Initialize
   //   behave the same way as for an ONNX model, as we need some of the bytes for the Load (create the Model)
@@ -724,8 +724,10 @@ class InferenceSession {
   // those into new OrtValue instances, at which point we won't free them until the InferenceSession goes away.
   gsl::span<const uint8_t> ort_format_model_bytes_;
 
-  // This holds the actual model data when the session is started with a model_uri
-  // In case if the session is started with an input byte array contains model data, this will be empty
+  // This holds the actual model data
+  // In case if the session is started with an input byte array contains model data, and the caller
+  // specifies that ORT should use the model bytes directly by setting the session config option
+  // "session.use_ort_model_bytes_directly" to "1", this will be empty
   std::vector<uint8_t> ort_format_model_bytes_data_holder_;
 
   std::shared_ptr<onnxruntime::AllocatorManager> allocator_manager_;

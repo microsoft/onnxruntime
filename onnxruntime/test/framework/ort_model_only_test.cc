@@ -48,7 +48,7 @@ static void RunOrtModel(const OrtModelTestInfo& test_info) {
   }
 
   if (test_info.disable_copy_ort_buffer) {
-    so.config_options.AddConfigEntry(kOrtSessionOptionsConfigDisableCopyORTModelBytes, "1");
+    so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "1");
   }
 
   std::vector<char> model_data;

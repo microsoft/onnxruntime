@@ -1005,9 +1005,9 @@ Status InferenceSession::LoadOrtModel(const std::wstring& model_uri) {
 
 Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len) {
   return LoadOrtModel([&]() {
-    const auto disable_copy_ort_model_bytes =
-        GetSessionOptions().config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisableCopyORTModelBytes, "0");
-    if (disable_copy_ort_model_bytes != "1") {
+    const auto use_ort_model_bytes_directly =
+        GetSessionOptions().config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "0");
+    if (use_ort_model_bytes_directly != "1") {
       // copy bytes as we need them to be available when InferenceSession::Initialize is called later.
       ort_format_model_bytes_data_holder_.resize(model_data_len);
       std::copy_n(reinterpret_cast<const uint8_t*>(model_data), model_data_len,
