@@ -11,14 +11,17 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 
+#ifndef USE_ROCM
 #if CUDA_VERSION >= 11000
 #include <cuda_bf16.h>
+#endif
 #endif
 
 namespace onnxruntime {
 namespace cuda {
 
 // float16 arithmetic is supported after sm5.3 with intrinsics, and cuda does not provide fallback for lower versions
+#ifndef USE_ROCM
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
 __device__ __forceinline__ half operator+(const half& lh, const half& rh) { return half((float)lh + (float)rh); }
 __device__ __forceinline__ half operator-(const half& lh, const half& rh) { return half((float)lh - (float)rh); }
@@ -73,6 +76,7 @@ __device__ __forceinline__ bool operator>(const half& lh, const half& rh) { retu
 __device__ __forceinline__ bool operator<(const half& lh, const half& rh) { return (float)lh < (float)rh; }
 __device__ __forceinline__ bool operator>=(const half& lh, const half& rh) { return (float)lh >= (float)rh; }
 __device__ __forceinline__ bool operator<=(const half& lh, const half& rh) { return (float)lh <= (float)rh; }
+#endif
 #endif
 
 template <typename T>
@@ -134,10 +138,10 @@ __device__ __inline__ double _Round(double a) { return rint(a); }
 
 template <>
 __device__ __inline__ half _Round(half a) {
-#if __CUDA_ARCH__ < 530
-  return half(rintf((float)a));
-#else
+#if defined(USE_ROCM) || __CUDA_ARCH__ >= 530
   return hrint(a);
+#else
+  return half(rintf((float)a));
 #endif
 }
 
@@ -152,10 +156,10 @@ __device__ __inline__ double _Cos(double a) { return cos(a); }
 
 template <>
 __device__ __inline__ half _Cos(half a) {
-#if __CUDA_ARCH__ < 530
-  return half(cosf((float)a));
-#else
+#if defined(USE_ROCM) || __CUDA_ARCH__ >= 530
   return hcos(a);
+#else
+  return half(cosf((float)a));
 #endif
 }
 
@@ -170,10 +174,10 @@ __device__ __inline__ double _Sin(double a) { return sin(a); }
 
 template <>
 __device__ __inline__ half _Sin(half a) {
-#if __CUDA_ARCH__ < 530
-  return half(sinf((float)a));
-#else
+#if defined(USE_ROCM) || __CUDA_ARCH__ >= 530
   return hsin(a);
+#else
+  return half(sinf((float)a));
 #endif
 }
 
@@ -262,6 +266,7 @@ __device__ __inline__ T _Gelu(T a) {
   return a * _Normcdf(a);
 }
 
+#ifndef USE_ROCM
 #if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
 template <>
 __device__ __inline__ nv_bfloat16 _Sqrt(nv_bfloat16 a) { return nv_bfloat16(sqrtf(static_cast<float>(a))); }
@@ -285,6 +290,7 @@ __device__ __inline__ nv_bfloat162 _Tanh(nv_bfloat162 a) {
 
 template <>
 __device__ __inline__ nv_bfloat16 _Normcdf(nv_bfloat16 a) { return nv_bfloat16(normcdff(static_cast<float>(a))); }
+#endif
 #endif
 
 // We would like to use 64-bit integer to support large matrices. However, CUDA seems to support only 32-bit integer
@@ -325,37 +331,37 @@ constexpr int GPU_WARP_SIZE = 32;
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
-#if CUDA_VERSION >= 9000
-  return __shfl_sync(mask, value, srcLane, width);
-#else
+#if defined(USE_ROCM) || CUDA_VERSION < 9000
   return __shfl(value, srcLane, width);
+#else
+  return __shfl_sync(mask, value, srcLane, width);
 #endif
 }
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
-#if CUDA_VERSION >= 9000
-  return __shfl_xor_sync(mask, value, laneMask, width);
-#else
+#if defined(USE_ROCM) || CUDA_VERSION < 9000
   return __shfl_xor(value, laneMask, width);
+#else
+  return __shfl_xor_sync(mask, value, laneMask, width);
 #endif
 }
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL_UP(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
-#if CUDA_VERSION >= 9000
-  return __shfl_up_sync(mask, value, delta, width);
-#else
+#if defined(USE_ROCM) || CUDA_VERSION < 9000
   return __shfl_up(value, delta, width);
+#else
+  return __shfl_up_sync(mask, value, delta, width);
 #endif
 }
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL_DOWN(T value, unsigned int delta, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {
-#if CUDA_VERSION >= 9000
-  return __shfl_down_sync(mask, value, delta, width);
-#else
+#if defined(USE_ROCM) || CUDA_VERSION < 9000
   return __shfl_down(value, delta, width);
+#else
+  return __shfl_down_sync(mask, value, delta, width);
 #endif
 }
 

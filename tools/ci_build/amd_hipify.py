@@ -74,7 +74,6 @@ provider_excluded_files = [
                 'controlflow/loop.h',
                 'controlflow/scan.cc',
                 'controlflow/scan.h',
-                'cu_inc/common.cuh',
                 'math/einsum_utils/einsum_auxiliary_ops.cc',
                 'math/einsum_utils/einsum_auxiliary_ops.h',
                 'math/einsum_utils/einsum_auxiliary_ops_diagonal.cu',
