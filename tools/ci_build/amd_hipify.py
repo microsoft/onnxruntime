@@ -146,7 +146,6 @@ provider_excluded_files = [
                 'tensor/upsample.h',
                 'tensor/upsample_impl.cu',
                 'tensor/upsample_impl.h',
-                'cuda_call.cc',
                 'cuda_common.cc', # implements cublas math modes; no support in HIP
                 'cuda_execution_provider_info.cc',
                 'cuda_execution_provider_info.h',
@@ -231,6 +230,7 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace('HIPBLAS_STATUS_SUCCESS', 'rocblas_status_success')
     s = s.replace('hipblasStatus_t', 'rocblas_status')
 
+    s = s.replace('CudaErrString', 'RocmErrString')
     s = s.replace('CudaAsyncBuffer', 'RocmAsyncBuffer')
     s = s.replace('CudaKernel', 'RocmKernel')
     s = s.replace('ToCudaType', 'ToHipType')
@@ -241,7 +241,7 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace('CUDA_CALL', 'HIP_CALL')
     s = s.replace('SliceCuda', 'SliceRocm')
     s = s.replace('thrust::cuda', 'thrust::hip')
-    s = s.replace('CudaCall', 'HipCall')
+    s = s.replace('CudaCall', 'RocmCall')
     s = s.replace('cuda', 'rocm')
     # s = s.replace('Cuda', 'Rocm')
     s = s.replace('CUDA', 'ROCM')

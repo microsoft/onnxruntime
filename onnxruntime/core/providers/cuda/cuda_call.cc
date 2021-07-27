@@ -33,6 +33,25 @@ template <>
 const char* CudaErrString<cublasStatus_t>(cublasStatus_t e) {
   cudaDeviceSynchronize();
 
+#ifdef USE_ROCM
+  switch (e) {
+    CASE_ENUM_TO_STR(rocblas_status_success);
+    CASE_ENUM_TO_STR(rocblas_status_invalid_handle);
+    CASE_ENUM_TO_STR(rocblas_status_not_implemented);
+    CASE_ENUM_TO_STR(rocblas_status_invalid_pointer);
+    CASE_ENUM_TO_STR(rocblas_status_invalid_size);
+    CASE_ENUM_TO_STR(rocblas_status_memory_error);
+    CASE_ENUM_TO_STR(rocblas_status_internal_error);
+    CASE_ENUM_TO_STR(rocblas_status_perf_degraded);
+    CASE_ENUM_TO_STR(rocblas_status_size_query_mismatch);
+    CASE_ENUM_TO_STR(rocblas_status_size_increased);
+    CASE_ENUM_TO_STR(rocblas_status_size_unchanged);
+    CASE_ENUM_TO_STR(rocblas_status_invalid_value);
+    CASE_ENUM_TO_STR(rocblas_status_continue);
+    default:
+      return "(look for rocblas_status in rocblas-types.h)";
+  }
+#else
   switch (e) {
     CASE_ENUM_TO_STR(CUBLAS_STATUS_SUCCESS);
     CASE_ENUM_TO_STR(CUBLAS_STATUS_NOT_INITIALIZED);
@@ -47,6 +66,7 @@ const char* CudaErrString<cublasStatus_t>(cublasStatus_t e) {
     default:
       return "(look for CUBLAS_STATUS_xxx in cublas_api.h)";
   }
+#endif
 }
 
 template <>
