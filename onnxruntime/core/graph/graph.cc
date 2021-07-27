@@ -2398,7 +2398,8 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
   return Status::OK();
 }
 
-void Graph::InitCheckerContext(CheckerContext & ctx) {
+Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
+  CheckerContext ctx;
   ctx.set_ir_version(gsl::narrow_cast<int>(IrVersion()));
   ctx.set_opset_imports(DomainToVersionMap());
   ctx.set_schema_registry(schema_registry_.get());
@@ -2538,7 +2539,7 @@ void Graph::InitFunctionBodyForNode(Node& node) {
       function_container_.emplace_back(std::move(func_ptr));
       node.SetFunctionBody(*function_container_.back());
     }
-    ORT_CATCH(const std::exception& ) {
+    ORT_CATCH(const std::exception&) {
       // Return without using this function op's expansion. No need to fail just yet.
       // If ORT has a specialized kernel for this op then execution will proceed
       return;
