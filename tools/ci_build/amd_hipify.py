@@ -153,10 +153,9 @@ provider_excluded_files = [
                 'cuda_execution_provider.h',
                 'cuda_memory_check.cc',
                 'cuda_memory_check.h',
-                'cuda_fwd.h',
                 'cuda_kernel.h',
-                'cuda_pch.cc',
-                'cuda_pch.h',
+                'cuda_pch.cc', # not sure why we skip this one
+                'cuda_pch.h', # small header, hipify doesn't get it right, easier to do manually
                 'cuda_provider_factory.cc',
                 'cudnn_common.cc',
                 'cudnn_common.h',
