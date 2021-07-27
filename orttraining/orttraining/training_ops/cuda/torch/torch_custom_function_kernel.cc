@@ -50,7 +50,6 @@ Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
   std::vector<OrtValue> returned_ortvalues;
   RunBackward(context, returned_ortvalues);
 
-
   SetOutputs(context, returned_ortvalues);
 
   RefCountTracker::GetInstance().DumpDetails("Backward Kernel Completed");
