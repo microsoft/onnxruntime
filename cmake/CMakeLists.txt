@@ -1679,7 +1679,7 @@ if (WIN32)
     # Setting WINAPI_FAMILY, WINVER and _WIN32_WINNT restrict the APIs exposed in Windows headers to those available
     # in store or desktop, and that support at least the version of Windows specified
     add_compile_definitions(WINAPI_FAMILY=2)  # Windows Store app
-    add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00)  # Support Windows 10 or newer
+    add_compile_definitions(WINVER=0x0A00 _WIN32_WINNT=0x0A00 NTDDI_VERSION=0x0A000000)  # Support Windows 10 or newer
     # /ZW adds /FUplatform.winmd and /FUwindows.winmd. windows.winmd, in turn, overrides the include path for
     # the cppwinrt headers, which we set to use the WinML built ones.
     # Instead, we use /ZW:nostdlib and force include platform.winml only.
@@ -1689,7 +1689,7 @@ if (WIN32)
     add_link_options(/APPCONTAINER)
   else()
     add_compile_definitions(WINAPI_FAMILY=100) # Desktop app
-    add_compile_definitions(WINVER=0x0601 _WIN32_WINNT=0x0601)  # Support Windows 7 and newer
+    add_compile_definitions(WINVER=0x0601 _WIN32_WINNT=0x0601 NTDDI_VERSION=0x06010000)  # Support Windows 7 and newer
   endif()
 endif()
 
