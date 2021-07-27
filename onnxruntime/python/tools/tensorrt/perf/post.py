@@ -37,7 +37,7 @@ def parse_csv(report_file):
 
 def get_latency_over_time(commit_hash, report_url, latency_table):
     if not latency_table.empty:
-        to_drop = ['TrtGain-CudaFp32', 'EpGain-TrtFp32', 'TrtGain-CudaFp16', 'EpGain-TrtFp16']
+        to_drop = ['TrtGain_CudaFp32', 'EpGain_TrtFp32', 'TrtGain_CudaFp16', 'EpGain_TrtFp16']
         over_time = latency_table.drop(to_drop, axis='columns')
         over_time = over_time.melt(id_vars=['Model', 'Group'], var_name='Ep', value_name='Latency')
             
@@ -91,8 +91,8 @@ def get_latency(latency, model_group):
                         'TRT v CUDA EP fp16 \ngain (mean) (%)', \
                         'EP v Standalone TRT fp16 \ngain (mean) (%)' \
                         ]
-    latency_db_columns = ['Model', 'CpuFp32', 'CudaEpFp32', 'TrtEpFp32', 'StandaloneFp32', 'TrtGain-CudaFp32', 'EpGain-TrtFp32', \
-                        'CudaEpFp16', 'TrtEpFp16', 'StandaloneFp16', 'TrtGain-CudaFp16', 'EpGain-TrtFp16']
+    latency_db_columns = ['Model', 'CpuFp32', 'CudaEpFp32', 'TrtEpFp32', 'StandaloneFp32', 'TrtGain_CudaFp32', 'EpGain_TrtFp32', \
+                        'CudaEpFp16', 'TrtEpFp16', 'StandaloneFp16', 'TrtGain_CudaFp16', 'EpGain_-TrtFp16']
     latency = adjust_columns(latency, latency_columns, latency_db_columns, model_group)
     return latency
     
