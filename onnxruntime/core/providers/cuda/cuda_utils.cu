@@ -5,7 +5,7 @@
 #include <memory>
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
-#include "cudnn_common.h"
+#include "core/providers/cuda/cudnn_common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -71,8 +71,10 @@ std::unique_ptr<IConstantBuffer<T>> CreateConstantOnes() {
 template std::unique_ptr<IConstantBuffer<float>> CreateConstantOnes<float>();
 template std::unique_ptr<IConstantBuffer<double>> CreateConstantOnes<double>();
 template std::unique_ptr<IConstantBuffer<half>> CreateConstantOnes<half>();
+#ifndef USE_ROCM
 #if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
 template std::unique_ptr<IConstantBuffer<nv_bfloat16>> CreateConstantOnes<nv_bfloat16>();
+#endif
 #endif
 
 #define SPECIALIZED_FILL(T) \
@@ -85,8 +87,10 @@ SPECIALIZED_FILL(int64_t)
 SPECIALIZED_FILL(float)
 SPECIALIZED_FILL(double)
 SPECIALIZED_FILL(__half)
+#ifndef USE_ROCM
 #if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
 SPECIALIZED_FILL(nv_bfloat16)
+#endif
 #endif
 
 }  // namespace cuda
