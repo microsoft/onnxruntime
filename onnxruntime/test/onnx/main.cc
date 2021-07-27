@@ -610,6 +610,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
       {"shape_start_1_end_2", "opset15 updates not supported yet."},
       {"shape_start_1_end_negative_1", "opset15 updates not supported yet."},
       {"shape_start_negative_1", "opset15 updates not supported yet."},
+      {"test_optional_get_element", "opset15 updates not supported yet."},
+      {"test_optional_get_element_sequence", "opset15 updates not supported yet."},
+      {"test_optional_has_element", "opset15 updates not supported yet."},
+      {"test_optional_has_element_empty", "opset15 updates not supported yet."},
 
   };
 
