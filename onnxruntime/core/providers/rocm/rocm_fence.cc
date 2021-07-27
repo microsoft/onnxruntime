@@ -53,7 +53,7 @@ bool ROCMFence::CanRelease() {
       hipGetLastError();
       return false;
   } else if (status != hipSuccess) {
-      RocmCall<hipError_t, true>(status, "hipEventQuery(read_event_)", "HIP", hipSuccess);
+      HipCall<hipError_t, true>(status, "hipEventQuery(read_event_)", "HIP", hipSuccess);
   }
   status = hipEventQuery(write_event_);
   if (status == hipErrorNotReady) {
@@ -61,7 +61,7 @@ bool ROCMFence::CanRelease() {
       hipGetLastError();
       return false;
   } else if (status != hipSuccess) {
-      RocmCall<hipError_t, true>(status, "hipEventQuery(write_event_)", "HIP", hipSuccess);
+      HipCall<hipError_t, true>(status, "hipEventQuery(write_event_)", "HIP", hipSuccess);
   }
   return true;
 }

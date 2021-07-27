@@ -5,7 +5,7 @@
 
 #include <miopen/miopen.h>
 
-#include "rocm_common.h"
+#include "core/providers/rocm/rocm_common.h"
 #include "core/framework/tensor.h"
 #include <cfloat>
 

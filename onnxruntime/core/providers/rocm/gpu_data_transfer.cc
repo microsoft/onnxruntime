@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/rocm/gpu_data_transfer.h"
-#include "rocm_common.h"
+#include "core/providers/rocm/rocm_common.h"
 
 namespace onnxruntime {
 GPUDataTransfer::GPUDataTransfer(hipStream_t stream, bool do_copy_in_default_stream) {
