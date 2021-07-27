@@ -23,16 +23,11 @@ export const createUnpackedGroupedConvProgramInfo =
       const outputShape =
           calculateOutputShape(xShape, wShape, attributes.dilations, attributes.pads, attributes.strides);
       const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
-      const additionalVars = attributes.activation === 'Clip' ? `
-  const float min = float(${attributes.clipMin});
-  const float max = float(${attributes.clipMax});` :
-                                                                '';
       const {activationFunction, applyActivation} = getActicationSnippet(attributes);
 
       const shaderSource = `
   const ivec2 strides = ivec2(${attributes.strides[0]}, ${attributes.strides[1]});
   const ivec2 pads = ivec2(${attributes.pads[0]}, ${attributes.pads[1]});
-  ${additionalVars}
   ${activationFunction}
   void main() {
     ivec4 coords = getOutputCoords();
