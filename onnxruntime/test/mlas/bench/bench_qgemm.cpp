@@ -57,7 +57,7 @@ void QGEMM(benchmark::State& state, bool pack_b) {
 
 
   std::vector<MLAS_GEMM_U8X8_DATA_PARAMS> gemm_data_vec(batch);
-  for (int i = 0; i < batch; i++) {
+  for (size_t i = 0; i < batch; i++) {
     auto& gemm_params = gemm_data_vec[i];
     gemm_params.lda = gemm_shape.K;
     gemm_params.ZeroPointA = a_zero_point;
