@@ -234,7 +234,7 @@ Return Value:
     int32_t* C = Data->C + RangeStartM * ldc + RangeStartN;
     const uint8_t* PackedZeroPointB = Data->PerColumnZeroPoints ?
         Data->ZeroPointB + RangeStartN : nullptr;
-    bool IsAccumulateMode = Data->IsAccumulateMode;
+    bool IsAccumulateMode = Shape->IsAccumulateMode;
 
     int32_t ZeroPointA = Data->ZeroPointA;
     int32_t ZeroPointB = typename KernelType::OffsetBType(*Data->ZeroPointB);
@@ -460,7 +460,7 @@ Return Value:
     int32_t* C = Data->C + RangeStartM * ldc + RangeStartN;
     const uint8_t* PackedZeroPointB = Data->PerColumnZeroPoints ?
         Data->ZeroPointB + RangeStartN : nullptr;
-    bool IsAccumulateMode = Data->IsAccumulateMode;
+    bool IsAccumulateMode = Shape->IsAccumulateMode;
 
     int32_t ZeroPointA = Data->ZeroPointA;
     int32_t ZeroPointB = typename KernelType::OffsetBType(*Data->ZeroPointB);

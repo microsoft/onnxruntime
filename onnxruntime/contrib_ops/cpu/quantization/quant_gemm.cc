@@ -82,7 +82,7 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
       GemmBroadcastBias(M, N, 1.f, c->template Data<int32_t>(), &(c->Shape()), gemm_output_data);
     }
 
-    MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape{M, N, K, b_is_signed};
+    MLAS_GEMM_U8X8_SHAPE_PARAMS gemm_shape{M, N, K, b_is_signed, c != nullptr};
     MLAS_GEMM_U8X8_DATA_PARAMS gemm_param;
 
     gemm_param.A = a_data;
@@ -96,7 +96,6 @@ class QGemm : protected GemmBase, public MatMulIntegerBase {
 
     gemm_param.C = gemm_output_data;
     gemm_param.ldc = gemm_shape.N;
-    gemm_param.IsAccumulateMode = (c != nullptr);
 
     gemm_param.PerColumnZeroPoints = !IsScalarOr1ElementVector(b_zp);
 
