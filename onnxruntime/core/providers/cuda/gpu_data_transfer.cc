@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
+#include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
-#include "cuda_common.h"
 
 // use default stream for copy for now, to avoid racing in BFC arena as in issue #4829
 // note this may cause some models to run slower if there are ops running on CPU
