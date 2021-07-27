@@ -131,7 +131,7 @@ TEST(OptionalOpTest, OptionalSeqTensorGetElement) {
 class OptionalOpTester : public OpTester {
  public:
   explicit OptionalOpTester(bool is_seq_tensor = false)
-      : is_seq_tensor_(is_seq_tensor), OpTester("Optional", 15) {}
+      : OpTester("Optional", 15), is_seq_tensor_(is_seq_tensor) {}
 
  protected:
   void AddNodes(onnxruntime::Graph& graph,
