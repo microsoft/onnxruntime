@@ -16,11 +16,11 @@ jobs:
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuild
 
- - task: CmdLine@2
-   displayName: 'Install python deps'
-   inputs:
-   script: |
-   /opt/python/cp37-cp37m/bin/python3 -m pip install cerberus h5py
+  - task: CmdLine@2
+    displayName: 'Install python deps'
+    inputs:
+    script: |
+      /opt/python/cp37-cp37m/bin/python3 -m pip install cerberus h5py
 
   - task: CmdLine@2
     inputs:
