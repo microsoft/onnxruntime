@@ -4,9 +4,9 @@
 #include "rocm_allocator.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/session_state.h"
+#include "core/providers/rocm/gpu_data_transfer.h"
 #include "core/providers/rocm/rocm_common.h"
 #include "rocm_fence.h"
-#include "gpu_data_transfer.h"
 
 namespace onnxruntime {
 

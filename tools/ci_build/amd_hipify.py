@@ -167,8 +167,6 @@ provider_excluded_files = [
                 'cudnn_common.cc',
                 'cudnn_common.h',
                 'fpgeneric.cu',
-                'gpu_data_transfer.cc',
-                'gpu_data_transfer.h',
                 'integer_gemm.cc',
                 'symbols.txt',
 ]
@@ -218,15 +216,23 @@ def hipify(src_file_path, dst_file_path):
     # Run hipify-perl first, capture output
     s = subprocess.run([HIPIFY_PERL, src_file_path], stdout=subprocess.PIPE, universal_newlines=True).stdout
 
-    # Additional exact-match replacements. Order matters.
+    # Additional exact-match replacements.
+    # Order matters for all of the following replacements, reglardless of appearing in logical sections.
     s = s.replace('kCudaExecutionProvider', 'kRocmExecutionProvider')
+    s = s.replace('CUDAStreamType', 'HIPStreamType')
+    s = s.replace('kCudaStreamDefault', 'kHipStreamDefault')
+    s = s.replace('kCudaStreamCopyIn', 'kHipStreamCopyIn')
+    s = s.replace('kCudaStreamCopyOut', 'kHipStreamCopyOut')
+    s = s.replace('kTotalCudaStreams', 'kTotalHipStreams')
+
+    # We want rocblas interfaces, not hipblas. Also force some hipify replacements back to rocblas from hipblas.
     s = s.replace('CublasHandle', 'RocblasHandle')
     s = s.replace('cublas_handle', 'rocblas_handle_var')
-    # We want rocblas interfaces, not hipblas. Also force some hipify replacements back to rocblas from hipblas.
     s = s.replace('hipblasHandle_t', 'rocblas_handle')
     s = s.replace('hipblasDatatype_t', 'rocblas_datatype')
     s = s.replace('HIPBLAS_STATUS_SUCCESS', 'rocblas_status_success')
     s = s.replace('hipblasStatus_t', 'rocblas_status')
+
     s = s.replace('CudaAsyncBuffer', 'RocmAsyncBuffer')
     s = s.replace('CudaKernel', 'RocmKernel')
     s = s.replace('ToCudaType', 'ToHipType')
@@ -296,6 +302,7 @@ def hipify(src_file_path, dst_file_path):
 
     # Undo where above hipify steps went too far.
     s = s.replace('ROCM error executing', 'HIP error executing')
+    s = s.replace('ROCM_PINNED', 'CUDA_PINNED')
 
     do_write = True
     if os.path.exists(dst_file_path):
