@@ -175,6 +175,8 @@ export class ModelTestContext {
       Logger.verbose('TestRunner.Perf', ` * Runs          : ${runs.map(r => r.toFixed(2)).join(', ')}`);
 
       if (runs.length > 1) {
+        const sorted = runs.sort((a, b) => a - b);
+        Logger.verbose('TestRunner.Perf', ` * Runs P50      : ${sorted[Math.floor((runs.length - 1) / 2)].toFixed(2)}`);
         const avg = runs.reduce((prev, current) => prev + current) / runs.length;
         Logger.verbose('TestRunner.Perf', ` * Runs Avg      : ${avg.toFixed(2)}`);
         const variance = runs.reduce((prev, current) => prev + (current - avg) * (current - avg));
