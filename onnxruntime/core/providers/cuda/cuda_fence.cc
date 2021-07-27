@@ -11,8 +11,8 @@ CUDAFence::CUDAFence(const GPUDataTransfer* data_transfer) : data_transfer_(data
   // NOTE: cudaEventBlockingSync may leads to longer wait time because of thread yield/switching in kernel
   // if lower CPU usage is more important than latency, we should use this flag to avoid spin-loop in WaitOnCPU
   int event_flags = /*cudaEventBlockingSync |*/ cudaEventDisableTiming;
-  CUDA_CALL_THROW(cudaEventCreate(&read_event_, event_flags));
-  CUDA_CALL_THROW(cudaEventCreate(&write_event_, event_flags));
+  CUDA_CALL_THROW(cudaEventCreateWithFlags(&read_event_, event_flags));
+  CUDA_CALL_THROW(cudaEventCreateWithFlags(&write_event_, event_flags));
 }
 
 CUDAFence::~CUDAFence() {
@@ -44,8 +44,24 @@ void CUDAFence::BeforeUsingAsOutput(onnxruntime::ProviderType provider_type, int
 }
 
 bool CUDAFence::CanRelease() {
-  return cudaEventQuery(read_event_) == cudaSuccess &&
-         cudaEventQuery(write_event_) == cudaSuccess;
+  cudaError_t status;
+  status = cudaEventQuery(read_event_);
+  if (status == cudaErrorNotReady) {
+      // ignore and clear the error if not ready
+      cudaGetLastError();
+      return false;
+  } else if (status != cudaSuccess) {
+      CudaCall<cudaError_t, true>(status, "cudaEventQuery(read_event_)", "CUDA", cudaSuccess);
+  }
+  status = cudaEventQuery(write_event_);
+  if (status == cudaErrorNotReady) {
+      // ignore and clear the error if not ready
+      cudaGetLastError();
+      return false;
+  } else if (status != cudaSuccess) {
+      CudaCall<cudaError_t, true>(status, "cudaEventQuery(write_event_)", "CUDA", cudaSuccess);
+  }
+  return true;
 }
 
 void CUDAFence::AfterUsedAsInput(int queue_id) {

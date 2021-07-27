@@ -9,6 +9,7 @@
 #include "core/framework/memcpy.h"
 #include "core/graph/graph_utils.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
+#include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/rocm_fence.h"
 #include "core/providers/rocm/rocm_fwd.h"
 #include "core/providers/rocm/rocm_allocator.h"
