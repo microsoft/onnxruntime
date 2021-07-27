@@ -454,6 +454,14 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBuffer) {
   RunOrtModel(test_info);
 }
 
+// Load the model from a buffer instead of a file path, and not copy the buffer in session creation
+TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBufferNoCopy) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModel();
+  test_info.run_use_buffer = true;
+  test_info.disable_copy_ort_buffer = true;
+  RunOrtModel(test_info);
+}
+
 #if !defined(DISABLE_ML_OPS)
 // test that we can deserialize and run a previously saved ORT format model
 // for a model with sequence and map outputs
