@@ -128,20 +128,18 @@ class FusionAttention(Fusion):
         return num_heads, hidden_size
 
     def get_add_qk_str(self, add_qk: NodeProto):
-        # Note: Does not work for dynamic models, reshape node shape inference would fail with more than 2 dims being -1
-        # inputs_ids has to be the name of input, this may be changes if needed
-        inputs_ids = self.model.find_graph_input("input_ids")
-        if inputs_ids == None:
-            logger.debug("no input with name \"input_ids\"")
-            return None
-        batch_size, seq_len = get_shape_from_type_proto(inputs_ids.type)
+        shape_infer = self.model.infer_runtime_shape(update=True)
+        if shape_infer is None:
+            return
 
-        if batch_size < 0 or seq_len < 0:
-            logger.debug(f"batch_size: {batch_size} and seq_len {seq_len} cannot be -ve")
+        input_0_shape = shape_infer.get_edge_shape(add_qk.input[0])
+        input_1_shape = shape_infer.get_edge_shape(add_qk.input[1])
+
+        if input_0_shape is None or input_1_shape is None:
+            logger.debug(f"one of the inputs of {add_qk} is None")
             return None
-        shape_infer_helper = SymbolicShapeInferenceHelper(self.model.model)
-        shape_infer_helper.infer({"batch_size": batch_size, "seq_len": seq_len})
-        if shape_infer_helper.get_edge_shape(add_qk.input[0]) != shape_infer_helper.get_edge_shape(add_qk.input[1]):
+
+        if input_0_shape != input_1_shape:
             logger.debug(f"the shape of two inputs of {add_qk} is not same")
             return None
 

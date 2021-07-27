@@ -1,13 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "orttraining/core/graph/gradient_builder_base.h"
+
 #include <vector>
 #include <string>
-
-#include "gradient_builder_base.h"
+#include <nlohmann/json.hpp>
+#include "core/framework/tensorprotoutils.h"
 
 namespace onnxruntime {
 namespace training {
+
+using json = nlohmann::json;
 
 std::string ToString(const std::vector<Dimension>& dims) {
   std::stringstream output;
@@ -121,6 +125,24 @@ Status GetShape(const ArgDef& arg_def, std::vector<Dimension>& shape) {
     shape.push_back(*dim);
   }
   return Status::OK();
+}
+
+std::string GetGradientDefinitionKeyByNode(const Node& node) {
+  std::string op_type = node.OpType();
+  std::string key = node.Domain() + "::" + op_type;
+  if (op_type == "ATenOp") {
+    const auto& attrs = node.GetAttributes();
+    ORT_ENFORCE(utils::HasString(attrs.at("name")));
+    key = key + "::" + attrs.at("name").s();
+    std::string overload_name = "";
+    if (attrs.find("overload_name") != attrs.end() && utils::HasString(attrs.at("overload_name"))) {
+      overload_name = attrs.at("overload_name").s();
+    }
+
+    key = key + "::" + overload_name;
+  }
+
+  return key;
 }
 
 void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
@@ -293,28 +315,94 @@ std::vector<NodeDef> GradientBuilderBase::GetBiasGeluGradNodes(
   return result;
 }
 
-ArgDef GradientBuilderBase::HandleATenOpGradInput(const ArgDef& source_arg_def, const std::string& transform_func,
-                                                  std::vector<NodeDef>& output) const {
-  ArgDef target_arg_def = source_arg_def;
-  if (transform_func == "sizes()") {
-    target_arg_def = IA("Shape_" + source_arg_def.name);
-    output.emplace_back(NodeDef("Shape", {source_arg_def}, {target_arg_def}));
-  } else if (transform_func.find("size(") == 0) {
-    int index = std::stoi(transform_func.substr(5, transform_func.length() - 6));
-    NodeDef index_const_node =
-        ConstantScalarNode(static_cast<int64_t>(index), {1}, Name("Constant_" + std::to_string(index)));
-    ArgDef index_arg_def = index_const_node.output_args[0];
-    output.emplace_back(index_const_node);
-    ArgDef shape_arg_def = IA("Shape_" + source_arg_def.name);
-    target_arg_def = IA("Dim_" + std::to_string(index) + "_" + source_arg_def.name);
-    output.emplace_back(NodeDef("Shape", {source_arg_def}, {shape_arg_def}));
-    output.emplace_back(NodeDef("Gather", {shape_arg_def, index_arg_def}, {target_arg_def},
-                                {ONNX_NAMESPACE::MakeAttribute("axis", int64_t(0))}));
+// We will not implement all kinds of possibilities here. Instead, we only support those cases that are possible for
+// gradient builder. For example, for attribute value that is tensor type (such as 'value' attribute for Constant),
+// the only case we need is scalar tensor. For list type, from the ONNX Op spec, except little uncommon Ops, all list
+// type attributes are of INT type. We will add support to more cases if needed.
+AttributeProto GradientBuilderBase::AttributeDefinitionToAttributeProto(
+    const GradientNodeAttributeDefinition& attr_def) const {
+  AttributeProto attr_proto;
+  std::string name = attr_def.name;
+  const auto& value = json::parse(attr_def.value_json);
+  int elem_type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  if (attr_def.dtype.find("IElemType(") == 0) {
+    int index = std::stoi(attr_def.dtype.substr(10, attr_def.dtype.length() - 11));
+    elem_type = IElemType(static_cast<size_t>(index));
+  } else if (attr_def.dtype.find("OElemType(") == 0) {
+    int index = std::stoi(attr_def.dtype.substr(10, attr_def.dtype.length() - 11));
+    elem_type = OElemType(static_cast<size_t>(index));
+  } else if (attr_def.dtype == "int") {
+    elem_type = ONNX_NAMESPACE::TensorProto_DataType_INT64;
+  } else if (attr_def.dtype == "float") {
+    elem_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+  } else if (attr_def.dtype == "bool") {
+    elem_type = ONNX_NAMESPACE::TensorProto_DataType_BOOL;
+  } else if (attr_def.dtype == "string") {
+    elem_type = ONNX_NAMESPACE::TensorProto_DataType_STRING;
   } else {
-    ORT_ENFORCE(transform_func == "", "Failed to build gradient graph for ", transform_func);
+    ORT_ENFORCE(false, "Type ", attr_def.dtype, " is not supported.");
   }
 
-  return target_arg_def;
+  if (value.is_array()) {
+    ORT_ENFORCE(!attr_def.is_tensor, "1D tensor attribute is not supported for now.");
+    // Support only INTs for now.
+    switch (elem_type) {
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+        std::vector<int64_t> int_array;
+        for (const auto& elem : value) {
+          ORT_ENFORCE(elem.is_number_integer());
+          int_array.emplace_back(static_cast<int64_t>(elem.get<int>()));
+        }
+        attr_proto = ONNX_NAMESPACE::MakeAttribute(name, int_array);
+      } break;
+      default:
+        ORT_ENFORCE(false, "List attribute of type ", std::to_string(elem_type), " is not supported for now.");
+    }
+  } else if (attr_def.is_tensor) {
+    TensorProto tensor_proto;
+    if (value.is_number_integer()) {
+      ORT_ENFORCE(elem_type == ONNX_NAMESPACE::TensorProto_DataType_INT64);
+      tensor_proto = ScalarTensorProto(static_cast<int64_t>(value.get<int>()), {1});
+    } else if (value.is_number_float()) {
+      ORT_ENFORCE(elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT ||
+                  elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
+                  elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16);
+      float float_value = value.get<float>();
+      if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+        tensor_proto = ScalarTensorProto(MLFloat16(math::floatToHalf(float_value)), {1});
+      } else if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
+        tensor_proto = ScalarTensorProto(BFloat16(float_value), {1});
+      } else {
+        tensor_proto = ScalarTensorProto(float_value, {1});
+      }
+    } else if (value.is_boolean()) {
+      ORT_ENFORCE(elem_type == ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+      tensor_proto = ScalarTensorProto(value.get<bool>(), {1});
+    } else {
+      ORT_ENFORCE(false, "Tensor attribute of type ", std::to_string(elem_type), " is not supported for now.");
+    }
+
+    attr_proto = ONNX_NAMESPACE::MakeAttribute(name, tensor_proto);
+  } else {
+    switch (elem_type) {
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+        ORT_ENFORCE(value.is_number_integer());
+        attr_proto = ONNX_NAMESPACE::MakeAttribute(name, static_cast<int64_t>(value.get<int>()));
+      } break;
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
+        ORT_ENFORCE(value.is_number_float());
+        attr_proto = ONNX_NAMESPACE::MakeAttribute(name, value.get<float>());
+      } break;
+      case ONNX_NAMESPACE::TensorProto_DataType_STRING: {
+        ORT_ENFORCE(value.is_string());
+        attr_proto = ONNX_NAMESPACE::MakeAttribute(name, value.get<std::string>());
+      } break;
+      default:
+        ORT_ENFORCE(false, "Attribute of type ", std::to_string(elem_type), " is not supported for now.");
+    }
+  }
+
+  return attr_proto;
 }
 
 }  // namespace training

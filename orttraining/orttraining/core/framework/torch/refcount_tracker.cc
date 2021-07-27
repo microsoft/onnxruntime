@@ -5,7 +5,7 @@
 
 #include <iostream>
 #include "core/common/logging/logging.h"
-#include "core/language_interop_ops/torch/refcount_tracker.h"
+#include "orttraining/core/framework/torch/refcount_tracker.h"
 #include "core/platform/env.h"
 
 namespace onnxruntime {
