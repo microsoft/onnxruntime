@@ -14,7 +14,6 @@ x) BUILD_EXTR_PAR=${OPTARG};;
 o) BUILD_OS=${OPTARG};;
 # YOCTO 4.19 + ACL 19.05, YOCTO 4.14 + ACL 19.02
 y) YOCTO_VERSION=${OPTARG};;
-s) BUILD_SHARED_LIB=${OPTARG};;
 esac
 done
 
@@ -46,10 +45,6 @@ elif [ $BUILD_OS = "yocto" ]; then
     make -j$(nproc)
 else
     COMMON_BUILD_ARGS="--skip_submodule_sync --enable_onnx_tests --parallel --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
-
-    if [ "$BUILD_SHARED_LIB" = true ] ; then
-        COMMON_BUILD_ARGS="${COMMON_BUILD_ARGS} --build_shared_lib "
-    fi
 
     if [ $BUILD_DEVICE = "gpu" ]; then
         _CUDNN_VERSION=$(echo $CUDNN_VERSION | cut -d. -f1-2)
