@@ -676,7 +676,7 @@ MlasGemmU8X8GetDispatch(
     }
 #elif defined(MLAS_TARGET_ARM64)
     GemmU8X8Dispatch = MlasPlatform.GemmU8X8Dispatch;
-#elif defined(MLAS_TARGET_ARM) && !defined(_MSC_VER)
+#elif defined(MLAS_TARGET_ARM64EC) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
     GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
 #else
     GemmU8X8Dispatch = &MlasGemmU8X8DispatchDefault;
