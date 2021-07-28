@@ -266,7 +266,9 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     list(APPEND onnxruntime_test_providers_src_patterns
       "${TEST_SRC_DIR}/contrib_ops/*.h"
-      "${TEST_SRC_DIR}/contrib_ops/*.cc")
+      "${TEST_SRC_DIR}/contrib_ops/*.cc"
+      "${TEST_SRC_DIR}/contrib_ops/math/*.h"
+      "${TEST_SRC_DIR}/contrib_ops/math/*.cc")
   endif()
 
   if(onnxruntime_USE_FEATURIZERS)
@@ -824,6 +826,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       ${BENCHMARK_DIR}/batchnorm2.cc
       ${BENCHMARK_DIR}/tptest.cc
       ${BENCHMARK_DIR}/eigen.cc
+      ${BENCHMARK_DIR}/copy.cc
       ${BENCHMARK_DIR}/gelu.cc
       ${BENCHMARK_DIR}/activation.cc
       ${BENCHMARK_DIR}/quantize.cc

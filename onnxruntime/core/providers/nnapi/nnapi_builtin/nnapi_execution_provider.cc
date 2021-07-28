@@ -30,23 +30,25 @@ constexpr std::array kDefaultPartitioningStopOps{
     "NonMaxSuppression",
 };
 
-std::unordered_set<std::string> GetPartitioningStopOps(const optional<std::unordered_set<std::string>>& partitioning_stop_ops) {
-  if (!partitioning_stop_ops.has_value()) {
+std::unordered_set<std::string> GetPartitioningStopOps(const optional<std::string>& partitioning_stop_ops_list) {
+  if (!partitioning_stop_ops_list.has_value()) {
     LOGS_DEFAULT(VERBOSE) << "Using default partitioning stop ops list.";
     return std::unordered_set<std::string>(kDefaultPartitioningStopOps.begin(), kDefaultPartitioningStopOps.end());
   }
 
-  LOGS_DEFAULT(INFO) << "Using partitioning stop ops list from configuration.";
-  return partitioning_stop_ops.value();
+  LOGS_DEFAULT(INFO) << "Using partitioning stop ops list from configuration: \""
+                     << partitioning_stop_ops_list.value() << "\".";
+  const auto stop_ops = utils::SplitString(partitioning_stop_ops_list.value(), ",");
+  return std::unordered_set<std::string>(stop_ops.begin(), stop_ops.end());
 }
 
 }  // namespace
 
 NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags,
-                                               const optional<std::unordered_set<std::string>>& partitioning_stop_ops)
+                                               const optional<std::string>& partitioning_stop_ops_list)
     : IExecutionProvider{onnxruntime::kNnapiExecutionProvider, true},
       nnapi_flags_(nnapi_flags),
-      partitioning_stop_ops_(GetPartitioningStopOps(partitioning_stop_ops)) {
+      partitioning_stop_ops_(GetPartitioningStopOps(partitioning_stop_ops_list)) {
   AllocatorCreationInfo device_info(
       [](int) {
         return std::make_unique<CPUAllocator>(OrtMemoryInfo(NNAPI, OrtAllocatorType::OrtDeviceAllocator));
