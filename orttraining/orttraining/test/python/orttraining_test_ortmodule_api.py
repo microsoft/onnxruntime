@@ -680,19 +680,25 @@ def test_gradient_correctness_cross_entropy_loss(use_fp16):
         _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model, atol=1e-5)
 
-def test_gradient_correctness_maxpool2d():
-    class NeuralNetMaxPool2d(torch.nn.Module):
+@pytest.mark.parametrize("pool_type", ['MaxPool', 'AvgPool', 'AdaptiveAvgPool'])
+def test_gradient_correctness_pool2d(pool_type):
+    class NeuralNetPool2d(torch.nn.Module):
         def __init__(self):
-            super(NeuralNetMaxPool2d, self).__init__()
+            super(NeuralNetPool2d, self).__init__()
             self.conv = torch.nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
-            self.maxpool = torch.nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+            if pool_type == 'MaxPool':
+                self.pool = torch.nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+            elif pool_type == 'AvgPool':
+                self.pool = torch.nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
+            else:
+                self.pool = torch.nn.AdaptiveAvgPool2d((5, 7))
 
         def forward(self, input):
-            return self.maxpool(self.conv(input))
+            return self.pool(self.conv(input))
 
     N, C, H, W = 8, 3, 224, 224
     device = 'cuda'
-    pt_model = NeuralNetMaxPool2d().to(device)
+    pt_model = NeuralNetPool2d().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
     def run_step(model, input):
