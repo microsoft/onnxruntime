@@ -10,7 +10,7 @@ import torch
 import warnings
 import gc
 
-from ._fallback import _FallbackManager, ORTModuleIOError
+from ._fallback import _FallbackManager, ORTModuleIOError, ORTModuleONNXModelException
 
 
 class _OutputIdentityOp(torch.autograd.Function):
