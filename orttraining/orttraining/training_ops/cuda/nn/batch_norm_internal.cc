@@ -112,10 +112,16 @@ Status BatchNormInternal<T, T1, T2>::ComputeInternal(OpKernelContext* p_op_kerne
     p_saved_mean = p_f_saved_mean.get();
     p_saved_inv_std = p_f_saved_inv_std.get();
   } else if (mean_data != running_mean_data) {
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(running_mean_data, mean_data, C * sizeof(T2), cudaMemcpyDeviceToDevice, Stream()));
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(running_var_data, var_data, C * sizeof(T2), cudaMemcpyDeviceToDevice, Stream()));
+    CUDA_RETURN_IF_ERROR(
+      cudaMemcpyAsync(running_mean_data, mean_data, C * sizeof(T2), cudaMemcpyDeviceToDevice, Stream()));
+    CUDA_RETURN_IF_ERROR(
+      cudaMemcpyAsync(running_var_data, var_data, C * sizeof(T2), cudaMemcpyDeviceToDevice, Stream()));
   }
 
+  // NOTE: in cudnnBatchNorm, biased std/var is used when calculating `save_inv_std` and `y`, while
+  // `running_var` is updated using unbiased `batch_var`:
+  //     running_var = (1 - momentum_) * unbiased_batch_var + momentum_ * running_var
+  // This is inconsistent with BatchNormalization Onnx spec, which uses population variance (biased).
   CUDNN_RETURN_IF_ERROR(cudnnBatchNormalizationForwardTraining(
       CudnnHandle(),
       cudnn_batch_norm_mode_,

@@ -35,6 +35,10 @@ static void TestBatchNormInternal(bool test_double = false, bool T_is_half = fal
   std::vector<float> mean = {1.0f, 2.0f};
   std::vector<float> var = {1.0f, 2.0f};
 
+  // cudnnBatchNorm uses biased `batch_var` to calculate `Y` and `saved_inv_std`, while
+  // uses unbiased `batch_var` to update `running_var`:
+  //     running_var = (1 - momentum) * unbiased_batch_var + momentum * running_var.
+  // When using biased `batch_var`, the new `running_var` should be {0.696052f, 1.41316f}.
   std::vector<float> Y = {0.0131f, 0.5210f, 1.7244f, 0.1387f, -0.2708f, -0.1191f, 1.2089f, -0.0922f,
                           -0.9548f, -1.5203f, 0.9077f, -0.8298f, 0.5796f, -0.4501f, -2.0921f, 1.2358f};
   std::vector<float> running_mean = {-0.1754f, 0.303106f};
@@ -176,6 +180,10 @@ TEST(CudaKernelTest, BNInternal1DInput) { // float case, 1d input
   test.AddInput<float>("mean", channel_dims, {1.0f});
   test.AddInput<float>("var", channel_dims, {1.0f});
 
+  // cudnnBatchNorm uses biased `batch_var` to calculate `Y` and `saved_inv_std`, while
+  // uses unbiased `batch_var` to update `running_var`:
+  //     running_var = (1 - momentum) * unbiased_batch_var + momentum * running_var.
+  // When using biased `batch_var`, the new `running_var` should be {1.0444f}.
   test.AddOutput<float>("Y", input_output_dims,
                         {-0.1948f, 0.2086f, 1.1646f, -0.0951f, -0.1017f, 0.0703f, 1.5754f, 0.1009f,
                          -0.9638f, -1.4131f, 0.5158f, -0.8645f, 0.8622f, -0.3049f, -2.1659f, 1.6059f});
