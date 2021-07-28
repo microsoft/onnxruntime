@@ -1065,6 +1065,11 @@ class TestInferenceSession(unittest.TestCase):
         check_failure([("a", {1: 2})], [{3: 4}])
 
     def testRegisterCustomEPsLibrary(self):
+        from onnxruntime.capi import _pybind_state as C
+        available_eps = C.get_available_providers()
+        #skip amd gpu build
+        if 'kRocmExecutionProvider' in available_eps:
+            return
         if sys.platform.startswith("win"):
             shared_library = 'test_execution_provider.dll'
             if not os.path.exists(shared_library):
@@ -1095,7 +1100,6 @@ class TestInferenceSession(unittest.TestCase):
         if not os.path.exists(custom_op_model):
             raise FileNotFoundError("Unable to find '{0}'".format(custom_op_model))
 
-        from onnxruntime.capi import _pybind_state as C
         session_options = C.get_default_session_options()
         sess = C.InferenceSession(session_options, custom_op_model, True, True)
         sess.initialize_session(['my_ep'], 
