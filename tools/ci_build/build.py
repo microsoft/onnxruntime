@@ -1535,8 +1535,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     run_subprocess([sys.executable, '-m', 'unittest', 'discover', '-s', 'quantization'],
                                    cwd=cwd, dll_path=dll_path)
                     if args.enable_transformers_tool_test:
-                        import numpy
+                        import numpy, google.protobuf
                         numpy_init_version = numpy.__version__
+                        protobuf_init_version = google.protobuf.__version__
                         run_subprocess([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'],
                                        cwd=SCRIPT_DIR)
                         run_subprocess([sys.executable, '-m', 'pytest', 'transformers'], cwd=cwd)
@@ -1545,6 +1546,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                                        cwd=SCRIPT_DIR)
                         # Restore initial numpy version in case other tests use it
                         run_subprocess([sys.executable, '-m', 'pip', 'install', 'numpy==' + numpy_init_version])
+                        run_subprocess([sys.executable, '-m', 'pip', 'install', 'protobuf==' + protobuf_init_version])
 
                 if not args.disable_ml_ops:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_backend_mlops.py'],
