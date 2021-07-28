@@ -51,13 +51,13 @@ set_seed((torch.initial_seed() % sys.maxsize))
 
 # Override torch.manual_seed and torch.cuda.manual_seed
 def override_torch_manual_seed(seed):
-    set_seed(seed % sys.maxsize)
+    set_seed(int(seed % sys.maxsize))
     return torch_manual_seed(seed)
 torch_manual_seed = torch.manual_seed
 torch.manual_seed = override_torch_manual_seed
 
 def override_torch_cuda_manual_seed(seed):
-    set_seed(seed % sys.maxsize)
+    set_seed(int(seed % sys.maxsize))
     return torch_cuda_manual_seed(seed)
 torch_cuda_manual_seed = torch.cuda.manual_seed
 torch.cuda.manual_seed = override_torch_cuda_manual_seed
