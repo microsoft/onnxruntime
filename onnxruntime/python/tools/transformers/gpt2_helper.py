@@ -579,6 +579,8 @@ class Gpt2Helper:
             is_all_close = Gpt2Helper.compare_outputs(outputs, ort_outputs, rtol=rtol, atol=atol)
             if is_all_close:
                 passed_test_cases += 1
+            else:
+                logger.debug(f"Not all close: sequence_length={sequence_length} past_sequence_length={past_sequence_length} batch_size={batch_size} dummy_inputs={dummy_inputs}")
         logger.info(f"Parity Test Cases={total_test_cases}; Passed={passed_test_cases}")
         if passed_test_cases > 0.95 * total_test_cases:
             logger.info(f"Parity is good: passed rate={int(passed_test_cases*100/total_test_cases):.0f}%")
