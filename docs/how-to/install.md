@@ -29,7 +29,7 @@ by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
 
 * Windows builds require [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads).
 
-* Please note additional requirements in the table below. 
+* Please note additional requirements and dependencies in the table below:
 
 ||Official build|Nightly build|Reqs|
 |---|---|---|---|

@@ -21,6 +21,7 @@ Pre-built packages and Docker images are published for  ONNX Runtime with OpenVI
 * Docker image: [openvino/onnxruntime_ep_ubuntu18](https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu18)
 
 ## Requirements
+
 |ONNX Runtime|OpenVINO|Notes|
 |---|---|---|
 |1.8.1|2021.4|[Details](https://github.com/intel/onnxruntime/releases/tag/v3.0)|
