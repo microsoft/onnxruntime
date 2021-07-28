@@ -24,11 +24,11 @@ Abstract:
 // Stack frame layout for the U8X8 kernel.
 //
 
-#define GemmU8XKernelFrame_SavedNeonRegisters       (4 * 8)
-#define GemmU8XKernelFrame_SavedRegisters           GemmU8XKernelFrame_SavedNeonRegisters
-#define GemmU8XKernelFrame_ColumnSumBuffer          (0 + GemmU8XKernelFrame_SavedRegisters)
-#define GemmU8XKernelFrame_ZeroPointB               (8 + GemmU8XKernelFrame_SavedRegisters)
-#define GemmU8XKernelFrame_ZeroMode                 (16 + GemmU8XKernelFrame_SavedRegisters)
+#define GemmU8X8KernelFrame_SavedNeonRegisters       (4 * 8)
+#define GemmU8X8KernelFrame_SavedRegisters           GemmU8X8KernelFrame_SavedNeonRegisters
+#define GemmU8X8KernelFrame_ColumnSumBuffer          (0 + GemmU8X8KernelFrame_SavedRegisters)
+#define GemmU8X8KernelFrame_ZeroPointB               (8 + GemmU8X8KernelFrame_SavedRegisters)
+#define GemmU8X8KernelFrame_ZeroMode                 (16 + GemmU8X8KernelFrame_SavedRegisters)
 
         TEXTAREA
 
@@ -87,9 +87,9 @@ Return Value:
 
         PROLOG_SAVE_REG_PAIR d8,d9,#-32!
         PROLOG_SAVE_REG_PAIR d10,d11,#16
-        ldr     x8,[sp,#GemmU8XKernelFrame_ColumnSumBuffer]
-        ldr     x9,[sp,#GemmU8XKernelFrame_ZeroPointB]
-        ldrb    w13,[sp,#GemmU8XKernelFrame_ZeroMode]
+        ldr     x8,[sp,#GemmU8X8KernelFrame_ColumnSumBuffer]
+        ldr     x9,[sp,#GemmU8X8KernelFrame_ZeroPointB]
+        ldrb    w13,[sp,#GemmU8X8KernelFrame_ZeroMode]
         mov     x14,x0
         ld1     {v11.4s},[x7]
         mov     x15,x3

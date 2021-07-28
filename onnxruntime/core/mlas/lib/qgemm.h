@@ -10,7 +10,7 @@ Module Name:
 
 Abstract:
 
-    This module defines the set of template functions to implement a kernel of 
+    This module defines the set of template functions to implement a kernel of
     quantized integer matrix/matrix multiply operation (QGEMM).
 
     To implement a new kernel, there needs to specialize template functions below:
@@ -676,9 +676,9 @@ MlasGemmU8X8GetDispatch(
     else {
         GemmU8X8Dispatch = MlasPlatform.GemmU8U8Dispatch;
     }
-#elif defined(MLAS_NEON64_INTRINSICS)
+#elif defined(MLAS_TARGET_ARM64)
     GemmU8X8Dispatch = MlasPlatform.GemmU8X8Dispatch;
-#elif defined(MLAS_NEON32_INTRINSICS) && !defined(_MSC_VER)
+#elif defined(MLAS_TARGET_ARM64EC) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
     GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
 #else
     GemmU8X8Dispatch = &MlasGemmU8X8DispatchDefault;
