@@ -185,6 +185,9 @@ class BertOnnxModel(OnnxModel):
         return
 
     def adjust_reshape_and_expand(self):
+        # Remove reshape nodes that having same shape of input and output based on symbolic shape inference.
+        FusionUtils.remove_useless_reshape_nodes(self)
+
         nodes_to_remove = []
         for node in self.nodes():
             if node.op_type == 'Reshape':
