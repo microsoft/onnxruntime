@@ -477,7 +477,7 @@ export async function runModelTestSet(
     testCase.inputs!.forEach(i => {
       Logger.verbose('TestRunner', `   '${i.name}': ${i.type}[${i.dims.join(',')}]`);
     });
-    Logger.verbose('TestRunner', `  Output(s): ${outputs.size}`);
+    Logger.verbose('TestRunner', `  Output(s): ${Object.keys(outputs).length}`);
     for (const name in outputs) {
       if (Object.hasOwnProperty.call(outputs, name)) {
         const tensor = outputs[name];
