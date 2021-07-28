@@ -234,6 +234,7 @@ Return Value:
     int32_t* C = Data->C + RangeStartM * ldc + RangeStartN;
     const uint8_t* PackedZeroPointB = Data->PerColumnZeroPoints ?
         Data->ZeroPointB + RangeStartN : nullptr;
+    bool IsAccumulateMode = Shape->IsAccumulateMode;
 
     int32_t ZeroPointA = Data->ZeroPointA;
     int32_t ZeroPointB = typename KernelType::OffsetBType(*Data->ZeroPointB);
@@ -362,7 +363,7 @@ Return Value:
                 int32_t* RowSums = RowSumBuffer;
                 size_t RowsRemaining = CountM;
 
-                bool ZeroMode = (k == 0);
+                bool ZeroMode = (k == 0) && !IsAccumulateMode;
                 bool PostProcess = (k + CountK == K);
 
                 while (RowsRemaining > 0) {
@@ -459,6 +460,7 @@ Return Value:
     int32_t* C = Data->C + RangeStartM * ldc + RangeStartN;
     const uint8_t* PackedZeroPointB = Data->PerColumnZeroPoints ?
         Data->ZeroPointB + RangeStartN : nullptr;
+    bool IsAccumulateMode = Shape->IsAccumulateMode;
 
     int32_t ZeroPointA = Data->ZeroPointA;
     int32_t ZeroPointB = typename KernelType::OffsetBType(*Data->ZeroPointB);
@@ -581,7 +583,7 @@ Return Value:
                 int32_t* RowSums = RowSumBuffer;
                 size_t RowsRemaining = CountM;
 
-                bool ZeroMode = (k == 0);
+                bool ZeroMode = (k == 0) && !IsAccumulateMode;
                 bool PostProcess = (k + CountK == K);
 
                 while (RowsRemaining > 0) {
