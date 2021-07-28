@@ -314,60 +314,6 @@ STDMETHODIMP OnnruntimeModel::AddOperator(
   return S_OK;
 }
 
-inline ONNXTensorElementDataType
-ONNXTensorElementDataTypeFromTensorKind(winml::TensorKind kind) {
-  switch (kind) {
-    case winml::TensorKind::Boolean: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
-    }
-    case winml::TensorKind::String: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
-    }
-    case winml::TensorKind::Float16: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
-    }
-    case winml::TensorKind::Float: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-    }
-    case winml::TensorKind::Double: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
-    }
-    case winml::TensorKind::Int8: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
-    }
-    case winml::TensorKind::Int16: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;
-    }
-    case winml::TensorKind::Int32: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
-    }
-    case winml::TensorKind::Int64: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
-    }
-    case winml::TensorKind::UInt8: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
-    }
-    case winml::TensorKind::UInt16: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16;
-    }
-    case winml::TensorKind::UInt32: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32;
-    }
-    case winml::TensorKind::UInt64: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;
-    }
-    case winml::TensorKind::Complex64: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64;
-    }
-    case winml::TensorKind::Complex128: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128;
-    }
-    default: {
-      return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-    }
-  }
-}
-
 STDMETHODIMP OnnruntimeModel::AddModelInput(_In_ const char* const name, _In_ IDescriptorInfoProvider* descriptor_provider, bool is_constant, IValue* constant_value) {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
   auto ort_api = engine_factory_->UseOrtApi();
