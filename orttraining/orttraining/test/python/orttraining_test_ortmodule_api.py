@@ -2196,12 +2196,58 @@ def test_unused_layer():
 
     device = torch.device('cuda')
     N, D_in, H, D_out = 64, 784, 500, 10
-    model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
-    ort_model = ORTModule(model)
+    pt_model = Net(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
 
     x = torch.randn(N, D_in, device=device)
-    output = ort_model(x)
-    assert output is not None
+    pt_output = pt_model(x)
+    ort_output = ort_model(x)
+    _test_helpers.assert_values_are_close(pt_output, ort_output)
+
+def test_train_eval_with_various_outputs():
+    class Net(torch.nn.Module):
+        def __init__(self, input_size, hidden_size, num_classes):
+            super(Net, self).__init__()
+            self.fc1 = torch.nn.Linear(input_size, hidden_size)
+            self.relu = torch.nn.ReLU()
+
+        def forward(self, input1):
+            out1 = self.fc1(input1)
+            out2 = self.relu(out1)
+            # return different number of outputs for train ane eval mode
+            if self.training:
+                return out1, out2
+            else:
+                return out2
+
+    def train_step(model, x):
+        out1, out2 = model(x)
+        loss = out2.sum()
+        loss.backward()
+        return out1, out2
+
+    device = torch.device('cuda')
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = Net(D_in, H, D_out).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    # train mode
+    x = torch.randn(N, D_in, device=device)
+    pt_out1, pt_out2 = train_step(pt_model, x)
+    ort_out1, ort_out2 = train_step(ort_model, x)
+
+    _test_helpers.assert_values_are_close(pt_out1, ort_out1)
+    _test_helpers.assert_values_are_close(pt_out2, ort_out2)
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
+    # eval mode
+    pt_model.eval()
+    ort_model.eval()
+
+    x = torch.randn(N, D_in, device=device)
+    pt_out = pt_model(x)
+    ort_out = ort_model(x)
+    _test_helpers.assert_values_are_close(pt_out, ort_out)
 
 def test_forward_dynamic_args():
     device = 'cuda'
