@@ -83,3 +83,14 @@ def unfold(g, input, dimension, size, step):
 @register_symbolic('argmax')
 def argmax(g, input, dim, keepdim):
     return g.op("com.microsoft::ATenOp", input, dim, keepdim, name_s='aten::argmax')
+
+
+@register_symbolic('avg_pool2d')
+def avg_pool2d(g, self, kernel_size, stride, padding, ceil_mode, count_include_pad, divisor_override):
+    return g.op("com.microsoft::ATenOp", self, kernel_size, stride, padding, ceil_mode,
+                count_include_pad, divisor_override, name_s='aten::avg_pool2d')
+
+
+@register_symbolic('adaptive_avg_pool2d')
+def adaptive_avg_pool2d(g, self, output_size):
+    return g.op("com.microsoft::ATenOp", self, output_size, name_s='aten::_adaptive_avg_pool2d')
