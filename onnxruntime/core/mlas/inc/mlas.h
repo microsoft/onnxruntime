@@ -183,7 +183,7 @@ struct MLAS_SGEMM_DATA_PARAMS {
 void
 MLASCALL
 MlasGemmBatch(
-    CBLAS_TRANSPOSE TransA,
+  CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t M,
     size_t N,
@@ -1124,3 +1124,17 @@ MlasQLinearMul(
     size_t N,
     bool IsScalarB
     );
+
+
+//
+// TODO(kreeger): Add documentation here.
+//
+
+void 
+MLASCALL
+MlasVectorDotProduct(
+    const float* A,
+    const float* B,
+    float* C,
+    size_t M,
+    size_t N);
