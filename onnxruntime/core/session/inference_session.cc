@@ -520,7 +520,7 @@ common::Status InferenceSession::FilterEnabledOptimizers(const std::unordered_se
 }
 
 common::Status InferenceSession::SaveToOrtFormat(const std::basic_string<ORTCHAR_T>& filepath) const {
-  ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ort format only supports little-edian machines");
+  ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ort format only supports little-endian machines");
 
   // Get the byte size of the ModelProto and round it to the next MB and use it as flatbuffers' init_size
   // TODO: Investigate whether we should set a max size, and clarify the cost of having a buffer smaller than
@@ -1264,14 +1264,9 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD)
     {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-      // nodes are already partitioned, but a custom EP may compile some at runtime.
-      // run the partitioning to allow that to happen.
-      //
-      // We always have the CPU EP, so only need to run this if some other EP is enabled
-      if (execution_providers_.NumProviders() > 1) {
-        ORT_RETURN_IF_ERROR_SESSIONID_(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
-                                                               *session_state_));
-      }
+      // run partitioning to allow a compiling EP to take what it can at runtime
+      ORT_RETURN_IF_ERROR_SESSIONID_(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
+                                                             *session_state_));
 #endif
     }
 
