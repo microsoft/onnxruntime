@@ -17,36 +17,36 @@ Abstract:
 
 #include "mlasi.h"
 
-#include <iostream>
-
-#pragma warning(disable: 4100)
-
 void
 MLASCALL
-MlasVectorDotProductF32KernelSSE(
-    const float* A,
-    const float* B,
-    float* C,
-    size_t M,
-    size_t N
-    )
+MlasVectorDotProduct(const float* A, const float* B, float* C, size_t M, size_t N)
 {
-    // TODO(kreeger): Handle size steps for |N|.
+/*++
+
+Routine Description:
+
+    This routine TODO DOC ME.
+
+Arguments:
+
+    Input - Supplies the input buffer.
+
+    Min - Returns the minimum value of the supplied buffer.
+
+    Max - Returns the maximum value of the supplied buffer.
+
+    N - Supplies the number of elements to process.
+
+Return Value:
+
+    None.
+
+--*/
+#if defined(MLAS_TARGET_AMD64)
+    MlasPlatform.VectorDotProductF32Kernel(A, B, C, M, N);
+#else
+    VectorDotProductF32Kernel(A, B, C, M, N);
+#endif
 }
 
-void 
-MLASCALL
-MlasVectorDotProduct(
-    const float* A,
-    const float* B,
-    float* C,
-    size_t M, size_t N)
-{
-    std::cerr << "Hi from MlasVectorDotProduct\n";
 
-    // This thing needs to loop over inputs and call into a kernel!
-    //
-    // TODO(kreeger): LEFT OFF RIGHT HERE!
-    //
-}
-#pragma warning(default: 4100)

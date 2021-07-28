@@ -561,16 +561,6 @@ Return Value:
     return Maximum;
 }
 
-#pragma warning(disable: 4100)
-void MLASCALL
-MlasVectorDotProductF32Kernel(const float* A, const float* B, float* C, size_t M, size_t N)
-{
-  //
-  // TODO(kreeger): write me.
-  //
-}
-#pragma warning(default: 4100)
-
 void
 MLASCALL
 MlasReduceMinimumMaximumF32Kernel(
@@ -655,6 +645,24 @@ MlasReduceMinimumMaximumF32Kernel(
     *Min = tmp_min;
     *Max = tmp_max;
 }
+
+#pragma warning(disable: 4100)
+void
+MLASCALL
+MlasVectorDotProductF32Kernel(
+    const float* A,
+    const float* B,
+    float* C,
+    size_t M,
+    size_t N
+    )
+{
+  // TODO - drop SSE stuff here.
+    // TODO(kreeger): Handle size steps for |N|.
+
+  fprintf(stderr, "Hi from MlasVectorDotProductF32Kernel()!\n");
+}
+#pragma warning(default: 4100)
 
 void
 MLASCALL
