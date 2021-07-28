@@ -653,7 +653,7 @@ void RegisterTrainingOpSchemas() {
             onnx_opset_13.set_domain("");
             onnx_opset_13.set_version(13);
 
-            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+            return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LogSoftmaxGrad)
@@ -1715,7 +1715,7 @@ Example 4:
                   {{"scaled_dy"}, "Div", {"dy", "scale"}},
                   {{"dx"}, "Where", {"mask", "scaled_dy", "C0"}}};
 
-              return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+              return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
             } else {
               // ratio not specified. Use a value of 0.5
               std::vector<FunctionBodyHelper::NodeDef> body{
@@ -1726,7 +1726,7 @@ Example 4:
                   {{"scaled_dy"}, "Div", {"dy", "scale"}},
                   {{"dx"}, "Where", {"mask", "scaled_dy", "C0"}}};
 
-              return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+              return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
             }
           });
 
@@ -2083,7 +2083,7 @@ Example 4:
             onnx_opset_13.set_domain("");
             onnx_opset_13.set_version(13);
 
-            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+            return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalizationGrad)
