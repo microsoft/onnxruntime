@@ -183,7 +183,7 @@ struct MLAS_SGEMM_DATA_PARAMS {
 void
 MLASCALL
 MlasGemmBatch(
-  CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t M,
     size_t N,
