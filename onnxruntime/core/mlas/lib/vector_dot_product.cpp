@@ -21,7 +21,6 @@ Abstract:
 
 #pragma warning(disable: 4100)
 
-
 void
 MLASCALL
 MlasVectorDotProductF32KernelSSE(
@@ -33,7 +32,7 @@ MlasVectorDotProductF32KernelSSE(
     )
 {
     // TODO(kreeger): Handle size steps for |N|.
-
+}
 
 void 
 MLASCALL
@@ -45,6 +44,7 @@ MlasVectorDotProduct(
 {
     std::cerr << "Hi from MlasVectorDotProduct\n";
 
+    // This thing needs to loop over inputs and call into a kernel!
     //
     // TODO(kreeger): LEFT OFF RIGHT HERE!
     //

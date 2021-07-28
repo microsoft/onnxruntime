@@ -466,7 +466,7 @@ void
     );
 
 typedef
-float
+void
 (MLASCALL MLAS_VECTOR_DOT_PRODUCT_FLOAT_KERNEL)(
     const float* A,
     const float* B,

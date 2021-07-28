@@ -23,6 +23,7 @@ set(mlas_common_srcs
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qlmul.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qpostprocessor.cpp
   ${ONNXRUNTIME_ROOT}/core/mlas/lib/qlgavgpool.cpp
+  ${ONNXRUNTIME_ROOT}/core/mlas/lib/vector_dot_product.cpp
 )
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
