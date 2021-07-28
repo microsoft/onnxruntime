@@ -1537,13 +1537,13 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     if args.enable_transformers_tool_test:
                         import numpy, google.protobuf
                         numpy_init_version = numpy.__version__
-                        protobuf_init_version = google.protobuf.__version__
+                        pb_init_version = google.protobuf.__version__
                         run_subprocess([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'],
                                        cwd=SCRIPT_DIR)
                         run_subprocess([sys.executable, '-m', 'pytest', 'transformers'], cwd=cwd)
                         # Restore initial numpy/protobuf version in case other tests use it
                         run_subprocess([sys.executable, '-m', 'pip', 'install', 'numpy==' + numpy_init_version])
-                        run_subprocess([sys.executable, '-m', 'pip', 'install', 'protobuf==' + protobuf_init_version])
+                        run_subprocess([sys.executable, '-m', 'pip', 'install', 'protobuf==' + pb_init_version])
 
                 if not args.disable_ml_ops:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_backend_mlops.py'],
