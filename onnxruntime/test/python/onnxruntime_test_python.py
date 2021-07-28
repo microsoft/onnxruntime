@@ -1072,8 +1072,6 @@ class TestInferenceSession(unittest.TestCase):
             return
         if sys.platform.startswith("win"):
             shared_library = 'test_execution_provider.dll'
-            if not os.path.exists(shared_library):
-                raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
 
         elif sys.platform.startswith("darwin"):
             # exclude for macos
@@ -1081,8 +1079,9 @@ class TestInferenceSession(unittest.TestCase):
 
         else:
             shared_library = './libtest_execution_provider.so'
-            if not os.path.exists(shared_library):
-                raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
+        
+        if not os.path.exists(shared_library):
+            raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
 
         this = os.path.dirname(__file__)
         custom_op_model = os.path.join(this, "testdata", "custom_execution_provider_library", "test_model.onnx")
