@@ -619,7 +619,7 @@ Status Node::LoadFromOrtFormat(const onnxruntime::experimental::fbs::Node& fbs_n
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // don't populate EP - it will be set during graph partitioning
-#elif
+#else
   // populate EP - graph partitioning will be bypassed
   experimental::utils::LoadStringFromOrtFormat(execution_provider_type_, fbs_node.execution_provider_type());
 #endif
