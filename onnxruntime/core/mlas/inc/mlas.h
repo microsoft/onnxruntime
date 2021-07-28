@@ -527,6 +527,7 @@ struct MLAS_GEMM_U8X8_SHAPE_PARAMS {
     size_t N = 0;
     size_t K = 0;
     bool BIsSigned = false;
+    bool IsAccumulateMode = false;
 };
 
 struct MLAS_GEMM_U8X8_DATA_PARAMS {
