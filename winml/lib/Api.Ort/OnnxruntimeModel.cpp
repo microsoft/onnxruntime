@@ -314,7 +314,7 @@ STDMETHODIMP OnnruntimeModel::AddOperator(
   return S_OK;
 }
 
-static ONNXTensorElementDataType
+inline ONNXTensorElementDataType
 ONNXTensorElementDataTypeFromTensorKind(winml::TensorKind kind) {
   switch (kind) {
     case winml::TensorKind::Boolean: {

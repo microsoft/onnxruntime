@@ -187,9 +187,11 @@ class SymbolicShapeInference:
         }
         self.aten_op_dispatcher_ = {
             'aten::embedding': self._infer_Gather,
-            'aten::max_pool2d_with_indices': self._infer_aten_max_pool2d,
+            'aten::max_pool2d_with_indices': self._infer_aten_pool2d,
             'aten::unfold': self._infer_aten_unfold,
             'aten::argmax': self._infer_aten_argmax,
+            'aten::avg_pool2d': self._infer_aten_pool2d,
+            'aten::_adaptive_avg_pool2d': self._infer_aten_pool2d,
         }
         self.run_ = True
         self.suggested_merge_ = {}
@@ -1001,7 +1003,7 @@ class SymbolicShapeInference:
                 helper.make_tensor_value_info(o, vi.type.tensor_type.elem_type,
                                               get_shape_from_sympy_shape(sympy_shape)))
 
-    def _infer_aten_max_pool2d(self, node):
+    def _infer_aten_pool2d(self, node):
         sympy_shape = self._get_sympy_shape(node, 0)
         assert len(sympy_shape) == 4
         sympy_shape[-2:] = [self._new_symbolic_dim_from_output(node, 0, i) for i in [2, 3]]
