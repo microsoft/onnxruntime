@@ -17,6 +17,7 @@ Pod::Spec.new do |s|
 
   s.subspec "Core" do |core|
     core.dependency "onnxruntime-mobile-c", "#{s.version}"
+    core.static_framework = true
     core.requires_arc = true
     core.compiler_flags = "-std=c++17", "-fobjc-arc-exceptions", "-Wall", "-Wextra", "-Werror"
 
