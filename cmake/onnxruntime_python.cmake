@@ -82,6 +82,7 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_COREML}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
@@ -519,6 +520,15 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:onnxruntime_providers_nnapi>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
+endif()
+
+if (onnxruntime_USE_COREML)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_coreml>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
 endif()
