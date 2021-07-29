@@ -48,13 +48,9 @@
         MACRO
         ClearBlockAccumulators $Columns, $Rows
 
-        ClearRowAccumulators $Columns, v16, v17, v18, v19
+        ClearRowAccumulators $Columns, v8, v9, v10, v11
     IF $Rows >= 2
-        ClearRowAccumulators $Columns, v20, v21, v22, v23
-    ENDIF
-    IF $Rows >= 4
-        ClearRowAccumulators $Columns, v24, v25, v26, v27
-        ClearRowAccumulators $Columns, v28, v29, v30, v31
+        ClearRowAccumulators $Columns, v12, v13, v14, v15
     ENDIF
 
         MEND
@@ -69,13 +65,9 @@
         MACRO
         LoadMatrixAElementsBy4 $Rows
 
-        ldr     v8,[x0],#16
+        ldr     v2,[x0],#16
     IF $Rows >= 2
-        ldr     v9,[x10],#16
-    ENDIF
-    IF $Rows >= 4
-        ldr     v10,[x11],#16
-        ldr     v11,[x12],#16
+        ldr     v3,[x10],#16
     ENDIF
 
         MEND
@@ -83,13 +75,9 @@
         MACRO
         LoadMatrixAElementsBy1 $Rows
 
-        ldr     s8,[x0],#4
+        ldr     s2,[x0],#4
     IF $Rows >= 2
-        ldr     s9,[x10],#4
-    ENDIF
-    IF $Rows >= 4
-        ldr     s10,[x11],#4
-        ldr     s11,[x12],#4
+        ldr     s3,[x10],#4
     ENDIF
 
         MEND
@@ -122,13 +110,9 @@
         MACRO
         MultiplyAccumulateBlock $Columns, $Rows, $Broadcast
 
-        MultiplyAccumulateRow $Columns, v8, $Broadcast, v16, v17, v18, v19
+        MultiplyAccumulateRow $Columns, v2, $Broadcast, v8, v9, v10, v11
     IF $Rows >= 2
-        MultiplyAccumulateRow $Columns, v9, $Broadcast, v20, v21, v22, v23
-    ENDIF
-    IF $Rows >= 4
-        MultiplyAccumulateRow $Columns, v10, $Broadcast, v24, v25, v26, v27
-        MultiplyAccumulateRow $Columns, v11, $Broadcast, v28, v29, v30, v31
+        MultiplyAccumulateRow $Columns, v3, $Broadcast, v12, v13, v14, v15
     ENDIF
 
         MEND
@@ -147,10 +131,6 @@
 
     IF $Rows >= 2
         add     x10,x0,x6 lsl #2            ; compute matrix A plus 1 row
-    ENDIF
-    IF $Rows >= 4
-        add     x11,x10,x6 lsl #2           ; compute matrix A plus 2 rows
-        add     x12,x11,x6 lsl #2           ; compute matrix A plus 3 rows
     ENDIF
 
         sub     x9,x3,#4                    ; decrement block count to process
@@ -236,13 +216,9 @@ $Mode.Output$Columns.x$Rows.Block
         MACRO
         MultiplyAlphaBlock $Columns, $Rows
 
-        MultiplyAlphaRow $Columns, v16, v17, v18, v19
+        MultiplyAlphaRow $Columns, v8, v9, v10, v11
     IF $Rows >= 2
-        MultiplyAlphaRow $Columns, v20, v21, v22, v23
-    ENDIF
-    IF $Rows >= 4
-        MultiplyAlphaRow $Columns, v24, v25, v26, v27
-        MultiplyAlphaRow $Columns, v28, v29, v30, v31
+        MultiplyAlphaRow $Columns, v12, v13, v14, v15
     ENDIF
 
         MEND
@@ -342,13 +318,9 @@ $Mode.Output$Columns.x$Rows.Block
         MACRO
         OutputBlock $Mode, $Columns, $Rows
 
-        OutputRow$Columns.Element $Mode, x2, v16, v17, v18, v19
+        OutputRow$Columns.Element $Mode, x2, v8, v9, v10, v11
     IF $Rows >= 2
-        OutputRow$Columns.Element $Mode, x13, v20, v21, v22, v23
-    ENDIF
-    IF $Rows >= 4
-        OutputRow$Columns.Element $Mode, x14, v24, v25, v26, v27
-        OutputRow$Columns.Element $Mode, x15, v28, v29, v30, v31
+        OutputRow$Columns.Element $Mode, x11, v12, v13, v14, v15
     ENDIF
 
         MEND
@@ -446,23 +418,23 @@ $Mode.OutputRemaining1x$Rows.Block
         MACRO
         SgemmKernelNeonFunction $Mode
 
-        NESTED_ENTRY MlasSgemmKernel$Mode
+        NESTED_ENTRY_COMDAT A64NAME(MlasSgemmKernel$Mode)
 
-        PROLOG_SAVE_REG_PAIR d8,d9,#-32!
+        PROLOG_SAVE_REG_PAIR d8,d9,#-64!
         PROLOG_SAVE_REG_PAIR d10,d11,#16
+        PROLOG_SAVE_REG_PAIR d12,d13,#32
+        PROLOG_SAVE_REG_PAIR d14,d15,#48
 
-        add     x13,x2,x7 lsl #2            ; compute matrix C plus 1 row
-        add     x14,x13,x7 lsl #2           ; compute matrix C plus 2 rows
-        add     x15,x14,x7 lsl #2           ; compute matrix C plus 3 rows
+        add     x11,x2,x7 lsl #2            ; compute matrix C plus 1 row
         mov     x8,x0                       ; save matrix A
 
 ;
-; Process 4 rows of the matrices.
+; Process 2 rows of the matrices.
 ;
 
-        cmp     x4,#4
-        blt     $Mode.ProcessCountMLessThan4
-        ProcessRows $Mode,4
+        cmp     x4,#2
+        blt     $Mode.ProcessCountMLessThan2
+        ProcessRows $Mode,2
 
 ;
 ; Restore non-volatile registers and return.
@@ -470,19 +442,11 @@ $Mode.OutputRemaining1x$Rows.Block
 
 $Mode.ExitKernel
         mov     x0,x4
+        EPILOG_RESTORE_REG_PAIR d14,d15,#48
+        EPILOG_RESTORE_REG_PAIR d12,d13,#32
         EPILOG_RESTORE_REG_PAIR d10,d11,#16
-        EPILOG_RESTORE_REG_PAIR d8,d9,#32!
+        EPILOG_RESTORE_REG_PAIR d8,d9,#64!
         EPILOG_RETURN
-
-;
-; Process 2 rows of the matrices.
-;
-
-$Mode.ProcessCountMLessThan4
-        cmp     x4,#2
-        blt     $Mode.ProcessCountMLessThan2
-        ProcessRows $Mode,2
-        b       $Mode.ExitKernel
 
 ;
 ; Process 1 row of the matrices.

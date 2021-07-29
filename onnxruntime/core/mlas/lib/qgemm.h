@@ -10,7 +10,7 @@ Module Name:
 
 Abstract:
 
-    This module defines the set of template functions to implement a kernel of 
+    This module defines the set of template functions to implement a kernel of
     quantized integer matrix/matrix multiply operation (QGEMM).
 
     To implement a new kernel, there needs to specialize template functions below:
@@ -234,6 +234,7 @@ Return Value:
     int32_t* C = Data->C + RangeStartM * ldc + RangeStartN;
     const uint8_t* PackedZeroPointB = Data->PerColumnZeroPoints ?
         Data->ZeroPointB + RangeStartN : nullptr;
+    bool IsAccumulateMode = Shape->IsAccumulateMode;
 
     int32_t ZeroPointA = Data->ZeroPointA;
     int32_t ZeroPointB = typename KernelType::OffsetBType(*Data->ZeroPointB);
@@ -362,7 +363,7 @@ Return Value:
                 int32_t* RowSums = RowSumBuffer;
                 size_t RowsRemaining = CountM;
 
-                bool ZeroMode = (k == 0);
+                bool ZeroMode = (k == 0) && !IsAccumulateMode;
                 bool PostProcess = (k + CountK == K);
 
                 while (RowsRemaining > 0) {
@@ -459,6 +460,7 @@ Return Value:
     int32_t* C = Data->C + RangeStartM * ldc + RangeStartN;
     const uint8_t* PackedZeroPointB = Data->PerColumnZeroPoints ?
         Data->ZeroPointB + RangeStartN : nullptr;
+    bool IsAccumulateMode = Shape->IsAccumulateMode;
 
     int32_t ZeroPointA = Data->ZeroPointA;
     int32_t ZeroPointB = typename KernelType::OffsetBType(*Data->ZeroPointB);
@@ -581,7 +583,7 @@ Return Value:
                 int32_t* RowSums = RowSumBuffer;
                 size_t RowsRemaining = CountM;
 
-                bool ZeroMode = (k == 0);
+                bool ZeroMode = (k == 0) && !IsAccumulateMode;
                 bool PostProcess = (k + CountK == K);
 
                 while (RowsRemaining > 0) {
@@ -674,9 +676,9 @@ MlasGemmU8X8GetDispatch(
     else {
         GemmU8X8Dispatch = MlasPlatform.GemmU8U8Dispatch;
     }
-#elif defined(MLAS_NEON64_INTRINSICS)
+#elif defined(MLAS_TARGET_ARM64)
     GemmU8X8Dispatch = MlasPlatform.GemmU8X8Dispatch;
-#elif defined(MLAS_NEON32_INTRINSICS) && !defined(_MSC_VER)
+#elif defined(MLAS_TARGET_ARM64EC) || (defined(MLAS_TARGET_ARM) && !defined(_MSC_VER))
     GemmU8X8Dispatch = &MlasGemmU8X8DispatchNeon;
 #else
     GemmU8X8Dispatch = &MlasGemmU8X8DispatchDefault;
