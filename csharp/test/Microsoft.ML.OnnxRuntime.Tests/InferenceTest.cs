@@ -922,16 +922,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_bernoulli_expanded", "random generator"},
                 { "test_bernoulli_seed_expanded", "random generator"},
                 { "test_bernoulli_double_expanded", "random generator"},
-                { "test_shape", "opset14 version not implemented yet"},
-                { "test_shape_clip_end", "opset14 version not implemented yet"},
-                { "test_shape_clip_start", "opset14 version not implemented yet"},
-                { "test_shape_end_1", "opset14 version not implemented yet"},
-                { "test_shape_end_negative", "opset14 version not implemented yet"},
-                { "test_shape_example", "opset14 version not implemented yet"},
-                { "test_shape_start_1", "opset14 version not implemented yet"},
-                { "test_shape_start_negative_1", "opset14 version not implemented yet"},
-                { "test_shape_start_1_end_2", "opset14 version not implemented yet"},
-                { "test_shape_start_1_end_negative_1", "opset14 version not implemented yet"},
             };
 
             // The following models fails on nocontribops win CI
