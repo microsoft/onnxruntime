@@ -20,6 +20,7 @@ extensions = ['sphinx.ext.autodoc',
 ]
 templates_path = ['_templates']
 exclude_patterns = []
+autoclass_content = 'both'
 
 # -- Options for HTML output -------------------------------------------------
 

@@ -201,7 +201,7 @@ class ORTTrainerOptions(object):
                                 },
                                 'propagate_cast_ops_level': {
                                     'type': 'integer',
-                                    'default': -1
+                                    'default': 1
                                 },
                                 'propagate_cast_ops_allow': {
                                     'type': 'list',
@@ -382,7 +382,7 @@ class ORTTrainerOptions(object):
                 INSERT_AND_REDUCE strategy inserts and reduces cast operations around the nodes with allowed opcodes.
                 FLOOD_FILL strategy expands float16 regions in the graph using the allowed opcodes, and unlike
                 INSERT_AND_REDUCE does not touch opcodes outside expanded float16 region.
-            graph_transformer.propagate_cast_ops_config.level(integer, default -1)
+            graph_transformer.propagate_cast_ops_config.level(integer, default 1)
                 Optimize by moving Cast operations if propagate_cast_ops_level is non-negative.
                 Use predetermined list of opcodes considered safe to move before/after cast operation
                 if propagate_cast_ops_level is positive and use propagate_cast_ops_allow otherwise.

@@ -14,6 +14,7 @@
 #include "orttraining/core/graph/optimizer_config.h"
 #include "orttraining/core/framework/communication/mpi/mpi_context.h"
 #include "orttraining/core/framework/ortmodule_graph_builder.h"
+#include "orttraining/core/graph/gradient_definition_registry.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 
 PYBIND11_MAKE_OPAQUE(std::vector<OrtValue>);
@@ -646,6 +647,30 @@ void addObjectMethodsForTraining(py::module& m) {
       .def("get_graph_info", [](OrtModuleGraphBuilder* ortmodule_graph_builder) {
         return ortmodule_graph_builder->GetGraphInfo();
       });
+
+  py::class_<GradientNodeAttributeDefinition> gradient_node_attribute_definition(
+      m, "GradientNodeAttributeDefinition", R"pbdoc(Attribute definition for gradient graph nodes.)pbdoc");
+
+  gradient_node_attribute_definition.def(py::init())
+      .def_readwrite("name", &GradientNodeAttributeDefinition::name)
+      .def_readwrite("value_json", &GradientNodeAttributeDefinition::value_json)
+      .def_readwrite("dtype", &GradientNodeAttributeDefinition::dtype)
+      .def_readwrite("is_tensor", &GradientNodeAttributeDefinition::is_tensor);
+
+  py::class_<GradientNodeDefinition> gradient_node_definition(m, "GradientNodeDefinition",
+                                                              R"pbdoc(Definition for gradient graph nodes.)pbdoc");
+
+  gradient_node_definition.def(py::init())
+      .def_readwrite("op_type", &GradientNodeDefinition::op_type)
+      .def_readwrite("domain", &GradientNodeDefinition::domain)
+      .def_readwrite("inputs", &GradientNodeDefinition::inputs)
+      .def_readwrite("outputs", &GradientNodeDefinition::outputs)
+      .def_readwrite("attributes", &GradientNodeDefinition::attributes);
+
+  m.def("register_gradient_definition",
+        [](const std::string& key, const std::vector<GradientNodeDefinition>& gradient_def) -> void {
+          GradientDefinitionRegistry::Instance().Register(key, gradient_def);
+        });
 }
 
 }  // namespace python
