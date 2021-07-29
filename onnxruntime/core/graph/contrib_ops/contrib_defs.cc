@@ -18,6 +18,7 @@
 #include "core/graph/op.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/graph/signal_ops/signal_defs.h"
+#include "core/graph/signal_ops_contrib/signal_defs.h"
 #include "core/graph/contrib_ops/onnx_function_util.h"
 #include "onnx/defs/function.h"
 
@@ -2995,6 +2996,7 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
 
   RegisterNhwcSchemas();
   RegisterBertSchemas();
+  onnxruntime::signal_contrib::RegisterSignalSchemas();
 
 #ifdef BUILD_MS_EXPERIMENTAL_OPS
   onnxruntime::signal::RegisterSignalSchemas();
