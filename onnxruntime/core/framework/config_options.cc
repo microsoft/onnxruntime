@@ -5,23 +5,26 @@
 
 namespace onnxruntime {
 
-bool ConfigOptions::TryGetConfigEntry(const std::string& config_key, std::string& config_value) const noexcept {
-  bool found = false;
-  config_value.clear();
-
-  auto iter = configurations.find(config_key);
-  if (iter != configurations.cend()) {
-    found = true;
-    config_value = iter->second;
+optional<std::string> ConfigOptions::GetConfigEntry(const std::string& config_key) const noexcept {
+  if (auto it = configurations.find(config_key); it != configurations.end()) {
+    return it->second;
   }
+  return nullopt;
+}
 
+bool ConfigOptions::TryGetConfigEntry(const std::string& config_key, std::string& config_value) const noexcept {
+  config_value.clear();
+  auto entry = GetConfigEntry(config_key);
+  const bool found = entry.has_value();
+  if (found) {
+    config_value = std::move(entry.value());
+  }
   return found;
 }
 
 const std::string ConfigOptions::GetConfigOrDefault(const std::string& config_key,
                                                     const std::string& default_value) const noexcept {
-  auto iter = configurations.find(config_key);
-  return iter == configurations.cend() ? default_value : iter->second;
+  return GetConfigEntry(config_key).value_or(default_value);
 }
 
 Status ConfigOptions::AddConfigEntry(const char* config_key, const char* config_value) noexcept {

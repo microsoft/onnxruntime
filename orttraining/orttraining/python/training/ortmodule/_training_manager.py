@@ -10,7 +10,6 @@ from ._execution_agent import TrainingAgent
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
 
-import onnx
 import torch
 import warnings
 from torch.utils.dlpack import from_dlpack, to_dlpack
@@ -22,8 +21,8 @@ class TrainingManager(GraphExecutionManager):
     TrainingManager is resposible for building and running the forward and backward graph of the training model
     """
 
-    def __init__(self, model):
-        super().__init__(model)
+    def __init__(self, model, debug_options):
+        super().__init__(model, debug_options)
         self._export_mode = torch.onnx.TrainingMode.TRAINING
 
     @staticmethod
@@ -67,7 +66,7 @@ class TrainingManager(GraphExecutionManager):
                 self._initialize_graph_builder(training=True)
 
             input_info = _io.parse_inputs_for_onnx_export(self._module_parameters,
-                                                        self._onnx_model,
+                                                        self._onnx_models.exported_model,
                                                         inputs,
                                                         kwargs)
 
@@ -122,7 +121,7 @@ class TrainingManager(GraphExecutionManager):
                     _utils._check_same_device(self._device, "Input argument to forward", *inputs)
 
                 user_outputs, ctx.run_info = TrainingManager.execution_session_run_forward(self._execution_agent,
-                                                                                           self._optimized_onnx_model,
+                                                                                           self._onnx_models.optimized_model,
                                                                                            *inputs)
 
                 # Disable materializing grads then None object will not be
@@ -136,6 +135,11 @@ class TrainingManager(GraphExecutionManager):
                 # This call is to invoke pytorch's version check to detect the potential inplace corruption
                 for idx in self._graph_info.module_output_indices_requires_save_for_backward:
                     ctx.save_for_backward(user_outputs[idx])
+
+                # Mark the outputs tensors non-differentiable if requires_grad is False in _graph_info
+                # This will return torch the output tensors with correct requires_grad settings
+                for idx in self._graph_info.output_grad_indices_non_differentiable:
+                    ctx.mark_non_differentiable(user_outputs[idx])
 
                 return user_outputs
 
@@ -228,30 +232,30 @@ class TrainingManager(GraphExecutionManager):
 
         super()._build_graph()
 
-        if self._save_onnx:
-            onnx.save(self._optimized_onnx_model, self._save_onnx_prefix + '_training.onnx')
-            inference_optimized_model = onnx.load_model_from_string(self._graph_builder.get_inference_optimized_model())
-            onnx.save(inference_optimized_model, self._save_onnx_prefix + '_inference_optimized.onnx')
+        if self._debug_options.save_onnx_models.save:
+            self._onnx_models.save_optimized_model(self._debug_options.save_onnx_models.path,
+                                                   self._debug_options.save_onnx_models.name_prefix,
+                                                   self._export_mode)
 
     def _create_execution_agent(self):
         """Creates a TrainingAgent that can run the forward and backward graph on the training model"""
 
         session_options, providers, provider_options = self._get_session_config()
-        fw_feed_names = [input.name for input in self._optimized_onnx_model.graph.input]
+        fw_feed_names = [input.name for input in self._onnx_models.optimized_model.graph.input]
         fw_outputs_device_info = [
             C.OrtDevice(get_ort_device_type(self._device.type),
                         C.OrtDevice.default_memory(),
                         _utils.get_device_index(self._device)
             )] * len(self._graph_info.user_output_names)
 
-        bw_fetches_names = [output.name for output in self._optimized_onnx_model.graph.output]
+        bw_fetches_names = [output.name for output in self._onnx_models.optimized_model.graph.output]
         bw_outputs_device_info = [
             C.OrtDevice(get_ort_device_type(self._device.type),
                         C.OrtDevice.default_memory(),
                         _utils.get_device_index(self._device)
             )] * len(bw_fetches_names)
 
-        self._execution_agent = TrainingAgent(self._optimized_onnx_model.SerializeToString(),
+        self._execution_agent = TrainingAgent(self._onnx_models.optimized_model.SerializeToString(),
                                               fw_feed_names,
                                               fw_outputs_device_info,
                                               bw_fetches_names,

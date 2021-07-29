@@ -21,7 +21,7 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
   Model model("test", 
               false, 
               ModelMetaData(),
-              "",
+              ORT_TSTR(""),
               custom_op_registries_,
               {},
               {},
@@ -58,7 +58,7 @@ common::Status ORTInvoker::Invoke(const std::string& op_name,
   node.SetExecutionProviderType(execution_provider_->Type());
   std::vector<const Node*> frame_nodes{&node};
 
-  OptimizerExecutionFrame::Info info({&node}, initializer_map, graph.ModelPath(), *execution_provider_);
+  OptimizerExecutionFrame::Info info({&node}, initializer_map, graph.ModelPath(), *execution_provider_, [](std::string const& ) { return false; });
   auto kernel = info.CreateKernel(&node);
   if (!kernel) {
     ORT_THROW("Could not find kernel name:", op_name, ", domain:", domain, ", version:", version);
