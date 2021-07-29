@@ -67,7 +67,7 @@ LearningModel::LearningModel(
   WINML_THROW_HR_IF_FALSE_MSG(__HRESULT_FROM_WIN32(GetLastError()),
                               GetFileSizeEx(file_handle.get(), &file_size),
                               "GetFileSizeEx");
-  WINML_THROW_IF_FAILED(engine_factory_->CreateModel(buffer, file_size.QuadPart, model_.put()));
+  WINML_THROW_IF_FAILED(engine_factory_->CreateModel(buffer, static_cast<size_t>(file_size.QuadPart), model_.put()));
   WINML_THROW_HR_IF_TRUE_MSG(E_UNEXPECTED, UnmapViewOfFile(buffer) == 0, "Could not unmap model file.");
   WINML_THROW_IF_FAILED(model_->GetModelInfo(model_info_.put()));
 }
