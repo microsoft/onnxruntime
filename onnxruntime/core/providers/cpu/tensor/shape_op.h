@@ -35,11 +35,11 @@ class Shape final : public OpKernel {
     const auto* input = context->Input<Tensor>(0);
     const TensorShape& input_shape = input->Shape();
 
-    size_t rank = input_shape.NumDimensions();
+    int64_t rank = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
 
     if (!needs_slicing_) {  // vanilla use of Shape (no slicing)
-      Tensor* output = context->Output(0, {gsl::narrow_cast<int64_t>(rank)});
-      input_shape.CopyDims(output->template MutableData<int64_t>(), rank);
+      Tensor* output = context->Output(0, {rank});
+      input_shape.CopyDims(output->template MutableData<int64_t>(), static_cast<size_t>(rank));
     } else {  // slicing is needed
       int64_t true_start = start_index_;
 
