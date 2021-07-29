@@ -318,15 +318,22 @@ def compare_outputs(torch_outputs, ort_outputs, rtol=1e-03, atol=1e-03, verbose=
     return is_all_close, max(max_abs_diff)
 
 
-def onnxruntime_inference(onnx_model_path, input_hidden_states, attention_mask, past):
-    from onnxruntime.transformers.benchmark_helper import create_onnxruntime_session
-    ort_session = create_onnxruntime_session(onnx_model_path,
-                                             use_gpu=True,
-                                             enable_all_optimization=True,
-                                             num_threads=-1,
-                                             enable_profiling=False,
-                                             verbose=True)
+def create_ort_session(onnx_model_path, use_gpu=True):
+    try:
+        from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel, __version__ as onnxruntime_version
+        sess_options = SessionOptions()
+        sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_ALL
+        sess_options.intra_op_num_threads = 2
+        sess_options.log_severity_level = 2
+        execution_providers = ['CPUExecutionProvider'
+                               ] if not use_gpu else ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        return InferenceSession(onnx_model_path, sess_options, providers=execution_providers)
+    except:
+        logger.error(f"Exception", exc_info=True)
+        return None
 
+
+def onnxruntime_inference(ort_session, input_hidden_states, attention_mask, past):
     ort_inputs = {
         'past': numpy.ascontiguousarray(past.cpu().numpy()),
         'attention_mask': numpy.ascontiguousarray(attention_mask.cpu().numpy()),
@@ -354,6 +361,8 @@ def verify_attention(model,
     )
     passed_cases = 0
     max_diffs = []
+
+    ort_session = create_ort_session(onnx_model_path)
     for i in range(test_cases):
         input_hidden_states, attention_mask, layer_past = create_inputs(batch_size, hidden_size, num_attention_heads,
                                                                         sequence_length, past_sequence_length, float16,
@@ -362,7 +371,7 @@ def verify_attention(model,
         with torch.no_grad():
             torch_outputs = model(input_hidden_states, layer_past=layer_past, attention_mask=attention_mask)
 
-        ort_outputs = onnxruntime_inference(onnx_model_path, input_hidden_states, attention_mask, layer_past)
+        ort_outputs = onnxruntime_inference(ort_session, input_hidden_states, attention_mask, layer_past)
 
         tolerance = 1e-03 if float16 else 1e-05
         is_all_close, max_diff = compare_outputs(torch_outputs, ort_outputs, rtol=tolerance, atol=tolerance)
@@ -372,8 +381,8 @@ def verify_attention(model,
 
     max_diff = max(max_diffs)
     diff_count = len([i for i in max_diffs if i > 0])
-    success_flag = "[x]" if passed_cases < test_cases else "[✓]"
-    print(f"\t{success_flag} Passed_cases={passed_cases}/{test_cases}; Max_diff={max_diff}; Diff_count={diff_count}")
+    success_flag = "[FAILED]" if passed_cases < test_cases else "[OK]"
+    print(f"{success_flag} Passed_cases={passed_cases}/{test_cases}; Max_diff={max_diff}; Diff_count={diff_count}")
     return test_cases - passed_cases
 
 
@@ -484,9 +493,9 @@ class TestGptAttentionHuggingfaceParity(unittest.TestCase):
     #def test_non_optimized(self):
     #    self.run_small(False)
 
-    #@pytest.mark.slow
-    #def test_optimized_large(self):
-    #    self.run_large(True)
+    @pytest.mark.slow
+    def test_optimized_large(self):
+        self.run_large(True)
 
     #@pytest.mark.slow
     #def test_non_optimized_large(self):
