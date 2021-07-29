@@ -7,7 +7,12 @@ from .debug_options import DebugOptions, LogLevel
 from . import _utils, _io, _logger, torch_cpp_extensions as _cpp_ext, _onnx_models
 from ._custom_autograd_function_exporter import _post_process_after_export
 from ._graph_execution_interface import GraphExecutionInterface
-from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleDeviceException, ORTModuleONNXModelException, ORTModuleTorchModelException
+from ._fallback import (_FallbackManager,
+                       _FallbackPolicy,
+                       ORTModuleDeviceException,
+                       ORTModuleONNXModelException,
+                       ORTModuleTorchModelException,
+                       wrap_exception)
 from onnxruntime.training.ortmodule import ONNX_OPSET_VERSION
 
 from onnxruntime.capi import _pybind_state as C
@@ -171,8 +176,9 @@ class GraphExecutionManager(GraphExecutionInterface):
         """Raises ORTModuleTorchModelException if the module is not a torch.nn.Module"""
 
         if not isinstance(module, torch.nn.Module):
-            raise _FallbackManager.wrap_exception(ORTModuleTorchModelException,
-                                                  TypeError(f"ORTModule only supports torch.nn.Module as input. {type(module)} is not supported."))
+            raise wrap_exception(ORTModuleTorchModelException,
+                                 TypeError(f"ORTModule only supports torch.nn.Module as input. {type(module)} is not supported."))
+
 
     @staticmethod
     def execution_session_run_forward(execution_session, onnx_model, device, *inputs):
@@ -329,8 +335,8 @@ class GraphExecutionManager(GraphExecutionInterface):
                                   export_params=False,
                                   keep_initializers_as_inputs=True)
         except RuntimeError as e:
-            raise _FallbackManager.wrap_exception(ORTModuleONNXModelException,
-                                                  RuntimeError(f'There was an error while exporting the PyTorch model to ONNX: {e}'))
+            raise wrap_exception(ORTModuleONNXModelException,
+                                 RuntimeError(f'There was an error while exporting the PyTorch model to ONNX: {e}'))
         exported_model = onnx.load_model_from_string(f.getvalue())
 
         exported_model = _post_process_after_export(
@@ -346,8 +352,8 @@ class GraphExecutionManager(GraphExecutionInterface):
         if not self._device or self._device != device:
             self._device = device
             if not self._device:
-                raise _FallbackManager.wrap_exception(ORTModuleDeviceException,
-                                                      RuntimeError('A device must be specified in the model or inputs!'))
+                raise wrap_exception(ORTModuleDeviceException,
+                                     RuntimeError('A device must be specified in the model or inputs!'))
 
     def _get_graph_transformer_config(self):
         graph_transformer_config = C.TrainingGraphTransformerConfiguration()

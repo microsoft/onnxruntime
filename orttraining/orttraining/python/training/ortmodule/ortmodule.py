@@ -7,7 +7,7 @@ from ._torch_module_factory import TorchModuleFactory
 from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._custom_gradient_registry import CustomGradientRegistry
 from .debug_options import DebugOptions
-from ._fallback import _FallbackManager, ORTModuleTorchModelException
+from ._fallback import _FallbackManager, ORTModuleTorchModelException, wrap_exception
 
 from onnxruntime.training import register_custom_ops_pytorch_exporter
 
@@ -31,7 +31,7 @@ class ORTModule(torch.nn.Module):
     """
 
     def __init__(self, module, debug_options=None):
-        # Python default arguments are evaluated on function definintion
+        # Python default arguments are evaluated on function definition
         # and not on function invocation. So, if debug_options is not provided,
         # instantiate it inside the function.
         if not debug_options:
@@ -103,15 +103,15 @@ class ORTModule(torch.nn.Module):
         which does not need model replication and is also recommended by torch to use instead.
         """
 
-        raise _FallbackManager.wrap_exception(ORTModuleTorchModelException,
-                                              NotImplementedError("ORTModule is not compatible with torch.nn.DataParallel. "
-                                                                  "Please use torch.nn.parallel.DistributedDataParallel instead."))
+        raise wrap_exception(ORTModuleTorchModelException,
+                             NotImplementedError("ORTModule is not compatible with torch.nn.DataParallel. "
+                                                 "Please use torch.nn.parallel.DistributedDataParallel instead."))
 
     def add_module(self, name: str, module: Optional['Module']) -> None:
         """Raises a ORTModuleTorchModelException exception since ORTModule does not support adding modules to it"""
 
-        raise _FallbackManager.wrap_exception(ORTModuleTorchModelException,
-                                              NotImplementedError("ORTModule does not support adding modules to it."))
+        raise wrap_exception(ORTModuleTorchModelException,
+                             NotImplementedError("ORTModule does not support adding modules to it."))
 
     @property
     def module(self):

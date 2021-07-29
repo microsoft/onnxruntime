@@ -8,7 +8,7 @@ import torch
 
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
-from ._fallback import _FallbackManager
+from ._fallback import _FallbackManager, ORTModuleFallbackException, ORTModuleIOError, wrap_exception
 
 
 def wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace_flag, training_mode_flag, arg):
@@ -105,8 +105,8 @@ def call_python_forward_function(
             # are DLPack tensors.
             return wrapped
         else:
-            raise _FallbackManager.wrap_exception(ORTModuleIOError,
-                                                  TypeError(f'ORTModule does not support the following model output type {type(result)}.'))
+            raise wrap_exception(ORTModuleIOError,
+                                 TypeError(f'ORTModule does not support the following model output type {type(result)}.'))
 
     try:
         wrapped_args = list(wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace, is_training_mode, arg)
@@ -129,7 +129,7 @@ def call_python_forward_function(
         print('Exception happens when running ', forward_function)
         sys.stdout.flush()
         sys.stderr.flush()
-        raise _FallbackManager.wrap_exception(ORTModuleFallbackException, e)
+        raise wrap_exception(ORTModuleFallbackException, e)
 
 
 def call_python_backward_function(
@@ -159,8 +159,8 @@ def call_python_backward_function(
         elif isinstance(result, tuple) or isinstance(result, list):
             return [to_dlpack(value) if value is not None else None for value in result]
         else:
-            raise _FallbackManager.wrap_exception(ORTModuleIOError,
-                                                  TypeError(f'ORTModule does not support the following model output type {type(result)}.'))
+            raise wrap_exception(ORTModuleIOError,
+                                 TypeError(f'ORTModule does not support the following model output type {type(result)}.'))
 
     try:
         # Backward inputs should not require gradients.
@@ -182,4 +182,4 @@ def call_python_backward_function(
         print('Exception happens when running ', backward_function)
         sys.stdout.flush()
         sys.stderr.flush()
-        raise _FallbackManager.wrap_exception(ORTModuleFallbackException, e)
+        raise wrap_exception(ORTModuleFallbackException, e)

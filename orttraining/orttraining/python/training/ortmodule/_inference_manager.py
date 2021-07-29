@@ -68,8 +68,8 @@ class InferenceManager(GraphExecutionManager):
 
         # Fallback to PyTorch due to failures *external* to forward(),
         #  typically from initialization
-        if self._fallback_manager._is_pending():
-            return self._fallback_manager._fallback(self._original_module, *inputs, **kwargs)
+        if self._fallback_manager.is_pending():
+            return self._fallback_manager.fallback(self._original_module, *inputs, **kwargs)
 
         try:
             # Exporting module to ONNX for the first time
@@ -109,16 +109,16 @@ class InferenceManager(GraphExecutionManager):
                                              user_outputs)
         except ORTModuleFallbackException as e:
             # Exceptions subject to fallback are handled here
-            self._fallback_manager._handle_exception(e)
+            self._fallback_manager.handle_exception(e)
         except Exception as e:
             # Catch-all FALLBACK_FORCE_TORCH_FORWARD fallback is handled here
-            self._fallback_manager._handle_exception(
+            self._fallback_manager.handle_exception(
                 e, _FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD)
 
         # Fallback to PyTorch due to failures *during* forward(),
         #  (e.g. export, model/input post-processing, forward, output processing, etc)
-        if self._fallback_manager._is_pending():
-            return self._fallback_manager._fallback(self._original_module, *inputs, **kwargs)
+        if self._fallback_manager.is_pending():
+            return self._fallback_manager.fallback(self._original_module, *inputs, **kwargs)
 
     def _build_graph(self):
         """Build an optimized inference graph using the module_graph_builder"""

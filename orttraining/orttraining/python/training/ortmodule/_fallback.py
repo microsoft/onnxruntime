@@ -28,15 +28,15 @@ class _FallbackPolicy(IntFlag):
     FALLBACK_BAD_INITIALIZATION = 256
 
     def is_set(self, policy):
-        '''Check whether `policy` is set on the `_FallbackPolicy instance
+        '''Check whether `policy` is set on the `_FallbackPolicy` instance
 
         FALLBACK_DISABLE implies the check will always fail and return False
         '''
 
-        return not _FallbackPolicy.is_disabled(self) and policy in self
+        return not self.is_disabled() and policy in self
 
     def is_disabled(self):
-        '''Check whether `_FallbackPolicy.FALLBACK_DEVICE is set on the `_FallbackPolicy instance'''
+        '''Check whether `_FallbackPolicy.FALLBACK_DEVICE` is set on the `_FallbackPolicy` instance'''
 
         return _FallbackPolicy.FALLBACK_DISABLE in self
 
@@ -47,6 +47,7 @@ class ORTModuleFallbackException(Exception):
     Although it must be specialized for specific scenarios,
     it can also be used for generic exception that require fallback
     '''
+
     pass
 
 
@@ -56,6 +57,7 @@ class ORTModuleInitException(ORTModuleFallbackException):
     This exception is triggered when an incompatible or missing requirements for ORTModule are detected,
     including PyTorch version, missing ORTModule's PyTorch C++ extension binaries, etc.
     '''
+
     pass
 
 
@@ -138,14 +140,14 @@ class _FallbackManager(object):
         self._policy = policy
         self._exception = None
 
-    def _handle_exception(self,
+    def handle_exception(self,
                           exception: Exception,
                           policy: Optional[_FallbackPolicy] = None) -> None:
 
         def _set_exception(policy, exception):
             '''Sets `exception` into `_FallbackManager` based on the specified `policy`
 
-            If the incoming `exception` is handled by the specified `policy`, than `_FallbackManager`
+            If the incoming `exception` is handled by the specified `policy`, then `_FallbackManager`
             will save the exception as context so that ORTModule can learn about a pending fallback
             and trigger it during model execution.
 
@@ -175,7 +177,7 @@ class _FallbackManager(object):
         if self._exception is None:
             raise exception
 
-    def _is_pending(self) -> bool:
+    def is_pending(self) -> bool:
         '''Returns True when a fallback is pending
 
         ORTModule must execute fallback to PyTorch engine when a pending fallback is detected
@@ -183,20 +185,23 @@ class _FallbackManager(object):
 
         return self._exception is not None
 
-    def _fallback(self, model: torch.nn.Module, *inputs, **kwargs):
+    def fallback(self, model: torch.nn.Module, *inputs, **kwargs):
         '''Executes user PyTorch `model` using the provided inputs and return the result'''
+
+        # Pending fallbacks are resetted to enforce retries
+        assert self.is_pending()
+        self._exception = None
 
         if self._log_level <= _logger.LogLevel.WARNING:
             warnings.warn(f'Fallback due to exception {type(self._exception)} was triggered.', UserWarning)
         return model(*inputs, **kwargs)
 
-    @staticmethod
-    def wrap_exception(new_exception: ORTModuleFallbackException, raised_exception: Exception) -> ORTModuleFallbackException:
-        '''Wraps `raised_exception` exception as cause for the returned `new_exception` exception'''
+def wrap_exception(new_exception: ORTModuleFallbackException, raised_exception: Exception) -> ORTModuleFallbackException:
+    '''Wraps `raised_exception` exception as cause for the returned `new_exception` exception'''
 
-        exception = None
-        try:
-            raise new_exception(raised_exception) from raised_exception
-        except Exception as e:
-            exception = e
-        return exception
+    exception = None
+    try:
+        raise new_exception(raised_exception) from raised_exception
+    except Exception as e:
+        exception = e
+    return exception
