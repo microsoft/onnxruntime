@@ -18,6 +18,7 @@ class Shape final : public OpKernel {
     info.GetAttrOrDefault<int64_t>("start", &start_index_, 0);
 
     if (start_index_ > 0) {
+      // "start" is provided and is non-default
       needs_slicing_ = true;
     }
 
@@ -46,6 +47,7 @@ class Shape final : public OpKernel {
         true_start += rank;
       }
 
+      // clamp
       true_start = true_start < 0
                        ? 0
                        : ((true_start > rank) ? rank : true_start);
@@ -59,6 +61,7 @@ class Shape final : public OpKernel {
           true_end += rank;
         }
 
+        // clamp
         true_end = true_end < 0
                        ? 0
                        : ((true_end > rank) ? rank : true_end);
