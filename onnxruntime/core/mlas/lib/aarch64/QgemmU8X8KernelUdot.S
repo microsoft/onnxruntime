@@ -88,27 +88,27 @@ Return Value:
         FUNCTION_ENTRY MlasGemmU8X8KernelUdot
 
         stp     d8,d9,[sp,#-64]!
-        stp     d10,d11,[sp,#16]
-        stp     d12,d13,[sp,#32]
-        stp     d14,d15,[sp,#48]
         ldr     x8,[sp,#.LGemmU8X8KernelFrame_ColumnSumBuffer]
         ldr     x9,[sp,#.LGemmU8X8KernelFrame_ZeroPointB]
         ldrb    w13,[sp,#.LGemmU8X8KernelFrame_ZeroMode]
         mov     x14,x0
-        ld1     {v11.4s},[x7], #16
+        ld1     {v11.4s},[x7],#16
         mov     x15,x3
         dup     v8.4s,v11.s[0]              // broadcast row fixups
         cmp     x4,#1                       // CountM == 1?
-        ld1     {v15.4s},[x7]          // speculative load row sum 5 ~ 8
         beq     .LGemmU8X8.M1.ProcessNextColumnLoop
         dup     v9.4s,v11.s[1]
         cmp     x4,#4                       // CountM < 4?
         blo     .LGemmU8X8.M2.ProcessNextColumnLoop
+        stp     d10,d11,[sp,#16]
         dup     v10.4s,v11.s[2]
         dup     v11.4s,v11.s[3]
 
         cmp     x4,#8                       // CountM < 8?
         blo     .LGemmU8X8.M4.ProcessNextColumnLoop
+        stp     d14,d15,[sp,#48]
+        ld1     {v15.4s},[x7]               // load row sum 5 ~ 8
+        stp     d12,d13,[sp,#32]
         dup     v12.4s,v15.s[0]
         dup     v13.4s,v15.s[1]
         dup     v14.4s,v15.s[2]
@@ -543,7 +543,22 @@ Return Value:
 //
 // Process 4 rows of the matrices.
 //
-// v8 ~ v11 row sums 
+//
+// The packing layout is setup to have a pair of four quad vectors from
+// packed matrix A and a pair of eight quad vectors from packed matrix B.
+// With this scheme, alternating loads from the packed matrices can be
+// interleaved with the dot product instructions.
+//
+// One negative consequence of using four rows here is that the accumulator
+// register tile is too small for processors with high out of order execution
+// windows (such as the Apple M1). The dot product instructions for a given
+// cell are too close to each other to avoid dependencies. To workaround this,
+// the below loop uses a pair of accumulator registers that are then added
+// together when the loop finishes.
+//
+// A55-based cores are optimized for 64-bit loads, so use 64-bit loads for
+// packed matrix A. At the time of this implementation, using a wider 128-bit
+// load didnt affect performance for higher end cores.
 //
 //                                      int8 RHS 4x8 block
 //                           /-----------------------------------------|
@@ -551,120 +566,123 @@ Return Value:
 //                           |  ...                              ...   |
 //                           |v0.b[3] ... v0.b[15] v1.b[3] ... v1.b[15]|
 //                           \-----------------------------------------/
-//    int8 LHS 4x8 block
+//    int8 LHS 4x4 block
 //  /---------------------\  /-----------------------------------------|
-//  |v4.b[0]  ... v4.b[3] |  |v16.s[0] .. v16.s[3] v17.s[0] .. v17.s[3]|
-//  |v4.b[4]  ... v4.b[7] |  |v18.s[0] .. v18.s[3] v19.s[0] .. v19.s[3]|
-//  |v4.b[8]  ... v4.b[11]|  |v20.s[0] .. v20.s[3] v21.s[0] .. v21.s[3]|
-//  |v4.b[12] ... v4.b[15]|  |v22.s[0] .. v22.s[3] v23.s[0] .. v23.s[3]|
+//  |d4.b[0]  ... d4.b[3] |  |v16.s[0] .. v16.s[3] v17.s[0] .. v17.s[3]|
+//  |d4.b[4]  ... d4.b[7] |  |v18.s[0] .. v18.s[3] v19.s[0] .. v19.s[3]|
+//  |d5.b[0]  ... d5.b[3] |  |v20.s[0] .. v20.s[3] v21.s[0] .. v21.s[3]|
+//  |d5.b[4]  ... d5.b[7] |  |v22.s[0] .. v22.s[3] v23.s[0] .. v23.s[3]|
 //  \---------------------/  \-----------------------------------------/
-//////////////////////////
-//  unroll for the next 4 in k dimension
-//                           /-----------------------------------------|
-//                           |v2.b[0] ... v2.b[12] v3.b[0] ... v3.b[12]|
-//                           |  ...                              ...   |
-//                           |v2.b[3] ... v2.b[15] v3.b[3] ... v3.b[15]|
-//                           \-----------------------------------------/
+
 //  /---------------------\  /-----------------------------------------\
-//  |v6.b[0]  ... v6.b[3] |  |v16.s[0] .. v16.s[3] v17.s[0] .. v17.s[3]|
-//  |v6.b[4]  ... v6.b[7] |  |v18.s[0] .. v18.s[3] v19.s[0] .. v19.s[3]|
-//  |v6.b[8]  ... v6.b[11]|  |v20.s[0] .. v20.s[3] v21.s[0] .. v21.s[3]|
-//  |v6.b[12] ... v6.b[15]|  |v22.s[0] .. v22.s[3] v23.s[0] .. v23.s[3]|
+//  |d6.b[0]  ... d6.b[3] |  |v24.s[0] .. v24.s[3] v25.s[0] .. v25.s[3]|
+//  |d6.b[4]  ... d6.b[7] |  |v26.s[0] .. v26.s[3] v27.s[0] .. v27.s[3]|
+//  |d7.b[0]  ... d7.b[3] |  |v28.s[0] .. v24.s[3] v29.s[0] .. v29.s[3]|
+//  |d7.b[4]  ... d7.b[7] |  |v30.s[0] .. v24.s[3] v31.s[0] .. v31.s[3]|
 //  \---------------------/  \-----------------------------------------/
 //                                  int32 accumulators 8x8 block
 
-// Starting the loop: for each 4 colomns
 .LGemmU8X8.M4.ProcessNextColumnLoop:
-        mov     x0,x14                      // reload matrix A
-        ld1     {v3.4s},[x8],#16            // load ColumnSumBuffer[0]
-        mov     x3,x15                      // reload PackedCountK
-        ld1     {v7.4s},[x8],#16            // load ColumnSumBuffer[4]
-        cbz     x9,.LGemmU8X8.M4.SkipScaleByZeroPointB
-
-        // accumulator = zero point B * row sum A + column sum B 
-        ld1     {v22.4s},[x9],#16           // load ZeroPointB[0]
-        mul     v16.4s,v22.4s,v8.4s
-        mul     v18.4s,v22.4s,v9.4s
-        ld1     {v23.4s},[x9],#16           // load ZeroPointB[4]
-        mul     v20.4s,v22.4s,v10.4s
-        mul     v22.4s,v22.4s,v11.4s
-        mul     v17.4s,v23.4s,v8.4s
-        mul     v19.4s,v23.4s,v9.4s
-        mul     v21.4s,v23.4s,v10.4s
-        mul     v23.4s,v23.4s,v11.4s
-        add     v16.4s,v3.4s,v16.4s
-        add     v18.4s,v3.4s,v18.4s
         ld1     {v0.16b},[x1],#16           // load packed B0
-        add     v20.4s,v3.4s,v20.4s
-        add     v22.4s,v3.4s,v22.4s
-        ldr     q4,[x0],#32                 // load packed A0
-        add     v17.4s,v7.4s,v17.4s
-        add     v19.4s,v7.4s,v19.4s
-        ld1     {v1.16b},[x1],#16           // load packed B1
-        add     v21.4s,v7.4s,v21.4s
-        add     v23.4s,v7.4s,v23.4s
+        mov     x0,x14                      // reload matrix A
+        ld1     {v2.4s},[x8],#16            // load ColumnSumBuffer[0]
+        mov     x3,x15                      // reload PackedCountK
+        ld1     {v3.4s},[x8],#16            // load ColumnSumBuffer[4]
+        cbz     x9,.LGemmU8X8.M4.SkipScaleByZeroPointB
+        ld1     {v30.4s},[x9],#16           // load ZeroPointB[0]
+        mul     v16.4s,v30.4s,v8.4s
+        mul     v18.4s,v30.4s,v9.4s
+        ld1     {v31.4s},[x9],#16           // load ZeroPointB[4]
+        mul     v20.4s,v30.4s,v10.4s
+        mul     v22.4s,v30.4s,v11.4s
+        mul     v17.4s,v31.4s,v8.4s
+        mul     v19.4s,v31.4s,v9.4s
+        mul     v21.4s,v31.4s,v10.4s
+        mul     v23.4s,v31.4s,v11.4s
+        add     v16.4s,v2.4s,v16.4s
+        add     v18.4s,v2.4s,v18.4s
+        add     v20.4s,v2.4s,v20.4s
+        add     v22.4s,v2.4s,v22.4s
+        add     v17.4s,v3.4s,v17.4s
+        add     v19.4s,v3.4s,v19.4s
+        add     v21.4s,v3.4s,v21.4s
+        add     v23.4s,v3.4s,v23.4s
         b       .LGemmU8X8.M4.ComputeBlockLoopStart
 
 .LGemmU8X8.M4.SkipScaleByZeroPointB:
-        // accumulator = row sum A + column sum B 
-        add     v16.4s,v3.4s,v8.4s
-        add     v18.4s,v3.4s,v9.4s
-        ld1     {v0.16b},[x1],#16           // load packed B0
-        add     v20.4s,v3.4s,v10.4s
-        add     v22.4s,v3.4s,v11.4s
-        ldr     q4,[x0],#32                 // load packed A0
-        add     v17.4s,v7.4s,v8.4s
-        add     v19.4s,v7.4s,v9.4s
-        ld1     {v1.16b},[x1],#16           // load packed B1
-        add     v21.4s,v7.4s,v10.4s
-        add     v23.4s,v7.4s,v11.4s
-
+        add     v16.4s,v2.4s,v8.4s
+        add     v18.4s,v2.4s,v9.4s
+        add     v20.4s,v2.4s,v10.4s
+        add     v22.4s,v2.4s,v11.4s
+        add     v17.4s,v3.4s,v8.4s
+        add     v19.4s,v3.4s,v9.4s
+        add     v21.4s,v3.4s,v10.4s
+        add     v23.4s,v3.4s,v11.4s
 
 .LGemmU8X8.M4.ComputeBlockLoopStart:
-        ld1     {v2.16b},[x1],#16           // load packed B0_next4k
+        ldr     d4,[x0],#32                 // load packed A0.l
+        movi    v24.4s,#0
+        movi    v25.4s,#0
+        ldur    d5,[x0,#-24]                // load packed A0.h
+        movi    v26.4s,#0
+        movi    v27.4s,#0
+        ldur    d6,[x0,#-16]                // load packed A1.l
+        movi    v28.4s,#0
+        movi    v29.4s,#0
+        movi    v30.4s,#0
+        movi    v31.4s,#0
 
 .LGemmU8X8.M4.ComputeBlockLoop:
-        sub     x3,x3,#1
-        ldur    q6,[x0,#-16]                // load packed A1
+        ld1     {v1.16b},[x1],#16           // load packed B1
         UdotByElement 16, 0, 4, 0
         UdotByElement 18, 0, 4, 1
-        ld1     {v3.16b},[x1],#16           // load packed B1_next4k
-        UdotByElement 20, 0, 4, 2
-        UdotByElement 22, 0, 4, 3
-        cbz     x3,.LGemmU8X8.M4.ComputeBlockLoopFinish
-        ld1     {v0.16b},[x1],#16           // load packed B0 for next iteration
+        ldur    d7,[x0,#-8]                 // load packed A1.h
+        UdotByElement 20, 0, 5, 0
+        UdotByElement 22, 0, 5, 1
+        ld1     {v0.16b},[x1],#16           // load packed B0_next4k
         UdotByElement 17, 1, 4, 0
         UdotByElement 19, 1, 4, 1
-        UdotByElement 21, 1, 4, 2
-        UdotByElement 23, 1, 4, 3
-        ldr     q4,[x0],#32                 // load packed A0 for next iteration
-        UdotByElement 16, 2, 6, 0
-        UdotByElement 18, 2, 6, 1
-        ld1     {v1.16b},[x1],#16           // load packed B1 for next iteration
-        UdotByElement 20, 2, 6, 2
-        UdotByElement 22, 2, 6, 3
-        ld1     {v2.16b},[x1],#16           // load packed B0_next4k for next iteration
-        UdotByElement 17, 3, 6, 0
-        UdotByElement 19, 3, 6, 1
-        UdotByElement 21, 3, 6, 2
-        UdotByElement 23, 3, 6, 3
+        sub     x3,x3,#1
+        cbz     x3,.LGemmU8X8.M4.ComputeBlockLoopFinish
+        ldr     d4,[x0],#32                 // load packed A0.l for next iteration
+        UdotByElement 21, 1, 5, 0
+        UdotByElement 23, 1, 5, 1
+        ld1     {v1.16b},[x1],#16           // load packed B1_next4k
+        UdotByElement 24, 0, 6, 0
+        UdotByElement 26, 0, 6, 1
+        ldur    d5,[x0,#-24]                // load packed A0.h for next iteration
+        UdotByElement 28, 0, 7, 0
+        UdotByElement 30, 0, 7, 1
+        ld1     {v0.16b},[x1],#16           // load packed B0 for next iteration
+        UdotByElement 25, 1, 6, 0
+        UdotByElement 27, 1, 6, 1
+        ldur    d6,[x0,#-16]                // load packed A1.l for next iteration
+        UdotByElement 29, 1, 7, 0
+        UdotByElement 31, 1, 7, 1
         b       .LGemmU8X8.M4.ComputeBlockLoop
 
 .LGemmU8X8.M4.ComputeBlockLoopFinish:
-        UdotByElement 17, 1, 4, 0
-        UdotByElement 19, 1, 4, 1
-        UdotByElement 21, 1, 4, 2
-        UdotByElement 23, 1, 4, 3
-        UdotByElement 16, 2, 6, 0
-        UdotByElement 18, 2, 6, 1
-        UdotByElement 20, 2, 6, 2
-        UdotByElement 22, 2, 6, 3
-        UdotByElement 17, 3, 6, 0
-        UdotByElement 19, 3, 6, 1
-        UdotByElement 21, 3, 6, 2
-        UdotByElement 23, 3, 6, 3
+        UdotByElement 21, 1, 5, 0
+        UdotByElement 23, 1, 5, 1
+        ld1     {v1.16b},[x1],#16           // load packed B1_next4k
+        UdotByElement 24, 0, 6, 0
+        UdotByElement 26, 0, 6, 1
+        UdotByElement 28, 0, 7, 0
+        UdotByElement 30, 0, 7, 1
+        UdotByElement 25, 1, 6, 0
+        UdotByElement 27, 1, 6, 1
+        UdotByElement 29, 1, 7, 0
+        UdotByElement 31, 1, 7, 1
         add     x10,x2,x6,lsl #2            // compute output row 2
+        add     v16.4s,v16.4s,v24.4s        // fold high results into low results
+        add     v18.4s,v18.4s,v26.4s
+        add     v20.4s,v20.4s,v28.4s
+        add     v22.4s,v22.4s,v30.4s
         add     x11,x10,x6,lsl #2           // compute output row 3
+        add     v17.4s,v17.4s,v25.4s
+        add     v19.4s,v19.4s,v27.4s
+        add     v21.4s,v21.4s,v29.4s
+        add     v23.4s,v23.4s,v31.4s
         add     x12,x11,x6,lsl #2           // compute output row 4
         subs    x5,x5,#8                    // adjust CountN remaining
         blo     .LGemmU8X8.M4.StoreOutputPartial
@@ -691,8 +709,6 @@ Return Value:
 
 .LGemmU8X8.M4.ExitKernel:
         mov     x0,#4                       // return number of rows handled
-        ldp     d14,d15,[sp,#48]
-        ldp     d12,d13,[sp,#32]
         ldp     d10,d11,[sp,#16]
         ldp     d8,d9,[sp],#64
         ret
@@ -703,10 +719,10 @@ Return Value:
 //
 
 .LGemmU8X8.M4.StoreOutputPartial:
-        cbz     x13,.LGemmU8X8.M4.StoreOutputPartialAddMode
+        cbz     x13,.LGemmU8X8.M4.StoreOutputPartial.AddMode
 
-.LGemmU8X8.M4.StoreOutputPartialZeroMode:
-        tbz     x5,#2,.LGemmU8X8.M4.StoreOutputPartial2ZeroMode
+.LGemmU8X8.M4.StoreOutputPartial.ZeroMode:
+        tbz     x5,#2,.LGemmU8X8.M4.StoreOutputPartial2.ZeroMode
         st1     {v16.4s},[x2],#16
         mov     v16.16b,v17.16b             // shift remaining elements down
         st1     {v18.4s},[x10],#16
@@ -716,8 +732,8 @@ Return Value:
         st1     {v22.4s},[x12],#16
         mov     v22.16b,v23.16b
 
-.LGemmU8X8.M4.StoreOutputPartial2ZeroMode:
-        tbz     x5,#1,.LGemmU8X8.M4.StoreOutputPartial1ZeroMode
+.LGemmU8X8.M4.StoreOutputPartial2.ZeroMode:
+        tbz     x5,#1,.LGemmU8X8.M4.StoreOutputPartial1.ZeroMode
         st1     {v16.2s},[x2],#8
         dup     v16.4s,v16.s[2]             // shift remaining elements down
         st1     {v18.2s},[x10],#8
@@ -727,7 +743,7 @@ Return Value:
         st1     {v22.2s},[x12],#8
         dup     v22.4s,v22.s[2]
 
-.LGemmU8X8.M4.StoreOutputPartial1ZeroMode:
+.LGemmU8X8.M4.StoreOutputPartial1.ZeroMode:
         tbz     x5,#0,.LGemmU8X8.M4.ExitKernel
         st1     {v16.s}[0],[x2]
         st1     {v18.s}[0],[x10]
@@ -735,8 +751,8 @@ Return Value:
         st1     {v22.s}[0],[x12]
         b       .LGemmU8X8.M4.ExitKernel
 
-.LGemmU8X8.M4.StoreOutputPartialAddMode:
-        tbz     x5,#2,.LGemmU8X8.M4.StoreOutputPartial2AddMode
+.LGemmU8X8.M4.StoreOutputPartial.AddMode:
+        tbz     x5,#2,.LGemmU8X8.M4.StoreOutputPartial2.AddMode
         ld1     {v0.4s},[x2]
         ld1     {v1.4s},[x10]
         ld1     {v2.4s},[x11]
@@ -754,8 +770,8 @@ Return Value:
         st1     {v22.4s},[x12],#16
         mov     v22.16b,v23.16b
 
-.LGemmU8X8.M4.StoreOutputPartial2AddMode:
-        tbz     x5,#1,.LGemmU8X8.M4.StoreOutputPartial1AddMode
+.LGemmU8X8.M4.StoreOutputPartial2.AddMode:
+        tbz     x5,#1,.LGemmU8X8.M4.StoreOutputPartial1.AddMode
         ld1     {v0.2s},[x2]
         ld1     {v1.2s},[x10]
         ld1     {v2.2s},[x11]
@@ -773,7 +789,7 @@ Return Value:
         st1     {v22.2s},[x12],#8
         dup     v22.4s,v22.s[2]
 
-.LGemmU8X8.M4.StoreOutputPartial1AddMode:
+.LGemmU8X8.M4.StoreOutputPartial1.AddMode:
         tbz     x5,#0,.LGemmU8X8.M4.ExitKernel
         ld1     {v0.s}[0],[x2]
         ld1     {v1.s}[0],[x10]
@@ -858,9 +874,6 @@ Return Value:
 
 .LGemmU8X8.M2.ExitKernel:
         mov     x0,#2                       // return number of rows handled
-        ldp     d14,d15,[sp,#48]
-        ldp     d12,d13,[sp,#32]
-        ldp     d10,d11,[sp,#16]
         ldp     d8,d9,[sp],#64
         ret
 
@@ -978,9 +991,6 @@ Return Value:
 
 .LGemmU8X8.M1.ExitKernel:
         mov     x0,#1                       // return number of rows handled
-        ldp     d14,d15,[sp,#48]
-        ldp     d12,d13,[sp,#32]
-        ldp     d10,d11,[sp,#16]
         ldp     d8,d9,[sp],#64
         ret
 
