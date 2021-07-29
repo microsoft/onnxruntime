@@ -101,7 +101,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         #   predetermined list of opcodes considered safe to move before/after cast operation.
         # - Onnxruntime Level 1 predetermind "FP16 safe" opcodes include only opcode that do not perform any computation such as Transpose, Split, Reshape, etc.
         #   whereas Level 2 perdetermined "FP16 safe" opcodes include opcodes that perform computation using contrib ops, GeLU, Dropout, LayerNormalization, etc.
-        self._propagate_cast_ops_level = -1
+        self._propagate_cast_ops_level = 1
         # List of opcodes to be considered safe to move before/after cast operation if propagate_cast_ops_level is zero.
         self._propagate_cast_ops_allow = []
         # Whether allow fusion of layer norm subgraph if doing so will cause modified precision.
