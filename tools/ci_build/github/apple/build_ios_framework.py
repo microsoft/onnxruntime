@@ -73,8 +73,8 @@ def _build_package(args):
         # get the compiled lib path
         framework_dir = os.path.join(
             build_dir_current_arch, build_config, build_config + "-" + sysroot,
-            '' if args.build_dynamic_framework else 'static_framework',
-            'onnxruntime.framework')
+            'onnxruntime.framework' if args.build_dynamic_framework
+            else os.path.join('static_framework', 'onnxruntime.framework'))
         ort_libs.append(os.path.join(framework_dir, 'onnxruntime'))
 
         # We only need to copy Info.plist, framework_info.json, and headers once since they are the same
