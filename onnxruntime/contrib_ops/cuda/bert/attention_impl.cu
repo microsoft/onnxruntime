@@ -178,7 +178,11 @@ bool LaunchAttentionKernel(
     const void* past,
     void* present) {
 
-  bool use_persistent_softmax = TransformerOptions::GetInstance()->IsPrecisionMode();
+  // GPT-2 model is more sensitive on parity since error will accumulate in text generation. 
+  // So use persistent softmax for GPT-2 model by default.
+  // For testing, environment variable ORT_TRANSFORMER_OPTIONS=1 or 2 could enable or disable it explicitly.
+  const TransformerOptions* options = TransformerOptions::GetInstance();
+  bool use_persistent_softmax = (is_unidirectional || options->IsPrecisionMode()) && !options->DisablePersistentSoftmax();
 
   if (element_size == 2) {
     return QkvToContext(prop, cublas, stream,

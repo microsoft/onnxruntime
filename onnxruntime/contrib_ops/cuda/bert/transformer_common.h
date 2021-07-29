@@ -16,15 +16,20 @@ class TransformerOptions {
 
   bool IsPrecisionMode() const { return is_precision_mode_; }
 
+  bool DisablePersistentSoftmax() const { return disable_persistent_softmax_; }
+
   void Initialize(int value) {
     is_precision_mode_ = (value & 0x01) > 0;
-    LOGS_DEFAULT(INFO) << "ORT_TRANSFORMER_OPTIONS: is_precision_mode=" << instance.is_precision_mode_;
+    disable_persistent_softmax_ = (value & 0x02) > 0;
     initialized_ = true;
   }
 
  private:
   // Default is false. If the mode is on, prefer precision than speed.
   bool is_precision_mode_{false};
+
+  // Disable persistent softmax.
+  bool disable_persistent_softmax_{false};
 
   bool initialized_{false};
 
