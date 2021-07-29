@@ -955,31 +955,37 @@ ProcessNextColumnLoopM1
         mul     v16.4s,v30.4s,v8.4s
         mul     v17.4s,v31.4s,v8.4s
         ldr     d4,[x0],#8                  // load packed A0
+        ld1     {v6.16b},[x1],#16           // load packed B0 next 4 k
+        ld1     {v7.16b},[x1],#16           // load packed B1 next 4 k
         add     v16.4s,v2.4s,v16.4s
         add     v17.4s,v3.4s,v17.4s
         b       ComputeBlockLoopM1
 
 SkipScaleByZeroPointBM1
         ldr     d4,[x0],#8                  // load packed A0
+        ld1     {v6.16b},[x1],#16           // load packed B0 next 4 k
+        ld1     {v7.16b},[x1],#16           // load packed B1 next 4 k
         add     v16.4s,v2.4s,v8.4s
         add     v17.4s,v3.4s,v8.4s
 
 ComputeBlockLoopM1
+        sub     x3,x3,#1
         UdotByElement 16, 0, 4, 0
         UdotByElement 17, 1, 4, 0
-        ld1     {v0.16b},[x1],#16           // load packed B0
-        ld1     {v1.16b},[x1],#16           // load packed B1
-        UdotByElement 16, 0, 4, 1
-        UdotByElement 17, 1, 4, 1
-        sub     x3,x3,#1
         cbz     x3,ComputeBlockLoopFinishM1
-        ldr     d4,[x0],#8                  // load packed A0
-        ld1     {v0.16b},[x1],#16           // load packed B0
-        ld1     {v1.16b},[x1],#16           // load packed B1
+        ld1     {v0.16b},[x1],#16           // load packed B0 for next iter
+        ld1     {v1.16b},[x1],#16           // load packed B1 for next iter
+        UdotByElement 16, 6, 4, 1
+        UdotByElement 17, 7, 4, 1
+        ldr     d4,[x0],#8                  // load packed A0 for next iter
+        ld1     {v6.16b},[x1],#16           // load packed B0 next 4 k for next iter
+        ld1     {v7.16b},[x1],#16           // load packed B1 next 4 k for next iter
         b       ComputeBlockLoopM1
 
 ComputeBlockLoopFinishM1
         subs    x5,x5,#8                    // adjust CountN remaining
+        UdotByElement 16, 6, 4, 1
+        UdotByElement 17, 7, 4, 1
         blo     StoreOutputPartialM1
         cbnz    x13,SkipAccumulateOutputM1
         ldp     q0,q1,[x2]
