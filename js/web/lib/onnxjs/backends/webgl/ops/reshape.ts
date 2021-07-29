@@ -5,12 +5,10 @@ import {Tensor} from '../../../tensor';
 import {ShapeUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
 
-import {reshapePacked} from './reshape-packed';
-
 export const reshape = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
   const reshapedDims = ShapeUtil.calculateReshapedDims(inputs[0].dims, inputs[1].integerData);
   if (handler.session.pack) {
-    return [reshapePacked(handler, inputs[0], reshapedDims)];
+    return [handler.reshapePacked(inputs[0], reshapedDims)];
   } else {
     const reshapedTensor = handler.reshapeUnpacked(inputs[0], reshapedDims);
     return [reshapedTensor];

@@ -6,6 +6,7 @@ import {Logger} from '../../instrument';
 import {Tensor} from '../../tensor';
 import {ShapeUtil} from '../../util';
 import {createPackProgramInfo} from './ops/pack';
+import {createPackedReshape3DProgramInfo, isReshapeCheap, processDims3D} from './ops/reshape-packed';
 
 import {encodeAsUint8} from './ops/uint8-encode';
 import {createUnpackProgramInfo} from './ops/unpack';
@@ -74,19 +75,13 @@ export class WebGLInferenceHandler implements InferenceHandler {
     return outputTextureData.tensor;
   }
 
-  private checkAndUpdateTextureForm(artifact: Artifact, inputs: TextureData[]) {
-    // pack/unpack inputs
+  private runProgram(artifact: Artifact, inputs: TextureData[], output: TextureData): void {
+    // input should match
     for (let i = 0; i < inputs.length; ++i) {
-      const input = inputs[i];
-      if (input.isPacked && artifact.programInfo.inputTypes[i] !== TextureType.packed) {
-        inputs[i] = this.unpack(input);
-      } else if (!input.isPacked && artifact.programInfo.inputTypes[i] === TextureType.packed) {
-        inputs[i] = this.pack(input);
+      if (!!inputs[i].isPacked !== (artifact.programInfo.inputTypes[i] === TextureType.packed)) {
+        throw new Error(`input[${i}] property packed inconsistent`);
       }
     }
-  }
-  private runProgram(artifact: Artifact, inputs: TextureData[], output: TextureData): void {
-    this.checkAndUpdateTextureForm(artifact, inputs);
 
     // output should match
     if (!!output.isPacked !== (artifact.programInfo.output.textureType === TextureType.packed)) {
@@ -109,6 +104,19 @@ export class WebGLInferenceHandler implements InferenceHandler {
    */
   private getOrCreateTextureData(tensor: Tensor, textureType: TextureType) {
     let td = this.getTextureData(tensor.dataId, textureType === TextureType.packed);
+
+    if (!td) {
+      // check if we have texture data in different type
+      td = this.getTextureData(tensor.dataId, textureType !== TextureType.packed);
+      if (td) {
+        if (textureType === TextureType.packed) {
+          return this.pack(td);
+        } else {
+          return this.unpack(td);
+        }
+      }
+    }
+
     if (!td) {
       const layout = createTextureLayoutFromTextureType(this.session.layoutStrategy, tensor.dims, textureType);
 
@@ -190,9 +198,6 @@ export class WebGLInferenceHandler implements InferenceHandler {
 
   reshapeUnpacked(input: Tensor, reshapedDims: readonly number[]): Tensor {
     const inputTD = this.getOrCreateTextureData(input, TextureType.unpacked);
-    if (!inputTD) {
-      throw new Error('texture data of input does not exists');
-    }
     const newTextureLayout: TextureLayout = {
       channels: inputTD.channels,
       height: inputTD.height,
@@ -204,6 +209,35 @@ export class WebGLInferenceHandler implements InferenceHandler {
     };
     const newTextureData = this.createTextureDataFromTexture(newTextureLayout, input.type, inputTD.texture);
     return newTextureData.tensor;
+  }
+
+  reshapePacked(input: Tensor, reshapedDims: readonly number[]): Tensor {
+    const inputTD = this.getOrCreateTextureData(input, TextureType.packed);
+
+    // check if the reshape is 'cheap'
+    if (isReshapeCheap(input.dims, reshapedDims)) {
+      const newTextureLayout: TextureLayout = {
+        channels: inputTD.channels,
+        height: inputTD.height,
+        width: inputTD.width,
+        // handle reshaping into scalar Tensors
+        shape: reshapedDims.length !== 0 ? reshapedDims : [1],
+        strides: ShapeUtil.computeStrides(reshapedDims),
+        unpackedShape: reshapedDims,
+        isPacked: true
+      };
+      const newTextureData = this.createTextureDataFromTexture(newTextureLayout, input.type, inputTD.texture);
+      return newTextureData.tensor;
+    }
+
+    const squeezedInputShape = processDims3D(input.dims);
+    const squeezedOutputShape = processDims3D(reshapedDims);
+
+    const squeezedInputTensor = this.reshapePacked(input, squeezedInputShape);
+    const squeezedOutputTensor = this.run(
+        createPackedReshape3DProgramInfo(this, squeezedInputTensor, squeezedOutputShape), [squeezedInputTensor]);
+    const outputTensor = this.reshapePacked(squeezedOutputTensor, reshapedDims);
+    return outputTensor;
   }
 
   // /**

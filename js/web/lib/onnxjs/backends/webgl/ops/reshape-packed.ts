@@ -9,11 +9,8 @@ import {ProgramInfo, TextureType} from '../types';
 
 import {unpackFromChannel} from './packing-utils';
 
-export const reshapePacked = (handler: WebGLInferenceHandler, x: Tensor, shape: readonly number[]): Tensor =>
-    handler.run(createPackedReshapeProgramInfo(handler, x, shape), [x]);
-
-export const createPackedReshapeProgramInfo =
-    (handler: WebGLInferenceHandler, input: Tensor, outputShape: readonly number[]): ProgramInfo => {
+export const createPackedReshape3DProgramInfo =
+    (handler: WebGLInferenceHandler, input3D: Tensor, outputShape3D: readonly number[]): ProgramInfo => {
       // For packed reshape, we need to re-arrange texel data for output shape.
       // Our pack is designed to pack a 2x2 tile in last h and w dimension, so
       // for the reshaped new tensor, we just need to re-arrange the last h and
@@ -30,8 +27,8 @@ export const createPackedReshapeProgramInfo =
       // mapping with texture layout. In the future, we may consider relaxing this
       // assumption.
 
-      const inputShape3D = processDims3D(input.dims);
-      const squeezedOutputShape = processDims3D(outputShape);
+      const inputShape3D = input3D.dims as [number, number, number];
+      const squeezedOutputShape = outputShape3D as [number, number, number];
 
       let mainLoop = '';
       for (let i = 0; i < 4; i++) {
@@ -91,13 +88,13 @@ export const createPackedReshapeProgramInfo =
         name: 'Reshape (packed)',
         inputTypes: [TextureType.packed],
         inputNames: ['A'],
-        output: {dims: outputShape, type: input.type, textureType: TextureType.packed},
+        output: {dims: squeezedOutputShape, type: input3D.type, textureType: TextureType.packed},
         shaderSource,
         hasMain: true
       };
     };
 
-function processDims3D(shape: ArrayLike<number>): [number, number, number] {
+export function processDims3D(shape: ArrayLike<number>): [number, number, number] {
   if (shape.length === 0) {
     return [1, 1, 1];
   }
@@ -108,6 +105,21 @@ function processDims3D(shape: ArrayLike<number>): [number, number, number] {
   }
   return [batch, shape.length > 1 ? shape[shape.length - 2] : 1, shape[shape.length - 1]];
 }
+
+export function isReshapeCheap(dims: readonly number[], reshapedDims: readonly number[]) {
+  let isCheapReshape = false;
+  if (dims.length === 0 || reshapedDims.length === 0) {  // scalar
+    isCheapReshape = true;
+  } else if (dims.length < 2 || reshapedDims.length < 2) {  // 1D
+    isCheapReshape = dims[dims.length - 1] === reshapedDims[reshapedDims.length - 1];
+  } else {  // 2D +
+    isCheapReshape = dims[dims.length - 1] === reshapedDims[reshapedDims.length - 1] &&
+        dims[dims.length - 2] === reshapedDims[reshapedDims.length - 2];
+  }
+
+  return isCheapReshape;
+}
+
 function getReshapedInputCoords(shape: [number, number, number]): string {
   const strides = ShapeUtil.computeStrides(shape);
   const coords = ['b', 'r', 'c'];

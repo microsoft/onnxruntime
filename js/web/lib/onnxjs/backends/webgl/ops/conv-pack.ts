@@ -6,7 +6,6 @@ import {WebGLInferenceHandler} from '../inference-handler';
 import {calculateOutputShape, ConvAttributes} from './conv';
 import {createPackedIm2ColProgramInfo} from './im2col-pack';
 import {createPackedMatmulProgramInfo} from './matmul-pack';
-import {reshapePacked} from './reshape-packed';
 
 export const conv2DPacked =
     (inferenceHandler: WebGLInferenceHandler, inputs: readonly Tensor[], attributes: ConvAttributes): Tensor => {
@@ -20,7 +19,7 @@ export const conv2DPacked =
           createPackedIm2ColProgramInfo(inferenceHandler, inputs[0], inputs[1], outputShape, attributes), [inputs[0]]);
 
       // reshape kernel
-      const kernelReshaped = reshapePacked(inferenceHandler, inputs[1], [kshape[0], kshape[1] * kshape[2] * kshape[3]]);
+      const kernelReshaped = inferenceHandler.reshapePacked(inputs[1], [kshape[0], kshape[1] * kshape[2] * kshape[3]]);
 
       // run matmul
       const matmulInputs =
@@ -29,6 +28,6 @@ export const conv2DPacked =
           inferenceHandler.run(createPackedMatmulProgramInfo(inferenceHandler, matmulInputs, attributes), matmulInputs);
 
       // reshape output
-      const outputReshaped = reshapePacked(inferenceHandler, matmulOutput, outputShape);
+      const outputReshaped = inferenceHandler.reshapePacked(matmulOutput, outputShape);
       return outputReshaped;
     };
