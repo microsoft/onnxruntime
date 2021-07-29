@@ -325,7 +325,7 @@ def onnxruntime_inference(onnx_model_path, input_hidden_states, attention_mask, 
                                              enable_all_optimization=True,
                                              num_threads=-1,
                                              enable_profiling=False,
-                                             verbose=False)
+                                             verbose=True)
 
     ort_inputs = {
         'past': numpy.ascontiguousarray(past.cpu().numpy()),
@@ -468,29 +468,29 @@ class TestGptAttentionHuggingfaceParity(unittest.TestCase):
         for batch_size in [64]:
             self.run_test(batch_size, float16=False, optimized=optimized, hidden_size=768, num_attention_heads=12)
             self.run_test(batch_size, float16=True, optimized=optimized, hidden_size=768, num_attention_heads=12)
+            #self.run_test(batch_size, float16=False, optimized=optimized, hidden_size=1024, num_attention_heads=16)
+            #self.run_test(batch_size, float16=True, optimized=optimized, hidden_size=1024, num_attention_heads=16)
 
     def run_large(self, optimized):
         for batch_size in [2]:
-            #self.run_test(batch_size, float16 = False, optimized=optimized, hidden_size=1024, num_attention_heads=16)
-            #self.run_test(batch_size, float16 = True, optimized=optimized, hidden_size=1024, num_attention_heads=16)
-            #self.run_test(batch_size, float16 = False, optimized=optimized, hidden_size=2048, num_attention_heads=16)
-            #self.run_test(batch_size, float16 = True, optimized=optimized, hidden_size=2048, num_attention_heads=16)
+            #self.run_test(batch_size, float16=False, optimized=optimized, hidden_size=2048, num_attention_heads=16)
+            #self.run_test(batch_size, float16=True, optimized=optimized, hidden_size=2048, num_attention_heads=16)
             self.run_test(batch_size, float16=False, optimized=optimized, hidden_size=4096, num_attention_heads=32)
             self.run_test(batch_size, float16=True, optimized=optimized, hidden_size=4096, num_attention_heads=32)
 
     def test_optimized(self):
         self.run_small(True)
 
-    def test_non_optimized(self):
-        self.run_small(False)
+    #def test_non_optimized(self):
+    #    self.run_small(False)
 
-    @pytest.mark.slow
-    def test_optimized_large(self):
-        self.run_large(True)
+    #@pytest.mark.slow
+    #def test_optimized_large(self):
+    #    self.run_large(True)
 
-    @pytest.mark.slow
-    def test_non_optimized_large(self):
-        self.run_large(False)
+    #@pytest.mark.slow
+    #def test_non_optimized_large(self):
+    #    self.run_large(False)
 
 
 if __name__ == '__main__':
