@@ -1576,9 +1576,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
 
 def nuphar_run_python_tests(build_dir, configs):
-    """nuphar temporary function for running python tests separately
-    as it requires ONNX 1.5.0
-    """
     for config in configs:
         if config == 'Debug':
             continue
@@ -2138,7 +2135,6 @@ def main():
     if args.test:
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs)
 
-        # run nuphar python tests last, as it installs ONNX 1.5.0
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
             nuphar_run_python_tests(build_dir, configs)
 

@@ -6,6 +6,7 @@
 from ._torch_module_factory import TorchModuleFactory
 from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._custom_gradient_registry import CustomGradientRegistry
+from .debug_options import DebugOptions
 
 from onnxruntime.training import register_custom_ops_pytorch_exporter
 
@@ -21,10 +22,19 @@ class ORTModule(torch.nn.Module):
 
     ORTModule specializes the user's :class:`torch.nn.Module` model, providing :meth:`~torch.nn.Module.forward`,
     :meth:`~torch.nn.Module.backward` along with all others :class:`torch.nn.Module`'s APIs.
+
+    Args:
+        module (torch.nn.Module): User's PyTorch module that ORTModule specializes
+        debug_options (:obj:`DebugOptions`, optional): debugging options for ORTModule.
     """
 
-    def __init__(self, module):
-        self._torch_module = TorchModuleFactory()(module)
+    def __init__(self, module, debug_options=None):
+        # Python default arguments are evaluated on function definintion
+        # and not on function invocation. So, if debug_options is not provided,
+        # instantiate it inside the function.
+        if not debug_options:
+            debug_options = DebugOptions()
+        self._torch_module = TorchModuleFactory()(module, debug_options)
 
         # Create forward dynamically, so each ORTModule instance will have its own copy.
         # This is needed to be able to copy the forward signatures from the original PyTorch models
