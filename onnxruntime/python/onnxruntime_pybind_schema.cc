@@ -74,6 +74,9 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
 #ifdef USE_RKNPU
             onnxruntime::CreateExecutionProviderFactory_Rknpu(),
 #endif
+#ifdef USE_COREML
+            onnxruntime::CreateExecutionProviderFactory_CoreML(0),
+#endif
         };
 
         for (const auto& f : factories) {

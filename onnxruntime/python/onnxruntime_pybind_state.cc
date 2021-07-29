@@ -668,6 +668,10 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #ifdef USE_RKNPU
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Rknpu());
 #endif
+    } else if (type == kCoreMLExecutionProvider) {
+#if defined(USE_COREML)
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CoreML(0));
+#endif
     } else {
       // check whether it is a dynamic load EP:
       const auto it = provider_options_map.find(type);
