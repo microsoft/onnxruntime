@@ -824,41 +824,48 @@ ProcessNextColumnLoopM2
         mul     v18.4s,v30.4s,v9.4s
         mul     v17.4s,v31.4s,v8.4s
         mul     v19.4s,v31.4s,v9.4s
-        ld1     {v4.16b},[x0],#16           // load packed A0
+        ldr     d4,[x0],#8                  // load packed A0.l
         add     v16.4s,v2.4s,v16.4s
         add     v18.4s,v2.4s,v18.4s
+        ldr     d5,[x0],#8                  // load packed A0.h
         add     v17.4s,v3.4s,v17.4s
         add     v19.4s,v3.4s,v19.4s
         b       ComputeBlockLoopM2
 
 SkipScaleByZeroPointBM2
-        ld1     {v4.16b},[x0],#16           // load packed A0
+        ldr     d4,[x0],#8                  // load packed A0.l
         add     v16.4s,v2.4s,v8.4s
         add     v18.4s,v2.4s,v9.4s
+        ldr     d5,[x0],#8                  // load packed A0.h
         add     v17.4s,v3.4s,v8.4s
         add     v19.4s,v3.4s,v9.4s
 
 ComputeBlockLoopM2
+        sub     x3,x3,#1
+        ld1     {v6.16b},[x1],#16           // load packed B0 next 4 k
+        ld1     {v7.16b},[x1],#16           // load packed B1 next 4 k
         UdotByElement 16, 0, 4, 0
         UdotByElement 17, 1, 4, 0
         UdotByElement 18, 0, 4, 1
         UdotByElement 19, 1, 4, 1
-        ld1     {v0.16b},[x1],#16           // load packed B0
-        ld1     {v1.16b},[x1],#16           // load packed B1
-        UdotByElement 16, 0, 4, 2
-        UdotByElement 17, 1, 4, 2
-        UdotByElement 18, 0, 4, 3
-        UdotByElement 19, 1, 4, 3
-        sub     x3,x3,#1
         cbz     x3,ComputeBlockLoopFinishM2
-        ld1     {v0.16b},[x1],#16           // load packed B0
-        ld1     {v1.16b},[x1],#16           // load packed B1
-        ld1     {v4.16b},[x0],#16           // load packed A0
+        ldr     d4,[x0],#8                  // load packed A0.l for next iter
+        ld1     {v0.16b},[x1],#16           // load packed B0 for next iter
+        ld1     {v1.16b},[x1],#16           // load packed B1 for next iter
+        UdotByElement 16, 6, 5, 0
+        UdotByElement 17, 7, 5, 0
+        UdotByElement 18, 6, 5, 1
+        UdotByElement 19, 7, 5, 1
+        ldr     d5,[x0],#8                  // load packed A0.h for next iter
         b       ComputeBlockLoopM2
 
 ComputeBlockLoopFinishM2
         add     x10,x2,x6,lsl #2            // compute output row 2
         subs    x5,x5,#8                    // adjust CountN remaining
+        UdotByElement 16, 6, 5, 0
+        UdotByElement 17, 7, 5, 0
+        UdotByElement 18, 6, 5, 1
+        UdotByElement 19, 7, 5, 1
         blo     StoreOutputPartialM2
         cbnz    x13,SkipAccumulateOutputM2
         ldp     q0,q1,[x2]
