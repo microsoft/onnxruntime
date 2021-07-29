@@ -5,18 +5,19 @@
 
 #include <SdkDdkVer.h>
 
-#if WINVER < _WIN32_WINNT_WIN8
+#if WINVER < _WIN32_WINNT_WIN8 && !defined(WINRT_WIN7_WORKAROUND)
+#define WINRT_WIN7_WORKAROUND
 // Workaround broken WinRT headers using Windows 8 functions unconditionally, even when targeting older releases of Windows
 namespace {
-    int RoTransformError(int, int, void *) {
+    inline int RoTransformError(int, int, void *) {
         return 0;
     }
 
-    int RoOriginateError(int, void *) {
+    inline int RoOriginateError(int, void *) {
         return 0;
     }
 
-    int SetRestrictedErrorInfo(void *) {
+    inline int SetRestrictedErrorInfo(void *) {
         return 0x80004001;
     }
 }

@@ -12,9 +12,6 @@
 #undef OPTIONAL
 #endif
 
-#include <wrl/client.h>
-#include <wrl/implements.h>
-
 #include "fileHelpers.h"
 #include "dllload.h"
 #include <thread>
