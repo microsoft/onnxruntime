@@ -83,6 +83,12 @@ jobs:
          python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
          python3 -m pip install $(Build.BinariesDirectory)/Debug/dist/*.whl
 
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish Debug python package (for docs)'
+    inputs:
+      targetPath: $(Build.BinariesDirectory)/Debug/dist/*.whl
+      artifactName: Python Wheel
+
   - task: CmdLine@2
     displayName: 'Run Debug unit tests'
     inputs:
