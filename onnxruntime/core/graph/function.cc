@@ -19,6 +19,11 @@ static int GetVersionForDomain(const std::string& domain, const std::unordered_m
   return it->second;
 }
 
+void InitAllTypes(std::unordered_set<std::string>& all_types) {
+  all_types.insert(ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat().cbegin(), ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat().cend());
+  all_types.insert(ONNX_NAMESPACE::OpSchema::all_tensor_sequence_types().cbegin(), ONNX_NAMESPACE::OpSchema::all_tensor_sequence_types().cend());
+}
+
 // Auto inferred and generate an opschema for stand-alone functions
 // TODO: revisit to see if we can eliminate typeconstraint step
 void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto_,
@@ -29,6 +34,9 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto
   std::vector<std::pair<std::string, std::string>> output_types_list(onnx_func_proto_.output_size());
   std::unordered_map<std::string, std::vector<std::string>> type_constraint_map;
   std::unordered_map<std::string, ONNX_NAMESPACE::AttributeProto_AttributeType> attribute_type_map;
+  std::unordered_set<std::string> all_types;
+  InitAllTypes(all_types);
+
   auto schema_registry = ONNX_NAMESPACE::OpSchemaRegistry::Instance();
   std::unordered_map<std::string, int> opset_imports;
   for (auto& relied_opset : onnx_func_proto_.opset_import()) {
@@ -44,12 +52,17 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto
       auto iter = input_name_idx_map.find(in_name);
       if (iter != input_name_idx_map.end()) {
         int idx = iter->second;
-        const auto& p = node_op_schema->inputs().at(i);
-        std::string type_str = p.GetTypeStr() + "in" + std::to_string(i);
+        std::string type_str = node_op_schema ? node_op_schema->inputs().at(i).GetTypeStr() + "in" + std::to_string(i) : "Tin" + std::to_string(i);
         input_types_list[idx] = std::make_pair(in_name, type_str);
         if (!type_constraint_map.count(type_str)) {
-          for (auto s : p.GetTypes()) {
-            type_constraint_map[type_str].emplace_back(*s);
+          if (node_op_schema) {
+            for (auto s : node_op_schema->inputs().at(i).GetTypes()) {
+              type_constraint_map[type_str].emplace_back(*s);
+            }
+          } else {
+            for (auto s : all_types) {
+              type_constraint_map[type_str].emplace_back(s);
+            }
           }
         }
       }
@@ -59,12 +72,17 @@ void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_func_proto
       auto iter = output_name_idx_map.find(out_name);
       if (iter != output_name_idx_map.end()) {
         int idx = iter->second;
-        const auto& p = node_op_schema->outputs().at(i);
-        std::string type_str = p.GetTypeStr() + "out" + std::to_string(i);
+        std::string type_str = node_op_schema ? node_op_schema->outputs().at(i).GetTypeStr() + "out" + std::to_string(i) : "Tout" + std::to_string(i);
         output_types_list[idx] = std::make_pair(out_name, type_str);
         if (!type_constraint_map.count(type_str)) {
-          for (auto s : p.GetTypes()) {
-            type_constraint_map[type_str].emplace_back(*s);
+          if (node_op_schema) {
+            for (auto s : node_op_schema->outputs().at(i).GetTypes()) {
+              type_constraint_map[type_str].emplace_back(*s);
+            }
+          } else {
+            for (auto s : all_types) {
+              type_constraint_map[type_str].emplace_back(s);
+            }
           }
         }
       }
@@ -276,6 +294,7 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
 FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
                            const onnxruntime::NodeIndex& node_index,
                            const ONNX_NAMESPACE::FunctionProto& onnx_func_proto,
+                           const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
                            const logging::Logger& logger)
     : parent_graph_(&graph),
       body_(onnx_func_proto.name(), false, onnxruntime::ModelMetaData(),
@@ -302,6 +321,8 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   op_schema_->SinceVersion(static_cast<ONNX_NAMESPACE::OperatorSetVersion>(since_version));
   std::unordered_map<std::string, int> input_name_idx_map;
   std::unordered_map<std::string, int> output_name_idx_map;
+  auto& function_body_graph = body_.MainGraph();
+
   for (int i = 0; i < onnx_func_proto_.input_size(); ++i) {
     input_name_idx_map[onnx_func_proto_.input().Get(i)] = i;
   }
@@ -313,6 +334,20 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   if (!cached_op_schema) {
     // Infer a op_schema for stand-alone functions.
     IOTypeConstraintHelper(onnx_func_proto_, op_schema_, input_name_idx_map, output_name_idx_map);
+
+    // add model local functions to "this" graph. model local functions allow nested functions
+    // there could be one or more nested uninitialized functions in this functions body and 
+    // we will need the function proto to initialize these nodes.
+    for (const auto func_proto : model_local_functions) {
+      // If current function is also a model local function, dont add the function proto
+      // for this function to function body grpah. This is to handle cyclic dependency.
+      // This way if there is a cyclic dependency then during function_body_graph.Resolve() 
+      // we will not try to initialize this again.
+      if (func_proto.first == onnx_func_proto_.name()) {
+        continue;
+      }
+      function_body_graph.AddModelLocalFunction(func_proto.second);
+    }
   } else {
     auto type_constraint_params = cached_op_schema->typeConstraintParams();
     for (auto& type_constraint_param : type_constraint_params) {
@@ -349,8 +384,8 @@ FunctionImpl::FunctionImpl(const onnxruntime::Graph& graph,
   }
 
   op_schema_->Finalize();
+
   //construct body
-  auto& function_body_graph = body_.MainGraph();
   std::vector<const NodeArg*> graph_inputs(node_in_parent_graph->InputDefs().size(), nullptr),
       graph_outputs(node_in_parent_graph->OutputDefs().size(), nullptr);
 

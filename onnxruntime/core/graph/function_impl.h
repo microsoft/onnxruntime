@@ -30,6 +30,7 @@ class FunctionImpl final : public Function {
   FunctionImpl(const onnxruntime::Graph& graph,
                const onnxruntime::NodeIndex& node_index,
                const ONNX_NAMESPACE::FunctionProto& onnx_func,
+               const std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
                const logging::Logger& logger);
 
   ~FunctionImpl() override;

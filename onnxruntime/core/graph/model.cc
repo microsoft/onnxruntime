@@ -46,7 +46,8 @@ Model::Model(const std::string& graph_name,
              const IOnnxRuntimeOpSchemaRegistryList& local_registries,
              const std::unordered_map<std::string, int>& domain_to_version,
              const std::vector<ONNX_NAMESPACE::FunctionProto>&,
-             const logging::Logger& logger)
+             const logging::Logger& logger,
+             const std::vector<ONNX_NAMESPACE::FunctionProto>* model_functions)
     : model_path_(Path::Parse(model_path)) {
   model_proto_.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   model_proto_.mutable_graph()->set_name(graph_name);
@@ -82,10 +83,19 @@ Model::Model(const std::string& graph_name,
     opset_id_proto->set_version(domain.second);
   }
 
+  std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions;
+  if (model_functions) {
+    for (auto& func : *model_functions) {
+      auto func_ptr = model_proto_.add_functions();
+      func_ptr->CopyFrom(func);
+      model_local_functions[func_ptr->name()] = func_ptr;
+    }
+  }
+
   // need to call private ctor so can't use make_shared
   GSL_SUPPRESS(r .11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry,
-                         logger));
+                         logger, model_local_functions));
 }
 
 Model::Model(const ModelProto& model_proto, const PathString& model_path,
@@ -170,9 +180,14 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     }
   }
 
+  std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> model_local_functions;
+  for (auto& func : model_proto_.functions()) {
+    model_local_functions[func.name()] = &func;
+  }
+
   // create instance. need to call private ctor so can't use make_unique
   GSL_SUPPRESS(r .11)
-  graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry, logger));
+  graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry, logger, model_local_functions));
 }
 
 Version Model::IrVersion() const {
