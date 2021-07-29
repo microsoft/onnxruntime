@@ -8,6 +8,7 @@ Pod::Spec.new do |spec|
     spec.summary                = "ONNX Runtime Mobile C/C++ Pod"
     spec.platform               = :ios, "@IOS_DEPLOYMENT_TARGET@"
     spec.vendored_frameworks    = "onnxruntime.framework"
+    spec.static_framework       = true
     spec.weak_framework         = [ @WEAK_FRAMEWORK@ ]
     spec.source_files           = "onnxruntime.framework/Headers/*.h"
     spec.preserve_paths         = [ @LICENSE_FILE@ ]
