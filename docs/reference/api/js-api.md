@@ -20,7 +20,7 @@ ONNX Runtime JavaScript API is the unified interface used by [ONNX Runtime Node.
 
 - ONNX Runtime Node.js binding: Node.js v12.x+ or Electron v5.x+
 - ONNX Runtime Web: mainstream modern browsers on Windows, macOS, Android and iOS.
-- ONNX Runtime for React Native: TBD
+- ONNX Runtime for React Native: same as [ORT Mobile](../mobile/prebuilt-package) (Android/iOS)
 
 ## Builds
 
@@ -29,8 +29,8 @@ Builds are published to **npm** and can be installed using `npm install`
 | Package | Artifact  | Description | Supported Platforms |
 |---------|-----------|-------------|---------------------|
 |Node.js binding|[onnxruntime-node](https://www.npmjs.com/package/onnxruntime-node)|CPU (Release)| Windows x64 CPU NAPI_v3, Linux x64 CPU NAPI_v3, MacOS x64 CPU NAPI_v3|
-|Web|[onnxruntime-web](https://www.npmjs.com/package/onnxruntime-web)||Browsers (wasm, webgl), Node.js (wasm)|
-|React Native|[onnxruntime-react-native](https://www.npmjs.com/package/onnxruntime-react-native)|||
+|Web|[onnxruntime-web](https://www.npmjs.com/package/onnxruntime-web)|CPU and GPU|Browsers (wasm, webgl), Node.js (wasm)|
+|React Native|[onnxruntime-react-native](https://www.npmjs.com/package/onnxruntime-react-native)|CPU|Android, iOS|
 
 For Node.js binding, to use on platforms without pre-built binaries, you can [build Node.js binding from source](../../how-to/build/inferencing.md#apis-and-language-bindings) and consume using `npm install <onnxruntime_repo_root>/js/node/`.
 

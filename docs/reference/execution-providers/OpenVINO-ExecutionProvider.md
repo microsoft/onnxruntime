@@ -15,6 +15,18 @@ OpenVINO Execution Provider enables deep learning inference on Intel CPUs, Intel
 * TOC placeholder
 {:toc}
 
+## Install
+Pre-built packages and Docker images are published for  ONNX Runtime with OpenVINO by Intel for each release. 
+* Python wheels: [intel/onnxruntime](https://github.com/intel/onnxruntime/releases)
+* Docker image: [openvino/onnxruntime_ep_ubuntu18](https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu18)
+
+## Requirements
+
+|ONNX Runtime|OpenVINO|Notes|
+|---|---|---|
+|1.8.1|2021.4|[Details](https://github.com/intel/onnxruntime/releases/tag/v3.0)|
+|1.8.0|2021.3|[Details](https://github.com/intel/onnxruntime/releases/tag/2021.3)|
+
 ## Build
 For build instructions, please see the [BUILD page](../../how-to/build/eps.md#openvino).
 

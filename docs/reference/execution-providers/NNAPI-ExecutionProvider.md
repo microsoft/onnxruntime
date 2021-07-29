@@ -19,6 +19,9 @@ grand_parent: Reference
 
 The NNAPI Execution Provider (EP) requires Android devices with Android 8.1 or higher. It is recommended to use Android devices with Android 9 or higher to achieve optimal performance.
 
+## Install
+Pre-built packages of ONNX Runtime Mobile with NNAPI EP for Android are published on Maven: [com.microsoft.onnxruntime:onnxruntime-mobile](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile).
+
 ## Build
 
 Please see the [ONNX Runtime Mobile](../../how-to/mobile) deployment information for instructions on building or using a pre-built package that includes the NNAPI EP.
