@@ -5,6 +5,5 @@
     "declarationDir": "./types",
     "lib": ["DOM"]
   },
-  "include": ["lib", "script", "test"],
-  "exclude": ["lib/onnxjs/ops", "lib/onnxjs/backends/webgl/ops"]
+  "include": ["lib", "script", "test"]
 }
