@@ -105,8 +105,7 @@ def main():
     run_ortmodule_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda=True,
         data_dir=args.bert_data, transformers_cache=args.transformers_cache)
 
-    # TODO: flaky test. Temporary disabling for further investigation
-    # run_ortmodule_torch_lightning(cwd, log, args.mnist)
+    run_ortmodule_torch_lightning(cwd, log, args.mnist)
 
     # TODO: enable this once the PyTorch used for testing meets the requirements running
     # auto grad testing.

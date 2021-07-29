@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/common/quantization_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 
 #include "core/common/common.h"
@@ -291,21 +292,6 @@ TEST(MatmulIntegerOpTest, MatMulInteger_PerColumn_ND) {
                            134, 130, 62, -39});
 
   test.Run();
-}
-
-template <typename T>
-std::vector<T> ToVector(const int* value, int size) {
-  std::vector<T> data(size);
-  for (int i = 0; i < size; i++) {
-    data[i] = static_cast<T>(value[i]);
-  }
-  return data;
-}
-
-template <typename T>
-T GetMiddle(const std::vector<T>& v) {
-  const auto min_max_pair = std::minmax_element(v.begin(), v.end());
-  return (*(min_max_pair.first) + *(min_max_pair.second)) / 2;
 }
 
 // [M x N] = [M x K] x [K x N] = [batch_seq x input_dim] x [input_dim x embed_dim]

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/session/onnxruntime_c_api.h"
-#include "core/session/allocator_impl.h"
+#include "core/session/allocator_adapters.h"
 #include "core/session/inference_session_utils.h"
 #include "core/session/IOBinding.h"
 #include "core/framework/allocator.h"
@@ -157,7 +157,7 @@ ORT_STATUS_PTR CreateTensorImpl(MLDataType ml_type, const int64_t* shape, size_t
   for (size_t i = 0; i != shape_len; ++i) {
     shapes[i] = shape[i];
   }
-  std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::AllocatorWrapper>(allocator);
+  std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator);
   *out = std::make_unique<Tensor>(ml_type, onnxruntime::TensorShape(shapes), alloc_ptr);
   return nullptr;
 }
@@ -174,7 +174,7 @@ ORT_STATUS_PTR CreateTensorImplForSeq(MLDataType elem_type, const int64_t* shape
   if (st) {
     return st;
   }
-  std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::AllocatorWrapper>(allocator);
+  std::shared_ptr<IAllocator> alloc_ptr = std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator);
   out = Tensor(elem_type, onnxruntime::TensorShape(shapes), alloc_ptr);
   return nullptr;
 }
@@ -409,9 +409,9 @@ ORT_API_STATUS_IMPL(OrtApis::EnableOrtCustomOps, _Inout_ OrtSessionOptions* opti
 
   if (options) {
 #ifdef ENABLE_EXTENSION_CUSTOM_OPS
-  return RegisterCustomOps(options, OrtGetApiBase());
+    return RegisterCustomOps(options, OrtGetApiBase());
 #else
-  return OrtApis::CreateStatus(ORT_FAIL, "EnableOrtCustomOps: Custom operators in onnxruntime-extensions are not enabled");
+    return OrtApis::CreateStatus(ORT_FAIL, "EnableOrtCustomOps: Custom operators in onnxruntime-extensions are not enabled");
 #endif
   }
   return nullptr;
@@ -2292,11 +2292,27 @@ static constexpr OrtApi ort_api_1_to_9 = {
     &OrtApis::GetTensorRTProviderOptionsAsString,
     &OrtApis::ReleaseTensorRTProviderOptions,
     &OrtApis::EnableOrtCustomOps,
+    &OrtApis::RegisterAllocator,
+    &OrtApis::UnregisterAllocator,
 };
 
-// Assert to do a limited check to ensure Version 1 of OrtApi never changes (will detect an addition or deletion but not if they cancel out each other)
-// If this assert hits, read the above 'Rules on how to add a new Ort API version'
+// Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
+// If any of these asserts hit, read the above 'Rules on how to add a new Ort API version'
 static_assert(offsetof(OrtApi, ReleaseCustomOpDomain) / sizeof(void*) == 101, "Size of version 1 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseModelMetadata) / sizeof(void*) == 118, "Size of version 2 API cannot change");
+static_assert(offsetof(OrtApi, AddFreeDimensionOverrideByName) / sizeof(void*) == 124, "Size of version 3 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseAvailableProviders) / sizeof(void*) == 126, "Size of version 4 API cannot change");
+static_assert(offsetof(OrtApi, SetGlobalSpinControl) / sizeof(void*) == 149, "Size of version 5 API cannot change");
+static_assert(offsetof(OrtApi, ReleaseArenaCfg) / sizeof(void*) == 157, "Size of version 6 API cannot change");
+static_assert(offsetof(OrtApi, GetCurrentGpuDeviceId) / sizeof(void*) == 161, "Size of version 7 API cannot change");
+static_assert(offsetof(OrtApi, CreateSessionFromArrayWithPrepackedWeightsContainer) / sizeof(void*) == 169, "Size of version 8 API cannot change");
+
+// So that nobody forgets to finish an API version, this check will serve as a reminder:
+static_assert(std::string_view(ORT_VERSION)=="1.8.1", "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
+// 1. Update the hardcoded version string in above static_assert to silence it
+// 2. If there were any APIs added to ort_api_1_to_9 above:
+//    a. Add the 'End of version #' markers (pattern above should be obvious)
+//    b. Add a static_assert in the directly above list of version sizes to ensure nobody adds any more functions to the just shipped API version
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)

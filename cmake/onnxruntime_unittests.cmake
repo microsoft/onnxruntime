@@ -266,7 +266,9 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     list(APPEND onnxruntime_test_providers_src_patterns
       "${TEST_SRC_DIR}/contrib_ops/*.h"
-      "${TEST_SRC_DIR}/contrib_ops/*.cc")
+      "${TEST_SRC_DIR}/contrib_ops/*.cc"
+      "${TEST_SRC_DIR}/contrib_ops/math/*.h"
+      "${TEST_SRC_DIR}/contrib_ops/math/*.cc")
   endif()
 
   if(onnxruntime_USE_FEATURIZERS)
@@ -824,6 +826,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       ${BENCHMARK_DIR}/batchnorm2.cc
       ${BENCHMARK_DIR}/tptest.cc
       ${BENCHMARK_DIR}/eigen.cc
+      ${BENCHMARK_DIR}/copy.cc
       ${BENCHMARK_DIR}/gelu.cc
       ${BENCHMARK_DIR}/activation.cc
       ${BENCHMARK_DIR}/quantize.cc
@@ -1161,7 +1164,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
                                     AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
                                     AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
                                     AND NOT onnxruntime_BUILD_WEBASSEMBLY
-                                    AND MSVC)
+				    AND NOT onnxruntime_USE_ROCM)
     file(GLOB_RECURSE test_execution_provider_srcs
       "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.h"
       "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.cc"
@@ -1170,7 +1173,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     )
 
     onnxruntime_add_shared_library_module(test_execution_provider ${test_execution_provider_srcs})
-    add_dependencies(test_execution_provider onnxruntime_providers_shared)
+    add_dependencies(test_execution_provider onnxruntime_providers_shared onnx)
     target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared)
     target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
     target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
@@ -1178,7 +1181,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     if(APPLE)
       set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/exported_symbols.lst")
     elseif(UNIX)
-      set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/version_script.lds -Xlinker --gc-sections")
+      set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/version_script.lds -Xlinker --gc-sections -Xlinker -rpath=\\$ORIGIN")
     elseif(WIN32)
       set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/symbols.def")
     else()

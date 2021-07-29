@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if defined(_M_IX86) || defined(_M_X64) || defined(__i386__) || defined(__x86_64__)
+#if defined(_M_IX86) || (defined(_M_X64) && !defined(_M_ARM64EC)) || defined(__i386__) || defined(__x86_64__)
 #define CPUIDINFO_ARCH_X86
 #endif
 
@@ -26,7 +26,7 @@
 #if defined(_MSC_VER) && defined(CPUIDINFO_ARCH_ARM)
 // pytorch cpu info does not work for Windows ARM
 // 1. msvc report syntax error in file src/arm/api.h
-// 2. features reporting micro-arch in Windows is missing 
+// 2. features reporting micro-arch in Windows is missing
 #else
 
 #define CPUINFO_INCLUDED

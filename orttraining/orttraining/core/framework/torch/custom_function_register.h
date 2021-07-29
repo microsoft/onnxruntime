@@ -4,7 +4,7 @@
 #pragma once
 #include "orttraining/core/framework/torch/python_common.h"
 
-#include "core/language_interop_ops/torch/torch_proxy.h"
+#include "orttraining/core/framework/torch/torch_proxy.h"
 #include <mutex>
 #include <unordered_map>
 #include <vector>

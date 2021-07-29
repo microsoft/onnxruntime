@@ -380,6 +380,85 @@ void FusedMatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   updateOutputShape(ctx, 0, resultShape);
 }
 
+// input1Idx - sparse matrix
+// input2Idx - dense matrix.
+// Output is dense
+void sparseCompatibleMatmulShapeInference(
+    ONNX_NAMESPACE::InferenceContext& ctx,
+    int input1Idx,
+    int input2Idx) {
+  if (!hasInputShape(ctx, input1Idx) || !hasInputShape(ctx, input2Idx)) {
+    return;
+  }
+
+  const auto shape0 = getInputShape(ctx, input1Idx);
+  const auto shape1 = getInputShape(ctx, input2Idx);
+
+  if (shape0.dim_size() == 0 || shape1.dim_size() == 0) {
+    fail_shape_inference("Input tensors of wrong rank (0).");
+  }
+
+  ONNX_NAMESPACE::TensorShapeProto shapeL, shapeR;
+
+  // First promote each shape to at least rank-2. This logic is
+  // specific to matmul, not generic broadcasting.
+  {
+    if (shape0.dim_size() == 1) {
+      shapeL.add_dim()->set_dim_value(1);
+      *shapeL.add_dim() = shape0.dim(0);
+    } else {
+      *shapeL.mutable_dim() = shape0.dim();
+    }
+    if (shape1.dim_size() == 1) {
+      *shapeR.add_dim() = shape1.dim(0);
+      shapeR.add_dim()->set_dim_value(1);
+    } else {
+      *shapeR.mutable_dim() = shape1.dim();
+    }
+  }
+
+  // Check for compatible matrix multiply dimensions
+  {
+    auto dimL = shapeL.dim(shapeL.dim_size() - 1);
+    auto dimR = shapeR.dim(shapeR.dim_size() - 2);
+    if (dimL.has_dim_value() && dimR.has_dim_value() &&
+        dimL.dim_value() != dimR.dim_value()) {
+      fail_shape_inference("Incompatible dimensions for matrix multiplication");
+    }
+  }
+
+  ONNX_NAMESPACE::TensorShapeProto resultShape;
+
+  // Now call out to generic multidimensional broadcasting for
+  // the broadcastable prefixes.
+  {
+    ONNX_NAMESPACE::TensorShapeProto prefixShapeL, prefixShapeR;
+    for (int i = 0; i < shapeL.dim_size() - 2; ++i) {
+      *prefixShapeL.add_dim() = shapeL.dim(i);
+    }
+    for (int i = 0; i < shapeR.dim_size() - 2; ++i) {
+      *prefixShapeR.add_dim() = shapeR.dim(i);
+    }
+    bidirectionalBroadcastShapeInference(
+        prefixShapeL, prefixShapeR, resultShape);
+  }
+
+  // Back to matmul-specific. Add the trailing dimensions back in.
+  {
+    if (shape0.dim_size() != 1) {
+      *resultShape.add_dim() = shapeL.dim(shapeL.dim_size() - 2);
+    }
+    if (shape1.dim_size() != 1) {
+      *resultShape.add_dim() = shapeR.dim(shapeR.dim_size() - 1);
+    }
+  }
+
+  // if the input 2 type was not previously propagate to output
+  // we want to make sure that it is the tensor type of input 2
+  auto default_tensor_type = ctx.getInputType(input2Idx)->value_case();
+  updateOutputShape(ctx, 0, resultShape, default_tensor_type);
+}
+
 void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_input_index) {
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 0);
@@ -1844,6 +1923,44 @@ Matrix product that behaves like numpy.matmul: https://docs.scipy.org/doc/numpy-
         FusedMatMulShapeInference(ctx);
       });
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(SparseToDenseMatMul)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Input(0, "A", "2-dimensional sparse matrix A. Either COO or CSR format", "T")
+      .Input(1, "B", "N-dimensional dense matrix B", "T1")
+      .Attr(
+          "alpha",
+          "Scalar multiplier for the product of the input tensors.",
+          AttributeProto::FLOAT,
+          1.0f)
+      .Attr(
+          "transA",
+          "Whether A should be transposed on the last two dimensions before doing multiplication",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "transB",
+          "Whether B should be transposed on the last two dimensions before doing multiplication",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Output(0, "Y", "Matrix multiply results", "T1")
+      .TypeConstraint(
+          "T",
+          {"sparse_tensor(float)", "sparse_tensor(double)", "sparse_tensor(int64)", "sparse_tensor(int32)",
+           "sparse_tensor(uint64)", "sparse_tensor(uint32)"},
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float)", "tensor(double)", "tensor(int64)", "tensor(int32)",
+           "tensor(uint64)", "tensor(uint32)"},
+          "Constrain input and output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // 1- dense tensor to output
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        // TODO: replace with ONNX one when that one is fixed
+        sparseCompatibleMatmulShapeInference(ctx, 0, 1);
+      });
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(MurmurHash3)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
@@ -2985,7 +3102,94 @@ It's an extension of Gelu. It takes the sum of input A and bias input B as the i
           ctx.getOutputType(0)
               ->CopyFrom(input_type->optional_type().elem_type());
           });
-  
+
+  static const char* GridSample_ver1_doc = R"DOC(
+      Given an `input` and a flow-field `grid`, computes the `output` using `input` values and pixel locations from `grid`.
+      Currently, only spatial (4-D) inputs are supported. For `input` with shape (N, C, H, W) and `grid` with shape (N, H_out, W_out, 2),
+      the `output` will have shape (N, C, H_out, W_out).
+      For each output location `output[n, :, h, w]`, the size-2 vector `grid[n, h, w]` specifies `input` pixel locations `x` and `y`,
+      which are used to interpolate the output value `output[n, :, h, w]`.
+      The GridSample operator is often used in doing grid generator and sampler in the [Spatial Transformer Networks](https://arxiv.org/abs/1506.02025).
+      See also in [torch.nn.functional.grid_sample](https://pytorch.org/docs/master/generated/torch.nn.functional.grid_sample.html#torch-nn-functional-grid-sample).
+      )DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GridSample)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(GridSample_ver1_doc)
+      .Attr(
+          "mode",
+          "Three interpolation modes: bilinear (default), nearest and bicubic.",
+          AttributeProto::STRING,
+          std::string("bilinear"))
+      .Attr(
+          "padding_mode",
+          "Support padding modes for outside grid values: `zeros`(default), `border`, `reflection`. "
+          "zeros: use 0 for out-of-bound grid locations, "
+          "border: use border values for out-of-bound grid locations, "
+          "reflection: use values at locations reflected by the border for out-of-bound grid locations.",
+          AttributeProto::STRING,
+          std::string("zeros"))
+      .Attr(
+          "align_corners",
+          "If align_corners=1, the extrema (-1 and 1) are considered as referring to the center points of the input's corner pixels. "
+          "If align_corners=0, they are instead considered as referring to the corner points of the input's corner pixels, making the sampling more resolution agnostic.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Input(
+          0,
+          "X",
+          "4-D tensor of shape (N, C, H, W), "
+          "where N is the batch size, C is the numbers of channels, "
+          "H and W are the height and width of the input data.",
+          "T1")
+      .Input(
+          1,
+          "Grid",
+          "Input offset, 4-D tensor of shape (N, H_out, W_out, 2), "
+          "where H_out and W_out are the height and width of grid and output, "
+          "Grid specifies the sampling pixel locations normalized by the input spatial dimensions. "
+          "Therefore, it should have most values in the range of [-1, 1]. "
+          "If grid has values outside the range of [-1, 1], the corresponding outputs will be handled as defined by padding_mode.",
+          "T1")
+      .Output(
+          0,
+          "Y",
+          "4-D tensor of shape (N, C, H_out, W_out).",
+          "T2")
+      .TypeConstraint(
+          "T1",
+          OpSchema::all_tensor_types(),
+          "Constrain input types to all tensor types.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain output types to float tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+        size_t input_param = 0, grid_param = 1;
+
+        checkInputRank(ctx, input_param, 4);
+        checkInputRank(ctx, grid_param, 4);
+
+        // Output dimensions, initialized to an unknown-dimension-value
+        Dim N, C, H_out, W_out;
+
+        // Get value of N from dim 0 of input_param, if available
+        unifyInputDim(ctx, input_param, 0, N);
+        // Get value of C from dim 1 of input_param, if available
+        unifyInputDim(ctx, input_param, 1, C);
+
+        // Get value of H_out from dim 1 of grid_param, if available
+        unifyInputDim(ctx, grid_param, 1, H_out);
+        // Get value of W_out from dim 2 of grid_param, if available
+        unifyInputDim(ctx, grid_param, 2, W_out);
+
+        // set output shape:
+        updateOutputShape(ctx, 0, {N, C, H_out, W_out});
+      });
+
 #ifndef _OPSCHEMA_LIB_
   // Register the NCHWc schemas if supported by the platform.
   if (MlasNchwcGetBlockSize() > 1) {
