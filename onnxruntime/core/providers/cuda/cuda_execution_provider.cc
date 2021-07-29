@@ -310,20 +310,28 @@ Status CUDAExecutionProvider::OnRunStart() {
     auto& e = it->first;
     auto& v = it->second;
     // note that cudaEventQuery returns cudaSucess before first cudaEventRecord
-    if (v.recorded && cudaSuccess == cudaEventQuery(e)) {
-      for (auto p : v.cpu_ptrs) {
-        cpu_alloc->Free(p);
+    if (v.recorded) {
+      auto event_query_status = cudaEventQuery(e);
+      if (event_query_status == cudaSuccess) {
+        for (auto p : v.cpu_ptrs) {
+          cpu_alloc->Free(p);
+        }
+        CUDA_RETURN_IF_ERROR(cudaEventDestroy(e));
+        it = deferred_release_cpu_ptr_.erase(it);
+      } else if (event_query_status == cudaErrorNotReady) {
+        // ignore and clear the error if not ready
+        cudaGetLastError();
+        it++;
+      } else {
+        CUDA_RETURN_IF_ERROR(event_query_status);
       }
-      cudaEvent_t expired_event = it->first;
-      it = deferred_release_cpu_ptr_.erase(it);
-      CUDA_RETURN_IF_ERROR(cudaEventDestroy(expired_event));
     } else {
       ++it;
     }
   }
 
   auto& current_deferred_release_event = GetPerThreadContext().GetCurrentDeferredReleaseEvent();
-  CUDA_RETURN_IF_ERROR(cudaEventCreate(&current_deferred_release_event, cudaEventDisableTiming));
+  CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&current_deferred_release_event, cudaEventDisableTiming));
   deferred_release_cpu_ptr_.emplace(current_deferred_release_event, DeferredReleaseCPUPtrs());
   return Status::OK();
 }

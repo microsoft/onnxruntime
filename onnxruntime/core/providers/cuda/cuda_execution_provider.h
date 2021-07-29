@@ -72,7 +72,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   int GetDeviceId() const override { return info_.device_id; }
   const cudaDeviceProp& GetDeviceProp() const { return device_prop_; };
+  // TODO MIOpen integration
+#ifndef USE_ROCM
   int GetCudnnConvAlgo() const { return info_.cudnn_conv_algo_search; }
+#endif
 
   ProviderOptions GetProviderOptions() const override {
     return CUDAExecutionProviderInfo::ToProviderOptions(info_);
@@ -131,12 +134,14 @@ class CUDAExecutionProvider : public IExecutionProvider {
           constant_ones_half_ = cuda::CreateConstantOnes<half>();
         }
         return reinterpret_cast<const T*>(constant_ones_half_->GetBuffer(stream_, count));
+#ifndef USE_ROCM
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
       } else if (std::is_same<T, nv_bfloat16>::value) {
         if (!constant_ones_bfloat16_) {
           constant_ones_bfloat16_ = cuda::CreateConstantOnes<nv_bfloat16>();
         }
         return reinterpret_cast<const T*>(constant_ones_bfloat16_->GetBuffer(stream_, count));
+#endif
 #endif
       } else {
         return nullptr;
@@ -160,8 +165,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
     std::unique_ptr<cuda::IConstantBuffer<float>> constant_ones_float_;
     std::unique_ptr<cuda::IConstantBuffer<double>> constant_ones_double_;
     std::unique_ptr<cuda::IConstantBuffer<half>> constant_ones_half_;
+#ifndef USE_ROCM
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
     std::unique_ptr<cuda::IConstantBuffer<nv_bfloat16>> constant_ones_bfloat16_;
+#endif
 #endif
 
     AllocatorPtr allocator_;

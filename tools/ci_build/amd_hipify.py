@@ -147,18 +147,13 @@ provider_excluded_files = [
                 'tensor/upsample_impl.cu',
                 'tensor/upsample_impl.h',
                 'cuda_common.cc', # implements cublas math modes; no support in HIP
-                'cuda_execution_provider_info.cc',
-                'cuda_execution_provider_info.h',
-                'cuda_execution_provider.cc',
-                'cuda_execution_provider.h',
                 'cuda_memory_check.cc',
                 'cuda_memory_check.h',
                 'cuda_pch.cc', # not sure why we skip this one
                 'cuda_pch.h', # small header, hipify doesn't get it right, easier to do manually
-                'cuda_provider_factory.cc',
                 'cudnn_common.cc',
                 'cudnn_common.h',
-                'fpgeneric.cu',
+                'fpgeneric.cu', # small, hipify doesn't get it right, easier to do manually
                 'integer_gemm.cc',
                 'symbols.txt',
 ]
@@ -170,13 +165,13 @@ training_ops_excluded_files = [
                     'collective/nccl_common.cc',
                     'collective/ready_event.cc',
                     'collective/ready_event.h',
-                    'communication/common.h',
-                    'communication/nccl_service.cc',
-                    'communication/nccl_service.h',
-                    'communication/recv.cc',
-                    'communication/recv.h',
-                    'communication/send.cc',
-                    'communication/send.h',
+#                    'communication/common.h',
+#                    'communication/nccl_service.cc',
+#                    'communication/nccl_service.h',
+#                    'communication/recv.cc',
+#                    'communication/recv.h',
+#                    'communication/send.cc',
+#                    'communication/send.h',
                     'controlflow/record.cc',
                     'controlflow/record.h',
                     'controlflow/wait.cc',
@@ -219,12 +214,18 @@ def hipify(src_file_path, dst_file_path):
 
     # We want rocblas interfaces, not hipblas. Also force some hipify replacements back to rocblas from hipblas.
     s = s.replace('CublasHandle', 'RocblasHandle')
-    s = s.replace('cublas_handle', 'rocblas_handle_var')
+    s = s.replace('cublas_handle', 'rocblas_handle')
     s = s.replace('hipblasHandle_t', 'rocblas_handle')
     s = s.replace('hipblasDatatype_t', 'rocblas_datatype')
     s = s.replace('HIPBLAS_STATUS_SUCCESS', 'rocblas_status_success')
     s = s.replace('hipblasStatus_t', 'rocblas_status')
+    s = s.replace('hipblasCreate', 'rocblas_create_handle')
+    s = s.replace('hipblasDestroy', 'rocblas_destroy_handle')
+    s = s.replace('hipblasSetStream', 'rocblas_set_stream')
 
+    s = s.replace('RegisterCudaContribKernels', 'RegisterRocmContribKernels')
+    s = s.replace('cudaEvent', 'hipEvent')
+    s = s.replace('CreateCudaAllocator', 'CreateRocmAllocator')
     s = s.replace('CudaErrString', 'RocmErrString')
     s = s.replace('CudaAsyncBuffer', 'RocmAsyncBuffer')
     s = s.replace('CudaKernel', 'RocmKernel')
@@ -294,9 +295,13 @@ def hipify(src_file_path, dst_file_path):
     s = s.replace('CUFFT', 'HIPFFT')
 
     # Undo where above hipify steps went too far.
+    s = s.replace('id, ROCM', 'id, CUDA') # cuda_execution_provider.cc
     s = s.replace('ROCM error executing', 'HIP error executing')
     s = s.replace('ROCM_PINNED', 'CUDA_PINNED')
     s = s.replace('rocm_err', 'hip_err')
+    s = s.replace('MiopenConvAlgoSearch', 'CudnnConvAlgoSearch')
+    s = s.replace('miopen_conv_algo_search', 'cudnn_conv_algo_search')
+    s = s.replace('RegisterHipTrainingKernels', 'RegisterRocmTrainingKernels')
 
     do_write = True
     if os.path.exists(dst_file_path):

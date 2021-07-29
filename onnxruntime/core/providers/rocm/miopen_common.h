@@ -3,11 +3,11 @@
 
 #pragma once
 
-#include <miopen/miopen.h>
+#include <cfloat>
 
 #include "core/providers/rocm/rocm_common.h"
-#include "core/framework/tensor.h"
-#include <cfloat>
+
+#include <miopen/miopen.h>
 
 namespace onnxruntime {
 namespace rocm {
