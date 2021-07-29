@@ -9,7 +9,7 @@ from onnx import helper, numpy_helper, shape_inference
 import sympy
 
 from packaging import version
-assert version.parse(onnx.__version__) >= version.parse("1.5.0")
+assert version.parse(onnx.__version__) >= version.parse("1.8.0")
 
 
 def get_attribute(node, attr_name, default_value=None):
