@@ -146,4 +146,17 @@ class DnnlMatMulNodeCapability : public DnnlDefaultNodeCapability {
   bool IsDimensionSupported(const Node* node) const;
 };
 
+/**
+ * Decide if a MatMulInteger op is supported by DnnlExecutionProvider
+ */
+class DnnlMatMulIntegerNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlMatMulIntegerNodeCapability() : DnnlDefaultNodeCapability({"int8", "uint8"}) {}
+
+  bool Supported(const Node* node) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node) const;
+};
+
 }  // namespace onnxruntime

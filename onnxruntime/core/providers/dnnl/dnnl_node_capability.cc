@@ -2,6 +2,7 @@
 // Licensed under the MIT License
 
 #include "dnnl_node_capability.h"
+#include "dnnl.hpp"
 
 namespace onnxruntime {
 // DnnlDefaultNodeCapability class
@@ -116,6 +117,7 @@ bool DnnlReduceMeanNodeCapability::IsAttributeSupported(const Node* node) const 
 }
 
 // DnnlMatMulNodeCapability class
+//-------------------------------------
 bool DnnlMatMulNodeCapability::Supported(const Node* node) const {
   if (!IsTypeSupported(node)) return false;
   if (!IsDimensionSupported(node)) return false;
@@ -124,9 +126,14 @@ bool DnnlMatMulNodeCapability::Supported(const Node* node) const {
 
 bool DnnlMatMulNodeCapability::IsDimensionSupported(const Node* node) const {
   auto node_inputs = node->InputDefs();
+
+  // if shape not specified (nullptr), support it (might fail if end up being not valid)
+  if (node_inputs[0]->Shape() == nullptr || node_inputs[1]->Shape() == nullptr) {
+    return true;
+  }
+  // if shape not nullptr, need to have at least 2 dims (a matrix)
   if ((node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() >= 2) &&
-      (node_inputs[1]->Shape() != nullptr && node_inputs[1]->Shape()->dim_size() >= 2) &&
-      (node_inputs[0]->Shape()->dim_size() == node_inputs[1]->Shape()->dim_size())) {
+      (node_inputs[1]->Shape() != nullptr && node_inputs[1]->Shape()->dim_size() >= 2)) {
     for (const auto& dim : node_inputs[0]->Shape()->dim()) {
       if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
         return false;
@@ -140,6 +147,68 @@ bool DnnlMatMulNodeCapability::IsDimensionSupported(const Node* node) const {
   } else {
     return false;
   }
+
+  return true;
+}
+
+// DnnlMatMulIntegerNodeCapability class
+//-------------------------------------
+bool DnnlMatMulIntegerNodeCapability::Supported(const Node* node) const {
+  if (!IsTypeSupported(node)) return false;
+  if (!IsDimensionSupported(node)) return false;
+
+  // if weight is u8, onednn doesn't support
+  auto node_inputs = node->InputDefs();
+  if (node_inputs[1]->Type()->find("uint8") != std::string::npos) {
+    return false;
+  }
+
+  // do not support matmulint on gpu
+  if (dnnl_engine_get_count(dnnl_engine_kind_t::dnnl_gpu)) {
+    return false;
+  }
+  return true;
+}
+
+bool DnnlMatMulIntegerNodeCapability::IsDimensionSupported(const Node* node) const {
+  auto node_inputs = node->InputDefs();
+
+  //if shape nullptr, attempt to run it (no gaurantee)
+  if (node_inputs[0]->Shape() == nullptr || node_inputs[1]->Shape() == nullptr) {
+    return true;
+  }
+
+  if ((node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() >= 2) &&
+      (node_inputs[1]->Shape() != nullptr && node_inputs[1]->Shape()->dim_size() >= 2)) {
+    for (const auto& dim : node_inputs[0]->Shape()->dim()) {
+      if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
+        return false;
+      }
+    }
+    for (const auto& dim : node_inputs[1]->Shape()->dim()) {
+      if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
+        return false;
+      }
+    }
+  } else {
+    return false;
+  }
+
+  //do not support other than single zero point (not per column)
+  if (node_inputs.size() > 2) {
+    if (node_inputs.size() >= 3 && node_inputs[2] && node_inputs[2]->Exists()) {
+      if (node_inputs[2]->Shape() != nullptr && node_inputs[2]->Shape()->dim_size() >= 1) {
+        return false;
+      }
+    }
+
+    if (node_inputs.size() >= 4 && node_inputs[3] && node_inputs[3]->Exists()) {
+      if (node_inputs[3]->Shape() != nullptr && node_inputs[3]->Shape()->dim_size() >= 1) {
+        return false;
+      }
+    }
+  }
+
   return true;
 }
 
