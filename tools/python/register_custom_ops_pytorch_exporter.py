@@ -4,7 +4,7 @@
 # Register pytorch symbolic for export using ONNX Runtime contrib ops
 
 from torch.onnx import register_custom_op_symbolic
-
+import torch.onnx.symbolic_helper as sym_help
 
 _onnx_opset_version = 1
 
@@ -16,6 +16,25 @@ def register_custom_op():
     """
 
     # Symbolic definition
+    def grid_sample(g, self, input, mode, padding_mode, align_corners):
+        # mode
+        #   'bilinear'      : onnx::Constant[value={0}]
+        #   'nearest'       : onnx::Constant[value={1}]
+        #   'bicubic'       : onnx::Constant[value={2}]
+        # padding_mode
+        #   'zeros'         : onnx::Constant[value={0}]
+        #   'border'        : onnx::Constant[value={1}]
+        #   'reflection'    : onnx::Constant[value={2}]
+        mode = sym_help._maybe_get_const(mode, "i")
+        padding_mode = sym_help._maybe_get_const(padding_mode, "i")
+        mode_str = ['bilinear', 'nearest', 'bicubic'][mode]
+        padding_mode_str = ['zeros', 'border', 'reflection'][padding_mode]
+        align_corners = int(sym_help._maybe_get_const(align_corners, "b"))
+        return g.op("com.microsoft::GridSample", self, input,
+                    mode_s=mode_str,
+                    padding_mode_s=padding_mode_str,
+                    align_corners_i=align_corners)
+
     def inverse(g, self):
         return g.op("com.microsoft::Inverse", self).setType(self.type())
 
@@ -29,6 +48,7 @@ def register_custom_op():
         return g.op("com.microsoft::Trilu", self, diagonal, upper_i=0).setType(self.type())
 
     # Op Registration
+    register_custom_op_symbolic('::grid_sampler', grid_sample, _onnx_opset_version)
     register_custom_op_symbolic('::inverse', inverse, _onnx_opset_version)
     register_custom_op_symbolic('::gelu', gelu, _onnx_opset_version)
     register_custom_op_symbolic('::triu', triu, _onnx_opset_version)

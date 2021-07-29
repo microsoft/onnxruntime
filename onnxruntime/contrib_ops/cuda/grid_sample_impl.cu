@@ -1,0 +1,240 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include "core/providers/cuda/cu_inc/common.cuh"
+#include "grid_sample_impl.h"
+
+using namespace onnxruntime::cuda;
+
+namespace onnxruntime {
+namespace contrib {
+namespace cuda {
+
+template <typename T>
+__device__ T denormalize(T n, int64_t length, bool align_corners) {
+  T x = {};
+  if (align_corners) {  // align_corners: true => [-1, 1] to [0, length - 1]
+    x = (n + static_cast<T>(1)) / static_cast<T>(2) * (length - 1);
+  } else {  // align_corners: false => [-1, 1] to [-0.5, length - 0.5]
+    x = ((n + static_cast<T>(1)) * length - static_cast<T>(1)) / static_cast<T>(2);
+  }
+  return x;
+}
+
+template <typename T>
+__device__ T reflect(T x, T x_min, T x_max) {
+  T dx = {};
+  T range = x_max - x_min;
+  if (x < x_min) {
+    dx = x_min - x;
+    int n = static_cast<int>(dx / range);
+    T r = dx - n * range;
+    if (n % 2 == 0) {
+      x = x_min + r;
+    }
+    else {
+      x = x_max - r;
+    }
+  }
+  else if (x > x_max) {
+    dx = x - x_max;
+    int n = static_cast<int>(dx / range);
+    T r = dx - n * range;
+    if (n % 2 == 0) {
+      x = x_max - r;
+    }
+    else {
+      x = x_min + r;
+    }
+  }
+  // else fallthrough
+  return x;
+}
+
+template <typename T>
+__device__ T PixelAtGrid(const T* input_data, int64_t bIdx, int64_t cIdx, int64_t y, int64_t x, int64_t padding_mode, int64_t N, int64_t C, int64_t H, int64_t W, T border[4]) {
+  T pixel = 0.0f;
+  if (padding_mode == 0) { // zeros
+    if (x >= 0 && x < W && y >= 0 && y < H) {
+      pixel = input_data[bIdx * C * H * W + cIdx * H * W + y * W + x];
+    }
+  } else if (padding_mode == 1) { //border
+    x = max((int64_t)0, min((int64_t)W - 1, (int64_t)x));
+    y = max((int64_t)0, min((int64_t)H - 1, (int64_t)y));
+    pixel = input_data[bIdx * C * H * W + cIdx * H * W + y * W + x];
+  } else {  // Reflection
+    x = (int64_t) reflect<T>(x, border[0], border[2]);
+    y = (int64_t) reflect<T>(y, border[1], border[3]);
+    pixel = input_data[bIdx * C * H * W + cIdx * H * W + y * W + x];
+  }
+  return pixel;
+}
+
+template <typename T>
+__device__ void get_cubic_coeffs(T x, T coeffs[4])
+{
+  T cubic_alpha = -0.75f;
+  if (x < 0.0f) {  // abs
+    x = -x;
+  }
+
+  coeffs[0] = (((cubic_alpha * (x + 1) - 5 * cubic_alpha) * (x + 1) + 8 * cubic_alpha) * (x + 1) - 4 * cubic_alpha);
+  coeffs[1] = (((cubic_alpha + 2) * x - (cubic_alpha + 3)) * x * x + 1);
+  coeffs[2] = (((cubic_alpha + 2) * (1 - x) - (cubic_alpha + 3)) * (1 - x) * (1 - x) + 1);
+  coeffs[3] = (((cubic_alpha * (2 - x) - 5 * cubic_alpha) * (2 - x) + 8 * cubic_alpha) * (2 - x) - 4 * cubic_alpha);
+}
+
+template <typename T>
+__device__ T bicubic(T p[4][4], T x, T y) {
+  T v[4] = {};
+  T coeffs[4] = {};
+  get_cubic_coeffs(x, coeffs);
+  for (int64_t i = 0; i < 4; i++) {
+    v[i] = coeffs[0] * p[i][0] + coeffs[1] * p[i][1] + coeffs[2] * p[i][2] + coeffs[3] * p[i][3];
+  }
+  get_cubic_coeffs(y, coeffs);
+  T pixel = coeffs[0] * v[0] + coeffs[1] * v[1] + coeffs[2] * v[2] + coeffs[3] * v[3];
+  return pixel;
+}
+
+template <typename T>
+__global__ void _GridSampleKernel(
+    const T* input_data,
+    const T* grid_data,
+    const int64_t mode,
+    const int64_t padding_mode,
+    const int64_t align_corners,
+    // const int64_t dims[4],  // N, C, H_in, W_in
+    const int64_t N,
+    const int64_t C,
+    const int64_t H_in,
+    const int64_t W_in,
+    const int64_t H_out,
+    const int64_t W_out,
+    T* output_data) 
+{
+    CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(idx, N * C * H_out * W_out);
+    //extract batch index, channel index, y index, x index for current thread
+    int BIdx = idx / (W_out * H_out * W_out );
+    int tmpBCnt = BIdx * (C * H_out * W_out);
+
+    int cIdx = (idx - tmpBCnt) / (H_out * W_out);
+    int tmpCCnt = tmpBCnt + cIdx * (H_out * W_out);
+
+    int yIdx = (idx - tmpCCnt) / W_out;
+    int tmpHCnt = tmpCCnt + yIdx * W_out;
+
+    int xIdx = (idx - tmpHCnt);
+
+    int grid_idx = BIdx * H_out * W_out + yIdx * W_out + xIdx;
+    T grid_X = grid_data[grid_idx*2 + 0];
+    T grid_Y = grid_data[grid_idx*2 + 1];
+    int outIdx = idx;
+
+    T grid_x_imgSpace = denormalize(grid_X, W_in, align_corners == 1);
+    T grid_y_imgSpace = denormalize(grid_Y, H_in, align_corners == 1);
+    if (mode == 1) { //nearest
+      grid_x_imgSpace = nearbyint(grid_x_imgSpace);
+      grid_y_imgSpace = nearbyint(grid_y_imgSpace);
+    }
+    T x_min = -0.5f;
+    T x_max = W_in - 0.5f;
+    T y_min = -0.5f;
+    T y_max = H_in - 0.5f;
+
+    if (align_corners) {
+      x_min = 0.0f;
+      x_max = W_in - 1.0;
+      y_min = 0.0f;
+      y_max = H_in - 1.0f;
+    }
+    T border[] = {x_min, y_min, x_max, y_max};                                                                       // l-t-r-b
+    if (grid_x_imgSpace < x_min || grid_x_imgSpace > x_max || grid_y_imgSpace < y_min || grid_y_imgSpace > y_max) {  // out of bound
+      if (padding_mode == 0) { // zeros
+        output_data[outIdx] = 0.0f;
+        return;
+      }
+      else if (padding_mode == 1) { //border
+        grid_x_imgSpace = max(0.0f, min(grid_x_imgSpace, W_in - 1.0f));  // use original border in both align_corner cases
+        grid_y_imgSpace = max(0.0f, min(grid_y_imgSpace, H_in - 1.0f));
+      } else {  // Reflection
+        grid_x_imgSpace = reflect(grid_x_imgSpace, x_min, x_max);
+        grid_y_imgSpace = reflect(grid_y_imgSpace, y_min, y_max);
+      }
+    }
+
+    if (mode == 0) { //bilinear
+      int x1 = floor(grid_x_imgSpace);
+      int y1 = floor(grid_y_imgSpace);
+      int x2 = x1 + 1;
+      int y2 = y1 + 1;
+      T w_lt = 0.0f;
+      T w_rt = 0.0f;
+      T w_lb = 0.0f;
+      T w_rb = 0.0f;
+
+      T w_r = grid_x_imgSpace - x1;
+      T w_l = 1.0f - w_r;
+      T w_b = grid_y_imgSpace - y1;
+      T w_t = 1.0f - w_b;
+
+      w_lt = w_t * w_l;
+      w_rt = w_t * w_r;
+      w_lb = w_b * w_l;
+      w_rb = w_b * w_r;
+
+      T lt_v = PixelAtGrid(input_data, BIdx, cIdx, y1, x1, padding_mode, N, C, H_in, W_in, border);
+      T rt_v = PixelAtGrid(input_data, BIdx, cIdx, y1, x2, padding_mode, N, C, H_in, W_in, border);
+      T lb_v = PixelAtGrid(input_data, BIdx, cIdx, y2, x1, padding_mode, N, C, H_in, W_in, border);
+      T rb_v = PixelAtGrid(input_data, BIdx, cIdx, y2, x2, padding_mode, N, C, H_in, W_in, border);
+      T interpoV = w_lt * lt_v + w_rt * rt_v + w_lb * lb_v + w_rb * rb_v;
+      output_data[outIdx] = interpoV;
+      return;
+    }
+    if (mode == 1)  {//nearest
+        int x_n = grid_x_imgSpace;
+        int y_n = grid_y_imgSpace;
+        T outV = input_data[BIdx * C * H_in * W_in + cIdx * H_in * W_in + y_n * W_in + x_n];
+        output_data[outIdx] = outV;
+        return;
+    } 
+    if (mode == 2) {//bicubic
+      int64_t x0 = static_cast<int64_t>(std::floor(grid_x_imgSpace)) - 1;  // top-left corner of the bbox
+      int64_t y0 = static_cast<int64_t>(std::floor(grid_y_imgSpace)) - 1;
+      T p[4][4] = {};  // [H][W]
+      for (int64_t h = 0; h < 4; h++) {
+        for (int64_t w = 0; w < 4; w++) {
+          p[h][w] = PixelAtGrid(input_data, BIdx, cIdx, h + y0, w + x0, padding_mode, N, C, H_in, W_in, border);
+        }
+      }
+      T dx = grid_x_imgSpace - x0 - 1;
+      T dy = grid_y_imgSpace - y0 - 1;
+      output_data[outIdx] = bicubic(p, dx, dy);
+    }
+}
+
+template <typename T>
+void GridSampleImpl(
+    cudaStream_t stream,
+    const T* input_data,
+    const T* grid_data,
+    const int64_t mode,
+    const int64_t padding_mode,
+    const int64_t align_corners,
+    const int64_t dims[4], 
+    const int64_t H_out,
+    const int64_t W_out,
+    T* output_data) {
+  int blocksPerGrid = (int)(ceil(static_cast<T>(dims[0] * dims[1] * H_out * W_out) / GridDim::maxThreadsPerBlock));
+  _GridSampleKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+      input_data, grid_data, mode, padding_mode, align_corners, dims[0], dims[1], dims[2], dims[3], H_out, W_out, output_data);
+}
+
+#define SPECIALIZED_IMPL(T) \
+  template void GridSampleImpl<T>(cudaStream_t stream, const T* input_data, const T* grid_data, const int64_t mode, const int64_t padding_mode, const int64_t align_corners, const int64_t[4], const int64_t H_out, const int64_t W_out, T* output_data);
+
+SPECIALIZED_IMPL(float)
+
+}  // namespace cuda
+}  //namespace contrib
+}  // namespace onnxruntime
