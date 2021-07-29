@@ -1689,7 +1689,11 @@ if (WIN32)
     add_link_options(/APPCONTAINER)
   else()
     add_compile_definitions(WINAPI_FAMILY=100) # Desktop app
-    add_compile_definitions(WINVER=0x0601 _WIN32_WINNT=0x0601 NTDDI_VERSION=0x06010000)  # Support Windows 7 and newer
+    if (onnxruntime_USE_WINML)
+      add_compile_definitions(WINVER=0x0602 _WIN32_WINNT=0x0602 NTDDI_VERSION=0x06020000)  # Support Windows 7 and newer
+    else()
+      add_compile_definitions(WINVER=0x0601 _WIN32_WINNT=0x0601 NTDDI_VERSION=0x06010000)  # Support Windows 7 and newer
+    endif()
   endif()
 endif()
 
