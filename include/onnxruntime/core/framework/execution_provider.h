@@ -19,6 +19,7 @@ class Node;
 struct ComputeCapability;
 class KernelRegistry;
 class KernelRegistryManager;
+
 }  // namespace onnxruntime
 #else
 #include <memory>
@@ -27,6 +28,7 @@ class KernelRegistryManager;
 #include "core/framework/provider_options.h"
 #include "core/framework/func_api.h"
 #include "core/framework/allocatormgr.h"
+#include "core/common/profiler_common.h"
 
 namespace onnxruntime {
 
@@ -265,6 +267,10 @@ class IExecutionProvider {
      EPs will have a shared pointer to allocator_manager, allocator_managerall will be the only place for allocators
   */
   virtual void RegisterAllocator(std::shared_ptr<AllocatorManager> allocator_manager);
+
+  virtual std::unique_ptr<profiling::EpProfiler> GetProfiler() {
+    return {};
+  }
 
  private:
   const std::string type_;
