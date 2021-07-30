@@ -646,34 +646,6 @@ MlasReduceMinimumMaximumF32Kernel(
     *Max = tmp_max;
 }
 
-#pragma warning(disable: 4100)
-
-// TODO(kreeger): Does this need to move to another location?
-static inline float sum_128_horizontal(__m128 sums_128) {
-  // Copy the values of a and swizzle so that each pair (2 low, 2 high) can
-  // be summed together in the next step. The shuffle param (2, 3, 0, 1)
-  // results in the original indexes of a placed in the following new order:
-  // [1, 0, 3, 2]
-  __m128 shuffle_128 =
-      _mm_shuffle_ps(sums_128, sums_128, _MM_SHUFFLE(2, 3, 0, 1));
-
-  // Sum the swizzled a pairs:
-  // [(0 + 1), (1 + 0), (2 + 3), (3 + 2)]
-  sums_128 = _mm_add_ps(sums_128, shuffle_128);
-
-  // Now copy the 2 high values from |sums| to the 2 low values and copy the
-  // 2 high values from |shuffle| to the 2 high values.
-  // [(2 + 3), (3 + 2), 3, 2]
-  shuffle_128 = _mm_movehl_ps(shuffle_128, sums_128);
-
-  // Finally, add the lower value in |sums| against the lower value in
-  // |shuffle|. This will result in the sum of |a| located in the first
-  // value of |sums|.
-  // [((2 + 3) + (0 + 1), (1 + 0), 3, 2]
-  sums_128 = _mm_add_ss(sums_128, shuffle_128);
-  return _mm_cvtss_f32(sums_128);
-}
-
 void
 MLASCALL
 MlasVectorDotProductF32Kernel(
@@ -684,13 +656,6 @@ MlasVectorDotProductF32Kernel(
     size_t N
     )
 {
-
-  //
-  // TOOD(kreeger): determine the transpose policy here. Could have two
-  //                methods, one to transpose and run and another to just call
-  //                packed.
-  //
-
   size_t C_idx = 0;
 
   while (N > 0) {
@@ -702,26 +667,26 @@ MlasVectorDotProductF32Kernel(
 
     while (cur_M >= 16) {
    
-      __m128 packed_a_0 = _mm_loadu_ps(&cur_A[0]);
-      __m128 packed_a_1 = _mm_loadu_ps(&cur_A[4]);
-      __m128 packed_a_2 = _mm_loadu_ps(&cur_A[8]);
-      __m128 packed_a_3 = _mm_loadu_ps(&cur_A[12]);
+      MLAS_FLOAT32X4 a_0 = MlasLoadFloat32x4(&cur_A[0]);
+      MLAS_FLOAT32X4 a_1 = MlasLoadFloat32x4(&cur_A[4]);
+      MLAS_FLOAT32X4 a_2 = MlasLoadFloat32x4(&cur_A[8]);
+      MLAS_FLOAT32X4 a_3 = MlasLoadFloat32x4(&cur_A[12]);
 
-      __m128 packed_b_0 = _mm_load_ps(&B[0]);
-      __m128 packed_b_1 = _mm_load_ps(&B[4]);
-      __m128 packed_b_2 = _mm_load_ps(&B[8]);
-      __m128 packed_b_3 = _mm_load_ps(&B[12]);
+      MLAS_FLOAT32X4 b_0 = MlasLoadFloat32x4(&B[0]);
+      MLAS_FLOAT32X4 b_1 = MlasLoadFloat32x4(&B[4]);
+      MLAS_FLOAT32X4 b_2 = MlasLoadFloat32x4(&B[8]);
+      MLAS_FLOAT32X4 b_3 = MlasLoadFloat32x4(&B[12]);
 
-      __m128 result_ab_0 = _mm_mul_ps(packed_a_0, packed_b_0);
-      __m128 result_ab_1 = _mm_mul_ps(packed_a_1, packed_b_1);
-      __m128 result_ab_2 = _mm_mul_ps(packed_a_2, packed_b_2);
-      __m128 result_ab_3 = _mm_mul_ps(packed_a_3, packed_b_3);
+      MLAS_FLOAT32X4 ab_0 = MlasMultiplyFloat32x4(a_0, b_0);
+      MLAS_FLOAT32X4 ab_1 = MlasMultiplyFloat32x4(a_1, b_1);
+      MLAS_FLOAT32X4 ab_2 = MlasMultiplyFloat32x4(a_2, b_2);
+      MLAS_FLOAT32X4 ab_3 = MlasMultiplyFloat32x4(a_3, b_3);
 
-      __m128 sums_128 = _mm_add_ps(result_ab_0, result_ab_1);
-      sums_128 = _mm_add_ps(sums_128, result_ab_2);
-      sums_128 = _mm_add_ps(sums_128, result_ab_3);
+      MLAS_FLOAT32X4 sums_128 = MlasAddFloat32x4(ab_0, ab_1);
+      sums_128 = MlasAddFloat32x4(sums_128, ab_2);
+      sums_128 = MlasAddFloat32x4(sums_128, ab_3);
 
-      cur_sum += sum_128_horizontal(sums_128);
+      cur_sum += MlasReduceAddFloat32x4(sums_128);
 
       cur_A += 16;
       B += 16;
@@ -732,22 +697,22 @@ MlasVectorDotProductF32Kernel(
 
     while (cur_M >= 12) {
     
-      __m128 packed_a_0 = _mm_loadu_ps(&cur_A[0]);
-      __m128 packed_a_1 = _mm_loadu_ps(&cur_A[4]);
-      __m128 packed_a_2 = _mm_loadu_ps(&cur_A[8]);
+      MLAS_FLOAT32X4 a_0 = MlasLoadFloat32x4(&cur_A[0]);
+      MLAS_FLOAT32X4 a_1 = MlasLoadFloat32x4(&cur_A[4]);
+      MLAS_FLOAT32X4 a_2 = MlasLoadFloat32x4(&cur_A[8]);
 
-      __m128 packed_b_0 = _mm_load_ps(&B[0]);
-      __m128 packed_b_1 = _mm_load_ps(&B[4]);
-      __m128 packed_b_2 = _mm_load_ps(&B[8]);
+      MLAS_FLOAT32X4 b_0 = MlasLoadFloat32x4(&B[0]);
+      MLAS_FLOAT32X4 b_1 = MlasLoadFloat32x4(&B[4]);
+      MLAS_FLOAT32X4 b_2 = MlasLoadFloat32x4(&B[8]);
 
-      __m128 result_ab_0 = _mm_mul_ps(packed_a_0, packed_b_0);
-      __m128 result_ab_1 = _mm_mul_ps(packed_a_1, packed_b_1);
-      __m128 result_ab_2 = _mm_mul_ps(packed_a_2, packed_b_2);
+      MLAS_FLOAT32X4 ab_0 = MlasMultiplyFloat32x4(a_0, b_0);
+      MLAS_FLOAT32X4 ab_1 = MlasMultiplyFloat32x4(a_1, b_1);
+      MLAS_FLOAT32X4 ab_2 = MlasMultiplyFloat32x4(a_2, b_2);
 
-      __m128 sums_128 = _mm_add_ps(result_ab_0, result_ab_1);
-      sums_128 = _mm_add_ps(sums_128, result_ab_2);
+      MLAS_FLOAT32X4 sums_128 = MlasAddFloat32x4(ab_0, ab_1);
+      sums_128 = MlasAddFloat32x4(sums_128, ab_2);
 
-      cur_sum += sum_128_horizontal(sums_128);
+      cur_sum += MlasReduceAddFloat32x4(sums_128);
 
       cur_A += 12;
       B += 12;
@@ -758,18 +723,18 @@ MlasVectorDotProductF32Kernel(
 
     while (cur_M >= 8) {
     
-      __m128 packed_a_0 = _mm_loadu_ps(&cur_A[0]);
-      __m128 packed_a_1 = _mm_loadu_ps(&cur_A[4]);
+      MLAS_FLOAT32X4 a_0 = MlasLoadFloat32x4(&cur_A[0]);
+      MLAS_FLOAT32X4 a_1 = MlasLoadFloat32x4(&cur_A[4]);
 
-      __m128 packed_b_0 = _mm_load_ps(&B[0]);
-      __m128 packed_b_1 = _mm_load_ps(&B[4]);
+      MLAS_FLOAT32X4 b_0 = MlasLoadFloat32x4(&B[0]);
+      MLAS_FLOAT32X4 b_1 = MlasLoadFloat32x4(&B[4]);
 
-      __m128 result_ab_0 = _mm_mul_ps(packed_a_0, packed_b_0);
-      __m128 result_ab_1 = _mm_mul_ps(packed_a_1, packed_b_1);
+      MLAS_FLOAT32X4 ab_0 = MlasMultiplyFloat32x4(a_0, b_0);
+      MLAS_FLOAT32X4 ab_1 = MlasMultiplyFloat32x4(a_1, b_1);
 
-      __m128 sums_128 = _mm_add_ps(result_ab_0, result_ab_1);
+      MLAS_FLOAT32X4 sums_128 = MlasAddFloat32x4(ab_0, ab_1);
 
-      cur_sum += sum_128_horizontal(sums_128);
+      cur_sum += MlasReduceAddFloat32x4(sums_128);
 
       cur_A += 8;
       B += 8;
@@ -780,13 +745,13 @@ MlasVectorDotProductF32Kernel(
 
     while (cur_M >= 4) {
     
-      __m128 packed_a_0 = _mm_loadu_ps(&cur_A[0]);
+      MLAS_FLOAT32X4 a_0 = MlasLoadFloat32x4(&cur_A[0]);
 
-      __m128 packed_b_0 = _mm_load_ps(&B[0]);
+      MLAS_FLOAT32X4 b_0 = MlasLoadFloat32x4(&B[0]);
 
-      __m128 result_ab_0 = _mm_mul_ps(packed_a_0, packed_b_0);
+      MLAS_FLOAT32X4 ab_0 = MlasMultiplyFloat32x4(a_0, b_0);
 
-      cur_sum += sum_128_horizontal(result_ab_0);
+      cur_sum += MlasReduceAddFloat32x4(ab_0);
 
       cur_A += 4;
       B += 4;
@@ -810,9 +775,8 @@ MlasVectorDotProductF32Kernel(
 
     N -= 1;
   }
-  
+
 }
-#pragma warning(default: 4100)
 
 void
 MLASCALL

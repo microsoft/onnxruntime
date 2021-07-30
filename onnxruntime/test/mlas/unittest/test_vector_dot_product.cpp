@@ -61,7 +61,6 @@ class TestVectors {
 // Reference vector dot product.
 // TODO(kreeger): add more documentation here.
 //
-#pragma warning(disable: 4189)
 void ReferenceVectorDotProd(TestVectors& vectors) {
   for (size_t i = 0; i < vectors.N; ++i) {
     float sum = 0;
@@ -71,7 +70,6 @@ void ReferenceVectorDotProd(TestVectors& vectors) {
     vectors.C[i] = sum;
   }
 }
-#pragma warning(default: 4189)
 
 template <typename T, bool Packed>
 class MlasVectorDotProdTest : public MlasTestBase {
