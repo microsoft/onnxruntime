@@ -141,14 +141,18 @@ class GraphExecutionManager(GraphExecutionInterface):
         self.is_rocm_pytorch = (True if ((torch.version.hip is not None) and (ROCM_HOME is not None)) else False)
 
         self._use_external_gpu_allocator = True
+        # assign self._torch_alloc and self._torch_free if self._use_external_gpu_allocator is True
+        self._get_torch_gpu_allocator_function_addresses()
+
+        # WIP feature to enable caching in Gradient accumulation scenario.
+        self._enable_grad_acc_optimization = False
+
+    def _get_torch_gpu_allocator_function_addresses(self):
         if self._use_external_gpu_allocator and torch.cuda.is_available():
             # CPP extension to get torch GPU allocator's alloc and free function addresses
             from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_gpu_allocator
             self._torch_alloc = torch_gpu_allocator.gpu_caching_allocator_raw_alloc_address()
             self._torch_free = torch_gpu_allocator.gpu_caching_allocator_raw_delete_address()
-
-        # WIP feature to enable caching in Gradient accumulation scenario.
-        self._enable_grad_acc_optimization = False
 
     def _validate_module_type(self, module):
         """Raises a TypeError if the module is not a torch.nn.Module"""
