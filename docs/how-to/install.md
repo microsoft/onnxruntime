@@ -9,7 +9,7 @@ nav_order: 1
 
 See the [installation matrix](https://onnxruntime.ai) for recommended instructions for desired combinations of target operating system, hardware, accelerator, and language. 
 
-Details on OS versions, compilers, language versions, dependent libraries , etc can be found under [Compatibility](../resources/compatibility.md#Environment-compatibility).
+Details on OS versions, compilers, language versions, dependent libraries, etc can be found under [Compatibility](../resources/compatibility.md#Environment-compatibility).
 
 ## Contents
 {: .no_toc }
@@ -19,7 +19,7 @@ Details on OS versions, compilers, language versions, dependent libraries , etc 
 
 ## Inference
 
-The following build variants are available as officially supported packages. Others can be [built from source](../how-to/build.md) from each release branch.
+The table below lists the build variants available as officially supported packages. Others can be [built from source](../how-to/build/inferencing.md) from each release branch.
 
 ### Requirements
 {: .no_toc }
