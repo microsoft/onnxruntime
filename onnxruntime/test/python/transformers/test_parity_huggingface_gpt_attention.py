@@ -1,7 +1,3 @@
-# -------------------------------------------------------------------------
-# Copyright (c) Microsoft Corporation.  All rights reserved.
-# Licensed under the MIT License.  See License.txt in the project root for
-# license information.
 # --------------------------------------------------------------------------
 # Copyright 2020 The HuggingFace Inc. team
 #
@@ -9,6 +5,10 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 # --------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.  See License.txt in the project root for
+# license information.
+# -------------------------------------------------------------------------
 
 import unittest
 import pytest
@@ -17,10 +17,8 @@ from torch import nn
 import random
 from onnx import helper
 import onnx
-from packaging import version
 import numpy
 import os
-from onnxruntime.transformers.gpt2_helper import Gpt2Helper
 from transformers.modeling_utils import Conv1D
 
 DEBUG_OUTPUTS = ["qk", "norm_qk", "softmax", "attn_weights"]
@@ -53,7 +51,7 @@ class MyGPT2Attention(nn.Module):
         assert self.head_dim * self.num_heads == self.embed_dim
 
         self.c_attn = Conv1D(3 * self.embed_dim, self.embed_dim)
-        # use random bias instead of zeros for parity test
+        # Use random bias instead of zeros for parity test.
         self.c_attn.bias = nn.Parameter(torch.normal(0.0, 0.1, (3 * self.embed_dim, )))
 
         self.use_cache = use_cache
@@ -66,7 +64,8 @@ class MyGPT2Attention(nn.Module):
         # Torch has special handling for Div and Mul by a scalar:
         #   https://github.com/pytorch/pytorch/blob/5536cda19a5def9e0553b318f04d297d602ac956/aten/src/ATen/native/cuda/BinaryMulDivKernel.cu#L52-L60
         #   https://github.com/pytorch/pytorch/blob/5536cda19a5def9e0553b318f04d297d602ac956/aten/src/ATen/native/cuda/BinaryMulDivKernel.cu#L185-L194
-        # Modify the code to use same processing in onnx export so as to get parity result
+        # Modify the code to use same processing in onnx export so as to get parity result without attention fusion.
+        # This walkaround is not needed when attention fusion will be applied later since the subgraph will be replaced by an Attention node.
         if self.fix_onnx_export and torch.onnx.is_in_onnx_export():
             if qk.dtype == torch.float16:
                 norm_qk = qk.to(torch.float32) * (1.0 / (float(value.size(-1))**0.5))
@@ -168,7 +167,7 @@ def create_inputs(batch_size=1,
     past_shape = [batch_size, num_attention_heads, past_sequence_length, int(hidden_size / num_attention_heads)]
     past_key = torch.rand(past_shape, dtype=float_type, device=device)
     past_value = torch.rand(past_shape, dtype=float_type, device=device)
-    layer_past = MyGPT2Attention.concat_key_value(past_key, past_value)  #(past_key, past_value)
+    layer_past = MyGPT2Attention.concat_key_value(past_key, past_value)
 
     total_sequence_length = past_sequence_length + sequence_length
 
@@ -320,18 +319,14 @@ def compare_outputs(torch_outputs, ort_outputs, rtol=1e-03, atol=1e-03, verbose=
 
 
 def create_ort_session(onnx_model_path, use_gpu=True):
-    try:
-        from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel, __version__ as onnxruntime_version
-        sess_options = SessionOptions()
-        sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_ALL
-        sess_options.intra_op_num_threads = 2
-        sess_options.log_severity_level = 2
-        execution_providers = ['CPUExecutionProvider'
-                               ] if not use_gpu else ['CUDAExecutionProvider', 'CPUExecutionProvider']
-        return InferenceSession(onnx_model_path, sess_options, providers=execution_providers)
-    except:
-        logger.error(f"Exception", exc_info=True)
-        return None
+    from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel, __version__ as onnxruntime_version
+    sess_options = SessionOptions()
+    sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_ALL
+    sess_options.intra_op_num_threads = 2
+    sess_options.log_severity_level = 2
+    execution_providers = ['CPUExecutionProvider'
+                            ] if not use_gpu else ['CUDAExecutionProvider', 'CPUExecutionProvider']
+    return InferenceSession(onnx_model_path, sess_options, providers=execution_providers)
 
 
 def onnxruntime_inference(ort_session, input_hidden_states, attention_mask, past):
@@ -387,7 +382,7 @@ def verify_attention(model,
     return test_cases - passed_cases
 
 
-def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device):
+def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device, test_cases):
     test_name = f"batch_size={batch_size}, float16={float16}, optimized={optimized}, hidden_size={hidden_size}, num_attention_heads={num_attention_heads}"
     print(f"\nTesting ONNX parity: {test_name}")
 
@@ -425,7 +420,8 @@ def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device
                                     float16,
                                     device,
                                     padding_length,
-                                    optimized)
+                                    optimized,
+                                    test_cases)
 
     # Test Case: with past state and padding last 2 words
     sequence_length = 3
@@ -441,7 +437,8 @@ def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device
                                     float16,
                                     device,
                                     padding_length,
-                                    optimized)
+                                    optimized,
+                                    test_cases)
 
     # Test Case: random mask one word
     sequence_length = 1
@@ -457,10 +454,10 @@ def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device
                                     float16,
                                     device,
                                     padding_length,
-                                    optimized)
+                                    optimized,
+                                    test_cases)
 
     # clean up onnx file
-
     os.remove(onnx_model_path)
     if optimized:
         os.remove(onnx_path)
@@ -470,25 +467,22 @@ def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device
 
 class TestGptAttentionHuggingfaceParity(unittest.TestCase):
     def setUp(self):
-        self.optimized = True # change it to False if you want to test parity of non optimized ONNX
+        self.optimized = True # Change it to False if you want to test parity of non optimized ONNX
+        self.test_cases = 10  # Number of test cases per test run
 
     def run_test(self, batch_size, float16, optimized, hidden_size, num_attention_heads, device):
         if float16 and device.type=='cpu': # CPU does not support FP16
             return
-        num_failure, test_name = run(batch_size, float16, optimized, hidden_size, num_attention_heads, device)
+        num_failure, test_name = run(batch_size, float16, optimized, hidden_size, num_attention_heads, device, self.test_cases)
         self.assertTrue(num_failure == 0, test_name)
 
     def run_small(self, optimized, device):
         for batch_size in [64]:
             self.run_test(batch_size, float16=False, optimized=optimized, hidden_size=768, num_attention_heads=12, device=device)
             self.run_test(batch_size, float16=True, optimized=optimized, hidden_size=768, num_attention_heads=12, device=device)
-            #self.run_test(batch_size, float16=False, optimized=optimized, hidden_size=1024, num_attention_heads=16, device=device)
-            #self.run_test(batch_size, float16=True, optimized=optimized, hidden_size=1024, num_attention_heads=16, device=device)
 
     def run_large(self, optimized, device):
         for batch_size in [2]:
-            #self.run_test(batch_size, float16=False, optimized=optimized, hidden_size=2048, num_attention_heads=16, device=device)
-            #self.run_test(batch_size, float16=True, optimized=optimized, hidden_size=2048, num_attention_heads=16, device=device)
             self.run_test(batch_size, float16=False, optimized=optimized, hidden_size=4096, num_attention_heads=32, device=device)
             self.run_test(batch_size, float16=True, optimized=optimized, hidden_size=4096, num_attention_heads=32, device=device)
 
