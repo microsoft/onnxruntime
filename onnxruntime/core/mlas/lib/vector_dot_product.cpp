@@ -25,17 +25,19 @@ MlasVectorDotProduct(const float* A, const float* B, float* C, size_t M, size_t 
 
 Routine Description:
 
-    This routine TODO DOC ME.
+    This routine implements the vector dot product routine.
 
 Arguments:
 
-    Input - Supplies the input buffer.
+    A - Supplies the A input vector of M length.
 
-    Min - Returns the minimum value of the supplied buffer.
+    TransB - Supplies the transposed B input vector of M * N length.
 
-    Max - Returns the maximum value of the supplied buffer.
+    C - Supplies the C output vector of N length.
 
-    N - Supplies the number of elements to process.
+    M - Supplies the number of values in the A vector.
+
+    N - Supplies the number of values in the C vector.
 
 Return Value:
 

@@ -3,11 +3,14 @@
 
 #include "test_util.h"
 
+//
+// Utility class for creating test vectors for vector dot prod tests.
+//
 class TestVectors {
  public:
   TestVectors(const size_t M, const size_t N,
               bool small_values = false)
-      : M(M), N(N), M_packed(0) {
+      : M(M), N(N) {
     for (size_t i = 0; i < M; ++i) {
       if (small_values) {
         A.push_back(0.01f * (i + 1));
@@ -26,15 +29,7 @@ class TestVectors {
       }
     }
 
-    // TODO(kreeger): determine pre-packed version of this ...
-    // Ensure that |B_packed| is in increments of 16 per row:
-    if (M % 16 != 0) {
-      M_packed = 16 * ((M / 16) + 1);
-    } else {
-      M_packed = M;
-    }
-    B_packed.resize(N * M_packed);
-
+    B_transposed.resize(N * M);
     C.resize(N);
   }
 
@@ -50,17 +45,16 @@ class TestVectors {
 
   const size_t M;
   const size_t N;
-  size_t M_packed;
   std::vector<float> A;
   std::vector<float> B;
-  std::vector<float> B_packed;
+  std::vector<float> B_transposed;
   std::vector<float> C;
 };
 
 //
 // Reference vector dot product.
-// TODO(kreeger): add more documentation here.
 //
+
 void ReferenceVectorDotProd(TestVectors& vectors) {
   for (size_t i = 0; i < vectors.N; ++i) {
     float sum = 0;
@@ -109,13 +103,12 @@ class MlasVectorDotProdTest : public MlasTestBase {
     std::vector<float> ref_C = vectors.C;
     vectors.ResetC();
 
-    // Consider making the regular method do the transpose.
     MlasTranspose(vectors.B.data(),
-                  vectors.B_packed.data(),
+                  vectors.B_transposed.data(),
                   vectors.M,
                   vectors.N);
     MlasVectorDotProduct(vectors.A.data(),
-                         vectors.B_packed.data(),
+                         vectors.B_transposed.data(),
                          vectors.C.data(),
                          vectors.M,
                          vectors.N);
