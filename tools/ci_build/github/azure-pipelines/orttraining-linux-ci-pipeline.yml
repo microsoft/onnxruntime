@@ -71,7 +71,7 @@ jobs:
   - task: PublishPipelineArtifact@1
     displayName: 'Publish Release python package (for docs)'
     inputs:
-      targetPath: $(Build.BinariesDirectory)/Release/dist/*.whl
+      targetPath: $(Build.BinariesDirectory)/Release/dist
       artifactName: Python Wheel
 
   - task: CmdLine@2
