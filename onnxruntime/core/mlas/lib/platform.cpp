@@ -359,9 +359,9 @@ Return Value:
     HasDotProductInstructions = false;
 #endif
 
-    //if (HasDotProductInstructions) {
+    if (HasDotProductInstructions) {
         this->GemmU8X8Dispatch = &MlasGemmU8X8DispatchUdot;
-    //}
+    }
 
 #endif // MLAS_TARGET_ARM64
 #if defined(MLAS_TARGET_POWER)
