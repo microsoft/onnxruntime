@@ -479,7 +479,7 @@ TEST_F(GraphTransformationTests, ConstantFolding_RemoveDanglingInputNodesToConst
   ASSERT_TRUE(op_to_count["RandomUniform"] == 0);
 }
 
-TEST_F(GraphTransformationTests, ShapeToInitializerUsingConstantFolding) {
+TEST_F(GraphTransformationTests, ConstantFoldingAShapeNodeDeepInTheGraph) {
   auto model_uri = MODEL_FOLDER "shape-add.onnx";
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
@@ -497,6 +497,11 @@ TEST_F(GraphTransformationTests, ShapeToInitializerUsingConstantFolding) {
 
   op_to_count = CountOpsInGraph(graph);
 
+  // A Shape node very deep in the graph (feeding into an Identity
+  // node that produces the graph output) gets constant folded which
+  // removes all its ancestors and the Identity node consuming this Shape's
+  // output is subsequently constant folded to leave the graph with no
+  // nodes.
   ASSERT_TRUE(op_to_count.size() == 0);
 }
 
