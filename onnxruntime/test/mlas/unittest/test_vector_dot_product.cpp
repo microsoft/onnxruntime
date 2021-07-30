@@ -78,27 +78,20 @@ class MlasVectorDotProdTest : public MlasTestBase {
   }
 
   void ExecuteShort(void) override {
-    ExecuteSmall();
-    ExecuteMedium();
-    ExecuteLong();
-  }
-
- private:
-  void ExecuteSmall() {
+    // Smaller vectors
     ValidateUnpacked(TestVectors<T>(/*M=*/4, /*N=*/8));
     ValidateUnpacked(TestVectors<T>(/*M=*/3, /*N=*/9));
-  }
 
-  void ExecuteMedium() {
+    // Medium vectors
     ValidateUnpacked(TestVectors<T>(/*M=*/22, /*N=*/32));
     ValidateUnpacked(TestVectors<T>(/*M=*/21, /*N=*/31));
-  }
 
-  void ExecuteLong() {
+    // Long vectors:
     ValidateUnpacked(TestVectors<T>(/*M=*/768, /*N=*/3072, /*small_values=*/true));
     ValidateUnpacked(TestVectors<T>(/*M=*/761, /*N=*/3011, /*small_values=*/true));
   }
 
+ private:
   void ValidateUnpacked(TestVectors<T> vectors) {
     ReferenceVectorDotProd(vectors);
     std::vector<float> ref_C = vectors.C;
