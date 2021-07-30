@@ -144,6 +144,7 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
   int64_t channels = output_shape[1];
   int64_t pooled_height = output_shape[2];
   int64_t pooled_width = output_shape[3];
+  auto aligned = true;
 
   //100 is a random chosed value, need be tuned
   double cost = static_cast<double>(channels * pooled_width * pooled_height * 100);
@@ -156,14 +157,19 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
       const auto roi_batch_ind = batch_indices_ptr[n];
 
       // Do not using rounding; this implementation detail is critical
-      T roi_start_w = offset_bottom_rois[0] * spatial_scale;
-      T roi_start_h = offset_bottom_rois[1] * spatial_scale;
-      T roi_end_w = offset_bottom_rois[2] * spatial_scale;
-      T roi_end_h = offset_bottom_rois[3] * spatial_scale;
+      T offset = aligned ? (T)0.5 : (T)0.0;
+      T roi_start_w = offset_bottom_rois[0] * spatial_scale - offset;
+      T roi_start_h = offset_bottom_rois[1] * spatial_scale - offset;
+      T roi_end_w = offset_bottom_rois[2] * spatial_scale - offset;
+      T roi_end_h = offset_bottom_rois[3] * spatial_scale - offset;
 
-      // Force malformed ROIs to be 1x1
-      T roi_width = std::max(roi_end_w - roi_start_w, (T)1.);
-      T roi_height = std::max(roi_end_h - roi_start_h, (T)1.);
+      T roi_width = roi_end_w - roi_start_w;
+      T roi_height = roi_end_h - roi_start_h;
+      if (!aligned) {
+        // Force malformed ROIs to be 1x1
+        roi_width = std::max(roi_width, (T)1.);
+        roi_height = std::max(roi_height, (T)1.);
+      }
       T bin_size_h = static_cast<T>(roi_height) / static_cast<T>(pooled_height);
       T bin_size_w = static_cast<T>(roi_width) / static_cast<T>(pooled_width);
 
@@ -173,7 +179,7 @@ void RoiAlignForward(const TensorShape& output_shape, const T* bottom_data, floa
           (sampling_ratio > 0) ? sampling_ratio : static_cast<int64_t>(std::ceil(roi_width / pooled_width));
 
       // We do average (integral) pooling inside a bin
-      const int64_t count = roi_bin_grid_h * roi_bin_grid_w;  // e.g. = 4
+      const int64_t count = std::max(roi_bin_grid_h * roi_bin_grid_w, static_cast<int64_t>(1));  // e.g. = 4
 
       // we want to precalculate indices and weights shared by all channels,
       // this is the key point of optimization
