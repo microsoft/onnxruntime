@@ -21,7 +21,7 @@ Abstract:
 // Stack frame layout for the S8S8 kernel.
 //
 
-#define  GemmS8S8KernelFrame_SavedNeonRegisters    (4 * 8)
+#define  GemmS8S8KernelFrame_SavedNeonRegisters    (8 * 8)
 #define  GemmS8S8KernelFrame_SavedRegisters            GemmS8S8KernelFrame_SavedNeonRegisters
 #define  GemmS8S8KernelFrame_ColumnSumBuffer       0 + GemmS8S8KernelFrame_SavedRegisters
 #define  GemmS8S8KernelFrame_ZeroPointB            8 + GemmS8S8KernelFrame_SavedRegisters
@@ -80,17 +80,19 @@ Return Value:
 
 --*/
 
-        LEAF_ENTRY MlasGemmS8S8KernelNeon
+        NESTED_ENTRY MlasGemmS8S8KernelNeon
 
-        stp     d8,d9,[sp,#-32]!
-        stp     d10,d11,[sp,#16]
+        PROLOG_SAVE_REG_PAIR d8,d9,#-64!
+        PROLOG_SAVE_REG_PAIR d10,d11,#16
+        PROLOG_SAVE_REG_PAIR d12,d13,#32
+        PROLOG_SAVE_REG_PAIR d14,d15,#48
         ldr     x8,[sp,#GemmS8S8KernelFrame_ColumnSumBuffer]
         ldr     x9,[sp,#GemmS8S8KernelFrame_ZeroPointB]
         ldrb    w13,[sp,#GemmS8S8KernelFrame_ZeroMode]
         mov     x14,x0
         ld1     {v11.4s},[x7]
         mov     x15,x3
-        dup     v8.4s,v11.s[0]             // broadcast row fixups
+        dup     v8.4s,v11.s[0]              // broadcast row fixups
         cmp     x4,#1                       // CountM == 1?
         beq     GemmS8S8_M1_ProcessNextColumnLoop
         dup     v9.4s,v11.s[1]
@@ -102,6 +104,25 @@ Return Value:
 //
 // Process 4 rows of the matrices.
 //
+// Column Sum v2.s[0] v2.s[4]
+// Each row sum replicated to all 4 elements of a vector register 
+// v8 ~ v11
+//                    Col Sum   v2.s[0]   v2.s[1]   v2.s[2]   v2.s[1]
+//                                      B 16x4
+//                             /--------------------------------------\
+//                             |v4.b[0]   v5.b[0]   v6.b[0]   v7.b[0] |
+//                             |  ...                          ...    |
+//                             |v4.b[15]  v5.b[15]  v6.b[15]  v7.b[15]|
+//          A 4x16             \--------------------------------------/
+//     /--------------------\  /--------------------------------------\
+// v8  |v0.b[0] ... v0.b[15]|  |v16.4s    v17.4s    v18.4s    v19.4s  |
+// v9  |v1.b[0] ... v1.b[15]|  |v20.4s    v21.4s    v22.4s    v23.4s  |
+// v10 |v0.b[0] ... v0.b[15]|  |v24.4s    v25.4s    v26.4s    v27.4s  |
+// v11 |v1.b[0] ... v1.b[15]|  |v28.4s    v29.4s    v30.4s    v31.4s  |
+//     \--------------------/  \--------------------------------------/
+//
+// Accumulators are horizontally aggregated to the left most register
+// for each row. e.g. (v16.s[0], v16.s[1], v16.s[2], v16.s[3]) <- (v16, v17, v18, v19)
 
 GemmS8S8_M4_ProcessNextColumnLoop
         mov     x0,x14                      // reload matrix A
@@ -221,7 +242,30 @@ GemmS8S8_M4_ComputeBlockLoopFinish
         addp    v28.4s,v28.4s,v30.4s
 
         ld1     {v2.4s},[x8],#16            // load ColumnSumBuffer[0]
+        cbz     x9,GemmS8S8_M4_SkipScaleByZeroPointB
 
+        //
+        // accumulator = zero point B * row sum A + column sum B
+        //
+        ld1     {v30.4s},[x9],#16           // load ZeroPointB
+        mul     v17.4s,v30.4s,v8.4s
+        mul     v21.4s,v30.4s,v9.4s
+        mul     v25.4s,v30.4s,v10.4s
+        mul     v29.4s,v30.4s,v11.4s
+        add     v16.4s,v16.4s,v17.4s
+        add     v20.4s,v20.4s,v21.4s
+        add     v24.4s,v24.4s,v25.4s
+        add     v28.4s,v28.4s,v29.4s
+        add     v16.4s,v16.4s,v2.4s
+        add     v20.4s,v20.4s,v2.4s
+        add     v24.4s,v24.4s,v2.4s
+        add     v28.4s,v28.4s,v2.4s
+        b GemmS8S8_M4_StoreOutput
+
+GemmS8S8_M4_SkipScaleByZeroPointB
+        //
+        // accumulator = row sum A + column sum B 
+        //
         add     v16.4s,v16.4s,v8.4s
         add     v20.4s,v20.4s,v9.4s
         add     v24.4s,v24.4s,v10.4s
@@ -231,6 +275,7 @@ GemmS8S8_M4_ComputeBlockLoopFinish
         add     v24.4s,v24.4s,v2.4s
         add     v28.4s,v28.4s,v2.4s
 
+GemmS8S8_M4_StoreOutput
         add     x10,x2,x6,lsl #2
         add     x11,x10,x6,lsl #2
         add     x12,x11,x6,lsl #2
@@ -256,9 +301,12 @@ GemmS8S8_M4_SkipAccumulateOutput
 
 GemmS8S8_M4_ExitKernel
         mov     x0,#4                       // return number of rows handled
-        ldp     d10,d11,[sp,#16]
-        ldp     d8,d9,[sp],#32
-        ret
+        EPILOG_RESTORE_REG_PAIR d14,d15,#48
+        EPILOG_RESTORE_REG_PAIR d12,d13,#32
+        EPILOG_RESTORE_REG_PAIR d10,d11,#16
+        EPILOG_RESTORE_REG_PAIR d8,d9,#64!
+        EPILOG_RETURN
+
 
 GemmS8S8_M4_StoreOutputPartial
         cbz     x13,GemmS8S8_M4_StoreOutputPartial_AddMode
@@ -320,6 +368,23 @@ GemmS8S8_M4_StoreOutputPartial1_AddMode
 //
 // Process 2 rows of the matrices.
 //
+// Column Sum v2.s[0] v2.s[4]
+// Each row sum replicated to all 4 elements of a vector register 
+// v8 v9
+//                    Col Sum   v2.s[0]   v2.s[1]   v2.s[2]   v2.s[1]
+//                                      B 16x4
+//                             /--------------------------------------\
+//                             |v4.b[0]   v5.b[0]   v6.b[0]   v7.b[0] |
+//                             |  ...                          ...    |
+//                             |v4.b[15]  v5.b[15]  v6.b[15]  v7.b[15]|
+//          A 2x16             \--------------------------------------/
+//     /--------------------\  /--------------------------------------\
+// v8  |v0.b[0] ... v0.b[15]|  |v16.4s    v17.4s    v18.4s    v19.4s  |
+// v9  |v0.b[0] ... v0.b[15]|  |v20.4s    v21.4s    v22.4s    v23.4s  |
+//     \--------------------/  \--------------------------------------/
+//
+// Accumulators are horizontally aggregated to the left most register
+// for each row. e.g. (v16.s[0], v16.s[1], v16.s[2], v16.s[3]) <- (v16, v17, v18, v19)
 
 GemmS8S8_M2_ProcessNextColumnLoop
         mov     x0,x14                      // reload matrix A
@@ -379,12 +444,26 @@ GemmS8S8_M2_ComputeBlockLoop
         addp    v20.4s,v20.4s,v22.4s
 
         ld1     {v2.4s},[x8],#16            // load ColumnSumBuffer[0]
+        cbz     x9,GemmS8S8_M2_SkipScaleByZeroPointB
 
+        // accumulator = zero point B * row sum A + column sum B
+        ld1     {v30.4s},[x9],#16           // load ZeroPointB[0]
+        mul     v17.4s,v30.4s,v8.4s
+        mul     v21.4s,v30.4s,v9.4s
+        add     v16.4s,v16.4s,v17.4s
+        add     v20.4s,v20.4s,v21.4s
+        add     v16.4s,v16.4s,v2.4s
+        add     v20.4s,v20.4s,v2.4s
+        b       GemmS8S8_M2_StoreOutput
+
+GemmS8S8_M2_SkipScaleByZeroPointB
+        // accumulator = row sum A + column sum B 
         add     v16.4s,v16.4s,v8.4s
         add     v20.4s,v20.4s,v9.4s
         add     v16.4s,v16.4s,v2.4s
         add     v20.4s,v20.4s,v2.4s
 
+GemmS8S8_M2_StoreOutput
         add     x10,x2,x6,lsl #2
 
         subs    x5,x5,#4                    // adjust CountN remaining
@@ -402,9 +481,12 @@ GemmS8S8_M2_SkipAccumulateOutput
 
 GemmS8S8_M2_ExitKernel
         mov     x0,#2                       // return number of rows handled
-        ldp     d10,d11,[sp,#16]
-        ldp     d8,d9,[sp],#32
-        ret
+        EPILOG_RESTORE_REG_PAIR d14,d15,#48
+        EPILOG_RESTORE_REG_PAIR d12,d13,#32
+        EPILOG_RESTORE_REG_PAIR d10,d11,#16
+        EPILOG_RESTORE_REG_PAIR d8,d9,#64!
+        EPILOG_RETURN
+
 
 GemmS8S8_M2_StoreOutputPartial
         cbz     x13,GemmS8S8_M2_StoreOutputPartial_AddMode
@@ -446,6 +528,22 @@ GemmS8S8_M2_StoreOutputPartial1_AddMode
 //
 // Process 1 row of the matrices.
 //
+// Column Sum v2.s[0] v2.s[4]
+// row sum replicated to all 4 elements of a vector register 
+// v8 
+//                    Col Sum   v2.s[0]   v2.s[1]   v2.s[2]   v2.s[1]
+//                                      B 16x4
+//                             /--------------------------------------\
+//                             |v4.b[0]   v5.b[0]   v6.b[0]   v7.b[0] |
+//                             |  ...                          ...    |
+//                             |v4.b[15]  v5.b[15]  v6.b[15]  v7.b[15]|
+//          A 2x16             \--------------------------------------/
+//     /--------------------\  /--------------------------------------\
+// v8  |v0.b[0] ... v0.b[15]|  |v16.4s    v17.4s    v18.4s    v19.4s  |
+//     \--------------------/  \--------------------------------------/
+//
+// Accumulators are horizontally aggregated to the left most register
+// for each row. e.g. (v16.s[0], v16.s[1], v16.s[2], v16.s[3]) <- (v16, v17, v18, v19)
 
 GemmS8S8_M1_ProcessNextColumnLoop
         mov     x0,x14                      // reload matrix A
@@ -484,10 +582,21 @@ GemmS8S8_M1_ComputeBlockLoop
         addp    v16.4s,v16.4s,v18.4s
 
         ld1     {v2.4s},[x8],#16            // load ColumnSumBuffer[0]
+        cbz     x9,GemmS8S8_M1_SkipScaleByZeroPointB
 
+        // accumulator = zero point B * row sum A + column sum B
+        ld1     {v30.4s},[x9],#16           // load ZeroPointB[0]
+        mul     v17.4s,v30.4s,v8.4s
+        add     v16.4s,v16.4s,v17.4s
+        add     v16.4s,v16.4s,v2.4s
+        b       GemmS8S8_M1_StoreOutput
+
+GemmS8S8_M1_SkipScaleByZeroPointB
+        // accumulator = row sum A + column sum B 
         add     v16.4s,v16.4s,v8.4s
         add     v16.4s,v16.4s,v2.4s
 
+GemmS8S8_M1_StoreOutput
         subs    x5,x5,#4                    // adjust CountN remaining
         blo     GemmS8S8_M1_StoreOutputPartial
         cbnz    x13,GemmS8S8_M1_SkipAccumulateOutput
@@ -500,9 +609,11 @@ GemmS8S8_M1_SkipAccumulateOutput
 
 GemmS8S8_M1_ExitKernel
         mov     x0,#1                       // return number of rows handled
-        ldp     d10,d11,[sp,#16]
-        ldp     d8,d9,[sp],#32
-        ret
+        EPILOG_RESTORE_REG_PAIR d14,d15,#48
+        EPILOG_RESTORE_REG_PAIR d12,d13,#32
+        EPILOG_RESTORE_REG_PAIR d10,d11,#16
+        EPILOG_RESTORE_REG_PAIR d8,d9,#64!
+        EPILOG_RETURN
 
 GemmS8S8_M1_StoreOutputPartial
         cbz     x13,GemmS8S8_M1_StoreOutputPartial_AddMode
@@ -531,6 +642,6 @@ GemmS8S8_M1_StoreOutputPartial1_AddMode
         st1     {v16.s}[0],[x2]
         b       GemmS8S8_M1_ExitKernel
 
-        LEAF_END MlasGemmS8S8KernelNeon
+        NESTED_END MlasGemmS8S8KernelNeon
 
         END
