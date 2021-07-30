@@ -3,7 +3,7 @@ import os
 import torch
 from onnxruntime.training.ortmodule import ORTModule
 from onnxruntime.capi import _pybind_state as C
-import onnxruntime.training.ortmodule._experimental.debug as debug_config
+from onnxruntime.training.ortmodule.experimental.json_config import load_from_json
 
 
 class Net(torch.nn.Module):
@@ -20,13 +20,13 @@ class Net(torch.nn.Module):
         out = self.fc2(out)
         return out
 
-def test_load_config_from_json():
-    path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_experimental_debug_config.json')
+def test_load_config_from_json_1():
+    path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_experimental_json_config_1.json')
 
     device = 'cuda'
     model = ORTModule(Net().to(device))
 
-    debug_config.load_from_json(model, path_to_json)
+    load_from_json(model, path_to_json)
 
     for training_mode in [True, False]:
         ort_model_attributes = model._torch_module._execution_manager(training_mode)
@@ -61,3 +61,45 @@ def test_load_config_from_json():
         assert ort_model_attributes._debug_options.save_onnx_models.save == True
         assert ort_model_attributes._debug_options.save_onnx_models.name_prefix == 'my_model'
         assert ort_model_attributes._debug_options.logging.log_level.name == "VERBOSE"
+
+def test_load_config_from_json_2():
+    path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_experimental_json_config_2.json')
+
+    device = 'cuda'
+    model = ORTModule(Net().to(device))
+
+    load_from_json(model, path_to_json)
+
+    for training_mode in [True, False]:
+        ort_model_attributes = model._torch_module._execution_manager(training_mode)
+
+        # test propagate cast ops
+        assert ort_model_attributes._propagate_cast_ops_strategy == C.PropagateCastOpsStrategy.REMOVE_INPUT_OUTPUT_UP_DOWN_CASTS
+        assert ort_model_attributes._propagate_cast_ops_level == 5
+        assert ort_model_attributes._propagate_cast_ops_allow == ["XYZ", "PQR"]
+
+        # test use external gpu allocator
+        assert ort_model_attributes._use_external_gpu_allocator == True
+
+        # test enable custom autograd function
+        assert ort_model_attributes._enable_custom_autograd_function == False
+
+        # test allow layer norm mod precision
+        assert ort_model_attributes._allow_layer_norm_mod_precision == False
+
+        # test use static shape
+        assert ort_model_attributes._use_static_shape == False
+
+        # test run symbolic shape inference
+        assert ort_model_attributes._run_symbolic_shape_infer == True
+
+        # test enable grad acc optimization
+        assert ort_model_attributes._enable_grad_acc_optimization == False
+
+        # test skip check
+        assert ort_model_attributes._skip_check.value == 10
+
+        # test debug options
+        assert ort_model_attributes._debug_options.save_onnx_models.save == True
+        assert ort_model_attributes._debug_options.save_onnx_models.name_prefix == 'my_other_model'
+        assert ort_model_attributes._debug_options.logging.log_level.name == "INFO"

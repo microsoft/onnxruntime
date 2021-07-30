@@ -86,10 +86,10 @@ def run_ortmodule_custom_autograd_tests(cwd, log):
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
-def run_ortmodule_experimental_debug_tests(cwd, log):
-    log.debug('Running: ORTModule Experimental Debug tests')
+def run_ortmodule_experimental_json_config_tests(cwd, log):
+    log.debug('Running: ORTModule Experimental Load Config tests')
 
-    command = [sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_ortmodule_experimental_debug.py']
+    command = [sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_ortmodule_experimental_json_config.py']
 
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
