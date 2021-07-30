@@ -55,7 +55,7 @@ stages:
 
   jobs:
   - ${{ if eq(parameters.enable_linux_cpu, true) }}:
-    - job: Linux_py_Wheels
+    - job: Linux_CPU_py_Wheels
       timeoutInMinutes: 90
       workspace:
         clean: all
@@ -100,7 +100,7 @@ stages:
               onnxruntimecpubuild \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
-                  --config Release \
+                  --config Release --update --build \
                   --skip_submodule_sync \
                   --parallel \
                   --enable_lto \
@@ -108,6 +108,36 @@ stages:
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }}
           workingDirectory: $(Build.SourcesDirectory)
+
+      - task: CmdLine@2
+        displayName: 'Running tests'
+        condition: and(succeeded(), eq(variables['PythonVersion'], '3.8'))
+        inputs:
+          script: |
+            set -e -x
+            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
+            sudo rm -f /build /onnxruntime_src
+            sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
+            python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+            cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
+            # Test ORT with the latest ONNX release.
+            sed -i 's/git+http:\/\/github\.com\/onnx\/onnx.*/onnx==1.9.0/' $(Build.BinariesDirectory)/requirements.txt
+            python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
+            python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
+            cd $(Build.BinariesDirectory)/Release
+            ls $(Build.BinariesDirectory)/models
+            rmdir $(Build.BinariesDirectory)/models
+            ln -sf /data/models $(Build.BinariesDirectory)
+            python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
+                  --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja \
+                  --config Release --test \
+                  --skip_submodule_sync \
+                  --parallel \
+                  --enable_lto \
+                  --build_wheel \
+                  --enable_onnx_tests \
+                  ${{ parameters.build_py_parameters }} \
+                  --ctest_path ''
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
@@ -185,6 +215,7 @@ stages:
           Repository: onnxruntimecuda11build
 
       - task: CmdLine@2
+        displayName: 'Build Python Wheel'
         inputs:
           script: |
             mkdir -p $HOME/.onnx
@@ -199,7 +230,7 @@ stages:
               onnxruntimecuda11build \
                 $(PythonManylinuxDir)/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                   --build_dir /build --cmake_generator Ninja \
-                  --config Release \
+                  --config Release --update --build \
                   --skip_submodule_sync \
                   --parallel \
                   --build_wheel \
@@ -207,6 +238,35 @@ stages:
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-9/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
           workingDirectory: $(Build.SourcesDirectory)
+
+      - task: CmdLine@2
+        displayName: 'Running tests'
+        condition: and(succeeded(), eq(variables['PythonVersion'], '3.8'))
+        inputs:
+          script: |
+            set -e -x
+            rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
+            sudo rm -f /build /onnxruntime_src
+            sudo ln -s $(Build.SourcesDirectory) /onnxruntime_src
+            python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+            cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
+            # Test ORT with the latest ONNX release.
+            sed -i 's/git+http:\/\/github\.com\/onnx\/onnx.*/onnx==1.9.0/' $(Build.BinariesDirectory)/requirements.txt
+            python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
+            python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
+            cd $(Build.BinariesDirectory)/Release
+            ls $(Build.BinariesDirectory)/models
+            rmdir $(Build.BinariesDirectory)/models
+            ln -sf /data/models $(Build.BinariesDirectory)
+            python3 /onnxruntime_src/tools/ci_build/build.py \
+                  --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja \
+                  --config Release --test \
+                  --skip_submodule_sync \
+                  --parallel \
+                  --build_wheel \
+                  --enable_onnx_tests --use_cuda --cuda_version=11.1 --cuda_home=/usr/local/cuda-11.1 --cudnn_home=/usr/local/cuda-11.1 \
+                  ${{ parameters.build_py_parameters }} --ctest_path '' \
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-9/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
@@ -532,21 +592,43 @@ stages:
       pool: 'Win-CPU-2021'
       strategy:
         matrix:
-          Python36:
+          Python36_x64:
             PythonVersion: '3.6'
-          Python37:
+            MsbuildPlatform: x64
+            buildArch: x64
+          Python37_x64:
             PythonVersion: '3.7'
-          Python38:
+            MsbuildPlatform: x64
+            buildArch: x64
+          Python38_x64:
             PythonVersion: '3.8'
-          Python39:
+            MsbuildPlatform: x64
+            buildArch: x64
+          Python39_x64:
             PythonVersion: '3.9'
+            MsbuildPlatform: x64
+            buildArch: x64
+          Python36_x86:
+            PythonVersion: '3.6'
+            MsbuildPlatform: Win32
+            buildArch: x86
+          Python37_x86:
+            PythonVersion: '3.7'
+            MsbuildPlatform: Win32
+            buildArch: x86
+          Python38_x86:
+            PythonVersion: '3.8'
+            MsbuildPlatform: Win32
+            buildArch: x86
+          Python39_x86:
+            PythonVersion: '3.9'
+            MsbuildPlatform: Win32
+            buildArch: x86
       variables:
-        MsbuildArguments: '-maxcpucount'
         OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
         EnvSetupScript: setup_env.bat
-        buildArch: x64
         setVcvars: true
-        BuildConfig: 'Release'
+        BuildConfig: 'RelWithDebInfo'
       timeoutInMinutes: 120
       workspace:
         clean: all
@@ -562,7 +644,7 @@ stages:
         inputs:
           versionSpec: $(PythonVersion)
           addToPath: true
-          architecture: 'x64'
+          architecture: $(buildArch)
 
       - template: set-nightly-build-option-variable-step.yml
 
@@ -589,11 +671,11 @@ stages:
         displayName: 'Install ONNX'
 
       - task: PythonScript@0
-        displayName: 'BUILD'
+        displayName: 'Generate cmake config'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
           arguments: >
-            --config RelWithDebInfo
+            --config $(BuildConfig)
             --enable_lto
             --build_dir $(Build.BinariesDirectory)
             --skip_submodule_sync
@@ -601,14 +683,26 @@ stages:
             --enable_pybind
             --enable_onnx_tests
             ${{ parameters.build_py_parameters }}
-            --parallel
+            --parallel --update
             $(TelemetryOption)
           workingDirectory: '$(Build.BinariesDirectory)'
+
+      - task: VSBuild@1
+        displayName: 'Build'
+        inputs:
+          solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
+          platform: $(MsbuildPlatform)
+          configuration: $(BuildConfig)
+          msbuildArchitecture: $(buildArch)
+          maximumCpuCount: true
+          logProjectEvents: true
+          workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
+          createLogFile: true
 
       # Esrp signing
       - template: win-esrp-dll.yml
         parameters:
-          FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
+          FolderPath: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\onnxruntime\capi'
           DisplayName: 'ESRP - Sign Native dlls'
           DoEsrp: true
           Pattern: '*.pyd,*.dll'
@@ -618,86 +712,73 @@ stages:
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\setup.py'
           arguments: 'bdist_wheel ${{ parameters.build_py_parameters }} $(NightlyBuildOption)'
-          workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+          workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
         inputs:
-          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
+          SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)\dist'
           Contents: '*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
-
-      - task: PublishTestResults@2
-        displayName: 'Publish unit test results'
-        inputs:
-          testResultsFiles: '**\*.results.xml'
-          searchFolder: '$(Build.BinariesDirectory)'
-          testRunTitle: 'Unit Test Run'
-        condition: succeededOrFailed()
 
       - task: PublishBuildArtifacts@1
         displayName: 'Publish Artifact: ONNXRuntime python wheel'
         inputs:
           ArtifactName: onnxruntime
 
+      - script: |
+          7z x *.whl
+        workingDirectory: '$(Build.ArtifactStagingDirectory)'
+        displayName: 'unzip the package'
+
+      - task: CredScan@3
+        displayName: 'Run CredScan'
+        inputs:
+          debugMode: false
+        continueOnError: true
+
+      - task: BinSkim@4
+        displayName: 'Run BinSkim'
+        inputs:
+          AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
+        continueOnError: true
+
       - task: DeleteFiles@1
-        displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
+        displayName: 'Delete files from $(Build.BinariesDirectory)\$(BuildConfig)'
         condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
         inputs:
-          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+          SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
           Contents: |
             **/*.obj
             **/*.pdb
+            **/*.dll
 
-      - task: PythonScript@0
-        displayName: 'Regenerate cmake config with STATIC_ANALYSIS=ON'
-        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: >
-            --config RelWithDebInfo
-            --enable_lto
-            --build_dir $(Build.BinariesDirectory)
-            --skip_submodule_sync
-            --cmake_generator "Visual Studio 16 2019"
-            --enable_pybind
-            --enable_onnx_tests
-            ${{ parameters.build_py_parameters }}
-            --parallel
-            $(TelemetryOption)
-            --update
-            --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON
-          workingDirectory: '$(Build.BinariesDirectory)'
+      - powershell: |
+         python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+         Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
+         Remove-Item -Recurse -Force onnxruntime
+         python onnx_backend_test_series.py
+        workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+        displayName: 'Run Python Tests'
 
-      #Manually set msBuildCommandline so that we can also set CAExcludePath
-      - task: SDLNativeRules@2
+      #Skip it for 32 bits x86 build. Currently the scan tool has a bug: it doesn't allow me use 64 bits link.exe
+      #in 32 bits Win32 build. I tried all the settings but they all don't work.
+      - task: SDLNativeRules@3
         displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
+        condition: and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.7')))
         inputs:
-          userProvideBuildInfo: msBuildInfo
-          msBuildVersion: 16.0
-          msBuildArchitecture: x64
-          msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform="x64" /p:configuration="RelWithDebInfo" /p:CAExcludePath="$(Build.BinariesDirectory);$(Build.SourcesDirectory)\cmake;C:\program files (x86)" /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
-        continueOnError: false
+          msBuildArchitecture: amd64
+          setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config Debug --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --enable_pybind --enable_onnx_tests --parallel $(TelemetryOption) --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
+          msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\Debug\onnxruntime.sln" /p:platform="$(MsbuildPlatform)" /p:configuration=Debug /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
+          excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
 
-      - script: |
-          rename *.whl *.zip
-        workingDirectory: '$(Build.ArtifactStagingDirectory)'
-        displayName: 'Rename file extension for codesign validation'
 
-      - task: securedevelopmentteam.vss-secure-development-tools.build-task-publishsecurityanalysislogs.PublishSecurityAnalysisLogs@2
-        displayName: 'Publish Security Analysis Logs'
-        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
+      - task: TSAUpload@2
+        displayName: 'TSA upload'
+        condition: and(and (succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['PythonVersion'], '3.7'))), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
         inputs:
-          ArtifactName: CodeAnalysisLogs_windows_cpu
-        continueOnError: true
-
-      - task: TSAUpload@1
-        condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.7')), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
-        displayName: 'TSA Upload'
-        inputs:
-          tsaVersion: TsaV2
-          codeBaseName: 'onnxruntime_master'
+          GdnPublishTsaOnboard: false
+          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
         continueOnError: true
 
       - template: component-governance-component-detection-steps.yml
@@ -796,8 +877,9 @@ stages:
 
       - template: set-nightly-build-option-variable-step.yml
 
+
       - task: PythonScript@0
-        displayName: 'build'
+        displayName: 'Generate cmake config'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
           arguments: >
@@ -808,9 +890,21 @@ stages:
             --enable_pybind
             --enable_onnx_tests
             ${{ parameters.build_py_parameters }}
-            --parallel
+            --parallel --update
             $(TelemetryOption) $(EpBuildFlags)
           workingDirectory: '$(Build.BinariesDirectory)'
+
+      - task: VSBuild@1
+        displayName: 'Build'
+        inputs:
+          solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
+          platform: x64
+          configuration: RelWithDebInfo
+          msbuildArchitecture: $(buildArch)
+          maximumCpuCount: true
+          logProjectEvents: true
+          workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+          createLogFile: true
 
       # Esrp signing
       - template: win-esrp-dll.yml
@@ -834,18 +928,27 @@ stages:
           Contents: '*.whl'
           TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-      - task: PublishTestResults@2
-        displayName: 'Publish unit test results'
-        inputs:
-          testResultsFiles: '**\*.results.xml'
-          searchFolder: '$(Build.BinariesDirectory)'
-          testRunTitle: 'Unit Test Run'
-        condition: succeededOrFailed()
-
+ 
       - task: PublishBuildArtifacts@1
         displayName: 'Publish Artifact: ONNXRuntime python wheel'
         inputs:
           ArtifactName: onnxruntime_gpu
+
+      - script: |
+          7z x *.whl
+        workingDirectory: '$(Build.ArtifactStagingDirectory)'
+        displayName: 'unzip the package'
+
+      - task: CredScan@3
+        displayName: 'Run CredScan'
+        inputs:
+          debugMode: false
+        continueOnError: true
+
+      - task: BinSkim@4
+        displayName: 'Run BinSkim'
+        inputs:
+          AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
 
       - task: DeleteFiles@1
         displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
@@ -855,55 +958,32 @@ stages:
           Contents: |
             **/*.obj
             **/*.pdb
+            **/*.dll
 
-      - task: PythonScript@0
-        displayName: 'Regenerate cmake config with STATIC_ANALYSIS=ON'
-        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: >
-            --config RelWithDebInfo
-            --build_dir $(Build.BinariesDirectory)
-            --skip_submodule_sync
-            --cmake_generator "Visual Studio 16 2019"
-            --enable_pybind
-            --enable_onnx_tests
-            ${{ parameters.build_py_parameters }}
-            --parallel
-            $(TelemetryOption) $(EpBuildFlags)
-            --update
-            --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON
-          workingDirectory: '$(Build.BinariesDirectory)'
+      - powershell: |
+         python -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu -qq
+         Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
+         Remove-Item -Recurse -Force onnxruntime
+         python onnx_backend_test_series.py
+        workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+        displayName: 'Run Python Tests'
 
       #Manually set msBuildCommandline so that we can also set CAExcludePath
-      - task: SDLNativeRules@2
+      - task: SDLNativeRules@3
         displayName: 'Run the PREfast SDL Native Rules for MSBuild'
         condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
         inputs:
-          userProvideBuildInfo: msBuildInfo
-          msBuildVersion: 16.0
-          msBuildArchitecture: x64
-          msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform="x64" /p:configuration="RelWithDebInfo" /p:CAExcludePath="$(Build.BinariesDirectory);$(Build.SourcesDirectory)\cmake;C:\program files (x86)" /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
-        continueOnError: false
+          msBuildArchitecture: amd64
+          setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --cmake_generator "Visual Studio 16 2019" --enable_pybind --enable_onnx_tests ${{ parameters.build_py_parameters }} --parallel $(TelemetryOption) $(EpBuildFlags) --update --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
+          msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform=x64 /p:configuration="RelWithDebInfo" /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
+          excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
 
-      - script: |
-          rename *.whl *.zip
-        workingDirectory: '$(Build.ArtifactStagingDirectory)'
-        displayName: 'Rename file extension for codesign validation'
-
-      - task: securedevelopmentteam.vss-secure-development-tools.build-task-publishsecurityanalysislogs.PublishSecurityAnalysisLogs@2
-        displayName: 'Publish Security Analysis Logs'
-        condition: and (succeeded(), eq(variables['PythonVersion'], '3.7'))
-        inputs:
-          ArtifactName: CodeAnalysisLogs_windows_gpu_$(EP_NAME)_$(PythonVersion)
-        continueOnError: true
-
-      - task: TSAUpload@1
+      - task: TSAUpload@2
+        displayName: 'TSA upload'
         condition: and(and (succeeded(), eq(variables['PythonVersion'], '3.7')), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
-        displayName: 'TSA Upload'
         inputs:
-          tsaVersion: TsaV2
-          codeBaseName: 'onnxruntime_master'
+          GdnPublishTsaOnboard: false
+          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
         continueOnError: true
 
       - template: component-governance-component-detection-steps.yml
@@ -977,8 +1057,8 @@ stages:
 
 
   - ${{ if eq(parameters.enable_linux_arm, true) }}:
-    - job: Linux_ARM_py_Wheels
-      timeoutInMinutes: 120
+    - job: Linux_py_Wheels
+      timeoutInMinutes: 180
       workspace:
         clean: all
       pool: 'Linux-CPU'
@@ -996,6 +1076,19 @@ stages:
           ARM64_Py36:
             PYTHON_EXE: '/opt/python/cp36-cp36m/bin/python3'
             Image: 'manylinux2014_aarch64'
+          # Uncomment the following lines to generate packages for PowerPC
+          # POWERPC_Py39:
+          #   PYTHON_EXE: '/opt/python/cp39-cp39/bin/python3'
+          #   Image: 'manylinux2014_ppc64le'
+          # POWERPC_Py38:
+          #   PYTHON_EXE: '/opt/python/cp38-cp38/bin/python3'
+          #   Image: 'manylinux2014_ppc64le'
+          # POWERPC_Py37:
+          #   PYTHON_EXE: '/opt/python/cp37-cp37m/bin/python3'
+          #   Image: 'manylinux2014_ppc64le'
+          # POWERPC_Py36:
+          #   PYTHON_EXE: '/opt/python/cp36-cp36m/bin/python3'
+          #   Image: 'manylinux2014_ppc64le'
       steps:
       - checkout: self
         clean: true

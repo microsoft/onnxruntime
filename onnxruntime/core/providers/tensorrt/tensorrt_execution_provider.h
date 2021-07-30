@@ -47,10 +47,11 @@ class TensorrtLogger : public nvinfer1::ILogger {
                                                                             : severity == Severity::kWARNING ? "WARNING"
                                                                             : severity == Severity::kINFO    ? "   INFO"
                                                                                                              : "UNKNOWN");
-      if (severity <= Severity::kERROR)
+      if (severity <= Severity::kERROR) {
         LOGS_DEFAULT(ERROR) << "[" << buf << " " << sevstr << "] " << msg;
-      else
+      } else {
         LOGS_DEFAULT(WARNING) << "[" << buf << " " << sevstr << "] " << msg;
+      }
     }
   }
 };

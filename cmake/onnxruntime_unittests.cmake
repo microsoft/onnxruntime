@@ -664,19 +664,18 @@ AddTest(
   TARGET onnxruntime_test_all
   SOURCES ${all_tests} ${onnxruntime_unittest_main_src}
   LIBS
-    onnx_test_runner_common ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs} re2::re2
+    onnx_test_runner_common ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
     onnx_test_data_proto nlohmann_json::nlohmann_json
   DEPENDS ${all_dependencies}
 )
-
+if(NOT MSVC)
+  target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
+endif()
 # the default logger tests conflict with the need to have an overall default logger
 # so skip in this type of
 target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
 if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
   target_compile_definitions(onnxruntime_test_all_xc PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
-endif()
-if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-  target_compile_options(onnxruntime_test_all PUBLIC "-Wno-unused-const-variable")
 endif()
 if(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE)
   target_compile_definitions(onnxruntime_test_all PUBLIC -DRUN_MODELTEST_IN_DEBUG_MODE)
@@ -713,15 +712,10 @@ target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
 if(WIN32)
   target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456" "/wd4100" "/wd4267" "/wd6011" "/wd6387" "/wd28182")
 else()
-  if(HAS_UNUSED_PARAMETER)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
     target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-parameter")
   endif()
-  if(HAS_UNUSED_VARIABLE)
-    target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-variable")
-  endif()
-  if(HAS_UNUSED_BUT_SET_VARIABLE)
-    target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-but-set-variable")
-  endif()
+
 endif()
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto)
