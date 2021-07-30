@@ -1,10 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <iostream>
 #include "transformer_common.h"
 #include "core/platform/env_var_utils.h"
-#include <iostream>
-using namespace std;
 
 namespace onnxruntime {
 namespace contrib {
@@ -24,7 +23,8 @@ const TransformerOptions* TransformerOptions::GetInstance() {
     instance.Initialize(value);
 
     if (value > 0)
-      cout << "ORT_TRANSFORMER_OPTIONS: IsPrecisionMode=" << instance.IsPrecisionMode() << ",DisablePersistentSoftmax=" << instance.DisablePersistentSoftmax();
+      std::cout << "ORT_TRANSFORMER_OPTIONS: IsPrecisionMode=" << instance.IsPrecisionMode()
+                << ",DisablePersistentSoftmax=" << instance.DisablePersistentSoftmax() << std::endl;
   }
 
   return &instance;
