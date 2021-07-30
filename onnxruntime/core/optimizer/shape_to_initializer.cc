@@ -50,6 +50,10 @@ Status ShapeToInitializer::Apply(Graph& graph, Node& node, RewriteRuleEffect& ru
 }
 
 bool ShapeToInitializer::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
+  // This RewriteRule isn't updated to handle the opset-15 spec update for Shape
+  // because it is handled in ConstantFolding.
+  // TODO: Consider deprecating this RewriteRule given that its functionality seems to be
+  // already provided by a GraphTransformer (ConstantFolding) at the same level (Level 1)
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Shape", {1, 13})) {
     return false;
   }

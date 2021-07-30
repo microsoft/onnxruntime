@@ -9,6 +9,7 @@
 #endif
 
 #include "gsl/gsl"
+#include <limits>
 
 namespace onnxruntime {
 
@@ -17,14 +18,12 @@ class Shape final : public OpKernel {
   Shape(const OpKernelInfo& info) : OpKernel(info) {
     info.GetAttrOrDefault<int64_t>("start", &start_index_, 0);
 
-    if (start_index_ > 0) {
-      // "start" is provided and is non-default
+    if (start_index_ != 0) {
+      // "start" is provided and is non-default (default is 0)
       needs_slicing_ = true;
     }
 
     if (info.GetAttr<int64_t>("end", &end_index_).IsOK()) {
-      // "end" is provided
-      end_provided_ = true;
       needs_slicing_ = true;
     }
   }
@@ -42,36 +41,20 @@ class Shape final : public OpKernel {
       input_shape.CopyDims(output->template MutableData<int64_t>(), static_cast<size_t>(rank));
     } else {  // slicing is needed
       int64_t true_start = start_index_;
+      int64_t true_end = end_index_;
 
-      if (true_start < 0) {
-        true_start += rank;
-      }
+      // Deal with negative(s) and clamp
+      true_start = true_start < 0 ? true_start + rank : true_start;
+      true_start = true_start < 0 ? 0 : ((true_start > rank) ? rank : true_start);
 
-      // clamp
-      true_start = true_start < 0
-                       ? 0
-                       : ((true_start > rank) ? rank : true_start);
+      true_end = true_end < 0 ? true_end + rank : true_end;
+      true_end = true_end < 0 ? 0 : ((true_end > rank) ? rank : true_end);
 
-      int64_t true_end = rank;
+      auto slice_length = true_end - true_start;
+      Tensor* output = context->Output(0, {slice_length < 0 ? 0 : slice_length});
 
-      if (end_provided_) {  // end was explicitly provided, so honor that
-        true_end = end_index_;
-
-        if (true_end < 0) {
-          true_end += rank;
-        }
-
-        // clamp
-        true_end = true_end < 0
-                       ? 0
-                       : ((true_end > rank) ? rank : true_end);
-      }
-
-      auto slice_size = true_end - true_start;
-      Tensor* output = context->Output(0, {slice_size < 0 ? 0 : slice_size});
-
-      if (slice_size > 0) {
-        input_shape.CopyDims(output->template MutableData<int64_t>(), true_start, slice_size);
+      if (slice_length > 0) {
+        input_shape.CopyDims(output->template MutableData<int64_t>(), true_start, slice_length);
       }
     }
 
@@ -80,9 +63,8 @@ class Shape final : public OpKernel {
 
  private:
   bool needs_slicing_ = false;
-  bool end_provided_ = false;
   int64_t start_index_ = 0;
-  int64_t end_index_ = -1;  // only relevant if `end_provided_` is true
+  int64_t end_index_ = std::numeric_limits<int64_t>::max();
 };
 
 }  //namespace onnxruntime
