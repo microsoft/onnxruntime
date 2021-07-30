@@ -10,19 +10,19 @@ set(onnxruntime_pybind_srcs_pattern
 )
 
 if (onnxruntime_ENABLE_TRAINING)
-  # todo: move dlpack/dlpack_python.* to ${ONNXRUNTIME_ROOT}/python folder.
   list(APPEND onnxruntime_pybind_srcs_pattern
     "${ORTTRAINING_ROOT}/orttraining/python/*.cc"
     "${ORTTRAINING_ROOT}/orttraining/python/*.h"
-    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.cc"
-    "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_python.h"
-    "${ONNXRUNTIME_ROOT}/core/dlpack/python_common.h"
   )
 endif()
 
 file(GLOB onnxruntime_pybind_srcs CONFIGURE_DEPENDS
   ${onnxruntime_pybind_srcs_pattern}
   )
+  
+if(NOT onnxruntime_PYBIND_EXPORT_OPSCHEMA)
+  list(REMOVE_ITEM onnxruntime_pybind_srcs  ${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_schema.cc)
+endif()
 
 onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
 if(MSVC)
@@ -30,6 +30,13 @@ if(MSVC)
 endif()
 if(HAS_CAST_FUNCTION_TYPE)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-cast-function-type")
+endif()
+
+# We export symbols using linker and the compiler does not know anything about it
+# There is a problem with classes that have pybind types as members.
+# See https://pybind11.readthedocs.io/en/stable/faq.html#someclass-declared-with-greater-visibility-than-the-type-of-its-field-someclass-member-wattributes
+if (NOT MSVC)
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "-fvisibility=hidden")
 endif()
 
 if(onnxruntime_PYBIND_EXPORT_OPSCHEMA)
@@ -75,6 +82,7 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${PROVIDERS_NUPHAR}
     ${PROVIDERS_VITISAI}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_COREML}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
@@ -360,10 +368,10 @@ add_custom_command(
 )
 
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
-                                  AND NOT onnxruntime_ENABLE_TRAINING
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
                                   AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
-                                  AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+                                  AND NOT onnxruntime_USE_ROCM
+				  AND NOT onnxruntime_BUILD_WEBASSEMBLY)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
@@ -512,6 +520,15 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:onnxruntime_providers_nnapi>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
+endif()
+
+if (onnxruntime_USE_COREML)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_coreml>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
 endif()

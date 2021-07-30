@@ -330,8 +330,6 @@ def parse_arguments():
         help="Specify the minimum version of the target platform "
         "(e.g. macOS or iOS)"
         "This is only supported on MacOS")
-    parser.add_argument("--apple_disable_bitcode", action='store_true',
-                        help="Disable bitcode for iOS, bitcode is by default enabled for iOS.")
 
     # WebAssembly build
     parser.add_argument("--build_wasm", action='store_true', help="Build for WebAssembly")
@@ -349,6 +347,11 @@ def parse_arguments():
         "--wasm_malloc", default="dlmalloc", help="Specify memory allocator for WebAssembly")
     parser.add_argument(
         "--emsdk_version", default="2.0.23", help="Specify version of emsdk")
+
+    # Enable onnxruntime-extensions
+    parser.add_argument(
+        "--enable_onnxruntime_extensions", action='store_true',
+        help="Enable custom operators in onnxruntime-extensions")
 
     # Arguments needed by CI
     parser.add_argument(
@@ -755,6 +758,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_MALLOC=" + args.wasm_malloc,
         "-Donnxruntime_ENABLE_EAGER_MODE=" + ("ON" if args.build_eager_mode else "OFF"),
+        # enable custom operators in onnxruntime-extensions
+        "-Donnxruntime_ENABLE_EXTENSION_CUSTOM_OPS=" + ("ON" if args.enable_onnxruntime_extensions else "OFF"),
     ]
     if args.use_cuda:
         cmake_args += ["-Donnxruntime_USE_CUDA=ON", "-Donnxruntime_CUDA_VERSION=" + args.cuda_version,
@@ -902,7 +907,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
                 "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target,
                 # we do not need protoc binary for ios cross build
                 "-Dprotobuf_BUILD_PROTOC_BINARIES=OFF",
-                "-Donnxruntime_ENABLE_BITCODE=" + ("OFF" if args.apple_disable_bitcode else "ON"),
                 "-DCMAKE_TOOLCHAIN_FILE=" + (
                     args.ios_toolchain_file if args.ios_toolchain_file
                     else "../cmake/onnxruntime_ios.toolchain.cmake")
@@ -1291,8 +1295,17 @@ def run_ios_tests(args, source_dir, config, cwd):
 
     if args.build_apple_framework:
         package_test_py = os.path.join(source_dir, 'tools', 'ci_build', 'github', 'apple', 'test_ios_packages.py')
-        framework_dir = os.path.join(cwd, config + '-' + args.ios_sysroot)
-        run_subprocess([sys.executable, package_test_py, '--c_framework_dir', framework_dir], cwd=cwd)
+        framework_info_file = os.path.join(cwd, 'framework_info.json')
+        dynamic_framework_dir = os.path.join(cwd, config + '-' + args.ios_sysroot)
+        static_framework_dir = os.path.join(cwd, config + '-' + args.ios_sysroot, 'static_framework')
+        # test dynamic framework
+        run_subprocess([sys.executable, package_test_py,
+                        '--c_framework_dir', dynamic_framework_dir,
+                        '--framework_info_file', framework_info_file], cwd=cwd)
+        # test static framework
+        run_subprocess([sys.executable, package_test_py,
+                        '--c_framework_dir', static_framework_dir,
+                        '--framework_info_file', framework_info_file], cwd=cwd)
 
 
 def run_orttraining_test_orttrainer_frontend_separately(cwd):
@@ -1483,6 +1496,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             run_subprocess([sys.executable, 'onnxruntime_test_python.py'], cwd=cwd, dll_path=dll_path)
 
+            if not args.disable_contrib_ops:
+                run_subprocess([sys.executable, 'onnxruntime_test_python_sparse_matmul.py'],
+                               cwd=cwd, dll_path=dll_path)
+
             if args.enable_symbolic_shape_infer_tests:
                 run_subprocess([sys.executable, 'onnxruntime_test_python_symbolic_shape_infer.py'],
                                cwd=cwd, dll_path=dll_path)
@@ -1516,15 +1533,15 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                                    cwd=cwd, dll_path=dll_path)
                     if args.enable_transformers_tool_test:
                         import numpy
+                        import google.protobuf
                         numpy_init_version = numpy.__version__
+                        pb_init_version = google.protobuf.__version__
                         run_subprocess([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'],
                                        cwd=SCRIPT_DIR)
                         run_subprocess([sys.executable, '-m', 'pytest', 'transformers'], cwd=cwd)
-                        # Restore initial environment
-                        run_subprocess([sys.executable, '-m', 'pip', 'uninstall', '-r', 'requirements.txt', '-y'],
-                                       cwd=SCRIPT_DIR)
-                        # Restore initial numpy version in case other tests use it
+                        # Restore initial numpy/protobuf version in case other tests use it
                         run_subprocess([sys.executable, '-m', 'pip', 'install', 'numpy==' + numpy_init_version])
+                        run_subprocess([sys.executable, '-m', 'pip', 'install', 'protobuf==' + pb_init_version])
 
                 if not args.disable_ml_ops:
                     run_subprocess([sys.executable, 'onnxruntime_test_python_backend_mlops.py'],
@@ -1556,9 +1573,6 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
 
 def nuphar_run_python_tests(build_dir, configs):
-    """nuphar temporary function for running python tests separately
-    as it requires ONNX 1.5.0
-    """
     for config in configs:
         if config == 'Debug':
             continue
@@ -2118,7 +2132,6 @@ def main():
     if args.test:
         run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs)
 
-        # run nuphar python tests last, as it installs ONNX 1.5.0
         if args.enable_pybind and not args.skip_onnx_tests and args.use_nuphar:
             nuphar_run_python_tests(build_dir, configs)
 

@@ -12,10 +12,6 @@
 #include "onnx/defs/function.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 
-#ifdef ENABLE_TRAINING
-#include "orttraining/training_ops/cpu/aten_ops/aten_op_config.h"
-#endif
-
 namespace onnxruntime {
 namespace training {
 
@@ -155,7 +151,7 @@ TensorProto ToDimensionOneTensor(int32_t value) {
 bool BuildContextDependentFunctionBodyNllLossInternal(
     const FunctionBodyBuildContext& ctx,
     const OpSchema& schema,
-    FunctionProto& functionProto) {  
+    FunctionProto& functionProto) {
   if (ctx.getInputType(0) == nullptr) {
     // we cannot create a correct function body without knowing the input type
     return false;
@@ -286,10 +282,10 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
          {MakeAttribute("value", ToDimensionOneFloatTensor(0.0f))}});
     if (!float_input) {
       body.push_back(
-          {{"const_zero_casted"}, 
-          "Cast", 
-          {"const_zero_float"}, 
-          {MakeAttribute("to", static_cast<int64_t>(input_type))}});
+          {{"const_zero_casted"},
+           "Cast",
+           {"const_zero_float"},
+           {MakeAttribute("to", static_cast<int64_t>(input_type))}});
     }
     body.push_back(
         {{"input_gather_element_transform"},
@@ -315,16 +311,16 @@ bool BuildContextDependentFunctionBodyNllLossInternal(
            {MakeAttribute("value", ToDimensionOneFloatTensor(1.0f))}});
       if (!float_input) {
         body.push_back(
-          {{"const_one_casted"}, 
-           "Cast", 
-           {"const_one_float"}, 
-           {MakeAttribute("to", static_cast<int64_t>(input_type))}});
+            {{"const_one_casted"},
+             "Cast",
+             {"const_one_float"},
+             {MakeAttribute("to", static_cast<int64_t>(input_type))}});
       }
       body.push_back(
           {{"weight_gather"},
            "Where",
-           {"squeeze_mask", float_input ? "const_zero_float" : "const_zero_casted", 
-           float_input ? "const_one_float" :"const_one_casted"}});
+           {"squeeze_mask", float_input ? "const_zero_float" : "const_zero_casted",
+            float_input ? "const_one_float" : "const_one_casted"}});
 
     } else {
       body.push_back(
@@ -1686,7 +1682,7 @@ Example 4:
       })
       .SetContextDependentFunctionBodyBuilder(
           [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
-            /* DropoutGrad (dy, mask, optional ratio, optional training_mode) => dX 
+            /* DropoutGrad (dy, mask, optional ratio, optional training_mode) => dX
                  dX = Where (mask, dY / (1-ratio), 0)
               where ratio = 0.5 if not specified.
 
@@ -2052,7 +2048,7 @@ Example 4:
       .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
       .SetContextDependentFunctionBodyBuilder(
           [](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
-            /* Default GeluGrad computation: 
+            /* Default GeluGrad computation:
               dX = dY * [0.5f * [erf(sqrt(1/2)*X) + 1.0] + alpha*X*exp(-0.5f * X * X)]
             which expands to the following ONNX graph:
             */
@@ -2174,22 +2170,30 @@ Example 4:
   ONNX_CONTRIB_OPERATOR_SCHEMA(BatchNormalizationGrad)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .SetDoc("BatchNormalization")
+      .SetDoc("BatchNormalizationGrad")
       .Attr("epsilon",
             "epsilon value",
             AttributeProto::FLOAT)
       .Input(0, "dY", "Gradient output from previous node", "T")
       .Input(1, "X", "Input", "T")
-      .Input(2, "scale", "Scale tensor", "T")
-      .Input(3, "mean", "Mean of X", "T")
-      .Input(4, "variance", "Variance of X", "T")
+      .Input(2, "scale", "Scale tensor", "T1")
+      .Input(3, "mean", "Mean of X", "T2")
+      .Input(4, "variance", "Variance of X", "T2")
       .Output(0, "X_grad", "Gradient of the input", "T")
-      .Output(1, "scale_grad", "Gradient of the scale", "T")
-      .Output(2, "bias_grad", "Gradient of the bias", "T")
+      .Output(1, "scale_grad", "Gradient of the scale", "T1")
+      .Output(2, "bias_grad", "Gradient of the bias", "T1")
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain input and output types to float tensors.");
+          "Constrain input and output types to float tensors.")
+      .TypeConstraint(
+          "T1",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain scale and bias types to float tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain mean and variance types to float tensors.");
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(Group)
       .SetDomain(kMSDomain)
@@ -2366,30 +2370,40 @@ Return true if all elements are true and false otherwise.
       .Attr("momentum", "momentum value", AttributeProto::FLOAT, 0.9f)
       .Attr("training_mode", "true if training", AttributeProto::INT, static_cast<int64_t>(1))
       .Input(0, "X", "Input tensor.", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
-      .Input(1, "scale", "Scale tensor of shape (C).", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
-      .Input(2, "B", "Bias tensor of shape (C).", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
-      .Input(3, "input_mean", "running mean tensor of shape (C).", "U", OpSchema::Single, true, 1, OpSchema::Differentiable)
-      .Input(4, "input_var", "running variance tensor of shape (C).", "U", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(1, "scale", "Scale tensor of shape (C).", "T1", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(2, "B", "Bias tensor of shape (C).", "T1", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(3, "input_mean", "running mean tensor of shape (C).", "T2", OpSchema::Single, true, 1, OpSchema::Differentiable)
+      .Input(4, "input_var", "running variance tensor of shape (C).", "T2", OpSchema::Single, true, 1, OpSchema::Differentiable)
       .Output(0, "Y", "The output tensor of the same shape as X", "T", OpSchema::Single, true, 1, OpSchema::Differentiable)
-      .Output(1, "running_mean", "The running mean after BN.", "U", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
-      .Output(2, "running_var", "Running var after BN", "U", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
-      .Output(3, "saved_mean", "Mean of the batch", "U", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
-      .Output(4, "saved_inv_std", "Inverse standard deviation for the batch", "U", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Output(1, "running_mean", "The running mean after BN.", "T2", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Output(2, "running_var", "Running var after BN", "T2", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Output(3, "saved_mean", "Mean of the batch", "T2", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
+      .Output(4, "saved_inv_std", "Inverse standard deviation for the batch", "T2", OpSchema::Optional, true, 1, OpSchema::NonDifferentiable)
       .TypeConstraint(
           "T",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
           "Constrain input and output types to float tensors.")
       .TypeConstraint(
-          "U",
+          "T1",
           {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
-          "Constrain mean and variance types to float tensors. It allows all float type for U.")
+          "Constrain scale and bias types to float tensors.")
+      .TypeConstraint(
+          "T2",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain mean and variance types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
         propagateShapeFromInputToOutput(ctx, 0, 0);
 
         Dim num_channels;
 
-        unifyInputDim(ctx, 0, 1, num_channels);
+        // Add support for 1D input X, in which case num_channels should default to 1.
+        auto& input_shape = getInputShape(ctx, 0);
+        if (input_shape.dim_size() <= 1) {
+          num_channels.set_dim_value(1);
+        } else {
+          unifyInputDim(ctx, 0, 1, num_channels);
+        }
         unifyInputDim(ctx, 1, 0, num_channels);
         unifyInputDim(ctx, 2, 0, num_channels);
         unifyInputDim(ctx, 3, 0, num_channels);
@@ -2805,55 +2819,8 @@ Return true if all elements are true and false otherwise.
               /*is_homogeneous*/ false,
               /*min_arity*/ 1)
       .Attr("name", "Name of ATen operator.", AttributeProto::STRING)
-      .Attr("custom_attributes_json", "custom attributes in JSON format.", AttributeProto::STRING, false)
-      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        const auto name_proto = ctx.getAttribute("name");
-        ORT_ENFORCE(name_proto, "ATenOp's must have \"name\" attribute.");
-        const std::string& name = name_proto->s();
-        const auto* op_config_ptr = contrib::aten_ops::ATenOperatorConfigs::Instance().GetConfig(name);
-        ORT_ENFORCE(op_config_ptr, "ATen Op config for ", name, " is not found.");
-        const auto& op_config = *op_config_ptr;
-        ORT_ENFORCE(ctx.getNumOutputs() == op_config.forward_output_type_infer_configs.size());
-
-        // Set inferred output types.
-        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
-          int type_config = std::get<1>(op_config.forward_output_type_infer_configs[i]);
-          if (std::get<0>(op_config.forward_output_type_infer_configs[i]) == contrib::aten_ops::PROPAGATE_FROM_INPUT) {
-            propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(type_config), i);
-          } else {
-            updateOutputElemType(ctx, i, type_config);
-          }
-        }
-      });
-
-  ONNX_CONTRIB_OPERATOR_SCHEMA(ATenOpGrad)
-      .SetDomain(kMSDomain)
-      .SinceVersion(1)
-      .SetSupportLevel(OpSchema::SupportType::EXPERIMENTAL)
-      .SetDoc("ATenOpGrad.")
-      .Input(0, "inputs", "Inputs of ATenOp's gradient op.", "T", OpSchema::Variadic,
-             /*is_homogeneous*/ false,
-             /*min_arity*/ 1)
-      .Output(0, "outputs", "Outputs of ATenOp's gradient op.", "T", OpSchema::Variadic,
-              /*is_homogeneous*/ false,
-              /*min_arity*/ 1)
-      .Attr("name", "Name of ATen operator, should be same as its corresponding forward op.", AttributeProto::STRING)
-      .Attr("output_types", "Output types of ATenOp's gradient op.", AttributeProto::INTS)
-      .Attr("custom_attributes_json", "custom attributes in JSON format.", AttributeProto::STRING, false)
-      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.")
-      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        // Load expected output types.
-        const auto output_types_proto = ctx.getAttribute("output_types");
-        // This is a required field.
-        ORT_ENFORCE(output_types_proto, "ATenOpGrad's must have \"output_types\" attribute.");
-        ORT_ENFORCE(static_cast<size_t>(output_types_proto->ints_size()) == ctx.getNumOutputs(),
-                    "ATenOpGrad's output list and \"output_types\" attribute should have same length.");
-        // Set inferred output types.
-        for (size_t i = 0; i < ctx.getNumOutputs(); ++i) {
-          updateOutputElemType(ctx, i, static_cast<int>(output_types_proto->ints(static_cast<int>(i))));
-        }
-      });
+      .Attr("overload_name", "Overload name of ATen operator.", AttributeProto::STRING, false)
+      .TypeConstraint("T", OpSchema::all_tensor_types(), "Allow inputs and outputs to be any kind of tensor.");
 #endif
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(PythonOp)
@@ -2887,9 +2854,14 @@ Return true if all elements are true and false otherwise.
           "Name of custom class.",
           AttributeProto::STRING)
       .Attr(
-          "call_convention",
-          "call_convention[i]==c means a non-tensor argument. call_convention[i]==d means a tensor.",
+          "input_convention",
+          "input_convention[i]==c means a non-tensor argument. input_convention[i]==d means a tensor.",
           AttributeProto::STRING)
+      .Attr(
+          "input_requires_grads",
+          "Flags to indicate whether the torch.autograd.apply's inputs require gradients (including flags for both tensor"
+          " and non-tensor inputs)",
+          AttributeProto::INTS)
       // Input Pytorch tensors.
       .Attr(
           "input_tensor_types",
@@ -2898,10 +2870,6 @@ Return true if all elements are true and false otherwise.
       .Attr(
           "input_tensor_ranks",
           "Input tensors' ranks of autograd.Function.apply.",
-          AttributeProto::INTS)
-      .Attr(
-          "input_tensor_requires_grads",
-          "Flags to indicate which inputs has gradient",
           AttributeProto::INTS)
       // Input int scalars.
       .Attr(
@@ -3006,7 +2974,7 @@ Return true if all elements are true and false otherwise.
         ORT_ENFORCE(input_tensor_types_proto, "PythonOp's must have \"input_tensor_types\" attribute.");
         // Check if the inferred input types match those described in the
         // "input_tensor_types" attributes.
-        int64_t input_tensor_types_count = input_tensor_types_proto->ints_size();
+        const int64_t input_tensor_types_count = input_tensor_types_proto->ints_size();
         ORT_ENFORCE(static_cast<size_t>(input_tensor_types_count) == ctx.getNumInputs(),
                     "PythonOp's input list and \"input_tensor_types\" attribute should have the same length.");
         for (auto i = 0; i < input_tensor_types_count; ++i) {
@@ -3031,7 +2999,7 @@ Return true if all elements are true and false otherwise.
         // This is a required field.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOp's must have \"output_tensor_types\" attribute.");
 
-        static size_t rank_count = 0;
+        size_t rank_count = 0;
         // Set inferred output types.
         for (auto i = 1; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
           updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i - 1)));
@@ -3063,8 +3031,10 @@ Return true if all elements are true and false otherwise.
       .Input(
           1,
           "inputs",
-          "Inputs of autograd.Function.backward. There are 2*N inputs: \
-          N gradient inputs + N forward run activations of PythonOp (not including the context).",
+          "There are 2*N inputs: "
+          "  N gradient inputs (as inputs of autograd.Function.backward) + "
+          "  N forward run activations of autograd.Function.apply."
+          "The N forward run inputs are used as control dependency between PythonOpGrad and PythonOp",
           "T",
           OpSchema::Variadic,
           /*is_homogeneous*/ false,
@@ -3083,37 +3053,45 @@ Return true if all elements are true and false otherwise.
           AttributeProto::STRING)
       .Attr(
           "inplace",
-          "Indicate if the output should reuse input memory.",
+          "Indicate if the output should reuse input memory. Todo(pengwa): do we really need it?",
           AttributeProto::INT,
           static_cast<int64_t>(0))
       .Attr(
           "input_tensor_types",
-          "Input types of autograd.Function.backward.",
+          "Input types of autograd.Function.backward (including only tensor inputs)."
+          "This attribute is mostly used for input checks for better robustnes.",
           AttributeProto::INTS,
           false)
       .Attr(
           "input_tensor_ranks",
-          "Input ranks of autograd.Function.backward.",
+          "Input ranks of autograd.Function.backward (including only tensor inputs)."
+          "This attribute is mostly used for input checks for better robustness.",
           AttributeProto::INTS,
           false)
       .Attr(
           "input_tensor_requires_grads",
-          "Flags to indicate which inputs has gradient",
+          "Flags to indicate which inputs have gradients (including only tensor inputs)."
+          "This attribute is mostly used for input checks for better robustness.",
           AttributeProto::INTS)
       .Attr(
           "output_tensor_types",
-          "Output types of autograd.Function.backward.",
+          "Output types of autograd.Function.backward outputs (including only tensor outputs).",
           AttributeProto::INTS,
           false)
       .Attr(
           "output_tensor_ranks",
-          "Output ranks of autograd.Function.backward.",
+          "Output ranks of autograd.Function.backward outputs (including only tensor outputs).",
           AttributeProto::INTS,
           false)
       .Attr(
           "output_tensor_requires_grads",
-          "Flags to indicate which outputs has gradient",
+          "Flags to indicate which outputs have gradients (including only tensor outputs).",
           AttributeProto::INTS)
+      .Attr(
+          "output_convention",
+          "A string inidicating autograd.Function.backward outputs's type."
+          "value 'c' - non-tensor output; value 'd' - tensor output.",
+          AttributeProto::STRING)
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),
@@ -3154,9 +3132,9 @@ Return true if all elements are true and false otherwise.
         ORT_ENFORCE(static_cast<size_t>(output_tensor_types_proto->ints_size()) == ctx.getNumOutputs(),
                     "PythonOpGrad's output list and \"output_tensor_types\" attribute should have the same length.");
         // This is a required field.
-        ORT_ENFORCE(output_tensor_types_proto, "PythonOp's must have \"output_tensor_types\" attribute.");
+        ORT_ENFORCE(output_tensor_types_proto, "PythonOpGrad's must have \"output_tensor_types\" attribute.");
         // Set inferred output types.
-        static size_t rank_count = 0;
+        size_t rank_count = 0;
         for (auto i = 0; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
           updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i)));
           const auto output_tensor_ranks = ctx.getAttribute("output_tensor_ranks");
