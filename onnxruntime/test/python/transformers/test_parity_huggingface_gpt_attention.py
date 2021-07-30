@@ -193,13 +193,14 @@ def get_output_names(debug=False):
     return outputs
 
 
-def export_onnx(model, onnx_model_path, float16, hidden_size, num_attention_heads, debug=False):
+def export_onnx(model, onnx_model_path, float16, hidden_size, num_attention_heads, debug, device):
     from pathlib import Path
     Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
     input_hidden_states, attention_mask, layer_past = create_inputs(float16=float16,
                                                                     hidden_size=hidden_size,
-                                                                    num_attention_heads=num_attention_heads)
+                                                                    num_attention_heads=num_attention_heads,
+                                                                    device=device)
 
     with torch.no_grad():
         outputs = model(input_hidden_states, attention_mask=attention_mask, layer_past=layer_past)
@@ -263,7 +264,7 @@ def export_onnx(model, onnx_model_path, float16, hidden_size, num_attention_head
     print("exported:", onnx_model_path)
 
 
-def optimize_onnx(input_onnx_path, optimized_onnx_path, num_heads=12, debug=False):
+def optimize_onnx(input_onnx_path, optimized_onnx_path, num_heads, debug):
     from onnxruntime.transformers.onnx_model import OnnxModel
     m = onnx.load(input_onnx_path)
     onnx_model = OnnxModel(m)
@@ -308,7 +309,7 @@ def compare_outputs(torch_outputs, ort_outputs, rtol=1e-03, atol=1e-03, verbose=
                 print(f'output {i} ({ort_outputs[i].name}) are close: {is_close}')
         max_abs_diff.append(diff_outputs(torch_outputs, ort_outputs, i))
 
-    if (not is_all_close) or max(max_abs_diff) > 0:  #(verbose and max(max_abs_diff) > 0):
+    if (not is_all_close) or (verbose and max(max_abs_diff) > 0):
         messages = ["max_abs_diff per output:"]
         output_names = ["attn_output", "present"] + DEBUG_OUTPUTS
         for i, diff in enumerate(max_abs_diff):
@@ -346,23 +347,23 @@ def onnxruntime_inference(ort_session, input_hidden_states, attention_mask, past
 
 def verify_attention(model,
                      onnx_model_path,
-                     batch_size=1,
-                     hidden_size=768,
-                     num_attention_heads=12,
-                     sequence_length=1,
-                     past_sequence_length=5,
-                     float16=False,
-                     device=torch.device('cuda'),
-                     padding_length=0,
-                     test_cases=100,
-                     optimized=False):
+                     batch_size,
+                     hidden_size,
+                     num_attention_heads,
+                     sequence_length,
+                     past_sequence_length,
+                     float16,
+                     device,
+                     padding_length,
+                     optimized,
+                     test_cases=100):
     print(
-        f"optimized={optimized}, batch_size={batch_size}, hidden_size={hidden_size}, num_attention_heads={num_attention_heads}, sequence_length={sequence_length}, past_sequence_length={past_sequence_length}, float16={float16}, padding_length={padding_length}"
+        f"optimized={optimized}, batch_size={batch_size}, hidden_size={hidden_size}, num_attention_heads={num_attention_heads}, sequence_length={sequence_length}, past_sequence_length={past_sequence_length}, float16={float16}, padding_length={padding_length}, device={device}"
     )
     passed_cases = 0
     max_diffs = []
 
-    ort_session = create_ort_session(onnx_model_path)
+    ort_session = create_ort_session(onnx_model_path, device.type == 'cuda')
     for i in range(test_cases):
         input_hidden_states, attention_mask, layer_past = create_inputs(batch_size, hidden_size, num_attention_heads,
                                                                         sequence_length, past_sequence_length, float16,
@@ -386,11 +387,10 @@ def verify_attention(model,
     return test_cases - passed_cases
 
 
-def run(batch_size=1, float16=False, optimized=False, hidden_size=768, num_attention_heads=12):
+def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device):
     test_name = f"batch_size={batch_size}, float16={float16}, optimized={optimized}, hidden_size={hidden_size}, num_attention_heads={num_attention_heads}"
-    print(f"Testing ONNX parity: {test_name}")
+    print(f"\nTesting ONNX parity: {test_name}")
 
-    device = torch.device('cuda')
     debug = (not optimized
              )  # or DEBUG_OUTPUTS==["softmax"] when you add an extra output for softmax result in Attention operator
     model = MyGPT2Attention(hidden_size=hidden_size, num_attention_heads=num_attention_heads, debug=debug)
@@ -401,11 +401,11 @@ def run(batch_size=1, float16=False, optimized=False, hidden_size=768, num_atten
 
     # Do not re-use onnx file from previous test since weights of model are random.
     onnx_model_path = './temp/gpt_attention_{}.onnx'.format("fp16" if float16 else "fp32")
-    export_onnx(model, onnx_model_path, float16, hidden_size, num_attention_heads, debug=debug)
+    export_onnx(model, onnx_model_path, float16, hidden_size, num_attention_heads, debug, device)
 
     if optimized:
         optimized_onnx_path = './temp/gpt_attention_opt_{}.onnx'.format("fp16" if float16 else "fp32")
-        optimize_onnx(onnx_model_path, optimized_onnx_path, num_attention_heads, debug=debug)
+        optimize_onnx(onnx_model_path, optimized_onnx_path, num_attention_heads, debug)
         onnx_path = optimized_onnx_path
     else:
         onnx_path = onnx_model_path
@@ -425,7 +425,7 @@ def run(batch_size=1, float16=False, optimized=False, hidden_size=768, num_atten
                                     float16,
                                     device,
                                     padding_length,
-                                    optimized=optimized)
+                                    optimized)
 
     # Test Case: with past state and padding last 2 words
     sequence_length = 3
@@ -441,7 +441,7 @@ def run(batch_size=1, float16=False, optimized=False, hidden_size=768, num_atten
                                     float16,
                                     device,
                                     padding_length,
-                                    optimized=optimized)
+                                    optimized)
 
     # Test Case: random mask one word
     sequence_length = 1
@@ -457,7 +457,7 @@ def run(batch_size=1, float16=False, optimized=False, hidden_size=768, num_atten
                                     float16,
                                     device,
                                     padding_length,
-                                    optimized=optimized)
+                                    optimized)
 
     # clean up onnx file
 
@@ -469,38 +469,49 @@ def run(batch_size=1, float16=False, optimized=False, hidden_size=768, num_atten
 
 
 class TestGptAttentionHuggingfaceParity(unittest.TestCase):
-    def run_test(self, batch_size, float16, optimized, hidden_size, num_attention_heads):
-        num_failure, test_name = run(batch_size, float16, optimized, hidden_size, num_attention_heads)
+    def setUp(self):
+        self.optimized = True # change it to False if you want to test parity of non optimized ONNX
+
+    def run_test(self, batch_size, float16, optimized, hidden_size, num_attention_heads, device):
+        if float16 and device.type=='cpu': # CPU does not support FP16
+            return
+        num_failure, test_name = run(batch_size, float16, optimized, hidden_size, num_attention_heads, device)
         self.assertTrue(num_failure == 0, test_name)
 
-    def run_small(self, optimized):
+    def run_small(self, optimized, device):
         for batch_size in [64]:
-            self.run_test(batch_size, float16=False, optimized=optimized, hidden_size=768, num_attention_heads=12)
-            self.run_test(batch_size, float16=True, optimized=optimized, hidden_size=768, num_attention_heads=12)
-            #self.run_test(batch_size, float16=False, optimized=optimized, hidden_size=1024, num_attention_heads=16)
-            #self.run_test(batch_size, float16=True, optimized=optimized, hidden_size=1024, num_attention_heads=16)
+            self.run_test(batch_size, float16=False, optimized=optimized, hidden_size=768, num_attention_heads=12, device=device)
+            self.run_test(batch_size, float16=True, optimized=optimized, hidden_size=768, num_attention_heads=12, device=device)
+            #self.run_test(batch_size, float16=False, optimized=optimized, hidden_size=1024, num_attention_heads=16, device=device)
+            #self.run_test(batch_size, float16=True, optimized=optimized, hidden_size=1024, num_attention_heads=16, device=device)
 
-    def run_large(self, optimized):
+    def run_large(self, optimized, device):
         for batch_size in [2]:
-            #self.run_test(batch_size, float16=False, optimized=optimized, hidden_size=2048, num_attention_heads=16)
-            #self.run_test(batch_size, float16=True, optimized=optimized, hidden_size=2048, num_attention_heads=16)
-            self.run_test(batch_size, float16=False, optimized=optimized, hidden_size=4096, num_attention_heads=32)
-            self.run_test(batch_size, float16=True, optimized=optimized, hidden_size=4096, num_attention_heads=32)
+            #self.run_test(batch_size, float16=False, optimized=optimized, hidden_size=2048, num_attention_heads=16, device=device)
+            #self.run_test(batch_size, float16=True, optimized=optimized, hidden_size=2048, num_attention_heads=16, device=device)
+            self.run_test(batch_size, float16=False, optimized=optimized, hidden_size=4096, num_attention_heads=32, device=device)
+            self.run_test(batch_size, float16=True, optimized=optimized, hidden_size=4096, num_attention_heads=32, device=device)
 
-    def test_optimized(self):
-        self.run_small(True)
+    def test_cpu(self):
+        cpu = torch.device('cpu')
+        self.run_small(self.optimized, cpu)
 
-    #def test_non_optimized(self):
-    #    self.run_small(False)
+    def test_cuda(self):
+        if not torch.cuda.is_available():
+            import pytest
+            pytest.skip('test requires GPU and torch+cuda')
+        else:
+            gpu = torch.device('cuda')
+            self.run_small(self.optimized, gpu)
 
     @pytest.mark.slow
-    def test_optimized_large(self):
-        self.run_large(True)
-
-    #@pytest.mark.slow
-    #def test_non_optimized_large(self):
-    #    self.run_large(False)
-
+    def test_large_cuda(self):
+        if not torch.cuda.is_available():
+            import pytest
+            pytest.skip('test requires GPU and torch+cuda')
+        else:
+            gpu = torch.device('cuda')
+            self.run_large(self.optimized, gpu)
 
 if __name__ == '__main__':
     unittest.main()
