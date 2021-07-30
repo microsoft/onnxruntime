@@ -311,6 +311,8 @@ struct SessionOptions : Base<OrtSessionOptions> {
   SessionOptions& EnableProfiling(const ORTCHAR_T* profile_file_prefix);
   SessionOptions& DisableProfiling();
 
+  SessionOptions& EnableOrtCustomOps();
+
   SessionOptions& EnableMemPattern();
   SessionOptions& DisableMemPattern();
 

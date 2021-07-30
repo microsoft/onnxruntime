@@ -153,6 +153,9 @@ option(onnxruntime_ENABLE_EAGER_MODE "build ort eager mode")
 # build separate library of schemas of (custom) ops used by ORT (for ONNX to MLIR translation)
 option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
 
+# option to enable custom operators in onnxruntime-extensions
+option(onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS "Enable custom operators in onnxruntime-extensions" OFF)
+
 # Single output director for all binaries
 set (RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
 
@@ -220,8 +223,10 @@ if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
 endif()
 
 if (NOT (UNIX AND onnxruntime_ENABLE_PYTHON AND onnxruntime_ENABLE_TRAINING AND (NOT onnxruntime_BUILD_SHARED_LIB)))
+  if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    message(WARNING "onnxruntime_ENABLE_TRAINING_TORCH_INTEROP is turned OFF due to incompatible build combinations.")
+  endif()
   set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP OFF)
-  message(WARNING "onnxruntime_ENABLE_TRAINING_TORCH_INTEROP is turned OFF due to incompatible build combinations.")
 endif()
 
 set(onnxruntime_REQUIRE_PYTHON_EMBED_LIB OFF)
@@ -495,7 +500,7 @@ if (MSVC)
     string(APPEND CMAKE_CXX_FLAGS " /EHsc /wd26812")
     string(APPEND CMAKE_C_FLAGS " /EHsc /wd26812")
   endif()
-  string(APPEND CMAKE_CXX_FLAGS " /external:W0 /external:I ${CMAKE_CURRENT_SOURCE_DIR} /external:I ${CMAKE_CURRENT_BINARY_DIR}")
+  string(APPEND CMAKE_CXX_FLAGS " /experimental:external /external:W0 /external:templates- /external:I ${CMAKE_CURRENT_SOURCE_DIR} /external:I ${CMAKE_CURRENT_BINARY_DIR}")
   if(onnxruntime_USE_AVX)
     string(APPEND CMAKE_CXX_FLAGS " /arch:AVX")
     string(APPEND CMAKE_C_FLAGS " /arch:AVX")
@@ -782,6 +787,32 @@ if(NOT TARGET re2::re2)
   set(RE2_INCLUDE_DIR ${REPO_ROOT}/cmake/external/re2)
 endif()
 
+
+# Adding pytorch CPU info library
+# TODO  do we have to add target_include_directories to each project that uses this?
+if(MSVC AND (( CMAKE_SYSTEM_PROCESSOR  MATCHES "^(ARM.*|arm.*)$" ) OR (CMAKE_GENERATOR_PLATFORM  MATCHES "^(ARM.*|arm.*)$" ) ))
+  # cpuinfo fail to compile with windows arm.
+else()
+set(PYTORCH_CPUINFO_DIR external/pytorch_cpuinfo)
+set(PYTORCH_CPUINFO_INCLUDE_DIR ${PYTORCH_CPUINFO_DIR}/include)
+set(CPUINFO_BUILD_TOOLS OFF CACHE INTERNAL "")
+set(CPUINFO_BUILD_UNIT_TESTS OFF CACHE INTERNAL "")
+set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE INTERNAL "")
+set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
+
+if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+ set(IOS ON CACHE INTERNAL "")
+ set(IOS_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE INTERNAL "")
+endif()
+
+message(STATUS "CMAKE_SYSTEM_PROCESSOR = ${CMAKE_SYSTEM_PROCESSOR}")
+message(STATUS "CMAKE_SYSTEM_NAME = ${CMAKE_SYSTEM_NAME}")
+message(STATUS "CMAKE_OSX_ARCHITECTURES = ${CMAKE_OSX_ARCHITECTURES}")
+message(STATUS "IOS_ARCH = ${IOS_ARCH}")
+
+add_subdirectory(external/pytorch_cpuinfo EXCLUDE_FROM_ALL)
+
+endif()
 # bounds checking behavior.
 # throw instead of calling terminate if there's a bounds checking violation.
 # we make it through via a handler so CUDA does not complain
@@ -1219,6 +1250,20 @@ if (onnxruntime_USE_TVM)
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm nnvm_compiler)
 endif()
 
+if (onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS)
+  # add compile definition to enable custom operators in onnxruntime-extensions
+  add_compile_definitions(ENABLE_EXTENSION_CUSTOM_OPS)
+
+  # set options for onnxruntime-extensions
+  set(OCOS_ENABLE_CTEST OFF CACHE INTERNAL "")
+  set(OCOS_ENABLE_STATIC_LIB ON CACHE INTERNAL "")
+  set(OCOS_ENABLE_SPM_TOKENIZER OFF CACHE INTERNAL "")
+  add_subdirectory(external/onnxruntime-extensions EXCLUDE_FROM_ALL)
+  # target library or executable are defined in CMakeLists.txt of onnxruntime-extensions
+  target_include_directories(ocos_operators PRIVATE ${RE2_INCLUDE_DIR} external/json/include)
+  target_include_directories(ortcustomops PUBLIC external/onnxruntime-extensions/shared)
+endif()
+
 if (APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Android")
   #onnx/onnx/proto_utils.h:34:16: error: 'SetTotalBytesLimit' is deprecated: Please use the single
   #parameter version of SetTotalBytesLimit(). The second parameter is ignored.
@@ -1323,8 +1368,7 @@ if(onnxruntime_USE_OPENVINO)
     set(OPENVINO_VERSION "2021.4")
     add_definitions(-DOPENVINO_2021_4=1)
   elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "openvino")
-    set(OPENVINO_VERSION "2021.3")
-    add_definitions(-DOPENVINO_2021_3=1)
+    set(OPENVINO_VERSION "2021.4")
     add_definitions(-DOPENVINO_2021_4=1)
   else()
     message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")

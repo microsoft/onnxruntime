@@ -162,7 +162,8 @@ try:
                     args.append(dest)
                     if len(args) > 3:
                         subprocess.run(args, check=True, stdout=subprocess.PIPE)
-                    self._rewrite_ld_preload(to_preload)
+
+                self._rewrite_ld_preload(to_preload)
             _bdist_wheel.run(self)
             if is_manylinux:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
@@ -278,6 +279,8 @@ if enable_training:
                      'onnxruntime.training.amp',
                      'onnxruntime.training.optim',
                      'onnxruntime.training.ortmodule',
+                     'onnxruntime.training.ortmodule.experimental',
+                     'onnxruntime.training.ortmodule.experimental.json_config',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.aten_op_executor',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.torch_gpu_allocator'])
@@ -428,7 +431,7 @@ with open(requirements_path) as f:
 
 
 if enable_training:
-    def save_build_and_package_info(package_name, version_number, cuda_version):
+    def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version):
         sys.path.append(path.join(path.dirname(__file__), 'onnxruntime', 'python'))
         from onnxruntime_collect_build_info import find_cudart_versions
 
@@ -450,11 +453,10 @@ if enable_training:
                         "did not find any cudart library"
                         if not cudart_versions or len(cudart_versions) == 0
                         else "found multiple cudart libraries")
-            else:
-                # TODO: rocm
-                pass
+            elif rocm_version:
+                f.write("rocm_version = '{}'\n".format(rocm_version))
 
-    save_build_and_package_info(package_name, version_number, cuda_version)
+    save_build_and_package_info(package_name, version_number, cuda_version, rocm_version)
 
 # Setup
 setup(

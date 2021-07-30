@@ -3,6 +3,7 @@
 
 #pragma once
 #include "core/common/common.h"
+#include "core/util/math_cpuonly.h"
 
 namespace onnxruntime {
 
@@ -70,5 +71,33 @@ class GemmHelper {
   int64_t N_;
   Status status_;
 };
+
+template <typename T>
+void GemmBroadcastBias(int64_t M, int64_t N, float beta,
+                              const T* c_data, const TensorShape* c_shape,
+                              T* y_data)
+{
+    // Broadcast the bias as needed if bias is given
+    if (beta != 0 && c_data != nullptr) {
+        ORT_ENFORCE(c_shape != nullptr, "c_shape is required if c_data is provided");
+        auto output_mat = EigenMatrixMapRowMajor<T>(y_data, M, N);
+        if (c_shape->Size() == 1) {
+            // C is (), (1,) or (1, 1), set the scalar
+            output_mat.setConstant(*c_data);
+        }
+        else if (c_shape->NumDimensions() == 1 || (*c_shape)[0] == 1) {
+            // C is (N,) or (1, N)
+            output_mat.rowwise() = ConstEigenVectorMap<T>(c_data, N).transpose();
+        }
+        else if ((*c_shape)[1] == 1) {
+            // C is (M, 1)
+            output_mat.colwise() = ConstEigenVectorMap<T>(c_data, M);
+        }
+        else {
+            // C is (M, N), no broadcast needed.
+            output_mat = ConstEigenMatrixMapRowMajor<T>(c_data, M, N);
+        }
+    }
+}
 
 }  // namespace onnxruntime

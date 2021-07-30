@@ -11,7 +11,7 @@ namespace onnxruntime {
 namespace test {
 
 static void RunTest(const embedlayernorm::OpData& data,
-                       bool use_float16 = false) {
+                    bool use_float16 = false) {
   int min_cuda_architecture = use_float16 ? 530 : 0;
 
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
@@ -57,26 +57,35 @@ static void RunTest(const embedlayernorm::OpData& data,
     OpTester tester("EmbedLayerNormalization", 1, onnxruntime::kMSDomain);
     tester.AddInput<int32_t>("input_ids", input_ids_dims, data.input_ids_data);
     if (!data.has_segment) {
-      tester.AddMissingOptionalInput<int32_t>();
+      tester.AddOptionalInputEdge<int32_t>();
     } else {
       tester.AddInput<int32_t>("segment_ids", segment_ids_dims, data.segment_ids_data);
     }
     if (use_float16) {
       tester.AddInput<MLFloat16>("word_embedding",
                                  word_embedding_dims,
-                                 ToFloat16(data.word_embedding_data));
+                                 ToFloat16(data.word_embedding_data),
+                                 /*is_initializer=*/true);
       tester.AddInput<MLFloat16>("position_embedding",
                                  position_embedding_dims,
-                                 ToFloat16(data.position_embedding_data));
+                                 ToFloat16(data.position_embedding_data),
+                                 /*is_initializer=*/true);
       if (!data.has_segment) {
-        tester.AddMissingOptionalInput<MLFloat16>();
+        tester.AddOptionalInputEdge<MLFloat16>();
       } else {
         tester.AddInput<MLFloat16>("segment_embedding",
                                    segment_embedding_dims,
-                                   ToFloat16(data.segment_embedding_data));
+                                   ToFloat16(data.segment_embedding_data),
+                                   /*is_initializer=*/true);
       }
-      tester.AddInput<MLFloat16>("gamma", gamma_dims, ToFloat16(data.gamma_data));
-      tester.AddInput<MLFloat16>("beta", beta_dims, ToFloat16(data.beta_data));
+      tester.AddInput<MLFloat16>("gamma",
+                                 gamma_dims,
+                                 ToFloat16(data.gamma_data),
+                                 /*is_initializer=*/true);
+      tester.AddInput<MLFloat16>("beta",
+                                 beta_dims,
+                                 ToFloat16(data.beta_data),
+                                 /*is_initializer=*/true);
       tester.AddAttribute("epsilon", data.epsilon);
       if (data.has_mask) {
         tester.AddInput<int32_t>("mask", mask_dims, data.mask_data);
@@ -85,19 +94,22 @@ static void RunTest(const embedlayernorm::OpData& data,
     } else {
       tester.AddInput<float>("word_embedding",
                              word_embedding_dims,
-                             data.word_embedding_data);
+                             data.word_embedding_data,
+                             /*is_initializer=*/true);
       tester.AddInput<float>("position_embedding",
                              position_embedding_dims,
-                             data.position_embedding_data);
+                             data.position_embedding_data,
+                             /*is_initializer=*/true);
       if (!data.has_segment) {
-        tester.AddMissingOptionalInput<MLFloat16>();
+        tester.AddOptionalInputEdge<MLFloat16>();
       } else {
         tester.AddInput<float>("segment_embedding",
                                segment_embedding_dims,
-                               data.segment_embedding_data);
+                               data.segment_embedding_data,
+                               /*is_initializer=*/true);
       }
-      tester.AddInput<float>("gamma", gamma_dims, data.gamma_data);
-      tester.AddInput<float>("beta", beta_dims, data.beta_data);
+      tester.AddInput<float>("gamma", gamma_dims, data.gamma_data, /*is_initializer=*/true);
+      tester.AddInput<float>("beta", beta_dims, data.beta_data, /*is_initializer=*/true);
       tester.AddAttribute("epsilon", data.epsilon);
       if (data.has_mask) {
         tester.AddInput<int32_t>("mask", mask_dims, data.mask_data);

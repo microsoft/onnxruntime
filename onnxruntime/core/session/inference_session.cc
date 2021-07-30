@@ -14,7 +14,7 @@
 #include "core/common/denormal.h"
 #include "core/common/logging/logging.h"
 #include "core/common/parse_string.h"
-#include "core/framework/arena.h"
+#include "core/framework/bfc_arena.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_frame.h"
@@ -959,15 +959,16 @@ Status InferenceSession::PartitionOrtFormatModel(onnxruntime::Graph& graph,
 template <typename T>
 static Status LoadOrtModelBytes(const std::basic_string<T>& model_uri,
                                 std::basic_string<ORTCHAR_T>& model_location,
-                                std::vector<uint8_t>& bytes) {
+                                gsl::span<const uint8_t>& bytes,
+                                std::vector<uint8_t>& bytes_data_holder) {
   size_t num_bytes = 0;
   model_location = ToWideString(model_uri);
   ORT_RETURN_IF_ERROR(Env::Default().GetFileLength(model_location.c_str(), num_bytes));
 
-  bytes.resize(num_bytes);
+  bytes_data_holder.resize(num_bytes);
 
   std::ifstream bytes_stream(model_uri, std::ifstream::in | std::ifstream::binary);
-  bytes_stream.read(reinterpret_cast<char*>(bytes.data()), num_bytes);
+  bytes_stream.read(reinterpret_cast<char*>(bytes_data_holder.data()), num_bytes);
 
   if (!bytes_stream) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -975,13 +976,17 @@ static Status LoadOrtModelBytes(const std::basic_string<T>& model_uri,
                            bytes_stream.gcount(), "/", num_bytes, " bytes were able to be read.");
   }
 
+  bytes = gsl::span<const uint8_t>(bytes_data_holder.data(), num_bytes);
+
   return Status::OK();
 }
 
 Status InferenceSession::LoadOrtModel(const std::string& model_uri) {
   return LoadOrtModel(
       [&]() {
-        ORT_RETURN_IF_ERROR(LoadOrtModelBytes(model_uri, model_location_, ort_format_model_bytes_));
+        ORT_RETURN_IF_ERROR(
+            LoadOrtModelBytes(model_uri, model_location_,
+                              ort_format_model_bytes_, ort_format_model_bytes_data_holder_));
         return Status::OK();
       });
 }
@@ -990,7 +995,9 @@ Status InferenceSession::LoadOrtModel(const std::string& model_uri) {
 Status InferenceSession::LoadOrtModel(const std::wstring& model_uri) {
   return LoadOrtModel(
       [&]() {
-        ORT_RETURN_IF_ERROR(LoadOrtModelBytes(model_uri, model_location_, ort_format_model_bytes_));
+        ORT_RETURN_IF_ERROR(
+            LoadOrtModelBytes(model_uri, model_location_,
+                              ort_format_model_bytes_, ort_format_model_bytes_data_holder_));
         return Status::OK();
       });
 }
@@ -998,13 +1005,19 @@ Status InferenceSession::LoadOrtModel(const std::wstring& model_uri) {
 
 Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len) {
   return LoadOrtModel([&]() {
-    // copy bytes as we need them to be available when InferenceSession::Initialize is called later.
-    //
-    // TODO: Provide Load API where we can take ownership of memory to avoid the copy,
-    // and/or a combined Load+Initialize where we don't need this temporary copy.
-    ort_format_model_bytes_.resize(model_data_len);
-    std::copy_n(reinterpret_cast<const uint8_t*>(model_data), model_data_len, ort_format_model_bytes_.data());
-
+    const auto use_ort_model_bytes_directly =
+        GetSessionOptions().config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "0");
+    if (use_ort_model_bytes_directly != "1") {
+      // copy bytes as we need them to be available when InferenceSession::Initialize is called later.
+      ort_format_model_bytes_data_holder_.resize(model_data_len);
+      std::copy_n(reinterpret_cast<const uint8_t*>(model_data), model_data_len,
+                  ort_format_model_bytes_data_holder_.data());
+      ort_format_model_bytes_ = gsl::span<const uint8_t>(ort_format_model_bytes_data_holder_.data(), model_data_len);
+    } else {
+      // Use the model_data directly to reduce memory consumption
+      // This will require the model_data to be alive until the InferenceSession is initialized
+      ort_format_model_bytes_ = gsl::span<const uint8_t>(reinterpret_cast<const uint8_t*>(model_data), model_data_len);
+    }
     return Status::OK();
   });
 }
@@ -1164,10 +1177,10 @@ common::Status InferenceSession::Initialize() {
     onnxruntime::Graph& graph = model_->MainGraph();
 #ifdef DISABLE_EXTERNAL_INITIALIZERS
     const InitializedTensorSet& initializers = graph.GetAllInitializedTensors();
-    for (const auto& it: initializers) {
+    for (const auto& it : initializers) {
       if (utils::HasExternalData(*it.second)) {
         return common::Status(common::ONNXRUNTIME, common::FAIL,
-                  "Initializer tensors with external data is not allowed.");
+                              "Initializer tensors with external data is not allowed.");
       }
     }
 #endif
@@ -1318,7 +1331,9 @@ common::Status InferenceSession::Initialize() {
     is_inited_ = true;
 
     // we don't directly use the ORT format bytes currently, so free those now
-    std::vector<uint8_t>().swap(ort_format_model_bytes_);
+    // TODO, we may need to keep the bytes if we are using the offset directly in the initializers
+    ort_format_model_bytes_ = gsl::span<const uint8_t>();
+    std::vector<uint8_t>().swap(ort_format_model_bytes_data_holder_);
 
     // and log telemetry
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
@@ -1486,12 +1501,12 @@ common::Status InferenceSession::ValidateInputs(const std::vector<std::string>& 
       }
       auto expected_element_type = expected_type->AsSparseTensorType()->GetElementType();
       const SparseTensor& sparse_tensor = input_ml_value.Get<SparseTensor>();
-      auto input_element_type = sparse_tensor.Values().DataType();
+      auto input_element_type = sparse_tensor.DataType();
       ORT_RETURN_IF_ERROR_SESSIONID_(CheckTypes(input_element_type, expected_element_type, "sparse_tensor"));
       // Check shape
       const auto& expected_shape = iter->second.tensor_shape;
       if (expected_shape.NumDimensions() > 0) {
-        const auto& input_shape = sparse_tensor.Shape();
+        const auto& input_shape = sparse_tensor.DenseShape();
         ORT_RETURN_IF_ERROR_SESSIONID_(CheckShapes(feed_name, input_shape, expected_shape));
       }
     } else if (input_ml_value.IsTensorSequence()) {
@@ -1947,7 +1962,7 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
 
 void InferenceSession::ShrinkMemoryArenas(const std::vector<AllocatorPtr>& arenas_to_shrink) {
   for (auto& alloc : arenas_to_shrink) {
-    auto status = static_cast<IArenaAllocator*>(alloc.get())->Shrink();
+    auto status = static_cast<BFCArena*>(alloc.get())->Shrink();
 
     if (!status.IsOK()) {
       LOGS(*session_logger_, WARNING) << "Unable to shrink arena: " << alloc->Info().ToString()

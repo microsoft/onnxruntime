@@ -57,6 +57,9 @@ struct AttributeBuilder;
 struct Graph;
 struct GraphBuilder;
 
+struct StringStringEntry;
+struct StringStringEntryBuilder;
+
 struct Model;
 struct ModelBuilder;
 
@@ -1805,6 +1808,72 @@ inline flatbuffers::Offset<Graph> CreateGraphDirect(
       sparse_initializers__);
 }
 
+struct StringStringEntry FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef StringStringEntryBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_KEY = 4,
+    VT_VALUE = 6
+  };
+  const flatbuffers::String *key() const {
+    return GetPointer<const flatbuffers::String *>(VT_KEY);
+  }
+  const flatbuffers::String *value() const {
+    return GetPointer<const flatbuffers::String *>(VT_VALUE);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_KEY) &&
+           verifier.VerifyString(key()) &&
+           VerifyOffset(verifier, VT_VALUE) &&
+           verifier.VerifyString(value()) &&
+           verifier.EndTable();
+  }
+};
+
+struct StringStringEntryBuilder {
+  typedef StringStringEntry Table;
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_key(flatbuffers::Offset<flatbuffers::String> key) {
+    fbb_.AddOffset(StringStringEntry::VT_KEY, key);
+  }
+  void add_value(flatbuffers::Offset<flatbuffers::String> value) {
+    fbb_.AddOffset(StringStringEntry::VT_VALUE, value);
+  }
+  explicit StringStringEntryBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  StringStringEntryBuilder &operator=(const StringStringEntryBuilder &);
+  flatbuffers::Offset<StringStringEntry> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<StringStringEntry>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<StringStringEntry> CreateStringStringEntry(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    flatbuffers::Offset<flatbuffers::String> key = 0,
+    flatbuffers::Offset<flatbuffers::String> value = 0) {
+  StringStringEntryBuilder builder_(_fbb);
+  builder_.add_value(value);
+  builder_.add_key(key);
+  return builder_.Finish();
+}
+
+inline flatbuffers::Offset<StringStringEntry> CreateStringStringEntryDirect(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    const char *key = nullptr,
+    const char *value = nullptr) {
+  auto key__ = key ? _fbb.CreateString(key) : 0;
+  auto value__ = value ? _fbb.CreateString(value) : 0;
+  return onnxruntime::experimental::fbs::CreateStringStringEntry(
+      _fbb,
+      key__,
+      value__);
+}
+
 struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef ModelBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
@@ -1816,7 +1885,8 @@ struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_MODEL_VERSION = 14,
     VT_DOC_STRING = 16,
     VT_GRAPH = 18,
-    VT_GRAPH_DOC_STRING = 20
+    VT_GRAPH_DOC_STRING = 20,
+    VT_METADATA_PROPS = 22
   };
   int64_t ir_version() const {
     return GetField<int64_t>(VT_IR_VERSION, 0);
@@ -1845,6 +1915,9 @@ struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::String *graph_doc_string() const {
     return GetPointer<const flatbuffers::String *>(VT_GRAPH_DOC_STRING);
   }
+  const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::StringStringEntry>> *metadata_props() const {
+    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::StringStringEntry>> *>(VT_METADATA_PROPS);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int64_t>(verifier, VT_IR_VERSION) &&
@@ -1864,6 +1937,9 @@ struct Model FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyTable(graph()) &&
            VerifyOffset(verifier, VT_GRAPH_DOC_STRING) &&
            verifier.VerifyString(graph_doc_string()) &&
+           VerifyOffset(verifier, VT_METADATA_PROPS) &&
+           verifier.VerifyVector(metadata_props()) &&
+           verifier.VerifyVectorOfTables(metadata_props()) &&
            verifier.EndTable();
   }
 };
@@ -1899,6 +1975,9 @@ struct ModelBuilder {
   void add_graph_doc_string(flatbuffers::Offset<flatbuffers::String> graph_doc_string) {
     fbb_.AddOffset(Model::VT_GRAPH_DOC_STRING, graph_doc_string);
   }
+  void add_metadata_props(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::StringStringEntry>>> metadata_props) {
+    fbb_.AddOffset(Model::VT_METADATA_PROPS, metadata_props);
+  }
   explicit ModelBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1921,10 +2000,12 @@ inline flatbuffers::Offset<Model> CreateModel(
     int64_t model_version = 0,
     flatbuffers::Offset<flatbuffers::String> doc_string = 0,
     flatbuffers::Offset<onnxruntime::experimental::fbs::Graph> graph = 0,
-    flatbuffers::Offset<flatbuffers::String> graph_doc_string = 0) {
+    flatbuffers::Offset<flatbuffers::String> graph_doc_string = 0,
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::experimental::fbs::StringStringEntry>>> metadata_props = 0) {
   ModelBuilder builder_(_fbb);
   builder_.add_model_version(model_version);
   builder_.add_ir_version(ir_version);
+  builder_.add_metadata_props(metadata_props);
   builder_.add_graph_doc_string(graph_doc_string);
   builder_.add_graph(graph);
   builder_.add_doc_string(doc_string);
@@ -1945,13 +2026,15 @@ inline flatbuffers::Offset<Model> CreateModelDirect(
     int64_t model_version = 0,
     const char *doc_string = nullptr,
     flatbuffers::Offset<onnxruntime::experimental::fbs::Graph> graph = 0,
-    const char *graph_doc_string = nullptr) {
+    const char *graph_doc_string = nullptr,
+    const std::vector<flatbuffers::Offset<onnxruntime::experimental::fbs::StringStringEntry>> *metadata_props = nullptr) {
   auto opset_import__ = opset_import ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::experimental::fbs::OperatorSetId>>(*opset_import) : 0;
   auto producer_name__ = producer_name ? _fbb.CreateString(producer_name) : 0;
   auto producer_version__ = producer_version ? _fbb.CreateString(producer_version) : 0;
   auto domain__ = domain ? _fbb.CreateString(domain) : 0;
   auto doc_string__ = doc_string ? _fbb.CreateString(doc_string) : 0;
   auto graph_doc_string__ = graph_doc_string ? _fbb.CreateString(graph_doc_string) : 0;
+  auto metadata_props__ = metadata_props ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::experimental::fbs::StringStringEntry>>(*metadata_props) : 0;
   return onnxruntime::experimental::fbs::CreateModel(
       _fbb,
       ir_version,
@@ -1962,7 +2045,8 @@ inline flatbuffers::Offset<Model> CreateModelDirect(
       model_version,
       doc_string__,
       graph,
-      graph_doc_string__);
+      graph_doc_string__,
+      metadata_props__);
 }
 
 struct KernelCreateInfos FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {

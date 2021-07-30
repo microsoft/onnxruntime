@@ -80,7 +80,7 @@ TEST(ConcatTrainingOpTest, Concat2D_optional_output1) {
                          21.0f, 22.0f, 23.0f, 24.0f,
                          31.0f, 32.0f, 33.0f, 34.0f,
                          41.0f, 42.0f, 43.0f, 44.0f});
-  test.AddMissingOptionalOutput<int64_t>();
+  test.AddOptionalOutputEdge<int64_t>();
   test.Run();
 }
 
