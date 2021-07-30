@@ -15,6 +15,7 @@ from benchmark_helper import create_onnxruntime_session, Precision
 from gpt2_helper import GPT2ModelNoPastState, PRETRAINED_GPT2_MODELS, TFGPT2ModelNoPastState
 from quantize_helper import QuantizeHelper
 from huggingface_models import MODEL_CLASSES
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 logger = logging.getLogger(__name__)
