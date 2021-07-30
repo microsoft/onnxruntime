@@ -118,7 +118,7 @@ def main():
     # auto grad testing.
     #run_ortmodule_custom_autograd_tests(cwd, log)
 
-    run_ortmodule_experimental_debug_tests(cwd, log)
+    run_ortmodule_experimental_json_config_tests(cwd, log)
 
     return 0
 
