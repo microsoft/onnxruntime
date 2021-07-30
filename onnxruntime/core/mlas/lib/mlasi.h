@@ -611,7 +611,6 @@ extern "C" {
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32KernelAvx;
 #endif
 
-    // TODO(kreeger): #ifdef this for AVX.
     MLAS_VECTOR_DOT_PRODUCT_FLOAT_KERNEL MlasVectorDotProductF32Kernel;
 #if defined(MLAS_TARGET_AMD64)
     MLAS_VECTOR_DOT_PRODUCT_FLOAT_KERNEL MlasVectorDotProductF32KernelAvx;
