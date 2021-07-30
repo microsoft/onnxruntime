@@ -66,7 +66,8 @@ class MyGPT2Attention(nn.Module):
         # Torch has special handling for Div and Mul by a scalar:
         #   https://github.com/pytorch/pytorch/blob/5536cda19a5def9e0553b318f04d297d602ac956/aten/src/ATen/native/cuda/BinaryMulDivKernel.cu#L52-L60
         #   https://github.com/pytorch/pytorch/blob/5536cda19a5def9e0553b318f04d297d602ac956/aten/src/ATen/native/cuda/BinaryMulDivKernel.cu#L185-L194
-        # Modify the code to use same processing in onnx export so as to get parity result
+        # Modify the code to use same processing in onnx export so as to get parity result without attention fusion.
+        # This walkaround is not needed when attention fusion will be applied later since the subgraph will be replaced by an Attention node.
         if self.fix_onnx_export and torch.onnx.is_in_onnx_export():
             if qk.dtype == torch.float16:
                 norm_qk = qk.to(torch.float32) * (1.0 / (float(value.size(-1))**0.5))
@@ -387,7 +388,7 @@ def verify_attention(model,
     return test_cases - passed_cases
 
 
-def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device):
+def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device, test_cases):
     test_name = f"batch_size={batch_size}, float16={float16}, optimized={optimized}, hidden_size={hidden_size}, num_attention_heads={num_attention_heads}"
     print(f"\nTesting ONNX parity: {test_name}")
 
@@ -425,7 +426,8 @@ def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device
                                     float16,
                                     device,
                                     padding_length,
-                                    optimized)
+                                    optimized,
+                                    test_cases)
 
     # Test Case: with past state and padding last 2 words
     sequence_length = 3
@@ -441,7 +443,8 @@ def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device
                                     float16,
                                     device,
                                     padding_length,
-                                    optimized)
+                                    optimized,
+                                    test_cases)
 
     # Test Case: random mask one word
     sequence_length = 1
@@ -457,7 +460,8 @@ def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device
                                     float16,
                                     device,
                                     padding_length,
-                                    optimized)
+                                    optimized,
+                                    test_cases)
 
     # clean up onnx file
 
@@ -470,12 +474,13 @@ def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device
 
 class TestGptAttentionHuggingfaceParity(unittest.TestCase):
     def setUp(self):
-        self.optimized = True # change it to False if you want to test parity of non optimized ONNX
+        self.optimized = True # Change it to False if you want to test parity of non optimized ONNX
+        self.test_cases = 10  # Number of test cases per test run
 
     def run_test(self, batch_size, float16, optimized, hidden_size, num_attention_heads, device):
         if float16 and device.type=='cpu': # CPU does not support FP16
             return
-        num_failure, test_name = run(batch_size, float16, optimized, hidden_size, num_attention_heads, device)
+        num_failure, test_name = run(batch_size, float16, optimized, hidden_size, num_attention_heads, device, self.test_cases)
         self.assertTrue(num_failure == 0, test_name)
 
     def run_small(self, optimized, device):
