@@ -793,8 +793,7 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             add_cmake_define_without_override(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "ON")
             add_cmake_define_without_override(cmake_extra_defines, "gtest_force_shared_crt", "OFF")
         else:
-            add_cmake_define_without_override(cmake_extra_defines, "CMAKE_MSVC_RUNTIME_LIBRARY",
-                                              "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+            # CMAKE_MSVC_RUNTIME_LIBRARY is default to MultiThreaded$<$<CONFIG:Debug>:Debug>DLL
             add_cmake_define_without_override(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "OFF")
             add_cmake_define_without_override(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "OFF")
             add_cmake_define_without_override(cmake_extra_defines, "gtest_force_shared_crt", "ON")
