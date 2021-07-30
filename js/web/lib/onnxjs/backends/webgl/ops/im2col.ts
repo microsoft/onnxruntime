@@ -14,8 +14,6 @@ export const createIm2ColProgramInfo =
 
       const rank = outputShape.length;
       const im2colDims = calculateIm2ColDims(xshape, wshape, outputShape, 4);
-      // const outputLayout = inferenceHandler.createTextureLayoutFromShape(
-      //     im2colDims, 4, [im2colDims[0], im2colDims[1], im2colDims[2], im2colDims[3] * 4], {breakAxis: 3});
 
       const shaderSource = `
         const int XC = ${xshape[1]};

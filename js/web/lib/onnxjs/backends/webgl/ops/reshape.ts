@@ -10,7 +10,6 @@ export const reshape = (handler: WebGLInferenceHandler, inputs: Tensor[]): Tenso
   if (handler.session.pack) {
     return [handler.reshapePacked(inputs[0], reshapedDims)];
   } else {
-    const reshapedTensor = handler.reshapeUnpacked(inputs[0], reshapedDims);
-    return [reshapedTensor];
+    return [handler.reshapeUnpacked(inputs[0], reshapedDims)];
   }
 };
