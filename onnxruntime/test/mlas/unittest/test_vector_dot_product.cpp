@@ -5,99 +5,129 @@
 
 class TestVectors {
  public:
-  TestVectors(const size_t c_length, const size_t stride_length,
+  TestVectors(const size_t M, const size_t N,
               bool small_values = false)
-      : c_length(c_length), stride_length(stride_length) {
-    for (size_t i = 0; i < stride_length; ++i) {
+      : M(M), N(N), M_packed(0) {
+    for (size_t i = 0; i < M; ++i) {
       if (small_values) {
-        a.push_back(0.01f * (i + 1));
+        A.push_back(0.01f * (i + 1));
       } else {
-        a.push_back((i + 1) * 1.0f);
+        A.push_back((i + 1) * 1.0f);
       }
     }
 
-    for (size_t i = 0; i < c_length; ++i) {
-      b.insert(b.end(), a.begin(), a.end());
+    // Create B so that each row of A is the same with each row of B:
+    B.resize(N * M);
+    for (size_t i = 0; i < N; ++i) {
+      size_t idx = i;
+      for (size_t j = 0; j < M; ++j) {
+        B[idx] = A[j];
+        idx += N;
+      }
     }
 
-    b_packed.resize(b.size());
-
-    c.resize(c_length);
-  }
-
-  void ResetC() {
-    for (size_t i = 0; i < c.size(); ++i) {
-      c[i] = 0.0f;
+    // TODO(kreeger): determine pre-packed version of this ...
+    // Ensure that |B_packed| is in increments of 16 per row:
+    if (M % 16 != 0) {
+      M_packed = 16 * ((M / 16) + 1);
+    } else {
+      M_packed = M;
     }
+    B_packed.resize(N * M_packed);
+
+    C.resize(N);
   }
 
+  TestVectors(const TestVectors& copy) = delete;
   TestVectors() = default;
-  TestVectors(const TestVectors&) = delete;
   TestVectors& operator=(const TestVectors&) = delete;
 
-  const size_t c_length;
-  const size_t stride_length;
-  std::vector<float> a;
-  std::vector<float> b;
-  std::vector<float> b_packed;
-  std::vector<float> c;
-};
+  void ResetC() {
+    for (size_t i = 0; i < C.size(); ++i) {
+      C[i] = 0.0f;
+    }
+  }
 
+  const size_t M;
+  const size_t N;
+  size_t M_packed;
+  std::vector<float> A;
+  std::vector<float> B;
+  std::vector<float> B_packed;
+  std::vector<float> C;
+};
 
 //
 // Reference vector dot product.
 // TODO(kreeger): add more documentation here.
 //
-template <typename T>
-void ReferenceVectorDotProd(const T* a,
-                            const T* b,
-                            T* output,
-                            size_t M,
-                            size_t N) {
-  for (size_t i = 0; i < N; ++i) {
-    T sum = 0;
-    for (size_t j = 0; j < M; ++j) {
-      sum += a[j] * b[i + (N * j)];
+#pragma warning(disable: 4189)
+void ReferenceVectorDotProd(TestVectors& vectors) {
+  for (size_t i = 0; i < vectors.N; ++i) {
+    float sum = 0;
+    for (size_t j = 0; j < vectors.M; ++j) {
+      sum += vectors.A[j] * vectors.B[i + (vectors.N * j)];
     }
-    output[i] = sum;
+    vectors.C[i] = sum;
   }
 }
+#pragma warning(default: 4189)
 
 template <typename T, bool Packed>
 class MlasVectorDotProdTest : public MlasTestBase {
-
   void Test() {
   }
 
-  public:
+ public:
   static const char* GetTestSuiteName() {
     static const std::string suite_name("VectorDotProd");
     return suite_name.c_str();
   }
 
   void ExecuteShort(void) override {
-    std::cerr << "Hi from MlasVectorDotProdTest!" << std::endl;
+    ExecuteSmall();
+    ExecuteMedium();
+    ExecuteLong();
+  }
 
-    TestVectors vectors(/*c_length=*/32, /*stride_length=*/16);
+ private:
+  void ExecuteSmall() {
+    ValidateUnpacked(TestVectors(/*M=*/4, /*N=*/8));
+    ValidateUnpacked(TestVectors(/*M=*/3, /*N=*/9));
+  }
 
-    MlasVectorDotProduct(vectors.a.data(),
-                         vectors.b.data(),
-                         vectors.c.data(),
-                         vectors.c_length,
-                         vectors.stride_length);
+  void ExecuteMedium() {
+    ValidateUnpacked(TestVectors(/*M=*/22, /*N=*/32));
+    ValidateUnpacked(TestVectors(/*M=*/21, /*N=*/31));
+  }
 
-    TestVectors vectors_ref(/*c_length=*/32, /*stride_length=*/16);
-    ReferenceVectorDotProd(vectors_ref.a.data(),
-                           vectors_ref.b.data(),
-                           vectors_ref.c.data(),
-                           vectors_ref.c_length,
-                           vectors_ref.stride_length);
+  void ExecuteLong() {
+    ValidateUnpacked(TestVectors(/*M=*/768, /*N=*/3072, /*small_values=*/true));
+    ValidateUnpacked(TestVectors(/*M=*/761, /*N=*/3011, /*small_values=*/true));
+  }
 
-    for (size_t i = 0; i < vectors.c_length; ++i) {
-      ASSERT_EQ(vectors.c[i], vectors_ref.c[i]);
+  void ValidateUnpacked(TestVectors vectors) {
+    ReferenceVectorDotProd(vectors);
+    std::vector<float> ref_C = vectors.C;
+    vectors.ResetC();
+
+    // Consider making the regular method do the transpose.
+    MlasTranspose(vectors.B.data(),
+                  vectors.B_packed.data(),
+                  vectors.M,
+                  vectors.N);
+    MlasVectorDotProduct(vectors.A.data(),
+                         vectors.B_packed.data(),
+                         vectors.C.data(),
+                         vectors.M,
+                         vectors.N);
+
+    for (size_t i = 0; i < vectors.N; ++i) {
+      ASSERT_NEAR(vectors.C[i], ref_C[i], 1e-2f);
     }
   }
 };
+
 
 template <>
 MlasVectorDotProdTest<float, false>* MlasTestFixture<MlasVectorDotProdTest<float, false>>::mlas_tester(nullptr);
@@ -107,4 +137,3 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
              ? MlasDirectShortExecuteTests<MlasVectorDotProdTest<float, false>>::RegisterShortExecute()
              : 0;
 });
-
