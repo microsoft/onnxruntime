@@ -1,11 +1,12 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# _torch_module.py
+# _torch_module_ort.py
 
 from . import _io
 from .debug_options import DebugOptions
 from ._graph_execution_manager_factory import GraphExecutionManagerFactory
 from ._torch_module_interface import TorchModuleInterface
+from ._fallback import _FallbackManager
 
 from collections import OrderedDict
 import functools
@@ -16,9 +17,9 @@ from typing import Iterator, Optional, Tuple, TypeVar, Callable
 T = TypeVar('T', bound='torch.nn.Module')
 
 
-class TorchModule(TorchModuleInterface):
-    def __init__(self, module: torch.nn.Module, debug_options: DebugOptions):
-        super(TorchModule, self).__init__(module)
+class TorchModuleORT(TorchModuleInterface):
+    def __init__(self, module: torch.nn.Module, debug_options: DebugOptions, fallback_manager: _FallbackManager):
+        super().__init__(module)
         self._flattened_module = _io._FlattenedModule(module)
 
         def _forward(self, *inputs, **kwargs):
@@ -37,7 +38,7 @@ class TorchModule(TorchModuleInterface):
         functools.update_wrapper(
             self.forward.__func__, self._original_module.forward.__func__)
 
-        self._execution_manager = GraphExecutionManagerFactory(self._flattened_module, debug_options)
+        self._execution_manager = GraphExecutionManagerFactory(self._flattened_module, debug_options, fallback_manager)
 
     def _apply(self, fn):
         """Override original method to delegate execution to the flattened PyTorch user module"""

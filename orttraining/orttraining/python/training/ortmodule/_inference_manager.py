@@ -6,7 +6,8 @@
 from . import _utils, _io, _logger
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
 from ._execution_agent import InferenceAgent
-from ._fallback import ORTModuleFallbackException, _FallbackPolicy
+from .debug_options import DebugOptions
+from ._fallback import ORTModuleFallbackException, _FallbackPolicy, _FallbackManager
 
 from onnxruntime.capi import _pybind_state as C
 import onnx
@@ -20,8 +21,8 @@ class InferenceManager(GraphExecutionManager):
     InferenceManager is resposible for building and running the forward graph of the inference model
     """
 
-    def __init__(self, model, debug_options):
-        super().__init__(model, debug_options)
+    def __init__(self, model, debug_options: DebugOptions, fallback_manager: _FallbackManager):
+        super().__init__(model, debug_options, fallback_manager)
         self._export_mode = torch.onnx.TrainingMode.EVAL
 
     @staticmethod
@@ -69,7 +70,7 @@ class InferenceManager(GraphExecutionManager):
         # Fallback to PyTorch due to failures *external* to forward(),
         #  typically from initialization
         if self._fallback_manager.is_pending():
-            return self._fallback_manager.fallback(self._original_module, *inputs, **kwargs)
+            return self._fallback_manager.fallback(self._original_module, self._debug_options.logging.log_level, *inputs, **kwargs)
 
         try:
             # Exporting module to ONNX for the first time
@@ -109,16 +110,18 @@ class InferenceManager(GraphExecutionManager):
                                              user_outputs)
         except ORTModuleFallbackException as e:
             # Exceptions subject to fallback are handled here
-            self._fallback_manager.handle_exception(e)
+            self._fallback_manager.handle_exception(exception=e,
+                                                    log_level=self._debug_options.logging.log_level)
         except Exception as e:
             # Catch-all FALLBACK_FORCE_TORCH_FORWARD fallback is handled here
-            self._fallback_manager.handle_exception(
-                e, _FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD)
+            self._fallback_manager.handle_exception(exception=e,
+                                                    log_level=self._debug_options.logging.log_level,
+                                                    override_policy=_FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD)
 
         # Fallback to PyTorch due to failures *during* forward(),
         #  (e.g. export, model/input post-processing, forward, output processing, etc)
         if self._fallback_manager.is_pending():
-            return self._fallback_manager.fallback(self._original_module, *inputs, **kwargs)
+            return self._fallback_manager.fallback(self._original_module, self._debug_options.logging.log_level, *inputs, **kwargs)
 
     def _build_graph(self):
         """Build an optimized inference graph using the module_graph_builder"""

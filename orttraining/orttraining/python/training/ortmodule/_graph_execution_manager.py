@@ -9,6 +9,7 @@ from ._custom_autograd_function_exporter import _post_process_after_export
 from ._graph_execution_interface import GraphExecutionInterface
 from ._fallback import (_FallbackManager,
                        _FallbackPolicy,
+                       ORTModuleFallbackException,
                        ORTModuleDeviceException,
                        ORTModuleONNXModelException,
                        ORTModuleTorchModelException,
@@ -63,25 +64,14 @@ class _SkipCheck(IntFlag):
 
 
 class GraphExecutionManager(GraphExecutionInterface):
-    def __init__(self, module, debug_options: DebugOptions):
-        """Manages building and execution of onnx graphs
-
-        This class is an abstract class and should not directly be instantiated.
-        Please use one of the concrete implementations of GraphExecutionManager.
-
-        Interacts with OrtModuleGraphBuilder to build and optimize
-        the onnx graph, and ExecutionAgent to run the onnx graph.
-        """
+    def __init__(self, module, debug_options: DebugOptions, fallback_manager: _FallbackManager):
+        """Manages construction and execution of ONNX graphs"""
 
         super(GraphExecutionManager, self).__init__(module._original_module)
 
-        # Debug flags
+        # IMPORTANT: Debug and Fallback must the configured first
         self._debug_options = debug_options
-
-        # Fallback configuration must be in the beginning to catch initialization errors
-        # Training and Evaluation mode can override this setting independently of each other
-        self._fallback_manager = _FallbackManager(policy=_FallbackPolicy.FALLBACK_DISABLE,
-                                                  log_level=self._debug_options.logging.log_level)
+        self._fallback_manager = fallback_manager
 
         # Original and flattened (tranformed) output module
         self._flattened_module = module
@@ -138,9 +128,7 @@ class GraphExecutionManager(GraphExecutionInterface):
 
         self._input_info = None
         self._module_output_schema = None
-
-        # Device is assigned on first forward to postpone fallback validation
-        self._device = None
+        self._device = _utils.get_device_from_module(module)
 
         self._module_parameters = inspect.signature(
             self._original_module.forward).parameters.values()
@@ -179,6 +167,11 @@ class GraphExecutionManager(GraphExecutionInterface):
             raise wrap_exception(ORTModuleTorchModelException,
                                  TypeError(f"ORTModule only supports torch.nn.Module as input. {type(module)} is not supported."))
 
+        # Hard-coded list of unsupported torch.nn.Module goes here for fallback
+        if isinstance(module, torch.nn.DataParallel):
+            raise wrap_exception(ORTModuleTorchModelException,
+                                 TypeError("ORTModule is not compatible with torch.nn.DataParallel. "
+                                           "Please use torch.nn.parallel.DistributedDataParallel instead."))
 
     @staticmethod
     def execution_session_run_forward(execution_session, onnx_model, device, *inputs):
