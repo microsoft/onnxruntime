@@ -265,17 +265,26 @@ def parse_arguments():
     parser.add_argument(
         "--target",
         help="Build a specific target, e.g. winml_dll")
+    # This flag is needed when :
+    # 1. The OS is 64 bits Windows
+    # 2. And the target binary is for 32 bits Windows
+    # 3. And the python used for running this script is 64 bits.
+    # But if you can get a 32 bits python, the build will run better and you won't need this flag.
+    parser.add_argument(
+        "--x86", action='store_true',
+        help="[cross-compiling] Create Windows x86 makefiles. Requires --update and no existing cache "
+        "CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument(
         "--arm", action='store_true',
-        help="Create ARM makefiles. Requires --update and no existing cache "
+        help="[cross-compiling] Create ARM makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument(
         "--arm64", action='store_true',
-        help="Create ARM64 makefiles. Requires --update and no existing cache "
+        help="[cross-compiling] Create ARM64 makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument(
         "--arm64ec", action='store_true',
-        help="Create ARM64EC makefiles. Requires --update and no existing cache "
+        help="[cross-compiling] Create ARM64EC makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument(
         "--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
@@ -2023,7 +2032,7 @@ def main():
                         "Cannot test on host build machine for cross-compiled "
                         "ARM(64) builds. Will skip test running after build.")
                     args.test = False
-            elif cpu_arch == '32bit':
+            elif cpu_arch == '32bit' or args.x86:
                 cmake_extra_args = [
                     '-A', 'Win32', '-T', 'host=x64', '-G', args.cmake_generator
                 ]
