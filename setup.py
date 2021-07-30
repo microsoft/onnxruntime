@@ -390,7 +390,7 @@ if nightly_build:
 
     if len(build_suffix) > 8 and len(build_suffix) < 12:
         # we want to format the build_suffix to avoid (the 12th run on 20210630 vs the first run on 20210701):
-        # 2021063012 > 20210701
+        # 2021063012 > 202107011
         # in above 2021063012 is treated as the latest which is incorrect.
         # we want to convert the format to:
         # 20210630012 < 20210701001
