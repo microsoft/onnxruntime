@@ -21,11 +21,15 @@ class Net(torch.nn.Module):
         return out
 
 def test_load_config_from_json_1():
-    path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_experimental_json_config_1.json')
-
     device = 'cuda'
     model = ORTModule(Net().to(device))
 
+    # load from json once.
+    path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_experimental_json_config_2.json')
+    load_from_json(model, path_to_json)
+
+    # load from json another time
+    path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_experimental_json_config_1.json')
     load_from_json(model, path_to_json)
 
     for training_mode in [True, False]:
@@ -63,11 +67,15 @@ def test_load_config_from_json_1():
         assert ort_model_attributes._debug_options.logging.log_level.name == "VERBOSE"
 
 def test_load_config_from_json_2():
-    path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_experimental_json_config_2.json')
-
     device = 'cuda'
     model = ORTModule(Net().to(device))
 
+    # load from json once.
+    path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_experimental_json_config_1.json')
+    load_from_json(model, path_to_json)
+
+    # load from json another time
+    path_to_json = os.path.join(os.getcwd(), 'orttraining_test_ortmodule_experimental_json_config_2.json')
     load_from_json(model, path_to_json)
 
     for training_mode in [True, False]:
