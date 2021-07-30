@@ -62,9 +62,13 @@ export interface ProgramVariable {
 }
 
 /**
- * A set of data that represent a shader program
+ * A set of metadata of a shader program.
  */
-export interface ProgramInfo {
+interface ProgramMetadata {
+  /**
+   * the name of the program. used for debugging and profiling
+   */
+  name: string;
   /**
    * texture types for each input
    */
@@ -73,6 +77,26 @@ export interface ProgramInfo {
    * names of each input
    */
   inputNames: string[];
+  /**
+   * an optional string as a key in the artifact cache
+   */
+  key?: string;
+}
+
+/**
+ * A ProgramInfoLoader allows
+ */
+export interface ProgramInfoLoader extends ProgramMetadata {
+  /**
+   * a function to get the program info
+   */
+  get(): ProgramInfo;
+}
+
+/**
+ * A set of data that represent a shader program
+ */
+export interface ProgramInfo extends ProgramMetadata {
   /**
    * information of uniform variables
    */
@@ -89,10 +113,6 @@ export interface ProgramInfo {
    * whether the shader source contains a customized main function implementation
    */
   hasMain?: boolean;
-  /**
-   * the name of the program. used for debugging and profiling
-   */
-  name: string;
 }
 
 export interface VariableInfo {
@@ -140,3 +160,6 @@ export declare namespace Artifact {
 export interface UniformData {
   [name: string]: number|number[];
 }
+
+const a = () => 1;
+a.x = 1;

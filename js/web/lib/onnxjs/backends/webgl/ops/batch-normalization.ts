@@ -14,11 +14,22 @@ export interface BatchNormalizationAttributes {
   spatial: number;
 }
 
+const batchNormalizationProgramMetadata = {
+  name: 'BatchNormalization',
+  inputNames: ['A', 'Scale', 'B', 'Mean', 'Variance'],
+  inputTypes:
+      [TextureType.unpacked, TextureType.unpacked, TextureType.unpacked, TextureType.unpacked, TextureType.unpacked]
+};
+
 export const batchNormalization: OperatorImplementation<BatchNormalizationAttributes> =
     (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: BatchNormalizationAttributes): Tensor[] => {
       validateInputs(inputs);
-      const output =
-          inferenceHandler.run(createBatchNormalizationProgramInfo(inferenceHandler, inputs, attributes), inputs);
+      const output = inferenceHandler.run(
+          {
+            ...batchNormalizationProgramMetadata,
+            get: () => createBatchNormalizationProgramInfo(inferenceHandler, inputs, attributes)
+          },
+          inputs);
       return [output];
     };
 
@@ -31,13 +42,13 @@ export const parseBatchNormalizationAttributes: OperatorInitialization<BatchNorm
     };
 
 const createBatchNormalizationProgramInfo =
-    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[],
-     attributes: BatchNormalizationAttributes): ProgramInfo => {
-      const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
-      const rank = inputs[0].dims.length;
-      const [scaleWidth, scaleHeight] =
-          inferenceHandler.calculateTextureWidthAndHeight(inputs[1].dims, TextureType.unpacked);
-      const shaderSource = `
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: BatchNormalizationAttributes):
+        ProgramInfo => {
+          const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
+          const rank = inputs[0].dims.length;
+          const [scaleWidth, scaleHeight] =
+              inferenceHandler.calculateTextureWidthAndHeight(inputs[1].dims, TextureType.unpacked);
+          const shaderSource = `
   float process(int[${rank}] indices) {
     vec2 position = offsetToCoords(indices[1], ${scaleWidth}, ${scaleHeight});
     float scale = getColorAsFloat(${glsl.texture2D}(Scale, position));
@@ -47,16 +58,12 @@ const createBatchNormalizationProgramInfo =
 
     return scale * ( (_A(indices) - mean) / sqrt(variance + float(${attributes.epsilon})) ) + b;
   }`;
-      return {
-        name: 'BatchNormalization',
-        inputNames: ['A', 'Scale', 'B', 'Mean', 'Variance'],
-        inputTypes: [
-          TextureType.unpacked, TextureType.unpacked, TextureType.unpacked, TextureType.unpacked, TextureType.unpacked
-        ],
-        output: {dims: inputs[0].dims, type: inputs[0].type, textureType: TextureType.unpacked},
-        shaderSource
-      };
-    };
+          return {
+            ...batchNormalizationProgramMetadata,
+            output: {dims: inputs[0].dims, type: inputs[0].type, textureType: TextureType.unpacked},
+            shaderSource
+          };
+        };
 
 const validateInputs = (inputs: Tensor[]): void => {
   if (!inputs || inputs.length !== 5) {

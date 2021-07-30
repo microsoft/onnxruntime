@@ -5,25 +5,29 @@ import {InferenceHandler} from '../../backend';
 import {Logger} from '../../instrument';
 import {Tensor} from '../../tensor';
 import {ShapeUtil} from '../../util';
-import {createPackProgramInfo} from './ops/pack';
+import {packProgramInfoLoader} from './ops/pack';
 import {createPackedReshape3DProgramInfo, isReshapeCheap, processDims3D} from './ops/reshape-packed';
 
 import {encodeAsUint8} from './ops/uint8-encode';
-import {createUnpackProgramInfo} from './ops/unpack';
+import {unpackProgramInfoLoader} from './ops/unpack';
 import {WebGLSessionHandler} from './session-handler';
 import {Encoder} from './texture-data-encoder';
 // eslint-disable-next-line max-len
 import {calculateTextureWidthAndHeight, createTextureLayoutFromShape, createTextureLayoutFromTextureType} from './texture-layout';
-import {Artifact, ProgramInfo, TextureData, TextureLayout, TextureType} from './types';
+import {Artifact, ProgramInfo, ProgramInfoLoader, TextureData, TextureLayout, TextureType} from './types';
 
-const getProgramInfoUniqueKey = (programInfo: ProgramInfo, inputTextureDatas: TextureData[]): string => {
-  const inputs =
-      inputTextureDatas.map(texture => `${texture.unpackedShape.join(',')};${texture.width}x${texture.height}`)
-          .join('_');
-  let key = programInfo.name ?? '';
-  key += '_' + inputs + '_' + programInfo.shaderSource;
-  return key;
-};
+const getProgramInfoUniqueKey =
+    (programInfo: ProgramInfo|ProgramInfoLoader, inputTextureDatas: TextureData[]): string => {
+      const inputs =
+          inputTextureDatas.map(texture => `${texture.unpackedShape.join(',')};${texture.width}x${texture.height}`)
+              .join('_');
+      let key = programInfo.name;
+      if (programInfo.key) {
+        key += '[' + programInfo.key + ']';
+      }
+      key += ':' + inputs;
+      return key;
+    };
 
 export class WebGLInferenceHandler implements InferenceHandler {
   private packedTextureDataCache: Map<Tensor.Id, TextureData>;
@@ -40,38 +44,44 @@ export class WebGLInferenceHandler implements InferenceHandler {
     return calculateTextureWidthAndHeight(this.session.layoutStrategy, shape, textureType);
   }
 
-  executeProgram(programInfo: ProgramInfo, inputs: readonly Tensor[]): TextureData {
-    if (inputs.length < programInfo.inputNames.length) {
-      throw new Error(`Input size mustn't be less than ${programInfo.inputNames.length}.`);
+  executeProgram(program: ProgramInfo|ProgramInfoLoader, inputs: readonly Tensor[]): TextureData {
+    if (inputs.length < program.inputNames.length) {
+      throw new Error(`Input size mustn't be less than ${program.inputNames.length}.`);
     }
-    if (programInfo.inputNames.length !== programInfo.inputTypes.length) {
+    if (program.inputNames.length !== program.inputTypes.length) {
       throw new Error('input names size does not match input types');
     }
 
     // create texture info for input
     const inputTextureDatas: TextureData[] = [];
-    for (let i = 0; i < programInfo.inputNames.length; ++i) {
-      inputTextureDatas[i] = this.getOrCreateTextureData(inputs[i], programInfo.inputTypes[i]);
+    for (let i = 0; i < program.inputNames.length; ++i) {
+      inputTextureDatas[i] = this.getOrCreateTextureData(inputs[i], program.inputTypes[i]);
     }
+
+    const key = getProgramInfoUniqueKey(program, inputTextureDatas);
+    let artifact = this.session.programManager.getArtifact(key);
+    const programInfo = artifact ?
+        artifact.programInfo :
+        (typeof (program as ProgramInfoLoader).get === 'function' ? (program as ProgramInfoLoader).get() :
+                                                                    (program as ProgramInfo));
 
     // create texture info for output
     const outputTextureLayout = createTextureLayoutFromTextureType(
         this.session.layoutStrategy, programInfo.output.dims, programInfo.output.textureType);
     const outputTextureData = this.createTextureData(outputTextureLayout, programInfo.output.type);
 
-    const key = getProgramInfoUniqueKey(programInfo, inputTextureDatas);
-    let artifact = this.session.programManager.getArtifact(key);
     if (!artifact) {
       artifact = this.session.programManager.build(programInfo, inputTextureDatas, outputTextureData);
       this.session.programManager.setArtifact(key, artifact);
     }
 
+
     this.runProgram(artifact, inputTextureDatas, outputTextureData);
     return outputTextureData;
   }
 
-  run(programInfo: ProgramInfo, inputs: readonly Tensor[]): Tensor {
-    const outputTextureData = this.executeProgram(programInfo, inputs);
+  run(program: ProgramInfo|ProgramInfoLoader, inputs: readonly Tensor[]): Tensor {
+    const outputTextureData = this.executeProgram(program, inputs);
     return outputTextureData.tensor;
   }
 
@@ -301,14 +311,12 @@ export class WebGLInferenceHandler implements InferenceHandler {
   }
 
   pack(input: TextureData): TextureData {
-    const outputTextureData = this.executeProgram(
-        createPackProgramInfo(this, input.tensor), [input.tensor]);  // TODO: fix after changes done for pack/unpack
+    const outputTextureData = this.executeProgram(packProgramInfoLoader(this, input.tensor), [input.tensor]);
     return outputTextureData;
   }
 
   unpack(input: TextureData): TextureData {
-    const outputTextureData = this.executeProgram(
-        createUnpackProgramInfo(this, input.tensor), [input.tensor]);  // TODO: fix after changes done for pack/unpack
+    const outputTextureData = this.executeProgram(unpackProgramInfoLoader(this, input.tensor), [input.tensor]);
     return outputTextureData;
   }
 }

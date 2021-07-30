@@ -4,9 +4,19 @@
 import {Tensor} from '../../../tensor';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, TextureType} from '../types';
+import {ProgramInfo, ProgramInfoLoader, TextureType} from '../types';
 import {getCoordsDataType} from '../utils';
 import {getChannels, unpackFromChannel} from './packing-utils';
+
+const unpackProgramMetadata = {
+  name: 'unpack',
+  inputNames: ['A'],
+  inputTypes: [TextureType.packed]
+};
+
+export const unpackProgramInfoLoader = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfoLoader =>
+    ({...unpackProgramMetadata, get: () => createUnpackProgramInfo(handler, input)});
+
 
 export const createUnpackProgramInfo = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfo => {
   const rank = input.dims.length;
@@ -32,10 +42,8 @@ export const createUnpackProgramInfo = (handler: WebGLInferenceHandler, input: T
    `;
 
   return {
-    name: 'unpack',
+    ...unpackProgramMetadata,
     hasMain: true,
-    inputNames: ['A'],
-    inputTypes: [TextureType.packed],
     output: {dims: input.dims, type: input.type, textureType: TextureType.unpacked},
     shaderSource
   };

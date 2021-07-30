@@ -6,7 +6,7 @@ import {BroadcastUtil, ShapeUtil} from '../../../util';
 import {FunctionType, GlslValueFunction} from '../glsl-definitions';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, TextureType} from '../types';
+import {ProgramInfo, ProgramInfoLoader, TextureType} from '../types';
 
 export function glslAdd(): GlslValueFunction {
   const name = 'add_';
@@ -183,6 +183,19 @@ function glslBuiltinBinary(fname: string): GlslValueFunction {
   return {body, name, type: FunctionType.ValueBased};
 }
 
+const binaryProgramInfoLoader =
+    (handler: WebGLInferenceHandler, inputs: Tensor[], glslFunc: GlslValueFunction,
+     outputTensorType: Tensor.DataType = inputs[0].type, key?: string): ProgramInfoLoader => {
+      const textureType = handler.session.pack ? TextureType.packed : TextureType.unpacked;
+      return {
+        name: glslFunc.name,
+        inputNames: ['A', 'B'],
+        inputTypes: [textureType, textureType],
+        key,
+        get: () => createBinaryProgramInfo(handler, inputs, glslFunc, outputTensorType)
+      };
+    };
+
 const createBinaryProgramInfo =
     (handler: WebGLInferenceHandler, inputs: Tensor[], glslFunc: GlslValueFunction,
      outputTensorType: Tensor.DataType = inputs[0].type): ProgramInfo => {
@@ -254,37 +267,37 @@ const createBinaryProgramInfo =
     };
 
 export const add = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslAdd()), inputs)];
+    Tensor[] => [handler.run(binaryProgramInfoLoader(handler, inputs, glslAdd()), inputs)];
 
 export const and = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslAnd(), 'bool'), inputs)];
+    Tensor[] => [handler.run(binaryProgramInfoLoader(handler, inputs, glslAnd(), 'bool'), inputs)];
 
 export const div = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslDiv()), inputs)];
+    Tensor[] => [handler.run(binaryProgramInfoLoader(handler, inputs, glslDiv()), inputs)];
 
 export const equal = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslEqual(), 'bool'), inputs)];
+    Tensor[] => [handler.run(binaryProgramInfoLoader(handler, inputs, glslEqual(), 'bool'), inputs)];
 
 export const greater = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslGreater(), 'bool'), inputs)];
+    Tensor[] => [handler.run(binaryProgramInfoLoader(handler, inputs, glslGreater(), 'bool'), inputs)];
 
 export const less = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslLess(), 'bool'), inputs)];
+    Tensor[] => [handler.run(binaryProgramInfoLoader(handler, inputs, glslLess(), 'bool'), inputs)];
 
 export const mul = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslMul()), inputs)];
+    Tensor[] => [handler.run(binaryProgramInfoLoader(handler, inputs, glslMul()), inputs)];
 
 export const or = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslOr(), 'bool'), inputs)];
+    Tensor[] => [handler.run(binaryProgramInfoLoader(handler, inputs, glslOr(), 'bool'), inputs)];
 
 export const pow = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslPow()), inputs)];
+    Tensor[] => [handler.run(binaryProgramInfoLoader(handler, inputs, glslPow()), inputs)];
 
 export const pRelu = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslPRelu()), inputs)];
+    Tensor[] => [handler.run(binaryProgramInfoLoader(handler, inputs, glslPRelu()), inputs)];
 
 export const sub = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslSub()), inputs)];
+    Tensor[] => [handler.run(binaryProgramInfoLoader(handler, inputs, glslSub()), inputs)];
 
 export const xor = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createBinaryProgramInfo(handler, inputs, glslXor(), 'bool'), inputs)];
+    Tensor[] => [handler.run(binaryProgramInfoLoader(handler, inputs, glslXor(), 'bool'), inputs)];

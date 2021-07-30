@@ -4,16 +4,21 @@
 import {Tensor} from '../../../tensor';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, TextureType} from '../types';
+import {ProgramInfo, ProgramInfoLoader, TextureType} from '../types';
 import {getCoordsDataType} from '../utils';
 
 import {getChannels} from './packing-utils';
 
-export const createPackProgramInfo = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfo => {
-  // if (!handler.session.pack) {
-  //   throw new Error('Pack kernel should only be called on pack texture.');
-  // }
+const packProgramMetadata = {
+  name: 'pack',
+  inputNames: ['A'],
+  inputTypes: [TextureType.unpackedReversed]
+};
 
+export const packProgramInfoLoader = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfoLoader =>
+    ({...packProgramMetadata, get: () => createPackProgramInfo(handler, input)});
+
+export const createPackProgramInfo = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfo => {
   const glsl = getGlsl(handler.session.backend.glContext.version);
   const inputShape = input.dims;
 
@@ -50,10 +55,8 @@ export const createPackProgramInfo = (handler: WebGLInferenceHandler, input: Ten
         }
       `;
   return {
-    name: 'pack',
+    ...packProgramMetadata,
     hasMain: true,
-    inputNames: ['A'],
-    inputTypes: [TextureType.unpackedReversed],
     output: {dims: input.dims, type: input.type, textureType: TextureType.packed},
     shaderSource
   };
