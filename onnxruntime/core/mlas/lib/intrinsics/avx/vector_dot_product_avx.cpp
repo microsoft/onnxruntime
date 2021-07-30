@@ -49,15 +49,15 @@ MlasVectorDotProductF32KernelAvx(
     float cur_sum = 0.0f;
 
     while (cur_M >= 32) {
-        __m256 a_0 = _mm256_load_ps(&cur_A[0]);
-        __m256 a_1 = _mm256_load_ps(&cur_A[8]);
-        __m256 a_2 = _mm256_load_ps(&cur_A[16]);
-        __m256 a_3 = _mm256_load_ps(&cur_A[24]);
+        __m256 a_0 = _mm256_loadu_ps(&cur_A[0]);
+        __m256 a_1 = _mm256_loadu_ps(&cur_A[8]);
+        __m256 a_2 = _mm256_loadu_ps(&cur_A[16]);
+        __m256 a_3 = _mm256_loadu_ps(&cur_A[24]);
 
-        __m256 b_0 = _mm256_load_ps(&B[0]);
-        __m256 b_1 = _mm256_load_ps(&B[8]);
-        __m256 b_2 = _mm256_load_ps(&B[16]);
-        __m256 b_3 = _mm256_load_ps(&B[24]);
+        __m256 b_0 = _mm256_loadu_ps(&B[0]);
+        __m256 b_1 = _mm256_loadu_ps(&B[8]);
+        __m256 b_2 = _mm256_loadu_ps(&B[16]);
+        __m256 b_3 = _mm256_loadu_ps(&B[24]);
 
         __m256 ab_0 = _mm256_mul_ps(a_0, b_0);
         __m256 ab_1 = _mm256_mul_ps(a_1, b_1);
@@ -77,13 +77,13 @@ MlasVectorDotProductF32KernelAvx(
     }
 
     while (cur_M >= 24) {
-        __m256 a_0 = _mm256_load_ps(&cur_A[0]);
-        __m256 a_1 = _mm256_load_ps(&cur_A[8]);
-        __m256 a_2 = _mm256_load_ps(&cur_A[16]);
+        __m256 a_0 = _mm256_loadu_ps(&cur_A[0]);
+        __m256 a_1 = _mm256_loadu_ps(&cur_A[8]);
+        __m256 a_2 = _mm256_loadu_ps(&cur_A[16]);
 
-        __m256 b_0 = _mm256_load_ps(&B[0]);
-        __m256 b_1 = _mm256_load_ps(&B[8]);
-        __m256 b_2 = _mm256_load_ps(&B[16]);
+        __m256 b_0 = _mm256_loadu_ps(&B[0]);
+        __m256 b_1 = _mm256_loadu_ps(&B[8]);
+        __m256 b_2 = _mm256_loadu_ps(&B[16]);
 
         __m256 ab_0 = _mm256_mul_ps(a_0, b_0);
         __m256 ab_1 = _mm256_mul_ps(a_1, b_1);
@@ -101,11 +101,11 @@ MlasVectorDotProductF32KernelAvx(
     }
 
     while (cur_M >= 16) {
-        __m256 a_0 = _mm256_load_ps(&cur_A[0]);
-        __m256 a_1 = _mm256_load_ps(&cur_A[8]);
+        __m256 a_0 = _mm256_loadu_ps(&cur_A[0]);
+        __m256 a_1 = _mm256_loadu_ps(&cur_A[8]);
 
-        __m256 b_0 = _mm256_load_ps(&B[0]);
-        __m256 b_1 = _mm256_load_ps(&B[8]);
+        __m256 b_0 = _mm256_loadu_ps(&B[0]);
+        __m256 b_1 = _mm256_loadu_ps(&B[8]);
 
         __m256 ab_0 = _mm256_mul_ps(a_0, b_0);
         __m256 ab_1 = _mm256_mul_ps(a_1, b_1);
@@ -121,9 +121,9 @@ MlasVectorDotProductF32KernelAvx(
     }
 
     while (cur_M >= 8) {
-        __m256 a_0 = _mm256_load_ps(&cur_A[0]);
+        __m256 a_0 = _mm256_loadu_ps(&cur_A[0]);
 
-        __m256 b_0 = _mm256_load_ps(&B[0]);
+        __m256 b_0 = _mm256_loadu_ps(&B[0]);
 
         __m256 ab_0 = _mm256_mul_ps(a_0, b_0);
 
