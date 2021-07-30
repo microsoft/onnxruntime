@@ -613,6 +613,9 @@ extern "C" {
 
     // TODO(kreeger): #ifdef this for AVX.
     MLAS_VECTOR_DOT_PRODUCT_FLOAT_KERNEL MlasVectorDotProductF32Kernel;
+#if defined(MLAS_TARGET_AMD64)
+    MLAS_VECTOR_DOT_PRODUCT_FLOAT_KERNEL MlasVectorDotProductF32KernelAvx;
+#endif
 }
 
 //

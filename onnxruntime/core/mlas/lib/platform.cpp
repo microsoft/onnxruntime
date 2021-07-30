@@ -220,7 +220,7 @@ Return Value:
             this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelAvx;
             this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelAvx;
             this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32KernelAvx;
-            // TODO(kreeger): Add a reference to the AVX kernel.
+            this->VectorDotProductF32Kernel = MlasVectorDotProductF32KernelAvx;
 
             //
             // Check if the processor supports AVX2/FMA3 features.

@@ -17,8 +17,8 @@ Abstract:
 #include "mlasi.h"
 
 
-// TODO(kreeger): Use the MLAS defines for this stuff.
-static inline float
+MLAS_FORCEINLINE
+float
 sum_256_horizontal(__m256 sums_256)
 {
     __m256 t1_256 = _mm256_hadd_ps(sums_256, sums_256);
@@ -29,10 +29,9 @@ sum_256_horizontal(__m256 sums_256)
     return _mm_cvtss_f32(t5_128);
 }
 
-
 void
 MLASCALL
-MlasVectorDotProductF32KernelAVX(
+MlasVectorDotProductF32KernelAvx(
     const float* A,
     const float* B,
     float* C,

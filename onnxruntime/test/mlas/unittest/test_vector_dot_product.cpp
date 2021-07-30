@@ -6,6 +6,7 @@
 //
 // Utility class for creating test vectors for vector dot prod tests.
 //
+template <typename T>
 class TestVectors {
  public:
   TestVectors(const size_t M, const size_t N,
@@ -39,23 +40,23 @@ class TestVectors {
 
   void ResetC() {
     for (size_t i = 0; i < C.size(); ++i) {
-      C[i] = 0.0f;
+      C[i] = 0;
     }
   }
 
   const size_t M;
   const size_t N;
-  std::vector<float> A;
-  std::vector<float> B;
-  std::vector<float> B_transposed;
-  std::vector<float> C;
+  std::vector<T> A;
+  std::vector<T> B;
+  std::vector<T> B_transposed;
+  std::vector<T> C;
 };
 
 //
 // Reference vector dot product.
 //
-
-void ReferenceVectorDotProd(TestVectors& vectors) {
+template <typename T>
+void ReferenceVectorDotProd(TestVectors<T>& vectors) {
   for (size_t i = 0; i < vectors.N; ++i) {
     float sum = 0;
     for (size_t j = 0; j < vectors.M; ++j) {
@@ -65,7 +66,7 @@ void ReferenceVectorDotProd(TestVectors& vectors) {
   }
 }
 
-template <typename T, bool Packed>
+template <typename T>
 class MlasVectorDotProdTest : public MlasTestBase {
   void Test() {
   }
@@ -84,21 +85,21 @@ class MlasVectorDotProdTest : public MlasTestBase {
 
  private:
   void ExecuteSmall() {
-    ValidateUnpacked(TestVectors(/*M=*/4, /*N=*/8));
-    ValidateUnpacked(TestVectors(/*M=*/3, /*N=*/9));
+    ValidateUnpacked(TestVectors<T>(/*M=*/4, /*N=*/8));
+    ValidateUnpacked(TestVectors<T>(/*M=*/3, /*N=*/9));
   }
 
   void ExecuteMedium() {
-    ValidateUnpacked(TestVectors(/*M=*/22, /*N=*/32));
-    ValidateUnpacked(TestVectors(/*M=*/21, /*N=*/31));
+    ValidateUnpacked(TestVectors<T>(/*M=*/22, /*N=*/32));
+    ValidateUnpacked(TestVectors<T>(/*M=*/21, /*N=*/31));
   }
 
   void ExecuteLong() {
-    ValidateUnpacked(TestVectors(/*M=*/768, /*N=*/3072, /*small_values=*/true));
-    ValidateUnpacked(TestVectors(/*M=*/761, /*N=*/3011, /*small_values=*/true));
+    ValidateUnpacked(TestVectors<T>(/*M=*/768, /*N=*/3072, /*small_values=*/true));
+    ValidateUnpacked(TestVectors<T>(/*M=*/761, /*N=*/3011, /*small_values=*/true));
   }
 
-  void ValidateUnpacked(TestVectors vectors) {
+  void ValidateUnpacked(TestVectors<T> vectors) {
     ReferenceVectorDotProd(vectors);
     std::vector<float> ref_C = vectors.C;
     vectors.ResetC();
@@ -119,12 +120,11 @@ class MlasVectorDotProdTest : public MlasTestBase {
   }
 };
 
-
 template <>
-MlasVectorDotProdTest<float, false>* MlasTestFixture<MlasVectorDotProdTest<float, false>>::mlas_tester(nullptr);
+MlasVectorDotProdTest<float>* MlasTestFixture<MlasVectorDotProdTest<float>>::mlas_tester(nullptr);
 
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   return is_short_execute
-             ? MlasDirectShortExecuteTests<MlasVectorDotProdTest<float, false>>::RegisterShortExecute()
+             ? MlasDirectShortExecuteTests<MlasVectorDotProdTest<float>>::RegisterShortExecute()
              : 0;
 });
