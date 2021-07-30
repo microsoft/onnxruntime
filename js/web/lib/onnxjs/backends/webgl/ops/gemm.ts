@@ -6,7 +6,7 @@ import {OperatorImplementation, OperatorInitialization} from '../../../operators
 import {Tensor} from '../../../tensor';
 import {GemmUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, TextureType} from '../types';
+import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
 
 export interface GemmAttributes {
   transA: boolean;
@@ -14,12 +14,13 @@ export interface GemmAttributes {
   alpha: number;
   beta: number;
   isOptionalC: boolean;  // in opset 11, C becomes optional
+  cacheKey: string;
 }
 
 export const gemm: OperatorImplementation<GemmAttributes> =
     (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: GemmAttributes): Tensor[] => {
       validateInputs(inputs, attributes);
-      const output = inferenceHandler.run(createGemmProgramInfo(inferenceHandler, inputs, attributes), inputs);
+      const output = inferenceHandler.run(createGemmProgramInfoLoader(inputs, attributes), inputs);
       return [output];
     };
 
@@ -28,7 +29,8 @@ const parseGemmAttributes = (node: Graph.Node, isOptionalC: boolean): GemmAttrib
   const transB = node.attributes.getInt('transB', 0) !== 0;
   const alpha = node.attributes.getFloat('alpha', 1.0);
   const beta = node.attributes.getFloat('beta', 1.0);
-  return {transA, transB, alpha, beta, isOptionalC};
+  const cacheKey = `${transA}_${transB}_${alpha}_${beta}`;
+  return {transA, transB, alpha, beta, isOptionalC, cacheKey};
 };
 
 export const parseGemmAttributesV7: OperatorInitialization<GemmAttributes> = (node: Graph.Node): GemmAttributes =>
@@ -37,8 +39,20 @@ export const parseGemmAttributesV7: OperatorInitialization<GemmAttributes> = (no
 export const parseGemmAttributesV11: OperatorInitialization<GemmAttributes> = (node: Graph.Node): GemmAttributes =>
     parseGemmAttributes(node, true);
 
+const createGemmProgramInfoLoader = (inputs: Tensor[], attributes: GemmAttributes): ProgramInfoLoader => {
+  const metadata = {
+    name: 'Gemm',
+    inputNames: inputs.length === 3 ? ['A', 'B', 'C'] : ['A', 'B'],
+    inputTypes: inputs.length === 3 ? [TextureType.unpacked, TextureType.unpacked, TextureType.unpacked] :
+                                      [TextureType.unpacked, TextureType.unpacked],
+    key: attributes.cacheKey
+  };
+
+  return {...metadata, get: () => createGemmProgramInfo(metadata, inputs, attributes)};
+};
+
 const createGemmProgramInfo =
-    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: GemmAttributes): ProgramInfo => {
+    (metadata: ProgramMetadata, inputs: Tensor[], attributes: GemmAttributes): ProgramInfo => {
       const aShape = inputs[0].dims.slice();
       const bShape = inputs[1].dims.slice();
       const [M, N] = GemmUtil.getShapeOfGemmResult(
@@ -87,10 +101,7 @@ const createGemmProgramInfo =
           return value;
       }`;
       return {
-        name: 'Gemm',
-        inputNames: inputs.length === 3 ? ['A', 'B', 'C'] : ['A', 'B'],
-        inputTypes: inputs.length === 3 ? [TextureType.unpacked, TextureType.unpacked, TextureType.unpacked] :
-                                          [TextureType.unpacked, TextureType.unpacked],
+        ...metadata,
         output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
         variables: [
           {name: 'alpha', type: 'float', data: attributes.alpha}, {name: 'beta', type: 'float', data: attributes.beta}

@@ -64,7 +64,7 @@ export interface ProgramVariable {
 /**
  * A set of metadata of a shader program.
  */
-interface ProgramMetadata {
+export interface ProgramMetadata {
   /**
    * the name of the program. used for debugging and profiling
    */
@@ -78,9 +78,9 @@ interface ProgramMetadata {
    */
   inputNames: string[];
   /**
-   * an optional string as a key in the artifact cache
+   * an optional string as a cache hint in the artifact cache
    */
-  key?: string;
+  cacheHint?: string;
 }
 
 /**

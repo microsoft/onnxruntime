@@ -22,8 +22,8 @@ const getProgramInfoUniqueKey =
           inputTextureDatas.map(texture => `${texture.unpackedShape.join(',')};${texture.width}x${texture.height}`)
               .join('_');
       let key = programInfo.name;
-      if (programInfo.key) {
-        key += '[' + programInfo.key + ']';
+      if (programInfo.cacheHint) {
+        key += '[' + programInfo.cacheHint + ']';
       }
       key += ':' + inputs;
       return key;

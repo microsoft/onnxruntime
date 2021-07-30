@@ -12,6 +12,7 @@ export interface BatchNormalizationAttributes {
   epsilon: number;
   momentum: number;
   spatial: number;
+  cacheKey: string;
 }
 
 const batchNormalizationProgramMetadata = {
@@ -27,6 +28,7 @@ export const batchNormalization: OperatorImplementation<BatchNormalizationAttrib
       const output = inferenceHandler.run(
           {
             ...batchNormalizationProgramMetadata,
+            cacheHint: attributes.cacheKey,
             get: () => createBatchNormalizationProgramInfo(inferenceHandler, inputs, attributes)
           },
           inputs);
@@ -38,7 +40,8 @@ export const parseBatchNormalizationAttributes: OperatorInitialization<BatchNorm
       const epsilon = node.attributes.getFloat('epsilon', 1e-5);
       const momentum = node.attributes.getFloat('momentum', 0.9);
       const spatial = node.attributes.getInt('spatial', 1);
-      return {epsilon, momentum, spatial};
+      const cacheKey = `${epsilon};${momentum};${spatial}`;
+      return {epsilon, momentum, spatial, cacheKey};
     };
 
 const createBatchNormalizationProgramInfo =
