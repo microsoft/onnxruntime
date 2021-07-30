@@ -3,7 +3,7 @@
 
 import {MatMul} from '../../../ops/matmul';
 import {Tensor} from '../../../tensor';
-import {BroadcastUtil, ShapeUtil} from '../../../util';
+import {BroadcastUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, RunData, WebGLOperator} from '../types';
 import {WebGLMatMulPacked} from './matmul-pack';
@@ -21,8 +21,7 @@ export class WebGLMatMul extends MatMul implements WebGLOperator {
 
   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
     if (this.usePackedTexture === undefined) {
-      const isBroadcast = !ShapeUtil.areEqual(inputs[0].dims, inputs[1].dims);
-      this.usePackedTexture = !isBroadcast && inferenceHandler.session.pack;
+      this.usePackedTexture = inferenceHandler.session.pack;
     }
 
     if (this.usePackedTexture) {
@@ -34,8 +33,7 @@ export class WebGLMatMul extends MatMul implements WebGLOperator {
 
   createProgramInfo(handler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo {
     if (this.usePackedTexture === undefined) {
-      const isBroadcast = !ShapeUtil.areEqual(inputs[0].dims, inputs[1].dims);
-      this.usePackedTexture = !isBroadcast && handler.session.pack;
+      this.usePackedTexture = handler.session.pack;
     }
 
     if (this.usePackedTexture && inputs[0].dims.length > 1) {

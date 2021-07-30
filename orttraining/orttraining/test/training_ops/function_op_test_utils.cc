@@ -28,7 +28,7 @@ TwoDArray OpFunctionTester::RunFunctionBodyGraphOnCPU() {
   graph.InlineFunction(node);
 
   // Hookup the inputs and outputs
-  std::unordered_map<std::string, MLValue> feeds;
+  std::unordered_map<std::string, OrtValue> feeds;
   std::vector<std::string> output_names;
   FillFeedsAndOutputNames(feeds, output_names);
 
@@ -54,7 +54,7 @@ TwoDArray OpFunctionTester::RunFunctionBodyGraphOnCPU() {
   run_options.run_log_verbosity_level = 1;
   run_options.training_mode = true;
 
-  std::vector<MLValue> cpu_fetches;
+  std::vector<OrtValue> cpu_fetches;
   status = cpu_session_object.Run(run_options, feeds, output_names, &cpu_fetches);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 

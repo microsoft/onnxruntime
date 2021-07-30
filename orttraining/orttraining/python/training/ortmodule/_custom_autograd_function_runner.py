@@ -26,10 +26,7 @@ def wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace_flag, training_mode_fl
     if tensor_flag:
         # Got a tensor. Assume it's a DLPack tensor
         # and convert it to Pytorch tensor.
-        if not inplace_flag:
-            wrapped_arg = from_dlpack(arg)
-        else:
-            wrapped_arg = from_dlpack(arg).detach().contiguous()
+        wrapped_arg = from_dlpack(arg)
 
         # Only requires gradient when running under training mode
         # and the associated tensor has grad_flag=True (i.e.,
@@ -65,8 +62,8 @@ def call_python_forward_function(
         inplace: indicates if args can be modified inside the custom function.
         args: inputs to "backward_function".
     '''
-    def generate_non_leaf_or_not(grad_flag, tensor_flag, arg):
-        if tensor_flag and grad_flag:
+    def generate_non_leaf_or_not(grad_flag, tensor_flag, arg, is_training_mode):
+        if is_training_mode and tensor_flag and grad_flag:
             # "multiply one" helps change the torch tensor's is_leaf to be False.
             # This is required when the torch tensor is updated in-place during forward pass.
             # We cannot use view here, because PyTorch handels grad_fn for view differently.
@@ -101,7 +98,7 @@ def call_python_forward_function(
         elif isinstance(result, tuple) or isinstance(result, list):
             ctx = extract_context(result)
             wrapped = [ctx]
-            wrapped.extend(list(to_dlpack(value) for value in result))
+            wrapped.extend(list(to_dlpack(value) if value is not None else None for value in result))
             # Inside the returned list, first element is context and the rest
             # are DLPack tensors.
             return wrapped
@@ -112,9 +109,9 @@ def call_python_forward_function(
         wrapped_args = list(wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace, is_training_mode, arg)
                             for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, args))
 
-        with torch.enable_grad():
+        with torch.set_grad_enabled(is_training_mode):
             # Another level of wrap to avoid requires_grad=True for leaf variables.
-            new_wrapped_args = list(generate_non_leaf_or_not(grad_flag, tensor_flag, arg)
+            new_wrapped_args = list(generate_non_leaf_or_not(grad_flag, tensor_flag, arg, is_training_mode)
                                     for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, wrapped_args))
 
             # Run autograd.Function.apply(...).
@@ -157,11 +154,14 @@ def call_python_backward_function(
         if isinstance(result, torch.Tensor):
             return [to_dlpack(result)]
         elif isinstance(result, tuple) or isinstance(result, list):
-            return [to_dlpack(value) for value in result if value is not None]
+            return [to_dlpack(value) if value is not None else None for value in result]
         else:
             raise Exception('Unsupported returned type: ', type(result))
 
     try:
+        # Backward inputs should not require gradients.
+        assert all(grad_flag == 0 for grad_flag in requires_grad_flags)
+
         # Prepare inputs for calling Python function.
         wrapped_args = list(wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace, is_training_mode, arg)
                             for grad_flag, tensor_flag, arg in zip(requires_grad_flags, tensor_type_flags, args))

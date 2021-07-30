@@ -175,17 +175,16 @@ def quantize_static(model_input,
         List of nodes names to exclude. The nodes in this list will be excluded from quantization
         when it is not None.
     :param optimize_model: optimize model before quantization.
-    :parma use_external_data_format: option used for large size (>2GB) model. Set to False by default. 
+    :param use_external_data_format: option used for large size (>2GB) model. Set to False by default. 
     :param calibrate_method: 
         Current calibration methods supported are MinMax and Entropy. 
         Please use CalibrationMethod.MinMax or CalibrationMethod.Entropy as options.
     :param extra_options:
         key value pair dictionary for various options in different case. Current used:
-            extra.Sigmoid.nnapi = True  (Default is False)
+            extra.Sigmoid.nnapi = True/False  (Default is False)
+            ActivationSymmetric = True/False: symmetrize calibration data for activations (default is False).
+            WeightSymmetric = True/False: symmetrize calibration data for weights (default is True).
     '''
-
-    if activation_type != QuantType.QUInt8:
-        raise ValueError("Static quantization only support uint8 for activation now.")
 
     mode = QuantizationMode.QLinearOps
 

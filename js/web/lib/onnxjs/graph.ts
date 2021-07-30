@@ -53,6 +53,7 @@ export declare namespace Graph {
   export interface Transformer {
     removeAllIdentityNodes(): void;
     removeAllDropoutNodes(): void;
+    fuseConvActivationNodes(): void;
     // TODO: add generic functions to manipulate the graph
   }
 
@@ -560,7 +561,7 @@ class GraphImpl implements Graph, Graph.Transformer {
     // apply common transform
     this.removeAllIdentityNodes();
     this.removeAllDropoutNodes();
-
+    this.fuseConvActivationNodes();
     // apply initializer specific transform
     if (graphInitializer) {
       graphInitializer.transformGraph(this);
@@ -743,6 +744,7 @@ class GraphImpl implements Graph, Graph.Transformer {
       // TODO: add other activation methods
       case 'Relu':
       case 'Sigmoid':
+      case 'Clip':
         return true;
       default:
         return false;
@@ -754,7 +756,13 @@ class GraphImpl implements Graph, Graph.Transformer {
       if (node.opType === 'Conv') {
         const next = this._allData[node.outputs[0]]._to;
         if (next.length === 1 && this.isActivation(this._nodes[next[0]])) {
-          node.attributes.set('__internal_activation', 'string', (this._nodes[next[0]].opType));
+          const child = this._nodes[next[0]];
+          node.attributes.set('__internal_activation', 'string', (child.opType));
+          // TODO: need add support for Clip after opset 11, which has min/max as inputs
+          if (child.opType === 'Clip') {
+            node.attributes.set('__clip_min', 'float', child.attributes.getFloat('min'));
+            node.attributes.set('__clip_max', 'float', child.attributes.getFloat('max'));
+          }
           this.deleteNode(next[0]);
         }
       }

@@ -11,11 +11,13 @@
 #include "core/framework/data_types.h"
 #include "core/framework/tensor.h"
 #include "core/framework/TensorSeq.h"
-#endif
 
 namespace onnxruntime {
 class SparseTensor;
 }  // namespace onnxruntime
+
+#endif
+
 
 /**
    Represents both tensors and non-tensors.
@@ -125,5 +127,3 @@ inline onnxruntime::SparseTensor* OrtValue::GetMutable<onnxruntime::SparseTensor
   return static_cast<onnxruntime::SparseTensor*>(data_.get());
 }
 
-//TODO: remove the following line
-#define MLValue OrtValue

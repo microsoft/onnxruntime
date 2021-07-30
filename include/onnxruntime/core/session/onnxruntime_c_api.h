@@ -1,13 +1,18 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+/** @file onnxruntime_c_api.h
+
+  @brief ONNX Runtime C API.
+*/
+
 #pragma once
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 
 // This value is used in structures passed to ORT so that a newer version of ORT will still work with them
-#define ORT_API_VERSION 8
+#define ORT_API_VERSION 9
 
 #ifdef __cplusplus
 extern "C" {
@@ -115,6 +120,7 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16     // Non-IEEE floating-point format based on IEEE754 single-precision
 } ONNXTensorElementDataType;
 
+
 // Synced with onnx TypeProto oneof
 typedef enum ONNXType {
   ONNX_TYPE_UNKNOWN,
@@ -124,6 +130,17 @@ typedef enum ONNXType {
   ONNX_TYPE_OPAQUE,
   ONNX_TYPE_SPARSETENSOR,
 } ONNXType;
+
+// These types are synced with internal
+// SparseFormatFlags but are not exposed
+// as flags
+typedef enum OrtSparseFormat {
+  ORT_SPARSE_UNDEFINED = 0,
+  ORT_SPARSE_COO = 0x1,
+  ORT_SPARSE_CSRC = 0x2,
+  ORT_SPARSE_BLOCK_SPARSE = 0x4
+} OrtSparseFormat;
+
 
 typedef enum OrtLoggingLevel {
   ORT_LOGGING_LEVEL_VERBOSE,
@@ -171,6 +188,7 @@ ORT_RUNTIME_CLASS(ThreadPoolParams);
 ORT_RUNTIME_CLASS(ThreadingOptions);
 ORT_RUNTIME_CLASS(ArenaCfg);
 ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
+ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -193,6 +211,7 @@ typedef OrtStatus* OrtStatusPtr;
   _Success_(return == 0) _Check_return_ _Ret_maybenull_ OrtStatusPtr ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
 
 #define ORT_CLASS_RELEASE(X) void(ORT_API_CALL * Release##X)(_Frees_ptr_opt_ Ort##X * input)
+#define ORT_CLASS_RELEASE2(X) void(ORT_API_CALL * Release##X)(_Frees_ptr_opt_ Ort##X##V2 * input)
 
 // When passing in an allocator to any ORT function, be sure that the allocator object
 // is not destroyed until the last allocated object using it is freed.
@@ -668,9 +687,9 @@ struct OrtApi {
   ORT_API2_STATUS(AllocatorFree, _Inout_ OrtAllocator* ptr, void* p);
   ORT_API2_STATUS(AllocatorGetInfo, _In_ const OrtAllocator* ptr, _Outptr_ const struct OrtMemoryInfo** out);
 
+  // This API returns a CPU non-arena based allocator
   // The returned pointer doesn't have to be freed.
   // Always returns the same instance on every invocation.
-  // Please note that this is a non-arena based allocator.
   ORT_API2_STATUS(GetAllocatorWithDefaultOptions, _Outptr_ OrtAllocator** out);
 
   // Override symbolic dimensions (by specific denotation strings) with actual values if known at session initialization time to enable
@@ -1002,11 +1021,15 @@ struct OrtApi {
   ORT_API2_STATUS(AddSessionConfigEntry, _Inout_ OrtSessionOptions* options,
                   _In_z_ const char* config_key, _In_z_ const char* config_value);
 
-  /**
+  /** 
+   * This API returns an allocator bound to the provided OrtSession instance according 
+   * to the spec within mem_info if successful
    * \param sess valid OrtSession instance
    * \param mem_info - valid OrtMemoryInfo instance
-   * \param - out a ptr to a new instance of OrtAllocator according to the spec within mem_info
-   *         if successful
+   * \param - out a ptr to an instance of OrtAllocator which wraps the allocator 
+              bound to the OrtSession instance
+              Freeing the returned pointer only frees the OrtAllocator instance and not
+              the wrapped session owned allocator itself.
    * \return OrtStatus or nullptr if successful
    */
   ORT_API2_STATUS(CreateAllocator, _In_ const OrtSession* sess, _In_ const OrtMemoryInfo* mem_info,
@@ -1117,7 +1140,8 @@ struct OrtApi {
    * sharing between multiple sessions that use the same env instance.
    * Lifetime of the created allocator will be valid for the duration of the environment.
    * Returns an error if an allocator with the same OrtMemoryInfo is already registered.
-   * \param mem_info must be non-null.
+   * \param env OrtEnv instance (must be non-null).
+   * \param mem_info (must be non-null).
    * \param arena_cfg if nullptr defaults will be used.
    * See docs/C_API.md for details.
   */
@@ -1236,7 +1260,7 @@ struct OrtApi {
   ORT_API2_STATUS(ModelMetadataGetGraphDescription, _In_ const OrtModelMetadata* model_metadata,
                   _Inout_ OrtAllocator* allocator, _Outptr_ char** value);
   /**
-   * Append TensorRT execution provider to the session options
+   * Append TensorRT execution provider to the session options with TensorRT provider options. 
    * If TensorRT is not available (due to a non TensorRT enabled build), this function will return failure.
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_TensorRT,
@@ -1382,6 +1406,89 @@ struct OrtApi {
                   _In_ const void* model_data, size_t model_data_length,
                   _In_ const OrtSessionOptions* options, _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container,
                   _Outptr_ OrtSession** out);
+
+  /*   
+   * Append TensorRT execution provider to the session options with TensorRT provider options.
+   * If TensorRT is not available (due to a non TensorRT enabled build), this function will return failure.
+   * Note: this API is slightly different than SessionOptionsAppendExecutionProvider_TensorRT.
+   * SessionOptionsAppendExecutionProvider_TensorRT takes struct OrtTensorRTProviderOptions which is open to user as argument,
+   * but this API takes opaque struct OrtTensorRTProviderOptionsV2 which must be created by CreateTensorRTProviderOptions.
+   * User needs to instantiate OrtTensorRTProviderOptions as well as allocate/release buffers for some members of OrtTensorRTProviderOptions.
+   * However, for using OrtTensorRTProviderOptionsV2, CreateTensorRTProviderOptions and ReleaseTensorRTProviderOptions will do the memory allocation and release for you. 
+   *
+   * \param options - OrtSessionOptions instance 
+   * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance 
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_TensorRT_V2,
+                  _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options);
+
+  /**
+   * Use this API to create the configuration of a TensorRT Execution Provider which is an instance of OrtTensorRTProviderOptionsV2.
+   *
+   * \param out - pointer to the pointer of TensorRT EP provider options instance.
+   */
+  ORT_API2_STATUS(CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptionsV2** out);
+
+  /**
+  * Use this API to set appropriate configuration knobs of a TensorRT Execution Provider.
+  *
+  * Please reference to https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#c-api-example
+  * to know the available keys and values. Key should be in string format of the member of OrtTensorRTProviderOptions and value should be its related range.
+  * For example, key="trt_max_workspace_size" and value="2147483648"
+  *
+  * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance
+  * \param provider_options_keys - array of UTF-8 null-terminated string for provider options keys
+  * \param provider_options_values - array of UTF-8 null-terminated string for provider options values
+  * \param num_keys - number of keys
+  */
+  ORT_API2_STATUS(UpdateTensorRTProviderOptions, _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
+
+  /**
+  * Get serialized TensorRT provider options string.
+  *
+  * For example, "trt_max_workspace_size=2147483648;trt_max_partition_iterations=10;trt_int8_enable=1;......" 
+  *
+  * \param tensorrt_options - OrTensorRTProviderOptionsV2 instance 
+  * \param allocator - a ptr to an instance of OrtAllocator obtained with CreateAllocator() or GetAllocatorWithDefaultOptions()
+  *                      the specified allocator will be used to allocate continuous buffers for output strings and lengths.
+  * \param ptr - is a UTF-8 null terminated string allocated using 'allocator'. The caller is responsible for using the same allocator to free it.
+  */
+  ORT_API2_STATUS(GetTensorRTProviderOptionsAsString, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
+
+  /**
+  * Use this API to release the instance of OrtTensorRTProviderV2.
+  */
+  ORT_CLASS_RELEASE2(TensorRTProviderOptions);
+
+  /*
+  * Enable custom operators in onnxruntime-extensions: https://github.com/microsoft/onnxruntime-extensions.git
+  */
+  ORT_API2_STATUS(EnableOrtCustomOps, _Inout_ OrtSessionOptions* options);
+
+  /**
+   * Registers a custom allocator instance with the env to enable
+   * sharing between multiple sessions that use the same env instance.
+   * Returns an error if an allocator with the same OrtMemoryInfo is already registered.
+   * \param env OrtEnv instance (must be non-null).
+   * \param allocator user provided allocator (must be non-null).
+   * The behavior of this API is exactly the same as CreateAndRegisterAllocator() except
+   * instead of ORT creating an allocator based on provided info, in this case 
+   * ORT uses the user-provided custom allocator.
+   * See docs/C_API.md for details.
+  */
+  ORT_API2_STATUS(RegisterAllocator, _Inout_ OrtEnv* env, _In_ OrtAllocator* allocator);
+
+  /**
+   * Unregisters a registered allocator for sharing across sessions 
+   * based on provided OrtMemoryInfo.
+   * It is an error if you provide an OrtmemoryInfo not corresponding to any
+   * registered allocators for sharing.
+  */
+  ORT_API2_STATUS(UnregisterAllocator, _Inout_ OrtEnv* env,
+                  _In_ const OrtMemoryInfo* mem_info);
 };
 
 /*
@@ -1433,6 +1540,14 @@ struct OrtCustomOp {
   OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetInputCharacteristic)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
   OrtCustomOpInputOutputCharacteristic(ORT_API_CALL* GetOutputCharacteristic)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
 };
+
+/*
+ * This is the old way to add the CUDA provider to the session, please use SessionOptionsAppendExecutionProvider_CUDA above to access the latest functionality
+ * This function always exists, but will only succeed if Onnxruntime was built with CUDA support and the CUDA provider shared library exists
+ * 
+ * \param device_id cuda device id, starts from zero.
+*/
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOptions* options, int device_id);
 
 #ifdef __cplusplus
 }

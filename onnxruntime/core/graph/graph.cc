@@ -67,11 +67,22 @@ static bool UsingLatestOnnxOpset(const DomainToVersionMap& opset_versions) {
 }
 
 static Status MergeShapeInfo(const std::string& output_name,
-                             const TypeProto_Tensor& source, TypeProto_Tensor& target,
+                             const TypeProto& source, TypeProto& target,
                              bool strict, const logging::Logger& logger) {
+  if (!(utils::HasTensorType(source) && utils::HasTensorType(target)) &&
+      !(utils::HasSparseTensorType(source) && utils::HasSparseTensorType(target))) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Source and target must both be either tensors or sparse tensors");
+  }
+
   auto status = Status::OK();
+
   ORT_TRY {
-    ONNX_NAMESPACE::mergeInShapeInfo(source, target);
+    if (utils::HasTensorType(source)) {
+      ONNX_NAMESPACE::mergeInShapeInfo(source.tensor_type(), *target.mutable_tensor_type());
+    } else {
+      ONNX_NAMESPACE::mergeInShapeInfo(source.sparse_tensor_type(), *target.mutable_sparse_tensor_type());
+    }
   }
   ORT_CATCH(const ONNX_NAMESPACE::InferenceError& ex) {
     // if this model was not created with the latest onnx version, allow the shape inferencing failure (strict == false).
@@ -82,10 +93,13 @@ static Status MergeShapeInfo(const std::string& output_name,
       // target.shape() was empty. 'assert' just in case that ever changes.
       assert(utils::HasShape(source) && utils::HasShape(target));
       LOGS(logger, WARNING) << "Error merging shape info for output. '" << output_name
-                            << "' source:" << source.shape() << " target:" << target.shape()
+                            << "' source:" << utils::GetShape(source) << " target:" << utils::GetShape(target)
                             << ". Falling back to lenient merge.";
-
-      ONNX_NAMESPACE::UnionShapeInfo(source.shape(), target);
+      if (utils::HasTensorType(source)) {
+        ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *target.mutable_tensor_type());
+      } else {
+        ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *target.mutable_sparse_tensor_type());
+      }
     } else {
       ORT_UNUSED_PARAMETER(logger);
       ORT_UNUSED_PARAMETER(strict);
@@ -305,11 +319,10 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       }
 
       if (utils::HasShape(input_tensor_type)) {
-        auto& current_tensor_type = *current_type.mutable_tensor_type();
-        if (utils::HasShape(current_tensor_type)) {
-          ORT_RETURN_IF_ERROR(MergeShapeInfo(Name(), input_tensor_type, current_tensor_type, strict, logger));
+        if (utils::HasShape(current_type)) {
+          ORT_RETURN_IF_ERROR(MergeShapeInfo(Name(), input_type, current_type, strict, logger));
         } else {
-          current_tensor_type = input_tensor_type;
+          *current_type.mutable_tensor_type() = input_tensor_type;
         }
       }
 
@@ -338,18 +351,16 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
       }
 
       if (utils::HasShape(input_tensor_type)) {
-        auto& current_tensor_type = *current_type.mutable_sparse_tensor_type();
-        if (utils::HasShape(current_tensor_type)) {
-          // TODO: Check if we need to merge shape here
-          // if so we'd need to provide merging routine ONNX
-          // mergeInShapeInfo(input_tensor_type, current_tensor_type);
+        if (utils::HasShape(current_type)) {
+          ORT_RETURN_IF_ERROR(MergeShapeInfo(Name(), input_type, current_type, strict, logger));
         } else {
-          current_tensor_type = input_tensor_type;
+          *current_type.mutable_sparse_tensor_type() = input_tensor_type;
         }
       }
     } break;
     case TypeProto::kSequenceType:
     case TypeProto::kMapType:
+    case TypeProto::kOptionalType:
     case TypeProto::kOpaqueType:
     case TypeProto::VALUE_NOT_SET:
       break;
@@ -799,12 +810,14 @@ ADD_BASIC_ATTR_IMPL(int64_t, AttributeProto_AttributeType::AttributeProto_Attrib
 ADD_BASIC_ATTR_IMPL(std::string, AttributeProto_AttributeType::AttributeProto_AttributeType_STRING, s)
 ADD_ATTR_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSOR, t)
 ADD_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSOR, sparse_tensor)
+ADD_ATTR_IMPL(TypeProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTO, tp)
 ADD_LIST_ATTR_IMPL(float, AttributeProto_AttributeType::AttributeProto_AttributeType_FLOATS, floats)
 ADD_LIST_ATTR_IMPL(int64_t, AttributeProto_AttributeType::AttributeProto_AttributeType_INTS, ints)
 ADD_LIST_ATTR_IMPL(std::string, AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS, strings)
 ADD_LIST_ATTR_IMPL(TensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TENSORS, tensors)
 ADD_LIST_ATTR_IMPL(GraphProto, AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPHS, graphs)
 ADD_LIST_ATTR_IMPL(SparseTensorProto, AttributeProto_AttributeType::AttributeProto_AttributeType_SPARSE_TENSORS, sparse_tensors)
+ADD_LIST_ATTR_IMPL(TypeProto, AttributeProto_AttributeType::AttributeProto_AttributeType_TYPE_PROTOS, type_protos)
 
 #if !defined(ORT_MINIMAL_BUILD)
 bool Node::ClearAttribute(const std::string& attr_name) {
@@ -1185,7 +1198,7 @@ void Graph::InitializeStateFromModelFileGraphProto() {
     const auto& name = graph_value_info.name();
     const auto* node_arg = GetNodeArg(name);
     if (node_arg != nullptr) {
-      value_info_.push_back(node_arg);
+      value_info_.insert(node_arg);
     }
   }
 
@@ -1670,13 +1683,12 @@ void Graph::KahnsTopologicalSort(const std::function<void(const Node*)>& enter,
 GSL_SUPPRESS(es .84)  // noisy warning about ignoring return value from insert(...)
 Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
   nodes_in_topological_order_.clear();
-  // nodes that have been processed and added to nodes_in_topological_order.
-  std::unordered_set<NodeIndex> processed_nodes;
-  std::unordered_set<NodeIndex> output_nodes;
-  std::unordered_set<NodeIndex> nodes_added_for_processing;
+  std::unordered_set<NodeIndex> downstream_nodes;  // nodes downstream of the node we're currently checking
+  std::unordered_set<NodeIndex> nodes_seen;        // nodes we have seen but may not have been added to nodes_added yet
+  std::unordered_set<NodeIndex> nodes_added;       // nodes added to topo order
   std::stack<NodeIndex> stack;
 
-  // push the top level nodes into nodes_in_topological_order in the order they were added
+  // push the root nodes into nodes_in_topological_order in the order they were defined in the model
   // to ensure that is consistent.
   auto& nodes_in_original_order = Nodes();
   std::for_each(nodes_in_original_order.cbegin(), nodes_in_original_order.cend(),
@@ -1687,42 +1699,41 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
                   // need to also consider nodes that only have Constants as inputs as top level nodes,
                   // as the constant will get replaced by an initializer.
                   auto input_edges = node.GetRelationships().input_edges;
-                  auto has_inputs = std::any_of(input_edges.cbegin(), input_edges.cend(), [](const Node::EdgeEnd& edge) {
-                    return edge.GetNode().OpType() != kConstant;
-                  });
+                  auto has_inputs = std::any_of(input_edges.cbegin(), input_edges.cend(),
+                                                [](const Node::EdgeEnd& edge) {
+                                                  return edge.GetNode().OpType() != kConstant;
+                                                });
 
                   if (!has_inputs) {
                     // add to the topological list, and ensure we skip these nodes when walking the graph
                     nodes_in_topological_order_.push_back(index);
-                    processed_nodes.insert(index);
-
-                    // mark this as added as we've fully processed it and don't need to do it again later
-                    nodes_added_for_processing.insert(index);
+                    nodes_added.insert(index);
+                    nodes_seen.insert(index);
                   }
                 });
 
-  // start at the bottom and work our way up the graph
+  // find all the leaf nodes (nodes with no output edges as there's no edge to a graph output)
   for (auto iter = Nodes().begin(); iter != Nodes().end(); ++iter) {
     if (iter->relationships_.output_edges.empty()) {
-      // This is a leaf node.
       stack.push(iter->Index());
     }
   }
 
+  // work our way up from the leaf nodes
   while (!stack.empty()) {
     const NodeIndex current = stack.top();
     stack.pop();
 
-    if (processed_nodes.find(current) != processed_nodes.end()) {
+    if (nodes_added.find(current) != nodes_added.end()) {
       continue;
     }
 
-    if (nodes_added_for_processing.find(current) != nodes_added_for_processing.end()) {
-      // we popped the stack and are back to a node that was added previously,
-      // so we know all the upstream nodes from it have been fully processed,
+    if (nodes_seen.find(current) != nodes_seen.end()) {
+      // we popped the stack and are back to a node that was seen previously,
+      // so we know all the upstream nodes from it have been added.
       nodes_in_topological_order_.push_back(current);
-      processed_nodes.insert(current);
-      output_nodes.erase(current);
+      nodes_added.insert(current);
+      downstream_nodes.erase(current);
       continue;
     }
 
@@ -1731,28 +1742,32 @@ Status Graph::PerformTopologicalSortAndCheckIsAcyclic() {
       continue;
     }
 
-    stack.push(current);
-    output_nodes.insert(current);
+    // node hasn't been seen before, so mark it as seen and re-add it along with its inputs
+    // also mark it as downstream of anything new that is added to the stack to detect acyclic graphs
+    nodes_seen.insert(current);
+    downstream_nodes.insert(current);
 
-    for (auto iter = node->InputNodesBegin(); iter != node->InputNodesEnd(); ++iter) {
-      const NodeIndex idx = (*iter).Index();
-      if (output_nodes.find(idx) != output_nodes.end()) {
+    stack.push(current);
+
+    for (auto iter = node->InputNodesBegin(), end = node->InputNodesEnd(); iter != end; ++iter) {
+      const NodeIndex idx = iter->Index();
+      // the input to this node is also downstream of this node
+      if (downstream_nodes.find(idx) != downstream_nodes.end()) {
         Status status(ONNXRUNTIME, FAIL, "This is an invalid model. Error: the graph is not acyclic.");
         return status;
       }
 
       // avoid re-processing nodes
-      if (nodes_added_for_processing.find(idx) == nodes_added_for_processing.end()) {
+      if (nodes_seen.find(idx) == nodes_seen.end()) {
         stack.push(idx);
       }
     }
-
-    nodes_added_for_processing.insert(current);
   }
 
   if (num_of_nodes_ >= 0 && static_cast<size_t>(num_of_nodes_) == nodes_in_topological_order_.size()) {
     return Status::OK();
   }
+
   return Status(ONNXRUNTIME, FAIL, "This is an invalid model. Error: the graph is not acyclic.");
 }
 
@@ -1902,6 +1917,12 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     }
 
     return graph_inferencer;
+  }
+
+  // XXX: When we changed and kept sparse constant initializers in sparse form,
+  // we would adjust this method
+  const SparseTensorProto* getInputSparseData(size_t) const override {
+    return nullptr;
   }
 
  private:
@@ -2184,27 +2205,29 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
       output_def->SetType(inferred_type);
 
     // Update output-shape if it was inferred:
-    if (utils::HasTensorType(onnx_inferred_type)) {
-      auto& tensor_type = onnx_inferred_type.tensor_type();
-      if (utils::HasShape(tensor_type)) {
-        if (output_def->Shape() == nullptr) {
-          output_def->SetShape(tensor_type.shape());
-        } else {
-          // we need to merge the shapes as a subgraph may have placeholder dimensions to represent the rank
-          // that have no values.
-          TypeProto_Tensor merge_target;
-          (*merge_target.mutable_shape()) = *output_def->Shape();
-          auto status = MergeShapeInfo(output_def->Name(), tensor_type, merge_target, using_latest_onnx_opset_, logger_);
-          if (!status.IsOK()) {
-            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node_name, " ", status.ErrorMessage());
-          }
-
-          // we may have cleared the shape if there was a mismatch so handle that
-          if (utils::HasShape(merge_target))
-            output_def->SetShape(merge_target.shape());
-          else
-            output_def->ClearShape();
+    // HasShape()/GetShape() work for tensor types
+    // if the behavior changes the below may need adjustment
+    if (utils::HasShape(onnx_inferred_type)) {
+      if (output_def->Shape() == nullptr) {
+        output_def->SetShape(utils::GetShape(onnx_inferred_type));
+      } else {
+        // we need to merge the shapes as a subgraph may have placeholder dimensions to represent the rank
+        // that have no values.
+        TypeProto merge_target;
+        if (utils::HasTensorType(onnx_inferred_type)) {
+          *merge_target.mutable_tensor_type()->mutable_shape() = *output_def->Shape();
+        } else if (utils::HasSparseTensorType(onnx_inferred_type)) {
+          *merge_target.mutable_sparse_tensor_type()->mutable_shape() = *output_def->Shape();
         }
+        auto status = MergeShapeInfo(output_def->Name(), onnx_inferred_type, merge_target, using_latest_onnx_opset_, logger_);
+        if (!status.IsOK()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Node:", node_name, " ", status.ErrorMessage());
+        }
+        // we may have cleared the shape if there was a mismatch so handle that
+        if (utils::HasShape(merge_target))
+          output_def->SetShape(utils::GetShape(merge_target));
+        else
+          output_def->ClearShape();
       }
     }
   }
@@ -2637,6 +2660,10 @@ bool Graph::IsInitializedTensor(const std::string& name) const {
   return name_to_initial_tensor_.count(name) > 0;
 }
 
+bool Graph::IsSparseInitializer(const std::string& name) const {
+  return sparse_tensor_names_.count(name) > 0;
+}
+
 void Graph::RemoveInitializedTensor(const std::string& tensor_name) {
   bool found = false;
   auto iter = name_to_initial_tensor_.find(tensor_name);
@@ -2751,10 +2778,9 @@ const ONNX_NAMESPACE::TensorProto* Graph::GetConstantInitializer(const std::stri
 
 #if !defined(ORT_MINIMAL_BUILD)
 void Graph::AddValueInfo(const NodeArg* new_value_info) {
-  for (const auto* info : value_info_) {
-    ORT_ENFORCE(info->Name() != new_value_info->Name(), "Error: trying to add an existing value info.");
-  }
-  value_info_.push_back(new_value_info);
+  NodeArg* node_arg = GetNodeArg(new_value_info->Name());
+  ORT_ENFORCE(node_arg && node_arg == new_value_info, "Error: trying to add an value info that are no in graph.");
+  value_info_.insert(new_value_info);
 }
 
 std::vector<NodeArg*> Graph::CreateNodeArgs(const google::protobuf::RepeatedPtrField<std::string>& names,
@@ -3390,9 +3416,7 @@ Status Graph::SetGraphInputsOutputs() {
         // Remove the output arg name from graph outputs since it's
         // the input of this node, which we call it intermediate result
         // and store it in <m_valueinfo>.
-        if (std::find(value_info_.begin(), value_info_.end(), input_arg) == value_info_.end()) {
-          value_info_.push_back(input_arg);
-        }
+        value_info_.insert(input_arg);
       }
     }
   }

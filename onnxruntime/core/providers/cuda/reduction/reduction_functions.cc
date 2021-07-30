@@ -16,15 +16,6 @@ namespace onnxruntime {
 namespace cuda {
 
 namespace {
-// std::make_reverse_iterator is not implemented in older versions of GCC
-#if !defined(__GNUC__) || __GNUC__ >= 5
-using std::make_reverse_iterator;
-#else
-template <typename It>
-std::reverse_iterator<It> make_reverse_iterator(It it) {
-  return std::reverse_iterator<It>(it);
-}
-#endif
 
 // gets min and max of single contiguous range of axes if available
 optional<std::pair<int64_t, int64_t>> GetMinAndMaxContiguousAxes(
@@ -73,12 +64,12 @@ optional<std::pair<int64_t, int64_t>> GetMinAndMaxContiguousAxes(
   }
 
   // expand axes over surrounding dimensions with value of 1
-  const int64_t min_axis = [&dims, &axes, &is_dim_one]() {
+  const int64_t min_axis = [&dims, &axes, &is_dim_one]() -> int64_t {
     const auto& min_given_axis = axes.front();
     // note that std::reverse_iterator(it) refers to the element at (it-1)
     // it -> reverse it: element offset of -1
     const auto before_min_given_axis_rit =
-        make_reverse_iterator(dims.begin() + min_given_axis);
+        std::make_reverse_iterator(dims.begin() + min_given_axis);
     const auto before_min_axis_rit =
         std::find_if_not(before_min_given_axis_rit, dims.rend(), is_dim_one);
     // reverse it -> it: element offset of +1
@@ -105,8 +96,42 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
     return ApplicableMatrixReduction::None;
   }
 
-  const auto rank = gsl::narrow<int64_t>(dims.size());
-  const auto min_and_max_axes = GetMinAndMaxContiguousAxes(rank, dims, original_axes);
+
+  // Remove all dims with value 1. This can help to optimize case like:
+  // dims=[2,3,1,4,1,5] and axes=[0,2,4], which is same as dims=[2,3,4,5] and axes=[0].
+  std::vector<int64_t> new_dims;
+  std::vector<int64_t> new_axes;
+  const auto original_rank = gsl::narrow<int64_t>(dims.size());
+  std::set<int64_t> original_axes_set;
+  for (const auto axis : original_axes) {
+    original_axes_set.insert(HandleNegativeAxis(axis, original_rank));
+  }
+
+  int64_t new_axis = 0;
+  for (size_t i = 0; i < dims.size(); i++) {
+    if (dims[i] != 1) {
+      new_dims.emplace_back(dims[i]);
+      if (original_axes_set.find(gsl::narrow<int64_t>(i)) != original_axes_set.end()) {
+        new_axes.emplace_back(new_axis);
+      }
+      new_axis++;
+    }
+  }
+
+  // Empty axes means reduce all dimensions, which has different meaning,
+  // so add a new dim to the end if all original axes are on dims with value 1.
+  if (!original_axes.empty() && new_axes.empty()) {
+    new_dims.emplace_back(1);
+    new_axes.emplace_back(new_axis);
+  }
+
+  // If all dims are value 1, make sure it's not empty by adding a new dim.
+  if (!dims.empty() && new_dims.empty()) {
+    new_dims.emplace_back(1);
+  }
+
+  const auto rank = gsl::narrow<int64_t>(new_dims.size());
+  const auto min_and_max_axes = GetMinAndMaxContiguousAxes(rank, new_dims, new_axes);
   if (!min_and_max_axes.has_value()) {
     return ApplicableMatrixReduction::None;
   }
@@ -127,7 +152,7 @@ ApplicableMatrixReduction get_applicable_matrix_reduction(
   // the axis index right after the last flattened into matrix rows
   const int64_t m_end_axis = axes_from_beginning ? max_axis + 1 : min_axis;
 
-  const TensorShape& shape = TensorShape::ReinterpretBaseType(dims);
+  const TensorShape& shape = TensorShape::ReinterpretBaseType(new_dims);
 
   const auto m = shape.SizeToDimension(m_end_axis);
   const auto n = shape.SizeFromDimension(m_end_axis);

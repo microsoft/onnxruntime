@@ -89,11 +89,18 @@ Status OrtModuleGraphBuilder::Build(const std::vector<std::vector<int64_t>>* inp
 
   ORT_RETURN_IF_ERROR(BuildGradientGraph(x_node_arg_names));
 
+  if (config_.enable_caching) {
+    GetFrontierTensors();
+  }
+
   // Handle user outputs and output grads.
   HandleOutputsAndGrads();
 
   // Reorder outputs.
   ReorderOutputs();
+
+  // Find module outputs needed for backward computation
+  FindModuleOutputNeededForBackward();
 
   return Status::OK();
 }
@@ -203,6 +210,21 @@ Status OrtModuleGraphBuilder::BuildGradientGraph(const std::unordered_set<std::s
   return Status::OK();
 }
 
+void OrtModuleGraphBuilder::GetFrontierTensors() {
+  const Graph& graph = gradient_model_->MainGraph();
+  for (const auto& param : graph_info_.initializer_names_to_train) {
+    std::vector<const Node*> consumer_nodes = graph.GetConsumerNodes(param);
+    // Initial support is limited to caching Cast output. This can
+    // be extended to accomodate more ops whose result depends only
+    // on the weight tensor which is a WIP.
+    for (const Node* node : consumer_nodes) {
+      if (node != nullptr && node->OpType() == "Cast") {
+        graph_info_.frontier_node_arg_map[param] = node->OutputDefs()[0]->Name();
+      }
+    }
+  }
+}
+
 void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
   Graph& gradient_graph = gradient_model_->MainGraph();
   GraphViewer gradient_graph_viewer(gradient_graph);
@@ -283,6 +305,43 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
   }
   attributes.insert({full_shape_outputs_name, full_shape_outputs});
 
+  // Handle potential duplciated output_gradient names
+  std::unordered_map<std::string, std::vector<size_t>> name_to_idx;
+  for (size_t i = 0; i < yield_output_node_args.size(); ++i) {
+    const std::string& name = yield_output_node_args[i]->Name();
+    auto it = name_to_idx.find(name);
+    if (it == name_to_idx.end()) {
+      name_to_idx.insert(std::make_pair(name, std::vector<size_t>{i}));
+    } else {
+      it->second.push_back(i);
+    }
+  }
+
+  for (auto& name_idx_pair : name_to_idx) {
+    // Only process if there is a duplicated name
+    if (name_idx_pair.second.size() > 1) {
+      const std::string& arg_name = name_idx_pair.first;
+      const std::vector<size_t>& indices = name_idx_pair.second;
+
+      // Replace duplicated names with indexed names
+      std::vector<NodeArg*> sum_input_node_args;
+      std::vector<NodeArg*> sum_output_node_arg;
+      sum_output_node_arg.push_back(gradient_graph.GetNodeArg(arg_name));
+
+      int duplicate_counter = 0;
+      for (size_t idx : indices) {
+        std::string indexed_arg_name = arg_name + "_" + std::to_string(duplicate_counter++);
+        auto& indexed_node_arg = gradient_graph.GetOrCreateNodeArg(indexed_arg_name, yield_output_node_args[idx]->TypeAsProto());
+        sum_input_node_args.push_back(&indexed_node_arg);
+        yield_output_node_args[idx] = &indexed_node_arg;
+      }
+
+      // Insert the Sum node to sum-up the duplicated gradients
+      gradient_graph.AddNode("Sum_for_" + arg_name, "Sum", "Sum up duplicated gradient",
+                             sum_input_node_args, sum_output_node_arg, {}, kOnnxDomain);
+    }
+  }
+
   gradient_graph.AddNode("YieldOp", "YieldOp", "Yield Op", yield_input_node_args, yield_output_node_args, &attributes,
                          kMSDomain);
 }
@@ -324,6 +383,46 @@ void OrtModuleGraphBuilder::ReorderOutputs() {
   }
 
   gradient_graph.SetOutputs(new_output_args);
+}
+
+void OrtModuleGraphBuilder::FindModuleOutputNeededForBackward() {
+  Graph& gradient_graph = gradient_model_->MainGraph();
+  gradient_graph.Resolve();
+  GraphViewer gradient_graph_viewer(gradient_graph);
+  const auto& exec_order = gradient_graph_viewer.GetNodesInTopologicalOrder();
+
+  size_t yield_node_order = 0;
+  bool yield_node_found = false;
+  std::unordered_map<NodeIndex, size_t> id_to_exec_order;
+  for (size_t i = 0; i < exec_order.size(); ++i) {
+    if (gradient_graph_viewer.GetNode(exec_order[i])->OpType() == "YieldOp") {
+      yield_node_order = i;
+      yield_node_found = true;
+    }
+    id_to_exec_order.insert({exec_order[i], i});
+  }
+  ORT_ENFORCE(yield_node_found, "YieldOp is not found in the training graph");
+
+  const Node* yield_node = gradient_graph_viewer.GetNode(exec_order[yield_node_order]);
+  auto yield_input_node_args = yield_node->InputDefs();
+
+  for (size_t i = 0; i < yield_input_node_args.size(); ++i) {
+    const NodeArg* yield_input = yield_input_node_args[i];
+
+    const Node* producer_node = gradient_graph.GetProducerNode(yield_input->Name());
+    if (producer_node->OpType() == "Identity") {
+      yield_input = producer_node->InputDefs()[0];
+    }
+
+    std::vector<const Node*> consumer_nodes = gradient_graph.GetConsumerNodes(yield_input->Name());
+    for (const Node* n : consumer_nodes) {
+      // If a module output has a consumer that is executed after the YieldOp, marked it needed for backward
+      if (id_to_exec_order[n->Index()] > yield_node_order) {
+        graph_info_.module_output_indices_requires_save_for_backward.emplace_back(i);
+        break;
+      }
+    }
+  }
 }
 
 }  // namespace training

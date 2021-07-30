@@ -121,9 +121,9 @@ OrtStatus* OrtTypeInfo::FromOrtValue(const OrtValue& value, OrtTypeInfo** out) {
   if (type->IsSparseTensorType()) {
     OrtTensorTypeAndShapeInfo* info = nullptr;
     const SparseTensor& tensor = value.Get<onnxruntime::SparseTensor>();
-    const auto* tensor_data_type = tensor.Values().DataType();
+    const auto* tensor_data_type = tensor.DataType();
     if (tensor_data_type != nullptr) {
-      OrtStatus* st = GetTensorShapeAndType(tensor.Shape(), *tensor_data_type, &info);
+      OrtStatus* st = GetTensorShapeAndType(tensor.DenseShape(), *tensor_data_type, &info);
       if (st != nullptr) return st;
     }
     *out = new OrtTypeInfo(ONNX_TYPE_SPARSETENSOR, info);

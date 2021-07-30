@@ -5,12 +5,20 @@
 
 #import "ort_session.h"
 
-NS_ASSUME_NONNULL_BEGIN
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /**
  * Gets whether the CoreML execution provider is available.
  */
 BOOL ORTIsCoreMLExecutionProviderAvailable(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+NS_ASSUME_NONNULL_BEGIN
 
 /**
  * Options for configuring the CoreML execution provider.
@@ -43,7 +51,7 @@ BOOL ORTIsCoreMLExecutionProviderAvailable(void);
  * decreasing priority.
  *
  * @param options The CoreML execution provider configuration options.
- * @param[out] error Optional error information set if an error occurs.
+ * @param error Optional error information set if an error occurs.
  * @return Whether the provider was enabled successfully.
  */
 - (BOOL)appendCoreMLExecutionProviderWithOptions:(ORTCoreMLExecutionProviderOptions*)options
