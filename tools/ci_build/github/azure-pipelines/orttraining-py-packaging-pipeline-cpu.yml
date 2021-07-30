@@ -11,7 +11,7 @@ stages:
       pool: Linux-CPU
 
       variables:
-        PythonVersion: '3.8'
+        PythonVersion: $(PYTHON_VERSION)
         DockerFile: 'Dockerfile.manylinux2014_cpu'
 
       steps:
