@@ -823,22 +823,22 @@ stages:
           Python36_dml:
             PythonVersion: '3.6'
             EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-            EP_NAME: dml
+            EP_NAME: directml
             EnvSetupScript: setup_env.bat
           Python37_dml:
             PythonVersion: '3.7'
             EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-            EP_NAME: dml
+            EP_NAME: directml
             EnvSetupScript: setup_env.bat
           Python38_dml:
             PythonVersion: '3.8'
             EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-            EP_NAME: dml
+            EP_NAME: directml
             EnvSetupScript: setup_env.bat
           Python39_dml:
             PythonVersion: '3.9'
             EpBuildFlags: --use_dml --cmake_extra_defines CMAKE_SYSTEM_VERSION=10.0.18362.0 --enable_wcos
-            EP_NAME: dml
+            EP_NAME: directml
             EnvSetupScript: setup_env.bat
       steps:
       - checkout: self
