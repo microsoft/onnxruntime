@@ -61,7 +61,7 @@ void RunTypedTest() {
                      {1, 1,
                       4, 4});
   // skip TensorRT because it doesn't support negative indices				  
-  test4.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});//slx
+  test4.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 
   // indices out of bounds
   OpTester test5("GatherElements", 11);
@@ -81,7 +81,7 @@ void RunTypedTest() {
   // skip TensorRT because it doesn't support out of bounds indices
   test5.Run(OpTester::ExpectResult::kExpectFailure,
             "GatherElements op: Value in indices must be within bounds [-2 , 1]. Actual value is 2",
-            {kNupharExecutionProvider, kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});//slx
+            {kNupharExecutionProvider, kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider, kTensorrtExecutionProvider});
 
   // 3D input - axis 1
   OpTester test6("GatherElements", 11);

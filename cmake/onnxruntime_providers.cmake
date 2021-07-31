@@ -501,7 +501,7 @@ if (onnxruntime_USE_TENSORRT)
   set(CXX_VERSION_DEFINED TRUE)
   add_subdirectory(${ONNXRUNTIME_ROOT}/../cmake/external/onnx-tensorrt)
   set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
-  if ( CMAKE_COMPILER_IS_GNUCC )##slx
+  if ( CMAKE_COMPILER_IS_GNUCC )
     set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
   endif()
   if (WIN32)

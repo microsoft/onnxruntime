@@ -70,7 +70,7 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
 #endif
 
 //Disable TensorRT EP because TensorRT 8.0 doesn't fully support Double data type
-#if defined(USE_TENSORRT)//slx
+#if defined(USE_TENSORRT)
     int relu = strcmp(szOp, "Relu");
     if (relu == 0) {
       excluded_providers.insert(kTensorrtExecutionProvider);
