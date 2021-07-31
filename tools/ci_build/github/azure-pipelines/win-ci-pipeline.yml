@@ -30,7 +30,7 @@ jobs:
         UseOmp: ''
         EnvSetupScript: setup_env_x86.bat
         buildArch: x86
-        additionalBuildFlags: --x86
+        additionalBuildFlags:
         msbuildPlatform: Win32
         isX86: true
   variables:
@@ -173,14 +173,6 @@ jobs:
     condition: and(succeeded(), eq('${{ parameters.RunOnnxRuntimeTests}}', true))
     displayName: 'Run tests'
 
-  - task: PythonScript@0
-    displayName: 'Regenerate cmake config with STATIC_ANALYSIS=ON '
-    condition: and(succeeded(), eq(variables['BuildConfig'], 'RelWithDebInfo'))
-    inputs:
-      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --build_shared_lib --enable_onnx_tests $(additionalBuildFlags) --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
-      workingDirectory: '$(Build.BinariesDirectory)'
-
   - task: DeleteFiles@1
     displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
     condition: and(succeeded(), eq(variables['BuildConfig'], 'RelWithDebInfo'))
@@ -192,34 +184,26 @@ jobs:
        **/*.dll
 
   #Manually set msBuildCommandline so that we can also set CAExcludePath
-  - task: SDLNativeRules@2
+  - task: SDLNativeRules@3
     displayName: 'Run the PREfast SDL Native Rules for MSBuild'
-    condition: and(succeeded(), eq(variables['BuildConfig'], 'RelWithDebInfo'))
+    condition: and(succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['BuildConfig'], 'RelWithDebInfo')))
     inputs:
-      userProvideBuildInfo: msBuildInfo
-      msBuildVersion: 16.0
-      msBuildArchitecture: $(msbuildPlatform)
+      msBuildArchitecture: amd64
+      setupCommandlines: 'python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --build_shared_lib --enable_onnx_tests $(additionalBuildFlags) --cmake_extra_defines onnxruntime_ENABLE_STATIC_ANALYSIS=ON'
       msBuildCommandline: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Current\Bin\amd64\msbuild.exe" "$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln" /p:platform=$(msbuildPlatform) /p:configuration="RelWithDebInfo" /p:CAExcludePath="$(Build.BinariesDirectory);$(Build.SourcesDirectory)\cmake;C:\program files (x86)" /p:VisualStudioVersion="16.0" /m /p:PreferredToolArchitecture=x64'
+      excludedPaths: '$(Build.BinariesDirectory)#$(Build.SourcesDirectory)\cmake#C:\program files (x86)'
 
-
-  - task: PublishSecurityAnalysisLogs@3
-    displayName: 'Publish Security Analysis Logs'
-    condition: and(succeeded(), eq(variables['BuildConfig'], 'RelWithDebInfo'))
+  - task: PostAnalysis@2
+    displayName: 'Guardian Break'
+    condition: and(succeeded(), and(eq(variables['buildArch'], 'x64'), eq(variables['BuildConfig'], 'RelWithDebInfo')))
     inputs:
-      ArtifactName: CodeAnalysisLogs
-
-  - task: PostAnalysis@1
-    displayName: 'Post Analysis'
-    condition: and(succeeded(), eq(variables['BuildConfig'], 'RelWithDebInfo'))
-    inputs:
-      SDLNativeRules: true
-      ToolLogsNotFoundAction: Error
+      GdnBreakGdnToolSDLNativeRulesSeverity: Warning
 
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
     inputs:
       testResultsFiles: '**/*.results.xml'
-      searchFolder: '$(Build.BinariesDirectory)'
+      searchFolder: '$(Build.BinariesDirectory)/$(BuildConfig)'
       testRunTitle: 'Unit Test Run'
     condition: succeededOrFailed()
 
@@ -275,7 +259,7 @@ jobs:
     displayName: 'Generate cmake config'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_contrib_ops --disable_ml_ops --enable_msvc_static_runtime --enable_onnx_tests --x86'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_contrib_ops --disable_ml_ops --enable_msvc_static_runtime --enable_onnx_tests'
       workingDirectory: '$(Build.BinariesDirectory)'
      
   - task: VSBuild@1
@@ -327,7 +311,7 @@ jobs:
      set /p WHEEL_FILENAME=<wheel_filename_file
      del wheel_filename_file
      python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_contrib_ops --disable_ml_ops --enable_msvc_static_runtime --enable_onnx_tests --x86
+     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 16 2019" --build_wheel --disable_contrib_ops --disable_ml_ops --enable_msvc_static_runtime --enable_onnx_tests
    
     workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
     displayName: 'Run tests'

@@ -72,8 +72,8 @@
         "Type": "other",
         "other": {
           "Name": "cmake",
-          "Version": "3.20.2",
-          "DownloadUrl": "https://github.com/Kitware/CMake/releases/download/v3.20.2/cmake-3.20.2.tar.gz"
+          "Version": "3.21.0",
+          "DownloadUrl": "https://github.com/Kitware/CMake/releases/download/v3.21.0/cmake-3.21.0.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -435,6 +435,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "5916273f79a21551890fd3d56fc5375a78d1598d",
+          "repositoryUrl": "https://github.com/pytorch/cpuinfo.git"
+        },
+        "comments": "git submodule at cmake/external/pytorch_cpuinfo"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "4244cd1cb492fa1d10986ec67f862964c073f844",
           "repositoryUrl": "https://github.com/google/re2.git"
         },
@@ -519,16 +529,6 @@
           "repositoryUrl": "https://github.com/gabime/spdlog.git"
         },
         "comments": "git submodule at server/external/spdlog"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "5916273f79a21551890fd3d56fc5375a78d1598d",
-          "repositoryUrl": "https://github.com/pytorch/cpuinfo.git"
-        },
-        "comments": "git submodule at cmake/external/pytorch_cpuinfo"
       }
     }
   ]

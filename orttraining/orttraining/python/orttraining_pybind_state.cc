@@ -277,13 +277,15 @@ void CopyMPIContextToTrainingParameters(TrainingParameters& parameters, const lo
   parameters.local_rank = MPIContext::GetInstance().GetLocalRank();
   parameters.local_size = MPIContext::GetInstance().GetLocalSize();
   if (parameters.world_rank != MPIContext::GetInstance().GetWorldRank()) {
-    if (parameters.world_rank != 0)
+    if (parameters.world_rank != 0) {
       LOGS(*logger, WARNING) << "TrainingParameters world_rank is not correct, tuned automatically to " << MPIContext::GetInstance().GetWorldRank();
+    }
     parameters.world_rank = MPIContext::GetInstance().GetWorldRank();
   }
   if (parameters.world_size != MPIContext::GetInstance().GetWorldSize()) {
-    if (parameters.world_size != 1)
+    if (parameters.world_size != 1) {
       LOGS(*logger, WARNING) << "TrainingParameters world_size is not correct, tuned automatically to " << MPIContext::GetInstance().GetWorldSize();
+    }
     parameters.world_size = MPIContext::GetInstance().GetWorldSize();
   }
 }
