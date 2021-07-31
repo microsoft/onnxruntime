@@ -905,7 +905,7 @@ MlasConvDepthwiseFloat_CHW(
 #if defined(MLAS_TARGET_ARM)
 #define MLAS_NEON_INTRINSICS
 #define MLAS_NEON32_INTRINSICS
-#elif defined(MLAS_TARGET_ARM64)
+#elif defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC)
 #define MLAS_NEON_INTRINSICS
 #define MLAS_NEON64_INTRINSICS
 #elif defined(MLAS_TARGET_POWER)
