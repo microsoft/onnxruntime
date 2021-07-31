@@ -12,6 +12,7 @@ export interface SplitAttributes {
   axis: number;
   split: number[];
   numOutputs: number;
+  cacheKey: string;
 }
 
 export const split: OperatorImplementation<SplitAttributes> =
@@ -33,7 +34,8 @@ export const parseSplitAttributes: OperatorInitialization<SplitAttributes> = (no
   const axis = node.attributes.getInt('axis', 0);
   const split = node.attributes.getInts('split', []);
   const numOutputs = node.outputs.length;
-  return {axis, split, numOutputs};
+  const cacheKey = `${axis};${split}`;
+  return {axis, split, numOutputs, cacheKey};
 };
 
 const getProgramCount =
@@ -59,6 +61,7 @@ const createSplitProgramInfo =
             name: 'Split',
             inputNames: ['A'],
             inputTypes: [TextureType.unpacked],
+            cacheHint: `${attributes.cacheKey}:${index}`,
             output: {dims: outputShape, type: input.type, textureType: TextureType.unpacked},
             shaderSource
           };
