@@ -86,6 +86,13 @@ def run_ortmodule_custom_autograd_tests(cwd, log):
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
+def run_ortmodule_experimental_json_config_tests(cwd, log):
+    log.debug('Running: ORTModule Experimental Load Config tests')
+
+    command = [sys.executable, '-m', 'pytest', '-sv', 'orttraining_test_ortmodule_experimental_json_config.py']
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
 
 def main():
     args = parse_arguments()
@@ -105,12 +112,14 @@ def main():
     run_ortmodule_hf_bert_for_sequence_classification_from_pretrained(cwd, log, no_cuda=True,
         data_dir=args.bert_data, transformers_cache=args.transformers_cache)
 
-    # TODO: flaky test. Temporary disabling for further investigation
-    # run_ortmodule_torch_lightning(cwd, log, args.mnist)
+    run_ortmodule_torch_lightning(cwd, log, args.mnist)
 
     # TODO: enable this once the PyTorch used for testing meets the requirements running
     # auto grad testing.
     #run_ortmodule_custom_autograd_tests(cwd, log)
+
+    run_ortmodule_experimental_json_config_tests(cwd, log)
+
     return 0
 
 

@@ -27,6 +27,7 @@ limitations under the License.
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "attention_impl.h"
 #include "attention_softmax.h"
+#include "transformer_common.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -65,7 +66,7 @@ bool QkvToContext(
     const int batch_size, const int sequence_length, const int num_heads, const int head_size, const size_t element_size,
     const T* input, T* output, T* workspace,
     const int* mask_index, const std::vector<int64_t>* mask_index_dims,
-    bool is_unidirectional, int past_sequence_length, const T* past, T* present) {
+    bool is_unidirectional, int past_sequence_length, const T* past, T* present, bool use_persistent_softmax) {
   const int all_sequence_length = past_sequence_length + sequence_length;
   const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length, all_sequence_length);
   T* scratch1 = workspace;
@@ -104,19 +105,18 @@ bool QkvToContext(
     v = present + batches * present_size_per_batch;
   }
 
-  // Raw attention mask could be 2D (BxS) or 3D (BxSxS*)
+  // Raw attention mask could be 2D (BxS) or 3D (BxSxS*) or 4D(Bx1xMxM), where M is the max sequence length.
   bool use_raw_attention_mask = (nullptr != mask_index && nullptr != mask_index_dims && mask_index_dims->size() >= 2);
 
   // compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scratch1: BxNxSxS*
   // Q: BxNxSxH, K (present_k): BxNxS*xH, Q*K': BxNxSxS*
   const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(head_size));
   const int temp_matrix_size = sequence_length * all_sequence_length;
-  T one = (T)(1.0f);
-  T zero = (T)(0.f);
+  float one = 1.0f;
+  float zero = 0.f;
 
   // For raw attention mask, the scalar if 1/sqrt(H) is moved to softmax computation.
-  // TODO: move scalar to softmax computation since converting 1/Sqrt(H) to half might have loss in precision.
-  T alpha = use_raw_attention_mask ? one : (T)(rsqrt_head_size);
+  float alpha = use_raw_attention_mask ? one : rsqrt_head_size;
 
   if (!CUBLAS_CALL(cublasGemmStridedBatchedHelper(
           cublas, CUBLAS_OP_T, CUBLAS_OP_N, all_sequence_length, sequence_length, head_size, &alpha, k, head_size, present_size_per_batch,
@@ -128,8 +128,11 @@ bool QkvToContext(
   if (use_raw_attention_mask) {  // 2d, 3d or 4d attention mask
     const int mask_dimension = static_cast<int>(mask_index_dims->size());
     const int64_t max_sequence_length = mask_dimension == 4 ? mask_index_dims->at(3) : 0;
+
+    T* persistent_softmax_workspace = scratch1; // replace Q*K' in place with masked score if persistent softmax is selected.
     if (!ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads, mask_index, scratch1, scratch2, is_unidirectional,
-                                      rsqrt_head_size, mask_dimension, static_cast<int>(max_sequence_length))) {
+                                      rsqrt_head_size, mask_dimension, static_cast<int>(max_sequence_length),
+                                      use_persistent_softmax, persistent_softmax_workspace)) {
       return false;
     }
   } else if (nullptr != mask_index) {  // 1d mask index
@@ -174,18 +177,27 @@ bool LaunchAttentionKernel(
     int past_sequence_length,
     const void* past,
     void* present) {
+
+  // GPT-2 model is more sensitive on parity since error will accumulate in text generation. 
+  // So use persistent softmax for GPT-2 model by default.
+  // For testing, environment variable ORT_TRANSFORMER_OPTIONS=1 or 2 could enable or disable it explicitly.
+  const TransformerOptions* options = TransformerOptions::GetInstance();
+  bool use_persistent_softmax = (is_unidirectional || options->IsPrecisionMode()) && !options->DisablePersistentSoftmax();
+
   if (element_size == 2) {
     return QkvToContext(prop, cublas, stream,
                         batch_size, sequence_length, num_heads, head_size, element_size,
                         reinterpret_cast<const half*>(input), reinterpret_cast<half*>(output), reinterpret_cast<half*>(workspace),
                         mask_index, mask_index_dims, is_unidirectional,
-                        past_sequence_length, reinterpret_cast<const half*>(past), reinterpret_cast<half*>(present));
+                        past_sequence_length, reinterpret_cast<const half*>(past), reinterpret_cast<half*>(present),
+                        use_persistent_softmax);
   } else {
     return QkvToContext(prop, cublas, stream,
                         batch_size, sequence_length, num_heads, head_size, element_size,
                         reinterpret_cast<const float*>(input), reinterpret_cast<float*>(output), reinterpret_cast<float*>(workspace),
                         mask_index, mask_index_dims, is_unidirectional,
-                        past_sequence_length, reinterpret_cast<const float*>(past), reinterpret_cast<float*>(present));
+                        past_sequence_length, reinterpret_cast<const float*>(past), reinterpret_cast<float*>(present),
+                        use_persistent_softmax);
   }
 }
 

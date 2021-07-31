@@ -83,7 +83,7 @@ class GraphViewer {
   /** Gets all ValueInfo NodeArg instances in the Graph.
   @remarks NOT filtered using filter_info_.
   */
-  const std::vector<const NodeArg*>& GetValueInfo() const noexcept;
+  const std::unordered_set<const NodeArg*>& GetValueInfo() const noexcept;
 
   /**
   Gets the Node instance at the specified index.

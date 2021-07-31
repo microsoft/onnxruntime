@@ -33,7 +33,6 @@ GradientGraphBuilder::GradientGraphBuilder(Graph* graph,
   auto rule_based_graph_transformer =
       std::make_unique<RuleBasedGraphTransformer>("pre_training_rule_based_graph_transformer");
   rule_based_graph_transformer->Register(std::make_unique<InsertMaxPoolOutput>());
-  rule_based_graph_transformer->Register(std::make_unique<BatchNormReplacement>());
 
   graph_transformation_mgr_.Register(std::move(rule_based_graph_transformer),
                                      TransformerLevel::Level2);
@@ -308,7 +307,30 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
     }
   }
 
-  return GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs, p_initializer_names_to_preserve);
+  ORT_RETURN_IF_ERROR(GraphAugmenter::AugmentGraph(*graph_, gradient_graph_defs, p_initializer_names_to_preserve));
+
+  // For ORTModule, the graph will be sent back to frontend for cache. Frontend will use inference session to run the
+  // cached graph. We need to save the new NodeArgs to value_info so we will not loss those shape/type information
+  // during graph to graph_proto conversion. Skip the graph outputs as they are already in the output section in
+  // graph_proto. Or maybe no need to skip as duplicate value_info and output is fine?
+  // Also skip those already in the value_info.
+  std::unordered_set<std::string> skip_names(gradient_graph_defs.GraphOutputs().begin(),
+                                             gradient_graph_defs.GraphOutputs().end());
+  for (const NodeArg* node_arg : graph_->GetValueInfo()) {
+    if (node_arg) {
+      skip_names.insert(node_arg->Name());
+    }
+  }
+
+  for (const auto& node_def : gradient_graph_defs.NodeDefs()) {
+    for (const auto& arg_def : node_def.output_args) {
+      if (arg_def.type_proto && skip_names.find(arg_def.name) == skip_names.end()) {
+        graph_->AddValueInfo(graph_->GetNodeArg(arg_def.name));
+      }
+    }
+  }
+
+  return Status::OK();
 }
 
 }  // namespace training

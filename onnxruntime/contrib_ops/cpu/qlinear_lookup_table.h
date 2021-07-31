@@ -34,7 +34,8 @@ void QlinearBuildLookupTable(uint8_t* table,
                              const Tensor* tensor_y_zero_point,
                              const LookupTableScalarTransformer& value_transformer);
 
-void QLinearLookupTableTransform(const uint8_t* x, const uint8_t* table, uint8_t* y, size_t n);
+template <typename TOutput>
+void QLinearLookupTableTransform(const uint8_t* x, const TOutput* table, TOutput* y, size_t n);
 
 
 }  // namespace contrib

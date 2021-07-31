@@ -160,9 +160,7 @@ void ort_trt_run_with_default_options() {
   Ort::SessionOptions session_options;
   session_options.SetIntraOpNumThreads(1);
 
-  // If onnxruntime.dll is built with CUDA enabled, we can uncomment out this line to use CUDA for this
-  // session (we also need to include cuda_provider_factory.h above which defines it)
-  // #include "cuda_provider_factory.h"
+  // If onnxruntime.dll is built with CUDA enabled, we can uncomment out this line to use CUDA for this session
   // OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 1);
   OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, 0);
 

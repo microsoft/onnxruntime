@@ -14,7 +14,7 @@ using onnxruntime::concurrency::ThreadPool;
 namespace onnxruntime {
 namespace contrib {
 
-Status ComputeAveragePool(
+Status ComputeQLinearGlobalAvgPool(
     const uint8_t* x,
     float x_scale,
     uint8_t x_zero_point,
@@ -112,7 +112,7 @@ Status QLinearGlobalAveragePool::Compute(OpKernelContext* context) const {
   auto dtype = X.GetElementType();
   switch (dtype) {
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-      return ComputeAveragePool(X.Data<uint8_t>(), x_scale, *(tensor_x_zero_point->Data<uint8_t>()),
+      return ComputeQLinearGlobalAvgPool(X.Data<uint8_t>(), x_scale, *(tensor_x_zero_point->Data<uint8_t>()),
                                 Y.MutableData<uint8_t>(), y_scale, *(tensor_y_zero_point->Data<uint8_t>()),
                                 N, C, image_size, channels_last_, tp);
     default:
