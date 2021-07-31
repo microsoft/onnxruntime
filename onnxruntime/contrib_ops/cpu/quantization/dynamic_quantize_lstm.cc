@@ -130,8 +130,8 @@ Status DynamicQuantizeLSTM::UseSharedPrePackedBuffers(std::vector<BufferUniquePt
 }
 
 #define WeightCheck(weight_shape, weight_name)                                                                                              \
-  if (weight_shape.NumDimensions() != 1 && weight_shape.NumDimensions() != 2 ||                                                             \
-      weight_shape.NumDimensions() == 2 && weight_shape[1] != hidden_size_ * 4 ||                                                           \
+  if ((weight_shape.NumDimensions() != 1 && weight_shape.NumDimensions() != 2) ||                                                           \
+      (weight_shape.NumDimensions() == 2 && weight_shape[1] != hidden_size_ * 4) ||                                                         \
       weight_shape[0] != num_directions_) {                                                                                                 \
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,                                                                                   \
                            "Input ", #weight_name, " must have shape {", num_directions_, "} for per-tensor/layer quantization or shape {", \

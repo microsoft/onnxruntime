@@ -265,21 +265,26 @@ def parse_arguments():
     parser.add_argument(
         "--target",
         help="Build a specific target, e.g. winml_dll")
+    # This flag is needed when :
+    # 1. The OS is 64 bits Windows
+    # 2. And the target binary is for 32 bits Windows
+    # 3. And the python used for running this script is 64 bits.
+    # But if you can get a 32 bits python, the build will run better and you won't need this flag.
     parser.add_argument(
         "--x86", action='store_true',
-        help="Create x86 makefiles. Requires --update and no existing cache "
+        help="[cross-compiling] Create Windows x86 makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument(
         "--arm", action='store_true',
-        help="Create ARM makefiles. Requires --update and no existing cache "
+        help="[cross-compiling] Create ARM makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument(
         "--arm64", action='store_true',
-        help="Create ARM64 makefiles. Requires --update and no existing cache "
+        help="[cross-compiling] Create ARM64 makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument(
         "--arm64ec", action='store_true',
-        help="Create ARM64EC makefiles. Requires --update and no existing cache "
+        help="[cross-compiling] Create ARM64EC makefiles. Requires --update and no existing cache "
         "CMake setup. Delete CMakeCache.txt if needed")
     parser.add_argument(
         "--msvc_toolset", help="MSVC toolset to use. e.g. 14.11")
@@ -651,7 +656,17 @@ def use_dev_mode(args):
         return 'OFF'
     if args.ios and is_macOS():
         return 'OFF'
+    SYSTEM_COLLECTIONURI = os.getenv('SYSTEM_COLLECTIONURI')
+    if SYSTEM_COLLECTIONURI and not SYSTEM_COLLECTIONURI == 'https://dev.azure.com/onnxruntime/':
+        return 'OFF'
     return 'ON'
+
+
+def add_cmake_define_without_override(cmake_extra_defines, key, value):
+    for x in cmake_extra_defines:
+        if x.startswith(key + "="):
+            return cmake_extra_defines
+    cmake_extra_defines.append(key + "=" + value)
 
 
 def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home,
@@ -664,7 +679,6 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
         "-Donnxruntime_BUILD_WINML_TESTS=" + ("OFF" if args.skip_winml_tests else "ON"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
-        "-Donnxruntime_DEV_MODE=" + use_dev_mode(args),
         # There are two ways of locating python C API header file. "find_package(PythonLibs 3.5 REQUIRED)"
         # and "find_package(Python 3.5 COMPONENTS Development.Module)". The first one is deprecated and it
         # depends on the "PYTHON_EXECUTABLE" variable. The second needs "Python_EXECUTABLE". Here we set both
@@ -761,20 +775,28 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         # enable custom operators in onnxruntime-extensions
         "-Donnxruntime_ENABLE_EXTENSION_CUSTOM_OPS=" + ("ON" if args.enable_onnxruntime_extensions else "OFF"),
     ]
+    # It should be default ON in CI build pipelines, and OFF in packaging pipelines.
+    # And OFF for the people who are not actively developing onnx runtime.
+    add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_DEV_MODE", use_dev_mode(args))
     if args.use_cuda:
-        cmake_args += ["-Donnxruntime_USE_CUDA=ON", "-Donnxruntime_CUDA_VERSION=" + args.cuda_version,
-                       "-Donnxruntime_CUDA_HOME="+cudnn_home,
-                       "-Donnxruntime_CUDNN_HOME="+cudnn_home]
-    if args.enable_msvc_static_runtime:
-        cmake_args += ["-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>",
-                       "-DONNX_USE_MSVC_STATIC_RUNTIME=ON",
-                       "-Dprotobuf_MSVC_STATIC_RUNTIME=ON",
-                       "-Dgtest_force_shared_crt=OFF"]
-    else:
-        cmake_args += ["-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$<$<CONFIG:Debug>:Debug>DLL",
-                       "-DONNX_USE_MSVC_STATIC_RUNTIME=OFF",
-                       "-Dprotobuf_MSVC_STATIC_RUNTIME=OFF",
-                       "-Dgtest_force_shared_crt=ON"]
+        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_USE_CUDA", "ON")
+        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_CUDA_VERSION", args.cuda_version)
+        # TODO: this variable is not really needed
+        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_CUDA_HOME", args.cuda_home)
+        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_CUDNN_HOME", args.cudnn_home)
+
+    if is_windows():
+        if args.enable_msvc_static_runtime:
+            add_cmake_define_without_override(cmake_extra_defines, "CMAKE_MSVC_RUNTIME_LIBRARY",
+                                              "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+            add_cmake_define_without_override(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "ON")
+            add_cmake_define_without_override(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "ON")
+            add_cmake_define_without_override(cmake_extra_defines, "gtest_force_shared_crt", "OFF")
+        else:
+            # CMAKE_MSVC_RUNTIME_LIBRARY is default to MultiThreaded$<$<CONFIG:Debug>:Debug>DLL
+            add_cmake_define_without_override(cmake_extra_defines, "ONNX_USE_MSVC_STATIC_RUNTIME", "OFF")
+            add_cmake_define_without_override(cmake_extra_defines, "protobuf_MSVC_STATIC_RUNTIME", "OFF")
+            add_cmake_define_without_override(cmake_extra_defines, "gtest_force_shared_crt", "ON")
 
     if acl_home and os.path.exists(acl_home):
         cmake_args += ["-Donnxruntime_ACL_HOME=" + acl_home]
@@ -983,9 +1005,9 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             "-Donnxruntime_USE_FULL_PROTOBUF=ON"]
 
     if args.gen_doc:
-        cmake_args += ["-Donnxruntime_PYBIND_EXPORT_OPSCHEMA=ON"]
+        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "ON")
     else:
-        cmake_args += ["-Donnxruntime_PYBIND_EXPORT_OPSCHEMA=OFF"]
+        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "OFF")
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
@@ -1455,7 +1477,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                          '-ConfigFile', os.path.join(source_dir, 'NuGet.config'),
                          '-PackagesDirectory', cwd])
                 cwd2 = os.path.join(cwd, config)
-                executables = ['onnxruntime_test_all.exe']
+                executables = ['onnxruntime_test_all.exe', 'onnxruntime_mlas_test.exe']
                 if args.build_shared_lib:
                     executables.append('onnxruntime_shared_lib_test.exe')
                     executables.append('onnxruntime_global_thread_pools_test.exe')
@@ -1468,7 +1490,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                          source_dir, 'cmake\\codeconv.runsettings')] + executables,
                     cwd=cwd2, dll_path=dll_path)
             else:
-                executables = ['onnxruntime_test_all']
+                executables = ['onnxruntime_test_all', 'onnxruntime_mlas_test']
                 if args.build_shared_lib:
                     executables.append('onnxruntime_shared_lib_test')
                     executables.append('onnxruntime_global_thread_pools_test')
@@ -1969,7 +1991,8 @@ def main():
     # if using rocm, setup rocm paths
     rocm_home = setup_rocm_build(args, configs)
 
-    os.makedirs(build_dir, exist_ok=True)
+    if args.update or args.build:
+        os.makedirs(build_dir, exist_ok=True)
 
     log.info("Build started")
     if args.update:
@@ -1978,19 +2001,16 @@ def main():
         if not args.skip_submodule_sync:
             update_submodules(source_dir)
         if is_windows():
+            cpu_arch = platform.architecture()[0]
             if args.build_wasm:
                 cmake_extra_args = ['-G', 'Ninja']
             elif args.cmake_generator == 'Ninja':
-                if args.x86 or args.arm or args.arm64 or args.arm64ec:
+                if cpu_arch == '32bit' or args.arm or args.arm64 or args.arm64ec:
                     raise BuildError(
                         "To cross-compile with Ninja, load the toolset "
                         "environment for the target processor (e.g. Cross "
                         "Tools Command Prompt for VS)")
                 cmake_extra_args = ['-G', args.cmake_generator]
-            elif args.x86:
-                cmake_extra_args = [
-                    '-A', 'Win32', '-T', 'host=x64', '-G', args.cmake_generator
-                ]
             elif args.arm or args.arm64 or args.arm64ec:
                 # Cross-compiling for ARM(64) architecture
                 # First build protoc for host to use during cross-compilation
@@ -2011,20 +2031,12 @@ def main():
                         "Cannot test on host build machine for cross-compiled "
                         "ARM(64) builds. Will skip test running after build.")
                     args.test = False
+            elif cpu_arch == '32bit' or args.x86:
+                cmake_extra_args = [
+                    '-A', 'Win32', '-T', 'host=x64', '-G', args.cmake_generator
+                ]
             else:
-                if (args.msvc_toolset == '14.16' and
-                        args.cmake_generator == 'Visual Studio 16 2019'):
-                    # CUDA 10.0 requires _MSC_VER >= 1700 and
-                    # _MSC_VER < 1920, aka Visual Studio version
-                    # in [2012, 2019). In VS2019, we have to use
-                    # Side-by-side minor version MSVC toolsets from
-                    # Visual Studio 2017 14.16 is MSVC version
-                    # 141 is MSVC Toolset Version
-                    # Cuda VS extension should be installed to
-                    # C:\Program Files (x86)\Microsoft Visual
-                    # Studio\2019\Enterprise\MSBuild\Microsoft\VC\v160\BuildCustomizations  # noqa
-                    toolset = 'v141,host=x64,version=' + args.msvc_toolset
-                elif args.msvc_toolset:
+                if args.msvc_toolset:
                     toolset = 'host=x64,version=' + args.msvc_toolset
                 else:
                     toolset = 'host=x64'
@@ -2034,11 +2046,11 @@ def main():
                     '-A', 'x64', '-T', toolset, '-G', args.cmake_generator
                 ]
             if args.enable_windows_store:
-                cmake_extra_args.append(
-                    '-DCMAKE_TOOLCHAIN_FILE=' + os.path.join(
+                cmake_extra_defines.append(
+                    'CMAKE_TOOLCHAIN_FILE=' + os.path.join(
                         source_dir, 'cmake', 'store_toolchain.cmake'))
             if args.enable_wcos:
-                cmake_extra_args.append('-DCMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake')
+                cmake_extra_defines.append('CMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake')
         elif args.cmake_generator is not None and not (is_macOS() and args.use_xcode):
             cmake_extra_args += ['-G', args.cmake_generator]
         elif is_macOS():
@@ -2140,6 +2152,10 @@ def main():
             nodejs_binding_dir = os.path.normpath(os.path.join(source_dir, "js", "node"))
             run_nodejs_tests(nodejs_binding_dir)
 
+    # Build packages after running the tests.
+    # NOTE: if you have a test that rely on a file which only get copied/generated during packaging step, it could
+    # fail unexpectedly. Similar, if your packaging step forgot to copy a file into the package, we don't know it
+    # either.
     if args.build:
         if args.build_wheel:
             nightly_build = bool(os.getenv('NIGHTLY_BUILD') == '1')

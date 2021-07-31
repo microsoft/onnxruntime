@@ -786,9 +786,10 @@ void ExecutionFrame::TraceAllocate(int ort_value_idx, size_t size) {
       return;
     }
     auto status = planner_->TraceAllocation(ort_value_idx, size);
-    if (!status.IsOK())
+    if (!status.IsOK()) {
       LOGS(session_state_.Logger(), WARNING) << "TraceAllocation for ort_value_idx=" << ort_value_idx
                                              << " size=" << size << " failed: " << status.ErrorMessage();
+    }
   }
 }
 
