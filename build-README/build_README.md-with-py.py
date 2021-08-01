@@ -212,6 +212,103 @@ http://onnxruntime.ai/
 |iOS|||[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/iOS%20CI%20Pipeline?label=iOS)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=134)|
 |WebAssembly|||[![Build Status](https://dev.azure.com/onnxruntime/onnxruntime/_apis/build/status/Windows%20WebAssembly%20CI%20Pipeline?label=WASM)](https://dev.azure.com/onnxruntime/onnxruntime/_build/latest?definitionId=161)|
 
+  NVIDIA Deep Learning Examples for Tensor Cores
+Introduction
+This repository provides State-of-the-Art Deep Learning examples that are easy to train and deploy, achieving the best reproducible accuracy and performance with NVIDIA CUDA-X software stack running on NVIDIA Volta, Turing and Ampere GPUs.
+
+NVIDIA GPU Cloud (NGC) Container Registry
+These examples, along with our NVIDIA deep learning software stack, are provided in a monthly updated Docker container on the NGC container registry (https://ngc.nvidia.com). These containers include:
+
+The latest NVIDIA examples from this repository
+The latest NVIDIA contributions shared upstream to the respective framework
+The latest NVIDIA Deep Learning software libraries, such as cuDNN, NCCL, cuBLAS, etc. which have all been through a rigorous monthly quality assurance process to ensure that they provide the best possible performance
+Monthly release notes for each of the NVIDIA optimized containers
+Computer Vision
+Models	Framework	A100	AMP	Multi-GPU	Multi-Node	TRT	ONNX	Triton	DLC	NB
+ResNet-50	PyTorch	Yes	Yes	Yes	-	Yes	-	Yes	Yes	-
+ResNeXt-101	PyTorch	Yes	Yes	Yes	-	Yes	-	Yes	Yes	-
+SE-ResNeXt-101	PyTorch	Yes	Yes	Yes	-	Yes	-	Yes	Yes	-
+EfficientNet-B0	PyTorch	Yes	Yes	Yes	-	-	-	-	Yes	-
+EfficientNet-B4	PyTorch	Yes	Yes	Yes	-	-	-	-	Yes	-
+EfficientNet-WideSE-B0	PyTorch	Yes	Yes	Yes	-	-	-	-	Yes	-
+EfficientNet-WideSE-B4	PyTorch	Yes	Yes	Yes	-	-	-	-	Yes	-
+Mask R-CNN	PyTorch	Yes	Yes	Yes	-	-	-	-	-	Yes
+nnUNet	PyTorch	Yes	Yes	Yes	-	-	-	-	Yes	-
+SSD	PyTorch	Yes	Yes	Yes	-	-	-	-	-	Yes
+ResNet-50	TensorFlow	Yes	Yes	Yes	-	-	-	-	Yes	-
+ResNeXt101	TensorFlow	Yes	Yes	Yes	-	-	-	-	Yes	-
+SE-ResNeXt-101	TensorFlow	Yes	Yes	Yes	-	-	-	-	Yes	-
+Mask R-CNN	TensorFlow	Yes	Yes	Yes	-	-	-	-	Yes	-
+SSD	TensorFlow	Yes	Yes	Yes	-	-	-	-	Yes	Yes
+U-Net Ind	TensorFlow	Yes	Yes	Yes	-	-	-	-	Yes	Yes
+U-Net Med	TensorFlow	Yes	Yes	Yes	-	-	-	-	Yes	-
+U-Net 3D	TensorFlow	Yes	Yes	Yes	-	-	-	-	Yes	-
+V-Net Med	TensorFlow	Yes	Yes	Yes	-	-	-	-	Yes	-
+U-Net Med	TensorFlow2	Yes	Yes	Yes	-	-	-	-	Yes	-
+Mask R-CNN	TensorFlow2	Yes	Yes	Yes	-	-	-	-	Yes	-
+EfficientNet	TensorFlow2	Yes	Yes	Yes	Yes	-	-	-	Yes	-
+ResNet-50	MXNet	-	Yes	Yes	-	-	-	-	-	-
+Natural Language Processing
+Models	Framework	A100	AMP	Multi-GPU	Multi-Node	TRT	ONNX	Triton	DLC	NB
+BERT	PyTorch	Yes	Yes	Yes	Yes	-	-	Yes	Yes	-
+TransformerXL	PyTorch	Yes	Yes	Yes	Yes	-	-	-	Yes	-
+GNMT	PyTorch	Yes	Yes	Yes	-	-	-	-	-	-
+Transformer	PyTorch	Yes	Yes	Yes	-	-	-	-	-	-
+ELECTRA	TensorFlow2	Yes	Yes	Yes	Yes	-	-	-	Yes	-
+BERT	TensorFlow	Yes	Yes	Yes	Yes	Yes	-	Yes	Yes	Yes
+BERT	TensorFlow2	Yes	Yes	Yes	Yes	-	-	-	Yes	-
+BioBert	TensorFlow	Yes	Yes	Yes	-	-	-	-	Yes	Yes
+TransformerXL	TensorFlow	Yes	Yes	Yes	-	-	-	-	-	-
+GNMT	TensorFlow	Yes	Yes	Yes	-	-	-	-	-	-
+Faster Transformer	Tensorflow	-	-	-	-	Yes	-	-	-	-
+Recommender Systems
+Models	Framework	A100	AMP	Multi-GPU	Multi-Node	TRT	ONNX	Triton	DLC	NB
+DLRM	PyTorch	Yes	Yes	Yes	-	-	Yes	Yes	Yes	Yes
+DLRM	TensorFlow2	Yes	Yes	Yes	Yes	-	-	-	Yes	-
+NCF	PyTorch	Yes	Yes	Yes	-	-	-	-	-	-
+Wide&Deep	TensorFlow	Yes	Yes	Yes	-	-	-	-	Yes	-
+Wide&Deep	TensorFlow2	Yes	Yes	Yes	-	-	-	-	Yes	-
+NCF	TensorFlow	Yes	Yes	Yes	-	-	-	-	Yes	-
+VAE-CF	TensorFlow	Yes	Yes	Yes	-	-	-	-	-	-
+Speech to Text
+Models	Framework	A100	AMP	Multi-GPU	Multi-Node	TRT	ONNX	Triton	DLC	NB
+Jasper	PyTorch	Yes	Yes	Yes	-	Yes	Yes	Yes	Yes	Yes
+Hidden Markov Model	Kaldi	-	-	Yes	-	-	-	Yes	-	-
+Text to Speech
+Models	Framework	A100	AMP	Multi-GPU	Multi-Node	TRT	ONNX	Triton	DLC	NB
+FastPitch	PyTorch	Yes	Yes	Yes	-	-	-	-	Yes	-
+FastSpeech	PyTorch	-	Yes	Yes	-	Yes	-	-	-	-
+Tacotron 2 and WaveGlow	PyTorch	Yes	Yes	Yes	-	Yes	Yes	Yes	Yes	-
+NVIDIA support
+In each of the network READMEs, we indicate the level of support that will be provided. The range is from ongoing updates and improvements to a point-in-time release for thought leadership.
+
+Glossary
+Multinode Training
+Supported on a pyxis/enroot Slurm cluster.
+
+Deep Learning Compiler (DLC)
+TensorFlow XLA and PyTorch JIT and/or TorchScript
+
+Accelerated Linear Algebra (XLA)
+XLA is a domain-specific compiler for linear algebra that can accelerate TensorFlow models with potentially no source code changes. The results are improvements in speed and memory usage.
+
+PyTorch JIT and/or TorchScript
+TorchScript is a way to create serializable and optimizable models from PyTorch code. TorchScript, an intermediate representation of a PyTorch model (subclass of nn.Module) that can then be run in a high-performance environment such as C++.
+
+Automatic Mixed Precision (AMP)
+Automatic Mixed Precision (AMP) enables mixed precision training on Volta, Turing, and NVIDIA Ampere GPU architectures automatically.
+
+TensorFloat-32 (TF32)
+TensorFloat-32 (TF32) is the new math mode in NVIDIA A100 GPUs for handling the matrix math also called tensor operations. TF32 running on Tensor Cores in A100 GPUs can provide up to 10x speedups compared to single-precision floating-point math (FP32) on Volta GPUs. TF32 is supported in the NVIDIA Ampere GPU architecture and is enabled by default.
+
+Jupyter Notebooks (NB)
+The Jupyter Notebook is an open-source web application that allows you to create and share documents that contain live code, equations, visualizations and narrative text.
+
+Feedback / Contributions
+We're posting these examples on GitHub to better support the community, facilitate feedback, as well as collect and implement contributions using GitHub Issues and pull requests. We welcome all contributions!
+
+Known issues
+In each of the network READMEs, we indicate any known issues and encourage the community to provide feedback.
 
 ## Data/Telemetry
 
