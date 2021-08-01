@@ -67,13 +67,10 @@ void ReferenceVectorDotProd(TestVectors<T>& vectors) {
 }
 
 template <typename T>
-class MlasVectorDotProdTest : public MlasTestBase {
-  void Test() {
-  }
-
+class MlasVectorDotProductTest : public MlasTestBase {
  public:
   static const char* GetTestSuiteName() {
-    static const std::string suite_name("VectorDotProd");
+    static const std::string suite_name("VectorDotProduct");
     return suite_name.c_str();
   }
 
@@ -114,10 +111,10 @@ class MlasVectorDotProdTest : public MlasTestBase {
 };
 
 template <>
-MlasVectorDotProdTest<float>* MlasTestFixture<MlasVectorDotProdTest<float>>::mlas_tester(nullptr);
+MlasVectorDotProductTest<float>* MlasTestFixture<MlasVectorDotProductTest<float>>::mlas_tester(nullptr);
 
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   return is_short_execute
-             ? MlasDirectShortExecuteTests<MlasVectorDotProdTest<float>>::RegisterShortExecute()
+             ? MlasDirectShortExecuteTests<MlasVectorDotProductTest<float>>::RegisterShortExecute()
              : 0;
 });
