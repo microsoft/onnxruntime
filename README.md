@@ -1,2 +1,2 @@
 ## README.md
-`'#"$`_onnxruntime/optimizer/graph_transformer_config.py
+# _onnxruntime/optimizer/graph_transformer_config.py
