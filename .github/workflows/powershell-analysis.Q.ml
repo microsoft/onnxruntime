@@ -170,3 +170,17 @@ steps:
 - run: npm publish
   if: github.event == 'push'
 For more information, see "Contexts and expression syntax for GitHub Actions."
+
+# *note-("*/*")'#"$_-
+*/*
+*
+2020-09-30T12:07:41.1045079Z ##[section]Starting: Component Detection (auto-injected by policy)
+2020-09-30T12:07:41.1053947Z ==============================================================================
+2020-09-30T12:07:41.1054559Z Task         : Component Governance Detection
+2020-09-30T12:07:41.1055070Z Description  : Include with your build to enable automatic Component Governance detection.
+2020-09-30T12:07:41.1055512Z Version      : 0.2020924.1
+2020-09-30T12:07:41.1055879Z Author       : Microsoft Corporation
+2020-09-30T12:07:41.1056507Z Help         : Please contact OpenSourceEngSupport@microsoft.com if you run into problems or have questions with this task. See http://aka.ms/cgdocs for more information.
+2020-09-30T12:07:41.1057200Z ==============================================================================
+2020-09-30T12:07:41.1237169Z ##[error]No such file or directory
+2020-09-30T12:07:41.1249841Z ##[section]Finishing: Component Detection (auto-injected by policy)*"/*
