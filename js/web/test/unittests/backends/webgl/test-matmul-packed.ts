@@ -68,8 +68,6 @@ function getTestData(): TestData[] {
       inputTextureShapeB: [1, 2],
       outputTextureShape: [1, 1],
       expectedOutput: new Float32Array([22, 28, 49, 64]),
-      rawInputA: new Float32Array([1, 2, 4, 5, 3, 0, 6, 0]),
-      rawInputB: new Float32Array([1, 2, 3, 4, 5, 6, 0, 0]),
     },
     {
       elementCountA: 6,
@@ -82,8 +80,6 @@ function getTestData(): TestData[] {
       outputTextureShape: [1, 1],
       expectedOutput: new Float32Array([23, 29, 50, 65]),
       biasValue: 1,
-      rawInputA: new Float32Array([1, 2, 4, 5, 3, 0, 6, 0]),
-      rawInputB: new Float32Array([1, 2, 3, 4, 5, 6, 0, 0]),
     },
     {
       elementCountA: 16,
@@ -94,8 +90,6 @@ function getTestData(): TestData[] {
       inputTextureShapeA: [2, 2],
       inputTextureShapeB: [2, 2],
       outputTextureShape: [2, 2],
-      rawInputA: new Float32Array([1, 2, 5, 6, 3, 4, 7, 8, 9, 10, 13, 14, 11, 12, 15, 16]),
-      rawInputB: new Float32Array([1, 2, 5, 6, 3, 4, 7, 8, 9, 10, 13, 14, 11, 12, 15, 16]),
       biasValue: 2,
       expectedOutput: new Float32Array([92, 102, 112, 122, 204, 230, 256, 282, 316, 358, 400, 442, 428, 486, 544, 602]),
     },
@@ -110,8 +104,8 @@ function getTestData(): TestData[] {
       outputTextureShape: [2, 1],
       expectedOutput: new Float32Array([23, 29, 50, 65, 23, 29, 50, 65]),
       biasValue: 1,
-      rawInputA: new Float32Array([1, 2, 4, 5, 3, 0, 6, 0, 1, 2, 4, 5, 3, 0, 6, 0]),
-      rawInputB: new Float32Array([1, 2, 3, 4, 5, 6, 0, 0, 1, 2, 3, 4, 5, 6, 0, 0]),
+      rawInputA: new Float32Array([1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6]),
+      rawInputB: new Float32Array([1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6]),
     },
     // test bcast
     {
@@ -125,8 +119,7 @@ function getTestData(): TestData[] {
       outputTextureShape: [2, 1],
       expectedOutput: new Float32Array([23, 29, 50, 65, 23, 29, 50, 65]),
       biasValue: 1,
-      rawInputA: new Float32Array([1, 2, 4, 5, 3, 0, 6, 0, 1, 2, 4, 5, 3, 0, 6, 0]),
-      rawInputB: new Float32Array([1, 2, 3, 4, 5, 6, 0, 0]),
+      rawInputA: new Float32Array([1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6]),
     },
     {
       elementCountA: 12,
@@ -138,8 +131,7 @@ function getTestData(): TestData[] {
       inputTextureShapeB: [1, 2],
       outputTextureShape: [2, 1],
       expectedOutput: new Float32Array([22, 28, 49, 64, 22, 28, 49, 64]),
-      rawInputA: new Float32Array([1, 2, 4, 5, 3, 0, 6, 0, 1, 2, 4, 5, 3, 0, 6, 0]),
-      rawInputB: new Float32Array([1, 2, 3, 4, 5, 6, 0, 0]),
+      rawInputA: new Float32Array([1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6]),
     },
   ];
 }
@@ -159,8 +151,7 @@ describe('#UnitTest# - packed matmul - Tensor matmul', () => {
   const testDataSet = getTestData();
   for (let k = 0; k < testDataSet.length; ++k) {
     const testData = testDataSet[k];
-    describe(`Test matmul ${JSON.stringify(testData)}`, () => {});
-    it('Test packed matmul kernel ', () => {
+    it(`Test packed matmul kernel [${testData.inputShapeA}]x[${testData.inputShapeB}]`, () => {
       const webglInferenceHandler = inferenceHandler as WebGLInferenceHandler;
 
       if (!env.webgl.pack) {
@@ -176,8 +167,8 @@ describe('#UnitTest# - packed matmul - Tensor matmul', () => {
 
       // create input data and tensor. The input data will be used to verify if the output tensor contains the
       // same value but possibly different order depending on our packing algorithm.
-      const inputDataA = createAscendingArray(elementCountA);
-      const inputDataB = createAscendingArray(elementCountB);
+      const inputDataA = testData.rawInputA ?? createAscendingArray(elementCountA);
+      const inputDataB = testData.rawInputB ?? createAscendingArray(elementCountB);
       const inputTensorA = new Tensor(inputTensorShapeA, 'float32', undefined, undefined, inputDataA);
       const inputTensorB = new Tensor(inputTensorShapeB, 'float32', undefined, undefined, inputDataB);
       const biasTensor = testData.biasValue ?
