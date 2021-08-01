@@ -64,6 +64,7 @@ export const createIm2ColProgramInfo =
         name: 'Im2Col',
         inputNames: ['X'],
         inputTypes: [TextureType.unpacked],
+        cacheHint: attributes.cacheKey,
         output: {dims: im2colDims, type: x.type, textureType: TextureType.packedLastDimension},
         shaderSource
       };

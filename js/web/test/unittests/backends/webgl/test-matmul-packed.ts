@@ -186,8 +186,7 @@ describe('#UnitTest# - packed matmul - Tensor matmul', () => {
       const inputs = biasTensor ? [inputTensorA, inputTensorB, biasTensor] : [inputTensorA, inputTensorB];
 
       const output = webglInferenceHandler.run(
-          createPackedMatmulProgramInfo(
-              webglInferenceHandler, inputs, {activation: '', clipMax: 3.402823e+38, clipMin: -3.402823e+38}),
+          createPackedMatmulProgramInfo(webglInferenceHandler, inputs, {activation: '', activationCacheKey: ''}),
           inputs);
       const result = output.data;
 

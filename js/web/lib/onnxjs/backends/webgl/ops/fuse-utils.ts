@@ -7,8 +7,9 @@ import {glslClip, glslRelu, glslSigmoid} from './unary-op';
 
 export interface InternalActivationAttributes {
   readonly activation: string;
-  readonly clipMin: number;
-  readonly clipMax: number;
+  readonly clipMin?: number;
+  readonly clipMax?: number;
+  readonly activationCacheKey: string;
 }
 
 export function getActicationSnippet(attributes: InternalActivationAttributes) {
@@ -21,7 +22,7 @@ export function getActicationSnippet(attributes: InternalActivationAttributes) {
       func = glslSigmoid();
       break;
     case 'Clip':
-      func = glslClip(attributes.clipMin, attributes.clipMax);
+      func = glslClip(attributes.clipMin!, attributes.clipMax!);
       break;
     // TODO: adding other activations that can be fused.
     default:
@@ -34,8 +35,13 @@ export function getActicationSnippet(attributes: InternalActivationAttributes) {
   return {activationFunction, applyActivation};
 }
 
-export const parseInternalActivationAttributes = (attributes: Attribute): InternalActivationAttributes => ({
-  activation: attributes.getString('__internal_activation', ''),
-  clipMax: attributes.getFloat('__clip_max', 3.402823e+38),
-  clipMin: attributes.getFloat('__clip_min', -3.402823e+38),
-});
+export const parseInternalActivationAttributes = (attributes: Attribute): InternalActivationAttributes => {
+  const activation = attributes.getString('__internal_activation', '');
+
+  if (activation === 'Clip') {
+    const clipMax = attributes.getFloat('__clip_max', 3.402823e+38);
+    const clipMin = attributes.getFloat('__clip_min', -3.402823e+38);
+    return {activation, clipMax, clipMin, activationCacheKey: `Clip_${clipMin},${clipMax}`};
+  }
+  return {activation, activationCacheKey: activation};
+};
