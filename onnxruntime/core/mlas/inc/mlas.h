@@ -1146,3 +1146,17 @@ MlasVectorDotProduct(
     float* C,
     size_t M,
     size_t N);
+
+/**
+ * @brief experimental threaded VDP.
+ */
+void 
+MLASCALL
+MlasVectorDotProductThreaded(
+    const float* A,
+    const float* TransB,
+    float* C,
+    size_t M,
+    size_t N,
+    MLAS_THREADPOOL thread_pool);
+

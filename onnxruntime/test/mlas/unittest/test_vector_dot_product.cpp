@@ -66,6 +66,7 @@ void ReferenceVectorDotProd(TestVectors<T>& vectors) {
   }
 }
 
+// TODO - rename this to |MlasVectorProductTest| in the main branch.
 template <typename T>
 class MlasVectorDotProdTest : public MlasTestBase {
   void Test() {
@@ -110,6 +111,14 @@ class MlasVectorDotProdTest : public MlasTestBase {
     for (size_t i = 0; i < vectors.N; ++i) {
       ASSERT_NEAR(vectors.C[i], ref_C[i], 1e-2f);
     }
+  }
+};
+
+template <typename T>
+class MlasVectorDotProductThreadedTest : public MlasTestBase {
+  void Test() {
+
+
   }
 };
 

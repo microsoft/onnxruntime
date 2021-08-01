@@ -51,4 +51,13 @@ Return Value:
 #endif
 }
 
-
+void
+MLASCALL
+MlasVectorDotProductThreaded(
+    const float* A, const float* B, float* C, size_t M, size_t N, MLAS_THREADPOOL thread_pool)
+{
+  //
+  // TODO(kreeger): write me?
+  // * I think it makes sense to try doing a thread for each N?
+  //
+}
