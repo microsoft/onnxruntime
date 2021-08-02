@@ -286,7 +286,7 @@ def unflatten_user_output(output_schema, outputs):
                 user_output[key] = _replace_stub_with_tensor_value(user_output[key], outputs, output_idx)
         else:
             raise wrap_exception(ORTModuleIOError,
-                                 TypeError(f'ORTModule does not support the following model output 1 type {type(user_output)}.'))
+                                 TypeError(f'ORTModule does not support the following model output type {type(user_output)}.'))
 
         return user_output
 

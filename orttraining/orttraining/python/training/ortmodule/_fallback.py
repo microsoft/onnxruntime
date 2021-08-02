@@ -148,6 +148,7 @@ class _FallbackManager(object):
         If the incoming `exception` is handled by the specified policy, `_FallbackManager`
         saves the exception so that ORTModule can track the pending fallback
         and trigger it during model execution.
+        Otherwise, the incoming exception is immediately raised.
 
         Args:
             exception (`ORTModuleFallbackException`): Exception that must be handled

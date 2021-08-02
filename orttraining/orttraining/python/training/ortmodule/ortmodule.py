@@ -9,7 +9,7 @@ from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._custom_gradient_registry import CustomGradientRegistry
 from .debug_options import DebugOptions
 from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleFallbackException, ORTModuleTorchModelException, wrap_exception
-
+from . import FALLBACK_INIT_EXCEPTION, MINIMUM_RUNTIME_PYTORCH_VERSION_STR
 from onnxruntime.training import register_custom_ops_pytorch_exporter
 
 import functools
@@ -40,6 +40,11 @@ class ORTModule(torch.nn.Module):
         self._fallback_manager = _FallbackManager(policy=debug_options.fallback_policy)
 
         try:
+            # Read ORTModule module initialization status
+            global FALLBACK_INIT_EXCEPTION
+            if FALLBACK_INIT_EXCEPTION:
+                raise FALLBACK_INIT_EXCEPTION
+
             self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager)
 
             # Create forward dynamically, so each ORTModule instance will have its own copy.
