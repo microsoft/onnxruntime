@@ -22,11 +22,11 @@ Abstract:
 
 //
 // Stack frame layout for the U8X8 kernel.
-// Defining spaces for saving 8 vector registers, and pointers to parameters
+// Defining spaces for saving 2 vector registers, and pointers to parameters
 // on the stack
 //
 
-        .equ    .LGemmU8X8KernelFrame_SavedNeonRegisters, (8 * 8)
+        .equ    .LGemmU8X8KernelFrame_SavedNeonRegisters, (2 * 8)
         .equ    .LGemmU8X8KernelFrame_SavedRegisters, .LGemmU8X8KernelFrame_SavedNeonRegisters
         .equ    .LGemmU8X8KernelFrame_ColumnSumBuffer, 0 + .LGemmU8X8KernelFrame_SavedRegisters
         .equ    .LGemmU8X8KernelFrame_ZeroPointB, 8 + .LGemmU8X8KernelFrame_SavedRegisters
@@ -87,37 +87,26 @@ Return Value:
 
         FUNCTION_ENTRY MlasGemmU8X8KernelUdot
 
-        stp     d8,d9,[sp,#-64]!
+        stp     d8,d9,[sp,#-16]!
         ldr     x8,[sp,#.LGemmU8X8KernelFrame_ColumnSumBuffer]
         ldr     x9,[sp,#.LGemmU8X8KernelFrame_ZeroPointB]
         ldrb    w13,[sp,#.LGemmU8X8KernelFrame_ZeroMode]
         mov     x14,x0
-        ld1     {v11.4s},[x7],#16
+        ld1     {v8.4s},[x7],#16            // load row sum 0 ~ 4
         mov     x15,x3
-        dup     v8.4s,v11.s[0]              // broadcast row fixups
         cmp     x4,#1                       // CountM == 1?
-        beq     .LGemmU8X8.M1.ProcessNextColumnLoop
-        dup     v9.4s,v11.s[1]
+        beq     .LGemmU8X8.M1.ProcessLoop
         cmp     x4,#4                       // CountM < 4?
-        blo     .LGemmU8X8.M2.ProcessNextColumnLoop
-        stp     d10,d11,[sp,#16]
-        dup     v10.4s,v11.s[2]
-        dup     v11.4s,v11.s[3]
+        blo     .LGemmU8X8.M2.ProcessLoop
 
         cmp     x4,#8                       // CountM < 8?
         blo     .LGemmU8X8.M4.ProcessNextColumnLoop
-        stp     d14,d15,[sp,#48]
-        ld1     {v15.4s},[x7]               // load row sum 5 ~ 8
-        stp     d12,d13,[sp,#32]
-        dup     v12.4s,v15.s[0]
-        dup     v13.4s,v15.s[1]
-        dup     v14.4s,v15.s[2]
-        dup     v15.4s,v15.s[3]
+        ld1     {v9.4s},[x7]                // load row sum 5 ~ 8
 
 //
 // Process 8 rows of the matrices.
 //
-// v8 ~ v15 row sums 
+// v8 ~ v9 row sums 
 //                                      int8 RHS 4x8 block
 //                           /-----------------------------------------|
 //                           |v0.b[0] ... v0.b[12] v1.b[0] ... v1.b[12]|
@@ -162,28 +151,36 @@ Return Value:
         ld1     {v3.4s},[x8],#16            // load ColumnSumBuffer[0]
         mov     x3,x15                      // reload PackedCountK
         ld1     {v7.4s},[x8],#16            // load ColumnSumBuffer[4]
+        dup     v17.4s,v8.s[0]              // broadcast row sums
+        dup     v19.4s,v8.s[1]
+        dup     v21.4s,v8.s[2]
+        dup     v23.4s,v8.s[3]
+        dup     v25.4s,v9.s[0]
+        dup     v27.4s,v9.s[1]
+        dup     v29.4s,v9.s[2]
+        dup     v31.4s,v9.s[3]
         cbz     x9,.LGemmU8X8.M8.SkipScaleByZeroPointB
 
         // accumulator = zero point B * row sum A + column sum B 
-        ld1     {v30.4s},[x9],#16           // load ZeroPointB[0]
-        mul     v16.4s,v30.4s,v8.4s
-        mul     v18.4s,v30.4s,v9.4s
-        ld1     {v31.4s},[x9],#16           // load ZeroPointB[4]
-        mul     v20.4s,v30.4s,v10.4s
-        mul     v22.4s,v30.4s,v11.4s
-        mul     v24.4s,v30.4s,v12.4s
-        mul     v26.4s,v30.4s,v13.4s
-        mul     v28.4s,v30.4s,v14.4s
-        mul     v30.4s,v30.4s,v15.4s
+        ld1     {v0.4s},[x9],#16           // load ZeroPointB[0]
+        mul     v16.4s,v0.4s,v17.4s
+        mul     v18.4s,v0.4s,v19.4s
+        ld1     {v1.4s},[x9],#16           // load ZeroPointB[4]
+        mul     v20.4s,v0.4s,v21.4s
+        mul     v22.4s,v0.4s,v23.4s
+        mul     v24.4s,v0.4s,v25.4s
+        mul     v26.4s,v0.4s,v27.4s
+        mul     v28.4s,v0.4s,v29.4s
+        mul     v30.4s,v0.4s,v31.4s
 
-        mul     v17.4s,v31.4s,v8.4s
-        mul     v19.4s,v31.4s,v9.4s
-        mul     v21.4s,v31.4s,v10.4s
-        mul     v23.4s,v31.4s,v11.4s
-        mul     v25.4s,v31.4s,v12.4s
-        mul     v27.4s,v31.4s,v13.4s
-        mul     v29.4s,v31.4s,v14.4s
-        mul     v31.4s,v31.4s,v15.4s
+        mul     v17.4s,v1.4s,v17.4s
+        mul     v19.4s,v1.4s,v19.4s
+        mul     v21.4s,v1.4s,v21.4s
+        mul     v23.4s,v1.4s,v23.4s
+        mul     v25.4s,v1.4s,v25.4s
+        mul     v27.4s,v1.4s,v27.4s
+        mul     v29.4s,v1.4s,v29.4s
+        mul     v31.4s,v1.4s,v31.4s
 
         ld1     {v0.16b},[x1],#16           // load packed B0
         add     v16.4s,v3.4s,v16.4s
@@ -207,35 +204,32 @@ Return Value:
         add     v27.4s,v7.4s,v27.4s
         add     v29.4s,v7.4s,v29.4s
         add     v31.4s,v7.4s,v31.4s
-        b       .LGemmU8X8.M8.ComputeBlockLoopStart
+        b       .LGemmU8X8.M8.ComputeBlockLoop
 
 .LGemmU8X8.M8.SkipScaleByZeroPointB:
         // accumulator = row sum A + column sum B 
         ld1     {v0.16b},[x1],#16           // load packed B0
-        add     v16.4s,v3.4s,v8.4s
-        add     v18.4s,v3.4s,v9.4s
+        add     v16.4s,v3.4s,v17.4s
+        add     v18.4s,v3.4s,v19.4s
         ldr     q4,[x0],#16                 // load packed A0
-        add     v20.4s,v3.4s,v10.4s
-        add     v22.4s,v3.4s,v11.4s
+        add     v20.4s,v3.4s,v21.4s
+        add     v22.4s,v3.4s,v23.4s
         ldr     q5,[x0],#16                 // load packed A1
-        add     v24.4s,v3.4s,v12.4s
-        add     v26.4s,v3.4s,v13.4s
+        add     v24.4s,v3.4s,v25.4s
+        add     v26.4s,v3.4s,v27.4s
         ld1     {v1.16b},[x1],#16           // load packed B1
-        add     v28.4s,v3.4s,v14.4s
-        add     v30.4s,v3.4s,v15.4s
+        add     v28.4s,v3.4s,v29.4s
+        add     v30.4s,v3.4s,v31.4s
         ldr     q6,[x0],#16                 // load packed A2
-        add     v17.4s,v7.4s,v8.4s
-        add     v19.4s,v7.4s,v9.4s
+        add     v17.4s,v7.4s,v17.4s
+        add     v19.4s,v7.4s,v19.4s
         ld1     {v2.16b},[x1],#16           // load packed B0_next4k
-        add     v21.4s,v7.4s,v10.4s
-        add     v23.4s,v7.4s,v11.4s
-        add     v25.4s,v7.4s,v12.4s
-        add     v27.4s,v7.4s,v13.4s
-        add     v29.4s,v7.4s,v14.4s
-        add     v31.4s,v7.4s,v15.4s
-
-
-.LGemmU8X8.M8.ComputeBlockLoopStart:
+        add     v21.4s,v7.4s,v21.4s
+        add     v23.4s,v7.4s,v23.4s
+        add     v25.4s,v7.4s,v25.4s
+        add     v27.4s,v7.4s,v27.4s
+        add     v29.4s,v7.4s,v29.4s
+        add     v31.4s,v7.4s,v31.4s
 
 .LGemmU8X8.M8.ComputeBlockLoop:
         sub     x3,x3,#1
@@ -373,10 +367,7 @@ Return Value:
 
 .LGemmU8X8.M8.ExitKernel:
         mov     x0,#8                       // return number of rows handled
-        ldp     d14,d15,[sp,#48]
-        ldp     d12,d13,[sp,#32]
-        ldp     d10,d11,[sp,#16]
-        ldp     d8,d9,[sp],#64
+        ldp     d8,d9,[sp],#16
         ret
 
 //
@@ -588,17 +579,21 @@ Return Value:
         ld1     {v2.4s},[x8],#16            // load ColumnSumBuffer[0]
         mov     x3,x15                      // reload PackedCountK
         ld1     {v3.4s},[x8],#16            // load ColumnSumBuffer[4]
+        dup     v17.4s,v8.s[0]              // broadcast row sums
+        dup     v19.4s,v8.s[1]
+        dup     v21.4s,v8.s[2]
+        dup     v23.4s,v8.s[3]
         cbz     x9,.LGemmU8X8.M4.SkipScaleByZeroPointB
         ld1     {v30.4s},[x9],#16           // load ZeroPointB[0]
-        mul     v16.4s,v30.4s,v8.4s
-        mul     v18.4s,v30.4s,v9.4s
+        mul     v16.4s,v30.4s,v17.4s
+        mul     v18.4s,v30.4s,v19.4s
         ld1     {v31.4s},[x9],#16           // load ZeroPointB[4]
-        mul     v20.4s,v30.4s,v10.4s
-        mul     v22.4s,v30.4s,v11.4s
-        mul     v17.4s,v31.4s,v8.4s
-        mul     v19.4s,v31.4s,v9.4s
-        mul     v21.4s,v31.4s,v10.4s
-        mul     v23.4s,v31.4s,v11.4s
+        mul     v20.4s,v30.4s,v21.4s
+        mul     v22.4s,v30.4s,v23.4s
+        mul     v17.4s,v31.4s,v17.4s
+        mul     v19.4s,v31.4s,v19.4s
+        mul     v21.4s,v31.4s,v21.4s
+        mul     v23.4s,v31.4s,v23.4s
         add     v16.4s,v2.4s,v16.4s
         add     v18.4s,v2.4s,v18.4s
         add     v20.4s,v2.4s,v20.4s
@@ -610,14 +605,14 @@ Return Value:
         b       .LGemmU8X8.M4.ComputeBlockLoopStart
 
 .LGemmU8X8.M4.SkipScaleByZeroPointB:
-        add     v16.4s,v2.4s,v8.4s
-        add     v18.4s,v2.4s,v9.4s
-        add     v20.4s,v2.4s,v10.4s
-        add     v22.4s,v2.4s,v11.4s
-        add     v17.4s,v3.4s,v8.4s
-        add     v19.4s,v3.4s,v9.4s
-        add     v21.4s,v3.4s,v10.4s
-        add     v23.4s,v3.4s,v11.4s
+        add     v16.4s,v2.4s,v17.4s
+        add     v18.4s,v2.4s,v19.4s
+        add     v20.4s,v2.4s,v21.4s
+        add     v22.4s,v2.4s,v23.4s
+        add     v17.4s,v3.4s,v17.4s
+        add     v19.4s,v3.4s,v19.4s
+        add     v21.4s,v3.4s,v21.4s
+        add     v23.4s,v3.4s,v23.4s
 
 .LGemmU8X8.M4.ComputeBlockLoopStart:
         ldr     d4,[x0],#32                 // load packed A0.l
@@ -709,8 +704,7 @@ Return Value:
 
 .LGemmU8X8.M4.ExitKernel:
         mov     x0,#4                       // return number of rows handled
-        ldp     d10,d11,[sp,#16]
-        ldp     d8,d9,[sp],#64
+        ldp     d8,d9,[sp],#16
         ret
 
 //
@@ -808,6 +802,9 @@ Return Value:
 //
 // Process 2 rows of the matrices.
 //
+.LGemmU8X8.M2.ProcessLoop:
+        dup     v9.4s, v8.s[1];
+        dup     v8.4s, v8.s[0];
 
 .LGemmU8X8.M2.ProcessNextColumnLoop:
         ld1     {v0.16b},[x1],#16           // load packed B0
@@ -881,7 +878,7 @@ Return Value:
 
 .LGemmU8X8.M2.ExitKernel:
         mov     x0,#2                       // return number of rows handled
-        ldp     d8,d9,[sp],#64
+        ldp     d8,d9,[sp],#16
         ret
 
 //
@@ -947,6 +944,8 @@ Return Value:
 //
 // Process 1 row of the matrices.
 //
+.LGemmU8X8.M1.ProcessLoop:
+        dup     v8.4s,v8.s[0]
 
 .LGemmU8X8.M1.ProcessNextColumnLoop:
         ld1     {v0.16b},[x1],#16           // load packed B0
@@ -1004,7 +1003,7 @@ Return Value:
 
 .LGemmU8X8.M1.ExitKernel:
         mov     x0,#1                       // return number of rows handled
-        ldp     d8,d9,[sp],#64
+        ldp     d8,d9,[sp],#16
         ret
 
 //
