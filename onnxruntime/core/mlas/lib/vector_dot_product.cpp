@@ -51,6 +51,7 @@ Return Value:
 #endif
 }
 
+#pragma warning(disable: 4100)
 void
 MLASCALL
 MlasVectorDotProductThreaded(
@@ -60,4 +61,7 @@ MlasVectorDotProductThreaded(
   // TODO(kreeger): write me?
   // * I think it makes sense to try doing a thread for each N?
   //
+
+  // Look at 
 }
+#pragma warning(default: 4100)

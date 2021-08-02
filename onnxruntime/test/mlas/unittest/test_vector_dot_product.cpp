@@ -116,17 +116,60 @@ class MlasVectorDotProdTest : public MlasTestBase {
 
 template <typename T>
 class MlasVectorDotProductThreadedTest : public MlasTestBase {
-  void Test() {
+ public:
+  static const char* GetTestSuiteName() {
+    static const std::string suite_name("VectorDotProductThreaded");
+    return suite_name.c_str();
+  }
 
+  void ExecuteShort(void) override {
+    // Smaller vectors
+    ValidateUnpacked(TestVectors<T>(/*M=*/4, /*N=*/8));
+    ValidateUnpacked(TestVectors<T>(/*M=*/3, /*N=*/9));
 
+    //// Medium vectors
+    //ValidateUnpacked(TestVectors<T>(/*M=*/22, /*N=*/32));
+    //ValidateUnpacked(TestVectors<T>(/*M=*/21, /*N=*/31));
+
+    //// Long vectors:
+    //ValidateUnpacked(TestVectors<T>(/*M=*/768, /*N=*/3072, /*small_values=*/true));
+    //ValidateUnpacked(TestVectors<T>(/*M=*/761, /*N=*/3011, /*small_values=*/true));
+  }
+
+ private:
+  void ValidateUnpacked(TestVectors<T> vectors) {
+    ReferenceVectorDotProd(vectors);
+    std::vector<float> ref_C = vectors.C;
+    vectors.ResetC();
+
+    MlasTranspose(vectors.B.data(),
+                  vectors.B_transposed.data(),
+                  vectors.M,
+                  vectors.N);
+
+    // TODO - call in threaded.
+    MlasVectorDotProduct(vectors.A.data(),
+                         vectors.B_transposed.data(),
+                         vectors.C.data(),
+                         vectors.M,
+                         vectors.N);
+
+    for (size_t i = 0; i < vectors.N; ++i) {
+      ASSERT_NEAR(vectors.C[i], ref_C[i], 1e-2f);
+    }
   }
 };
 
 template <>
 MlasVectorDotProdTest<float>* MlasTestFixture<MlasVectorDotProdTest<float>>::mlas_tester(nullptr);
 
+template <>
+MlasVectorDotProductThreadedTest<float>* MlasTestFixture<MlasVectorDotProductThreadedTest<float>>::mlas_tester(nullptr);
+
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
-  return is_short_execute
-             ? MlasDirectShortExecuteTests<MlasVectorDotProdTest<float>>::RegisterShortExecute()
-             : 0;
+  if (is_short_execute) {
+    return MlasDirectShortExecuteTests<MlasVectorDotProdTest<float>>::RegisterShortExecute() &&
+           MlasDirectShortExecuteTests<MlasVectorDotProductThreadedTest<float>>::RegisterShortExecute();
+  }
+  return false;
 });
