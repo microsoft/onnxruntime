@@ -50,6 +50,13 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
        {1, 3, 5}});
 
   test_cases.push_back(
+      {"test left 1D right 2D",
+       {2},
+       {2, 3},
+       {3},
+       {3, 4, 5}});
+
+  test_cases.push_back(
       {"test scalar output",
        {3},
        {3},
@@ -95,14 +102,14 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
 }
 
 template <typename T>
-void RunMatMulTest(int32_t opset_version, bool is_b_constant = false) {
+void RunMatMulTest(int32_t opset_version, bool is_a_constant, bool is_b_constant) {
   std::vector<T> common_input_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
   for (auto t : GenerateTestCases<T>()) {
     OpTester test("MatMul", opset_version);
 
     int64_t size0 = TensorShape::ReinterpretBaseType(t.input0_dims).SizeHelper(0, t.input0_dims.size());
     std::vector<T> input0_vals(common_input_vals.cbegin(), common_input_vals.cbegin() + size0);
-    test.AddInput<T>("A", t.input0_dims, input0_vals);
+    test.AddInput<T>("A", t.input0_dims, input0_vals, is_a_constant);
 
     int64_t size1 = TensorShape::ReinterpretBaseType(t.input1_dims).SizeHelper(0, t.input1_dims.size());
     std::vector<T> input1_vals(common_input_vals.cbegin(), common_input_vals.cbegin() + size1);
@@ -121,13 +128,22 @@ void RunMatMulTest(int32_t opset_version, bool is_b_constant = false) {
   }
 }
 
+template <typename T>
+void RunMatMulTest(int32_t opset_version) {
+  RunMatMulTest<T>(opset_version, false, false);
+}
+
 TEST(MathOpTest, MatMulFloatType) {
-  RunMatMulTest<float>(7, false);
-  RunMatMulTest<float>(7, true);
+  RunMatMulTest<float>(7, false, false);
+  RunMatMulTest<float>(7, false, true);
 }
 
 TEST(MathOpTest, MatMulDoubleType) {
   RunMatMulTest<double>(7);
+}
+
+TEST(MathOpTest, MatMulFloatTypeInitializer) {
+  RunMatMulTest<float>(7, false, true);
 }
 
 TEST(MathOpTest, MatMulInt32Type) {
