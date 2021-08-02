@@ -1325,7 +1325,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
 
   if (num_src_node_inputs == 1) {  // without bias
     return std::vector<NodeDef>{
-        NodeDef(OpDef{"FastGeluGrad", kMSDomain, 1},   v
+        NodeDef(OpDef{"FastGeluGrad", kMSDomain, 1},
                 {dY, X},
                 {dX})};
   }
