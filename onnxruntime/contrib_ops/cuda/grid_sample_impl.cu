@@ -115,7 +115,7 @@ __global__ void _GridSampleKernel(
 {
     CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(idx, N * C * H_out * W_out);
     //extract batch index, channel index, y index, x index for current thread
-    int BIdx = idx / (W_out * H_out * W_out );
+    int BIdx = idx / (C * H_out * W_out );
     int tmpBCnt = BIdx * (C * H_out * W_out);
 
     int cIdx = (idx - tmpBCnt) / (H_out * W_out);
@@ -127,8 +127,8 @@ __global__ void _GridSampleKernel(
     int xIdx = (idx - tmpHCnt);
 
     int grid_idx = BIdx * H_out * W_out + yIdx * W_out + xIdx;
-    T grid_X = grid_data[grid_idx*2 + 0];
-    T grid_Y = grid_data[grid_idx*2 + 1];
+    T grid_X = grid_data[grid_idx * 2 + 0];
+    T grid_Y = grid_data[grid_idx * 2 + 1];
     int outIdx = idx;
 
     T grid_x_imgSpace = denormalize(grid_X, W_in, align_corners == 1);
@@ -150,14 +150,11 @@ __global__ void _GridSampleKernel(
     }
     T border[] = {x_min, y_min, x_max, y_max};                                                                       // l-t-r-b
     if (grid_x_imgSpace < x_min || grid_x_imgSpace > x_max || grid_y_imgSpace < y_min || grid_y_imgSpace > y_max) {  // out of bound
-      if (padding_mode == 0) { // zeros
-        output_data[outIdx] = 0.0f;
-        return;
-      }
-      else if (padding_mode == 1) { //border
+      if (padding_mode == 1) { //border
         grid_x_imgSpace = max(0.0f, min(grid_x_imgSpace, W_in - 1.0f));  // use original border in both align_corner cases
         grid_y_imgSpace = max(0.0f, min(grid_y_imgSpace, H_in - 1.0f));
-      } else {  // Reflection
+      } 
+      else if (padding_mode == 2) {  // Reflection
         grid_x_imgSpace = reflect(grid_x_imgSpace, x_min, x_max);
         grid_y_imgSpace = reflect(grid_y_imgSpace, y_min, y_max);
       }
@@ -191,12 +188,11 @@ __global__ void _GridSampleKernel(
       output_data[outIdx] = interpoV;
       return;
     }
-    if (mode == 1)  {//nearest
-        int x_n = grid_x_imgSpace;
-        int y_n = grid_y_imgSpace;
-        T outV = input_data[BIdx * C * H_in * W_in + cIdx * H_in * W_in + y_n * W_in + x_n];
-        output_data[outIdx] = outV;
-        return;
+    if (mode == 1) { // nearest
+      int x_n = grid_x_imgSpace;
+      int y_n = grid_y_imgSpace;
+      output_data[outIdx] = PixelAtGrid(input_data, BIdx, cIdx, y_n, x_n, padding_mode, N, C, H_in, W_in, border);
+      return;
     } 
     if (mode == 2) {//bicubic
       int64_t x0 = static_cast<int64_t>(std::floor(grid_x_imgSpace)) - 1;  // top-left corner of the bbox

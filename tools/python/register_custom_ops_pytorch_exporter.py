@@ -33,7 +33,7 @@ def register_custom_op():
         return g.op("com.microsoft::GridSample", self, input,
                     mode_s=mode_str,
                     padding_mode_s=padding_mode_str,
-                    align_corners_i=align_corners)
+                    align_corners_i=align_corners).setType(self.type())
 
     def inverse(g, self):
         return g.op("com.microsoft::Inverse", self).setType(self.type())

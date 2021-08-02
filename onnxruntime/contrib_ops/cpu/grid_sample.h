@@ -62,5 +62,5 @@ private:
   bool align_corners_{0};
 
 };
-}
+}  //namespace contrib
 }  //namespace onnxruntime
