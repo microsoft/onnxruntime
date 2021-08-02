@@ -124,7 +124,7 @@ def assert_optim_state(expected_state, actual_state, rtol=1e-7, atol=0):
 
 def is_dynamic_axes(model):
     # Check inputs
-    for inp in model._torch_module._execution_manager(model._is_training())._optimized_onnx_model.graph.input:
+    for inp in model._torch_module._execution_manager(model._is_training())._onnx_models.optimized_model.graph.input:
         shape = inp.type.tensor_type.shape
         if shape:
             for dim in shape.dim:
@@ -132,7 +132,7 @@ def is_dynamic_axes(model):
                     return False
 
     # Check outputs
-    for out in model._torch_module._execution_manager(model._is_training())._optimized_onnx_model.graph.output:
+    for out in model._torch_module._execution_manager(model._is_training())._onnx_models.optimized_model.graph.output:
         shape = out.type.tensor_type.shape
         if shape:
             for dim in shape.dim:
@@ -188,7 +188,7 @@ def assert_values_are_close(input, other, rtol=1e-05, atol=1e-06):
 
 def enable_custom_autograd_function(module):
     for mode in [True, False]:
-        module._execution_manager(mode)._enable_custom_autograd_function = True
+        module._torch_module._execution_manager(mode)._enable_custom_autograd_function = True
 
 def run_with_pytorch_on_device(device, model, input_list, label_input, is_eval_mode=False):
     model.to(device)

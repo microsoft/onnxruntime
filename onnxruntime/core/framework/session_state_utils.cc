@@ -21,7 +21,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
-#include "core/framework/arena.h"
+#include "core/framework/bfc_arena.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/framework/mem_buffer.h"
 #include "core/framework/tensor_allocator.h"
@@ -43,14 +43,12 @@ static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const T
   p_data = nullptr;
   if (shape_size > 0) {
     SafeInt<size_t> mem_size = 0;
-    if (!alloc->CalcMemSizeForArray(SafeInt<size_t>(shape_size), type->Size(), &mem_size))
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed memory size calculation");
 
-    if (alloc->Info().alloc_type == OrtArenaAllocator)
-      // Reserve() uses the device allocator to make the allocation
-      p_data = static_cast<IArenaAllocator*>(alloc.get())->Reserve(mem_size);
-    else
-      p_data = alloc->Alloc(mem_size);
+    if (!alloc->CalcMemSizeForArray(SafeInt<size_t>(shape_size), type->Size(), &mem_size)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed memory size calculation");
+    }
+
+    p_data = alloc->Reserve(mem_size);
   }
 
   return Status::OK();
@@ -135,7 +133,7 @@ common::Status SaveInitializedTensors(
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const std::vector<OrtValueIndex>& initializer_allocation_order,
     ITensorAllocator& planner,
-    const std::function<Status(int idx, const OrtValue& value, const OrtCallback& d, bool constant)>& save_tensor_func,
+    const SaveTensorFunction& save_tensor_func,
     const logging::Logger& logger, const DataTransferManager& data_transfer_mgr,
     const ExecutionPlanBase& exec_plan,
     const SessionOptions& session_options) {
@@ -254,8 +252,9 @@ common::Status SaveInitializedTensors(
 
     // any outer scope value is shadowed by a local value and can't override it.
     // due to that check_outer_scope is false
-    bool constant = graph.IsConstantInitializer(name, /* check_outer_scope */ false);
-    ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter, constant));
+    const bool constant = graph.IsConstantInitializer(name, /* check_outer_scope */ false);
+    const bool sparse = graph.GetGraph().IsSparseInitializer(name);
+    ORT_RETURN_IF_ERROR(save_tensor_func(ort_value_index, ort_value, deleter, constant, sparse));
 
     VLOGS(logger, 1) << "Added weight with name : " << name << " with index: " << ort_value_index;
   }

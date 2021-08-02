@@ -170,7 +170,7 @@ def quantize_matmul_2d_with_weight(in_node, in_graph, nf, converted_weights, qua
             if symmetric:
                 Q_X_sum_int32 = None
             else:
-                Q_X_sum_int32 = nf.make_node('ReduceSum', nf.make_node('Cast', Q_X, {'to':int(onnx.TensorProto.INT32)}), {'axes':[-1]})
+                Q_X_sum_int32 = nf.make_node_with_axes('ReduceSum', nf.make_node('Cast', Q_X, {'to':int(onnx.TensorProto.INT32)}), [-1], onnx_opset_ver)
 
             if quantized_inputs is not None:
                 quantized_inputs[quantized_inputs_key] = (scale_X, bias_X, Q_X, Q_X_sum_int32)

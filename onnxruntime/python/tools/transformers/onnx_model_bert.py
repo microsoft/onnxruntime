@@ -212,8 +212,10 @@ class BertOnnxModel(OnnxModel):
                             expand_shape_value) is 2 and len(
                                 shape_value) is 1 and expand_shape_value[1] == shape_value[0]:
                         node.input[0] = slice_node.output[0]
-        self.remove_nodes(nodes_to_remove)
-        logger.info(f"Removed Reshape and Expand count: {len(nodes_to_remove)}")
+
+        if nodes_to_remove:
+            self.remove_nodes(nodes_to_remove)
+            logger.info(f"Removed Reshape and Expand count: {len(nodes_to_remove)}")
 
     def clean_graph(self):
         output_name_to_node = self.output_name_to_node()
@@ -284,7 +286,9 @@ class BertOnnxModel(OnnxModel):
         if (options is None) or options.enable_embed_layer_norm:
             self.fuse_embed_layer()
 
-        # Post-processing like removing extra reshape nodes.
+        # Remove reshape nodes that having same shape of input and output based on symbolic shape inference.
+        FusionUtils.remove_useless_reshape_nodes(self)
+
         self.postprocess()
 
         # Bias fusion is done after postprocess to avoid extra Reshape between bias and Gelu/FastGelu/SkipLayerNormalization

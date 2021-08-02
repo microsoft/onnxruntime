@@ -169,21 +169,35 @@ struct OpKernelContext;
 struct OpKernelInfo;
 struct PrimitiveDataTypeBase;
 struct Tensor;
+struct SparseTensor;
 struct TensorSeq;
 
-class UnsqueezeBase;
+class If;
+class Loop;
+class ConcatBase;
+class Einsum;
+class GatherBase;
+class Size;
 class SliceBase;
 class SplitBase;
-class Size;
-class ScatterNDBase;
+class TensorShape;
+struct Prepare;
+struct PrepareContext;
 enum class Mode : int;
-class GatherBase;
-class ConcatBase;
-template <int OpSet>
-class Scan;
 struct EinsumComputePreprocessor;
 template <typename T>
 struct EinsumTypedComputeProcessor;
+
+namespace contrib {
+class ATenOp;
+class Group;
+class PassThrough;
+class YieldOp;
+}  // namespace contrib
+
+class UnsqueezeBase;
+template <int OpSet>
+class Scan;
 
 class DataTypeImpl;
 using MLDataType = const DataTypeImpl*;
@@ -196,9 +210,11 @@ using NameMLValMap = std::unordered_map<std::string, OrtValue>;
 
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/math/einsum_utils/einsum_compute_preprocessor.h"
+#include "core/providers/cpu/cpu_provider_shared.h"
 #include "core/framework/data_transfer.h"
 #include "core/framework/execution_provider.h"
 #include "provider_interfaces.h"
+#include "provider_wrappedtypes.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/tensorprotoutils.h"

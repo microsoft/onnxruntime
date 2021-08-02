@@ -6,7 +6,7 @@ from ._torch_module import TorchModule
 
 
 class TorchModuleFactory:
-    def __call__(self, module):
+    def __call__(self, module, debug_options):
         """Creates a TorchModule instance based on the input module."""
 
-        return TorchModule(module)
+        return TorchModule(module, debug_options)

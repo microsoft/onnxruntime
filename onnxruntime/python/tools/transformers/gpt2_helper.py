@@ -33,6 +33,7 @@ class GPT2ModelNoPastState(GPT2Model):
     def forward(self, input_ids):
         return super().forward(input_ids, use_cache=False, return_dict=False)
 
+
 class TFGPT2ModelNoPastState(TFGPT2Model):
     """ Here we wrap a class to disable past state output.
     """
@@ -43,6 +44,7 @@ class TFGPT2ModelNoPastState(TFGPT2Model):
     def forward(self, input_ids):
         return super().call(input_ids, use_cache=False)
 
+
 class MyGPT2Model(GPT2Model):
     """ Here we wrap a class for Onnx model conversion for GPT2Model with past state.
     """
@@ -52,7 +54,8 @@ class MyGPT2Model(GPT2Model):
     @staticmethod
     def post_process(result, num_layer):
         if isinstance(result[1][0], tuple) or isinstance(result[1][0], list):
-            assert len(result[1]) == num_layer and len(result[1][0]) == 2 #and len(result[1][0][0].shape) == 4 and result[1][0][0].shape == result[1][0][1].shape
+            assert len(result[1]) == num_layer and len(result[1][0]) == 2
+            #assert len(result[1][0][0].shape) == 4 and result[1][0][0].shape == result[1][0][1].shape
             present = []
             for i in range(num_layer):
                 # Since transformers v4.*, past key and values are separated outputs.
@@ -321,7 +324,7 @@ class Gpt2Helper:
         logger.info(
             f"Shapes: input_ids={dummy_inputs.input_ids.shape} past={dummy_inputs.past[0].shape} output={outputs[0].shape} present={outputs[1][0].shape}"
         )
-    
+
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
         torch.onnx.export(model,

@@ -4,7 +4,7 @@
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 
 #include "core/providers/shared_library/provider_api.h"
-#include "core/language_interop_ops/torch/refcount_tracker.h"
+#include "orttraining/core/framework/torch/refcount_tracker.h"
 #include "orttraining/training_ops/cuda/torch/torch_custom_function_kernel.h"
 #include "core/framework/ml_value.h"
 
@@ -36,15 +36,9 @@ ONNX_OPERATOR_KERNEL_EX(
     PythonOpGrad);
 
 Status PythonOp::ComputeInternal(OpKernelContext* context) const {
-  // Todo(pengwa): perf impact and how much, leave it now to guarantee correctness.
-  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
-
   void* diff_ctx = nullptr;
   std::vector<OrtValue> returned_ortvalues;
   RunForward(context, &diff_ctx, returned_ortvalues);
-
-  // todo(pengwa): okay to remove it?
-  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
 
   SetOutputs(context, diff_ctx, returned_ortvalues);
 
@@ -53,14 +47,9 @@ Status PythonOp::ComputeInternal(OpKernelContext* context) const {
 }
 
 Status PythonOpGrad::ComputeInternal(OpKernelContext* context) const {
-  // Todo(pengwa): perf impact and how much, leave it now to guarantee correctness.
-  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
-
   std::vector<OrtValue> returned_ortvalues;
   RunBackward(context, returned_ortvalues);
 
-  // todo(pengwa): okay to remove it?
-  CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
 
   SetOutputs(context, returned_ortvalues);
 
