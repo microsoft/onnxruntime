@@ -83,8 +83,8 @@ RUN export GIT_ROOT=git-2.31.1 && \
 
 FROM build_base AS build_cmake
 COPY build_scripts/build-cmake.sh /build_scripts/
-RUN export CMAKE_VERSION=3.20.2 && \
-    export CMAKE_HASH=aecf6ecb975179eb3bb6a4a50cae192d41e92b9372b02300f9e8f1d5f559544e && \
+RUN export CMAKE_VERSION=3.21.0 && \
+    export CMAKE_HASH=4a42d56449a51f4d3809ab4d3b61fd4a96a469e56266e896ce1009b5768bd2ab && \
     export CMAKE_DOWNLOAD_URL=https://github.com/Kitware/CMake/releases/download && \
     manylinux-entrypoint /build_scripts/build-cmake.sh
 

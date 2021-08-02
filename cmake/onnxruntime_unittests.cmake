@@ -266,7 +266,9 @@ if(NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     list(APPEND onnxruntime_test_providers_src_patterns
       "${TEST_SRC_DIR}/contrib_ops/*.h"
-      "${TEST_SRC_DIR}/contrib_ops/*.cc")
+      "${TEST_SRC_DIR}/contrib_ops/*.cc"
+      "${TEST_SRC_DIR}/contrib_ops/math/*.h"
+      "${TEST_SRC_DIR}/contrib_ops/math/*.cc")
   endif()
 
   if(onnxruntime_USE_FEATURIZERS)
@@ -662,19 +664,18 @@ AddTest(
   TARGET onnxruntime_test_all
   SOURCES ${all_tests} ${onnxruntime_unittest_main_src}
   LIBS
-    onnx_test_runner_common ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs} re2::re2
+    onnx_test_runner_common ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
     onnx_test_data_proto nlohmann_json::nlohmann_json
   DEPENDS ${all_dependencies}
 )
-
+if(NOT MSVC)
+  target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
+endif()
 # the default logger tests conflict with the need to have an overall default logger
 # so skip in this type of
 target_compile_definitions(onnxruntime_test_all PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
 if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
   target_compile_definitions(onnxruntime_test_all_xc PUBLIC -DSKIP_DEFAULT_LOGGER_TESTS)
-endif()
-if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-  target_compile_options(onnxruntime_test_all PUBLIC "-Wno-unused-const-variable")
 endif()
 if(onnxruntime_RUN_MODELTEST_IN_DEBUG_MODE)
   target_compile_definitions(onnxruntime_test_all PUBLIC -DRUN_MODELTEST_IN_DEBUG_MODE)
@@ -711,15 +712,8 @@ target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
 if(WIN32)
   target_compile_options(onnx_test_data_proto PRIVATE "/wd4125" "/wd4456" "/wd4100" "/wd4267" "/wd6011" "/wd6387" "/wd28182")
 else()
-  if(HAS_UNUSED_PARAMETER)
-    target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-parameter")
-  endif()
-  if(HAS_UNUSED_VARIABLE)
-    target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-variable")
-  endif()
-  if(HAS_UNUSED_BUT_SET_VARIABLE)
-    target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-but-set-variable")
-  endif()
+  #Once we upgrade protobuf to 3.17.3+, we can remove this
+  target_compile_options(onnx_test_data_proto PRIVATE "-Wno-unused-parameter")
 endif()
 add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
 onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto)
@@ -824,6 +818,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       ${BENCHMARK_DIR}/batchnorm2.cc
       ${BENCHMARK_DIR}/tptest.cc
       ${BENCHMARK_DIR}/eigen.cc
+      ${BENCHMARK_DIR}/copy.cc
       ${BENCHMARK_DIR}/gelu.cc
       ${BENCHMARK_DIR}/activation.cc
       ${BENCHMARK_DIR}/quantize.cc
@@ -1145,18 +1140,13 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
           -DGRADLE_EXECUTABLE=${GRADLE_EXECUTABLE}
           -DBIN_DIR=${CMAKE_CURRENT_BINARY_DIR}
           -DREPO_ROOT=${REPO_ROOT}
-          ${ORT_PROVIDER_CMAKE_FLAGS}
+          ${ORT_PROVIDER_FLAGS}
           -P ${CMAKE_CURRENT_SOURCE_DIR}/onnxruntime_java_unittests.cmake)
       else()
         add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
                         ${JAVA_NATIVE_TEST_DIR}/$<TARGET_LINKER_FILE_NAME:custom_op_library>)
-        if (onnxruntime_USE_CUDA)
-          add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} -DUSE_CUDA=1
-                  WORKING_DIRECTORY ${REPO_ROOT}/java)
-        else()
-          add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR}
-                  WORKING_DIRECTORY ${REPO_ROOT}/java)
-        endif()
+        add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} ${ORT_PROVIDER_FLAGS}
+              WORKING_DIRECTORY ${REPO_ROOT}/java)
       endif()
       set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
   endif()
@@ -1166,7 +1156,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
                                     AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS"
                                     AND NOT (CMAKE_SYSTEM_NAME STREQUAL "Android")
                                     AND NOT onnxruntime_BUILD_WEBASSEMBLY
-                                    AND MSVC)
+				    AND NOT onnxruntime_USE_ROCM)
     file(GLOB_RECURSE test_execution_provider_srcs
       "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.h"
       "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.cc"
@@ -1175,7 +1165,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     )
 
     onnxruntime_add_shared_library_module(test_execution_provider ${test_execution_provider_srcs})
-    add_dependencies(test_execution_provider onnxruntime_providers_shared)
+    add_dependencies(test_execution_provider onnxruntime_providers_shared onnx)
     target_link_libraries(test_execution_provider PRIVATE onnxruntime_providers_shared)
     target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnx,INTERFACE_INCLUDE_DIRECTORIES>)
     target_include_directories(test_execution_provider PRIVATE $<TARGET_PROPERTY:onnxruntime_common,INTERFACE_INCLUDE_DIRECTORIES>)
@@ -1183,7 +1173,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     if(APPLE)
       set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/exported_symbols.lst")
     elseif(UNIX)
-      set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/version_script.lds -Xlinker --gc-sections")
+      set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/version_script.lds -Xlinker --gc-sections -Xlinker -rpath=\\$ORIGIN")
     elseif(WIN32)
       set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/symbols.def")
     else()

@@ -96,25 +96,25 @@ class TestFusion(unittest.TestCase):
         expected = onnx.load(expected_model_path)
         self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
 
-    def test_gpt2_attention_fusion(self):
-        hidden_size = 64
-        num_heads = 4
-        for add_order in [False, True]:
-            model = create_gpt2_attention(hidden_size=hidden_size, num_heads=num_heads, switch_add_inputs=add_order)
-            dir = '.'
-            model_path = os.path.join(dir, "gpt2_attention.onnx")
-            onnx.save(model, model_path)
-            optimized_model = optimize_model(model_path,
-                                             model_type='gpt2',
-                                             num_heads=num_heads,
-                                             hidden_size=hidden_size,
-                                             disable_onnxruntime=True)
-            os.remove(model_path)
+    # def test_gpt2_attention_fusion(self):
+    #     hidden_size = 64
+    #     num_heads = 4
+    #     for add_order in [False, True]:
+    #         model = create_gpt2_attention(hidden_size=hidden_size, num_heads=num_heads, switch_add_inputs=add_order)
+    #         dir = '.'
+    #         model_path = os.path.join(dir, "gpt2_attention.onnx")
+    #         onnx.save(model, model_path)
+    #         optimized_model = optimize_model(model_path,
+    #                                          model_type='gpt2',
+    #                                          num_heads=num_heads,
+    #                                          hidden_size=hidden_size,
+    #                                          disable_onnxruntime=True)
+    #         os.remove(model_path)
 
-            model_name = "gpt2_attention_{}.onnx".format("add_opt" if add_order else "opt")
-            expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models', model_name)
-            expected = onnx.load(expected_model_path)
-            self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
+    #         model_name = "gpt2_attention_{}.onnx".format("add_opt" if add_order else "opt")
+    #         expected_model_path = os.path.join(os.path.dirname(__file__), 'test_data', 'models', model_name)
+    #         expected = onnx.load(expected_model_path)
+    #         self.assertEqual(str(optimized_model.model.graph), str(expected.graph))
 
 
 if __name__ == '__main__':
