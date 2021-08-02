@@ -16,8 +16,9 @@ class AttributeWithCacheKeyImpl {
   }
 }
 
-export type AttributeWithCacheKey<T> = T&{readonly cacheKey: string};
+export interface AttributeWithCacheKey {
+  readonly cacheKey: string;
+}
 
-export const createAttributeWithCacheKey =
-    <T extends Record<string, unknown>>(attribute: T): AttributeWithCacheKey<T> =>
-        new AttributeWithCacheKeyImpl(attribute) as unknown as AttributeWithCacheKey<T>;
+export const createAttributeWithCacheKey = <T extends Record<string, unknown>>(attribute: T): T&AttributeWithCacheKey =>
+    new AttributeWithCacheKeyImpl(attribute) as unknown as T & AttributeWithCacheKey;

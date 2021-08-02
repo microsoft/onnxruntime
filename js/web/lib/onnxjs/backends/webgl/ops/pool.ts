@@ -9,7 +9,7 @@ import {PoolConvUtil, ShapeUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, ProgramMetadata, TextureType} from '../types';
 
-export interface AveragePoolAttributes {
+export interface AveragePoolAttributes extends AttributeWithCacheKey {
   readonly autoPad: string;
   readonly ceilMode: number;
   readonly countIncludePad: boolean;
@@ -18,9 +18,8 @@ export interface AveragePoolAttributes {
   readonly pads: number[];
 }
 
-export const averagePool: OperatorImplementation<AttributeWithCacheKey<AveragePoolAttributes>> =
-    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[],
-     attributes: AttributeWithCacheKey<AveragePoolAttributes>): Tensor[] => {
+export const averagePool: OperatorImplementation<AveragePoolAttributes> =
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: AveragePoolAttributes): Tensor[] => {
       validateInputs(inputs);
       const metadata =
           {name: 'AveragePool', inputNames: ['X'], inputTypes: [TextureType.unpacked], cacheHint: attributes.cacheKey};
@@ -29,8 +28,8 @@ export const averagePool: OperatorImplementation<AttributeWithCacheKey<AveragePo
       return [output];
     };
 
-export const parseAveragePoolAttributes: OperatorInitialization<AttributeWithCacheKey<AveragePoolAttributes>> =
-    (node: Graph.Node): AttributeWithCacheKey<AveragePoolAttributes> => {
+export const parseAveragePoolAttributes: OperatorInitialization<AveragePoolAttributes> =
+    (node: Graph.Node): AveragePoolAttributes => {
       const autoPad = node.attributes.getString('auto_pad', 'NOTSET');
       const ceilMode = node.attributes.getInt('ceil_mode', 0);
       const countIncludePad = (node.attributes.getInt('count_include_pad', 0) === 0 ? false : true);
@@ -90,25 +89,25 @@ export const globalAveragePool: OperatorImplementation<AveragePoolAttributes> =
 export const parseGlobalAveragePoolAttributes: OperatorInitialization<AveragePoolAttributes> =
     (node: Graph.Node): AveragePoolAttributes => {
       const countIncludePad = (node.attributes.getInt('count_include_pad', 0) === 0 ? false : true);
-      return {autoPad: '', ceilMode: 0, countIncludePad, kernelShape: [], strides: [], pads: []};
+      return createAttributeWithCacheKey(
+          {autoPad: '', ceilMode: 0, countIncludePad, kernelShape: [], strides: [], pads: []});
     };
 
 export interface MaxPoolAttributes extends AveragePoolAttributes {
   readonly storageOrder: number;
 }
 
-export const maxPool: OperatorImplementation<AttributeWithCacheKey<MaxPoolAttributes>> =
-    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: AttributeWithCacheKey<MaxPoolAttributes>):
-        Tensor[] => {
-          validateInputs(inputs);
-          const metadata =
-              {name: 'MaxPool', inputNames: ['X'], inputTypes: [TextureType.unpacked], cacheHint: attributes.cacheKey};
-          const output = inferenceHandler.run(createMaxPoolProgramInfo(inputs, metadata, false, attributes), inputs);
-          return [output];
-        };
+export const maxPool: OperatorImplementation<MaxPoolAttributes> =
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: MaxPoolAttributes): Tensor[] => {
+      validateInputs(inputs);
+      const metadata =
+          {name: 'MaxPool', inputNames: ['X'], inputTypes: [TextureType.unpacked], cacheHint: attributes.cacheKey};
+      const output = inferenceHandler.run(createMaxPoolProgramInfo(inputs, metadata, false, attributes), inputs);
+      return [output];
+    };
 
-export const parseMaxPoolAttributes: OperatorInitialization<AttributeWithCacheKey<MaxPoolAttributes>> =
-    (node: Graph.Node): AttributeWithCacheKey<MaxPoolAttributes> => {
+export const parseMaxPoolAttributes: OperatorInitialization<MaxPoolAttributes> =
+    (node: Graph.Node): MaxPoolAttributes => {
       const autoPad = node.attributes.getString('auto_pad', 'NOTSET');
       const ceilMode = node.attributes.getInt('ceil_mode', 0);
       const kernelShape = node.attributes.getInts('kernel_shape');
@@ -152,12 +151,27 @@ const createMaxPoolProgramInfo =
           };
         };
 
+const globalMaxPoolAttributes = {
+  autoPad: '',
+  ceilMode: 0,
+  countIncludePad: false,
+  kernelShape: [],
+  strides: [],
+  pads: [],
+  storageOrder: 0,
+  cacheKey: ''
+};
+
+const globalMaxPoolMetadata = {
+  name: 'GlobalMaxPool',
+  inputNames: ['X'],
+  inputTypes: [TextureType.unpacked]
+};
+
 export const globalMaxPool = (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
   validateInputs(inputs);
-  const attributes: MaxPoolAttributes =
-      {autoPad: '', ceilMode: 0, countIncludePad: false, kernelShape: [], strides: [], pads: [], storageOrder: 0};
-  const metadata = {name: 'GlobalMaxPool', inputNames: ['X'], inputTypes: [TextureType.unpacked]};
-  const output = inferenceHandler.run(createMaxPoolProgramInfo(inputs, metadata, true, attributes), inputs);
+  const output = inferenceHandler.run(
+      createMaxPoolProgramInfo(inputs, globalMaxPoolMetadata, true, globalMaxPoolAttributes), inputs);
   return [output];
 };
 
