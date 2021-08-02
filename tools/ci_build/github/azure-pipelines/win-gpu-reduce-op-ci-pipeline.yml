@@ -1,6 +1,6 @@
 jobs:
 - job: 'build'
-  pool: 'Win-GPU-2019'
+  pool: 'onnxruntime-win-cuda11-0'
   strategy:
     maxParallel: 2
     matrix:
