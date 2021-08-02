@@ -5,12 +5,22 @@ import {Logger} from '../../../instrument';
 import {Tensor} from '../../../tensor';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, TextureType} from '../types';
+import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
+
 import {calculateOutputShape, ConvAttributes} from './conv';
 import {getActicationSnippet} from './fuse-utils';
 
-export const createUnpackedGroupedConvProgramInfo =
-    (inferenceHandler: WebGLInferenceHandler, inputs: readonly Tensor[], attributes: ConvAttributes): ProgramInfo => {
+const createUnpackedGroupedConvProgramMetadata = (hasBias: boolean, cacheHint: string): ProgramMetadata => ({
+  name: 'GroupedConv',
+  inputNames: hasBias ? ['X', 'W', 'Bias'] : ['X', 'W'],
+  inputTypes: hasBias ? [TextureType.unpacked, TextureType.unpacked, TextureType.unpacked] :
+                        [TextureType.unpacked, TextureType.unpacked],
+  cacheHint
+});
+
+const createUnpackedGroupedConvProgramInfo =
+    (inferenceHandler: WebGLInferenceHandler, inputs: readonly Tensor[], metadata: ProgramMetadata,
+     attributes: ConvAttributes): ProgramInfo => {
       const hasBias = inputs.length > 2;
       const processBias = hasBias ? 'value += getBias(output_channel);' : '';
       const xShape = inputs[0].dims.slice();
@@ -64,12 +74,19 @@ export const createUnpackedGroupedConvProgramInfo =
   }
 `;
       return {
-        name: 'GroupedConv',
-        inputNames: hasBias ? ['X', 'W', 'Bias'] : ['X', 'W'],
-        inputTypes: hasBias ? [TextureType.unpacked, TextureType.unpacked, TextureType.unpacked] :
-                              [TextureType.unpacked, TextureType.unpacked],
+        ...metadata,
         output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
         shaderSource,
         hasMain: true,
       };
     };
+
+export const createUnpackedGroupedConvProgramInfoLoader =
+    (inferenceHandler: WebGLInferenceHandler, inputs: readonly Tensor[], attributes: ConvAttributes):
+        ProgramInfoLoader => {
+          const metadata = createUnpackedGroupedConvProgramMetadata(inputs.length > 2, attributes.cacheKey);
+          return {
+            ...metadata,
+            get: () => createUnpackedGroupedConvProgramInfo(inferenceHandler, inputs, metadata, attributes)
+          };
+        };

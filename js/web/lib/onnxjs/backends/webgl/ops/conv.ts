@@ -1,71 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
 import {InferenceHandler} from '../../../backend';
 import {Graph} from '../../../graph';
 import {OperatorImplementation, OperatorInitialization} from '../../../operators';
 import {Tensor} from '../../../tensor';
-import {PoolConvUtil, ShapeUtil} from '../../../util';
-import {getGlsl} from '../glsl-source';
+import {PoolConvUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, TextureType} from '../types';
 
-import {createUnpackedGroupedConvProgramInfo} from './conv-grouped';
+import {createUnpackedGroupedConvProgramInfoLoader} from './conv-grouped';
 import {conv2DPacked} from './conv-pack';
-import {getActicationSnippet, InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
-import {calculateIm2ColDims, createIm2ColProgramInfo} from './im2col';
+import {createDotProductProgramInfoLoader} from './dot-product';
+import {InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
+import {createIm2ColProgramInfoLoader} from './im2col';
 
-function createDotProductProgramInfo(
-    inferenceHandler: WebGLInferenceHandler, inputs: readonly Tensor[], outputShape: number[],
-    attributes: ConvAttributes): ProgramInfo {
-  const xshape = inputs[0].dims;
-  const kshape = inputs[1].dims;
-  const adjustedKernelShape = [kshape[0], Math.ceil((xshape[1] * kshape[2] * kshape[3]) / 4)];
-  const im2colShape = calculateIm2ColDims(xshape, kshape, outputShape);
-  const [kWidth, kHeight] =
-      inferenceHandler.calculateTextureWidthAndHeight(adjustedKernelShape, TextureType.packedLastDimension);
-
-  const im2colStrides = ShapeUtil.computeStrides(im2colShape);
-  const [im2colWidth, im2colHeight] =
-      inferenceHandler.calculateTextureWidthAndHeight(im2colShape, TextureType.packedLastDimension);
-  const rank = outputShape.length;
-
-  const initValue = (inputs.length < 3) ? '0.0' : '_B(b)';
-  const sharedDim = Math.ceil(xshape[1] * kshape[2] * kshape[3] / 4);
-  const {activationFunction, applyActivation} = getActicationSnippet(attributes);
-  const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
-  const shaderSource = `
-  ${activationFunction}
-  float process(int indices[${rank}]) {
-    int b[1];
-    b[0] = indices[1];
-    int im2col[4];
-    im2col[0] = indices[0];
-    im2col[1] = indices[2];
-    im2col[2] = indices[3];
-    int im2colOffset = im2col[0] * ${im2colStrides[0]} + im2col[1] * ${im2colStrides[1]} + im2col[2] * ${
-      im2colStrides[2]};
-    int kernelOffset = indices[1] * ${adjustedKernelShape[1]};
-    float value = ${initValue};
-    for (int i = 0; i < ${sharedDim}; ++i) {
-      vec2 im2colCoords = offsetToCoords(im2colOffset, ${im2colWidth}, ${im2colHeight});
-      vec2 kernelCoords = offsetToCoords(kernelOffset, ${kWidth}, ${kHeight});
-      value += dot(${glsl.texture2D}(Im2Col, im2colCoords), ${glsl.texture2D}(K, kernelCoords));
-      ++im2colOffset;
-      ++kernelOffset;
-    }
-    ${applyActivation}
-    return value;
-  }`;
-  return {
-    name: 'ConvDotProduct',
-    inputNames: inputs.length === 3 ? ['Im2Col', 'K', 'B'] : ['Im2Col', 'K'],
-    inputTypes: inputs.length === 3 ? [TextureType.unpacked, TextureType.packedLastDimension, TextureType.unpacked] :
-                                      [TextureType.unpacked, TextureType.packedLastDimension],
-    output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
-    shaderSource
-  };
-}
 
 export const calculateOutputShape =
     (inputShape: readonly number[], kernelShape: readonly number[], dilations: readonly number[],
@@ -83,14 +32,13 @@ export const calculateOutputShape =
       return outputShape;
     };
 
-export interface ConvAttributes extends InternalActivationAttributes {
+export interface ConvAttributes extends InternalActivationAttributes, AttributeWithCacheKey {
   readonly autoPad: string;
   readonly dilations: readonly number[];
   readonly group: number;
   readonly kernelShape: readonly number[];
   readonly pads: readonly number[];
   readonly strides: readonly number[];
-  readonly cacheKey: string;
 }
 
 export const conv: OperatorImplementation<ConvAttributes> =
@@ -106,7 +54,7 @@ const conv2d: OperatorImplementation<ConvAttributes> =
       const isPointwise = adjustedAttributes.kernelShape[0] === 1 && adjustedAttributes.kernelShape[1] === 1;
       if (adjustedAttributes.group > 1) {
         const result = inferenceHandler.run(
-            createUnpackedGroupedConvProgramInfo(inferenceHandler, inputs, adjustedAttributes), inputs);
+            createUnpackedGroupedConvProgramInfoLoader(inferenceHandler, inputs, adjustedAttributes), inputs);
         return [result];
       } else if (packMode && inputs[0].dims.length === 4 && inputs[0].dims[0] === 1 && !isPointwise) {
         return [conv2DPacked(inferenceHandler, inputs, adjustedAttributes)];
@@ -122,15 +70,15 @@ export const conv2DUnpacked =
       const outputShape =
           calculateOutputShape(xshape, kshape, attributes.dilations, attributes.pads, attributes.strides);
       const xIm2Col = inferenceHandler.run(
-          createIm2ColProgramInfo(inferenceHandler, inputs[0], inputs[1], outputShape, attributes), [inputs[0]]);
+          createIm2ColProgramInfoLoader(inferenceHandler, inputs[0], inputs[1], outputShape, attributes), [inputs[0]]);
 
       const dotProductInputs = inputs.length === 3 ? [xIm2Col, inputs[1], inputs[2]] : [xIm2Col, inputs[1]];
       const output = inferenceHandler.run(
-          createDotProductProgramInfo(inferenceHandler, inputs, outputShape, attributes), dotProductInputs);
+          createDotProductProgramInfoLoader(inferenceHandler, inputs, outputShape, attributes), dotProductInputs);
       return output;
     };
 
-const getAdjustedConvAttributes = (attributes: ConvAttributes, inputs: Tensor[]): ConvAttributes => {
+const getAdjustedConvAttributes = <T extends ConvAttributes>(attributes: T, inputs: Tensor[]): T => {
   const kernelShape = attributes.kernelShape.slice();
   // if kernelShape is not specified in the attributes of this op, infer it from the weight tensor dims
   if (attributes.kernelShape.length === 0) {
@@ -143,8 +91,8 @@ const getAdjustedConvAttributes = (attributes: ConvAttributes, inputs: Tensor[])
       inputs[0].dims, attributes.strides, attributes.dilations, kernelShape, pads, attributes.autoPad);
 
   // always return a new object so does not modify the original attributes
-  const newAttributes: ConvAttributes = Object.assign({}, attributes);
-  Object.assign(newAttributes, {kernelShape, pads});
+  const newAttributes: T = Object.assign({}, attributes);
+  Object.assign(newAttributes, {kernelShape, pads, cacheKey: attributes.cacheKey});
   return newAttributes;
 };
 
@@ -158,10 +106,8 @@ export const parseConvAttributes: OperatorInitialization<ConvAttributes> = (node
   const kernelShape = attributes.getInts('kernel_shape', []);
   const pads = attributes.getInts('pads', [0, 0, 0, 0]);
   const strides = attributes.getInts('strides', [1, 1]);
-  const cacheKey =
-      `${group};${autoPad}_${pads};${dilations};${kernelShape};${strides};${activationAttributes.activationCacheKey}`;
 
-  return {autoPad, dilations, group, kernelShape, pads, strides, cacheKey, ...activationAttributes};
+  return createAttributeWithCacheKey({autoPad, dilations, group, kernelShape, pads, strides, ...activationAttributes});
 };
 
 const validateInputs = (inputs: Tensor[], attributes: ConvAttributes): void => {

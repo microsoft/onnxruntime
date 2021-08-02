@@ -41,7 +41,7 @@ export const parseInternalActivationAttributes = (attributes: Attribute): Intern
   if (activation === 'Clip') {
     const clipMax = attributes.getFloat('__clip_max', 3.402823e+38);
     const clipMin = attributes.getFloat('__clip_min', -3.402823e+38);
-    return {activation, clipMax, clipMin, activationCacheKey: `Clip_${clipMin},${clipMax}`};
+    return {activation, clipMax, clipMin, activationCacheKey: `${activation}:${clipMin},${clipMax}`};
   }
   return {activation, activationCacheKey: activation};
 };

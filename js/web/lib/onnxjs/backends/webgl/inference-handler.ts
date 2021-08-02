@@ -6,13 +6,12 @@ import {Logger} from '../../instrument';
 import {Tensor} from '../../tensor';
 import {ShapeUtil} from '../../util';
 import {packProgramInfoLoader} from './ops/pack';
-import {createPackedReshape3DProgramInfo, isReshapeCheap, processDims3D} from './ops/reshape-packed';
+import {createPackedReshape3DProgramInfoLoader, isReshapeCheap, processDims3D} from './ops/reshape-packed';
 
 import {encodeAsUint8} from './ops/uint8-encode';
 import {unpackProgramInfoLoader} from './ops/unpack';
 import {WebGLSessionHandler} from './session-handler';
 import {Encoder} from './texture-data-encoder';
-// eslint-disable-next-line max-len
 import {calculateTextureWidthAndHeight, createTextureLayoutFromShape, createTextureLayoutFromTextureType} from './texture-layout';
 import {Artifact, ProgramInfo, ProgramInfoLoader, TextureData, TextureLayout, TextureType} from './types';
 
@@ -245,7 +244,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
 
     const squeezedInputTensor = this.reshapePacked(input, squeezedInputShape);
     const squeezedOutputTensor = this.run(
-        createPackedReshape3DProgramInfo(this, squeezedInputTensor, squeezedOutputShape), [squeezedInputTensor]);
+        createPackedReshape3DProgramInfoLoader(this, squeezedInputTensor, squeezedOutputShape), [squeezedInputTensor]);
     const outputTensor = this.reshapePacked(squeezedOutputTensor, reshapedDims);
     return outputTensor;
   }
