@@ -1,13 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
 import {Graph} from '../../../graph';
 import {OperatorImplementation, OperatorInitialization} from '../../../operators';
 import {Tensor} from '../../../tensor';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, TextureType} from '../types';
+import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
 
-export interface ImageScalerAttributes {
+export interface ImageScalerAttributes extends AttributeWithCacheKey {
   scale: number;
   bias: number[];
 }
@@ -15,7 +16,8 @@ export interface ImageScalerAttributes {
 export const imageScaler: OperatorImplementation<ImageScalerAttributes> =
     (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: ImageScalerAttributes): Tensor[] => {
       validateInputs(inputs);
-      const output = inferenceHandler.run(createImageScalerProgramInfo(inferenceHandler, inputs, attributes), inputs);
+      const output =
+          inferenceHandler.run(createImageScalerProgramInfoLoader(inferenceHandler, inputs, attributes), inputs);
       return [output];
     };
 
@@ -23,30 +25,41 @@ export const parseImageScalerAttributes: OperatorInitialization<ImageScalerAttri
     (node: Graph.Node): ImageScalerAttributes => {
       const scale = node.attributes.getFloat('scale');
       const bias = node.attributes.getFloats('bias');
-      return {scale, bias};
+      return createAttributeWithCacheKey({scale, bias});
     };
 
+const imageScalerProgramMetadata = {
+  name: 'ImageScaler',
+  inputNames: ['X'],
+  inputTypes: [TextureType.unpacked],
+};
+
 const createImageScalerProgramInfo =
-    (handler: WebGLInferenceHandler, inputs: Tensor[], attributes: ImageScalerAttributes): ProgramInfo => {
-      const outputShape = inputs[0].dims.slice();
-      const rank = outputShape.length;
-      const getBiasMethod = createGetBiasMethod(attributes.bias.length);
-      const shaderSource = `
+    (handler: WebGLInferenceHandler, metadata: ProgramMetadata, inputs: Tensor[], attributes: ImageScalerAttributes):
+        ProgramInfo => {
+          const outputShape = inputs[0].dims.slice();
+          const rank = outputShape.length;
+          const getBiasMethod = createGetBiasMethod(attributes.bias.length);
+          const shaderSource = `
       ${getBiasMethod}
       float process(int indices[${rank}]) {
         return _X(indices) * scale + getBias(bias, indices[1]);
       }`;
-      return {
-        name: 'ImageScaler',
-        inputNames: ['X'],
-        inputTypes: [TextureType.unpacked],
-        output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
-        variables: [
-          {name: 'bias', type: 'float', arrayLength: attributes.bias.length, data: attributes.bias},
-          {name: 'scale', type: 'float', data: attributes.scale}
-        ],
-        shaderSource
-      };
+          return {
+            ...metadata,
+            output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
+            variables: [
+              {name: 'bias', type: 'float', arrayLength: attributes.bias.length, data: attributes.bias},
+              {name: 'scale', type: 'float', data: attributes.scale}
+            ],
+            shaderSource
+          };
+        };
+
+const createImageScalerProgramInfoLoader =
+    (handler: WebGLInferenceHandler, inputs: Tensor[], attributes: ImageScalerAttributes): ProgramInfoLoader => {
+      const metadata = {...imageScalerProgramMetadata, cacheHint: attributes.cacheKey};
+      return {...metadata, get: () => createImageScalerProgramInfo(handler, metadata, inputs, attributes)};
     };
 
 const createGetBiasMethod = (numChannels: number): string => {
