@@ -6,7 +6,7 @@ import {OperatorImplementation, OperatorInitialization} from '../../../operators
 import {Tensor} from '../../../tensor';
 import {WebGLInferenceHandler} from '../inference-handler';
 
-import {transpose} from './transpose';
+import {transpose, TransposeAttributes} from './transpose';
 
 export interface DepthToSpaceAttributes {
   mode: 'DCR'|'CRD';
@@ -38,7 +38,11 @@ export const depthToSpace: OperatorImplementation<DepthToSpaceAttributes> =
       const firstReshapedTensor = inferenceHandler.reshapeUnpacked(inputs[0], firstReshapeShape);
 
       // transpose
-      const [transposeOutput] = transpose(inferenceHandler, [firstReshapedTensor], transposePerm);
+      const transposeAttributes: TransposeAttributes = {
+        perm: transposePerm,
+        cacheKey: `${transposePerm}`
+      };
+      const [transposeOutput] = transpose(inferenceHandler, [firstReshapedTensor], transposeAttributes);
 
       // Second reshape
       const secondReshapeShape = [

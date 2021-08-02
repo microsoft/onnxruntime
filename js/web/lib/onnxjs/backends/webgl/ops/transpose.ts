@@ -8,15 +8,36 @@ import {ShapeUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, TextureType} from '../types';
 
-export const transpose: OperatorImplementation<number[]> =
-    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], perm: number[]): Tensor[] => {
+export interface TransposeAttributes {
+  perm: number[];
+  cacheKey: string;
+}
+
+const transposeProgramMetadata = {
+  name: 'Transpose',
+  inputNames: ['A'],
+  inputTypes: [TextureType.unpacked]
+};
+
+export const transpose: OperatorImplementation<TransposeAttributes> =
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: TransposeAttributes): Tensor[] => {
       validateInputs(inputs);
-      const output = inferenceHandler.run(createTransposeProgramInfo(inferenceHandler, inputs[0], perm), inputs);
+      const output = inferenceHandler.run(
+          {
+            ...transposeProgramMetadata,
+            cacheHint: attributes.cacheKey,
+            get: () => createTransposeProgramInfo(inferenceHandler, inputs[0], attributes.perm)
+          },
+          inputs);
       return [output];
     };
 
-export const parseTransposeAttributes: OperatorInitialization<number[]> = (node: Graph.Node): number[] =>
-    node.attributes.getInts('perm', []);
+export const parseTransposeAttributes: OperatorInitialization<TransposeAttributes> =
+  (node: Graph.Node): TransposeAttributes => {
+    const perm = node.attributes.getInts('perm', []);
+    const cacheKey = `${perm}`;
+    return {perm, cacheKey};
+};
 
 const createTransposeProgramInfo =
     (inferenceHandler: WebGLInferenceHandler, input: Tensor, perm: number[]): ProgramInfo => {
@@ -35,9 +56,7 @@ const createTransposeProgramInfo =
         return _A(a);
       }`;
       return {
-        name: 'Transpose',
-        inputNames: ['A'],
-        inputTypes: [TextureType.unpacked],
+        ...transposeProgramMetadata,
         output: {dims: unpackedOutputShape, type: input.type, textureType: TextureType.unpacked},
         shaderSource
       };

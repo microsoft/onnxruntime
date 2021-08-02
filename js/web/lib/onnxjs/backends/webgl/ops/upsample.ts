@@ -24,12 +24,25 @@ export interface UpsampleAttributes {
   roiInputIdx: number;
   scalesInputIdx: number;
   sizesInputIdx: number;
+  cacheKey: string;
 }
+
+const upsampleProgramMetadata = {
+  name: 'Upsample',
+  inputNames: ['X'],
+  inputTypes: [TextureType.unpacked],
+};
 
 export const upsample: OperatorImplementation<UpsampleAttributes> =
     (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: UpsampleAttributes): Tensor[] => {
       validateInputs(inputs, attributes);
-      const output = inferenceHandler.run(createUpsampleProgramInfo(inferenceHandler, inputs, attributes), inputs);
+      const output = inferenceHandler.run(
+          {
+            ...upsampleProgramMetadata,
+            cacheHint: attributes.cacheKey,
+            get: () => createUpsampleProgramInfo(inferenceHandler, inputs, attributes)
+          },
+          inputs);
       return [output];
     };
 
@@ -93,6 +106,10 @@ export const parseUpsampleAttributes = (node: Graph.Node, opset: number): Upsamp
     scalesInputIdx = 1;
   }
 
+  const cacheKey = `${opset};${isResize};${mode};${scales};${extrapolationValue}${coordinateTransformMode};` +
+    `${useExtrapolation};${needRoiInput};${nearestMode};${cubicCoefficientA};${excludeOutside};` +
+    `${useNearest2xOptimization};${roiInputIdx};${scalesInputIdx};${sizesInputIdx}`;
+
   return {
     opset,
     isResize,
@@ -108,7 +125,8 @@ export const parseUpsampleAttributes = (node: Graph.Node, opset: number): Upsamp
     useNearest2xOptimization,
     roiInputIdx,
     scalesInputIdx,
-    sizesInputIdx
+    sizesInputIdx,
+    cacheKey
   };
 };
 
@@ -279,9 +297,7 @@ const createUpsampleProgramInfo =
       return y0 + float(x_offset) * (y1 - y0) / float(scales[1]);
     }`;
       return {
-        name: 'Upsample',
-        inputNames: ['X'],
-        inputTypes: [TextureType.unpacked],
+        ...upsampleProgramMetadata,
         output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
         shaderSource,
         variables: [{

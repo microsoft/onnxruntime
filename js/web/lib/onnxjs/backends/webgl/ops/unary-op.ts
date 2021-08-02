@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Attribute} from '../../../attribute';
 import {Graph} from '../../../graph';
 import {Tensor} from '../../../tensor';
 import {FunctionType, GlslValueFunction} from '../glsl-definitions';
@@ -173,14 +172,14 @@ function glslBuiltinUnary(name: string): GlslValueFunction {
 /////
 
 const createElementwiseProgramInfo =
-    (handler: WebGLInferenceHandler, input: Tensor, glslFunc: GlslValueFunction, _attributes?: Attribute):
-        ProgramInfo => {
+    (handler: WebGLInferenceHandler, input: Tensor, glslFunc: GlslValueFunction, cacheKey?: string): ProgramInfo => {
           const textureType = handler.session.pack ? TextureType.packed : TextureType.unpacked;
           const glsl = getGlsl(handler.session.backend.glContext.version);
           return {
             name: glslFunc.name,
             inputTypes: [textureType],
             inputNames: ['A'],
+            cacheHint: cacheKey,
             output: {dims: input.dims, type: input.type, textureType},
             shaderSource: `
      ${glslFunc.body}
@@ -213,7 +212,8 @@ export const atan = (handler: WebGLInferenceHandler, inputs: Tensor[]):
 
 export const clip =
     (handler: WebGLInferenceHandler, inputs: Tensor[], attributes: ClipAttributes): Tensor[] => [handler.run(
-        createElementwiseProgramInfo(handler, inputs[0], glslClip(attributes.min, attributes.max)), inputs)];
+        createElementwiseProgramInfo(handler, inputs[0], glslClip(attributes.min, attributes.max),
+          `${attributes.min};${attributes.max}`), inputs)];
 
 export const parseClipAttributes = (node: Graph.Node): ClipAttributes => ({
   min: node.attributes.getFloat('min', -3.4028234663852886e+38),
@@ -227,7 +227,7 @@ export const cos = (handler: WebGLInferenceHandler, inputs: Tensor[]):
     Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslCos()), inputs)];
 
 export const elu = (handler: WebGLInferenceHandler, inputs: Tensor[], alpha: number):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslElu(alpha)), inputs)];
+    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslElu(alpha), `${alpha}`), inputs)];
 
 export const parseEluAttributes = (node: Graph.Node): number => node.attributes.getFloat('alpha', 1.0);
 

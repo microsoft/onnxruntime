@@ -9,30 +9,75 @@ import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, TextureType} from '../types';
 
-export const softmax: OperatorImplementation<number> =
-    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], axis: number): Tensor[] => {
+export interface SoftmaxAttributes {
+  axis: number;
+  cacheKey: string;
+}
+
+const softmaxComputeMaxProgramMetadata = {
+  name: 'SoftmaxComputeMax',
+  inputNames: ['A'],
+  inputTypes: [TextureType.unpacked],
+};
+
+const softmaxComputeScaleProgramMetadata = {
+  name: 'SoftmaxComputeScale',
+  inputNames: ['A', 'Max'],
+  inputTypes: [TextureType.unpacked, TextureType.unpacked],
+};
+
+const softmaxProgramMetadata = {
+  name: 'SoftMax',
+  inputNames: ['A', 'Max', 'Norm'],
+  inputTypes: [TextureType.unpacked, TextureType.unpacked, TextureType.unpacked],
+};
+
+export const softmax: OperatorImplementation<SoftmaxAttributes> =
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: SoftmaxAttributes): Tensor[] => {
       validateInputs(inputs);
 
       const inputShape = inputs[0].dims.slice();
-      axis = ShapeUtil.normalizeAxis(axis, inputShape.length);
+      const axis = ShapeUtil.normalizeAxis(attributes.axis, inputShape.length);
       const N = ShapeUtil.sizeToDimension(inputShape, axis);
       const D = ShapeUtil.sizeFromDimension(inputShape, axis);
 
       const computeMaxProgramInfo = createComputeMaxProgramInfo(inferenceHandler, inputs[0], N, D, [N]);
-      const max = inferenceHandler.run(computeMaxProgramInfo, inputs);
+      const max = inferenceHandler.run(
+          {
+            ...softmaxComputeMaxProgramMetadata,
+            cacheHint: attributes.cacheKey,
+            get: () => computeMaxProgramInfo
+          },
+          inputs);
 
       const computeScaleProgramInfo =
           createComputScaleProgramInfo(inferenceHandler, inputs[0], N, D, computeMaxProgramInfo.output.dims, [N]);
-      const scale = inferenceHandler.run(computeScaleProgramInfo, [inputs[0], max]);
+      const scale = inferenceHandler.run(
+          {
+            ...softmaxComputeScaleProgramMetadata,
+            cacheHint: attributes.cacheKey,
+            get: () => computeScaleProgramInfo
+          },
+          [inputs[0], max]);
 
       const softMaxProgramInfo = createSoftMaxProgramInfo(
           inferenceHandler, inputs[0], N, D, computeMaxProgramInfo.output.dims, computeScaleProgramInfo.output.dims);
-      const output = inferenceHandler.run(softMaxProgramInfo, [inputs[0], max, scale]);
+      const output = inferenceHandler.run(
+          {
+            ...softmaxProgramMetadata,
+            cacheHint: attributes.cacheKey,
+            get: () => softMaxProgramInfo
+          },
+          [inputs[0], max, scale]);
       return [output];
     };
 
-export const parseSoftmaxAttributes: OperatorInitialization<number> = (node: Graph.Node): number =>
-    node.attributes.getInt('axis', 1);
+export const parseSoftmaxAttributes: OperatorInitialization<SoftmaxAttributes> =
+  (node: Graph.Node): SoftmaxAttributes => {
+    const axis = node.attributes.getInt('axis', 1);
+    const cacheKey = `${axis}`;
+    return {axis, cacheKey};
+};
 
 /**
  * Create a texture that contains the maximum value of each of the 'N' rows
@@ -75,9 +120,7 @@ const createComputeMaxProgramInfo =
         return max;
       }`;
           return {
-            name: 'ComputeMax',
-            inputNames: ['A'],
-            inputTypes: [TextureType.unpacked],
+            ...softmaxComputeMaxProgramMetadata,
             output: {dims: outputShape, type: input.type, textureType: TextureType.unpacked},
             shaderSource
           };
@@ -130,9 +173,7 @@ const createComputScaleProgramInfo =
         return norm_factor;
       }`;
       return {
-        name: 'ComputeScale',
-        inputNames: ['A', 'Max'],
-        inputTypes: [TextureType.unpacked, TextureType.unpacked],
+        ...softmaxComputeScaleProgramMetadata,
         output: {dims: outputShape, type: input.type, textureType: TextureType.unpacked},
         shaderSource
       };
@@ -179,9 +220,7 @@ const createSoftMaxProgramInfo =
       return exp(_A(indices) - _Max(logical_row_index)) / norm_factor;
     }`;
       return {
-        name: 'SoftMax',
-        inputNames: ['A', 'Max', 'Norm'],
-        inputTypes: [TextureType.unpacked, TextureType.unpacked, TextureType.unpacked],
+        ...softmaxProgramMetadata,
         output: {dims: input.dims, type: input.type, textureType: TextureType.unpacked},
         shaderSource
       };

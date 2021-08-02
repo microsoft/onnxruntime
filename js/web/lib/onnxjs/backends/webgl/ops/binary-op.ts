@@ -185,13 +185,13 @@ function glslBuiltinBinary(fname: string): GlslValueFunction {
 
 const binaryProgramInfoLoader =
     (handler: WebGLInferenceHandler, inputs: Tensor[], glslFunc: GlslValueFunction,
-     outputTensorType: Tensor.DataType = inputs[0].type, key?: string): ProgramInfoLoader => {
+     outputTensorType: Tensor.DataType = inputs[0].type, cacheKey?: string): ProgramInfoLoader => {
       const textureType = handler.session.pack ? TextureType.packed : TextureType.unpacked;
       return {
         name: glslFunc.name,
         inputNames: ['A', 'B'],
         inputTypes: [textureType, textureType],
-        key,
+        cacheHint: cacheKey,
         get: () => createBinaryProgramInfo(handler, inputs, glslFunc, outputTensorType)
       };
     };

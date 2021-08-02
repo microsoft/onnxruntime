@@ -12,7 +12,14 @@ export interface SplitAttributes {
   axis: number;
   split: number[];
   numOutputs: number;
+  cacheKey: string;
 }
+
+const splitProgramMetadata = {
+  name: 'Split',
+  inputNames: ['A'],
+  inputTypes: [TextureType.unpacked],
+};
 
 export const split: OperatorImplementation<SplitAttributes> =
     (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: SplitAttributes): Tensor[] => {
@@ -22,8 +29,13 @@ export const split: OperatorImplementation<SplitAttributes> =
       const count = getProgramCount(inferenceHandler, inputs, axis, attributes);
       const output: Tensor[] = [];
       for (let i = 0; i < count; ++i) {
-        output.push(
-            inferenceHandler.run(createSplitProgramInfo(inferenceHandler, inputs[0], attributes, axis, i), inputs));
+        output.push(inferenceHandler.run(
+            {
+              ...splitProgramMetadata,
+              cacheHint: `${attributes.cacheKey};${i}`,
+              get: () => createSplitProgramInfo(inferenceHandler, inputs[0], attributes, axis, i)
+            },
+            inputs));
       }
 
       return output;
@@ -33,7 +45,8 @@ export const parseSplitAttributes: OperatorInitialization<SplitAttributes> = (no
   const axis = node.attributes.getInt('axis', 0);
   const split = node.attributes.getInts('split', []);
   const numOutputs = node.outputs.length;
-  return {axis, split, numOutputs};
+  const cacheKey = `${axis};${split};${numOutputs}`;
+  return {axis, split, numOutputs, cacheKey};
 };
 
 const getProgramCount =
@@ -56,9 +69,7 @@ const createSplitProgramInfo =
       }
     `;
           return {
-            name: 'Split',
-            inputNames: ['A'],
-            inputTypes: [TextureType.unpacked],
+            ...splitProgramMetadata,
             output: {dims: outputShape, type: input.type, textureType: TextureType.unpacked},
             shaderSource
           };

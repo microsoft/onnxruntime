@@ -12,12 +12,25 @@ export interface SliceAttributes {
   axes: number[];
   ends: number[];
   starts: number[];
+  cacheKey: string;
 }
+
+const sliceProgramMetadata = {
+  name: 'Slice',
+  inputNames: ['A'],
+  inputTypes: [TextureType.unpacked]
+};
 
 export const slice: OperatorImplementation<SliceAttributes> =
     (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: SliceAttributes): Tensor[] => {
       validateInputs(inputs);
-      const output = inferenceHandler.run(createSliceProgramInfo(inferenceHandler, inputs[0], attributes), inputs);
+      const output = inferenceHandler.run(
+          {
+            ...sliceProgramMetadata,
+            cacheHint: attributes.cacheKey,
+            get: () => createSliceProgramInfo(inferenceHandler, inputs[0], attributes)
+          },
+          inputs);
       return [output];
     };
 
@@ -25,7 +38,8 @@ export const parseSliceAttributes: OperatorInitialization<SliceAttributes> = (no
   const starts = node.attributes.getInts('starts');
   const ends = node.attributes.getInts('ends');
   const axes = node.attributes.getInts('axes', []);
-  return {starts, ends, axes};
+  const cacheKey = `${starts};${ends};${axes}`;
+  return {starts, ends, axes, cacheKey};
 };
 
 const createSliceProgramInfo =
@@ -64,9 +78,7 @@ const createSliceProgramInfo =
         return _A(outputIdx);
       }`;
       return {
-        name: 'Slice',
-        inputNames: ['A'],
-        inputTypes: [TextureType.unpacked],
+        ...sliceProgramMetadata,
         output: {dims: outputShape, type: input.type, textureType: TextureType.unpacked},
         shaderSource
       };
@@ -102,8 +114,9 @@ const createSliceProgramInfoV10 = (inferenceHandler: WebGLInferenceHandler, inpu
   const starts = Array.from(inputs[1].integerData);
   const ends = Array.from(inputs[2].integerData);
   const axes = inputs.length >= 4 ? Array.from(inputs[3].integerData) : [];
+  const cacheKey = '';
 
-  return createSliceProgramInfo(inferenceHandler, inputs[0], {starts, ends, axes});
+  return createSliceProgramInfo(inferenceHandler, inputs[0], {starts, ends, axes, cacheKey});
 };
 
 const validateInputsV10 = (inputs: Tensor[]): void => {
