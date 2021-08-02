@@ -107,8 +107,8 @@ export const parseUpsampleAttributes = (node: Graph.Node, opset: number): Upsamp
   }
 
   const cacheKey = `${opset};${isResize};${mode};${scales};${extrapolationValue}${coordinateTransformMode};` +
-    `${useExtrapolation};${needRoiInput};${nearestMode};${cubicCoefficientA};${excludeOutside};` +
-    `${useNearest2xOptimization};${roiInputIdx};${scalesInputIdx};${sizesInputIdx}`;
+      `${useExtrapolation};${needRoiInput};${nearestMode};${cubicCoefficientA};${excludeOutside};` +
+      `${useNearest2xOptimization};${roiInputIdx};${scalesInputIdx};${sizesInputIdx}`;
 
   return {
     opset,

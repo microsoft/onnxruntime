@@ -43,41 +43,29 @@ export const softmax: OperatorImplementation<SoftmaxAttributes> =
 
       const computeMaxProgramInfo = createComputeMaxProgramInfo(inferenceHandler, inputs[0], N, D, [N]);
       const max = inferenceHandler.run(
-          {
-            ...softmaxComputeMaxProgramMetadata,
-            cacheHint: attributes.cacheKey,
-            get: () => computeMaxProgramInfo
-          },
+          {...softmaxComputeMaxProgramMetadata, cacheHint: attributes.cacheKey, get: () => computeMaxProgramInfo},
           inputs);
 
       const computeScaleProgramInfo =
           createComputScaleProgramInfo(inferenceHandler, inputs[0], N, D, computeMaxProgramInfo.output.dims, [N]);
       const scale = inferenceHandler.run(
-          {
-            ...softmaxComputeScaleProgramMetadata,
-            cacheHint: attributes.cacheKey,
-            get: () => computeScaleProgramInfo
-          },
+          {...softmaxComputeScaleProgramMetadata, cacheHint: attributes.cacheKey, get: () => computeScaleProgramInfo},
           [inputs[0], max]);
 
       const softMaxProgramInfo = createSoftMaxProgramInfo(
           inferenceHandler, inputs[0], N, D, computeMaxProgramInfo.output.dims, computeScaleProgramInfo.output.dims);
       const output = inferenceHandler.run(
-          {
-            ...softmaxProgramMetadata,
-            cacheHint: attributes.cacheKey,
-            get: () => softMaxProgramInfo
-          },
+          {...softmaxProgramMetadata, cacheHint: attributes.cacheKey, get: () => softMaxProgramInfo},
           [inputs[0], max, scale]);
       return [output];
     };
 
 export const parseSoftmaxAttributes: OperatorInitialization<SoftmaxAttributes> =
-  (node: Graph.Node): SoftmaxAttributes => {
-    const axis = node.attributes.getInt('axis', 1);
-    const cacheKey = `${axis}`;
-    return {axis, cacheKey};
-};
+    (node: Graph.Node): SoftmaxAttributes => {
+      const axis = node.attributes.getInt('axis', 1);
+      const cacheKey = `${axis}`;
+      return {axis, cacheKey};
+    };
 
 /**
  * Create a texture that contains the maximum value of each of the 'N' rows

@@ -173,15 +173,15 @@ function glslBuiltinUnary(name: string): GlslValueFunction {
 
 const createElementwiseProgramInfo =
     (handler: WebGLInferenceHandler, input: Tensor, glslFunc: GlslValueFunction, cacheKey?: string): ProgramInfo => {
-          const textureType = handler.session.pack ? TextureType.packed : TextureType.unpacked;
-          const glsl = getGlsl(handler.session.backend.glContext.version);
-          return {
-            name: glslFunc.name,
-            inputTypes: [textureType],
-            inputNames: ['A'],
-            cacheHint: cacheKey,
-            output: {dims: input.dims, type: input.type, textureType},
-            shaderSource: `
+      const textureType = handler.session.pack ? TextureType.packed : TextureType.unpacked;
+      const glsl = getGlsl(handler.session.backend.glContext.version);
+      return {
+        name: glslFunc.name,
+        inputTypes: [textureType],
+        inputNames: ['A'],
+        cacheHint: cacheKey,
+        output: {dims: input.dims, type: input.type, textureType},
+        shaderSource: `
      ${glslFunc.body}
      void main() {
        vec4 v = ${glsl.texture2D}(A, TexCoords);
@@ -189,9 +189,9 @@ const createElementwiseProgramInfo =
        ${glsl.output} = v;
      }
      `,
-            hasMain: true
-          };
-        };
+        hasMain: true
+      };
+    };
 
 export interface ClipAttributes {
   readonly min: number;
@@ -212,8 +212,9 @@ export const atan = (handler: WebGLInferenceHandler, inputs: Tensor[]):
 
 export const clip =
     (handler: WebGLInferenceHandler, inputs: Tensor[], attributes: ClipAttributes): Tensor[] => [handler.run(
-        createElementwiseProgramInfo(handler, inputs[0], glslClip(attributes.min, attributes.max),
-          `${attributes.min};${attributes.max}`), inputs)];
+        createElementwiseProgramInfo(
+            handler, inputs[0], glslClip(attributes.min, attributes.max), `${attributes.min};${attributes.max}`),
+        inputs)];
 
 export const parseClipAttributes = (node: Graph.Node): ClipAttributes => ({
   min: node.attributes.getFloat('min', -3.4028234663852886e+38),

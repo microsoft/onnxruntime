@@ -38,10 +38,7 @@ export const depthToSpace: OperatorImplementation<DepthToSpaceAttributes> =
       const firstReshapedTensor = inferenceHandler.reshapeUnpacked(inputs[0], firstReshapeShape);
 
       // transpose
-      const transposeAttributes: TransposeAttributes = {
-        perm: transposePerm,
-        cacheKey: `${transposePerm}`
-      };
+      const transposeAttributes: TransposeAttributes = {perm: transposePerm, cacheKey: `${transposePerm}`};
       const [transposeOutput] = transpose(inferenceHandler, [firstReshapedTensor], transposeAttributes);
 
       // Second reshape

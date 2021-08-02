@@ -33,11 +33,11 @@ export const transpose: OperatorImplementation<TransposeAttributes> =
     };
 
 export const parseTransposeAttributes: OperatorInitialization<TransposeAttributes> =
-  (node: Graph.Node): TransposeAttributes => {
-    const perm = node.attributes.getInts('perm', []);
-    const cacheKey = `${perm}`;
-    return {perm, cacheKey};
-};
+    (node: Graph.Node): TransposeAttributes => {
+      const perm = node.attributes.getInts('perm', []);
+      const cacheKey = `${perm}`;
+      return {perm, cacheKey};
+    };
 
 const createTransposeProgramInfo =
     (inferenceHandler: WebGLInferenceHandler, input: Tensor, perm: number[]): ProgramInfo => {
