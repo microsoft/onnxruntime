@@ -1,28 +1,42 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
 import {Graph} from '../../../graph';
 import {OperatorImplementation, OperatorInitialization} from '../../../operators';
 import {Tensor} from '../../../tensor';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, TextureType} from '../types';
+import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
 
-import {createPackedConcatProgramInfo} from './concat-packed';
+import {createPackedConcatProgramInfoLoader} from './concat-packed';
 
-export const concat: OperatorImplementation<number> =
-    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], axis: number): Tensor[] => {
+export interface ConcatAttributes extends AttributeWithCacheKey {
+  readonly axis: number;
+}
+
+export const concat: OperatorImplementation<ConcatAttributes> =
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: ConcatAttributes): Tensor[] => {
       validateInputs(inputs);
       if (inferenceHandler.session.pack && inputs[0].dims.length > 1) {
-        const output = inferenceHandler.run(createPackedConcatProgramInfo(inferenceHandler, inputs, axis), inputs);
+        const output =
+            inferenceHandler.run(createPackedConcatProgramInfoLoader(inferenceHandler, inputs, attributes), inputs);
         return [output];
       } else {
-        const output = inferenceHandler.run(createUnpackedConcatProgramInfo(inferenceHandler, inputs, axis), inputs);
+        const output =
+            inferenceHandler.run(createUnpackedConcatProgramInfoLoader(inferenceHandler, inputs, attributes), inputs);
         return [output];
       }
     };
 
+const createUnpackedConcatProgramMetadata = (inputCount: number, cacheHint: string) => ({
+  name: 'Concat',
+  inputNames: Array.from({length: inputCount}, (v, i) => `X${i}`),
+  inputTypes: Array(inputCount).fill(TextureType.unpacked),
+  cacheHint
+});
+
 const createUnpackedConcatProgramInfo =
-    (handler: WebGLInferenceHandler, inputs: Tensor[], axis: number): ProgramInfo => {
+    (handler: WebGLInferenceHandler, metadata: ProgramMetadata, inputs: Tensor[], axis: number): ProgramInfo => {
       const inputShape = inputs[0].dims.slice();
       if (axis >= inputShape.length || axis < (-1 * inputShape.length)) {
         throw new Error('axis specified for concat doesn\'t match input dimensionality');
@@ -66,8 +80,6 @@ const createUnpackedConcatProgramInfo =
 
       const fetchDataFromCorrectTextureMethod = getFetchDataFromCorrectTextureMethod(inputs.length, rank);
       const getSizeInConcatAxisValueFromIndexMethod = getGetSizeInConcatAxisValueFromIndexMethod(sizeInConcatAxis);
-      const inputNames = inputs.map((v, i) => `X${i}`);
-      const inputTypes = new Array(inputs.length).fill(TextureType.unpacked);
       const shaderSource = `
         ${fetchDataFromCorrectTextureMethod}
         ${getSizeInConcatAxisValueFromIndexMethod}
@@ -82,12 +94,16 @@ const createUnpackedConcatProgramInfo =
           return fetchDataFromCorrectTexture(textureIndex, indices);
         }`;
       return {
-        name: 'Concat',
-        inputNames,
-        inputTypes,
+        ...metadata,
         output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
         shaderSource,
       };
+    };
+
+const createUnpackedConcatProgramInfoLoader =
+    (handler: WebGLInferenceHandler, inputs: Tensor[], attributes: ConcatAttributes): ProgramInfoLoader => {
+      const metadata = createUnpackedConcatProgramMetadata(inputs.length, attributes.cacheKey);
+      return {...metadata, get: () => createUnpackedConcatProgramInfo(handler, metadata, inputs, attributes.axis)};
     };
 
 const getTextureIndexWhereDataResidesLinearSearch = (sizeInConcatAxis: number[]): string => {
@@ -149,8 +165,8 @@ const getGetSizeInConcatAxisValueFromIndexMethod = (sizeInConcatAxis: number[]):
   return codeLines.join('\n');
 };
 
-export const parseConcatAttributes: OperatorInitialization<number> = (node: Graph.Node): number =>
-    node.attributes.getInt('axis');
+export const parseConcatAttributes: OperatorInitialization<ConcatAttributes> = (node: Graph.Node): ConcatAttributes =>
+    createAttributeWithCacheKey({axis: node.attributes.getInt('axis')});
 
 const validateInputs = (inputs: Tensor[]): void => {
   if (!inputs || inputs.length < 1) {

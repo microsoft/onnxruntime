@@ -4,13 +4,21 @@
 import {Tensor} from '../../../tensor';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, TextureType} from '../types';
+import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
 import {getCoordsDataType} from '../utils';
+import {ConcatAttributes} from './concat';
 
 import {getChannels, unpackFromChannel} from './packing-utils';
 
-export const createPackedConcatProgramInfo =
-    (handler: WebGLInferenceHandler, inputs: Tensor[], axis: number): ProgramInfo => {
+const createPackedConcatProgramMetadata = (inputCount: number, cacheHint: string) => ({
+  name: 'Concat (packed)',
+  inputNames: Array.from({length: inputCount}, (v, i) => `X${i}`),
+  inputTypes: Array(inputCount).fill(TextureType.packed),
+  cacheHint
+});
+
+const createPackedConcatProgramInfo =
+    (handler: WebGLInferenceHandler, metadata: ProgramMetadata, inputs: Tensor[], axis: number): ProgramInfo => {
       const inputShape = inputs[0].dims.slice();
       if (axis >= inputShape.length || axis < (-1 * inputShape.length)) {
         throw new Error('axis specified for concat doesn\'t match input dimensionality');
@@ -44,8 +52,6 @@ export const createPackedConcatProgramInfo =
       const allGlChannels = ['x', 'y', 'z', 'w', 'u', 'v'];
       const channels = allGlChannels.slice(0, rank);
       const offsets: number[] = new Array(shapes.length - 1);
-      const inputNames = inputs.map((v, i) => `X${i}`);
-      const inputTypes = new Array(inputs.length).fill(TextureType.packed);
 
       offsets[0] = shapes[0][axis];
       for (let i = 1; i < offsets.length; i++) {
@@ -112,15 +118,18 @@ export const createPackedConcatProgramInfo =
         `;
 
       return {
-        name: 'Concat (packed)',
-        inputNames,
-        inputTypes,
+        ...metadata,
         output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.packed},
         shaderSource,
         hasMain: true,
       };
     };
 
+export const createPackedConcatProgramInfoLoader =
+    (handler: WebGLInferenceHandler, inputs: Tensor[], attributes: ConcatAttributes): ProgramInfoLoader => {
+      const metadata = createPackedConcatProgramMetadata(inputs.length, attributes.cacheKey);
+      return {...metadata, get: () => createPackedConcatProgramInfo(handler, metadata, inputs, attributes.axis)};
+    };
 
 const getShiftedChannelsSnippet = (channels: string[], channel: string, shift: number): string => {
   const channelIdx = channels.indexOf(channel);
