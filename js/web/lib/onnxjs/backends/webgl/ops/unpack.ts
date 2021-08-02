@@ -14,10 +14,6 @@ const unpackProgramMetadata = {
   inputTypes: [TextureType.packed]
 };
 
-export const unpackProgramInfoLoader = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfoLoader =>
-    ({...unpackProgramMetadata, get: () => createUnpackProgramInfo(handler, input)});
-
-
 export const createUnpackProgramInfo = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfo => {
   const rank = input.dims.length;
 
@@ -49,7 +45,10 @@ export const createUnpackProgramInfo = (handler: WebGLInferenceHandler, input: T
   };
 };
 
-export function getSourceCoords(rank: number, dims: string[]): string {
+export const createUnpackProgramInfoLoader = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfoLoader =>
+    ({...unpackProgramMetadata, get: () => createUnpackProgramInfo(handler, input)});
+
+function getSourceCoords(rank: number, dims: string[]): string {
   if (rank === 1) {
     return 'rc';
   }

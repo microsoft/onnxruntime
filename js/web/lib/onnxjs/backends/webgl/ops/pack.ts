@@ -15,10 +15,7 @@ const packProgramMetadata = {
   inputTypes: [TextureType.unpackedReversed]
 };
 
-export const packProgramInfoLoader = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfoLoader =>
-    ({...packProgramMetadata, get: () => createPackProgramInfo(handler, input)});
-
-export const createPackProgramInfo = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfo => {
+const createPackProgramInfo = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfo => {
   const glsl = getGlsl(handler.session.backend.glContext.version);
   const inputShape = input.dims;
 
@@ -61,6 +58,9 @@ export const createPackProgramInfo = (handler: WebGLInferenceHandler, input: Ten
     shaderSource
   };
 };
+
+export const createPackProgramInfoLoader = (handler: WebGLInferenceHandler, input: Tensor): ProgramInfoLoader =>
+    ({...packProgramMetadata, get: () => createPackProgramInfo(handler, input)});
 
 /**
  * check output coordinate location and return false if it is outside input's width/height boundary
