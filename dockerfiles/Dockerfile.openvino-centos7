@@ -78,12 +78,12 @@ RUN yum update -y && \
     rpm -i /tmp/opencl/*.rpm  && \
     ldconfig  && \
     rm -rf /tmp/opencl && \
-# Installing gcc-7
+# Installing gcc-10
     yum install -y centos-release-scl && \
-    yum install -y devtoolset-7-gcc* && \
-    echo 'source scl_source enable devtoolset-7' >> ~/.bashrc && \
+    yum install -y devtoolset-10-gcc* && \
+    echo 'source scl_source enable devtoolset-10' >> ~/.bashrc && \
 # python installation
-    source scl_source enable devtoolset-7 && \
+    source scl_source enable devtoolset-10 && \
     cd /code/ && \
     wget https://www.python.org/ftp/python/3.8.3/Python-3.8.3.tgz && tar xvf Python-3.8.3.tgz && \
     cd Python-3.8*/ && ./configure && make && make install && \
