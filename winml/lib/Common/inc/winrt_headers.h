@@ -3,26 +3,6 @@
 
 #pragma once
 
-#include <SdkDdkVer.h>
-
-#if WINVER < _WIN32_WINNT_WIN8 && !defined(WINRT_WIN7_WORKAROUND)
-#define WINRT_WIN7_WORKAROUND
-// Workaround broken WinRT headers using Windows 8 functions unconditionally, even when targeting older releases of Windows
-namespace {
-    inline int RoTransformError(int, int, void *) {
-        return 0;
-    }
-
-    inline int RoOriginateError(int, void *) {
-        return 0;
-    }
-
-    inline int SetRestrictedErrorInfo(void *) {
-        return 0x80004001;
-    }
-}
-#endif
-
 #include "common.h"
 
 #include "winrt/windows.media.h"
