@@ -1325,7 +1325,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
 
   if (num_src_node_inputs == 1) {  // without bias
     return std::vector<NodeDef>{
-        NodeDef(OpDef{"FastGeluGrad", kMSDomain, 1},
+        NodeDef(OpDef{"FastGeluGrad", kMSDomain, 1},   v
                 {dY, X},
                 {dX})};
   }
@@ -1333,7 +1333,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetFastGeluGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetLayerNormalizationGradient) {
-  if (GetGradientGraphConfiguration().use_invertible_layernorm_grad) {
+  if (use_invertible) {
     return std::vector<NodeDef>{
         NodeDef(OpDef{"InvertibleLayerNormalizationGrad", kMSDomain, 1},
                 {GO(0), O(0), I(1), I(2), O(2)},

@@ -44,13 +44,15 @@ class GradientBuilderBase {
                       const Node* node,
                       const std::unordered_set<std::string>& gradient_inputs,
                       const std::unordered_set<std::string>& gradient_outputs,
-                      const logging::Logger& logger)
+                      const logging::Logger& logger,
+                      const bool use_invertible)
       : gradient_graph_config_(gradient_graph_config),
         graph_(graph),
         node_(node),
         gradient_inputs_(gradient_inputs),
         gradient_outputs_(gradient_outputs),
-        logger_(logger) {
+        logger_(logger),
+        use_invertible_(use_invertible) {
     unique_node_prefix_ = CreateUniqueNodePrefix();
   }
 
@@ -325,6 +327,8 @@ class GradientBuilderBase {
   std::unordered_set<std::string> gradient_outputs_;
 
   const logging::Logger& logger_;
+
+  const bool use_invertible_;
 };
 
 class EmptyGradientBuilder : public GradientBuilderBase {
