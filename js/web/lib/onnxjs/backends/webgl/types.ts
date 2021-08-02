@@ -160,6 +160,3 @@ export declare namespace Artifact {
 export interface UniformData {
   [name: string]: number|number[];
 }
-
-const a = () => 1;
-a.x = 1;

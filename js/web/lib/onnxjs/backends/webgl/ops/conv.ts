@@ -90,6 +90,7 @@ export interface ConvAttributes extends InternalActivationAttributes {
   readonly kernelShape: readonly number[];
   readonly pads: readonly number[];
   readonly strides: readonly number[];
+  readonly cacheKey: string;
 }
 
 export const conv: OperatorImplementation<ConvAttributes> =
@@ -149,16 +150,18 @@ const getAdjustedConvAttributes = (attributes: ConvAttributes, inputs: Tensor[])
 
 export const parseConvAttributes: OperatorInitialization<ConvAttributes> = (node: Graph.Node): ConvAttributes => {
   const attributes = node.attributes;
+  const activationAttributes = parseInternalActivationAttributes(attributes);
   // TODO : Make this generic enough to compute default attributes for multi-dimensional conv
-  return {
-    autoPad: attributes.getString('auto_pad', 'NOTSET'),
-    dilations: attributes.getInts('dilations', [1, 1]),
-    group: attributes.getInt('group', 1),
-    kernelShape: attributes.getInts('kernel_shape', []),
-    pads: attributes.getInts('pads', [0, 0, 0, 0]),
-    strides: attributes.getInts('strides', [1, 1]),
-    ...parseInternalActivationAttributes(attributes)
-  };
+  const autoPad = attributes.getString('auto_pad', 'NOTSET');
+  const dilations = attributes.getInts('dilations', [1, 1]);
+  const group = attributes.getInt('group', 1);
+  const kernelShape = attributes.getInts('kernel_shape', []);
+  const pads = attributes.getInts('pads', [0, 0, 0, 0]);
+  const strides = attributes.getInts('strides', [1, 1]);
+  const cacheKey =
+      `${group};${autoPad}_${pads};${dilations};${kernelShape};${strides};${activationAttributes.activationCacheKey}`;
+
+  return {autoPad, dilations, group, kernelShape, pads, strides, cacheKey, ...activationAttributes};
 };
 
 const validateInputs = (inputs: Tensor[], attributes: ConvAttributes): void => {

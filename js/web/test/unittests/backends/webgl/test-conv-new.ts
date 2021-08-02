@@ -28,33 +28,33 @@ interface TestData {
 }
 function getTestData(): TestData[] {
   return [
-    {
-      inputShape: [1, 3, 416, 416],
-      kernelShape: [64, 3, 3, 3],
-      biasShape: [],
-      autoPad: 'SAME_UPPER',
-      dilations: [1, 1],
-      strides: [1, 1],
-      group: 1
-    },
-    {
-      inputShape: [1, 3, 224, 224],
-      kernelShape: [64, 3, 3, 3],
-      biasShape: [64],
-      pads: [0, 0, 0, 0],
-      dilations: [1, 1],
-      strides: [2, 2],
-      group: 1
-    },
-    {
-      inputShape: [1, 64, 55, 55],
-      kernelShape: [16, 64, 1, 1],
-      biasShape: [16],
-      pads: [0, 0, 0, 0],
-      dilations: [1, 1],
-      strides: [1, 1],
-      group: 1
-    },
+    // {
+    //   inputShape: [1, 3, 416, 416],
+    //   kernelShape: [64, 3, 3, 3],
+    //   biasShape: [],
+    //   autoPad: 'SAME_UPPER',
+    //   dilations: [1, 1],
+    //   strides: [1, 1],
+    //   group: 1
+    // },
+    // {
+    //   inputShape: [1, 3, 224, 224],
+    //   kernelShape: [64, 3, 3, 3],
+    //   biasShape: [64],
+    //   pads: [0, 0, 0, 0],
+    //   dilations: [1, 1],
+    //   strides: [2, 2],
+    //   group: 1
+    // },
+    // {
+    //   inputShape: [1, 64, 55, 55],
+    //   kernelShape: [16, 64, 1, 1],
+    //   biasShape: [16],
+    //   pads: [0, 0, 0, 0],
+    //   dilations: [1, 1],
+    //   strides: [1, 1],
+    //   group: 1
+    // },
     // {
     //   inputShape: [1, 16, 55, 55],
     //   kernelShape: [64, 16, 1, 1],
@@ -271,24 +271,24 @@ function getTestData(): TestData[] {
     //   strides: [1, 1],
     //   group: 1
     // },
-    {
-      inputShape: [1, 3, 7, 7],
-      kernelShape: [8, 3, 3, 3],
-      biasShape: [],
-      pads: [1, 1, 1, 1],
-      dilations: [1, 1],
-      strides: [1, 1],
-      group: 1
-    },
-    {
-      inputShape: [1, 2, 3, 3],
-      kernelShape: [4, 2, 1, 1],
-      biasShape: [],
-      pads: [0, 0, 0, 0],
-      dilations: [1, 1],
-      strides: [1, 1],
-      group: 1
-    },
+    // {
+    //   inputShape: [1, 3, 7, 7],
+    //   kernelShape: [8, 3, 3, 3],
+    //   biasShape: [],
+    //   pads: [1, 1, 1, 1],
+    //   dilations: [1, 1],
+    //   strides: [1, 1],
+    //   group: 1
+    // },
+    // {
+    //   inputShape: [1, 2, 3, 3],
+    //   kernelShape: [4, 2, 1, 1],
+    //   biasShape: [],
+    //   pads: [0, 0, 0, 0],
+    //   dilations: [1, 1],
+    //   strides: [1, 1],
+    //   group: 1
+    // },
     {
       inputShape: [1, 3, 224, 224],
       kernelShape: [64, 3, 7, 7],

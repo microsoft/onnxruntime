@@ -70,6 +70,7 @@ const createSplitProgramInfo =
     `;
           return {
             ...splitProgramMetadata,
+            cacheHint: `${attributes.cacheKey}:${index}`,
             output: {dims: outputShape, type: input.type, textureType: TextureType.unpacked},
             shaderSource
           };
