@@ -345,6 +345,46 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "553df22c67bee5f0fe6599cff60f1afc6748c635",
+          "repositoryUrl": "https://github.com/onnx/onnx.git"
+        },
+        "comments": "git submodule at cmake/external/onnx-tensorrt/third_party/onnx"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "e776aa0275e293707b6a0901e0e8d8a8a3679508",
+          "repositoryUrl": "https://github.com/google/benchmark.git"
+        },
+        "comments": "git submodule at cmake/external/onnx-tensorrt/third_party/onnx/third_party/benchmark"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "09f082940113661256310e3f4811aa7261a9fa05",
+          "repositoryUrl": "https://github.com/pybind/pybind11.git"
+        },
+        "comments": "git submodule at cmake/external/onnx-tensorrt/third_party/onnx/third_party/pybind11"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "6a00cbc4a9b8e68b71caf7f774b3f9c753ae84d5",
+          "repositoryUrl": "https://github.com/wjakob/clang-cindex-python3"
+        },
+        "comments": "git submodule at cmake/external/onnx-tensorrt/third_party/onnx/third_party/pybind11/tools/clang"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "b708aeaaf44416bba84b87206fb550196fc60d5a",
           "repositoryUrl": "https://github.com/microsoft/onnxruntime-extensions.git"
         },
