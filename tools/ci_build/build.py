@@ -782,8 +782,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_USE_CUDA", "ON")
         add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_CUDA_VERSION", args.cuda_version)
         # TODO: this variable is not really needed
-        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_CUDA_HOME", args.cuda_home)
-        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_CUDNN_HOME", args.cudnn_home)
+        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_CUDA_HOME", cuda_home)
+        add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_CUDNN_HOME", cudnn_home)
 
     if is_windows():
         if args.enable_msvc_static_runtime:
