@@ -156,6 +156,9 @@ option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
 # option to enable custom operators in onnxruntime-extensions
 option(onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS "Enable custom operators in onnxruntime-extensions" OFF)
 
+# pre-build python path
+option(prebuilt_PYTORCH_PATH "Path to pytorch installation dir")
+
 # Single output director for all binaries
 set (RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
 
@@ -1647,6 +1650,7 @@ endif()
 #names in this var must match the directory names under onnxruntime/core/providers
 set(ONNXRUNTIME_TARGETS onnxruntime_common onnxruntime_graph onnxruntime_framework onnxruntime_util onnxruntime_providers onnxruntime_optimizer onnxruntime_session onnxruntime_mlas onnxruntime_flatbuffers)
 if(onnxruntime_ENABLE_EAGER_MODE)
+  add_compile_definitions(ENABLE_EAGER_MODE)
   list(APPEND ONNXRUNTIME_TARGETS onnxruntime_eager)
 endif()
 foreach(target_name ${ONNXRUNTIME_TARGETS})
