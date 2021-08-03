@@ -33,7 +33,7 @@
 #include "orttraining/core/framework/torch/refcount_tracker.h"
 #endif
 #endif
-#if defined(USE_CUDA) && defined(ORT_USE_NCCL)
+#if defined(ORT_USE_NCCL)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #endif
@@ -135,6 +135,8 @@ struct Node__EdgeIterator_Impl : Node__EdgeIterator {
 // wrapped = The internal object is exposed as an opaque pointer, so we wrap it in a class that forwards every call to the real calls. No members are ever directly accessed
 // direct = Same implementation is used for shared providers & core code, but some of the methods need to be routed through here to make the linker happy
 struct ProviderHostImpl : ProviderHost {
+  const OrtApiBase* OrtGetApiBase() override { return ::OrtGetApiBase(); }
+
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
   void HeapFree(void* p) override { delete[] reinterpret_cast<uint8_t*>(p); }
 
@@ -163,6 +165,9 @@ struct ProviderHostImpl : ProviderHost {
 
   void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }
   void cuda__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }
+
+  void cuda__Impl_Cast(void* stream, const double* input_data, float* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }
+  void cuda__Impl_Cast(void* stream, const float* input_data, double* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }
 
   bool CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_false(retCode, exprString, libName, successCode, msg); }
   bool CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg) override { return GetProviderInfo_CUDA().CudaCall_true(retCode, exprString, libName, successCode, msg); }
@@ -673,7 +678,7 @@ struct ProviderHostImpl : ProviderHost {
 
   const std::vector<const NodeArg*>& GraphViewer__GetInputs(const GraphViewer* p) noexcept override { return p->GetInputs(); }
   const std::vector<const NodeArg*>& GraphViewer__GetOutputs(const GraphViewer* p) noexcept override { return p->GetOutputs(); }
-  const std::vector<const NodeArg*>& GraphViewer__GetValueInfo(const GraphViewer* p) noexcept override { return p->GetValueInfo(); }
+  const std::unordered_set<const NodeArg*>& GraphViewer__GetValueInfo(const GraphViewer* p) noexcept override { return p->GetValueInfo(); }
 
   const InitializedTensorSet& GraphViewer__GetAllInitializedTensors(const GraphViewer* p) override { return p->GetAllInitializedTensors(); }
   bool GraphViewer__GetInitializedTensor(const GraphViewer* p, const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) override { return p->GetInitializedTensor(tensor_name, value); }
@@ -809,13 +814,13 @@ struct ProviderHostImpl : ProviderHost {
   void AllocatorManager__InsertAllocator(AllocatorManager* p, AllocatorPtr allocator) override { p->AllocatorManager::InsertAllocator(allocator); }
   AllocatorPtr AllocatorManager__GetAllocator(const AllocatorManager* p, int id, OrtMemType mem_type) override { return p->AllocatorManager::GetAllocator(id, mem_type); };
 
-#ifdef USE_CUDA
-
-  PhiloxGenerator& PhiloxGenerator__Default() override { return PhiloxGenerator::Default(); }
-
 #if defined(ENABLE_TRAINING) && defined(ORT_USE_NCCL)
   training::DistributedRunContext& GetDistributedRunContextInstance() override { return training::DistributedRunContext::GetInstance(); }
 #endif
+
+#ifdef USE_CUDA
+
+  PhiloxGenerator& PhiloxGenerator__Default() override { return PhiloxGenerator::Default(); }
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
   void contrib__PythonOpBase__Init(contrib::PythonOpBase* p, const OpKernelInfo& info) override { p->PythonOpBase::Init(info); }

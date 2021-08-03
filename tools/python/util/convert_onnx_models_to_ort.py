@@ -5,6 +5,7 @@ import argparse
 import os
 import pathlib
 import typing
+import sys
 
 import onnxruntime as ort
 from .ort_format_model import create_config_from_models
@@ -52,7 +53,7 @@ def _create_session_options(optimization_level: ort.GraphOptimizationLevel,
     return so
 
 
-def _convert(model_path_or_dir: pathlib.Path, optimization_level_str: str, use_nnapi: bool,
+def _convert(model_path_or_dir: pathlib.Path, optimization_level_str: str, use_nnapi: bool, use_coreml: bool,
              custom_op_library: pathlib.Path, create_optimized_onnx_model: bool):
 
     optimization_level = _get_optimization_level(optimization_level_str)
@@ -73,6 +74,9 @@ def _convert(model_path_or_dir: pathlib.Path, optimization_level_str: str, use_n
     if use_nnapi:
         # providers are priority based, so register NNAPI first
         providers.insert(0, 'NnapiExecutionProvider')
+    if use_coreml:
+        # providers are priority based, so register CoreML first
+        providers.insert(0, 'CoreMLExecutionProvider')
 
     # if the optimization level is 'all' we manually exclude the NCHWc transformer. It's not applicable to ARM
     # devices, and creates a device specific model which won't run on all hardware.
@@ -140,6 +144,10 @@ def _get_optimization_level(level):
     raise ValueError('Invalid optimization level of ' + level)
 
 
+def is_macOS():
+    return sys.platform.startswith("darwin")
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         os.path.basename(__file__),
@@ -156,6 +164,12 @@ def parse_args():
                         help='Enable the NNAPI Execution Provider when creating models and determining required '
                              'operators. Note that this will limit the optimizations possible on nodes that the '
                              'NNAPI execution provider takes, in order to preserve those nodes in the ORT format '
+                             'model.')
+
+    parser.add_argument('--use_coreml', action='store_true',
+                        help='Enable the CoreML Execution Provider when creating models and determining required '
+                             'operators. Note that this will limit the optimizations possible on nodes that the '
+                             'CoreML execution provider takes, in order to preserve those nodes in the ORT format '
                              'model.')
 
     parser.add_argument('--optimization_level', default='all',
@@ -200,7 +214,14 @@ def convert_onnx_models_to_ort():
     if args.use_nnapi and 'NnapiExecutionProvider' not in ort.get_available_providers():
         raise ValueError('The NNAPI Execution Provider was not included in this build of ONNX Runtime.')
 
-    _convert(model_path_or_dir, args.optimization_level, args.use_nnapi, custom_op_library,
+    if args.use_coreml:
+        if not is_macOS():
+            # Check if the script is run on a Mac Device in this case
+            raise ValueError('--use_coreml option requires a MacOS environment.')
+        if 'CoreMLExecutionProvider' not in ort.get_available_providers():
+            raise ValueError('The CoreML Execution Provider was not included in this build of ONNX Runtime.')
+
+    _convert(model_path_or_dir, args.optimization_level, args.use_nnapi, args.use_coreml, custom_op_library,
              args.save_optimized_onnx_model)
 
     _create_config_file_from_ort_models(model_path_or_dir, args.optimization_level, args.enable_type_reduction)

@@ -189,7 +189,7 @@ template <typename T>
 struct EinsumTypedComputeProcessor;
 
 namespace contrib {
-class ATenOpBase;
+class ATenOp;
 class Group;
 class PassThrough;
 class YieldOp;

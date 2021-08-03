@@ -68,9 +68,6 @@
 [submodule "cmake/external/coremltools"]
 	path = cmake/external/coremltools
 	url = https://github.com/apple/coremltools.git
-[submodule "cmake/external/onnx-tensorrt"]
-	path = cmake/external/onnx-tensorrt
-	url = https://github.com/onnx/onnx-tensorrt.git
 [submodule "cmake/external/dlpack"]
 	path = cmake/external/dlpack
 	url = https://github.com/dmlc/dlpack.git
@@ -86,3 +83,6 @@
 	path = cmake/external/pytorch_cpuinfo
 	url = https://github.com/pytorch/cpuinfo.git
 
+[submodule "cmake/external/onnx-tensorrt"]
+	path = cmake/external/onnx-tensorrt
+	url = https://github.com/onnx/onnx-tensorrt.git

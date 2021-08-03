@@ -536,9 +536,7 @@ Status Scan<9>::SetupSubgraphExecutionInfo(const SessionState& session_state, co
 
 #ifdef ENABLE_TRAINING
 namespace contrib {
-void ATenOpBase::Init(const OpKernelInfo& info, bool is_backward) { return g_host_cpu.ATenOpBase__Init(this, info, is_backward); }
-Status ATenOpBase::Compute(OpKernelContext* p_ctx) const { return g_host_cpu.ATenOpBase__Compute(this, p_ctx); }
-
+Status ATenOp::Compute(OpKernelContext* p_ctx) const { return g_host_cpu.ATenOp__Compute(this, p_ctx); }
 Status Group::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__Group__Compute(this, context); }
 Status PassThrough::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__PassThrough__Compute(this, context); }
 Status YieldOp::Compute(OpKernelContext* context) const { return g_host_cpu.contrib__YieldOp__Compute(this, context); }

@@ -25,6 +25,7 @@
 #include "core/platform/env.h"
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/provider_bridge_ort.h"
 
 #ifdef ENABLE_TRAINING
@@ -658,11 +659,18 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #if !defined(__ANDROID__)
       LOGS_DEFAULT(WARNING) << "NNAPI execution provider can only be used to generate ORT format model in this build.";
 #endif
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nnapi(0));
+      const auto partitioning_stop_ops_list = sess->GetSessionOptions().config_options.GetConfigEntry(
+          kOrtSessionOptionsConfigNnapiEpPartitioningStopOps);
+      RegisterExecutionProvider(
+          sess, *onnxruntime::CreateExecutionProviderFactory_Nnapi(0, partitioning_stop_ops_list));
 #endif
     } else if (type == kRknpuExecutionProvider) {
 #ifdef USE_RKNPU
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Rknpu());
+#endif
+    } else if (type == kCoreMLExecutionProvider) {
+#if defined(USE_COREML)
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CoreML(0));
 #endif
     } else {
       // check whether it is a dynamic load EP:
@@ -829,13 +837,16 @@ void addGlobalMethods(py::module& m, Environment& env) {
       });
 
 #ifdef ENABLE_TRAINING
-  m.def(
-      "register_aten_op_executor", [](const std::string& aten_op_executor_address_str) -> void {
-        size_t aten_op_executor_address_int;
-        ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
-        void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
-        contrib::aten_ops::ATenOperatorExecutor::Initialize(p_aten_op_executor);
-      });
+  m.def("register_aten_op_executor",
+        [](const std::string& is_tensor_argument_address_str, const std::string& aten_op_executor_address_str) -> void {
+          size_t is_tensor_argument_address_int, aten_op_executor_address_int;
+          ORT_THROW_IF_ERROR(
+              ParseStringWithClassicLocale(is_tensor_argument_address_str, is_tensor_argument_address_int));
+          ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(aten_op_executor_address_str, aten_op_executor_address_int));
+          void* p_is_tensor_argument = reinterpret_cast<void*>(is_tensor_argument_address_int);
+          void* p_aten_op_executor = reinterpret_cast<void*>(aten_op_executor_address_int);
+          contrib::aten_ops::ATenOperatorExecutor::Initialize(p_is_tensor_argument, p_aten_op_executor);
+        });
   m.def("register_forward_runner", [](py::object obj) -> void {
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
     auto& pool = onnxruntime::language_interop_ops::torch::OrtTorchFunctionPool::GetInstance();
