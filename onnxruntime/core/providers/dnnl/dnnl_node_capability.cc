@@ -127,12 +127,12 @@ bool DnnlMatMulNodeCapability::IsDimensionSupported(const Node* node) const {
   if ((node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() >= 2) &&
       (node_inputs[1]->Shape() != nullptr && node_inputs[1]->Shape()->dim_size() >= 2) &&
       (node_inputs[0]->Shape()->dim_size() == node_inputs[1]->Shape()->dim_size())) {
-    for (const onnx::TensorShapeProto_Dimension& dim : node_inputs[0]->Shape()->dim()) {
+    for (const auto& dim : node_inputs[0]->Shape()->dim()) {
       if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
         return false;
       }
     }
-    for (const onnx::TensorShapeProto_Dimension& dim : node_inputs[1]->Shape()->dim()) {
+    for (const auto& dim : node_inputs[1]->Shape()->dim()) {
       if (utils::HasDimValue(dim) && dim.dim_value() == 0) {
         return false;
       }
