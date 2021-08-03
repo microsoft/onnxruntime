@@ -51,6 +51,8 @@ std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const O
 #ifdef USE_TENSORRT
   if (auto factory = CreateExecutionProviderFactory_Tensorrt(params))
     return factory->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(params);
 #endif
   return nullptr;
 }
