@@ -114,61 +114,144 @@ void ComputeSkipLayerNorm(int64_t hidden_size,
   }
 }
 
+// TODO(kreeger): replace this with the MlasVectorDotProduct call.
 template <typename T>
-void ComputeMatMul(const int64_t sequence_size,
-                   concurrency::ThreadPool* thread_pool,
-                   MatMulComputeHelper& helper,
-                   bool trans_a,
-                   bool trans_b,
-                   bool is_packed,
-                   const T* a_data,
-                   const T* b_data,
-                   const BufferUniquePtr& packed_b,
-                   T* output_data) {
-  const size_t max_len = helper.OutputOffsets().size();
-  const size_t M = static_cast<size_t>(helper.M()) / sequence_size;
-  const size_t N = static_cast<size_t>(helper.N());
-  const size_t K = static_cast<size_t>(helper.K());
-  const size_t lda = static_cast<int>(trans_a ? M : K);
-  const size_t ldb = static_cast<int>(trans_b ? K : N);
-
-  // TODO(kreeger): Move this stuff down into the ::Compute() block.
-  MLAS_SGEMM_DATA_PARAMS data;
-  data.BIsPacked = is_packed;
-  data.A = a_data + helper.LeftOffsets()[0];
-  data.lda = lda;
-  data.B = is_packed ? static_cast<float*>(packed_b.get())
-                     : b_data + helper.RightOffsets()[0];
-  data.ldb = ldb;
-  data.C = output_data + helper.OutputOffsets()[0];
-  data.ldc = N;
-  //data.alpha = alpha_attr_;  // TODO - fix this!
-  data.beta = 0.0f;
-
-  // TODO - can't actually call nested stuff here!
-  // TODO( Handle CblasTrans from matmul impl!
-  MlasGemm(CblasNoTrans,
-           CblasNoTrans,
-           M,
-           N,
-           K,
-           data,
-           thread_pool);
-}
-
-// TODO - this is really a vector dot product...
-template <typename T>
-void ComputeMatMulSlow(const int64_t a,
-                       const int64_t b,
-                       const T* a_data,
-                       const T* b_data,
-                       T* output_data) {
+void VectorDotProductSlow(const int64_t a,
+                          const int64_t b,
+                          const T* a_data,
+                          const T* b_data,
+                          T* output_data) {
   for (int64_t i = 0; i < b; ++i) {
     T sum = 0;
     for (int64_t j = 0; j < a; ++j) {
       sum += a_data[j] * b_data[i + (b * j)];
     }
     output_data[i] = sum;
+  }
+}
+
+// TODO(kreeger): It might make sense to collapse the in-params into a
+//                context-struct.
+template <typename T>
+void ComputeBatchFused(ptrdiff_t task_idx,
+                       const int64_t bias_size,
+                       const int64_t hidden_size,
+                       float epsilon,
+                       const T* input_data,
+                       const T* skip_data,
+                       const T* gamma_data,
+                       const T* beta_data,
+                       const T* bias_data,
+                       const T* matmul_1_b_data,
+                       T* matmul_1_output,
+                       const T* bias_gelu_bias_data,
+                       T* bias_gelu_output,
+                       const T* matmul_2_b_data,
+                       T* skip_layer_norm_output_data,
+                       T* output_data) {
+  // TODO(kreeger): Add some ASCII art to help with the breakup of this
+  //                work as it filters through the graph.
+
+  // First, calculate the SkipLayerNorm output for the current task
+  ComputeSkipLayerNorm(hidden_size,
+                       epsilon,
+                       input_data + (task_idx * hidden_size),
+                       skip_data + (task_idx * hidden_size),
+                       gamma_data,
+                       beta_data,
+                       bias_data,
+                       skip_layer_norm_output_data + (task_idx * hidden_size));
+
+  // Now perform MatMul on the 1 row that was calculated in the call to
+  // ComputeSkipLayerNorm():
+  // TODO(kreeger): rename this var:
+  size_t offset = task_idx * bias_size;
+  VectorDotProductSlow(hidden_size,
+                       bias_size,
+                       skip_layer_norm_output_data + (task_idx * hidden_size),
+                       matmul_1_b_data,
+                       matmul_1_output + offset);
+
+  // Use the row calculated in the MatMul #1 and pass through for BiasGelu
+  // calculation:
+  ComputeBiasGelu(bias_size,
+                  matmul_1_output + offset,
+                  bias_gelu_bias_data,
+                  bias_gelu_output + offset);
+
+  // Finally, perform one more MatMul on the row calculated at the start
+  // of this batch:
+  VectorDotProductSlow(bias_size,
+                       hidden_size,
+                       bias_gelu_output + offset,
+                       matmul_2_b_data,
+                       output_data + (task_idx * hidden_size));
+}
+
+template <typename T>
+void ComputeFusedNew(ptrdiff_t task_idx,
+                     const int64_t bias_size,
+                     const int64_t hidden_size,
+                     float epsilon,
+                     const T* input_data,
+                     const T* skip_data,
+                     const T* gamma_data,
+                     const T* beta_data,
+                     const T* bias_data,
+                     const T* matmul_1_b_data,
+                     T* matmul_1_output,
+                     const T* bias_gelu_bias_data,
+                     T* bias_gelu_output,
+                     const T* matmul_2_b_data,
+                     T* skip_layer_norm_output_data,
+                     T* output_data) {
+  //
+  // TODO(kreeger): LEFT OFF RIGHT HERE. Fuse as much into a single loop as
+  //                possible.
+  //
+  size_t offset = task_idx * bias_size;
+
+  // SLN
+  const T* cur_input_data = input_data + (task_idx * hidden_size);
+  const T* cur_skip_data = skip_data + (task_idx * hidden_size);
+  T* cur_output_data = skip_layer_norm_output_data + (task_idx * hidden_size);
+
+  T mean = 0;
+  T mean_square = 0;
+
+  for (int64_t i = 0; i < hidden_size; ++i) {
+    T value = cur_input_data[i] + cur_skip_data[i];
+    if (bias_data != nullptr) {
+      value += bias_data[i];
+
+      cur_output_data[i] = value;
+      mean += value;
+      mean_square += value * value;
+    }
+  }
+
+  mean = mean / hidden_size;
+  mean_square = sqrt(mean_square / hidden_size - mean * mean + epsilon);
+
+  for (int64_t i = 0; i < hidden_size; ++i) {
+    if (beta_data == nullptr) {
+      cur_output_data[i] =
+          (cur_output_data[i] - mean) / mean_square * gamma_data[i];
+    } else {
+      cur_output_data[i] =
+          (cur_output_data[i] - mean) / mean_square * gamma_data[i] + beta_data[i];
+    }
+
+    // Now that |cur_output_data[i]| is ready, compute the matmul and BiasGelu?
+    // What is that value????
+
+    // This block gets very slow now.
+    // This is right where I left off last night.
+    const T* cur_matmul_1_b_data = matmul_1_b_data + (i * hidden_size);
+    T* cur_matmul_1_output = matmul_1_output;
+    for (int64_t j = 0; j < bias_size; ++j) {
+      cur_matmul_1_output[j] += cur_output_data[i] * cur_matmul_1_b_data[j];
+    }
   }
 }
 
@@ -215,67 +298,6 @@ template <typename T>
 EmbedLayerNormBiasGelu<T>::EmbedLayerNormBiasGelu(
     const OpKernelInfo& op_kernel_info)
     : EmbedLayerNormBase(op_kernel_info) {}
-
-// TODO - handle hybrid types or stick to float?
-template <typename T>
-Status EmbedLayerNormBiasGelu<T>::PrePack(
-    const Tensor& tensor,
-    int input_idx,
-    AllocatorPtr alloc,
-    /*out*/ bool& is_packed,
-    /*out*/ PrePackedWeights* prepacked_weights) {
-  is_packed = false;
-
-  // Only pack Matrix 'B' of both matmuls:
-  //if (input_idx == 5) {
-  //  size_t packed_matmul_1_b_size;
-  //  is_packed = GemmPackBFp32(alloc,
-  //                            tensor,
-  //                            false /* matmul_1_trans_b_attr_*/,
-  //                            matmul_1_packed_b_,
-  //                            packed_matmul_1_b_size,
-  //                            matmul_1_b_shape_);
-  //  if (is_packed && (prepacked_weights != nullptr)) {
-  //    // Handle shared pre-packed weights:
-  //    prepacked_weights->buffers_.push_back(std::move(matmul_1_packed_b_));
-  //    prepacked_weights->buffer_sizes_.push_back(packed_matmul_1_b_size);
-  //  }
-  //} else if (input_idx == 7) {
-  //  size_t packed_matmul_2_b_size;
-  //  is_packed = GemmPackBFp32(alloc,
-  //                            tensor,
-  //                            false /* matmul_1_trans_b_attr_*/,
-  //                            matmul_2_packed_b_,
-  //                            packed_matmul_2_b_size,
-  //                            matmul_2_b_shape_);
-  //  if (is_packed && (prepacked_weights != nullptr)) {
-  //    // Handle shared pre-packed weights:
-  //    prepacked_weights->buffers_.push_back(std::move(matmul_2_packed_b_));
-  //    prepacked_weights->buffer_sizes_.push_back(packed_matmul_2_b_size);
-  //  }
-  //}
-
-  return Status::OK();
-}
-
-// TODO - handle hybrid types or stick to float?
-template <typename T>
-Status EmbedLayerNormBiasGelu<T>::UseSharedPrePackedBuffers(
-    std::vector<BufferUniquePtr>& prepacked_buffers,
-    int input_idx,
-    /*out*/ bool& used_shared_buffers) {
-  used_shared_buffers = false;
-
-  if (input_idx == 5) {
-    used_shared_buffers = true;
-    matmul_1_packed_b_ = std::move(prepacked_buffers[0]);
-  } else if (input_idx == 7) {
-    used_shared_buffers = true;
-    matmul_2_packed_b_ = std::move(prepacked_buffers[0]);
-  }
-
-  return Status::OK();
-}
 
 template <typename T>
 Status EmbedLayerNormBiasGelu<T>::Compute(OpKernelContext* context) const {
@@ -375,63 +397,41 @@ Status EmbedLayerNormBiasGelu<T>::Compute(OpKernelContext* context) const {
   concurrency::ThreadPool::TryBatchParallelFor(
       context->GetOperatorThreadPool(), static_cast<int32_t>(task_count),
       [&](ptrdiff_t task_idx) {
-        // TODO(kreeger): Add some ASCII art to help with the breakup of this
-        //                work as it filters through the graph.
-
-        // First, calculate the SkipLayerNorm output for the current task
-        ComputeSkipLayerNorm(hidden_size,
-                             epsilon(),
-                             input_data + (task_idx * hidden_size),
-                             skip_data + (task_idx * hidden_size),
-                             gamma_data,
-                             beta_data,
-                             bias_data,
-                             skip_layer_norm_output_data + (task_idx * hidden_size));
-
-        // Now perform MatMul on the 1 row that was calculated in the call to
-        // ComputeSkipLayerNorm():
-        // TODO(kreeger): rename this var:
-        size_t offset = task_idx * bias_size;
-        //ComputeMatMul(sequence_length,
-        //              context->GetOperatorThreadPool(),
-        //              matmul_1_helper,
-        //              /*trans_a=*/false,
-        //              /*trans_b=*/false,
-        //              /*is_packed=*/matmul_1_b == nullptr,
-        //              skip_layer_norm_output_data + (task_idx * hidden_size),
-        //              matmul_1_b_data,
-        //              matmul_1_packed_b_,
-        //              matmul_1_output + offset);
-        ComputeMatMulSlow(hidden_size,
+        if (false) {
+        ComputeBatchFused(task_idx,
                           bias_size,
-                          skip_layer_norm_output_data + (task_idx * hidden_size),
-                          matmul_1_b_data,
-                          matmul_1_output + offset);
-
-        // Use the row calculated in the MatMul #1 and pass through for BiasGelu
-        // calculation:
-        ComputeBiasGelu(bias_size,
-                        matmul_1_output + offset,
-                        bias_gelu_bias_data,
-                        bias_gelu_output + offset);
-
-        // Finally, perform one more MatMul on the row calculated at the start
-        // of this batch:
-        //ComputeMatMul(sequence_length,
-        //              context->GetOperatorThreadPool(),
-        //              matmul_2_helper,
-        //              /*trans_a=*/false,
-        //              /*trans_b=*/false,
-        //              /*is_packed=*/matmul_2_b == nullptr,
-        //              bias_gelu_output + offset,
-        //              matmul_2_b_data,
-        //              matmul_2_packed_b_,
-        //              output_data + (task_idx * hidden_size));
-        ComputeMatMulSlow(bias_size,
                           hidden_size,
-                          bias_gelu_output + offset,
+                          epsilon(),
+                          input_data,
+                          skip_data,
+                          gamma_data,
+                          beta_data,
+                          bias_data,
+                          matmul_1_b_data,
+                          matmul_1_output,
+                          bias_gelu_bias_data,
+                          bias_gelu_output,
                           matmul_2_b_data,
-                          output_data + (task_idx * hidden_size));
+                          skip_layer_norm_output_data,
+                          output_data);
+        } else {
+          ComputeFusedNew(task_idx,
+                          bias_size,
+                          hidden_size,
+                          epsilon(),
+                          input_data,
+                          skip_data,
+                          gamma_data,
+                          beta_data,
+                          bias_data,
+                          matmul_1_b_data,
+                          matmul_1_output,
+                          bias_gelu_bias_data,
+                          bias_gelu_output,
+                          matmul_2_b_data,
+                          skip_layer_norm_output_data,
+                          output_data);
+        }
       },
       0);
 

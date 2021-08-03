@@ -10,23 +10,10 @@
 namespace onnxruntime {
 namespace contrib {
 
-// TODO(kreeger): Packed stuff is f32 only - might consider forcing float here?
-//                See the matmul CPU implementation for more details.
 template <typename T>
 class EmbedLayerNormBiasGelu final : public EmbedLayerNormBase {
  public:
   explicit EmbedLayerNormBiasGelu(const OpKernelInfo& op_kernel_info);
-
-  Status PrePack(const Tensor& tensor,
-                 int input_idx,
-                 AllocatorPtr alloc,
-                 /*out*/ bool& is_packed,
-                 /*out*/ PrePackedWeights* prepacked_weights) override;
-
-  Status UseSharedPrePackedBuffers(
-      std::vector<BufferUniquePtr>& prepacked_buffers,
-      int input_idx,
-      /*out*/ bool& used_shared_buffers) override;
 
   Status Compute(OpKernelContext* context) const override;
 
