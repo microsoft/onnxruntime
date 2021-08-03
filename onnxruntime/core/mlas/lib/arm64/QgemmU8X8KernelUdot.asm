@@ -146,11 +146,6 @@ Return Value:
 
 // Starting the loop: initialize accumulators with scaled combination
 //                    of row and column sums
-ProcessNextColumnLoopM8
-        mov     x0,x14                      // reload matrix A
-        ld1     {v3.4s},[x8],#16            // load ColumnSumBuffer[0]
-        mov     x3,x15                      // reload PackedCountK
-        ld1     {v7.4s},[x8],#16            // load ColumnSumBuffer[4]
         dup     v17.4s,v8.s[0]              // broadcast row sums
         dup     v19.4s,v8.s[1]
         dup     v21.4s,v8.s[2]
@@ -159,6 +154,12 @@ ProcessNextColumnLoopM8
         dup     v27.4s,v9.s[1]
         dup     v29.4s,v9.s[2]
         dup     v31.4s,v9.s[3]
+
+ProcessNextColumnLoopM8
+        mov     x0,x14                      // reload matrix A
+        ld1     {v3.4s},[x8],#16            // load ColumnSumBuffer[0]
+        mov     x3,x15                      // reload PackedCountK
+        ld1     {v7.4s},[x8],#16            // load ColumnSumBuffer[4]
         cbz     x9,SkipScaleByZeroPointBM8
 
         // accumulator = zero point B * row sum A + column sum B 
@@ -355,13 +356,21 @@ ComputeBlockLoopFinishM8
 
 SkipAccumulateOutputM8
         stp     q16,q17,[x2],#32
+        dup     v17.4s,v8.s[0]              // broadcast row sums
         stp     q18,q19,[x10]
+        dup     v19.4s,v8.s[1]
         stp     q20,q21,[x11]
+        dup     v21.4s,v8.s[2]
         stp     q22,q23,[x12]
+        dup     v23.4s,v8.s[3]
         stp     q24,q25,[x0]
+        dup     v25.4s,v9.s[0]
         stp     q26,q27,[x3]
+        dup     v27.4s,v9.s[1]
         stp     q28,q29,[x4]
+        dup     v29.4s,v9.s[2]
         stp     q30,q31,[x7]
+        dup     v31.4s,v9.s[3]
 
         cbnz    x5,ProcessNextColumnLoopM8
 
