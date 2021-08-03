@@ -854,7 +854,7 @@ std::vector<OrtValue> OpTester::ExecuteModel(
                 if (inferred_dims[d] != -1) {
                   EXPECT_EQ(expected_shape[d], inferred_dims[d])
                       << "Output idx = " << idx << " dim = " << d;
-		}
+                }
               }
             }
             Check(expected_data, ort_value.Get<Tensor>(), provider_type);
