@@ -178,7 +178,7 @@ These instructions are for JetPack SDK 4.4.
 
 ## oneDNN
 
-See more information on ondDNN (formerly DNNL) [here](../reference/execution-providers/DNNL-ExecutionProvider.md).
+See more information on ondDNN (formerly DNNL) [here](../../reference/execution-providers/DNNL-ExecutionProvider.md).
 
 ### Build Instructions
 {: .no_toc }
@@ -290,7 +290,7 @@ For more information on OpenVINO Execution Provider&#39;s ONNX Layer support, To
 ---
 
 ## NUPHAR
-See more information on the Nuphar Execution Provider [here](../reference/execution-providers/Nuphar-ExecutionProvider.md).
+See more information on the Nuphar Execution Provider [here](../../reference/execution-providers/Nuphar-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -370,7 +370,7 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 ---
 
 ## DirectML
-See more information on the DirectML execution provider [here](../reference/execution-providers/DirectML-ExecutionProvider.md).
+See more information on the DirectML execution provider [here](../../reference/execution-providers/DirectML-ExecutionProvider.md).
 ### Windows
 {: .no_toc }
 
@@ -385,7 +385,7 @@ The DirectML execution provider supports building for both x64 and x86 architect
 ---
 
 ## ARM Compute Library
-See more information on the ACL Execution Provider [here](../reference/execution-providers/ACL-ExecutionProvider.md).
+See more information on the ACL Execution Provider [here](../../reference/execution-providers/ACL-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -452,7 +452,7 @@ onnxruntime_test_all
 
 ## ArmNN
 
-See more information on the ArmNN Execution Provider [here](../reference/execution-providers/ArmNN-ExecutionProvider.md).
+See more information on the ArmNN Execution Provider [here](../../reference/execution-providers/ArmNN-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -500,7 +500,7 @@ The ARM Compute Library home directory and build directory must also be availabl
 ---
 
 ## RKNPU
-See more information on the RKNPU Execution Provider [here](../reference/execution-providers/RKNPU-ExecutionProvider.md).
+See more information on the RKNPU Execution Provider [here](../../reference/execution-providers/RKNPU-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -539,9 +539,9 @@ set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
 ---
 
 ## Vitis-AI
-See more information on the Xilinx Vitis-AI execution provider [here](../reference/execution-providers/Vitis-AI-ExecutionProvider.md).
+See more information on the Xilinx Vitis-AI execution provider [here](../../reference/execution-providers/Vitis-AI-ExecutionProvider.md).
 
-For instructions to setup the hardware environment: [Hardware setup](../reference/execution-providers/Vitis-AI-ExecutionProvider.md#Hardware-setup)
+For instructions to setup the hardware environment: [Hardware setup](../../reference/execution-providers/Vitis-AI-ExecutionProvider.md#Hardware-setup)
 
 ### Linux
 {: .no_toc }
@@ -560,7 +560,7 @@ The Vitis-AI execution provider is only supported on Linux.
 
 ## AMD MIGraphX
 
-See more information on the MIGraphX Execution Provider [here](../reference/execution-providers/MIGraphX-ExecutionProvider.md).
+See more information on the MIGraphX Execution Provider [here](../../reference/execution-providers/MIGraphX-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
