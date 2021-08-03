@@ -13,6 +13,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/providers/cpu/rnn/rnn_activation_functors.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
@@ -418,23 +419,11 @@ void sigmoid_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int 
                const float alpha, const float beta) {
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(ps1_c);
 
-  clip_for_sigmoid(ps1, ps1_c, c);
-
+  MlasComputeLogistic(ps1, pd, c);
   for (int i = 0; i < c; i++) {
-    float x = 0.5f * ps1_c[i];
-    float x2 = x * x;
-    float p = x2 * alpha_13 + alpha_11;
-    p = x2 * p + alpha_9;
-    p = x2 * p + alpha_7;
-    p = x2 * p + alpha_5;
-    p = x2 * p + alpha_3;
-    p = x2 * p + alpha_1;
-    p = x * p;
-    float q = x2 * beta_6 + beta_4;
-    q = x2 * q + beta_2;
-    q = x2 * q + beta_0;
-    pd[i] = ps2[i] * 0.5f * (1 + (p / q));
+    pd[i] *= ps2[i];
   }
 }
 
@@ -442,23 +431,11 @@ void tanh_m(const float* ps1, float* ps1_c, const float* ps2, float* pd, int c,
             const float alpha, const float beta) {
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
+  ORT_UNUSED_PARAMETER(ps1_c);
 
-  clip_for_tanh(ps1, ps1_c, c);
-
+  MlasComputeTanh(ps1, pd, c);
   for (int i = 0; i < c; i++) {
-    float x = ps1_c[i];
-    float x2 = x * x;
-    float p = x2 * alpha_13 + alpha_11;
-    p = x2 * p + alpha_9;
-    p = x2 * p + alpha_7;
-    p = x2 * p + alpha_5;
-    p = x2 * p + alpha_3;
-    p = x2 * p + alpha_1;
-    p = x * p;
-    float q = x2 * beta_6 + beta_4;
-    q = x2 * q + beta_2;
-    q = x2 * q + beta_0;
-    pd[i] = ps2[i] * p / q;
+    pd[i] *= ps2[i];
   }
 }
 
@@ -507,56 +484,23 @@ void sigmoid(float* pd, int c, float alpha, float beta) {
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
 
-  clip_for_sigmoid_in_place(pd, c);
-
-  for (int i = 0; i < c; i++) {
-    float x = 0.5f * pd[i];
-    float x2 = x * x;
-    float p = x2 * alpha_13 + alpha_11;
-    p = x2 * p + alpha_9;
-    p = x2 * p + alpha_7;
-    p = x2 * p + alpha_5;
-    p = x2 * p + alpha_3;
-    p = x2 * p + alpha_1;
-    p = x * p;
-    float q = x2 * beta_6 + beta_4;
-    q = x2 * q + beta_2;
-    q = x2 * q + beta_0;
-    pd[i] = 0.5f * (1 + (p / q));
-  }
+  MlasComputeLogistic(pd, pd, c);
 }
 
 void tanh(float* pd, int c, float alpha, float beta) {
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
 
-  clip_for_tanh_in_place(pd, c);
-
-  for (int i = 0; i < c; i++) {
-    float x = pd[i];
-    float x2 = x * x;
-    float p = x2 * alpha_13 + alpha_11;
-    p = x2 * p + alpha_9;
-    p = x2 * p + alpha_7;
-    p = x2 * p + alpha_5;
-    p = x2 * p + alpha_3;
-    p = x2 * p + alpha_1;
-    p = x * p;
-    float q = x2 * beta_6 + beta_4;
-    q = x2 * q + beta_2;
-    q = x2 * q + beta_0;
-    pd[i] = p / q;
-  }
+  MlasComputeTanh(pd, pd, c);
 }
 
 void relu(float* pd, int c, float alpha, float beta) {
   ORT_UNUSED_PARAMETER(alpha);
   ORT_UNUSED_PARAMETER(beta);
 
-  for (int i = 0; i < c; i++) {
-    if (pd[i] < 0)
-      pd[i] = 0.0f;
-  }
+  MLAS_ACTIVATION activation;
+  activation.ActivationKind = MlasReluActivation;
+  MlasActivation(&activation, pd, nullptr, 1, c, c);
 }
 
 void sigmoid_exact(float* pd, int c, float alpha, float beta) {
