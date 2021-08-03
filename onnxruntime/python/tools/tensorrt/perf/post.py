@@ -29,25 +29,23 @@ def parse_arguments():
         "-u", "--report_url", help="Report Url", required=True)
     parser.add_argument(
         "-t", "--trt_version", help="Tensorrt Version", required=True)
+    parser.add_argument(
+        "-b", "--branch", help="Branch", required=True)
     return parser.parse_args()
 
 def parse_csv(report_file):
     table = pd.read_csv(report_file)
     return table
 
-def get_latency_over_time(commit_hash, report_url, latency_table):
+def get_latency_over_time(commit_hash, report_url, branch, latency_table):
     if not latency_table.empty:
-        to_drop = ['TrtGain-CudaFp32', 'EpGain-TrtFp32', 'TrtGain-CudaFp16', 'EpGain-TrtFp16']
+        to_drop = ['TrtGain_CudaFp32', 'EpGain_TrtFp32', 'TrtGain_CudaFp16', 'EpGain_TrtFp16']
         over_time = latency_table.drop(to_drop, axis='columns')
         over_time = over_time.melt(id_vars=['Model', 'Group'], var_name='Ep', value_name='Latency')
-            
-        import time   
-        datetime = time.strftime('%Y-%m-%d %H:%M:%S')
-        over_time = over_time.assign(UploadTime=datetime)
         over_time = over_time.assign(CommitId=commit_hash)
         over_time = over_time.assign(ReportUrl=report_url)
-            
-        over_time = over_time[['UploadTime', 'CommitId', 'Model', 'Ep', 'Latency', 'ReportUrl', 'Group']]
+        over_time = over_time.assign(Branch=branch)
+        over_time = over_time[['CommitId', 'Model', 'Ep', 'Latency', 'ReportUrl', 'Group', 'Branch']]
         over_time.rename(columns={"Group":"ModelGroup"}, inplace=True)
         over_time.fillna('', inplace=True)
         return over_time
@@ -91,8 +89,8 @@ def get_latency(latency, model_group):
                         'TRT v CUDA EP fp16 \ngain (mean) (%)', \
                         'EP v Standalone TRT fp16 \ngain (mean) (%)' \
                         ]
-    latency_db_columns = ['Model', 'CpuFp32', 'CudaEpFp32', 'TrtEpFp32', 'StandaloneFp32', 'TrtGain-CudaFp32', 'EpGain-TrtFp32', \
-                        'CudaEpFp16', 'TrtEpFp16', 'StandaloneFp16', 'TrtGain-CudaFp16', 'EpGain-TrtFp16']
+    latency_db_columns = ['Model', 'CpuFp32', 'CudaEpFp32', 'TrtEpFp32', 'StandaloneFp32', 'TrtGain_CudaFp32', 'EpGain_TrtFp32', \
+                        'CudaEpFp16', 'TrtEpFp16', 'StandaloneFp16', 'TrtGain_CudaFp16', 'EpGain_TrtFp16']
     latency = adjust_columns(latency, latency_columns, latency_db_columns, model_group)
     return latency
     
@@ -102,33 +100,32 @@ def get_status(status, model_group):
     status = adjust_columns(status, status_columns, status_db_columns, model_group)
     return status
 
-def write_table(engine, table, table_name, trt_version, drop_duplicates=True):
-    if table.empty:
-        return
-    table = table.assign(TrtVersion=trt_version) # add TrtVersion
-    table.to_sql(table_name, con=engine, if_exists='append', index=False, chunksize=1)
-    if drop_duplicates: 
-        full_table = pd.read_sql("SELECT * FROM " + table_name,  engine)
-        full_table.drop_duplicates(keep='last', inplace=True)
-        table.to_sql(table_name, con=engine, if_exists='replace', index=False, chunksize=1)
-
-def write_latency_over_time(engine, table, table_name, trt_version):
+def delete_old_records(engine, table_name):
 
     # delete using cursor for large table
     conn = engine.raw_connection()
     cursor = conn.cursor()
-    delete_query = ('DELETE FROM onnxruntime.ep_model_latency_over_time '
+    delete_query = ('DELETE FROM onnxruntime.' + table_name + ' '
                     'WHERE UploadTime < DATE_SUB(Now(), INTERVAL 100 DAY);'
                     )
-
     cursor.execute(delete_query)
     conn.commit()
     cursor.close()
     conn.close()
-
-    # write table 
-    write_table(engine, table, table_name, trt_version, drop_duplicates=False)
     
+def write_table(engine, table, table_name, trt_version, upload_time):
+    delete_old_records(engine, table_name)
+    if table.empty:
+        return
+    table = table.assign(TrtVersion=trt_version) # add TrtVersion
+    table = table.assign(UploadTime=upload_time) # add UploadTime
+    table.to_sql(table_name, con=engine, if_exists='append', index=False, chunksize=1)
+
+def get_time():
+    import time   
+    datetime = time.strftime('%Y-%m-%d %H:%M:%S')
+    return datetime
+            
 def main():
     
     # connect to database
@@ -139,6 +136,7 @@ def main():
                         '@' + host + '/' + \
                         database
     engine = create_engine(connection_string)
+    datetime = get_time()
 
     try:
         result_file = args.report_folder
@@ -151,7 +149,7 @@ def main():
         for table_name in tables:
             table_results[table_name] = pd.DataFrame()
 
-        for model_group in folders: 
+        for model_group in folders:
             os.chdir(model_group)
             csv_filenames = os.listdir()
             for csv in csv_filenames:
@@ -161,18 +159,14 @@ def main():
                 if latency in csv:
                     table_results[memory] = table_results[memory].append(get_memory(table, model_group), ignore_index=True)
                     table_results[latency] = table_results[latency].append(get_latency(table, model_group), ignore_index=True)
-                    table_results[latency_over_time] = table_results[latency_over_time].append(get_latency_over_time(args.commit_hash, args.report_url, table_results[latency]), ignore_index=True)
+                    table_results[latency_over_time] = table_results[latency_over_time].append(get_latency_over_time(args.commit_hash, args.report_url, args.branch, table_results[latency]), ignore_index=True)
                 if status in csv: 
                     table_results[status] = table_results[status].append(get_status(table, model_group), ignore_index=True)
             os.chdir(result_file)
-
         for table in tables: 
             print('writing ' + table + ' over time to database')
             db_table_name = 'ep_model_' + table
-            if table == 'latency_over_time':
-                write_latency_over_time(engine, table_results[table], db_table_name, args.trt_version)
-            else:
-                write_table(engine, table_results[table], db_table_name, args.trt_version)
+            write_table(engine, table_results[table], db_table_name, args.trt_version, datetime)
 
     except BaseException as e: 
         print(str(e))
