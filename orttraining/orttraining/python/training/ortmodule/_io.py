@@ -253,10 +253,10 @@ class _TensorStub(object):
         return True
 
 
-def unflatten_user_output(output_schema, outputs):
+def unflatten_user_output(output_schema, outputs, output_names_mapping_pair=None):
     """Follows the schema to generate an output that is expected by the user"""
 
-    def _replace_stub_with_tensor_value(user_output, outputs, output_idx):
+    def _replace_stub_with_tensor_value(user_output, outputs, output_idx, output_names_mapping_pair=None):
         # Recursively traverse across user_output and replace all _TensorStub
         # with torch.Tensor values from outputs following output_idx
 
@@ -264,13 +264,17 @@ def unflatten_user_output(output_schema, outputs):
             return None
         elif isinstance(user_output, _TensorStub):
             output_idx[0] += 1
-            return outputs[output_idx[0]-1]
+            if output_names_mapping_pair:
+                return outputs[output_names_mapping_pair[1][output_names_mapping_pair[0][output_idx[0]-1]]]
+            else:
+                return outputs[output_idx[0]-1]
 
         if isinstance(user_output, abc.Sequence):
             sequence_type = type(user_output)
             user_output = list(user_output)
             for idx in range(len(user_output)):
-                user_output[idx] = _replace_stub_with_tensor_value(user_output[idx], outputs, output_idx)
+                user_output[idx] = _replace_stub_with_tensor_value(user_output[idx], outputs, output_idx,
+                                                                   output_names_mapping_pair=output_names_mapping_pair)
             try:
                 # namedtuple can be created by passing the list sequence to method _make
                 user_output = sequence_type._make(user_output)
@@ -279,7 +283,8 @@ def unflatten_user_output(output_schema, outputs):
                 user_output = sequence_type(user_output)
         elif isinstance(user_output, abc.Mapping):
             for key in sorted(user_output):
-                user_output[key] = _replace_stub_with_tensor_value(user_output[key], outputs, output_idx)
+                user_output[key] = _replace_stub_with_tensor_value(user_output[key], outputs, output_idx,
+                                                                   output_names_mapping_pair=output_names_mapping_pair)
         else:
             raise TypeError(f'ORTModule does not support the following model output type {type(user_output)}.')
 
@@ -291,7 +296,8 @@ def unflatten_user_output(output_schema, outputs):
     # It is expected that the outputs are ordered in the way defined in the exported onnx model
     # which is the order in which the output schema was saved.
     output_idx = [0]
-    user_output = _replace_stub_with_tensor_value(output_schema_copy, outputs, output_idx)
+    user_output = _replace_stub_with_tensor_value(output_schema_copy, outputs, output_idx,
+                                                  output_names_mapping_pair=output_names_mapping_pair)
     return user_output
 
 

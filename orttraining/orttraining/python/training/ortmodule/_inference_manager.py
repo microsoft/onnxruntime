@@ -22,6 +22,9 @@ class InferenceManager(GraphExecutionManager):
         super().__init__(model, debug_options)
         self._export_mode = torch.onnx.TrainingMode.EVAL
 
+        # output mapping used for mapping output names to index in ORT output
+        self._output_mapping = None
+
     @staticmethod
     def execution_session_run_forward(execution_session, onnx_model, device, *inputs):
         """Runs the forward graph on execution_session with given model inputs and device"""
@@ -67,9 +70,11 @@ class InferenceManager(GraphExecutionManager):
             # If model was exported, then initialize the graph builder
             self._initialize_graph_builder(training=False)
 
-        # Build the inference graph
-        if build_graph:
+            # Build the inference graph
             self._build_graph()
+
+            # Output mapping for the case where outputs are duplicated.
+            self._output_mapping = self._map_outputs()
 
         module_device = _utils.get_device_from_module(self._original_module)
         # The inference session should be created every time
@@ -94,7 +99,8 @@ class InferenceManager(GraphExecutionManager):
                                                                              self._device))
 
         return _io.unflatten_user_output(self._module_output_schema,
-                                         user_outputs)
+                                         user_outputs,
+                                         output_names_mapping_pair=(self._graph_info.user_output_names, self._output_mapping))
 
     def _build_graph(self):
         """Build an optimized inference graph using the module_graph_builder"""
@@ -111,3 +117,21 @@ class InferenceManager(GraphExecutionManager):
         session_options, providers, provider_options = self._get_session_config()
         self._execution_agent = InferenceAgent(self._onnx_models.optimized_model.SerializeToString(),
                                                session_options, providers, provider_options)
+
+    def _map_outputs(self):
+        """Build a mapping from output names to the output index.
+
+        It is possible that the outputs are duplicated. In that case, ORT will output
+        only unique outputs. ORTModule frontend will be responsible to map the duplicate
+        user output from the ORT output.
+        This is specifically required for inference manager because only inference agent
+        works with iobinding which registers only uniquely named outputs.
+        """
+
+        output_mapping = {}
+        idx = 0
+        for output_name in self._graph_info.user_output_names:
+            if output_name not in output_mapping:
+                output_mapping[output_name] = idx
+                idx += 1
+        return output_mapping
