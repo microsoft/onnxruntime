@@ -25,7 +25,7 @@ class SequenceAt final : public CudaKernel {
     int64_t idx = -1;
 
     if (I->IsDataType<int32_t>()) {
-      idx = I->Data<int32_t>()[0];
+      idx = static_cast<int64_t>(I->Data<int32_t>()[0]);
     } else {
       idx = I->Data<int64_t>()[0];
     }
@@ -180,7 +180,7 @@ class SequenceErase final : public CudaKernel {
                   "Indices need to be of types int32 or int64");
 
       if (I->IsDataType<int32_t>()) {
-        idx = I->Data<int32_t>()[0];
+        idx = static_cast<int64_t>(I->Data<int32_t>()[0]);
       } else {
         idx = I->Data<int64_t>()[0];
       }
@@ -233,7 +233,7 @@ class SequenceInsert final : public CudaKernel {
       int64_t idx = -1;
 
       if (I->IsDataType<int32_t>()) {
-        idx = I->Data<int32_t>()[0];
+        idx = static_cast<int64_t>(I->Data<int32_t>()[0]);
       } else {
         idx = I->Data<int64_t>()[0];
       }
