@@ -22,11 +22,10 @@ class _FallbackPolicy(IntFlag):
     FALLBACK_FORCE_TORCH_FORWARD = 2
     FALLBACK_FORCE_TORCH_BACKWARD = 4
     FALLBACK_UNSUPPORTED_DEVICE = 8
-    FALLBACK_UNSUPPORTED_INPUT = 16
-    FALLBACK_UNSUPPORTED_OUTPUT = 32
-    FALLBACK_UNSUPPORTED_TORCH_MODEL = 64
-    FALLBACK_UNSUPPORTED_ONNX_MODEL = 128
-    FALLBACK_BAD_INITIALIZATION = 256
+    FALLBACK_UNSUPPORTED_DATA = 16
+    FALLBACK_UNSUPPORTED_TORCH_MODEL = 32
+    FALLBACK_UNSUPPORTED_ONNX_MODEL = 64
+    FALLBACK_BAD_INITIALIZATION = 128
 
     def is_set(self, policy):
         '''Check whether `policy` is set on the `_FallbackPolicy` instance
@@ -129,8 +128,7 @@ class _FallbackManager(object):
                                                                                             ORTModuleTorchModelException,
                                                                                             ORTModuleONNXModelException},
                                       _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE.value: {ORTModuleDeviceException},
-                                      _FallbackPolicy.FALLBACK_UNSUPPORTED_INPUT.value: {ORTModuleIOError},
-                                      _FallbackPolicy.FALLBACK_UNSUPPORTED_OUTPUT.value: {ORTModuleIOError},
+                                      _FallbackPolicy.FALLBACK_UNSUPPORTED_DATA.value: {ORTModuleIOError},
                                       _FallbackPolicy.FALLBACK_UNSUPPORTED_TORCH_MODEL.value: {ORTModuleTorchModelException},
                                       _FallbackPolicy.FALLBACK_UNSUPPORTED_ONNX_MODEL.value: {ORTModuleONNXModelException},
                                       _FallbackPolicy.FALLBACK_BAD_INITIALIZATION.value: {ORTModuleInitException,

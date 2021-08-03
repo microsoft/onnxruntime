@@ -5,11 +5,12 @@
 
 import sys
 import torch
+import warnings
 from torch.onnx import symbolic_helper
 
 from onnxruntime.capi._pybind_state import register_torch_autograd_function
 from ._fallback import _FallbackManager, ORTModuleONNXModelException, ORTModuleTorchModelException, wrap_exception
-
+from . import _logger
 
 def _export(g, n, *args, **kwargs):
     '''
@@ -149,7 +150,7 @@ def _export(g, n, *args, **kwargs):
         raise wrap_exception(ORTModuleONNXModelException, e)
 
 
-def _post_process_after_export(exported_model, enable_custom_autograd_function):
+def _post_process_after_export(exported_model, enable_custom_autograd_function, log_level):
     if enable_custom_autograd_function:
         return _post_process_enabling_autograd_fallback(exported_model)
 
@@ -159,12 +160,11 @@ def _post_process_after_export(exported_model, enable_custom_autograd_function):
             is_pythonop_needed = True
             break
 
-    if is_pythonop_needed:
-        raise wrap_exception(ORTModuleTorchModelException,
-                             RuntimeError(
-                                 'Detected autograd functions usage in current model, the run will fail \
-                                 without enabling \'_enable_custom_autograd_function\'. Please enable it with: \
-                                 \'module._execution_manager(is_training_mode)._enable_custom_autograd_function = True\''))
+    if is_pythonop_needed and log_level <= _logger.LogLevel.WARNING:
+        warnings.warn('Detected autograd functions usage in current model, the run will fail \
+                      without enabling \'_enable_custom_autograd_function\'. Please enable it with: \
+                      \'module._execution_manager(is_training_mode)._enable_custom_autograd_function = True\'',
+                      UserWarning)
 
     return exported_model
 

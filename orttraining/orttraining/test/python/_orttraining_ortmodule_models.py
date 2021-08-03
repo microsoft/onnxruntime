@@ -52,3 +52,21 @@ class NeuralNetCustomClassOutput(torch.nn.Module):
         out2 = self.fc2_2(self.relu2(self.fc2_1(input2)))
         out3 = self.fc3_2(self.relu3(self.fc3_1(input3)))
         return NeuralNetCustomClassOutput.CustomClass(out1, out2, out3)
+
+class MyCustomFunctionReluModel(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        class MyReLU(torch.autograd.Function):
+            @staticmethod
+            def forward(ctx, input):
+                ctx.save_for_backward(input)
+                return input.clamp(min=0)
+            @staticmethod
+            def backward(ctx, grad_output):
+                input, = ctx.saved_tensors
+                grad_input = grad_output.clone()
+                grad_input[input < 0] = 0
+                return grad_input
+        self.relu = MyReLU.apply
+    def forward(self, input):
+        return self.relu(input)

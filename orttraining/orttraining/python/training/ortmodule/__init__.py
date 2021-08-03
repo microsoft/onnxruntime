@@ -45,10 +45,6 @@ if not is_torch_cpp_extensions_installed(TORCH_CPP_DIR) and '-m' not in sys.argv
                                                             f"ORTModule's extensions were not detected at '{TORCH_CPP_DIR}' folder. "
                                                             "Run `python -m torch_ort.configure` before using `ORTModule` frontend."))
 
-# PyTorch custom Autograd function support
-from ._custom_autograd_function import enable_custom_autograd_support
-enable_custom_autograd_support()
-
 # Initalized ORT's random seed with pytorch's initial seed
 # in case user has set pytorch seed before importing ORTModule
 import sys

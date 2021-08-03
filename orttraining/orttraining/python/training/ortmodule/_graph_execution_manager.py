@@ -123,8 +123,11 @@ class GraphExecutionManager(GraphExecutionInterface):
         # flag to enable symbolic shape inference for dynamic shape inputs to improve performance
         self._run_symbolic_shape_infer = True
 
-        # A flag saying if custom autograd.Function should be allowed. True means yes and otherwise False.
+        # PyTorch custom Autograd function support
         self._enable_custom_autograd_function = False
+        if self._enable_custom_autograd_function:
+            from ._custom_autograd_function import enable_custom_autograd_support
+            enable_custom_autograd_support()
 
         self._input_info = None
         self._module_output_schema = None
@@ -327,13 +330,14 @@ class GraphExecutionManager(GraphExecutionInterface):
                                   verbose=self._debug_options.logging.log_level < LogLevel.WARNING,
                                   export_params=False,
                                   keep_initializers_as_inputs=True)
-        except RuntimeError as e:
+        except Exception as e:
             raise wrap_exception(ORTModuleONNXModelException,
                                  RuntimeError(f'There was an error while exporting the PyTorch model to ONNX: {e}'))
         exported_model = onnx.load_model_from_string(f.getvalue())
 
-        exported_model = _post_process_after_export(
-            exported_model, self._enable_custom_autograd_function)
+        exported_model = _post_process_after_export(exported_model,
+                                                    self._enable_custom_autograd_function,
+                                                    self._debug_options.logging.log_level)
 
         return exported_model
 
