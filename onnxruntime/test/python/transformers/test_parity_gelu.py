@@ -3,11 +3,10 @@
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
-
 """
-Below are test results for Gelu or FastGelu optimization using CUDA:
+Below are test results for Gelu or FastGelu FP32 kernels using CUDA:
 
-Formula	Precision	MaxDiff     MaxDiff (Optimized)
+Formula	Input(BeforeCast) 	MaxDiff(NotOptimized)     MaxDiff(Optimized)
 0	    FP32	    2.38E-07	4.77E-07
 0	    FP16	    0	        6.10E-05
 1	    FP32	    4.77E-07	0
@@ -31,6 +30,7 @@ import numpy
 import math
 import os
 
+
 class Gelu(nn.Module):
     def __init__(self, formula=4):
         super().__init__()
@@ -52,7 +52,7 @@ class Gelu(nn.Module):
             return 0.5 * x * (1.0 + torch.tanh(x * 0.7978845608 * (1.0 + 0.044715 * x * x)))
         else:
             # openai_gelu in Megatron
-            return 0.5 * x * (1.0 + torch.tanh(0.7978845608028654 * x * (1.0 + 0.044715 * x * x))) 
+            return 0.5 * x * (1.0 + torch.tanh(0.7978845608028654 * x * (1.0 + 0.044715 * x * x)))
 
     @staticmethod
     def get_fused_op(formula):
@@ -60,20 +60,19 @@ class Gelu(nn.Module):
 
     def forward(self, x):
         if x.dtype == torch.float16:
+            # This test only evaluates FP32 kernels so add data type cast for input and output.
             fp16_gelu = self.gelu(x.to(torch.float32)).to(torch.float16)
-            return (fp16_gelu,)
+            return (fp16_gelu, )
         else:
             fp32_gelu = self.gelu(x)
             return (fp32_gelu, )
 
-def create_inputs(batch_size=1,
-                  sequence_length=1,
-                  hidden_size=768,
-                  float16=False,
-                  device=torch.device('cuda')):
+
+def create_inputs(batch_size=1, sequence_length=1, hidden_size=768, float16=False, device=torch.device('cuda')):
     float_type = torch.float16 if float16 else torch.float32
     input = torch.normal(mean=0.0, std=1.0, size=(batch_size, sequence_length, hidden_size)).to(float_type).to(device)
     return input
+
 
 def get_output_names():
     outputs = ["output"]
@@ -88,16 +87,7 @@ def export_onnx(model, onnx_model_path, float16, hidden_size, device):
     with torch.no_grad():
         outputs = model(input_hidden_states)
 
-    dynamic_axes = {
-        'input': {
-            0: 'batch_size',
-            1: 'seq_len'
-        },
-        "output": {
-            0: 'batch_size',
-            1: 'seq_len'
-        }
-    }
+    dynamic_axes = {'input': {0: 'batch_size', 1: 'seq_len'}, "output": {0: 'batch_size', 1: 'seq_len'}}
 
     torch.onnx.export(model,
                       args=(input_hidden_states),
@@ -110,11 +100,14 @@ def export_onnx(model, onnx_model_path, float16, hidden_size, device):
                       do_constant_folding=True)
     print("exported:", onnx_model_path)
 
+
 def optimize_onnx(input_onnx_path, optimized_onnx_path, expected_gelu_op_type='Gelu'):
     from onnxruntime.transformers.optimizer import optimize_model
     onnx_model = optimize_model(input_onnx_path, model_type='gpt2', opt_level=0)
-    assert len(onnx_model.get_nodes_by_op_type(expected_gelu_op_type)) == 1, f"Expected {expected_gelu_op_type} node not found in the optimized model"
+    assert len(onnx_model.get_nodes_by_op_type(
+        expected_gelu_op_type)) == 1, f"Expected {expected_gelu_op_type} node not found in the optimized model"
     onnx_model.save_model_to_file(optimized_onnx_path)
+
 
 def diff_outputs(torch_outputs, ort_outputs, index):
     """ Returns the maximum difference between PyTorch and OnnxRuntime outputs.
@@ -127,8 +120,10 @@ def diff_outputs(torch_outputs, ort_outputs, index):
 def compare_outputs(torch_outputs, ort_outputs, atol=1e-06, verbose=True):
     """ Returns True if torch and ORT outputs are close for given thresholds, and False otherwise.
     """
-    same = numpy.asarray([numpy.allclose(
-            ort_outputs[i], torch_outputs[i].cpu().numpy(), atol=atol, rtol=0) for i in range(len(ort_outputs))])
+    same = numpy.asarray([
+        numpy.allclose(ort_outputs[i], torch_outputs[i].cpu().numpy(), atol=atol, rtol=0)
+        for i in range(len(ort_outputs))
+    ])
 
     max_abs_diff = [diff_outputs(torch_outputs, ort_outputs, i) for i in range(len(ort_outputs))]
 
@@ -137,9 +132,12 @@ def compare_outputs(torch_outputs, ort_outputs, atol=1e-06, verbose=True):
         for i in numpy.where(numpy.logical_not(same))[0]:
             diff = numpy.fabs(ort_outputs[i] - torch_outputs[i].cpu().numpy())
             idx = numpy.unravel_index(diff.argmax(), diff.shape)
-            print(f'Output {i}, diff={diff[idx]:.9f} index={idx} ort={ort_outputs[i][idx]:.9f} torch={float(torch_outputs[i][idx]):.9f}')
+            print(
+                f'Output {i}, diff={diff[idx]:.9f} index={idx} ort={ort_outputs[i][idx]:.9f} torch={float(torch_outputs[i][idx]):.9f}'
+            )
 
     return is_all_close, max(max_abs_diff)
+
 
 def create_ort_session(onnx_model_path, use_gpu=True):
     from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel, __version__ as onnxruntime_version
@@ -147,14 +145,12 @@ def create_ort_session(onnx_model_path, use_gpu=True):
     sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
     sess_options.intra_op_num_threads = 2
     sess_options.log_severity_level = 2
-    execution_providers = ['CPUExecutionProvider'
-                            ] if not use_gpu else ['CUDAExecutionProvider', 'CPUExecutionProvider']
+    execution_providers = ['CPUExecutionProvider'] if not use_gpu else ['CUDAExecutionProvider', 'CPUExecutionProvider']
     return InferenceSession(onnx_model_path, sess_options, providers=execution_providers)
 
+
 def onnxruntime_inference(ort_session, input):
-    ort_inputs = {
-        'input': numpy.ascontiguousarray(input.cpu().numpy())
-    }
+    ort_inputs = {'input': numpy.ascontiguousarray(input.cpu().numpy())}
     ort_outputs = ort_session.run(None, ort_inputs)
     return ort_outputs
 
@@ -174,7 +170,7 @@ def verify_attention(model,
     )
     passed_cases = 0
     max_diffs = []
-    printed = False # print only one sample
+    printed = False  # print only one sample
     ort_session = create_ort_session(onnx_model_path, device.type == 'cuda')
     for i in range(test_cases):
         input_hidden_states = create_inputs(batch_size, sequence_length, hidden_size, float16, device)
@@ -228,8 +224,8 @@ def run(batch_size, float16, optimized, hidden_size, device, test_cases, formula
 
     num_failure = 0
     for sequence_length in [2]:
-        num_failure += verify_attention(model, onnx_path, batch_size, hidden_size, sequence_length,
-                                        float16, device, optimized, test_cases)
+        num_failure += verify_attention(model, onnx_path, batch_size, hidden_size, sequence_length, float16, device,
+                                        optimized, test_cases)
 
     # clean up onnx file
     os.remove(onnx_model_path)
@@ -239,18 +235,17 @@ def run(batch_size, float16, optimized, hidden_size, device, test_cases, formula
     return num_failure, test_name
 
 
-class TestGptAttentionHuggingfaceParity(unittest.TestCase):
+class TestGeluParity(unittest.TestCase):
     def setUp(self):
         self.optimized = True  # Change it to False if you want to test parity of non optimized ONNX
         self.test_cases = 100  # Number of test cases per test run
         self.hidden_size = 768
-        self.formula_to_test = [0, 1, 3, 4, 5] # formula 2 cannot pass precision test.
+        self.formula_to_test = [0, 1, 3, 4, 5]  # formula 2 cannot pass precision test.
 
     def run_test(self, batch_size, float16, optimized, hidden_size, device, formula):
         if float16 and device.type == 'cpu':  # CPU does not support FP16
             return
-        num_failure, test_name = run(batch_size, float16, optimized, hidden_size, device,
-                                     self.test_cases, formula)
+        num_failure, test_name = run(batch_size, float16, optimized, hidden_size, device, self.test_cases, formula)
         self.assertTrue(num_failure == 0, test_name)
 
     def run_one(self, optimized, device, hidden_size=768, formula=0):
@@ -260,15 +255,13 @@ class TestGptAttentionHuggingfaceParity(unittest.TestCase):
                           optimized=optimized,
                           hidden_size=hidden_size,
                           device=device,
-                          formula=formula
-                          )
+                          formula=formula)
             self.run_test(batch_size,
                           float16=True,
                           optimized=optimized,
                           hidden_size=hidden_size,
                           device=device,
-                          formula=formula
-                          )
+                          formula=formula)
 
     def test_cpu(self):
         cpu = torch.device('cpu')
@@ -283,6 +276,7 @@ class TestGptAttentionHuggingfaceParity(unittest.TestCase):
             gpu = torch.device('cuda')
             for i in self.formula_to_test:
                 self.run_one(self.optimized, gpu, hidden_size=self.hidden_size, formula=i)
+
 
 if __name__ == '__main__':
     unittest.main()
