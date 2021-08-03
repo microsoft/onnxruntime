@@ -6,19 +6,19 @@
 """
 Below are test results for Gelu or FastGelu FP32 kernels using CUDA:
 
-Formula	Input(BeforeCast) 	MaxDiff(NotOptimized)     MaxDiff(Optimized)
-0	    FP32	    2.38E-07	4.77E-07
-0	    FP16	    0	        6.10E-05
-1	    FP32	    4.77E-07	0
-1	    FP16	    6.10E-05	0
-2	    FP32	    2.38E-07	9.54E-07
-2	    FP16	    1.22E-04	0.001953125
-3	    FP32	    2.38E-07	2.38E-07
-3	    FP16	    0	        0
-4	    FP32	    0	        2.38E-07
-4	    FP16	    0	        3.05E-05
-5	    FP32	    0	        2.38E-07
-5	    FP16	    0	        3.05E-05
+Formula             Input(BeforeCast) 	MaxDiff     MaxDiff(Optimized)
+0(gelu_python)      FP32	            2.38E-07	4.77E-07
+0(gelu_python)	    FP16	            0	        6.10E-05
+1(gelu)	            FP32	            4.77E-07	0
+1(gelu)	            FP16	            6.10E-05	0
+2(erf_gelu)	        FP32	            2.38E-07	9.54E-07
+2(erf_gelu)	        FP16	            1.22E-04	1.95E-03
+3(gelu_new)	        FP32	            2.38E-07	2.38E-07
+3(gelu_new)	        FP16	            0	        0
+4(gelu_fast)	    FP32	            0	        2.38E-07
+4(gelu_fast)	    FP16	            0	        3.05E-05
+5(openai_gelu)	    FP32	            0	        2.38E-07
+5(openai_gelu)	    FP16	            0	        3.05E-05
 
 For comparison, CPU has MaxDiff=4.77E-07 for each formula.
 """
@@ -155,16 +155,16 @@ def onnxruntime_inference(ort_session, input):
     return ort_outputs
 
 
-def verify_attention(model,
-                     onnx_model_path,
-                     batch_size,
-                     hidden_size,
-                     sequence_length,
-                     float16,
-                     device,
-                     optimized,
-                     test_cases=100,
-                     verbose=False):
+def run_parity(model,
+               onnx_model_path,
+               batch_size,
+               hidden_size,
+               sequence_length,
+               float16,
+               device,
+               optimized,
+               test_cases=100,
+               verbose=False):
     print(
         f"optimized={optimized}, onnx_model_path={onnx_model_path}, batch_size={batch_size}, hidden_size={hidden_size}, sequence_length={sequence_length}, float16={float16}, device={device}"
     )
@@ -185,8 +185,7 @@ def verify_attention(model,
         max_diffs.append(max_diff)
         if is_all_close:
             passed_cases += 1
-
-        if verbose and is_all_close and not printed:
+        elif verbose and not printed:
             printed = True
             numpy.set_printoptions(precision=10, floatmode='fixed')
             torch.set_printoptions(precision=10)
@@ -201,7 +200,7 @@ def verify_attention(model,
     return test_cases - passed_cases
 
 
-def run(batch_size, float16, optimized, hidden_size, device, test_cases, formula=0):
+def run(batch_size, float16, optimized, hidden_size, device, test_cases, formula=0, sequence_length=2):
     test_name = f"batch_size={batch_size}, float16={float16}, optimized={optimized}, hidden_size={hidden_size}, formula={formula}"
     print(f"\nTesting ONNX parity: {test_name}")
 
@@ -222,10 +221,8 @@ def run(batch_size, float16, optimized, hidden_size, device, test_cases, formula
     else:
         onnx_path = onnx_model_path
 
-    num_failure = 0
-    for sequence_length in [2]:
-        num_failure += verify_attention(model, onnx_path, batch_size, hidden_size, sequence_length, float16, device,
-                                        optimized, test_cases)
+    num_failure = run_parity(model, onnx_path, batch_size, hidden_size, sequence_length, float16, device, optimized,
+                             test_cases)
 
     # clean up onnx file
     os.remove(onnx_model_path)
@@ -239,13 +236,15 @@ class TestGeluParity(unittest.TestCase):
     def setUp(self):
         self.optimized = True  # Change it to False if you want to test parity of non optimized ONNX
         self.test_cases = 100  # Number of test cases per test run
+        self.sequence_length = 2
         self.hidden_size = 768
         self.formula_to_test = [0, 1, 3, 4, 5]  # formula 2 cannot pass precision test.
 
     def run_test(self, batch_size, float16, optimized, hidden_size, device, formula):
         if float16 and device.type == 'cpu':  # CPU does not support FP16
             return
-        num_failure, test_name = run(batch_size, float16, optimized, hidden_size, device, self.test_cases, formula)
+        num_failure, test_name = run(batch_size, float16, optimized, hidden_size, device, self.test_cases, formula,
+                                     self.sequence_length)
         self.assertTrue(num_failure == 0, test_name)
 
     def run_one(self, optimized, device, hidden_size=768, formula=0):
@@ -256,6 +255,7 @@ class TestGeluParity(unittest.TestCase):
                           hidden_size=hidden_size,
                           device=device,
                           formula=formula)
+
             self.run_test(batch_size,
                           float16=True,
                           optimized=optimized,
