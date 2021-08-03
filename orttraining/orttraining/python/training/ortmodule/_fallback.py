@@ -6,6 +6,7 @@
 from . import _logger
 
 import torch
+import traceback
 import warnings
 
 from enum import IntFlag
@@ -196,7 +197,8 @@ class _FallbackManager(object):
 
         if log_level <= _logger.LogLevel.WARNING:
             warnings.warn(
-                f'Fallback due to exception {type(self._exception)} was triggered.', UserWarning)
+                (f'Fallback due to exception {type(self._exception)} was triggered. '
+                 f'See details below:\n\n{print_exception(self._exception)}'), UserWarning)
 
         # Pending fallbacks are resetted to enforce retries
         if self.retry:
@@ -213,3 +215,11 @@ def wrap_exception(new_exception: ORTModuleFallbackException, raised_exception: 
     except Exception as e:
         exception = e
     return exception
+
+def print_exception(exception):
+    assert isinstance(exception, Exception)
+
+    try:
+        raise exception
+    except:
+        return traceback.format_exc()

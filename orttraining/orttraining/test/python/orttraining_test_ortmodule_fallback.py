@@ -23,12 +23,12 @@ from _orttraining_ortmodule_models import (NeuralNetSinglePositionalArgument,
 def test_ortmodule_fallback_forward(is_training, fallback_enabled, matching_policy, persist_fallback):
     # is_training: True for torch.nn.Module training model, eval mode otherwise
     # fallback_enabled: True results in PyTorch executing the forward graph instead of ORT backend
-    # matching_policy: True results in properly matching FALLBACK_UNSUPPORTED_DATA policy to ORTModuleDeviceException exception.
+    # matching_policy: True results in properly matching FALLBACK_FORCE_TORCH_FORWARD policy to ORTModuleDeviceException exception.
     #   Otherwise, an incorrect policy (FALLBACK_UNSUPPORTED_DEVICE) is used to verify that the fallback does not happen
 
     if fallback_enabled:
         if matching_policy:
-            policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DATA
+            policy = _fallback._FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD
         else:
             policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE
     else:
@@ -480,7 +480,6 @@ def test_ortmodule_fallback_onnx_model__missing_op(is_training, fallback_enabled
     pt_model = CrossModule()
     ort_model = ORTModule(copy.deepcopy(pt_model),
                           debug_options=DebugOptions(
-                              log_level=LogLevel.INFO,
                               fallback_policy=policy,
                               persist_fallback=persist_fallback))
     ort_model.train(is_training)
