@@ -22,6 +22,7 @@ bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const NodeArg* ar
   const ONNX_NAMESPACE::TensorProto* initializer_tensor =
       graph.GetGraph().GetConstantInitializer(arg->Name(), true);
 
+  // Not a "constant" initializer or not an initializer at all
   if (initializer_tensor == nullptr) {
     return false;
   }
