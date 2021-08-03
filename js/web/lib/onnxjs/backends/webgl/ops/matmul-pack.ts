@@ -6,13 +6,21 @@ import {BroadcastUtil} from '../../../util';
 import {ShapeUtil} from '../../../util';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, TextureType} from '../types';
+import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
 import {getCoordsDataType} from '../utils';
 
 import {getActicationSnippet, InternalActivationAttributes} from './fuse-utils';
 
-export const createPackedMatmulProgramInfo =
-    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[],
+const createPackedMatmulProgramMetadata = (hasBias: boolean, cacheHint: string) => ({
+  name: 'MatMul (packed)',
+  inputNames: hasBias ? ['A', 'B', 'Bias'] : ['A', 'B'],
+  inputTypes: hasBias ? [TextureType.packed, TextureType.packed, TextureType.packed] :
+                        [TextureType.packed, TextureType.packed],
+  cacheHint
+});
+
+const createPackedMatmulProgramInfo =
+    (inferenceHandler: WebGLInferenceHandler, metadata: ProgramMetadata, inputs: Tensor[],
      activationAttributes: InternalActivationAttributes): ProgramInfo => {
       const hasBias = inputs.length > 2;
       const processBias = hasBias ? 'value += getBiasForMatmul();' : '';
@@ -67,13 +75,20 @@ export const createPackedMatmulProgramInfo =
               ${glsl.output} = value;
             }`;
       return {
-        name: 'MatMul (packed)',
-        inputNames: hasBias ? ['A', 'B', 'Bias'] : ['A', 'B'],
-        inputTypes: hasBias ? [TextureType.packed, TextureType.packed, TextureType.packed] :
-                              [TextureType.packed, TextureType.packed],
+        ...metadata,
         output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.packed},
         shaderSource,
         hasMain: true
+      };
+    };
+
+export const createPackedMatmulProgramInfoLoader =
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[],
+     activationAttributes: InternalActivationAttributes): ProgramInfoLoader => {
+      const metadata = createPackedMatmulProgramMetadata(inputs.length > 2, activationAttributes.activationCacheKey);
+      return {
+        ...metadata,
+        get: () => createPackedMatmulProgramInfo(inferenceHandler, metadata, inputs, activationAttributes)
       };
     };
 

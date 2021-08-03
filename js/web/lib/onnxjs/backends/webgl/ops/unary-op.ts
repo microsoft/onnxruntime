@@ -7,7 +7,7 @@ import {Tensor} from '../../../tensor';
 import {FunctionType, GlslValueFunction} from '../glsl-definitions';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, TextureType} from '../types';
+import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
 
 export function glslAbs(): GlslValueFunction {
   return glslBuiltinUnary('abs');
@@ -70,6 +70,20 @@ export function glslIdentity(): GlslValueFunction {
   }
   vec4 ${name}_(vec4 v) {
     return v;
+  }
+  `;
+  return {body, name, type: FunctionType.ValueBased};
+}
+export function glslLeakyRelu(alpha: number): GlslValueFunction {
+  const name = 'leakyRelu';
+  const body = `
+  const float alpha = float(${alpha});
+
+  float ${name}_(float a) {
+    return a < 0.0 ? a * alpha : a;
+  }
+  vec4 ${name}_(vec4 v) {
+    return vec4(${name}_(v.x), ${name}_(v.y), ${name}_(v.z), ${name}_(v.w));
   }
   `;
   return {body, name, type: FunctionType.ValueBased};
@@ -173,16 +187,14 @@ function glslBuiltinUnary(name: string): GlslValueFunction {
 /////
 
 const createElementwiseProgramInfo =
-    (handler: WebGLInferenceHandler, input: Tensor, glslFunc: GlslValueFunction, cacheKey?: string): ProgramInfo => {
-      const textureType = handler.session.pack ? TextureType.packed : TextureType.unpacked;
-      const glsl = getGlsl(handler.session.backend.glContext.version);
-      return {
-        name: glslFunc.name,
-        inputTypes: [textureType],
-        inputNames: ['A'],
-        cacheHint: cacheKey,
-        output: {dims: input.dims, type: input.type, textureType},
-        shaderSource: `
+    (handler: WebGLInferenceHandler, metadata: ProgramMetadata, input: Tensor, glslFunc: GlslValueFunction):
+        ProgramInfo => {
+          const textureType = handler.session.pack ? TextureType.packed : TextureType.unpacked;
+          const glsl = getGlsl(handler.session.backend.glContext.version);
+          return {
+            ...metadata,
+            output: {dims: input.dims, type: input.type, textureType},
+            shaderSource: `
      ${glslFunc.body}
      void main() {
        vec4 v = ${glsl.texture2D}(A, TexCoords);
@@ -190,21 +202,29 @@ const createElementwiseProgramInfo =
        ${glsl.output} = v;
      }
      `,
-        hasMain: true
-      };
-    };
+            hasMain: true
+          };
+        };
+
+const createElementwiseProgramInfoLoader =
+    (handler: WebGLInferenceHandler, input: Tensor, glslFunc: GlslValueFunction, cacheKey?: string):
+        ProgramInfoLoader => {
+          const textureType = handler.session.pack ? TextureType.packed : TextureType.unpacked;
+          const metadata = {name: glslFunc.name, inputTypes: [textureType], inputNames: ['A'], cacheHint: cacheKey};
+          return {...metadata, get: () => createElementwiseProgramInfo(handler, metadata, input, glslFunc)};
+        };
 
 export const abs = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslAbs()), inputs)];
+    Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslAbs()), inputs)];
 
 export const acos = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslAcos()), inputs)];
+    Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslAcos()), inputs)];
 
 export const asin = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslAsin()), inputs)];
+    Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslAsin()), inputs)];
 
 export const atan = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslAtan()), inputs)];
+    Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslAtan()), inputs)];
 
 export interface ClipAttributes extends AttributeWithCacheKey {
   readonly min: number;
@@ -213,7 +233,8 @@ export interface ClipAttributes extends AttributeWithCacheKey {
 
 export const clip =
     (handler: WebGLInferenceHandler, inputs: Tensor[], attributes: ClipAttributes): Tensor[] => [handler.run(
-        createElementwiseProgramInfo(handler, inputs[0], glslClip(attributes.min, attributes.max), attributes.cacheKey),
+        createElementwiseProgramInfoLoader(
+            handler, inputs[0], glslClip(attributes.min, attributes.max), attributes.cacheKey),
         inputs)];
 
 export const parseClipAttributes = (node: Graph.Node): ClipAttributes => createAttributeWithCacheKey({
@@ -222,10 +243,10 @@ export const parseClipAttributes = (node: Graph.Node): ClipAttributes => createA
 });
 
 export const ceil = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslCeil()), inputs)];
+    Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslCeil()), inputs)];
 
 export const cos = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslCos()), inputs)];
+    Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslCos()), inputs)];
 
 export interface EluAttributes extends AttributeWithCacheKey {
   readonly alpha: number;
@@ -233,43 +254,56 @@ export interface EluAttributes extends AttributeWithCacheKey {
 
 export const elu =
     (handler: WebGLInferenceHandler, inputs: Tensor[], attributes: EluAttributes): Tensor[] => [handler.run(
-        createElementwiseProgramInfo(handler, inputs[0], glslElu(attributes.alpha), attributes.cacheKey), inputs)];
+        createElementwiseProgramInfoLoader(handler, inputs[0], glslElu(attributes.alpha), attributes.cacheKey),
+        inputs)];
 
 export const parseEluAttributes = (node: Graph.Node): EluAttributes =>
     createAttributeWithCacheKey({alpha: node.attributes.getFloat('alpha', 1.0)});
 
 export const exp = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslExp()), inputs)];
+    Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslExp()), inputs)];
 
 export const floor = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslFloor()), inputs)];
+    Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslFloor()), inputs)];
 
 export const identity = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslIdentity()), inputs)];
+    Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslIdentity()), inputs)];
+
+export interface LeakyReluAttributes extends AttributeWithCacheKey {
+  readonly alpha: number;
+}
+
+export const leakyRelu =
+    (handler: WebGLInferenceHandler, inputs: Tensor[], attributes: LeakyReluAttributes): Tensor[] => [handler.run(
+        createElementwiseProgramInfoLoader(handler, inputs[0], glslLeakyRelu(attributes.alpha), attributes.cacheKey),
+        inputs)];
+
+export const parseLeakyReluAttributes = (node: Graph.Node): LeakyReluAttributes =>
+    createAttributeWithCacheKey({alpha: node.attributes.getFloat('alpha', 0.01)});
 
 export const log = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslLog()), inputs)];
+    Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslLog()), inputs)];
 
 export const neg = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslNeg()), inputs)];
+    Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslNeg()), inputs)];
 
 export const not = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslNot()), inputs)];
+    Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslNot()), inputs)];
 
 export const relu = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslRelu()), inputs)];
+    Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslRelu()), inputs)];
 
 export const sigmoid = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslSigmoid()), inputs)];
+    Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslSigmoid()), inputs)];
 
 export const sin = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslSin()), inputs)];
+    Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslSin()), inputs)];
 
 export const sqrt = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslSqrt()), inputs)];
+    Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslSqrt()), inputs)];
 
 export const tan = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslTan()), inputs)];
+    Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslTan()), inputs)];
 
 export const tanh = (handler: WebGLInferenceHandler, inputs: Tensor[]):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslTanh()), inputs)];
+    Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslTanh()), inputs)];

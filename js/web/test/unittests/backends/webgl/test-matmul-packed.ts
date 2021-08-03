@@ -6,7 +6,7 @@ import {env} from 'onnxruntime-common';
 
 import {Backend, InferenceHandler, resolveBackend, SessionHandler} from '../../../../lib/onnxjs/backend';
 import {WebGLInferenceHandler} from '../../../../lib/onnxjs/backends/webgl/inference-handler';
-import {createPackedMatmulProgramInfo} from '../../../../lib/onnxjs/backends/webgl/ops/matmul-pack';
+import {createPackedMatmulProgramInfoLoader} from '../../../../lib/onnxjs/backends/webgl/ops/matmul-pack';
 import {Profiler} from '../../../../lib/onnxjs/instrument';
 import {Tensor} from '../../../../lib/onnxjs/tensor';
 
@@ -177,7 +177,7 @@ describe('#UnitTest# - packed matmul - Tensor matmul', () => {
       const inputs = biasTensor ? [inputTensorA, inputTensorB, biasTensor] : [inputTensorA, inputTensorB];
 
       const output = webglInferenceHandler.run(
-          createPackedMatmulProgramInfo(webglInferenceHandler, inputs, {activation: '', activationCacheKey: ''}),
+          createPackedMatmulProgramInfoLoader(webglInferenceHandler, inputs, {activation: '', activationCacheKey: ''}),
           inputs);
       const result = output.data;
 

@@ -4,13 +4,20 @@
 import {Tensor} from '../../../tensor';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, TextureType} from '../types';
+import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
 import {ConvAttributes} from './conv';
 import {unpackFromChannel} from './packing-utils';
 
-export const createPackedIm2ColProgramInfo =
-    (inferenceHandler: WebGLInferenceHandler, x: Tensor, w: Tensor, outputShape: readonly number[],
-     attributes: ConvAttributes): ProgramInfo => {
+const createPackedIm2ColProgramMetadata = (cacheHint: string) => ({
+  name: 'Im2Col (packed)',
+  inputNames: ['A'],
+  inputTypes: [TextureType.packed],
+  cacheHint,
+});
+
+const createPackedIm2ColProgramInfo =
+    (inferenceHandler: WebGLInferenceHandler, metadata: ProgramMetadata, x: Tensor, w: Tensor,
+     outputShape: readonly number[], attributes: ConvAttributes): ProgramInfo => {
       const xshape = x.dims;
       const wshape = w.dims;
       const rowDim = 2;
@@ -66,11 +73,19 @@ export const createPackedIm2ColProgramInfo =
       }
             `;
       return {
-        name: 'Im2Col (packed)',
-        inputNames: ['A'],
-        inputTypes: [TextureType.packed],
+        ...metadata,
         output: {dims: im2colShape, type: x.type, textureType: TextureType.packed},
         shaderSource,
         hasMain: true
+      };
+    };
+
+export const createPackedIm2ColProgramInfoLoader =
+    (inferenceHandler: WebGLInferenceHandler, x: Tensor, w: Tensor, outputShape: readonly number[],
+     attributes: ConvAttributes): ProgramInfoLoader => {
+      const metadata = createPackedIm2ColProgramMetadata(attributes.cacheKey);
+      return {
+        ...metadata,
+        get: () => createPackedIm2ColProgramInfo(inferenceHandler, metadata, x, w, outputShape, attributes)
       };
     };

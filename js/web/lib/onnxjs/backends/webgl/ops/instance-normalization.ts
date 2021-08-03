@@ -6,16 +6,15 @@ import {OperatorImplementation, OperatorInitialization} from '../../../operators
 import {Tensor} from '../../../tensor';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, TextureType} from '../types';
+import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
 
 export const instanceNormalization: OperatorImplementation<number> =
     (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], epsilon: number): Tensor[] => {
       validateInputs(inputs);
 
-      const meanAndVariance =
-          inferenceHandler.run(createMeanAndVarianceProgramInfo(inferenceHandler, inputs[0]), inputs);
+      const meanAndVariance = inferenceHandler.run(createMeanAndVarianceProgramInfoLoader(inputs[0]), inputs);
       const output = inferenceHandler.run(
-          createComputeOutputProgramInfo(inferenceHandler, inputs[0], epsilon, meanAndVariance.dims),
+          createComputeOutputProgramInfoLoader(inferenceHandler, inputs[0], epsilon, meanAndVariance.dims),
           [inputs[0], meanAndVariance, inputs[1], inputs[2]]);
       return [output];
     };
@@ -23,7 +22,13 @@ export const instanceNormalization: OperatorImplementation<number> =
 export const parseInstanceNormalizationAttributes: OperatorInitialization<number> = (node: Graph.Node): number =>
     node.attributes.getFloat('epsilon', 1e-5);
 
-const createMeanAndVarianceProgramInfo = (inferenceHandler: WebGLInferenceHandler, input: Tensor): ProgramInfo => {
+const meanAndVarianceProgramMetadata = {
+  name: 'InstanceNormalization_MeanAndVariance',
+  inputNames: ['X'],
+  inputTypes: [TextureType.unpacked],
+};
+
+const createMeanAndVarianceProgramInfo = (metadata: ProgramMetadata, input: Tensor): ProgramInfo => {
   const xDims = input.dims.slice();
   const channel = xDims[1];
   const channelSize = xDims[2] * xDims[3];
@@ -60,16 +65,25 @@ const createMeanAndVarianceProgramInfo = (inferenceHandler: WebGLInferenceHandle
         return v;
       }`;
   return {
-    name: 'MeanAndVariance',
-    inputNames: ['X'],
-    inputTypes: [TextureType.unpacked],
+    ...metadata,
     output: {dims: outputShape, type: input.type, textureType: TextureType.packedLastDimension},
     shaderSource
   };
 };
 
+const createMeanAndVarianceProgramInfoLoader = (input: Tensor): ProgramInfoLoader => ({
+  ...meanAndVarianceProgramMetadata,
+  get: () => createMeanAndVarianceProgramInfo(meanAndVarianceProgramMetadata, input)
+});
+
+const computeOutputProgramMetadata = {
+  name: 'InstanceNormalization_ComputeOutput',
+  inputNames: ['X', 'MeanAndVariance', 'Scale', 'B'],
+  inputTypes: [TextureType.unpacked, TextureType.packedLastDimension, TextureType.unpacked, TextureType.unpacked],
+};
+
 const createComputeOutputProgramInfo =
-    (inferenceHandler: WebGLInferenceHandler, input: Tensor, epsilon: number,
+    (inferenceHandler: WebGLInferenceHandler, metadata: ProgramMetadata, input: Tensor, epsilon: number,
      meanAndVarianceShape: readonly number[]): ProgramInfo => {
       const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
       const [textureWidth, textureHeight] =
@@ -81,7 +95,7 @@ const createComputeOutputProgramInfo =
         vec2 coords = offsetToCoords(offset, ${meanAndVarianceWidth}, ${meanAndVarianceHeight});
         return ${glsl.texture2D}(MeanAndVariance, coords);
       }
-  
+
       float process(int[4] indices) {
         int mv[2];
         mv[0] = indices[0];
@@ -98,14 +112,22 @@ const createComputeOutputProgramInfo =
         return scale * (_X(indices) - mean) / sqrt(variance + epsilon) + b;
       }`;
       return {
-        name: 'InstanceNormalization',
-        inputNames: ['X', 'MeanAndVariance', 'Scale', 'B'],
-        inputTypes: [TextureType.unpacked, TextureType.packedLastDimension, TextureType.unpacked, TextureType.unpacked],
+        ...metadata,
         output: {dims: input.dims, type: input.type, textureType: TextureType.unpacked},
         variables: [{name: 'epsilon', type: 'float', data: epsilon}],
         shaderSource
       };
     };
+
+const createComputeOutputProgramInfoLoader =
+    (inferenceHandler: WebGLInferenceHandler, input: Tensor, epsilon: number, meanAndVarianceShape: readonly number[]):
+        ProgramInfoLoader => {
+          const metadata = {...computeOutputProgramMetadata, cacheHint: `${epsilon}`};
+          return {
+            ...metadata,
+            get: () => createComputeOutputProgramInfo(inferenceHandler, metadata, input, epsilon, meanAndVarianceShape)
+          };
+        };
 
 const validateInputs = (inputs: Tensor[]): void => {
   if (!inputs || inputs.length !== 3) {

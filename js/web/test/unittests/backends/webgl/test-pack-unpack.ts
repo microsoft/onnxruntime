@@ -5,8 +5,8 @@ import {expect} from 'chai';
 
 import {Backend, InferenceHandler, resolveBackend, SessionHandler} from '../../../../lib/onnxjs/backend';
 import {WebGLInferenceHandler} from '../../../../lib/onnxjs/backends/webgl/inference-handler';
-import {createPackProgramInfo} from '../../../../lib/onnxjs/backends/webgl/ops/pack';
-import {createUnpackProgramInfo} from '../../../../lib/onnxjs/backends/webgl/ops/unpack';
+import {createPackProgramInfoLoader} from '../../../../lib/onnxjs/backends/webgl/ops/pack';
+import {createUnpackProgramInfoLoader} from '../../../../lib/onnxjs/backends/webgl/ops/unpack';
 import {createTextureLayoutFromShape} from '../../../../lib/onnxjs/backends/webgl/texture-layout';
 import {Profiler} from '../../../../lib/onnxjs/instrument';
 import {Tensor} from '../../../../lib/onnxjs/tensor';
@@ -243,7 +243,7 @@ describe('#UnitTest# - pack - Tensor pack', () => {
         }
 
         // compile shader code
-        const programInfo = createPackProgramInfo(inferenceHandler! as WebGLInferenceHandler, inputTensor);
+        const programInfo = createPackProgramInfoLoader(inferenceHandler! as WebGLInferenceHandler, inputTensor);
 
         // run kernal and get output
         const resultTextureData = webglInferenceHandler.executeProgram(programInfo, [inputTensor]);
@@ -310,7 +310,7 @@ describe('#UnitTest# - unpack - Tensor unpack', () => {
       webglInferenceHandler.setTextureData(inputTensor.dataId, textureData, true);
 
       // compile shader code
-      const programInfo = createUnpackProgramInfo(inferenceHandler! as WebGLInferenceHandler, inputTensor);
+      const programInfo = createUnpackProgramInfoLoader(inferenceHandler! as WebGLInferenceHandler, inputTensor);
 
       // run kernal and get output
       const resultTextureData = webglInferenceHandler.executeProgram(programInfo, [inputTensor]);
@@ -355,14 +355,14 @@ describe('#UnitTest# - pack-unpack round trip', () => {
       const inputTensor = new Tensor(inputTensorShape, 'float32', undefined, undefined, inputData);
 
       // compile pack shader code
-      const packProgramInfo = createPackProgramInfo(inferenceHandler! as WebGLInferenceHandler, inputTensor);
+      const packProgramInfo = createPackProgramInfoLoader(inferenceHandler! as WebGLInferenceHandler, inputTensor);
       const packResultData = webglInferenceHandler.executeProgram(packProgramInfo, [inputTensor]);
 
       // create unpack kernel
 
       // compile unpack shader code
       const unpackProgramInfo =
-          createPackProgramInfo(inferenceHandler! as WebGLInferenceHandler, packResultData.tensor);
+          createPackProgramInfoLoader(inferenceHandler! as WebGLInferenceHandler, packResultData.tensor);
 
       // run unpack kernal and get output
       const unpackResultData = webglInferenceHandler.executeProgram(unpackProgramInfo, [inputTensor]);

@@ -5,11 +5,11 @@ import {InferenceHandler} from '../../backend';
 import {Logger} from '../../instrument';
 import {Tensor} from '../../tensor';
 import {ShapeUtil} from '../../util';
-import {packProgramInfoLoader} from './ops/pack';
+import {createPackProgramInfoLoader} from './ops/pack';
 import {createPackedReshape3DProgramInfoLoader, isReshapeCheap, processDims3D} from './ops/reshape-packed';
 
 import {encodeAsUint8} from './ops/uint8-encode';
-import {unpackProgramInfoLoader} from './ops/unpack';
+import {createUnpackProgramInfoLoader} from './ops/unpack';
 import {WebGLSessionHandler} from './session-handler';
 import {Encoder} from './texture-data-encoder';
 import {calculateTextureWidthAndHeight, createTextureLayoutFromShape, createTextureLayoutFromTextureType} from './texture-layout';
@@ -310,12 +310,12 @@ export class WebGLInferenceHandler implements InferenceHandler {
   }
 
   pack(input: TextureData): TextureData {
-    const outputTextureData = this.executeProgram(packProgramInfoLoader(this, input.tensor), [input.tensor]);
+    const outputTextureData = this.executeProgram(createPackProgramInfoLoader(this, input.tensor), [input.tensor]);
     return outputTextureData;
   }
 
   unpack(input: TextureData): TextureData {
-    const outputTextureData = this.executeProgram(unpackProgramInfoLoader(this, input.tensor), [input.tensor]);
+    const outputTextureData = this.executeProgram(createUnpackProgramInfoLoader(this, input.tensor), [input.tensor]);
     return outputTextureData;
   }
 }
