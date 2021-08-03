@@ -113,7 +113,6 @@ bool DnnlPoolNodeCapability::IsMaxPoolIndicesSupported(const Node* node) const {
     return false;
 #endif  // ENABLE_TRAINING
   return true;
-
 }
 
 // DnnlBatchNormalizationNodeCapability class
@@ -177,7 +176,7 @@ bool DnnlSoftmaxNodeCapability::Supported(const Node* node) const {
   return true;
 }
 
-//DNNL Softmax supports opset version of 13 and above, or only axis value of 2 for opset version < 13 
+//DNNL Softmax supports opset version of 13 and above, or only axis value of 2 for opset version < 13
 bool DnnlSoftmaxNodeCapability::IsAttributeSupported(const Node* node) const {
   const NodeAttributes& attributes = node->GetAttributes();
   auto opset = node->SinceVersion();
@@ -300,7 +299,7 @@ bool DnnlSumNodeCapability::Supported(const Node* node) const {
 bool DnnlSumNodeCapability::IsDimensionSupported(const Node* node) const {
   auto node_inputs = node->InputDefs();
   // find first non-null shape
-  const ONNX_NAMESPACE::TensorShapeProto *data_0_shape = nullptr;
+  const ONNX_NAMESPACE::TensorShapeProto* data_0_shape = nullptr;
   for (auto input : node_inputs) {
     data_0_shape = input->Shape();
     if (data_0_shape != nullptr) {
@@ -327,8 +326,37 @@ bool DnnlSumNodeCapability::IsDimensionSupported(const Node* node) const {
     }
   }
   return true;
-
 }
 
+bool DnnlBinaryNodeCapability::Supported(const Node* node) const {
+  if (!IsTypeSupported(node)) return false;
+  if (!IsDimensionSupported(node)) return false;
+  //gpu broadcast for source 0 not supported
+  if (dnnl_engine_get_count(dnnl_engine_kind_t::dnnl_gpu)) {
+    return false;
+  }
+  return true;
+}
+
+bool DnnlBinaryNodeCapability::IsDimensionSupported(const Node* node) const {
+  auto node_inputs = node->InputDefs();
+  if (node_inputs[0]->Shape() == nullptr || node_inputs[1]->Shape() == nullptr) {
+    return true;
+  }
+
+  // DNNL binary ops Add and Mul do not work if both inputs are scalar values
+  bool src0_is_scalar = false;
+  bool src1_is_scalar = false;
+  if (node_inputs[0]->Shape() != nullptr && node_inputs[0]->Shape()->dim_size() == 0) {
+    src0_is_scalar = true;
+  }
+  if (node_inputs[1]->Shape() != nullptr && node_inputs[1]->Shape()->dim_size() == 0) {
+    src1_is_scalar = true;
+  }
+  if (src0_is_scalar && src1_is_scalar) {
+    return false;
+  }
+  return true;
+}
 
 }  // namespace onnxruntime

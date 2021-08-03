@@ -4,6 +4,7 @@
 #include "dnnl_subgraph_primitive.h"
 
 #include "dnnl_batchnorm.h"
+#include "dnnl_binary.h"
 #include "dnnl_conv.h"
 #include "dnnl_lrn.h"
 #include "dnnl_matmul.h"
@@ -164,10 +165,13 @@ void DnnlSubgraphPrimitive::AddInitializers() {
 }
 
 void DnnlSubgraphPrimitive::AddKernels() {
+  std::unordered_set<std::string> binary_ops = {"Add", "Mul", "Sub", "Div"};
   for (auto& node : subgraph_->GetDnnlNodes()) {
     if (node.OpType() == "AveragePool" || node.OpType() == "GlobalAveragePool" ||
         node.OpType() == "GlobalMaxPool" || node.OpType() == "MaxPool") {
       DnnlPool().CreatePrimitive(*this, node);
+    } else if (binary_ops.count(node.OpType())) {
+      DnnlBinary().CreatePrimitive(*this, node);
     } else if (node.OpType() == "BatchNormalization") {
       DnnlBatchNorm().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Conv") {

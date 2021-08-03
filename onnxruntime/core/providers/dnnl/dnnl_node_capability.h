@@ -186,7 +186,7 @@ class DnnlSumNodeCapability : public DnnlDefaultNodeCapability {
   // Onnx reports support for float, float16, bfloat16, and double
   // Onnxruntime only has unittests for float and double.
   // To enable float16 and bfloat16 we will should add tests to verify those data types.
-  DnnlSumNodeCapability() : DnnlDefaultNodeCapability({"float"/*, "float16", "bfloat16", "int8", "uint8"*/}) {}
+  DnnlSumNodeCapability() : DnnlDefaultNodeCapability({"float" /*, "float16", "bfloat16", "int8", "uint8"*/}) {}
 
   bool Supported(const Node* node) const override;
 
@@ -194,5 +194,17 @@ class DnnlSumNodeCapability : public DnnlDefaultNodeCapability {
   bool IsDimensionSupported(const Node* node) const;
 };
 
+/**
+ * Decide if a Binary op is supported by DnnlExecutionProvider
+ */
+class DnnlBinaryNodeCapability : public DnnlDefaultNodeCapability {
+ public:
+  DnnlBinaryNodeCapability() : DnnlDefaultNodeCapability({"int8", "uint8", "float"}) {}
+
+  bool Supported(const Node* node) const override;
+
+ private:
+  bool IsDimensionSupported(const Node* node) const;
+};
 
 }  // namespace onnxruntime
