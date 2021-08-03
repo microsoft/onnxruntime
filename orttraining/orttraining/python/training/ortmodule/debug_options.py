@@ -90,8 +90,16 @@ class DebugOptions:
             set to the destination directory path.
         onnx_prefix (:obj:`str`, optional): Name prefix to the ORTModule ONNX models saved file names.
             Must be provided if save_onnx is True
-        fallback_policy (`_FallbackPolicy`, optional): Policy to configure PyTorch fallback strategy.
+        fallback_policy (`_FallbackPolicy`, optional): Configure PyTorch fallback policy. One of
+            [FALLBACK_DISABLE, FALLBACK_FORCE_TORCH_FORWARD, FALLBACK_FORCE_TORCH_BACKWARD,
+             FALLBACK_UNSUPPORTED_DEVICE, FALLBACK_UNSUPPORTED_DATA, FALLBACK_UNSUPPORTED_TORCH_MODEL,
+             FALLBACK_UNSUPPORTED_ONNX_MODEL, FALLBACK_BAD_INITIALIZATION].
             Defaults to FALLBACK_DISABLE
+            TODO: Remove before release?
+        persist_fallback (:obj:`bool`, optional): When True, ORTModule will always fallback to PyTorch
+            after the first failure is handled. Otherwise, ORTModule will retry ONNX Runtime backend every time.
+            Defaults to True
+            TODO: Remove before release?
 
     Raises:
         OSError: If save_onnx is True and output directory is not writable.
@@ -105,10 +113,12 @@ class DebugOptions:
                  log_level=LogLevel.WARNING,
                  save_onnx=False,
                  onnx_prefix='',
-                 fallback_policy=_FallbackPolicy.FALLBACK_DISABLE):
+                 fallback_policy=_FallbackPolicy.FALLBACK_DISABLE,
+                 persist_fallback=True):
         self._save_onnx_models = _SaveOnnxOptions(save_onnx, onnx_prefix)
         self._logging = _LoggingOptions(log_level)
         self._fallback_policy = fallback_policy
+        self._persist_fallback = persist_fallback
 
     @property
     def save_onnx_models(self):
@@ -124,6 +134,12 @@ class DebugOptions:
 
     @property
     def fallback_policy(self):
-        """Accessor for the Fallback policy."""
+        """Accessor for the fallback policy."""
 
         return self._fallback_policy
+
+    @property
+    def persist_fallback(self):
+        """Accessor for the fallback persistence flag."""
+
+        return self._persist_fallback

@@ -37,8 +37,8 @@ class ORTModule(torch.nn.Module):
         # instantiate it inside the function.
         if not debug_options:
             debug_options = DebugOptions()
-        self._fallback_manager = _FallbackManager(policy=debug_options.fallback_policy)
-
+        self._fallback_manager = _FallbackManager(policy=debug_options.fallback_policy,
+                                                  retry=(not debug_options.persist_fallback))
         try:
             # Read ORTModule module initialization status
             global FALLBACK_INIT_EXCEPTION

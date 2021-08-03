@@ -109,15 +109,19 @@ class _FallbackManager(object):
     and and values are a set of Exception that must be detected.
 
     When an exception that matches one of the enabled policies are detected,
-    a fallback will be pending to execute by ORTModule frontend.
+    a fallback will be pending to execute by ORTModule frontend. If `retry` is False,
+    ORTModule will fallback to PyTorch on the following steps. Otherwise, ORTModule [re]try
+    to run the model using ORT backend in every step
+
 
     On the other hand, when the exception doesn't match any enabled policy, the exception will
     be raised to the user, terminating execution
     '''
 
     def __init__(self,
-                 policy: _FallbackPolicy):
-        self._policy_exception_map = {_FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD.value: {ORTModuleFallbackException,
+                 policy: _FallbackPolicy,
+                 retry: bool):
+        self.policy_exception_map = {_FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD.value: {ORTModuleFallbackException,
                                                                                            ORTModuleDeviceException,
                                                                                            ORTModuleIOError,
                                                                                            ORTModuleTorchModelException,
@@ -134,7 +138,8 @@ class _FallbackManager(object):
                                       _FallbackPolicy.FALLBACK_BAD_INITIALIZATION.value: {ORTModuleInitException,
                                                                                           ORTModuleTorchModelException},
                                       }
-        self._policy = policy
+        self.policy = policy
+        self.retry = retry
         self._exception = None
 
     def handle_exception(self,
@@ -156,11 +161,10 @@ class _FallbackManager(object):
         Raises:
             `exception`: Original exception is raised when there is no matching policy for it
         '''
-
         def _set_exception(policy: _FallbackPolicy, exception: Exception, log_level: _logger.LogLevel):
             if policy is not _FallbackPolicy.FALLBACK_DISABLE and \
-                    self._policy.is_set(policy) and \
-                    (policy.value in self._policy_exception_map and type(exception) in self._policy_exception_map[policy.value]):
+                    self.policy.is_set(policy) and \
+                    (policy.value in self.policy_exception_map and type(exception) in self.policy_exception_map[policy.value]):
 
                 if log_level <= _logger.LogLevel.WARNING:
                     warnings.warn(
@@ -174,6 +178,7 @@ class _FallbackManager(object):
             _set_exception(override_policy, exception, log_level)
 
         if self._exception is None:
+            # No fallback, raise failure to user
             raise exception
 
     def is_pending(self) -> bool:
@@ -187,13 +192,15 @@ class _FallbackManager(object):
     def fallback(self, model: torch.nn.Module, log_level: _logger.LogLevel, *inputs, **kwargs):
         '''Executes user PyTorch `model` using the provided inputs and return the result'''
 
-        # Pending fallbacks are resetted to enforce retries
         assert self.is_pending()
-        self._exception = None
 
         if log_level <= _logger.LogLevel.WARNING:
             warnings.warn(
                 f'Fallback due to exception {type(self._exception)} was triggered.', UserWarning)
+
+        # Pending fallbacks are resetted to enforce retries
+        if self.retry:
+            self._exception = None
         return model(*inputs, **kwargs)
 
 

@@ -3,6 +3,7 @@
 # orttraining_test_ortmodule_api.py
 
 import copy
+import itertools
 import torch
 import pytest
 import warnings
@@ -17,10 +18,9 @@ from _orttraining_ortmodule_models import (NeuralNetSinglePositionalArgument,
 
 # PyTorch model definitions for tests
 
-@pytest.mark.parametrize("is_training", [True, False])
-@pytest.mark.parametrize("fallback_enabled", [True, False])
-@pytest.mark.parametrize("matching_policy", [True, False])
-def test_ortmodule_fallback_forward(is_training, fallback_enabled, matching_policy):
+@pytest.mark.parametrize("is_training,fallback_enabled,matching_policy,persist_fallback",
+                         list(itertools.product([True,False],repeat=4)))
+def test_ortmodule_fallback_forward(is_training, fallback_enabled, matching_policy, persist_fallback):
     # is_training: True for torch.nn.Module training model, eval mode otherwise
     # fallback_enabled: True results in PyTorch executing the forward graph instead of ORT backend
     # matching_policy: True results in properly matching FALLBACK_UNSUPPORTED_DATA policy to ORTModuleDeviceException exception.
@@ -47,15 +47,18 @@ def test_ortmodule_fallback_forward(is_training, fallback_enabled, matching_poli
             return point.x * point.y
 
     pt_model = UnsupportedInputModel()
-    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(fallback_policy=policy))
-    inputs = Point(x=2,y=3)
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(fallback_policy=policy,
+                                                                persist_fallback=persist_fallback))
+    inputs = Point(x=2, y=3)
 
     ort_model.train(is_training)
     pt_model.train(is_training)
 
-    for _ in range(3):
+    for i in range(3):
         if fallback_enabled:
             if matching_policy:
+                if i > 0 and persist_fallback:
+                    assert ort_model._torch_module._execution_manager(is_training=is_training)._fallback_manager._exception is not None
                 ort_out = ort_model(inputs)
                 pt_out = pt_model(inputs)
                 assert ort_out == pt_out
@@ -69,10 +72,9 @@ def test_ortmodule_fallback_forward(is_training, fallback_enabled, matching_poli
             assert "ORTModule does not support the following model data type" in str(type_error.value)
 
 
-@pytest.mark.parametrize("is_training", [True, False])
-@pytest.mark.parametrize("fallback_enabled", [True, False])
-@pytest.mark.parametrize("matching_policy", [True, False])
-def test_ortmodule_fallback_device__multiple(is_training, fallback_enabled, matching_policy):
+@pytest.mark.parametrize("is_training,fallback_enabled,matching_policy,persist_fallback",
+                         list(itertools.product([True,False],repeat=4)))
+def test_ortmodule_fallback_device__multiple(is_training, fallback_enabled, matching_policy, persist_fallback):
     # is_training: True for torch.nn.Module training model, eval mode otherwise
     # fallback_enabled: True results in PyTorch executing the forward graph instead of ORT backend
     # matching_policy: True results in properly matching FALLBACK_UNSUPPORTED_DEVICE policy to ORTModuleDeviceException exception.
@@ -103,7 +105,8 @@ def test_ortmodule_fallback_device__multiple(is_training, fallback_enabled, matc
     for _ in range(3):
         if fallback_enabled:
             if matching_policy:
-                ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(fallback_policy=policy))
+                ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(fallback_policy=policy,
+                                                                            persist_fallback=persist_fallback))
                 pt_model.train(is_training)
                 ort_model.train(is_training)
                 ort_out = ort_model(inputs)
@@ -121,10 +124,9 @@ def test_ortmodule_fallback_device__multiple(is_training, fallback_enabled, matc
             assert "ORTModule supports a single device per model" in str(type_error.value)
 
 
-@pytest.mark.parametrize("is_training", [True, False])
-@pytest.mark.parametrize("fallback_enabled", [True, False])
-@pytest.mark.parametrize("matching_policy", [True, False])
-def test_ortmodule_fallback_device__mismatch(is_training, fallback_enabled, matching_policy):
+@pytest.mark.parametrize("is_training,fallback_enabled,matching_policy,persist_fallback",
+                         list(itertools.product([True,False],repeat=4)))
+def test_ortmodule_fallback_device__mismatch(is_training, fallback_enabled, matching_policy, persist_fallback):
     # is_training: True for torch.nn.Module training model, eval mode otherwise
     # fallback_enabled: True results in PyTorch executing the forward graph instead of ORT backend
     # matching_policy: True results in properly matching FALLBACK_UNSUPPORTED_DEVICE policy to ORTModuleDeviceException exception.
@@ -142,7 +144,8 @@ def test_ortmodule_fallback_device__mismatch(is_training, fallback_enabled, matc
     N, D_in, H, D_out = 64, 784, 500, 10
 
     pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
-    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(fallback_policy=policy))
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(fallback_policy=policy,
+                                                                persist_fallback=persist_fallback))
     pt_model.train(is_training)
     ort_model.train(is_training)
     # For initial model export, use same device for data and model so that PyTorch model can be traced during export
@@ -168,10 +171,9 @@ def test_ortmodule_fallback_device__mismatch(is_training, fallback_enabled, matc
                 ort_model(inputs)
             assert f"Input argument to forward found on device {input_device}, but expected it to be on module device {ort_model_device}." in str(e.value)
 
-@pytest.mark.parametrize("is_training", [True, False])
-@pytest.mark.parametrize("fallback_enabled", [True, False])
-@pytest.mark.parametrize("matching_policy", [True, False])
-def test_ortmodule_fallback_output(is_training, fallback_enabled, matching_policy):
+@pytest.mark.parametrize("is_training,fallback_enabled,matching_policy,persist_fallback",
+                         list(itertools.product([True,False],repeat=4)))
+def test_ortmodule_fallback_output(is_training, fallback_enabled, matching_policy, persist_fallback):
     # is_training: True for torch.nn.Module training model, eval mode otherwise
     # fallback_enabled: True results in PyTorch executing the forward graph instead of ORT backend
     # matching_policy: True results in properly matching FALLBACK_UNSUPPORTED_DATA policy to ORTModuleDeviceException exception.
@@ -188,7 +190,8 @@ def test_ortmodule_fallback_output(is_training, fallback_enabled, matching_polic
     device = 'cuda'
     N, D_in, H, D_out = 64, 784, 500, 10
     pt_model = NeuralNetCustomClassOutput(D_in, H, D_out).to(device)
-    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(fallback_policy=policy))
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(fallback_policy=policy,
+                                                                persist_fallback=persist_fallback))
     x = torch.randn(N, D_in, device=device)
     y = torch.randn(N, D_in, device=device)
     z = torch.randn(N, D_in, device=device)
@@ -196,9 +199,11 @@ def test_ortmodule_fallback_output(is_training, fallback_enabled, matching_polic
     ort_model.train(is_training)
     pt_model.train(is_training)
 
-    for _ in range(3):
+    for i in range(3):
         if fallback_enabled:
             if matching_policy:
+                if i > 0 and persist_fallback:
+                    assert ort_model._torch_module._execution_manager(is_training=is_training)._fallback_manager._exception is not None
                 ort_out = ort_model(x, y, z)
                 pt_out = pt_model(x, y, z)
                 _test_helpers.assert_values_are_close(ort_out.out1, pt_out.out1, rtol=0, atol=0)
@@ -213,10 +218,9 @@ def test_ortmodule_fallback_output(is_training, fallback_enabled, matching_polic
                 ort_model(x, y, z)
             assert 'ORTModule does not support the following model output type' in str(runtime_error.value)
 
-@pytest.mark.parametrize("is_training", [True, False])
-@pytest.mark.parametrize("fallback_enabled", [True, False])
-@pytest.mark.parametrize("matching_policy", [True, False])
-def test_ortmodule_fallback_input(is_training, fallback_enabled, matching_policy):
+@pytest.mark.parametrize("is_training,fallback_enabled,matching_policy,persist_fallback",
+                         list(itertools.product([True,False],repeat=4)))
+def test_ortmodule_fallback_input(is_training, fallback_enabled, matching_policy, persist_fallback):
     # is_training: True for torch.nn.Module training model, eval mode otherwise
     # fallback_enabled: True results in PyTorch executing the forward graph instead of ORT backend
     # matching_policy: True results in properly matching FALLBACK_UNSUPPORTED_DATA policy to ORTModuleDeviceException exception.
@@ -231,15 +235,18 @@ def test_ortmodule_fallback_input(is_training, fallback_enabled, matching_policy
         policy = _fallback._FallbackPolicy.FALLBACK_DISABLE
 
     pt_model = MyStrNet()
-    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(fallback_policy=policy))
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(fallback_policy=policy,
+                                                                persist_fallback=persist_fallback))
     inputs = torch.randn(1, 2)
 
     ort_model.train(is_training)
     pt_model.train(is_training)
 
-    for _ in range(3):
+    for i in range(3):
         if fallback_enabled:
             if matching_policy:
+                if i > 0 and persist_fallback:
+                    assert ort_model._torch_module._execution_manager(is_training=is_training)._fallback_manager._exception is not None
                 ort_out = ort_model(inputs, 'hello')
                 pt_out = pt_model(inputs, 'hello')
                 _test_helpers.assert_values_are_close(ort_out, pt_out, rtol=0, atol=0)
@@ -253,10 +260,9 @@ def test_ortmodule_fallback_input(is_training, fallback_enabled, matching_policy
             assert "ORTModule does not support the following model data type <class 'str'>" in str(ex_info.value)
 
 
-@pytest.mark.parametrize("is_training", [True, False])
-@pytest.mark.parametrize("fallback_enabled", [True, False])
-@pytest.mark.parametrize("matching_policy", [True, False])
-def test_ortmodule_fallback_torch_model(is_training, fallback_enabled, matching_policy):
+@pytest.mark.parametrize("is_training,fallback_enabled,matching_policy,persist_fallback",
+                         list(itertools.product([True,False],repeat=4)))
+def test_ortmodule_fallback_torch_model(is_training, fallback_enabled, matching_policy, persist_fallback):
     # is_training: True for torch.nn.Module training model, eval mode otherwise
     # fallback_enabled: True results in PyTorch executing the forward graph instead of ORT backend
     # matching_policy: True results in properly matching FALLBACK_UNSUPPORTED_TORCH_MODEL policy to ORTModuleDeviceException exception.
@@ -280,7 +286,8 @@ def test_ortmodule_fallback_torch_model(is_training, fallback_enabled, matching_
     for _ in range(3):
         if fallback_enabled:
             if matching_policy:
-                ort_model = ORTModule(pt_model, DebugOptions(fallback_policy=policy))
+                ort_model = ORTModule(pt_model, DebugOptions(fallback_policy=policy,
+                                                             persist_fallback=persist_fallback))
                 ort_model.train(is_training)
                 pt_model.train(is_training)
 
@@ -297,13 +304,9 @@ def test_ortmodule_fallback_torch_model(is_training, fallback_enabled, matching_
                 ort_model = ORTModule(pt_model, DebugOptions(fallback_policy=policy))
             assert "ORTModule is not compatible with torch.nn.DataParallel" in str(ex_info.value)
 
-
-
-
-@pytest.mark.parametrize("is_training", [True, False])
-@pytest.mark.parametrize("fallback_enabled", [True, False])
-@pytest.mark.parametrize("matching_policy", [True, False])
-def test_ortmodule_fallback_init__torch_version(is_training, fallback_enabled, matching_policy):
+@pytest.mark.parametrize("is_training,fallback_enabled,matching_policy,persist_fallback",
+                         list(itertools.product([True,False],repeat=4)))
+def test_ortmodule_fallback_init__torch_version(is_training, fallback_enabled, matching_policy, persist_fallback):
     # is_training: True for torch.nn.Module training model, eval mode otherwise
     # fallback_enabled: True results in PyTorch executing the forward graph instead of ORT backend
     # matching_policy: True results in properly matching FALLBACK_UNSUPPORTED_TORCH_MODEL policy to ORTModuleDeviceException exception.
@@ -329,10 +332,11 @@ def test_ortmodule_fallback_init__torch_version(is_training, fallback_enabled, m
 
         pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
 
-        for _ in range(3):
+        for i in range(3):
             if fallback_enabled:
                 if matching_policy:
-                    ort_model = ORTModule(pt_model, DebugOptions(fallback_policy=policy))
+                    ort_model = ORTModule(pt_model, DebugOptions(fallback_policy=policy,
+                                                                 persist_fallback=persist_fallback))
                     ort_model.train(is_training)
                     pt_model.train(is_training)
 
@@ -353,10 +357,9 @@ def test_ortmodule_fallback_init__torch_version(is_training, fallback_enabled, m
                       f' It requires PyTorch prior to {MINIMUM_RUNTIME_PYTORCH_VERSION_STR}')
 
 
-@pytest.mark.parametrize("is_training", [True, False])
-@pytest.mark.parametrize("fallback_enabled", [True, False])
-@pytest.mark.parametrize("matching_policy", [True, False])
-def test_ortmodule_fallback_init__missing_cpp_extensions(is_training, fallback_enabled, matching_policy):
+@pytest.mark.parametrize("is_training,fallback_enabled,matching_policy,persist_fallback",
+                         list(itertools.product([True,False],repeat=4)))
+def test_ortmodule_fallback_init__missing_cpp_extensions(is_training, fallback_enabled, matching_policy, persist_fallback):
     # is_training: True for torch.nn.Module training model, eval mode otherwise
     # fallback_enabled: True results in PyTorch executing the forward graph instead of ORT backend
     # matching_policy: True results in properly matching FALLBACK_UNSUPPORTED_TORCH_MODEL policy to ORTModuleDeviceException exception.
@@ -383,7 +386,8 @@ def test_ortmodule_fallback_init__missing_cpp_extensions(is_training, fallback_e
         for _ in range(3):
             if fallback_enabled:
                 if matching_policy:
-                    ort_model = ORTModule(pt_model, DebugOptions(fallback_policy=policy))
+                    ort_model = ORTModule(pt_model, DebugOptions(fallback_policy=policy,
+                                                                 persist_fallback=persist_fallback))
                     ort_model.train(is_training)
                     pt_model.train(is_training)
 
@@ -400,10 +404,9 @@ def test_ortmodule_fallback_init__missing_cpp_extensions(is_training, fallback_e
                     ort_model = ORTModule(pt_model, DebugOptions(fallback_policy=policy))
                 assert "ORTModule's extensions were not detected" in str(ex_info.value)
 
-@pytest.mark.parametrize("is_training", [True, False])
-@pytest.mark.parametrize("fallback_enabled", [True, False])
-@pytest.mark.parametrize("matching_policy", [True, False])
-def test_ortmodule_fallback_onnx_model__custom_autograd(is_training, fallback_enabled, matching_policy):
+@pytest.mark.parametrize("is_training,fallback_enabled,matching_policy,persist_fallback",
+                         list(itertools.product([True,False],repeat=4)))
+def test_ortmodule_fallback_onnx_model__custom_autograd(is_training, fallback_enabled, matching_policy, persist_fallback):
     # is_training: True for torch.nn.Module training model, eval mode otherwise
     # fallback_enabled: True results in PyTorch executing the forward graph instead of ORT backend
     # matching_policy: True results in properly matching FALLBACK_UNSUPPORTED_ONNX_MODEL policy to ORTModuleDeviceException exception.
@@ -429,13 +432,16 @@ def test_ortmodule_fallback_onnx_model__custom_autograd(is_training, fallback_en
     pt_model = MyCustomFunctionReluModel()
     ort_model = ORTModule(copy.deepcopy(pt_model),
                           debug_options=DebugOptions(
-                              fallback_policy=policy))
+                              fallback_policy=policy,
+                              persist_fallback=persist_fallback))
     ort_model.train(is_training)
     pt_model.train(is_training)
 
-    for _ in range(3):
+    for i in range(3):
         if fallback_enabled:
             if matching_policy:
+                if i > 0 and persist_fallback:
+                    assert ort_model._torch_module._execution_manager(is_training=is_training)._fallback_manager._exception is not None
                 pt_out = pt_model(x.mm(w1)).mm(w2)
                 ort_out = ort_model(x.mm(w1)).mm(w2)
                 _test_helpers.assert_values_are_close(ort_out, pt_out, rtol=0, atol=0)
@@ -449,11 +455,9 @@ def test_ortmodule_fallback_onnx_model__custom_autograd(is_training, fallback_en
                 _ = ort_model(x.mm(w1)).mm(w2)
             assert "There was an error while exporting the PyTorch model to ONNX" in str(ex_info.value)
 
-
-@pytest.mark.parametrize("is_training", [True, False])
-@pytest.mark.parametrize("fallback_enabled", [True, False])
-@pytest.mark.parametrize("matching_policy", [True, False])
-def test_ortmodule_fallback_onnx_model__missing_op(is_training, fallback_enabled, matching_policy):
+@pytest.mark.parametrize("is_training,fallback_enabled,matching_policy,persist_fallback",
+                         list(itertools.product([True,False],repeat=4)))
+def test_ortmodule_fallback_onnx_model__missing_op(is_training, fallback_enabled, matching_policy, persist_fallback):
     # is_training: True for torch.nn.Module training model, eval mode otherwise
     # fallback_enabled: True results in PyTorch executing the forward graph instead of ORT backend
     # matching_policy: True results in properly matching FALLBACK_UNSUPPORTED_ONNX_MODEL policy to ORTModuleDeviceException exception.
@@ -476,13 +480,17 @@ def test_ortmodule_fallback_onnx_model__missing_op(is_training, fallback_enabled
     pt_model = CrossModule()
     ort_model = ORTModule(copy.deepcopy(pt_model),
                           debug_options=DebugOptions(
-                              fallback_policy=policy))
+                              log_level=LogLevel.INFO,
+                              fallback_policy=policy,
+                              persist_fallback=persist_fallback))
     ort_model.train(is_training)
     pt_model.train(is_training)
 
-    for _ in range(3):
+    for i in range(3):
         if fallback_enabled:
             if matching_policy:
+                if i > 0 and persist_fallback:
+                    assert ort_model._torch_module._execution_manager(is_training=is_training)._fallback_manager._exception is not None
                 pt_out = pt_model(x, y)
                 ort_out = ort_model(x, y)
                 _test_helpers.assert_values_are_close(ort_out, pt_out, rtol=0, atol=0)
