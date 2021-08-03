@@ -17,8 +17,8 @@ namespace {
 const int64_t kSmallInitializerThreshold = 100;
 
 bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const NodeArg* arg) {
-  // 'true' in the function call is to continue searching for the initializer
-  // in the outer scopes of the current (sub-)graph if applicable
+  // 'true' in the function call is to let the searching for the initializer
+  // continue in the outer scopes of the current (sub-)graph if applicable
   const ONNX_NAMESPACE::TensorProto* initializer_tensor =
       graph.GetGraph().GetConstantInitializer(arg->Name(), true);
 
