@@ -19,12 +19,15 @@ class SequenceAt final : public CudaKernel {
     const Tensor* I = context->Input<Tensor>(1);
     ORT_ENFORCE(I != nullptr, "SequenceAt GPU: Got nullptr input for index tensor.");
 
+    ORT_ENFORCE(I->IsDataType<int32_t>() || I->IsDataType<int64_t>(),
+                "Indices need to be of types int32 or int64");
+
     int64_t idx = -1;
 
     if (I->IsDataType<int32_t>()) {
       idx = I->Data<int32_t>()[0];
-    } else if (I->IsDataType<int64_t>()) {
-      idx = static_cast<int64_t>(I->Data<int64_t>()[0]);
+    } else {
+      idx = I->Data<int64_t>()[0];
     }
 
     int64_t sequence_size = static_cast<int64_t>(X->Size());
@@ -173,11 +176,15 @@ class SequenceErase final : public CudaKernel {
     int64_t idx = X_size - 1;
     const Tensor* I = context->Input<Tensor>(1);
     if (I != nullptr) {
+      ORT_ENFORCE(I->IsDataType<int32_t>() || I->IsDataType<int64_t>(),
+                  "Indices need to be of types int32 or int64");
+
       if (I->IsDataType<int32_t>()) {
         idx = I->Data<int32_t>()[0];
-      } else if (I->IsDataType<int64_t>()) {
-        idx = static_cast<int64_t>(I->Data<int64_t>()[0]);
+      } else {
+        idx = I->Data<int64_t>()[0];
       }
+
       if (idx < 0) {
         idx = X_size + idx;
       }
@@ -220,11 +227,17 @@ class SequenceInsert final : public CudaKernel {
     int64_t idx = S_size;
     const Tensor* I = context->Input<Tensor>(2);
     if (I != nullptr) {
+      ORT_ENFORCE(I->IsDataType<int32_t>() || I->IsDataType<int64_t>(),
+                  "Indices need to be of types int32 or int64");
+
+      int64_t idx = -1;
+
       if (I->IsDataType<int32_t>()) {
         idx = I->Data<int32_t>()[0];
-      } else if (I->IsDataType<int64_t>()) {
-        idx = static_cast<int64_t>(I->Data<int64_t>()[0]);
+      } else {
+        idx = I->Data<int64_t>()[0];
       }
+
       if (idx < 0) {
         idx = S_size + idx;
       }
