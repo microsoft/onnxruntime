@@ -6,19 +6,19 @@
 """
 Below are test results for Gelu or FastGelu FP32 kernels using CUDA:
 
-Formula             Input(BeforeCast) 	MaxDiff     MaxDiff(Optimized)
-0(gelu_python)      FP32	            2.38E-07	4.77E-07
-0(gelu_python)	    FP16	            0	        6.10E-05
-1(gelu)	            FP32	            4.77E-07	0
-1(gelu)	            FP16	            6.10E-05	0
-2(erf_gelu)	        FP32	            2.38E-07	9.54E-07
-2(erf_gelu)	        FP16	            1.22E-04	1.95E-03
-3(gelu_new)	        FP32	            2.38E-07	2.38E-07
-3(gelu_new)	        FP16	            0	        0
-4(gelu_fast)	    FP32	            0	        2.38E-07
-4(gelu_fast)	    FP16	            0	        3.05E-05
-5(openai_gelu)	    FP32	            0	        2.38E-07
-5(openai_gelu)	    FP16	            0	        3.05E-05
+Formula             Input(BeforeCast)  MaxDiff     MaxDiff(Optimized)
+0(gelu_python)      FP32               2.38E-07    4.77E-07
+0(gelu_python)      FP16               0           6.10E-05
+1(gelu)             FP32               4.77E-07    0
+1(gelu)             FP16               6.10E-05    0
+2(erf_gelu)         FP32               2.38E-07    9.54E-07
+2(erf_gelu)         FP16               1.22E-04    1.95E-03
+3(gelu_new)         FP32               2.38E-07    2.38E-07
+3(gelu_new)         FP16               0           0
+4(gelu_fast)        FP32               0           2.38E-07
+4(gelu_fast)        FP16               0           3.05E-05
+5(openai_gelu)      FP32               0           2.38E-07
+5(openai_gelu)      FP16               0           3.05E-05
 
 For comparison, CPU has MaxDiff=4.77E-07 for each formula.
 """
