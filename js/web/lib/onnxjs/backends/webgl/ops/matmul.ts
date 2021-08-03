@@ -6,25 +6,33 @@ import {OperatorImplementation, OperatorInitialization} from '../../../operators
 import {Tensor} from '../../../tensor';
 import {BroadcastUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, TextureType} from '../types';
+import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
 import {getActicationSnippet, InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
-import {createPackedMatmulProgramInfo} from './matmul-pack';
+import {createPackedMatmulProgramInfoLoader} from './matmul-pack';
 
 export const matMul: OperatorImplementation<InternalActivationAttributes> =
     (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: InternalActivationAttributes): Tensor[] => {
       validateInputs(inputs);
 
       if (inferenceHandler.session.pack) {
-        return [inferenceHandler.run(createPackedMatmulProgramInfo(inferenceHandler, inputs, attributes), inputs)];
+        return [inferenceHandler.run(
+            createPackedMatmulProgramInfoLoader(inferenceHandler, inputs, attributes), inputs)];
       } else {
-        return [inferenceHandler.run(createMatmulProgramInfo(inputs, attributes), inputs)];
+        return [inferenceHandler.run(createMatmulProgramInfoLoader(inputs, attributes), inputs)];
       }
     };
 
 export const parseMatMulAttributes: OperatorInitialization<InternalActivationAttributes> =
     (node: Graph.Node): InternalActivationAttributes => parseInternalActivationAttributes(node.attributes);
 
-function createMatmulProgramInfo(inputs: Tensor[], activationAttributes: InternalActivationAttributes): ProgramInfo {
+const matmulProgramMetadata = {
+  name: 'MatMul',
+  inputTypes: [TextureType.unpacked, TextureType.unpacked],
+  inputNames: ['A', 'B'],
+};
+
+function createMatmulProgramInfo(
+    metadata: ProgramMetadata, inputs: Tensor[], activationAttributes: InternalActivationAttributes): ProgramInfo {
   const aShape = inputs[0].dims;
   const bShape = inputs[1].dims;
   const outputShape = BroadcastUtil.calcShape(aShape, bShape, true);
@@ -54,12 +62,16 @@ function createMatmulProgramInfo(inputs: Tensor[], activationAttributes: Interna
         return value;
     }`;
   return {
-    name: 'MatMul',
-    inputTypes: [TextureType.unpacked, TextureType.unpacked],
-    inputNames: ['A', 'B'],
+    ...metadata,
     output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
     shaderSource,
   };
+}
+
+function createMatmulProgramInfoLoader(
+    inputs: Tensor[], activationAttributes: InternalActivationAttributes): ProgramInfoLoader {
+  const metadata = {...matmulProgramMetadata, cacheHint: activationAttributes.activationCacheKey};
+  return {...metadata, get: () => createMatmulProgramInfo(metadata, inputs, activationAttributes)};
 }
 
 const validateInputs = (inputs: Tensor[]): void => {
