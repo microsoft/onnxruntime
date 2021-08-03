@@ -74,7 +74,6 @@ export class WebGLInferenceHandler implements InferenceHandler {
       this.session.programManager.setArtifact(key, artifact);
     }
 
-
     this.runProgram(artifact, inputTextureDatas, outputTextureData);
     return outputTextureData;
   }
@@ -174,15 +173,6 @@ export class WebGLInferenceHandler implements InferenceHandler {
     return td;
   }
 
-  // /**
-  //  * Create a TextureData object from the given data type and texture layout.
-  //  * Usage = Encoder.Usage.Default.
-  //  * @param dataType the tensor data type
-  //  */
-  // private createTextureDataFromLayout(layout: TextureLayout, dataType: Tensor.DataType): TextureData {
-  //   return this.createTextureData(layout, dataType);
-  // }
-
   /**
    * Create a TextureData object using the given data and bind to the given tensor.
    * Usage = Encoder.Usage.UploadOnly.
@@ -248,18 +238,6 @@ export class WebGLInferenceHandler implements InferenceHandler {
     const outputTensor = this.reshapePacked(squeezedOutputTensor, reshapedDims);
     return outputTensor;
   }
-
-  // /**
-  //  * Create a TextureData object, using the given texture.
-  //  * This function does not create new texture. Usually used in scenarios using texture sharing. (eg. Reshape)
-  //  * @param dataType the tensor data type
-  //  * @param texture the WebGLTexture object to share
-  //  * @param tensorId the tensor ID of the shared tensor data
-  //  */
-  // createSharedTextureData(  // TODO: make private
-  //     layout: TextureLayout, dataType: Tensor.DataType, texture: WebGLTexture, tensorId?: Tensor.Id): TextureData {
-  //   return this.createTextureDataFromTexture(layout, dataType, texture, undefined, tensorId);
-  // }
 
   private createTextureDataFromTexture(
       layout: TextureLayout, dataType: Tensor.DataType, texture: WebGLTexture, tensor?: Tensor, tensorId?: Tensor.Id) {

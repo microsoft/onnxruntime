@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
 import {Graph} from '../../../graph';
 import {OperatorImplementation, OperatorInitialization} from '../../../operators';
 import {Tensor} from '../../../tensor';
@@ -8,13 +9,12 @@ import {GemmUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
 
-export interface GemmAttributes {
+export interface GemmAttributes extends AttributeWithCacheKey {
   transA: boolean;
   transB: boolean;
   alpha: number;
   beta: number;
   isOptionalC: boolean;  // in opset 11, C becomes optional
-  cacheKey: string;
 }
 
 export const gemm: OperatorImplementation<GemmAttributes> =
@@ -29,8 +29,7 @@ const parseGemmAttributes = (node: Graph.Node, isOptionalC: boolean): GemmAttrib
   const transB = node.attributes.getInt('transB', 0) !== 0;
   const alpha = node.attributes.getFloat('alpha', 1.0);
   const beta = node.attributes.getFloat('beta', 1.0);
-  const cacheKey = `${transA}_${transB}_${alpha}_${beta}`;
-  return {transA, transB, alpha, beta, isOptionalC, cacheKey};
+  return createAttributeWithCacheKey({transA, transB, alpha, beta, isOptionalC});
 };
 
 export const parseGemmAttributesV7: OperatorInitialization<GemmAttributes> = (node: Graph.Node): GemmAttributes =>

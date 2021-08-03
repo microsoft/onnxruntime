@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
 import {Graph} from '../../../graph';
 import {OperatorImplementation, OperatorInitialization} from '../../../operators';
 import {Tensor} from '../../../tensor';
@@ -8,11 +9,10 @@ import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, TextureType} from '../types';
 
-export interface BatchNormalizationAttributes {
+export interface BatchNormalizationAttributes extends AttributeWithCacheKey {
   epsilon: number;
   momentum: number;
   spatial: number;
-  cacheKey: string;
 }
 
 const batchNormalizationProgramMetadata = {
@@ -40,8 +40,7 @@ export const parseBatchNormalizationAttributes: OperatorInitialization<BatchNorm
       const epsilon = node.attributes.getFloat('epsilon', 1e-5);
       const momentum = node.attributes.getFloat('momentum', 0.9);
       const spatial = node.attributes.getInt('spatial', 1);
-      const cacheKey = `${epsilon};${momentum};${spatial}`;
-      return {epsilon, momentum, spatial, cacheKey};
+      return createAttributeWithCacheKey({epsilon, momentum, spatial});
     };
 
 const createBatchNormalizationProgramInfo =
