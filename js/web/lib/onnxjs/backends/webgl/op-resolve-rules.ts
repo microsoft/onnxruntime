@@ -13,7 +13,6 @@ import {gather, parseGatherAttributes} from './ops/gather';
 import {gemm, parseGemmAttributesV11, parseGemmAttributesV7} from './ops/gemm';
 import {imageScaler, parseImageScalerAttributes} from './ops/image-scaler';
 import {instanceNormalization, parseInstanceNormalizationAttributes} from './ops/instance-normalization';
-import {leakyRelu, parseLeakyReluAttributes} from './ops/leaky-relu';
 import {matMul, parseMatMulAttributes} from './ops/matmul';
 import {pad, parsePadAttributes} from './ops/pad';
 import {averagePool, parseAveragePoolAttributes} from './ops/pool';
@@ -68,7 +67,7 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Identity', '', '1+', unaryOps.identity],
   ['ImageScaler', '', '1+', imageScaler, parseImageScalerAttributes],
   ['InstanceNormalization', '', '6+', instanceNormalization, parseInstanceNormalizationAttributes],
-  ['LeakyRelu', '', '6+', leakyRelu, parseLeakyReluAttributes],
+  ['LeakyRelu', '', '6+', unaryOps.leakyRelu, unaryOps.parseLeakyReluAttributes],
   ['Less', '', '7+', binaryOps.less],
   ['Log', '', '6+', unaryOps.log],
   ['MatMul', '', '1+', matMul, parseMatMulAttributes],

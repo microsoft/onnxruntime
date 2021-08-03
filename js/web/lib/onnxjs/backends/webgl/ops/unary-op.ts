@@ -74,6 +74,20 @@ export function glslIdentity(): GlslValueFunction {
   `;
   return {body, name, type: FunctionType.ValueBased};
 }
+export function glslLeakyRelu(alpha: number): GlslValueFunction {
+  const name = 'leakyRelu';
+  const body = `
+  const float alpha = float(${alpha});
+
+  float ${name}_(float a) {
+    return a < 0.0 ? a * alpha : a;
+  }
+  vec4 ${name}_(vec4 v) {
+    return vec4(${name}_(v.x), ${name}_(v.y), ${name}_(v.z), ${name}_(v.w));
+  }
+  `;
+  return {body, name, type: FunctionType.ValueBased};
+}
 export function glslLog(): GlslValueFunction {
   return glslBuiltinUnary('log');
 }
@@ -247,6 +261,11 @@ export const floor = (handler: WebGLInferenceHandler, inputs: Tensor[]):
 
 export const identity = (handler: WebGLInferenceHandler, inputs: Tensor[]):
     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslIdentity()), inputs)];
+
+export const leakyRelu = (handler: WebGLInferenceHandler, inputs: Tensor[], alpha: number): Tensor[] => [handler.run(
+    createElementwiseProgramInfoLoader(handler, inputs[0], glslLeakyRelu(alpha), `${alpha}`), inputs)];
+
+export const parseLeakyReluAttributes = (node: Graph.Node): number => node.attributes.getFloat('alpha', 0.01);
 
 export const log = (handler: WebGLInferenceHandler, inputs: Tensor[]):
     Tensor[] => [handler.run(createElementwiseProgramInfoLoader(handler, inputs[0], glslLog()), inputs)];
