@@ -1,4 +1,4 @@
-param([string]$file_folder, [string]$account_key)
+param([string]$file_folder, [string]$account_key, [string]$trt_container)
 
 Add-Type -AssemblyName System.Web
 $wheel_file = [System.IO.Path]::GetFileName((Get-ChildItem $file_folder))
@@ -13,7 +13,7 @@ $ort_trt_ep_pkg_sas_uri = $ort_trt_ep_pkg_sas_uri.Substring(1, $ort_trt_ep_pkg_s
 $body_trt_perf_compare = @{
    "Name"="TRT_PERF_COMPARE";
    "Parameters" = @{         
-        “TRT_VERSION”="21.04";
+        “TRT_VERSION”=$trt_container;
         "ORT_TRT_EP_PKG_SAS_URI"=$ort_trt_ep_pkg_sas_uri};
 }
 
