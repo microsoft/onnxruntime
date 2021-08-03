@@ -82,7 +82,8 @@ export const globalAveragePool: OperatorImplementation<AveragePoolAttributes> =
         inputTypes: [TextureType.unpacked],
         cacheHint: `${attributes.countIncludePad}`
       };
-      const output = inferenceHandler.run(createAveragePoolProgramInfo(inputs, metadata, true, attributes), inputs);
+      const output = inferenceHandler.run(
+          {...metadata, get: () => createAveragePoolProgramInfo(inputs, metadata, true, attributes)}, inputs);
       return [output];
     };
 
@@ -102,7 +103,8 @@ export const maxPool: OperatorImplementation<MaxPoolAttributes> =
       validateInputs(inputs);
       const metadata =
           {name: 'MaxPool', inputNames: ['X'], inputTypes: [TextureType.unpacked], cacheHint: attributes.cacheKey};
-      const output = inferenceHandler.run(createMaxPoolProgramInfo(inputs, metadata, false, attributes), inputs);
+      const output = inferenceHandler.run(
+          {...metadata, get: () => createMaxPoolProgramInfo(inputs, metadata, false, attributes)}, inputs);
       return [output];
     };
 
@@ -171,7 +173,11 @@ const globalMaxPoolMetadata = {
 export const globalMaxPool = (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
   validateInputs(inputs);
   const output = inferenceHandler.run(
-      createMaxPoolProgramInfo(inputs, globalMaxPoolMetadata, true, globalMaxPoolAttributes), inputs);
+      {
+        ...globalMaxPoolMetadata,
+        get: () => createMaxPoolProgramInfo(inputs, globalMaxPoolMetadata, true, globalMaxPoolAttributes)
+      },
+      inputs);
   return [output];
 };
 

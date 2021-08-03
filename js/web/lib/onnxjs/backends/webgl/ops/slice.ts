@@ -92,33 +92,40 @@ const validateInputs = (inputs: Tensor[]): void => {
 
 export const sliceV10 = (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
   validateInputsV10(inputs);
-  const output = inferenceHandler.run(createSliceProgramInfoV10(inferenceHandler, inputs), inputs);
+  const attributes = generateSliceAttributesFromInputs(inferenceHandler, inputs);
+  const output = inferenceHandler.run(
+      {
+        ...sliceProgramMetadata,
+        cacheHint: attributes.cacheKey,
+        get: () => createSliceProgramInfo(inferenceHandler, inputs[0], attributes)
+      },
+      [inputs[0]]);
   return [output];
 };
 
-const createSliceProgramInfoV10 = (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo => {
-  if (!inferenceHandler.session.isInitializer(inputs[1].dataId) ||
-      !inferenceHandler.session.isInitializer(inputs[2].dataId) ||
-      (inputs.length >= 4 && !inferenceHandler.session.isInitializer(inputs[3].dataId)) ||
-      (inputs.length >= 5 && !inferenceHandler.session.isInitializer(inputs[4].dataId))) {
-    throw new Error('dynamic slice attributes are not allowed');
-  }
+const generateSliceAttributesFromInputs =
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): SliceAttributes => {
+      if (!inferenceHandler.session.isInitializer(inputs[1].dataId) ||
+          !inferenceHandler.session.isInitializer(inputs[2].dataId) ||
+          (inputs.length >= 4 && !inferenceHandler.session.isInitializer(inputs[3].dataId)) ||
+          (inputs.length >= 5 && !inferenceHandler.session.isInitializer(inputs[4].dataId))) {
+        throw new Error('dynamic slice attributes are not allowed');
+      }
 
-  if (inputs.length >= 5 && inputs[4].integerData.some((i: number) => i !== 1)) {
-    throw new Error('currently non-1 steps is not supported for Slice');
-  }
+      if (inputs.length >= 5 && inputs[4].integerData.some((i: number) => i !== 1)) {
+        throw new Error('currently non-1 steps is not supported for Slice');
+      }
 
-  const starts = Array.from(inputs[1].integerData);
-  const ends = Array.from(inputs[2].integerData);
-  const axes = inputs.length >= 4 ? Array.from(inputs[3].integerData) : [];
-  const cacheKey = '';  // cacheHint is generated from inputs
-
-  return createSliceProgramInfo(inferenceHandler, inputs[0], {starts, ends, axes, cacheKey});
-};
+      const starts = Array.from(inputs[1].integerData);
+      const ends = Array.from(inputs[2].integerData);
+      const axes = inputs.length >= 4 ? Array.from(inputs[3].integerData) : [];
+      const cacheKey = `${axes};${starts};${ends}`;
+      return {starts, ends, axes, cacheKey};
+    };
 
 const validateInputsV10 = (inputs: Tensor[]): void => {
   if (!inputs || inputs.length < 3 || inputs.length > 5) {
-    throw new Error('Invalid input shape.');
+    throw new Error('Invalid input number.');
   }
   if (inputs[1].type !== 'int32' || inputs[1].dims.length !== 1) {
     throw new Error('Invalid input type.');

@@ -79,7 +79,7 @@ export class WebGLInferenceHandler implements InferenceHandler {
     return outputTextureData;
   }
 
-  run(program: ProgramInfo|ProgramInfoLoader, inputs: readonly Tensor[]): Tensor {
+  run(program: ProgramInfoLoader, inputs: readonly Tensor[]): Tensor {
     const outputTextureData = this.executeProgram(program, inputs);
     return outputTextureData.tensor;
   }
