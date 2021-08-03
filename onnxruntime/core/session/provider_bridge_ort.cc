@@ -51,7 +51,6 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 }  // namespace onnxruntime
 
 #include "core/common/cpuid_info.h"
-#include "onnx/common/stl_backports.h"
 #include "core/common/logging/logging.h"
 #include "core/providers/shared_library/provider_interfaces.h"
 
