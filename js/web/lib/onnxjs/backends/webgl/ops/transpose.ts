@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
 import {Graph} from '../../../graph';
 import {OperatorImplementation, OperatorInitialization} from '../../../operators';
 import {Tensor} from '../../../tensor';
@@ -8,9 +9,8 @@ import {ShapeUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, TextureType} from '../types';
 
-export interface TransposeAttributes {
-  perm: number[];
-  cacheKey: string;
+export interface TransposeAttributes extends AttributeWithCacheKey {
+  readonly perm: number[];
 }
 
 const transposeProgramMetadata = {
@@ -33,11 +33,7 @@ export const transpose: OperatorImplementation<TransposeAttributes> =
     };
 
 export const parseTransposeAttributes: OperatorInitialization<TransposeAttributes> =
-    (node: Graph.Node): TransposeAttributes => {
-      const perm = node.attributes.getInts('perm', []);
-      const cacheKey = `${perm}`;
-      return {perm, cacheKey};
-    };
+    (node: Graph.Node): TransposeAttributes => createAttributeWithCacheKey({perm: node.attributes.getInts('perm', [])});
 
 const createTransposeProgramInfo =
     (inferenceHandler: WebGLInferenceHandler, input: Tensor, perm: number[]): ProgramInfo => {

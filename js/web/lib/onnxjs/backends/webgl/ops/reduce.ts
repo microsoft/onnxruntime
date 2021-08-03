@@ -1,16 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
 import {Graph} from '../../../graph';
 import {NUMBER_TYPES, OperatorImplementation, OperatorInitialization} from '../../../operators';
 import {Tensor} from '../../../tensor';
 import {ShapeUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, TextureType} from '../types';
+import {ProgramInfo, ProgramMetadata, TextureType} from '../types';
 
-export interface ReduceAttributes {
-  axes: number[];
-  keepDims: boolean;
+export interface ReduceAttributes extends AttributeWithCacheKey {
+  readonly axes: number[];
+  readonly keepDims: boolean;
 }
 
 // return [init ops, reduce ops, final ops]
@@ -20,52 +21,65 @@ const reduce =
     (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: ReduceAttributes, name: string,
      reduceOp: ReduceOp): Tensor[] => {
       validateInputs(inputs);
-      const output =
-          inferenceHandler.run(createReduceProgramInfo(inferenceHandler, inputs, attributes, name, reduceOp), inputs);
+
+      const reduceProgramMetadata = {
+        name,
+        inputNames: ['A'],
+        inputTypes: [TextureType.unpacked],
+      };
+
+      const output = inferenceHandler.run(
+          {
+            ...reduceProgramMetadata,
+            cacheHint: attributes.cacheKey,
+            get: () =>
+                createReduceProgramInfo(inferenceHandler, inputs, attributes, name, reduceOp, reduceProgramMetadata)
+          },
+          inputs);
       return [output];
     };
 
 export const parseReduceAttributes: OperatorInitialization<ReduceAttributes> = (node: Graph.Node): ReduceAttributes => {
   const axes = node.attributes.getInts('axes', []);
   const keepDims = node.attributes.getInt('keepdims', 1) === 1;
-  return {axes, keepDims};
+  return createAttributeWithCacheKey({axes, keepDims});
 };
 
 const createReduceProgramInfo =
-    (handler: WebGLInferenceHandler, inputs: Tensor[], attributes: ReduceAttributes, name: string, reduceOp: ReduceOp):
-        ProgramInfo => {
-          const outputShape: number[] = [];
-          const iRank = inputs[0].dims.length || 1;
+    (handler: WebGLInferenceHandler, inputs: Tensor[], attributes: ReduceAttributes, name: string, reduceOp: ReduceOp,
+     reduceProgramMetadata: ProgramMetadata): ProgramInfo => {
+      const outputShape: number[] = [];
+      const iRank = inputs[0].dims.length || 1;
 
-          const idxCopy = [];  // copy output indexes to input indexes
+      const idxCopy = [];  // copy output indexes to input indexes
 
-          const axes = ShapeUtil.normalizeAxes(attributes.axes, inputs[0].dims.length);
-          const ops = reduceOp(inputs, axes);
-          let reduceOps = ops[1];
+      const axes = ShapeUtil.normalizeAxes(attributes.axes, inputs[0].dims.length);
+      const ops = reduceOp(inputs, axes);
+      let reduceOps = ops[1];
 
-          for (let k = 0; k < inputs[0].dims.length; k++) {
-            // if this axis is reduced
-            if (axes.indexOf(k) >= 0 || axes.length === 0) {
-              if (attributes.keepDims) {
-                outputShape.push(1);
-              }  // else { remove the axis from outputShape; }
+      for (let k = 0; k < inputs[0].dims.length; k++) {
+        // if this axis is reduced
+        if (axes.indexOf(k) >= 0 || axes.length === 0) {
+          if (attributes.keepDims) {
+            outputShape.push(1);
+          }  // else { remove the axis from outputShape; }
 
-              // loop over the d-th axis
-              reduceOps = `
+          // loop over the d-th axis
+          reduceOps = `
           for(int j${k} = 0; j${k} < ${inputs[0].dims[k]}; j${k}++) {
             inputIdx[${k}] = j${k};
             ${reduceOps}
           }`;
-            } else {
-              idxCopy.push(`inputIdx[${k}] = outputIdx[${outputShape.length}];`);
+        } else {
+          idxCopy.push(`inputIdx[${k}] = outputIdx[${outputShape.length}];`);
 
-              outputShape.push(inputs[0].dims[k]);
-            }
-          }
+          outputShape.push(inputs[0].dims[k]);
+        }
+      }
 
-          const oRank = outputShape.length || 1;
+      const oRank = outputShape.length || 1;
 
-          const shaderSource = `
+      const shaderSource = `
       float process(int outputIdx[${oRank}]) {
         float value;                 // final result
         int inputIdx[${iRank}];      // addressing input data
@@ -76,14 +90,12 @@ const createReduceProgramInfo =
         return value;
       }`;
 
-          return {
-            name,
-            inputNames: ['A'],
-            inputTypes: [TextureType.unpacked],
-            output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
-            shaderSource
-          };
-        };
+      return {
+        ...reduceProgramMetadata,
+        output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
+        shaderSource
+      };
+    };
 
 const validateInputs = (inputs: Tensor[]): void => {
   if (!inputs || inputs.length !== 1) {

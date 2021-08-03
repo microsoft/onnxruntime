@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
 import {Graph} from '../../../graph';
 import {OperatorImplementation, OperatorInitialization} from '../../../operators';
 import {Tensor} from '../../../tensor';
@@ -9,9 +10,8 @@ import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, TextureType} from '../types';
 
-export interface SoftmaxAttributes {
-  axis: number;
-  cacheKey: string;
+export interface SoftmaxAttributes extends AttributeWithCacheKey {
+  readonly axis: number;
 }
 
 const softmaxComputeMaxProgramMetadata = {
@@ -61,11 +61,7 @@ export const softmax: OperatorImplementation<SoftmaxAttributes> =
     };
 
 export const parseSoftmaxAttributes: OperatorInitialization<SoftmaxAttributes> =
-    (node: Graph.Node): SoftmaxAttributes => {
-      const axis = node.attributes.getInt('axis', 1);
-      const cacheKey = `${axis}`;
-      return {axis, cacheKey};
-    };
+    (node: Graph.Node): SoftmaxAttributes => createAttributeWithCacheKey({axis: node.attributes.getInt('axis', 1)});
 
 /**
  * Create a texture that contains the maximum value of each of the 'N' rows

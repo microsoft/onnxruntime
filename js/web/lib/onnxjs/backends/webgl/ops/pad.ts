@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
 import {Graph} from '../../../graph';
 import {OperatorImplementation, OperatorInitialization} from '../../../operators';
 import {Tensor} from '../../../tensor';
@@ -9,16 +10,28 @@ import {getGlsl, Glsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, TextureType} from '../types';
 
-export interface PadAttributes {
-  mode: string;
-  pads: number[];
-  value: number;
+export interface PadAttributes extends AttributeWithCacheKey {
+  readonly mode: string;
+  readonly pads: number[];
+  readonly value: number;
 }
+
+const padProgramMetadata = {
+  name: 'Pad',
+  inputNames: ['A'],
+  inputTypes: [TextureType.unpacked],
+};
 
 export const pad: OperatorImplementation<PadAttributes> =
     (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: PadAttributes): Tensor[] => {
       validateInputs(inputs);
-      const output = inferenceHandler.run(createPadProgramInfo(inferenceHandler, inputs, attributes), inputs);
+      const output = inferenceHandler.run(
+          {
+            ...padProgramMetadata,
+            cacheHint: attributes.cacheKey,
+            get: () => createPadProgramInfo(inferenceHandler, inputs, attributes)
+          },
+          inputs);
       return [output];
     };
 
@@ -26,7 +39,7 @@ export const parsePadAttributes: OperatorInitialization<PadAttributes> = (node: 
   const mode = node.attributes.getString('mode', 'constant');
   const value = node.attributes.getFloat('value', 0.0);
   const pads = node.attributes.getInts('pads');
-  return {mode, value, pads};
+  return createAttributeWithCacheKey({mode, value, pads});
 };
 
 const createPadProgramInfo =

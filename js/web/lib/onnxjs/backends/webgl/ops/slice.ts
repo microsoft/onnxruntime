@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
 import {Graph} from '../../../graph';
 import {NUMBER_TYPES, OperatorImplementation, OperatorInitialization} from '../../../operators';
 import {Tensor} from '../../../tensor';
@@ -8,11 +9,10 @@ import {ShapeUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, TextureType} from '../types';
 
-export interface SliceAttributes {
-  axes: number[];
-  ends: number[];
-  starts: number[];
-  cacheKey: string;
+export interface SliceAttributes extends AttributeWithCacheKey {
+  readonly axes: number[];
+  readonly ends: number[];
+  readonly starts: number[];
 }
 
 const sliceProgramMetadata = {
@@ -38,37 +38,34 @@ export const parseSliceAttributes: OperatorInitialization<SliceAttributes> = (no
   const starts = node.attributes.getInts('starts');
   const ends = node.attributes.getInts('ends');
   const axes = node.attributes.getInts('axes', []);
-  const cacheKey = `${starts};${ends};${axes}`;
-  return {starts, ends, axes, cacheKey};
+  return createAttributeWithCacheKey({starts, ends, axes});
 };
 
 const createSliceProgramInfo =
     (inferenceHandler: WebGLInferenceHandler, input: Tensor, attributes: SliceAttributes): ProgramInfo => {
-      if (attributes.axes.length === 0) {
-        attributes.axes = input.dims.slice(0).map((val, i) => i);
-      }
-      const axes = ShapeUtil.normalizeAxes(attributes.axes, input.dims.length);
+      const axes = (attributes.axes.length === 0) ? input.dims.slice(0).map((val, i) => i) : attributes.axes;
+      const normalizedAxes = ShapeUtil.normalizeAxes(axes, input.dims.length);
       const starts = attributes.starts.map((start, i) => {
-        if (start > input.dims[axes[i]] - 1) {
-          return input.dims[axes[i]];
+        if (start > input.dims[normalizedAxes[i]] - 1) {
+          return input.dims[normalizedAxes[i]];
         }
-        return ShapeUtil.normalizeAxis(start, input.dims[axes[i]]);
+        return ShapeUtil.normalizeAxis(start, input.dims[normalizedAxes[i]]);
       });
       const ends = attributes.ends.map((end, i) => {
-        if (end > input.dims[axes[i]] - 1) {
-          return input.dims[axes[i]];
+        if (end > input.dims[normalizedAxes[i]] - 1) {
+          return input.dims[normalizedAxes[i]];
         }
-        return ShapeUtil.normalizeAxis(end, input.dims[axes[i]]);
+        return ShapeUtil.normalizeAxis(end, input.dims[normalizedAxes[i]]);
       });
 
       const outputShape = input.dims.slice();
 
       const sliceOps: string[] = [];
-      for (let i = 0; i < axes.length; i++) {
-        outputShape[axes[i]] = ends[i] - starts[i];
+      for (let i = 0; i < normalizedAxes.length; i++) {
+        outputShape[normalizedAxes[i]] = ends[i] - starts[i];
         if (starts[i] > 0) {
-          sliceOps.push(`outputIdx[${axes[i]}] += ${starts[i]};`);
-        }  // else { sliceOps.push(`outputIdx[${axes[i]}] += 0;`); }
+          sliceOps.push(`outputIdx[${normalizedAxes[i]}] += ${starts[i]};`);
+        }  // else { sliceOps.push(`outputIdx[${normalizedAxes[i]}] += 0;`); }
       }
 
       const rank = outputShape.length;
@@ -114,7 +111,7 @@ const createSliceProgramInfoV10 = (inferenceHandler: WebGLInferenceHandler, inpu
   const starts = Array.from(inputs[1].integerData);
   const ends = Array.from(inputs[2].integerData);
   const axes = inputs.length >= 4 ? Array.from(inputs[3].integerData) : [];
-  const cacheKey = '';
+  const cacheKey = '';  // cacheHint is generated from inputs
 
   return createSliceProgramInfo(inferenceHandler, inputs[0], {starts, ends, axes, cacheKey});
 };

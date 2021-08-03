@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
 import {Graph} from '../../../graph';
 import {OperatorImplementation, OperatorInitialization} from '../../../operators';
 import {Tensor} from '../../../tensor';
@@ -8,23 +9,22 @@ import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, TextureType} from '../types';
 
-export interface UpsampleAttributes {
-  opset: number;
-  isResize: boolean;
-  mode: string;
-  scales: number[];
-  extrapolationValue: number;
-  coordinateTransformMode: string;
-  useExtrapolation: boolean;
-  needRoiInput: boolean;
-  nearestMode: string;
-  cubicCoefficientA: number;
-  excludeOutside: boolean;
-  useNearest2xOptimization: boolean;
-  roiInputIdx: number;
-  scalesInputIdx: number;
-  sizesInputIdx: number;
-  cacheKey: string;
+export interface UpsampleAttributes extends AttributeWithCacheKey {
+  readonly opset: number;
+  readonly isResize: boolean;
+  readonly mode: string;
+  readonly scales: number[];
+  readonly extrapolationValue: number;
+  readonly coordinateTransformMode: string;
+  readonly useExtrapolation: boolean;
+  readonly needRoiInput: boolean;
+  readonly nearestMode: string;
+  readonly cubicCoefficientA: number;
+  readonly excludeOutside: boolean;
+  readonly useNearest2xOptimization: boolean;
+  readonly roiInputIdx: number;
+  readonly scalesInputIdx: number;
+  readonly sizesInputIdx: number;
 }
 
 const upsampleProgramMetadata = {
@@ -106,11 +106,7 @@ export const parseUpsampleAttributes = (node: Graph.Node, opset: number): Upsamp
     scalesInputIdx = 1;
   }
 
-  const cacheKey = `${opset};${isResize};${mode};${scales};${extrapolationValue}${coordinateTransformMode};` +
-      `${useExtrapolation};${needRoiInput};${nearestMode};${cubicCoefficientA};${excludeOutside};` +
-      `${useNearest2xOptimization};${roiInputIdx};${scalesInputIdx};${sizesInputIdx}`;
-
-  return {
+  return createAttributeWithCacheKey({
     opset,
     isResize,
     mode,
@@ -125,9 +121,8 @@ export const parseUpsampleAttributes = (node: Graph.Node, opset: number): Upsamp
     useNearest2xOptimization,
     roiInputIdx,
     scalesInputIdx,
-    sizesInputIdx,
-    cacheKey
-  };
+    sizesInputIdx
+  });
 };
 
 const createUpsampleProgramInfo =

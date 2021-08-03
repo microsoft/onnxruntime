@@ -12,10 +12,22 @@ import {getCoordsDataType} from '../utils';
 import {unpackFromChannel} from './packing-utils';
 import {parseUpsampleAttributes, scalesValidation, UpsampleAttributes, validateInputs} from './upsample';
 
+const resizeProgramMetadata = {
+  name: 'Resize',
+  inputNames: ['A'],
+  inputTypes: [TextureType.packed]
+};
+
 export const resize: OperatorImplementation<UpsampleAttributes> =
     (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: UpsampleAttributes): Tensor[] => {
       validateInputs(inputs, attributes);
-      const output = inferenceHandler.run(createPackedResizeProgramInfo(inferenceHandler, inputs, attributes), inputs);
+      const output = inferenceHandler.run(
+          {
+            ...resizeProgramMetadata,
+            cacheHint: attributes.cacheKey,
+            get: () => createPackedResizeProgramInfo(inferenceHandler, inputs, attributes)
+          },
+          inputs);
       return [output];
     };
 
@@ -34,9 +46,7 @@ const createPackedResizeProgramInfo =
           scales.every((s: number) => s === 1) && attributes.coordinateTransformMode !== 'tf_crop_and_resize';
       if (isSame) {
         return {
-          name: 'Resize',
-          inputNames: ['A'],
-          inputTypes: [TextureType.packed],
+          ...resizeProgramMetadata,
           output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.packed},
           hasMain: true,
           shaderSource: `void main() {
@@ -174,9 +184,7 @@ const createPackedResizeProgramInfo =
             }
         `;
       return {
-        name: 'Resize',
-        inputNames: ['A'],
-        inputTypes: [TextureType.packed],
+        ...resizeProgramMetadata,
         output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.packed},
         hasMain: true,
         shaderSource

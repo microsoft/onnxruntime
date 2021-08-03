@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
 import {Graph} from '../../../graph';
 import {OperatorImplementation, OperatorInitialization} from '../../../operators';
 import {Tensor} from '../../../tensor';
@@ -8,11 +9,10 @@ import {ShapeUtil, SplitUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, TextureType} from '../types';
 
-export interface SplitAttributes {
-  axis: number;
-  split: number[];
-  numOutputs: number;
-  cacheKey: string;
+export interface SplitAttributes extends AttributeWithCacheKey {
+  readonly axis: number;
+  readonly split: number[];
+  readonly numOutputs: number;
 }
 
 const splitProgramMetadata = {
@@ -45,8 +45,7 @@ export const parseSplitAttributes: OperatorInitialization<SplitAttributes> = (no
   const axis = node.attributes.getInt('axis', 0);
   const split = node.attributes.getInts('split', []);
   const numOutputs = node.outputs.length;
-  const cacheKey = `${axis};${split};${numOutputs}`;
-  return {axis, split, numOutputs, cacheKey};
+  return createAttributeWithCacheKey({axis, split, numOutputs});
 };
 
 const getProgramCount =

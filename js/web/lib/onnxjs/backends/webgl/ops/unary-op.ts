@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
 import {Graph} from '../../../graph';
 import {Tensor} from '../../../tensor';
 import {FunctionType, GlslValueFunction} from '../glsl-definitions';
@@ -193,11 +194,6 @@ const createElementwiseProgramInfo =
       };
     };
 
-export interface ClipAttributes {
-  readonly min: number;
-  readonly max: number;
-}
-
 export const abs = (handler: WebGLInferenceHandler, inputs: Tensor[]):
     Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslAbs()), inputs)];
 
@@ -210,13 +206,17 @@ export const asin = (handler: WebGLInferenceHandler, inputs: Tensor[]):
 export const atan = (handler: WebGLInferenceHandler, inputs: Tensor[]):
     Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslAtan()), inputs)];
 
+export interface ClipAttributes extends AttributeWithCacheKey {
+  readonly min: number;
+  readonly max: number;
+}
+
 export const clip =
     (handler: WebGLInferenceHandler, inputs: Tensor[], attributes: ClipAttributes): Tensor[] => [handler.run(
-        createElementwiseProgramInfo(
-            handler, inputs[0], glslClip(attributes.min, attributes.max), `${attributes.min};${attributes.max}`),
+        createElementwiseProgramInfo(handler, inputs[0], glslClip(attributes.min, attributes.max), attributes.cacheKey),
         inputs)];
 
-export const parseClipAttributes = (node: Graph.Node): ClipAttributes => ({
+export const parseClipAttributes = (node: Graph.Node): ClipAttributes => createAttributeWithCacheKey({
   min: node.attributes.getFloat('min', -3.4028234663852886e+38),
   max: node.attributes.getFloat('max', 3.4028234663852886e+38)
 });
@@ -227,10 +227,16 @@ export const ceil = (handler: WebGLInferenceHandler, inputs: Tensor[]):
 export const cos = (handler: WebGLInferenceHandler, inputs: Tensor[]):
     Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslCos()), inputs)];
 
-export const elu = (handler: WebGLInferenceHandler, inputs: Tensor[], alpha: number):
-    Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslElu(alpha), `${alpha}`), inputs)];
+export interface EluAttributes extends AttributeWithCacheKey {
+  readonly alpha: number;
+}
 
-export const parseEluAttributes = (node: Graph.Node): number => node.attributes.getFloat('alpha', 1.0);
+export const elu =
+    (handler: WebGLInferenceHandler, inputs: Tensor[], attributes: EluAttributes): Tensor[] => [handler.run(
+        createElementwiseProgramInfo(handler, inputs[0], glslElu(attributes.alpha), attributes.cacheKey), inputs)];
+
+export const parseEluAttributes = (node: Graph.Node): EluAttributes =>
+    createAttributeWithCacheKey({alpha: node.attributes.getFloat('alpha', 1.0)});
 
 export const exp = (handler: WebGLInferenceHandler, inputs: Tensor[]):
     Tensor[] => [handler.run(createElementwiseProgramInfo(handler, inputs[0], glslExp()), inputs)];

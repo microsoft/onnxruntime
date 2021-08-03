@@ -4,35 +4,40 @@
 import {Tensor} from '../../../tensor';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, TextureType} from '../types';
+import {ProgramInfo, ProgramMetadata, TextureType} from '../types';
 
 export const sum = (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
   validateInputs(inputs);
-  const output = inferenceHandler.run(createSumProgramInfo(inferenceHandler, inputs), inputs);
+
+  const sumProgramMetadata = {
+    name: 'Sum',
+    inputNames: inputs.map((v, i) => `X${i}`),
+    inputTypes: new Array(inputs.length).fill(TextureType.unpacked)
+  };
+
+  const output = inferenceHandler.run(
+      {...sumProgramMetadata, get: () => createSumProgramInfo(inferenceHandler, inputs, sumProgramMetadata)}, inputs);
   return [output];
 };
 
-const createSumProgramInfo = (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): ProgramInfo => {
-  const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
-  const outputShape = inputs[0].dims.slice();
-  const sumLine = inputs.map((v, i) => `${glsl.texture2D}(X${i},TexCoords)`).join(' + ');
-  const inputNames = inputs.map((v, i) => `X${i}`);
-  const inputTypes = new Array(inputs.length).fill(TextureType.unpacked);
-  const shaderSource = `
-    void main() {
-      vec4 result = ${sumLine};
-      ${glsl.output} = result;
-    }
-  `;
-  return {
-    name: 'Sum',
-    inputNames,
-    inputTypes,
-    output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
-    hasMain: true,
-    shaderSource
-  };
-};
+const createSumProgramInfo =
+    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], sumProgramMetadata: ProgramMetadata): ProgramInfo => {
+      const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
+      const outputShape = inputs[0].dims.slice();
+      const sumLine = inputs.map((v, i) => `${glsl.texture2D}(X${i},TexCoords)`).join(' + ');
+      const shaderSource = `
+      void main() {
+        vec4 result = ${sumLine};
+        ${glsl.output} = result;
+      }
+    `;
+      return {
+        ...sumProgramMetadata,
+        output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
+        hasMain: true,
+        shaderSource
+      };
+    };
 
 const validateInputs = (inputs: Tensor[]): void => {
   if (!inputs || inputs.length === 0) {
