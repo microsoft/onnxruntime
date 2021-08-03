@@ -9,7 +9,7 @@ from sqlalchemy import create_engine
 sql_connector = 'mysql+mysqlconnector://'
 user='ort@onnxruntimedashboard'
 password=os.environ.get('DASHBOARD_MYSQL_ORT_PASSWORD')
-host='onnxruntimedashboard.mysql.database.azure.com'
+host='172.19.0.7'
 database='onnxruntime'
 
 # table names
