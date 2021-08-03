@@ -15,9 +15,15 @@ class TransformerOptions {
 
   bool DisablePersistentSoftmax() const { return disable_persistent_softmax_; }
 
+  bool IsExperimentalMode() const { return is_experimental_; }
+
+  bool IsBetaMode() const { return is_beta_; }
+
   void Initialize(int value) {
     is_precision_mode_ = (value & 0x01) > 0;
     disable_persistent_softmax_ = (value & 0x02) > 0;
+    is_experimental_ = (value & 0x04) > 0;
+    is_beta_ = (value & 0x08) > 0;
     initialized_ = true;
   }
 
@@ -27,6 +33,12 @@ class TransformerOptions {
 
   // Disable persistent softmax.
   bool disable_persistent_softmax_{false};
+
+  // Use experimental algorithm
+  bool is_experimental_{false};
+
+  // Use beta algorithm
+  bool is_beta_{false};
 
   bool initialized_{false};
 
