@@ -351,6 +351,12 @@ TEST_P(ModelTest, Run) {
                          "Cannot set more than one input unless network has Q/DQ layers. TensorRT EP could not build engine for fused node"});
     broken_tests.insert({"conv_with_strides_no_padding",
                          "Cannot set more than one input unless network has Q/DQ layers. TensorRT EP could not build engine for fused node"});
+
+    // Some CIs still fail even though fp16 flag is being set. For example CI with Nvidia Tesla M60.
+    broken_tests.insert({"cast_DOUBLE_to_FLOAT16",
+                         "fp16 precision has been set for a layer or layer output, but fp16 is not configured in the builder"});
+    broken_tests.insert({"cast_FLOAT_to_FLOAT16",
+                         "fp16 precision has been set for a layer or layer output, but fp16 is not configured in the builder"});
   }
 
   if (provider_name == "dml") {

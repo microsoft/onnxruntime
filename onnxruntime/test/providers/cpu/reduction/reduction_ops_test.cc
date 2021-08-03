@@ -605,7 +605,7 @@ TEST(ReductionOpTest, ReduceLogSumExp0DTensor_double) {
   OpTester test("ReduceLogSumExp");
   test.AddInput<double>("data", {}, {2});
   test.AddOutput<double>("reduced", {}, {2});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 #endif  // !(defined USE_TVM)
 
@@ -1081,7 +1081,7 @@ TEST(ReductionOpTest, ReduceMean0DTensor_double) {
   OpTester test("ReduceMean");
   test.AddInput<double>("data", {}, {2});
   test.AddOutput<double>("reduced", {}, {2});
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 #endif  // !(defined USE_TVM)
 
