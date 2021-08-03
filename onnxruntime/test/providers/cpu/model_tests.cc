@@ -66,6 +66,8 @@ TEST_P(ModelTest, Run) {
   if (model_info->GetONNXOpSetVersion() != 8 && provider_name == "tensorrt") {
     // TensorRT can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
+    // Besides saving CI build time, TRT isn’t able to support full ONNX ops spec and therefore some testcases will fail.
+    // That's one of reasons we skip those testcases.
     return;
   }
   if (model_info->GetONNXOpSetVersion() == 10 && provider_name == "dnnl") {
@@ -335,6 +337,22 @@ TEST_P(ModelTest, Run) {
     broken_tests.insert({"softmax_cross_entropy_sum_log_prob_expanded", "Shape mismatch"});
   }
 
+  if (provider_name == "tensorrt") {
+    broken_tests.insert({"convtranspose_with_kernel", "It causes segmentation fault"});
+    broken_tests.insert({"convtranspose_pad", "It causes segmentation fault"});
+    broken_tests.insert({"convtranspose_kernel_shape", "It causes segmentation fault"});
+    broken_tests.insert({"dynamicquantizelinear_expanded", "It causes segmentation fault"});
+    broken_tests.insert({"dynamicquantizelinear_min_adjusted_expanded", "It causes segmentation fault"});
+    broken_tests.insert({"dynamicquantizelinear_max_adjusted_expanded", "It causes segmentation fault"});
+
+    broken_tests.insert({"basic_conv_with_padding",
+                         "Cannot set more than one input unless network has Q/DQ layers. TensorRT EP could not build engine for fused node"});
+    broken_tests.insert({"basic_conv_without_padding",
+                         "Cannot set more than one input unless network has Q/DQ layers. TensorRT EP could not build engine for fused node"});
+    broken_tests.insert({"conv_with_strides_no_padding",
+                         "Cannot set more than one input unless network has Q/DQ layers. TensorRT EP could not build engine for fused node"});
+  }
+
   if (provider_name == "dml") {
     broken_tests.insert({"tinyyolov3", "The parameter is incorrect"});
     broken_tests.insert({"PixelShuffle", "Test requires 6D Reshape, which isn't supported by DirectML"});
@@ -524,7 +542,31 @@ TEST_P(ModelTest, Run) {
       } else if (provider_name == "nuphar") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultNupharExecutionProvider()));
       } else if (provider_name == "tensorrt") {
-        ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
+        if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
+          OrtTensorRTProviderOptions params{
+              0,
+              0,
+              nullptr,
+              1000,
+              1,
+              1 << 30,
+              1, // enable fp16
+              0,
+              nullptr,
+              0,
+              0,
+              0,
+              0,
+              0,
+              nullptr,
+              0,
+              nullptr,
+              0};
+          ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(TensorrtExecutionProviderWithOptions(&params)));
+        } else {
+          ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
+        }
+        ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
       } else if (provider_name == "migraphx") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultMIGraphXExecutionProvider()));
       } else if (provider_name == "openvino") {
@@ -853,7 +895,7 @@ TEST_P(ModelTest, Run) {
 #endif
 
 // TENSORRT/OpenVino has too many test failures in the single node tests
-#if !defined(_WIN32) && !defined(USE_TENSORRT) && !defined(USE_OPENVINO)
+#if !defined(_WIN32) && !defined(USE_OPENVINO)
     paths.push_back("/data/onnx");
 #endif
     while (!paths.empty()) {
