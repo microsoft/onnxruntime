@@ -18,6 +18,7 @@
 #if defined(ENABLE_TRAINING)
 #include "dnnl_convgrad.h"
 #include "dnnl_poolgrad.h"
+#include "dnnl_relugrad.h"
 #endif
 
 namespace onnxruntime {
@@ -195,6 +196,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlPoolGrad().CreatePrimitive(*this, node);
     } else if (node.OpType() == "ConvGrad") {
       DnnlConvGrad().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "ReluGrad") {
+      DnnlReluGrad().CreatePrimitive(*this, node);
 #endif
     } else {
       throw std::invalid_argument("Kernel not found");

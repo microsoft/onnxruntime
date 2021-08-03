@@ -663,6 +663,14 @@ TEST(GradientCheckerTest, ReluGrad) {
   EXPECT_IS_TINIER_THAN(max_error, error_tolerance);
 }
 
+#ifdef USE_DNNL
+TEST(GradientCheckerTest, ReluGradDnnl) {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+  UnaryOpGradientTest("Relu", kOnnxDomain, 9, &execution_providers);
+}
+#endif  // USE_DNNL
+
 TEST(GradientCheckerTest, CastGrad) {
   // A dummy test that cast float to float
   // TODO: add more test here
@@ -1257,7 +1265,6 @@ TEST(GradientCheckerTest, AveragePoolGrad) {
   AveragepoolGradientCheckerTest(&execution_providers);
 #endif  //USE_DNNL
 }
-
 
 TEST(GradientCheckerTest, TransposeGrad) {
   float max_error;
