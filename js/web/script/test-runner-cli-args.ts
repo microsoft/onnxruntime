@@ -18,7 +18,7 @@ Usage:
  test-runner-cli <mode> ... [options]
 
 Modes:
- suite0                        Run all unittests, all operator tests and node model tests that described in white list
+ suite0                        Run all unittests, all operator tests and node model tests that described in suite test list
  model                         Run a single model test
  unittest                      Run all unittests
  op                            Run a single operator test

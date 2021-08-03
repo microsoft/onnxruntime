@@ -72,7 +72,9 @@ def _build_package(args):
 
         # get the compiled lib path
         framework_dir = os.path.join(
-            build_dir_current_arch, build_config, build_config + "-" + sysroot, 'onnxruntime.framework')
+            build_dir_current_arch, build_config, build_config + "-" + sysroot,
+            'onnxruntime.framework' if args.build_dynamic_framework
+            else os.path.join('static_framework', 'onnxruntime.framework'))
         ort_libs.append(os.path.join(framework_dir, 'onnxruntime'))
 
         # We only need to copy Info.plist, framework_info.json, and headers once since they are the same
@@ -124,6 +126,9 @@ def parse_args():
 
     parser.add_argument('build_settings_file', type=pathlib.Path,
                         help='Provide the file contains settings for building iOS framework')
+
+    parser.add_argument("--build_dynamic_framework", action='store_true',
+                        help="Build Dynamic Framework (default is build static framework).")
 
     args = parser.parse_args()
 

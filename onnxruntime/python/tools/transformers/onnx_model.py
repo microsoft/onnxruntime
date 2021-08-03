@@ -799,6 +799,7 @@ class OnnxModel:
                 else:
                     deps_to_nodes[input_name].append(node_idx)
 
+        # Note: this logic only applies to top level graph since a sub graph could use intializer from parent graph
         initializer_names = [init.name for init in graph.initializer]
         graph_input_names = [input.name for input in graph.input]
         input_names = initializer_names + graph_input_names

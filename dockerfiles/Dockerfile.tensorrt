@@ -5,6 +5,7 @@
 # Dockerfile to run ONNXRuntime with TensorRT integration
 
 # nVidia TensorRT Base Image
+
 ARG TRT=21.07
 FROM nvcr.io/nvidia/tensorrt:${TRT}-py3
 

@@ -10,6 +10,7 @@
 #include "orttraining/core/graph/graph_augmenter.h"
 #include "orttraining/core/graph/gradient_config.h"
 #include "orttraining/core/graph/recompute_graph_utils.h"
+#include "orttraining/core/graph/gradient_definition_registry.h"
 #include "onnx/defs/attr_proto_util.h"
 #include "onnx/defs/tensor_proto_util.h"
 
@@ -36,6 +37,8 @@ void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
 Status GetShape(const ArgDef& arg_def, std::vector<Dimension>& shape);
 
 typedef std::vector<NodeDef> GradientDef;
+
+std::string GetGradientDefinitionKeyByNode(const Node& node);
 
 class GradientBuilderBase {
  public:
@@ -294,8 +297,9 @@ class GradientBuilderBase {
 
   const std::string& NodeName() const { return node_->Name(); }
 
-  ArgDef HandleATenOpGradInput(const ArgDef& source_arg_def, const std::string& transform_func,
-                               std::vector<NodeDef>& output) const;
+  std::string GetGradientDefinitionKey() const { return GetGradientDefinitionKeyByNode(*node_); }
+
+  AttributeProto AttributeDefinitionToAttributeProto(const GradientNodeAttributeDefinition& attr_def) const;
 
  private:
   friend class GradientGraphBuilder;

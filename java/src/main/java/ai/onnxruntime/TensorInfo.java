@@ -80,6 +80,8 @@ public class TensorInfo implements ValueInfo {
           return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
         case INT8:
           return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8;
+        case UINT8:
+          return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
         case INT16:
           return OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16;
         case INT32:
@@ -160,6 +162,10 @@ public class TensorInfo implements ValueInfo {
   /**
    * Constructs an array the right shape and type to hold this tensor.
    *
+   * <p>Note for String tensors, this carrier is a single dimensional array with enough space for
+   * all elements as that's the expected format of the native code. It can be reshaped to the
+   * correct shape using {@link OrtUtil#reshape(String[],long[])}.
+   *
    * @return A multidimensional array of the appropriate primitive type (or String).
    * @throws OrtException If the shape isn't representable in Java (i.e. if one of it's indices is
    *     greater than an int).
@@ -175,6 +181,7 @@ public class TensorInfo implements ValueInfo {
         return OrtUtil.newFloatArray(shape);
       case DOUBLE:
         return OrtUtil.newDoubleArray(shape);
+      case UINT8:
       case INT8:
         return OrtUtil.newByteArray(shape);
       case INT16:

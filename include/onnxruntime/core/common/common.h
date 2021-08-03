@@ -177,10 +177,13 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
 // Check condition.
 // NOTE: The arguments get streamed into a string via ostringstream::operator<<
 // DO NOT use a printf format string, as that will not work as you expect.
-#define ORT_ENFORCE(condition, ...)                                           \
-  if (!(condition))                                                           \
-  throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition, \
-                                            ::onnxruntime::MakeString(__VA_ARGS__))
+#define ORT_ENFORCE(condition, ...)                                                      \
+  do {                                                                                   \
+    if (!(condition)) {                                                                  \
+      throw ::onnxruntime::OnnxRuntimeException(ORT_WHERE_WITH_STACK, #condition,        \
+                                                ::onnxruntime::MakeString(__VA_ARGS__)); \
+    }                                                                                    \
+  } while (false)
 
 #define ORT_THROW_EX(ex, ...) \
   throw ex(__VA_ARGS__)
@@ -193,12 +196,14 @@ void LogRuntimeError(uint32_t session_id, const common::Status& status, const ch
                                 ::onnxruntime::MakeString(__VA_ARGS__))
 
 // Check condition. if met, return status.
-#define ORT_RETURN_IF(condition, ...)                                                                        \
-  if (condition) {                                                                                           \
-    return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,                                 \
-                                         ::onnxruntime::common::FAIL,                                        \
-                                         ::onnxruntime::MakeString(ORT_WHERE.ToString(), " ", __VA_ARGS__)); \
-  }
+#define ORT_RETURN_IF(condition, ...)                                                                          \
+  do {                                                                                                         \
+    if (condition) {                                                                                           \
+      return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,                                 \
+                                           ::onnxruntime::common::FAIL,                                        \
+                                           ::onnxruntime::MakeString(ORT_WHERE.ToString(), " ", __VA_ARGS__)); \
+    }                                                                                                          \
+  } while (false)
 
 // Check condition. if not met, return status.
 #define ORT_RETURN_IF_NOT(condition, ...) \
