@@ -91,9 +91,9 @@ jobs:
         
     - ${{ if eq(parameters.PublishWheel, true) }}:
     
-      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build/copy_wheel.sh -t $(trtContainer)'
+      - script: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/anubis/copy_wheel.sh -t $(trtContainer)'
         displayName: 'Copy Wheel from Docker'
-        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/build'
+        workingDirectory: '$(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/anubis'
     
       - script: 'OUTPUT=$(ls dist) && az storage blob upload --account-name anubiscustomerstorage  --account-key $(account-key) --container-name upload --file $(Build.SourcesDirectory)/onnxruntime/python/tools/tensorrt/perf/dist/*.whl --name ort-trt-ep/$OUTPUT'
         displayName: 'Upload Wheel File'
