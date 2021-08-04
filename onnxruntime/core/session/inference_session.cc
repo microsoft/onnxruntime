@@ -98,6 +98,64 @@ inline std::basic_string<T> GetCurrentTimeString() {
   return std::basic_string<T>(time_str);
 }
 
+using NodePlacementMap = std::unordered_map<std::string, std::vector<std::string>>;
+
+Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_verbose,
+                                          NodePlacementMap& node_placements) {
+  for (const auto& node : graph.Nodes()) {
+    const auto& node_provider = node.GetExecutionProviderType();
+    if (node_provider.empty()) {
+      std::ostringstream oss;
+      oss << "Could not find an implementation for the node ";
+      if (!node.Name().empty()) {
+        oss << node.Name() << ":";
+      }
+      oss << node.OpType() << "(" << node.SinceVersion() << ")";
+
+      return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED, oss.str());
+    } else {
+      if (is_verbose) {  // TODO: should we disable this if the number of nodes are above a certain threshold?
+        std::string node_str = node.OpType();
+        node_str += " (";
+        node_str += node.Name();
+        node_str += ")";
+        node_placements[node_provider].push_back(node_str);
+      }
+    }
+
+    // recurse into subgraphs
+    const auto subgraphs = node.GetSubgraphs();
+    for (const auto& subgraph : subgraphs) {
+      ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(*subgraph, is_verbose, node_placements));
+    }
+  }
+
+  return Status::OK();
+}
+
+Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::Logger& logger) {
+  NodePlacementMap node_placements{};
+  const bool is_verbose_mode = logger.GetSeverity() == logging::Severity::kVERBOSE;
+
+  ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(graph, is_verbose_mode, node_placements));
+
+  // print placement info
+  if (is_verbose_mode) {
+    LOGS(logger, VERBOSE) << "Node placements";
+    if (node_placements.size() == 1) {
+      LOGS(logger, VERBOSE) << "All nodes have been placed on [" << node_placements.begin()->first << "].";
+    } else {
+      for (const auto& pr : node_placements) {
+        std::ostringstream all_nodes_str;
+        std::copy(pr.second.begin(), pr.second.end(), std::ostream_iterator<std::string>(all_nodes_str, ", "));
+        LOGS(logger, VERBOSE) << " Provider: [" << pr.first << "]"
+                              << ": [" << all_nodes_str.str() << "]";
+      }
+    }
+  }
+
+  return Status::OK();
+}
 }  // namespace
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
@@ -880,44 +938,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   // Insert cast node/s.
   ORT_RETURN_IF_ERROR_SESSIONID_(insert_cast_transformer.Apply(graph, modified, *session_logger_));
 
-  // Now every node should be already assigned to an execution provider
-  std::unordered_map<std::string, std::vector<std::string>> node_placements;
-  bool is_verbose_mode = session_logger_->GetSeverity() == logging::Severity::kVERBOSE;
-  for (auto& node : graph.Nodes()) {
-    const auto& node_provider = node.GetExecutionProviderType();
-    if (node_provider.empty()) {
-      std::ostringstream oss;
-      oss << "Could not find an implementation for the node ";
-      if (!node.Name().empty())
-        oss << node.Name() << ":";
-      oss << node.OpType() << "(" << node.SinceVersion() << ")";
-
-      return Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED, oss.str());
-    } else {
-      if (is_verbose_mode) {  // TODO: should we disable this if the number of nodes are above a certain threshold?
-        std::string node_str = node.OpType();
-        node_str += " (";
-        node_str += node.Name();
-        node_str += ")";
-        node_placements[node_provider].push_back(node_str);
-      }
-    }
-  }
-
-  // print placement info
-  if (is_verbose_mode) {
-    LOGS(*session_logger_, VERBOSE) << "Node placements";
-    if (node_placements.size() == 1) {
-      LOGS(*session_logger_, VERBOSE) << "All nodes have been placed on [" << node_placements.begin()->first << "].";
-    } else {
-      for (const auto& pr : node_placements) {
-        std::ostringstream all_nodes_str;
-        std::copy(pr.second.begin(), pr.second.end(), std::ostream_iterator<std::string>(all_nodes_str, ", "));
-        LOGS(*session_logger_, VERBOSE) << " Provider: [" << pr.first << "]"
-                                        << ": [" << all_nodes_str.str() << "]";
-      }
-    }
-  }
+  ORT_RETURN_IF_ERROR_SESSIONID_(VerifyEachNodeIsAssignedToAnEp(graph, *session_logger_));
 
   std::vector<std::string> provider_types;
   for (auto& provider_ptr : providers) {
@@ -1130,6 +1151,63 @@ common::Status InferenceSession::AddPrePackedWeightsContainer(PrepackedWeightsCo
   return Status::OK();
 }
 
+namespace {
+#if defined(ENABLE_ORT_FORMAT_LOAD)
+Status AssignNodesToEpsFromHashesImpl(Graph& graph, const fbs::SessionState& fbs_session_state,
+                                      const KernelRegistryManager& kernel_registry_manager) {
+  const auto* const fbs_sub_graph_session_states = fbs_session_state.sub_graph_session_states();
+  ORT_RETURN_IF(nullptr == fbs_sub_graph_session_states,
+                "SessionState for subgraphs is null. Invalid ORT format model.");
+
+  for (auto& node : graph.Nodes()) {
+    for (auto& [attribute, subgraph] : node.GetAttributeNameToMutableSubgraphMap()) {
+      const auto key = MakeString(node.Index(), "_", attribute);  // TODO reuse GetSubGraphId()
+      const auto* const fbs_sub_graph_ss = fbs_sub_graph_session_states->LookupByKey(key.c_str());
+      ORT_RETURN_IF(nullptr == fbs_sub_graph_ss,
+                    "Subgraph SessionState entry for ", key, " is missing. Invalid ORT format model.");
+
+      const auto* const fbs_sub_session_state = fbs_sub_graph_ss->session_state();
+      ORT_RETURN_IF(nullptr == fbs_sub_session_state,
+                    "Subgraph SessionState for ", key, " is null. Invalid ORT format model.");
+
+      ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashesImpl(*subgraph, *fbs_sub_session_state, kernel_registry_manager));
+    }
+  }
+
+  const auto* const fbs_kcis = fbs_session_state.kernels();
+  ORT_RETURN_IF(nullptr == fbs_kcis, "Kernel create info is null. Invalid ORT format model.");
+  const auto* const node_indices = fbs_kcis->node_indices();
+  const auto* const kernel_def_hashes = fbs_kcis->kernel_def_hashes();
+  ORT_RETURN_IF(nullptr == node_indices, "Kernel create info node indices are null. Invalid ORT format model.");
+  ORT_RETURN_IF(nullptr == kernel_def_hashes, "Kernel create info hashes are null. Invalid ORT format model.");
+  ORT_RETURN_IF_NOT(node_indices->size() == kernel_def_hashes->size(),
+                    "Size mismatch for kernel create info node indexes and hashes. Invalid ORT format model.",
+                    node_indices->size(), " != ", kernel_def_hashes->size());
+
+  for (flatbuffers::uoffset_t i = 0; i < node_indices->size(); ++i) {
+    const auto node_idx = node_indices->Get(i);
+    const auto kernel_hash = kernel_def_hashes->Get(i);
+    Node* node = graph.GetNode(node_idx);
+    if (!node || !node->GetExecutionProviderType().empty()) continue;
+
+    const KernelCreateInfo* kci = nullptr;
+    ORT_RETURN_IF_NOT(kernel_registry_manager.SearchKernelRegistriesByHash(kernel_hash, &kci));
+    node->SetExecutionProviderType(kci->kernel_def->Provider());
+  }
+
+  return Status::OK();
+}
+
+Status AssignNodesToEpsFromHashes(Graph& graph, const fbs::SessionState& fbs_session_state,
+                                  const KernelRegistryManager& kernel_registry_manager,
+                                  const logging::Logger& logger) {
+  ORT_RETURN_IF_ERROR(AssignNodesToEpsFromHashesImpl(graph, fbs_session_state, kernel_registry_manager));
+  ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEp(graph, logger));
+  return Status::OK();
+}
+#endif  // defined(ENABLE_ORT_FORMAT_LOAD)
+}  // namespace
+
 common::Status InferenceSession::Initialize() {
   Status status = Status::OK();
   TimePoint tp;
@@ -1232,16 +1310,23 @@ common::Status InferenceSession::Initialize() {
     // Register 2nd registries into KernelRegistryManager.
     ORT_RETURN_IF_ERROR_SESSIONID_(kernel_registry_manager_.RegisterKernels(execution_providers_));
 
-    bool loading_ort_format = !ort_format_model_bytes_.empty();
-    bool saving_model = !session_options_.optimized_model_filepath.empty();
-    bool saving_ort_format = false;
-    if (saving_model) {
-      std::string model_type = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSaveModelFormat, "");
-      bool has_explicit_type = !model_type.empty();
-      saving_ort_format = ((has_explicit_type && model_type == "ORT") ||
-                           (!has_explicit_type &&
-                            experimental::utils::IsOrtFormatModel(session_options_.optimized_model_filepath)));
-    }
+    const bool loading_ort_format = !ort_format_model_bytes_.empty();
+    const bool saving_model = !session_options_.optimized_model_filepath.empty();
+    const bool saving_ort_format = [&]() {
+      if (saving_model) {
+        const std::string model_type = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigSaveModelFormat, "");
+        const bool has_explicit_type = !model_type.empty();
+        return ((has_explicit_type && model_type == "ORT") ||
+                (!has_explicit_type &&
+                 experimental::utils::IsOrtFormatModel(session_options_.optimized_model_filepath)));
+      }
+      return false;
+    }();
+
+    const experimental::fbs::SessionState* serialized_session_state =
+        loading_ort_format
+            ? fbs::GetInferenceSession(ort_format_model_bytes_.data())->session_state()
+            : nullptr;
 
 #if !defined(ORT_MINIMAL_BUILD)
     if (!loading_ort_format) {
@@ -1263,17 +1348,26 @@ common::Status InferenceSession::Initialize() {
     } else
 #endif  // !defined(ORT_MINIMAL_BUILD)
     {
+      ORT_ENFORCE(loading_ort_format);
+
+#if defined(ENABLE_ORT_FORMAT_LOAD)
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-      // run partitioning to allow a compiling EP to take what it can at runtime
-      ORT_RETURN_IF_ERROR_SESSIONID_(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
-                                                             *session_state_));
+      // nodes are already partitioned, but a custom EP may compile some at runtime.
+      // run the partitioning to allow that to happen.
+      //
+      // We always have the CPU EP, so only need to run this if some other EP is enabled
+      if (execution_providers_.NumProviders() > 1) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
+                                                               *session_state_));
+      }
+#endif
+
+      ORT_RETURN_IF_ERROR_SESSIONID_(
+          AssignNodesToEpsFromHashes(graph, *serialized_session_state, kernel_registry_manager_, *session_logger_));
+#else  // defined(ENABLE_ORT_FORMAT_LOAD)
+      ORT_NOT_IMPLEMENTED("ORT format loading not enabled.");
 #endif
     }
-
-    const experimental::fbs::SessionState* serialized_session_state =
-        loading_ort_format
-            ? fbs::GetInferenceSession(ort_format_model_bytes_.data())->session_state()
-            : nullptr;
 
     ORT_RETURN_IF_ERROR_SESSIONID_(
         session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,

@@ -430,14 +430,6 @@ static Status PartitionOrtFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     const IndexedSubGraph::MetaDef* metadef = indexed_sub_graph.GetMetaDef();
     if (!metadef) {
       // Static kernel - use the kernel hash that was saved in the ORT format model
-
-      // assign the single node to the current EP
-      ORT_ENFORCE(indexed_sub_graph.nodes.size() == 1);
-      Node* node = graph.GetNode(indexed_sub_graph.nodes.front());
-      if (node != nullptr && node->GetExecutionProviderType().empty()) {
-        node->SetExecutionProviderType(type);
-      }
-
       continue;
     }
 
@@ -508,6 +500,12 @@ Status GraphPartitioner::PartitionOrtFormatModel(
     int& fused_node_unique_id) const {
   // process full graph with each EP
   for (const auto& ep : providers_) {
+    if (ep->Type() == kCpuExecutionProvider) {
+      // hash for kernel is stored in session state for EPs that have pre-registered kernels
+      // (vs. runtime fused kernels) so nothing to do here.
+      continue;
+    }
+
     ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(graph, func_mgr, kernel_registry_mgr_, fused_kernel_registry,
                                                     *ep, compiled_kernel_hashes, fused_node_unique_id));
   }
