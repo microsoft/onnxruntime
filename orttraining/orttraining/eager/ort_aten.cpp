@@ -76,7 +76,7 @@ OrtValue create_ort_value(
 }
 
 OrtValue create_ort_value(
-  onnxruntime::ORTInvoker& /*invoker*/,
+  onnxruntime::ORTInvoker& invoker,
   const at::Tensor& tensor) {
   assert_tensor_supported(tensor);
 
@@ -155,8 +155,8 @@ at::Tensor empty__memory_format(
   c10::optional<at::ScalarType> dtype_opt,
   c10::optional<at::Layout> layout_opt,
   c10::optional<at::Device> device_opt,
-  c10::optional<bool> /*pin_memory*/,
-  c10::optional<at::MemoryFormat> /*memory_format*/) {
+  c10::optional<bool> pin_memory,
+  c10::optional<at::MemoryFormat> memory_format) {
   ORT_LOG_FN(size, dtype_opt, layout_opt, device_opt, pin_memory, memory_format);
 
   assert(dtype_opt.has_value());
@@ -182,12 +182,12 @@ at::Tensor empty__memory_format(
 
 at::Tensor empty_strided(
   at::IntArrayRef size,
-  at::IntArrayRef /*stride*/,
+  at::IntArrayRef stride,
   // *
   c10::optional<at::ScalarType> dtype_opt,
-  c10::optional<at::Layout> /*layout_opt*/,
+  c10::optional<at::Layout> layout_opt,
   c10::optional<at::Device> device_opt,
-  c10::optional<bool> /*pin_memory_opt*/) {
+  c10::optional<bool> pin_memory_opt) {
   ORT_LOG_FN(size, stride, dtype_opt, layout_opt, device_opt, pin_memory_opt);
 
   // TODO: handle stride
@@ -239,7 +239,7 @@ at::Tensor view(const at::Tensor& self, at::IntArrayRef size) {
 at::Tensor& copy_(
   at::Tensor& self,
   const at::Tensor& src,
-  bool /*non_blocking*/) {
+  bool non_blocking) {
   ORT_LOG_FN(self, src, non_blocking);
 
   assert_tensor_supported(self);

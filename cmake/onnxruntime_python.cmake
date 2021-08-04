@@ -31,8 +31,12 @@ if (onnxruntime_ENABLE_EAGER_MODE)
 
   file(GLOB onnxruntime_eager_extension_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_ROOT}/orttraining/eager/*.cpp"
-    "${ORTTRAINING_ROOT}/orttraining/core/framework/torch/dlpack_python.cc"
     )
+
+  if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
+    list(APPEND onnxruntime_eager_extension_srcs 
+              "${ORTTRAINING_ROOT}/orttraining/core/framework/torch/dlpack_python.cc")
+  endif()
 
   list(APPEND onnxruntime_pybind_srcs 
               ${onnxruntime_eager_extension_srcs})
@@ -97,6 +101,7 @@ if (onnxruntime_ENABLE_EAGER_MODE)
   # the ort_aten.g.cpp is generated from tools. currently it has some limitations.
   # todo: fix this
   set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_aten.g.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
+  set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_aten.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
   set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_guard.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
   set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_tensor.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
 endif()
