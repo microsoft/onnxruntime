@@ -10,7 +10,7 @@ FROM nvidia/cuda:${CUDA_VERSION}-cudnn8-devel-ubuntu${OS_VERSION}
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=master
-ARG TRT=8.0.1.6
+ARG TRT=7.2.3.4 
 
 RUN apt-get update &&\
     apt-get install -y sudo git bash unattended-upgrades wget
@@ -39,8 +39,8 @@ RUN cd /tmp &&\
     wget https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/nvidia-machine-learning-repo-ubuntu1804_1.0.0-1_amd64.deb &&\
     dpkg -i nvidia-machine-learning-repo-*.deb && apt-get update
 
-RUN trt_v="${TRT%.*.*.*}"
-     v="${TRT%.*}-1+cuda${CUDA_VERSION%.*}" &&\
+RUN trt_v="${TRT%.*.*.*}" &&\ # TRT x
+    v="${TRT%.*}-1+cuda${CUDA_VERSION%.*}" &&\
     apt-get install -y libnvinfer${trt_v}=${v} libnvinfer-plugin${trt_v}=${v} libnvparsers${trt_v}=${v} libnvonnxparsers${trt_v}=${v} libnvinfer-dev=${v} libnvinfer-plugin-dev=${v} libnvparsers-dev=${v} python3-libnvinfer=${v} &&\
     apt-mark hold libnvinfer${trt_v} libnvinfer-plugin${trt_v} libnvparsers${trt_v} libnvonnxparsers${trt_v} libnvinfer-dev libnvinfer-plugin-dev libnvparsers-dev python3-libnvinfer
 
@@ -51,12 +51,12 @@ RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXR
     cp onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt &&\
     cp onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt &&\
     cd onnxruntime &&\
-    trt_v=${TRT%.*.*} &&\
+    trt_v=${TRT%.*.*} &&\ # TRT x.x
     if [ ${trt_v} != 7.2 ]; then add_args="--skip_submodule_sync" &&\
     CUR_PWD=$(pwd) &&\ 
     cd cmake/external/onnx-tensorrt/ &&\
     git remote update &&\
-    git checkout ${trt} &&\
+    git checkout ${trt_v} &&\
     cd ${CUR_PWD}; fi &&\
     echo ${add_args} &&\
     /bin/sh build.sh --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --skip_tests ${add_args} &&\
