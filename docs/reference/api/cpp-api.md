@@ -2,6 +2,7 @@
 title: C++ API
 parent: API docs
 grand_parent: Reference
+nav_order: 2
 ---
 
 # ONNX Runtime C++ API

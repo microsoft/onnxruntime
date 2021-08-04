@@ -2,6 +2,7 @@
 title: Objective-C API
 parent: API docs
 grand_parent: Reference
+nav_order: 6
 ---
 
 # ONNX Runtime Objective-C API
