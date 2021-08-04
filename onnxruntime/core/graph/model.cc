@@ -107,8 +107,14 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
         " specifies which version of the ONNX OperatorSet is being imported.");
   }
 
-  if (!model_proto.has_ir_version() || model_proto.ir_version() > ONNX_NAMESPACE::Version::IR_VERSION) {
-    ORT_THROW("Unknown model file format version.");
+  if (!model_proto.has_ir_version()) {
+    ORT_THROW("Missing model IR version.");
+  }
+
+  if (const auto ir_version = model_proto.ir_version();
+      ir_version > ONNX_NAMESPACE::Version::IR_VERSION) {
+    ORT_THROW("Unsupported model IR version: ", ir_version,
+              ", max supported IR version: ", ONNX_NAMESPACE::Version::IR_VERSION);
   }
 
   model_proto_ = std::move(model_proto);
