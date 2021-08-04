@@ -22,12 +22,7 @@ using WaitMode = InferenceEngine::IInferRequest::WaitMode;
 #include "../contexts.h"
 #include "../backend_utils.h"
 #include "vadm_backend.h"
-#if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || \
-    defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
 #include <vpu/hddl_config.hpp>
-#else
-#include <vpu/hddl_plugin_config.hpp>
-#endif
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -62,10 +57,8 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   }
 #endif
 
-#if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
   if (const_outputs_map_.size() == subgraph_context_.output_names.size())
     subgraph_context_.is_constant = true;
-#endif
 
   int i = 0;
   if (subgraph_context_.is_constant)
@@ -77,11 +70,7 @@ VADMBackend::VADMBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
   if (global_context_.is_wholly_supported_graph && subgraph_context_.enable_batching) {
     for (int j = 0; j < 8; j++) {
       InferenceEngine::ExecutableNetwork exe_network;
-#if defined(OPENVINO_2020_3)
-      config[VPU_HDDL_CONFIG_KEY(DEVICE_TAG)] = global_context_.deviceTags[j];
-#else
       config[InferenceEngine::HDDL_DEVICE_TAG] = global_context_.deviceTags[j];
-#endif
       try {
         exe_network = global_context_.ie_core.LoadNetwork(*ie_cnn_network_, hw_target, config);
       } catch (const Exception& e) {
@@ -206,7 +195,6 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext
 
     FillOutputBlob(graph_output_blob, output_tensor, ort, precision, batch_slice_idx);
   }
-#if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
   if (!const_outputs_map_.empty()) {
     for (auto item : const_outputs_map_) {
       auto out_name = item.first;
@@ -215,7 +203,6 @@ void VADMBackend::CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext
       FillOutputsWithConstantData(ort, node, output_tensor);
     }
   }
-#endif
 }
 size_t DeduceBatchSize(Ort::CustomOpApi ort, const OrtValue* input_tensor,
                        InferenceEngine::SizeVector graph_dims) {
@@ -255,14 +242,12 @@ void VADMBackend::Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) {
   size_t remainder_parallel_runs = batch_size % num_inf_reqs_;
 
   if (subgraph_context_.is_constant) {
-#if defined(OPENVINO_2021_1) || defined(OPENVINO_2021_2) || defined(OPENVINO_2021_3) || defined(OPENVINO_2021_4)
     for (auto item : const_outputs_map_) {
       auto out_name = item.first;
       auto node = item.second;
       auto output_tensor = GetOutputTensor(ort, context, out_name, subgraph_context_.output_names, node);
       FillOutputsWithConstantData(ort, node, output_tensor);
     }
-#endif
   } else {
     // Distribute the batched inputs among available Infer Requests
     // for parallel inference.
