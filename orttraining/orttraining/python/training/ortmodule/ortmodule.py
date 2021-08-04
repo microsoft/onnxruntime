@@ -141,18 +141,12 @@ class ORTModule(torch.nn.Module):
         which does not need model replication and is also recommended by torch to use instead.
         """
 
-        raise wrap_exception(ORTModuleTorchModelException,
-                             NotImplementedError("ORTModule is not compatible with torch.nn.DataParallel. "
-                                                 "Please use torch.nn.parallel.DistributedDataParallel instead."))
+        return self._torch_module._replicate_for_data_parallel()
 
     def add_module(self, name: str, module: Optional['Module']) -> None:
         """Raises a ORTModuleTorchModelException exception since ORTModule does not support adding modules to it"""
 
-        if not self._fallback_manager.is_pending():
-            raise wrap_exception(ORTModuleTorchModelException,
-                                NotImplementedError("ORTModule does not support adding modules to it."))
-        else:
-            self._torch_module.add_module(name, module)
+        self._torch_module.add_module(name, module)
 
     @property
     def module(self):
@@ -167,10 +161,7 @@ class ORTModule(torch.nn.Module):
         # This `module` property enables HuggingFace Trainer to retrieve the underlying PreTrainedModel inside ORTModule
         # to save and load a complete checkpoint
 
-        if not self._fallback_manager.is_pending():
-            return self._torch_module.module
-        else:
-            return self._torch_module
+        return self._torch_module.module
 
     ################################################################################
     # The methods below are part of torch.nn.Module API that are encapsulated through

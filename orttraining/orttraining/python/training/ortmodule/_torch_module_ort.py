@@ -6,8 +6,7 @@ from . import _io
 from .debug_options import DebugOptions
 from ._graph_execution_manager_factory import GraphExecutionManagerFactory
 from ._torch_module_interface import TorchModuleInterface
-from ._fallback import _FallbackManager
-
+from ._fallback import _FallbackManager, ORTModuleTorchModelException, wrap_exception
 from collections import OrderedDict
 import functools
 import torch
@@ -152,3 +151,29 @@ class TorchModuleORT(TorchModuleInterface):
         # PyTorch >1.8.1 has an extra arg remove_duplicate that is not present in 1.8.1
         # To support both, use args and kwargs (since user can call the method with only positional args or kwargs)
         yield from self._original_module.named_modules(*args, **kwargs)
+
+    def _replicate_for_data_parallel(self):
+        raise wrap_exception(ORTModuleTorchModelException,
+                             NotImplementedError("ORTModule is not compatible with torch.nn.DataParallel. "
+                                                 "Please use torch.nn.parallel.DistributedDataParallel instead."))
+
+    def add_module(self, name: str, module: Optional['Module']) -> None:
+        raise wrap_exception(ORTModuleTorchModelException,
+                            NotImplementedError("ORTModule does not support adding modules to it."))
+
+    @TorchModuleInterface.module.getter
+    def module(self):
+        """The original `torch.nn.Module` that this module wraps.
+
+        This property provides access to methods and properties on the original module.
+        """
+
+        # HuggingFace Trainer `save_model` method checks to see if the input model is a HuggingFace PreTrainedModel
+        # or if the model has an attribute called `module` which references a HuggingFace PreTrainedModel to save
+        # the entire context of the model so that it can be loaded using HuggingFace `from_pretrained` method.
+        # This `module` property enables HuggingFace Trainer to retrieve the underlying PreTrainedModel inside ORTModule
+        # to save and load a complete checkpoint
+
+        print('++++++++++++++++++++++++++++++++++++++++++++')
+        print(type(self._original_module))
+        return self._original_module

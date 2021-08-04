@@ -83,3 +83,13 @@ class TorchModulePytorch(TorchModuleInterface):
         # PyTorch >1.8.1 has an extra arg remove_duplicate that is not present in 1.8.1
         # To support both, use args and kwargs (since user can call the method with only positional args or kwargs)
         yield from self._original_module.named_modules(*args, **kwargs)
+
+    def _replicate_for_data_parallel(self):
+        return self._original_module._replicate_for_data_parallel()
+
+    def add_module(self, name: str, module: Optional['Module']) -> None:
+        self._original_module.add_module(name, module)
+
+    @TorchModuleInterface.module.getter
+    def module(self):
+        return self._original_module.module
