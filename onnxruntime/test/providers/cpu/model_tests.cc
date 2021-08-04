@@ -63,11 +63,11 @@ TEST_P(ModelTest, Run) {
   }
 
   std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
-  if (model_info->GetONNXOpSetVersion() != 8 && provider_name == "tensorrt") {
+  if (model_info->GetONNXOpSetVersion() != 13 && provider_name == "tensorrt") {
     // TensorRT can run most of the model tests, but only part of
     // them is enabled here to save CI build time.
     // Besides saving CI build time, TRT isn’t able to support full ONNX ops spec and therefore some testcases will fail.
-    // That's one of reasons we skip those testcases.
+    // That's one of reasons we skip those testcases and only test latest ONNX opset.
     return;
   }
   if (model_info->GetONNXOpSetVersion() == 10 && provider_name == "dnnl") {
@@ -169,6 +169,11 @@ TEST_P(ModelTest, Run) {
       {"softmax_cross_entropy_mean_no_weight_ignore_index_4d", "type error", {"onnx170"}},
 #endif
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
+
+  // Some EPs may fail to pass some specific testcases.
+  // For example TenosrRT EP may fail on FLOAT16 related testcases if GPU doesn't support float16.
+  // Instead of list all these testcases, we can use following keyword set to filter out testcases wchich contain specific keyword.
+  std::set<std::string> broken_tests_with_keyword = {};
 
   if (provider_name == "nuphar") {
     // https://msdata.visualstudio.com/Vienna/_workitems/edit/1000703
@@ -352,11 +357,19 @@ TEST_P(ModelTest, Run) {
     broken_tests.insert({"conv_with_strides_no_padding",
                          "Cannot set more than one input unless network has Q/DQ layers. TensorRT EP could not build engine for fused node"});
 
+    //broken_tests.insert({"cast_DOUBLE_to_FLOAT16",
+                         //"fp16 precision has been set for a layer or layer output, but fp16 is not configured in the builder"});
+    //broken_tests.insert({"cast_FLOAT_to_FLOAT16",
+                         //"fp16 precision has been set for a layer or layer output, but fp16 is not configured in the builder"});
+
+
+    // Disable known failed testcase for opset 13
+    // sce op is not supported by TensorRT yet
+    broken_tests_with_keyword.insert({"sce"});
+
     // Some CIs still fail even though fp16 flag is being set. For example CI with Nvidia Tesla M60.
-    broken_tests.insert({"cast_DOUBLE_to_FLOAT16",
-                         "fp16 precision has been set for a layer or layer output, but fp16 is not configured in the builder"});
-    broken_tests.insert({"cast_FLOAT_to_FLOAT16",
-                         "fp16 precision has been set for a layer or layer output, but fp16 is not configured in the builder"});
+    broken_tests_with_keyword.insert({"FLOAT16"});
+
   }
 
   if (provider_name == "dml") {
@@ -509,6 +522,13 @@ TEST_P(ModelTest, Run) {
          iter->broken_versions_.find(model_version) != iter->broken_versions_.end())) {
       return;
     }
+
+    for (auto iter2 = broken_tests_with_keyword.begin(); iter2 != broken_tests_with_keyword.end(); ++iter2) {
+        std::string keyword = *iter2;
+        if (ToMBString(test_case_name).find(keyword) != std::string::npos) {
+          return;
+        }
+    }
   }
   bool is_single_node = !model_info->GetNodeName().empty();
   std::vector<ExecutionMode> execution_modes = {ExecutionMode::ORT_SEQUENTIAL};
@@ -548,30 +568,30 @@ TEST_P(ModelTest, Run) {
       } else if (provider_name == "nuphar") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultNupharExecutionProvider()));
       } else if (provider_name == "tensorrt") {
-        if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
-          OrtTensorRTProviderOptions params{
-              0,
-              0,
-              nullptr,
-              1000,
-              1,
-              1 << 30,
-              1, // enable fp16
-              0,
-              nullptr,
-              0,
-              0,
-              0,
-              0,
-              0,
-              nullptr,
-              0,
-              nullptr,
-              0};
-          ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(TensorrtExecutionProviderWithOptions(&params)));
-        } else {
+        //if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
+          //OrtTensorRTProviderOptions params{
+              //0,
+              //0,
+              //nullptr,
+              //1000,
+              //1,
+              //1 << 30,
+              //1, // enable fp16
+              //0,
+              //nullptr,
+              //0,
+              //0,
+              //0,
+              //0,
+              //0,
+              //nullptr,
+              //0,
+              //nullptr,
+              //0};
+          //ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(TensorrtExecutionProviderWithOptions(&params)));
+        //} else {
           ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
-        }
+        //}
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
       } else if (provider_name == "migraphx") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultMIGraphXExecutionProvider()));
