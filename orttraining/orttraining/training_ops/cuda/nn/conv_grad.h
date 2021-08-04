@@ -12,15 +12,22 @@
 namespace onnxruntime {
 namespace cuda {
 
-struct ConvolutionArgs {
-  cudnnHandle_t handle;
-  cudnnDataType_t data_type;
+struct CudnnConvGradState : public CudnnConvState<cudnnConvolutionBwdDataAlgoPerf_t> {
+  cudnnConvolutionBwdFilterAlgo_t filter_algo;
+  size_t filter_workspace_bytes;
+  const void* dy_data = nullptr;
+  void* dx_data = nullptr;
+  void* dw_data = nullptr;
+  void* db_data = nullptr;
 
-  CudnnTensor i_desc, o_desc, b_desc;
-  CudnnFilterDescriptor w_desc;
-  CudnnConvolutionDescriptor c_desc;
+  struct FilterPerfResultParams {
+    cudnnConvolutionBwdFilterAlgo_t algo;
+    size_t memory;
+    cudnnMathType_t mathType;
+  };
 
-  ConvolutionArgs() {}
+  lru_unordered_map<std::vector<int64_t>, FilterPerfResultParams, vector_hash<int64_t>> filter_cached_benchmark_results{
+      MAX_CACHED_ALGO_PERF_RESULTS};
 };
 
 template <typename T>
@@ -39,9 +46,8 @@ class ConvGrad final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  protected:
-  mutable ConvolutionArgs args_;
-  Status PrepareArgs(const Tensor& input, const Tensor& output, const Tensor& weight, const Tensor* bias) const;
-
+  Status PrepareArgs(const Tensor& x, const Tensor& dY, const Tensor& w, Tensor* dB, Tensor* dX, Tensor* dW) const;
+  mutable CudnnConvGradState s_;
   ConvAttributes conv_attrs_;
 
   // https://docs.nvidia.com/deeplearning/cudnn/archives/cudnn_742/cudnn-developer-guide/index.html#tensor_ops
@@ -49,9 +55,9 @@ class ConvGrad final : public CudaKernel {
   static constexpr auto kDefaultConvBwdFilterAlgo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_1;
 
  private:
-  Status ComputeWeightGradient(Tensor* dW, const Tensor* dY, const Tensor* X) const;
-  Status ComputeInputGradient(Tensor* dX, const Tensor* dY, const Tensor* W) const;
-  Status ComputeBiasGradient(Tensor* dB, const Tensor* dY) const;
+  Status ComputeWeightGradient() const;
+  Status ComputeInputGradient() const;
+  Status ComputeBiasGradient() const;
 };
 
 }  // namespace cuda
