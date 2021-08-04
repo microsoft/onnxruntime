@@ -17,6 +17,10 @@ With the TensorRT execution provider, the ONNX Runtime delivers better inferenci
 * TOC placeholder
 {:toc}
 
+## Install
+Pre-built packages and Docker images are available for Jetpack in the [Jetson Zoo](https://elinux.org/Jetson_Zoo#ONNX_Runtime).
+
+
 ## Build
 
 See [Build instructions](../../how-to/build/eps.md#tensorrt).

@@ -28,10 +28,11 @@ ONNX Runtime supports many different execution providers today. Some of the EPs 
 
 |CPU|GPU|IoT/Edge/Mobile|Other|
 ---|---|---|---
-|Default CPU - *MLAS (Microsoft Linear Algebra Subprograms) + Eigen*|NVIDIA CUDA|[Intel OpenVINO](../execution-providers/OpenVINO-ExecutionProvider.md)||
-|[Intel DNNL](../execution-providers/DNNL-ExecutionProvider.md)|[NVIDIA TensorRT](../execution-providers/TensorRT-ExecutionProvider.md)|[ARM Compute Library](../execution-providers/ACL-ExecutionProvider.md) (*preview*)|[Rockchip NPU](../execution-providers/RKNPU-ExecutionProvider.md) (*preview*)|
-|[Intel nGraph](../execution-providers/nGraph-ExecutionProvider.md)|[DirectML](../execution-providers/DirectML-ExecutionProvider.md)|[Android Neural Networks API](../execution-providers/NNAPI-ExecutionProvider.md) (*preview*)|[Xilinx Vitis-AI](../execution-providers/Vitis-AI-ExecutionProvider.md) (*preview*)|
+|Default CPU|[NVIDIA CUDA](../execution-providers/CUDA-ExecutionProvider.md)|[Intel OpenVINO](../execution-providers/OpenVINO-ExecutionProvider.md)|[NUPHAR (tvm/llvm) ](../execution-providers/Nuphar-ExecutionProvider.md) (*preview*)|
+|[Intel DNNL](../execution-providers/oneDNN-ExecutionProvider.md)|[NVIDIA TensorRT](../execution-providers/TensorRT-ExecutionProvider.md)|[ARM Compute Library](../execution-providers/ACL-ExecutionProvider.md) (*preview*)|[Rockchip NPU](../execution-providers/RKNPU-ExecutionProvider.md) (*preview*)|
+||[DirectML](../execution-providers/DirectML-ExecutionProvider.md)|[Android Neural Networks API](../execution-providers/NNAPI-ExecutionProvider.md)|[Xilinx Vitis-AI](../execution-providers/Vitis-AI-ExecutionProvider.md) (*preview*)|
 ||[AMD MIGraphX](../execution-providers/MIGraphX-ExecutionProvider.md) (*preview*)|[ARM-NN](../execution-providers/ArmNN-ExecutionProvider.md) (*preview*)|
+|||[CoreML](../execution-providers/CoreML-ExecutionProvider.md) (*preview*)|
 
 ### Add an Execution Provider
 

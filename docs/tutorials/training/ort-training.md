@@ -4,15 +4,17 @@ grand_parent: Tutorials
 parent: Training
 nav_order: 1
 ---
-# Accelerate PyTorch model training
+# ORTModule Examples
+* [Use ORTModule with HuggingFace Models](https://github.com/microsoft/onnxruntime-training-examples/tree/master/huggingface)
+
+# (deprecated) ORTTrainer Examples
 {: .no_toc }
 
-* [Accelerate Huggingface Transformers with ONNX Runtime Training](https://github.com/microsoft/onnxruntime-training-examples/tree/master/huggingface)
+* [Get Started: Basic PyTorch transformer model](https://github.com/microsoft/onnxruntime-training-examples/tree/master/orttrainer/getting-started)
 
-* Using older API: [Get Started: Basic PyTorch transformer model](https://github.com/microsoft/onnxruntime-training-examples/blob/master/orttrainer/getting-started)
+* [Accelerate pre-training of large BERT model](https://github.com/microsoft/onnxruntime-training-examples/tree/master/orttrainer/nvidia-bert)
 
-* Using older API: [Accelerate pre-training of large BERT model](https://github.com/microsoft/onnxruntime-training-examples/blob/master/orttrainer/nvidia-bert)
+* [Accelerate fine tuning of Huggingface GPT2 model](https://github.com/microsoft/onnxruntime-training-examples/tree/master/orttrainer/huggingface-gpt2)
 
-* Using older API: [Accelerate fine tuning of Huggingface GPT2 model](https://github.com/microsoft/onnxruntime-training-examples/tree/master/orttrainer/huggingface-gpt2)
 
 * *More coming soon!*

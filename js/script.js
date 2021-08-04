@@ -21,7 +21,7 @@ var ot_opts = {
     // os: getAnchorSelectedOS() || getDefaultSelectedOS(),
     ot_os: 'ot_linux',
     ot_architecture: 'ot_X64',
-    ot_language: 'ot_PyTorch',
+    ot_language: 'ot_PyTorch19',
     ot_hardwareAcceleration: 'ot_CUDA10',
 };
 
@@ -71,6 +71,7 @@ ot_os.on("keypress keyup", function (event) {
 });
 ot_tab.on("click", function() {
     ot_commandMessage(ot_buildMatcher());
+    ot_checkValidity();
 });
 architecture.on("click", function () {
     selectedOption(architecture, this, "architecture");
@@ -534,20 +535,29 @@ function ot_buildMatcher() {
 
 var ot_validCombos = {
    //linux
-    "ot_linux,ot_PyTorch,ot_X64,ot_CUDA10":
-    "<b>Stable:</b> pip install onnxruntime-training <br/><br/><b>Nightly:</b> pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_cu102.html",
+    "ot_linux,ot_PyTorch18,ot_X64,ot_CUDA10":
+    "pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu102.html<br/> python -m torch_ort.configure",
 
-    "ot_linux,ot_PyTorch,ot_X64,ot_CUDA11":
-    "<b>Stable: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_cu111.html <br/><br/><b>Nightly: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_cu111.html",
+    "ot_linux,ot_PyTorch18,ot_X64,ot_CUDA11":
+    "pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch181.cu111.html<br/> python -m torch_ort.configure",
 
-    "ot_linux,ot_PyTorch,ot_X64,ot_DefaultCPU":
+    "ot_linux,ot_PyTorch18,ot_X64,ot_DefaultCPU":
     "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
 
-    "ot_linux,ot_PyTorch,ot_X64,ot_AMD":
-    "<b>Stable: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_rocm42.html<br/><br/><b>Nightly: </b>pip install onnxruntime-training -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_nightly_rocm42.html",
+    "ot_linux,ot_PyTorch18,ot_X64,ot_AMD":
+    "This combination requires an AMD docker image. See <a href=https://github.com/pytorch/ort>the torch-ort repo</a> for details",
    
-    "ot_linux,ot_PyTorch,ot_X64,ot_DNNL":
+    "ot_linux,ot_PyTorch18,ot_X64,ot_DNNL":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
+   
+    "ot_linux,ot_PyTorch19,ot_X64,ot_CUDA10":
+    "pip install torch-ort<br/> python -m torch_ort.configure",
+
+    "ot_linux,ot_PyTorch19,ot_X64,ot_CUDA11":
+    "pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.cu111.html<br/> python -m torch_ort.configure",
+
+    "ot_linux,ot_PyTorch19,ot_X64,ot_AMD":
+    "(Preview) pip install torch -f https://download.pytorch.org/whl/rocm4.2/torch_stable.html<br/>pip install torch-ort -f https://onnxruntimepackages.z14.web.core.windows.net/onnxruntime_stable_torch190.rocm42.html<br/>python -m torch_ort.configure</br>",
    
     "ot_linux,ot_C++,ot_X64,ot_CUDA10":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
@@ -556,10 +566,10 @@ var ot_validCombos = {
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
     
     //windows
-    "ot_windows,ot_PyTorch,ot_X64,ot_CUDA10":
+    "ot_windows,ot_PyTorch18,ot_X64,ot_CUDA10":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
 
-    "ot_windows,ot_PyTorch,ot_X64,ot_DefaultCPU":
+    "ot_windows,ot_PyTorch18,ot_X64,ot_DefaultCPU":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
 
     "ot_windows,ot_C++,ot_X64,ot_DefaultCPU":
@@ -569,7 +579,7 @@ var ot_validCombos = {
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
 
     //mac
-    "ot_mac,ot_PyTorch,ot_X64,ot_DefaultCPU":
+    "ot_mac,ot_PyTorch18,ot_X64,ot_DefaultCPU":
     "This combination of resources is not fully tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/training' target='_blank'>build from source</a>.",
 
     "ot_mac,ot_C++,ot_X64,ot_DefaultCPU":
@@ -601,7 +611,7 @@ function ot_commandMessage(key) {
 
     // //console.log('key- '+key);
     //  var ot_object = {
-    //     "ot_linux,ot_PyTorch,ot_X64,ot_CUDA10":
+    //     "ot_linux,ot_PyTorch18,ot_X64,ot_CUDA10":
     //         "Follow sample notebook from <a href='https://github.com/microsoft/onnxruntime-training-examples' target='_blank'>here</a>",
 
     //     "ot_linux,ot_TensorFlow,ot_X64,ot_CUDA10":
@@ -619,31 +629,31 @@ function ot_commandMessage(key) {
 var validCombos = {
        
     "windows,C-API,X64,CUDA":
-        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
     "windows,C++,X64,CUDA":
-        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
     "windows,C#,X64,CUDA":
-        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
     "windows,Python,X64,CUDA":
-        "pip install onnxruntime-gpu",
+        "pip install onnxruntime-gpu <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
     "linux,Python,ARM64,CUDA":
         "For Jetpack 4.4+, follow installation instructions from <a href='https://elinux.org/Jetson_Zoo#ONNX_Runtime' target='_blank'>here</a>",
     
     "linux,C-API,X64,CUDA":
-        "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+        "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
     "linux,C++,X64,CUDA":
-        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
     "linux,C#,X64,CUDA":
-        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
     "linux,Python,X64,CUDA":
-        "pip install onnxruntime-gpu",
+        "pip install onnxruntime-gpu <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
     "linux,C-API,ARM32,DefaultCPU":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
@@ -778,7 +788,7 @@ var validCombos = {
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
 
     "linux,Python,X64,OpenVINO":
-        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
+        "Follow installation instructions from <a href='https://github.com/intel/onnxruntime/releases/latest' target='_blank'>here</a>. Docker image also <a href='https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu18' target='_blank'>available</a>.",
 
     "windows,C-API,X64,OpenVINO":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-openvino' target='_blank'>here</a>",
@@ -841,10 +851,10 @@ var validCombos = {
         "This combination of resources has not yet been tested. It may be possible to&nbsp;<a href='https://www.onnxruntime.ai/docs/how-to/build/inferencing' target='_blank'>build from source</a>.",
 
     "windows,C-API,X86,DirectML":
-    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/DirectML-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
     
     "windows,C++,X86,DirectML":
-    "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
 
     "windows,C#,X86,DirectML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
@@ -863,14 +873,25 @@ var validCombos = {
     
     "windows,Python,X64,DirectML":
         "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
+    
+    "windows,C-API,ARM64,DirectML":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
         
+    "windows,C++,ARM64,DirectML":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
+    
+    "windows,C#,ARM64,DirectML":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML' target='_blank'>Microsoft.ML.OnnxRuntime.DirectML</a>",
+    
+    "windows,Python,ARM64,DirectML":
+        "Follow build instructions from&nbsp;<a href='https://aka.ms/build-ort-directml' target='_blank'>here</a>",
+    
     "linux,Java,X64,DefaultCPU":
         "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
         
     "linux,Java,X64,CUDA":
-        "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle",
+        "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
         
-
     "mac,Java,X64,DefaultCPU":
         "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
 
@@ -888,16 +909,16 @@ var validCombos = {
         "npm install onnxruntime-web",
     
     "android,JS,ARM64,DefaultCPU":
-        "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/tree/master/js#onnxruntime-react-native' target='_blank'>here</a>",
+        "npm install onnxruntime-react-native",
     
     "android,JS,X64,DefaultCPU":
-        "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/tree/master/js#onnxruntime-react-native' target='_blank'>here</a>",
+        "npm install onnxruntime-react-native",
     
     "android,JS,X86,DefaultCPU":
-        "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/tree/master/js#onnxruntime-react-native' target='_blank'>here</a>",
+        "npm install onnxruntime-react-native",
     
     "ios,JS,ARM64,DefaultCPU":
-        "Follow build instructions from <a href='https://github.com/microsoft/onnxruntime/tree/master/js#onnxruntime-react-native' target='_blank'>here</a>",
+        "npm install onnxruntime-react-native",
     
     "windows,WinRT,X86,DefaultCPU":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
@@ -917,11 +938,14 @@ var validCombos = {
     "windows,WinRT,X64,DirectML":
         "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
 
+    "windows,WinRT,ARM64,DirectML":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.AI.MachineLearning' target='_blank'>Microsoft.AI.MachineLearning</a>",
+
     "windows,Java,X64,DefaultCPU":
         "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
 
     "windows,Java,X64,CUDA":
-        "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle",
+        "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a href='http://www.onnxruntime.ai/docs/reference/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
     "windows,Java,X64,TensorRT":
         "Follow <a href='http://www.onnxruntime.ai/docs/how-to/build/inferencing.html#common-build-instructions' target='_blank'>build</a> and <a href='https://aka.ms/onnxruntime-java' target='_blank'>API instructions</a>",
@@ -960,7 +984,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
     "android,Java,ARM64,NNAPI":
-        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
     
     "android,C-API,X86,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
@@ -969,7 +993,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
     "android,Java,X64,NNAPI":
-        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
     
     "android,C-API,X64,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
@@ -978,7 +1002,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
     "android,Java,X86,NNAPI":
-        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
     
     "android,C-API,ARM32,NNAPI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
@@ -987,7 +1011,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-nnapi' target='_blank'>here</a>",
     
     "android,Java,ARM32,NNAPI":
-        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
     
     "android,C-API,ARM64,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
@@ -996,7 +1020,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,Java,ARM64,DefaultCPU":
-        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
 
     "android,C-API,ARM32,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
@@ -1005,7 +1029,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,Java,ARM32,DefaultCPU":
-        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
 
     "android,C-API,X86,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
@@ -1014,7 +1038,7 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,Java,X86,DefaultCPU":
-        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
     
     "android,C-API,X64,DefaultCPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
@@ -1023,22 +1047,25 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-android' target='_blank'>here</a>",
     
     "android,Java,X64,DefaultCPU":
-        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle",
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-mobile' target='_blank'>com.microsoft.onnxruntime:onnxruntime-mobile</a> using Maven/Gradle and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
 
     "ios,C-API,ARM64,DefaultCPU":
-        "Add 'onnxruntime-mobile-c' using CocoaPods",
+        "Add 'onnxruntime-mobile-c' using CocoaPods and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
     
     "ios,C++,ARM64,DefaultCPU":
-        "Add 'onnxruntime-mobile-c' using CocoaPods",
+        "Add 'onnxruntime-mobile-c' using CocoaPods and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
     
     "ios,C-API,ARM64,CoreML":
-        "Follow build instructions from <a href='https://aka.ms/build-ort-ios' target='_blank'>here</a>",
+        "Add 'onnxruntime-mobile-c' using CocoaPods and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
     
     "ios,C++,ARM64,CoreML":
-        "Follow build instructions from <a href='https://aka.ms/build-ort-ios' target='_blank'>here</a>",
+        "Add 'onnxruntime-mobile-c' using CocoaPods and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
     
     "ios,objectivec,ARM64,DefaultCPU":
-        "Add 'onnxruntime-mobile-objc' using CocoaPods",
+        "Add 'onnxruntime-mobile-objc' using CocoaPods and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
+    
+    "ios,objectivec,ARM64,CoreML":
+        "Add 'onnxruntime-mobile-objc' using CocoaPods and refer to the <a href='https://www.onnxruntime.ai/docs/how-to/mobile/' target='_blank'>mobile deployment guide</a>",
     
     "windows,Python,X86,VitisAI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
@@ -1057,15 +1084,6 @@ var validCombos = {
     
     "linux,C++,X86,VitisAI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
-    
-    "windows,Python,X86,MIGraphX":
-        "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
-    
-    "windows,C-API,X86,MIGraphX":
-        "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
-    
-    "windows,C++,X86,MIGraphX":
-        "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
     
     "linux,Python,X86,MIGraphX":
         "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",

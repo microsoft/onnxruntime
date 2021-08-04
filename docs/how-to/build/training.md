@@ -66,7 +66,6 @@ These dependency versions should reflect what is in [Dockerfile.training](https:
     export PATH=<location for openmpi/bin/>:$PATH
     export LD_LIBRARY_PATH=<location for openmpi/lib/>:$LD_LIBRARY_PATH
     export MPI_CXX_INCLUDE_PATH=<location for openmpi/include/>
-    source <location of the mpivars script> # e.g. /data/intel/impi/2018.3.222/intel64/bin/mpivars.sh
     ```
 
 3. Create the ONNX Runtime wheel
