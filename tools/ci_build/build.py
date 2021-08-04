@@ -1883,7 +1883,7 @@ def generate_documentation(source_dir, build_dir, configs, validate):
 
 
 def main():
-    log.debug("Command line arguments: {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))
+    log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))
 
     args = parse_arguments()
     cmake_extra_defines = (args.cmake_extra_defines
