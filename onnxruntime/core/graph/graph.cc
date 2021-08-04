@@ -70,9 +70,11 @@ static Status MergeShapeInfo(const std::string& output_name,
                              const TypeProto& source, TypeProto& target,
                              bool strict, const logging::Logger& logger) {
   if (!(utils::HasTensorType(source) && utils::HasTensorType(target)) &&
+      !(utils::HasOptionalTensorType(source) && utils::HasOptionalTensorType(target)) &&
       !(utils::HasSparseTensorType(source) && utils::HasSparseTensorType(target))) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Source and target must both be either tensors or sparse tensors");
+                           "Source and target must both be either tensors, "
+                           "optional tensors, or sparse tensors");
   }
 
   auto status = Status::OK();
@@ -80,6 +82,9 @@ static Status MergeShapeInfo(const std::string& output_name,
   ORT_TRY {
     if (utils::HasTensorType(source)) {
       ONNX_NAMESPACE::mergeInShapeInfo(source.tensor_type(), *target.mutable_tensor_type());
+    } else if (utils::HasOptionalTensorType(source)) {
+      ONNX_NAMESPACE::mergeInShapeInfo(utils::GetOptionalTypeProto(source).tensor_type(),
+                                       *utils::GetMutableOptionalTypeProto(target)->mutable_tensor_type());
     } else {
       ONNX_NAMESPACE::mergeInShapeInfo(source.sparse_tensor_type(), *target.mutable_sparse_tensor_type());
     }
@@ -97,6 +102,8 @@ static Status MergeShapeInfo(const std::string& output_name,
                             << ". Falling back to lenient merge.";
       if (utils::HasTensorType(source)) {
         ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *target.mutable_tensor_type());
+      } else if (utils::HasOptionalTensorType(source)) {
+        ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *utils::GetMutableOptionalTypeProto(target)->mutable_tensor_type());
       } else {
         ONNX_NAMESPACE::UnionShapeInfo(utils::GetShape(source), *target.mutable_sparse_tensor_type());
       }
@@ -211,6 +218,14 @@ const TensorShapeProto* NodeArg::Shape() const {
       }
       return nullptr;
     }
+    case TypeProto::kOptionalType: {
+      // Shape is applicable only for optional tensor type
+      if (utils::HasOptionalTensorType(*type) &&
+          utils::HasShape(utils::GetOptionalTypeProto(*type).tensor_type())) {
+        return &(utils::GetOptionalTypeProto(*type).tensor_type().shape());
+      }
+      return nullptr;
+    }
     case TypeProto::kSequenceType:
     case TypeProto::kMapType:
     case TypeProto::kOpaqueType:
@@ -232,6 +247,7 @@ bool NodeArg::HasTensorOrScalarShape() const {
       // check shape here.
       return true;
     case TypeProto::kSequenceType:
+    case TypeProto::kOptionalType:
     case TypeProto::kMapType:
     case TypeProto::kOpaqueType:
     case TypeProto::VALUE_NOT_SET:
@@ -250,6 +266,14 @@ void NodeArg::SetShape(const TensorShapeProto& shape) {
     case TypeProto::kSparseTensorType:
       *(node_arg_info_.mutable_type()->mutable_sparse_tensor_type()->mutable_shape()) = shape;
       break;
+    case TypeProto::kOptionalType:
+      // Set shape only for optional tensors
+      if (utils::HasOptionalTensorType(node_arg_info_.type())) {
+        *(utils::GetMutableOptionalTypeProto(*(node_arg_info_.mutable_type()))
+              ->mutable_tensor_type()
+              ->mutable_shape()) = shape;
+      }
+      break;
     case TypeProto::kSequenceType:
     case TypeProto::kMapType:
     case TypeProto::kOpaqueType:
@@ -267,6 +291,14 @@ void NodeArg::ClearShape() {
       break;
     case TypeProto::kSparseTensorType:
       node_arg_info_.mutable_type()->mutable_sparse_tensor_type()->clear_shape();
+      break;
+    case TypeProto::kOptionalType:
+      // Clear shape only for optional tensors
+      if (utils::HasOptionalTensorType(node_arg_info_.type())) {
+        utils::GetMutableOptionalTypeProto(*(node_arg_info_.mutable_type()))
+            ->mutable_tensor_type()
+            ->clear_shape();
+      }
       break;
     case TypeProto::kSequenceType:
     case TypeProto::kMapType:
@@ -357,10 +389,61 @@ common::Status NodeArg::UpdateTypeAndShape(const ONNX_NAMESPACE::TypeProto& inpu
           *current_type.mutable_sparse_tensor_type() = input_tensor_type;
         }
       }
-    } break;
+      break;
+    }
+    case TypeProto::kOptionalType: {
+      if (utils::HasOptionalTensorType(input_type) && !utils::HasOptionalTensorType(current_type)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optional Type mismatch. Expected: Seq tensor. Got: Tensor");
+      } else if (!utils::HasOptionalTensorType(input_type) && utils::HasOptionalTensorType(current_type)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optional Type mismatch. Expected: Tensor. Got: Seq Tensor");
+      }
+
+      // Updating element type and shape is only applicable for optional tensors
+      if (utils::HasOptionalTensorType(input_type)) {
+        const auto& optional_input_type = utils::GetOptionalTypeProto(input_type);
+        auto& optional_current_type = *utils::GetMutableOptionalTypeProto(current_type);
+
+        const auto& input_tensor_type = optional_input_type.tensor_type();
+        const auto& input_tensor_elem_type = input_tensor_type.elem_type();
+        const auto& current_tensor_elem_type = optional_current_type.tensor_type().elem_type();
+
+        if (input_tensor_elem_type != current_tensor_elem_type) {
+          if (override_types) {
+            DataType inferred_type = DataTypeUtils::ToType(input_type);
+            // The "SetType" call will override the shape information to empty.
+            // If the original tensor has shape information, need to set it back.
+            if (Shape()) {
+              auto old_shape = *Shape();
+              SetType(inferred_type);
+              SetShape(old_shape);
+            } else {
+              SetType(inferred_type);
+            }
+          } else {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optional Tensor element type mismatch. ",
+                                   static_cast<TensorProto_DataType>(input_tensor_elem_type), " != ",
+                                   static_cast<TensorProto_DataType>(current_tensor_elem_type));
+          }
+        }
+
+        if (utils::HasShape(optional_input_type.tensor_type())) {
+          if (utils::HasShape(optional_current_type.tensor_type())) {
+            ORT_RETURN_IF_ERROR(MergeShapeInfo(Name(), optional_input_type, optional_current_type, strict, logger));
+          } else {
+            *optional_current_type.mutable_tensor_type() = input_tensor_type;
+          }
+        }
+      } else {
+        // TODO: What is the plan for optional sequence tensors ?
+        // Currently, we don't do anything for the generic sequence type
+        // as seen below. This section needs an update if we choose to
+        // change that in the future.
+      }
+
+      break;
+    }
     case TypeProto::kSequenceType:
     case TypeProto::kMapType:
-    case TypeProto::kOptionalType:
     case TypeProto::kOpaqueType:
     case TypeProto::VALUE_NOT_SET:
       break;
@@ -1785,6 +1868,10 @@ bool FullyDefinedType(const TypeProto& type_proto) {
       auto& seq_type = type_proto.sequence_type();
       return utils::HasElemType(seq_type) && FullyDefinedType(seq_type.elem_type());
     }
+    case TypeProto::kOptionalType: {
+      auto& optional_type = type_proto.optional_type();
+      return utils::HasElemType(optional_type) && FullyDefinedType(optional_type.elem_type());
+    }
     case TypeProto::kMapType: {
       auto& map_type = type_proto.map_type();
       return utils::HasKeyType(map_type) &&
@@ -1900,6 +1987,11 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     // if this is a subgraph and the name isn't found locally.
     const TensorProto* initializer = graph_.GetConstantInitializer(def->Name(), true);
     return initializer;
+  }
+
+  // ORT does not implement partial data propagation yet so just return nullptr.
+  const TensorShapeProto* getSymbolicInput(size_t) const override {
+    return nullptr;
   }
 
   GraphInferencer* getGraphAttributeInferencer(const std::string& attribute_name) override {
@@ -2216,6 +2308,10 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
         TypeProto merge_target;
         if (utils::HasTensorType(onnx_inferred_type)) {
           *merge_target.mutable_tensor_type()->mutable_shape() = *output_def->Shape();
+        } else if (utils::HasOptionalTensorType(onnx_inferred_type)) {
+          *utils::GetMutableOptionalTypeProto(merge_target)
+               ->mutable_tensor_type()
+               ->mutable_shape() = *output_def->Shape();
         } else if (utils::HasSparseTensorType(onnx_inferred_type)) {
           *merge_target.mutable_sparse_tensor_type()->mutable_shape() = *output_def->Shape();
         }
@@ -2352,8 +2448,12 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       auto maxInclusiveVersion = DomainToVersionMap().find(domain)->second;
       node.op_ = schema_registry_->GetSchema(node.OpType(), maxInclusiveVersion, node.Domain());
 
-      if (node.op_ && node.op_->Deprecated()) {
-        node.op_ = nullptr;
+      if (node.op_) {
+        node.since_version_ = node.op_->since_version();
+
+        if (node.op_->Deprecated()) {
+          node.op_ = nullptr;
+        }
       }
 
       InitFunctionBodyForNode(node);
@@ -2362,7 +2462,11 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
       }
 
-      node.since_version_ = node.op_->since_version();
+      // For ops without schema (like model local functions set the since version after constructing the schema.
+      // schema construction will happen during function body initialization.
+      if (node.since_version_ == -1) {
+        node.since_version_ = node.op_->since_version();
+      }
     }
 
     ORT_RETURN_IF_ERROR(node.UpdateInputArgCount());
@@ -2429,19 +2533,17 @@ void Graph::InitFunctionBodyForNode(Node& node) {
       onnx_function_proto = *(node.op_->GetFunction());
     }
 
-    // Check function's opset requirements are compatible with model's opset.
-    auto& graphImports = DomainToVersionMap();
-    for (const auto& fn_import : onnx_function_proto.opset_import()) {
-      auto it = graphImports.find(fn_import.domain());
-      if ((it != graphImports.end()) && (it->second != fn_import.version()))
-        return;  // Incompatible. Do not use this function expansion.
+    ORT_TRY {
+      auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
+                                                                  logger_);
+      function_container_.emplace_back(std::move(func_ptr));
+      node.SetFunctionBody(*function_container_.back());
     }
-
-    auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
-                                                                logger_);
-
-    function_container_.emplace_back(std::move(func_ptr));
-    node.SetFunctionBody(*function_container_.back());
+    ORT_CATCH(const std::exception&) {
+      // Return without using this function op's expansion. No need to fail just yet.
+      // If ORT has a specialized kernel for this op then execution will proceed
+      return;
+    }
   }
 }
 

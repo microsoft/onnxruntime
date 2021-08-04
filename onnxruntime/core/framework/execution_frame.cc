@@ -16,6 +16,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/utils.h"
+#include "core/framework/mldata_type_utils.h"
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
 #include "core/framework/memory_info.h"
 #endif
@@ -669,11 +670,13 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
       return status;
   }
 
-  if (ml_type->IsTensorType()) {
+  if (ml_type->IsTensorType() || utils::IsOptionalTensor(ml_type)) {
     ORT_ENFORCE(shape, "Allocation of tensor types requires a shape.");
 
-    // tensors
-    const auto* ml_data_type = static_cast<const TensorTypeBase*>(ml_type)->GetElementType();
+    // tensors / optional tensors
+    const auto* ml_data_type = ml_type->IsTensorType()
+                                   ? static_cast<const TensorTypeBase*>(ml_type)->GetElementType()
+                                   : utils::GetElementTypeFromOptionalTensor(ml_type);
 
     AllocKind alloc_kind = per_alloc_plan.alloc_kind;
     switch (alloc_kind) {
@@ -720,8 +723,26 @@ Status ExecutionFrame::AllocateAsPerAllocationPlan(OrtValue& ort_value, int ort_
   } else if (ml_type->IsSparseTensorType()) {
     return AllocateSparseTensor(ort_value, *ml_type, GetAllocator(alloc_info),
                                 *shape, per_alloc_plan.create_fence_if_async, session_state_);
-  } else if (ml_type->IsTensorSequenceType()) {
-    return AllocateTensorSequence(ort_value);
+  } else if (ml_type->IsTensorSequenceType() || utils::IsOptionalSeqTensor(ml_type)) {
+    AllocKind alloc_kind = per_alloc_plan.alloc_kind;
+
+    if (alloc_kind == AllocKind::kReuse) {
+      int reuse_mlvalue_index = per_alloc_plan.reused_buffer;
+
+      // In case OrtRunOptions.only_execute_path_to_fetches == true, it is possible that 'reuse_value'
+      // is not allocated (its upstream op is not executed due to the option).
+      // In this case we need to allocate 'reuse_value' and then let 'ort_value' to reuse it.
+      OrtValue& reuse_value = GetMutableMLValue(reuse_mlvalue_index);
+      if (!reuse_value.IsAllocated()) {
+        ORT_RETURN_IF_ERROR(AllocateAsPerAllocationPlan(reuse_value, reuse_mlvalue_index, shape));
+      }
+
+      // copy at the OrtValue level so the shared_ptr for the data is shared between the two OrtValue instances
+      ort_value = reuse_value;
+      return Status::OK();
+    } else {
+      return AllocateTensorSequence(ort_value);
+    }
   } else {
     return AllocateTraditionalMLValue(ort_value, *static_cast<const NonTensorTypeBase*>(ml_type));
   }

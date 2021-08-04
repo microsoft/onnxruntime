@@ -798,6 +798,12 @@ inline bool Value::IsTensor() const {
   return out != 0;
 }
 
+inline bool Value::HasValue() const {
+  int out;
+  ThrowOnError(GetApi().HasValue(p_, &out));
+  return out != 0;
+}
+
 inline size_t Value::GetCount() const {
   size_t out;
   ThrowOnError(GetApi().GetValueCount(p_, &out));

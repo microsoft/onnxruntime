@@ -9,6 +9,16 @@
 
 namespace onnxruntime {
 namespace utils {
+
 MLDataType GetMLDataType(const onnxruntime::NodeArg& arg);
+
+bool IsOptionalTensor(MLDataType type);
+
+MLDataType GetElementTypeFromOptionalTensor(MLDataType type);
+
+bool IsOptionalSeqTensor(MLDataType type);
+
+MLDataType GetElementTypeFromOptionalSeqTensor(MLDataType type);
+
 }  // namespace utils
 }  // namespace onnxruntime

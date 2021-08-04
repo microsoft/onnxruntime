@@ -275,7 +275,7 @@ TEST(SoftmaxOperator, InvalidAxis_opset13) {
           // In opset-13, Softmax is composed as afunction of several other ops,
           // and hence it breaks differently to the test above but the most important thing
           // is that it breaks and this is the right behavior
-          "[ShapeInferenceError] axis must be in [-rank, rank-1]. input rank was 2");
+          "[ShapeInferenceError]");
 }
 TEST(SoftmaxOperator, DimWithZero) {
   std::vector<float> x_vals = {};

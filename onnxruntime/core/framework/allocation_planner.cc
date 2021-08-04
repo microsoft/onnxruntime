@@ -261,9 +261,9 @@ class PlannerImpl {
     // Inputs of Yields are essentially the outputs for FW partial subgraph
     // Thses tensors will be pass back to pytorch, thus cannot share the buffer with other tensors
 
-    // Unhandled corner case: 
+    // Unhandled corner case:
     // If FW output tensor is consumed by BW graph, and pytorch performs an inplace operation on th returned tensor,
-    // we will run into a buffer corruption problem. 
+    // we will run into a buffer corruption problem.
     // One potential fix is returning a copy of output tensor, if it has downstream dependency
     auto p_next_node = node.OutputNodesBegin();
     if (p_next_node != node.OutputNodesEnd() && p_next_node->OpType() == "YieldOp") {
@@ -741,17 +741,18 @@ class PlannerImpl {
               }
             }
           }
-        } else if (IsNonTensor(*node_output)) {
-          // we do not try sharing-optimization for non-tensors
-          AllocPlan(current).alloc_kind = AllocKind::kAllocate;
-          AllocPlan(current).program_counter.AddStart(program_counter);
         } else if (!context_.IsParallelExecutionEnabled() &&
                    FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused)) {
-          // Reuse one of this node's input buffers as the output buffer (for in-place update)
+          // Re-using inputs is applicable for tensors, sequence tensors,
+          // and optional types if the kernel has marked certain inputs as
+          // possible candidates for re-use
           Reuse(reused, current, AllocKind::kReuse);
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           InplaceReuse(reused, current);
 #endif
+        } else if (IsNonTensor(*node_output)) {
+          AllocPlan(current).alloc_kind = AllocKind::kAllocate;
+          AllocPlan(current).program_counter.AddStart(program_counter);
         } else if (!context_.IsParallelExecutionEnabled() &&
                    FindReusableTensor(*node_output, &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
@@ -769,7 +770,7 @@ class PlannerImpl {
 
       // determine if inputs of *pnode can be freed:
       for (auto node_input : pnode->InputDefs()) {
-        if (node_input->Exists()) {
+        if (node_input->Exists() && !IsOptionalType(*node_input)) {
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
@@ -791,7 +792,7 @@ class PlannerImpl {
       }
 
       for (auto node_input : pnode->ImplicitInputDefs()) {
-        if (node_input->Exists()) {
+        if (node_input->Exists() && !IsOptionalType(*node_input)) {
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
@@ -814,7 +815,7 @@ class PlannerImpl {
 
       // determine if any outputs of *pnode are unused and can be freed:
       for (auto node_output : pnode->OutputDefs()) {
-        if (node_output->Exists()) {
+        if (node_output->Exists() && !IsOptionalType(*node_output)) {
           auto& sym = node_output->Name();
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
@@ -987,6 +988,11 @@ class PlannerImpl {
     auto ptype = nodearg.Type();
     auto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(ptype);
     return !utils::HasTensorType(type_proto);
+  }
+
+  static bool IsOptionalType(const onnxruntime::NodeArg& nodearg) {
+    const auto* type_proto = nodearg.TypeAsProto();
+    return type_proto->value_case() == ONNX_NAMESPACE::TypeProto::kOptionalType;
   }
 
   //For in-place reuse tensors, the lifetime is the union of all the tensors that tensors that use that buffer

@@ -118,8 +118,7 @@ void addOrtValueMethods(pybind11::module& m) {
         return ml_value;
       })
       // This will create a copy of OrtValue (cheap) and will return as a separate OrtValue object
-      .def_static("ort_value_from_sparse_tensor", 
-                  [](const PySparseTensor* py_sparse_tensor) -> std::unique_ptr<OrtValue> {
+      .def_static("ort_value_from_sparse_tensor", [](const PySparseTensor* py_sparse_tensor) -> std::unique_ptr<OrtValue> {
         return py_sparse_tensor->AsOrtValue();
       })
       // This will create a copy of OrtValue(cheap) and will return as a separate SparseTensor object
@@ -190,6 +189,9 @@ void addOrtValueMethods(pybind11::module& m) {
         ORT_ENFORCE(type_proto != nullptr, "Unknown type of OrtValue: ", ort_value->Type());
 
         return *ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto);
+      })
+      .def("has_value", [](const OrtValue* ort_value) -> bool {
+        return ort_value->HasValue();
       })
       .def("is_tensor", [](const OrtValue* ort_value) -> bool {
         return ort_value->IsTensor();
