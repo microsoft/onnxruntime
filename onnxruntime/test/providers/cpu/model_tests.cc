@@ -173,7 +173,7 @@ TEST_P(ModelTest, Run) {
   // Some EPs may fail to pass some specific testcases.
   // For example TenosrRT EP may fail on FLOAT16 related testcases if GPU doesn't support float16.
   // Instead of list all these testcases, we can use following keyword set to filter out testcases wchich contain specific keyword.
-  std::set<std::string> broken_tests_with_keyword = {};
+  std::set<std::string> broken_tests_keyword_set = {};
 
   if (provider_name == "nuphar") {
     // https://msdata.visualstudio.com/Vienna/_workitems/edit/1000703
@@ -365,10 +365,10 @@ TEST_P(ModelTest, Run) {
 
     // Disable known failed testcase for opset 13
     // sce op is not supported by TensorRT yet
-    broken_tests_with_keyword.insert({"sce"});
+    broken_tests_keyword_set.insert({"sce"});
 
     // Some CIs still fail even though fp16 flag is being set. For example CI with Nvidia Tesla M60.
-    broken_tests_with_keyword.insert({"FLOAT16"});
+    broken_tests_keyword_set.insert({"FLOAT16"});
 
   }
 
@@ -523,7 +523,7 @@ TEST_P(ModelTest, Run) {
       return;
     }
 
-    for (auto iter2 = broken_tests_with_keyword.begin(); iter2 != broken_tests_with_keyword.end(); ++iter2) {
+    for (auto iter2 = broken_tests_keyword_set.begin(); iter2 != broken_tests_keyword_set.end(); ++iter2) {
         std::string keyword = *iter2;
         if (ToMBString(test_case_name).find(keyword) != std::string::npos) {
           return;
