@@ -16,7 +16,7 @@ namespace onnxruntime {
 namespace op_kernel_type_control {
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Split, Input, 0,
-    float, int32_t, int64_t, uint8_t, std::string);
+    float, int8_t, int32_t, int64_t, uint8_t, std::string);
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Split, Input, 0,
     int32_t, int64_t);
@@ -108,6 +108,8 @@ Status Split::Compute(OpKernelContext* context) const {
     status = ComputeImpl<int64_t>(*context, input);
   else if (input.IsDataType<uint8_t>())
     status = ComputeImpl<uint8_t>(*context, input);
+  else if (input.IsDataType<int8_t>())
+    status = ComputeImpl<int8_t>(*context, input);
   else if (input.IsDataTypeString())
     status = ComputeImpl<std::string>(*context, input);
   else
