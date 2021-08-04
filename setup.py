@@ -247,10 +247,15 @@ if not path.exists(README):
 with open(README) as f:
     long_description = f.read()
 
+# Include files
+header_files = ["onnxruntime_cxx_api.h", "onnxruntime_c_api.h", "onnxruntime_cxx_inline.h"]
+headers = [path.join('include', x) for x in header_files]
+
 packages = [
     'onnxruntime',
     'onnxruntime.backend',
     'onnxruntime.capi',
+    'onnxruntime.capi.include',
     'onnxruntime.capi.training',
     'onnxruntime.datasets',
     'onnxruntime.tools',
@@ -374,7 +379,7 @@ if featurizers_build:
         packages.append("onnxruntime.FeaturizersLibrary.Data.{}".format(item))
         package_data[packages[-1]] = listdir(path.join(featurizer_dest_dir, item))
 
-package_data["onnxruntime"] = data + examples + extra
+package_data["onnxruntime"] = data + examples + extra + headers
 
 version_number = ''
 with open('VERSION_NUMBER') as f:

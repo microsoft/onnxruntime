@@ -226,6 +226,12 @@ else()
   )
 endif()
 
+file(GLOB onnxruntime_capi_headers CMAKE_CONFIGURE_DEPENDS
+  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_c_api.h"
+  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_api.h"
+  "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
+)
+
 if (onnxruntime_BUILD_UNIT_TESTS)
   file(GLOB onnxruntime_python_test_srcs CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/test/python/*.py"
@@ -292,6 +298,7 @@ add_custom_command(
   TARGET onnxruntime_pybind11_state POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/backend
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/include
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/datasets
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools
@@ -329,6 +336,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_capi_training_srcs}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_capi_headers}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/include/
   COMMAND ${CMAKE_COMMAND} -E copy
       $<TARGET_FILE:onnxruntime_pybind11_state>
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
