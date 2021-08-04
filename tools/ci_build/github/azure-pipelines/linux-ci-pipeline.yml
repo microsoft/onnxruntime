@@ -41,7 +41,8 @@ jobs:
               --build_shared_lib \
               --parallel \
               --build_wheel \
-              --enable_onnx_tests --enable_transformers_tool_test\
+              --enable_onnx_tests \
+              --enable_transformers_tool_test \
               --build_java --build_nodejs --update --build
       workingDirectory: $(Build.SourcesDirectory)
 

@@ -162,7 +162,8 @@ try:
                     args.append(dest)
                     if len(args) > 3:
                         subprocess.run(args, check=True, stdout=subprocess.PIPE)
-                    self._rewrite_ld_preload(to_preload)
+
+                self._rewrite_ld_preload(to_preload)
             _bdist_wheel.run(self)
             if is_manylinux:
                 file = glob(path.join(self.dist_dir, '*linux*.whl'))[0]
@@ -278,6 +279,8 @@ if enable_training:
                      'onnxruntime.training.amp',
                      'onnxruntime.training.optim',
                      'onnxruntime.training.ortmodule',
+                     'onnxruntime.training.ortmodule.experimental',
+                     'onnxruntime.training.ortmodule.experimental.json_config',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.aten_op_executor',
                      'onnxruntime.training.ortmodule.torch_cpp_extensions.torch_gpu_allocator'])

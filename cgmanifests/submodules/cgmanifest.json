@@ -72,8 +72,8 @@
         "Type": "other",
         "other": {
           "Name": "cmake",
-          "Version": "3.20.2",
-          "DownloadUrl": "https://github.com/Kitware/CMake/releases/download/v3.20.2/cmake-3.20.2.tar.gz"
+          "Version": "3.21.0",
+          "DownloadUrl": "https://github.com/Kitware/CMake/releases/download/v3.21.0/cmake-3.21.0.tar.gz"
         },
         "comments": "manylinux dependency"
       }
@@ -335,7 +335,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "99296a4462ffc0a8a4a9635e51382277bec68979",
+          "commitHash": "53ed9b36050bc48e4e6fcc1996fb51c408c066b5",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "git submodule at cmake/external/onnx-tensorrt"
@@ -385,6 +385,16 @@
       "component": {
         "type": "git",
         "git": {
+          "commitHash": "b708aeaaf44416bba84b87206fb550196fc60d5a",
+          "repositoryUrl": "https://github.com/microsoft/onnxruntime-extensions.git"
+        },
+        "comments": "git submodule at cmake/external/onnxruntime-extensions"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
           "commitHash": "4acf4553baa886e10e6613fe1452b706b0250e78",
           "repositoryUrl": "https://github.com/martinmoene/optional-lite.git"
         },
@@ -419,6 +429,16 @@
           "repositoryUrl": "https://github.com/google/googletest.git"
         },
         "comments": "git submodule at cmake/external/protobuf/third_party/googletest"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "5916273f79a21551890fd3d56fc5375a78d1598d",
+          "repositoryUrl": "https://github.com/pytorch/cpuinfo.git"
+        },
+        "comments": "git submodule at cmake/external/pytorch_cpuinfo"
       }
     },
     {

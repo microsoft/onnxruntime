@@ -1,8 +1,8 @@
-# Tag: nvcr.io/nvidia/tensorrt:20.12-py3
-# Label: com.nvidia.cuda.version: 11.1.1
-# Label: com.nvidia.cudnn.version: 8.0.5
+# Tag: nvcr.io/nvidia/tensorrt:21.07-py3
+# Label: com.nvidia.cuda.version: 11.4.0
+# Label: com.nvidia.cudnn.version: 8.2.2.26
 # Ubuntu 20.04
-FROM nvcr.io/nvidia/tensorrt:20.12-py3
+FROM nvcr.io/nvidia/tensorrt:21.07-py3
 
 ARG PYTHON_VERSION=3.8
 ARG DEBIAN_FRONTEND=noninteractive

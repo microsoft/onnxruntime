@@ -21,5 +21,18 @@ class QLinearGlobalAveragePool final : public OpKernel {
   bool channels_last_;
 };
 
+Status ComputeQLinearGlobalAvgPool(
+    const uint8_t* x,
+    float x_scale,
+    uint8_t x_zero_point,
+    uint8_t* y,
+    float y_scale,
+    uint8_t y_zero_point,
+    int64_t N,
+    int64_t C,
+    int64_t image_size,
+    bool channels_last,
+    concurrency::ThreadPool* tp);
+
 }  // namespace contrib
 }  // namespace onnxruntime

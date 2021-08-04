@@ -184,7 +184,6 @@ def generate_files(list, args):
     is_dml_package = args.package_name == 'Microsoft.ML.OnnxRuntime.DirectML'
     is_windowsai_package = args.package_name == 'Microsoft.AI.MachineLearning'
 
-    includes_cuda = is_cuda_gpu_package or is_cpu_package  # Why does the CPU package ship the cuda provider headers?
     includes_winml = is_windowsai_package
     includes_directml = (is_dml_package or is_windowsai_package) and not args.is_store_build and (
         args.target_architecture == 'x64' or args.target_architecture == 'x86')
@@ -245,12 +244,6 @@ def generate_files(list, args):
                       os.path.join(args.sources_path,
                                    'include\\onnxruntime\\core\\providers\\cpu\\cpu_provider_factory.h') +
                       '" target="build\\native\\include" />')
-
-    if includes_cuda:
-        files_list.append('<file src=' + '"' +
-                          os.path.join(args.sources_path,
-                                       'include\\onnxruntime\\core\\providers\\cuda\\cuda_provider_factory.h') +
-                          '" target="build\\native\\include" />')
 
     if args.execution_provider == 'openvino':
         files_list.append('<file src=' + '"' +
