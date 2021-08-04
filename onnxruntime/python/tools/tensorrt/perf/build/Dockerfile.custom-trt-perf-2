@@ -1,0 +1,23 @@
+# --------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------
+
+ARG IMAGE=onnxruntime
+FROM ${IMAGE}
+
+# Prepare onnxruntime repository & build onnxruntime with TensorRT
+RUN git clone --single-branch --branch ${ONNXRUNTIME_BRANCH} --recursive ${ONNXRUNTIME_REPO} onnxruntime &&\
+    /bin/sh onnxruntime/dockerfiles/scripts/install_common_deps.sh &&\
+    cp onnxruntime/docs/Privacy.md /code/Privacy.md &&\
+    cp onnxruntime/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt &&\
+    cp onnxruntime/ThirdPartyNotices.txt /code/ThirdPartyNotices.txt &&\
+    cd onnxruntime &&\
+    /bin/sh ./build.sh --parallel --build_shared_lib --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_tensorrt --tensorrt_home /usr/lib/x86_64-linux-gnu/ --config Release --build_wheel --update --build --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER) &&\
+    pip install /code/onnxruntime/build/Linux/Release/dist/*.whl &&\
+    cd ..
+
+RUN apt-get install -y --no-install-recommends libprotobuf-dev protobuf-compiler pciutils &&\
+    pip install --upgrade pip &&\
+    pip install pandas coloredlogs numpy flake8 onnx Cython onnxmltools sympy packaging psutil 
+
