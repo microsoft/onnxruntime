@@ -932,6 +932,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_shape_start_negative_1", "opset15 version not implemented yet"},
                 { "test_shape_start_1_end_2", "opset15 version not implemented yet"},
                 { "test_shape_start_1_end_negative_1", "opset15 version not implemented yet"},
+                { "test_shape_end_negative_1", "opset15 version not implemented yet"},
                 { "test_optional_get_element", "not implemented yet"},
                 { "test_optional_get_element_sequence", "not implemented yet"},
                 { "test_optional_has_element", "not implemented yet"},
