@@ -572,7 +572,7 @@ def get_config_build_dir(build_dir, config):
 
 
 def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None,
-                   shell=False, env={}):
+                   shell=False, env={}, python_path=None):
     if isinstance(args, str):
         raise ValueError("args should be a sequence of strings, not a string")
 
@@ -585,6 +585,14 @@ def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None,
                 my_env["LD_LIBRARY_PATH"] += os.pathsep + dll_path
             else:
                 my_env["LD_LIBRARY_PATH"] = dll_path
+    if python_path:
+        if is_windows():
+            my_env["PYTHONPATH"] = python_path + os.pathsep + my_env["PYTHONPATH"]
+        else:
+            if "PYTHONPATH" in my_env:
+                my_env["PYTHONPATH"] += os.pathsep + python_path
+            else:
+                my_env["PYTHONPATH"] = python_path
 
     my_env.update(env)
 
@@ -1524,7 +1532,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             if args.build_eager_mode:
                 # run eager mode test
-                run_subprocess([sys.executable, os.path.join(cwd, 'eager_test')], cwd=cwd, dll_path=dll_path)
+                args_list = [sys.executable, os.path.join(cwd, 'eager_test')]
+                run_subprocess(args_list, cwd=cwd, dll_path=dll_path, python_path=cwd)
 
             try:
                 import onnx  # noqa
