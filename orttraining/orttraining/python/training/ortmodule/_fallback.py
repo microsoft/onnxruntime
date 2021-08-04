@@ -5,6 +5,7 @@
 
 from . import _logger
 
+import os
 import torch
 import traceback
 import warnings
@@ -122,6 +123,16 @@ class _FallbackManager(object):
     def __init__(self,
                  policy: _FallbackPolicy,
                  retry: bool):
+
+        # Read policy from environment variable for testing purposes
+
+        policy = os.getenv('ORTMODULE_FALLBACK_POLICY', policy)
+        if isinstance(policy, str):
+            policy = _FallbackPolicy[policy]
+
+        # Read retry from environment variable for testing purposes
+        retry = os.getenv('ORTMODULE_FALLBACK_RETRY', str(retry)).lower() in ['true', '1', 'yes']
+
         self.policy_exception_map = {_FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD.value: {ORTModuleFallbackException,
                                                                                            ORTModuleDeviceException,
                                                                                            ORTModuleIOError,

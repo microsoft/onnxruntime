@@ -8,7 +8,11 @@ import sys
 
 from packaging import version
 
-from ._fallback import _FallbackManager, ORTModuleFallbackException, ORTModuleInitException, wrap_exception
+from ._fallback import (_FallbackManager,
+                        _FallbackPolicy,
+                        ORTModuleFallbackException,
+                        ORTModuleInitException,
+                        wrap_exception)
 from .torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
 
 
@@ -19,7 +23,9 @@ ONNX_OPSET_VERSION = 12
 MINIMUM_RUNTIME_PYTORCH_VERSION_STR = '1.8.1'
 TORCH_CPP_DIR = os.path.join(os.path.dirname(__file__),
                              'torch_cpp_extensions')
-FALLBACK_INIT_EXCEPTION = None
+_FALLBACK_INIT_EXCEPTION = None
+ORTMODULE_FALLBACK_POLICY = _FallbackPolicy.FALLBACK_DISABLE
+ORTMODULE_FALLBACK_RETRY = True
 
 # Verify minimum PyTorch version is installed before proceding to ONNX Runtime initialization
 try:
@@ -33,14 +39,14 @@ try:
                                  f'but version {torch.__version__} was found instead.'))
 except ORTModuleFallbackException as e:
     # Initialization fallback is handled at ORTModule.__init__
-    FALLBACK_INIT_EXCEPTION = e
+    _FALLBACK_INIT_EXCEPTION = e
 except ImportError as e:
     raise RuntimeError(f'PyTorch {MINIMUM_RUNTIME_PYTORCH_VERSION_STR} must be installed in order to run ONNX Runtime ORTModule frontend!') from e
 
 # Verify whether PyTorch C++ extensions are already compiled
 
 if not is_torch_cpp_extensions_installed(TORCH_CPP_DIR) and '-m' not in sys.argv:
-    FALLBACK_INIT_EXCEPTION = wrap_exception(ORTModuleInitException,
+    _FALLBACK_INIT_EXCEPTION = wrap_exception(ORTModuleInitException,
                                                         EnvironmentError(
                                                             f"ORTModule's extensions were not detected at '{TORCH_CPP_DIR}' folder. "
                                                             "Run `python -m torch_ort.configure` before using `ORTModule` frontend."))

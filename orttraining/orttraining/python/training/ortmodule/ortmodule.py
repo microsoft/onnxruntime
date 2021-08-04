@@ -9,7 +9,7 @@ from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._custom_gradient_registry import CustomGradientRegistry
 from .debug_options import DebugOptions
 from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleFallbackException, ORTModuleTorchModelException, wrap_exception
-from . import FALLBACK_INIT_EXCEPTION, MINIMUM_RUNTIME_PYTORCH_VERSION_STR
+from . import _FALLBACK_INIT_EXCEPTION, MINIMUM_RUNTIME_PYTORCH_VERSION_STR, ORTMODULE_FALLBACK_POLICY, ORTMODULE_FALLBACK_RETRY
 from onnxruntime.training import register_custom_ops_pytorch_exporter
 
 import functools
@@ -37,13 +37,15 @@ class ORTModule(torch.nn.Module):
         # instantiate it inside the function.
         if not debug_options:
             debug_options = DebugOptions()
-        self._fallback_manager = _FallbackManager(policy=debug_options.fallback_policy,
-                                                  retry=(not debug_options.persist_fallback))
+
+        # Fallback settings
+        self._fallback_manager = _FallbackManager(policy=ORTMODULE_FALLBACK_POLICY,
+                                                  retry=ORTMODULE_FALLBACK_RETRY)
         try:
             # Read ORTModule module initialization status
-            global FALLBACK_INIT_EXCEPTION
-            if FALLBACK_INIT_EXCEPTION:
-                raise FALLBACK_INIT_EXCEPTION
+            global _FALLBACK_INIT_EXCEPTION
+            if _FALLBACK_INIT_EXCEPTION:
+                raise _FALLBACK_INIT_EXCEPTION
 
             self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager)
 

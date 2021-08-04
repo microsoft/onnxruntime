@@ -4,11 +4,12 @@
 
 import copy
 import itertools
+import os
 import torch
 import pytest
 import warnings
 
-from onnxruntime.training.ortmodule import ORTModule, _utils, _io, DebugOptions, LogLevel, _fallback, TORCH_CPP_DIR
+from onnxruntime.training.ortmodule import ORTModule, _utils, _io, LogLevel, _fallback, TORCH_CPP_DIR
 from onnxruntime.training.ortmodule.torch_cpp_extensions import is_installed as is_torch_cpp_extensions_installed
 import _test_helpers
 from _orttraining_ortmodule_models import (NeuralNetSinglePositionalArgument,
@@ -28,11 +29,13 @@ def test_ortmodule_fallback_forward(is_training, fallback_enabled, matching_poli
 
     if fallback_enabled:
         if matching_policy:
-            policy = _fallback._FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD
+            policy = 'FALLBACK_FORCE_TORCH_FORWARD'
         else:
-            policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE
+            policy = 'FALLBACK_UNSUPPORTED_DEVICE'
     else:
-        policy = _fallback._FallbackPolicy.FALLBACK_DISABLE
+        policy = 'FALLBACK_DISABLE'
+    os.environ['ORTMODULE_FALLBACK_POLICY'] = policy
+    os.environ['ORTMODULE_FALLBACK_RETRY'] = str(not persist_fallback)
 
     from dataclasses import dataclass
     @dataclass
@@ -47,8 +50,7 @@ def test_ortmodule_fallback_forward(is_training, fallback_enabled, matching_poli
             return point.x * point.y
 
     pt_model = UnsupportedInputModel()
-    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(fallback_policy=policy,
-                                                                persist_fallback=persist_fallback))
+    ort_model = ORTModule(copy.deepcopy(pt_model))
     inputs = Point(x=2, y=3)
 
     ort_model.train(is_training)
@@ -82,11 +84,13 @@ def test_ortmodule_fallback_device__multiple(is_training, fallback_enabled, matc
 
     if fallback_enabled:
         if matching_policy:
-            policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE
+            policy = 'FALLBACK_UNSUPPORTED_DEVICE'
         else:
-            policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DATA
+            policy = 'FALLBACK_UNSUPPORTED_DATA'
     else:
-        policy = _fallback._FallbackPolicy.FALLBACK_DISABLE
+        policy = 'FALLBACK_DISABLE'
+    os.environ['ORTMODULE_FALLBACK_POLICY'] = policy
+    os.environ['ORTMODULE_FALLBACK_RETRY'] = str(not persist_fallback)
 
     class ManyDevicesNet(torch.nn.Module):
         def __init__(self):
@@ -105,8 +109,7 @@ def test_ortmodule_fallback_device__multiple(is_training, fallback_enabled, matc
     for _ in range(3):
         if fallback_enabled:
             if matching_policy:
-                ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(fallback_policy=policy,
-                                                                            persist_fallback=persist_fallback))
+                ort_model = ORTModule(copy.deepcopy(pt_model))
                 pt_model.train(is_training)
                 ort_model.train(is_training)
                 ort_out = ort_model(inputs)
@@ -115,12 +118,12 @@ def test_ortmodule_fallback_device__multiple(is_training, fallback_enabled, matc
             else:
                 with pytest.raises(_fallback.ORTModuleFallbackException) as type_error:
                     # Initialize with fallback policy because Exception will happen during __init__
-                    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(fallback_policy=policy))
+                    ort_model = ORTModule(copy.deepcopy(pt_model))
                 assert "ORTModule supports a single device per model" in str(type_error.value)
         else:
             with pytest.raises(_fallback.ORTModuleFallbackException) as type_error:
                 # Initialize with fallback policy because Exception will happen during __init__
-                ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(fallback_policy=policy))
+                ort_model = ORTModule(copy.deepcopy(pt_model))
             assert "ORTModule supports a single device per model" in str(type_error.value)
 
 
@@ -134,18 +137,19 @@ def test_ortmodule_fallback_device__mismatch(is_training, fallback_enabled, matc
 
     if fallback_enabled:
         if matching_policy:
-            policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE
+            policy = 'FALLBACK_UNSUPPORTED_DEVICE'
         else:
-            policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DATA
+            policy = 'FALLBACK_UNSUPPORTED_DATA'
     else:
-        policy = _fallback._FallbackPolicy.FALLBACK_DISABLE
+        policy = 'FALLBACK_DISABLE'
+    os.environ['ORTMODULE_FALLBACK_POLICY'] = policy
+    os.environ['ORTMODULE_FALLBACK_RETRY'] = str(not persist_fallback)
 
     data_device = 'cuda'
     N, D_in, H, D_out = 64, 784, 500, 10
 
     pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
-    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(fallback_policy=policy,
-                                                                persist_fallback=persist_fallback))
+    ort_model = ORTModule(copy.deepcopy(pt_model))
     pt_model.train(is_training)
     ort_model.train(is_training)
     # For initial model export, use same device for data and model so that PyTorch model can be traced during export
@@ -181,17 +185,18 @@ def test_ortmodule_fallback_output(is_training, fallback_enabled, matching_polic
 
     if fallback_enabled:
         if matching_policy:
-            policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DATA
+            policy = 'FALLBACK_UNSUPPORTED_DATA'
         else:
-            policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE
+            policy = 'FALLBACK_UNSUPPORTED_DEVICE'
     else:
-        policy = _fallback._FallbackPolicy.FALLBACK_DISABLE
+        policy = 'FALLBACK_DISABLE'
+    os.environ['ORTMODULE_FALLBACK_POLICY'] = policy
+    os.environ['ORTMODULE_FALLBACK_RETRY'] = str(not persist_fallback)
 
     device = 'cuda'
     N, D_in, H, D_out = 64, 784, 500, 10
     pt_model = NeuralNetCustomClassOutput(D_in, H, D_out).to(device)
-    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(fallback_policy=policy,
-                                                                persist_fallback=persist_fallback))
+    ort_model = ORTModule(copy.deepcopy(pt_model))
     x = torch.randn(N, D_in, device=device)
     y = torch.randn(N, D_in, device=device)
     z = torch.randn(N, D_in, device=device)
@@ -228,15 +233,16 @@ def test_ortmodule_fallback_input(is_training, fallback_enabled, matching_policy
 
     if fallback_enabled:
         if matching_policy:
-            policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DATA
+            policy = 'FALLBACK_UNSUPPORTED_DATA'
         else:
-            policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE
+            policy = 'FALLBACK_UNSUPPORTED_DEVICE'
     else:
-        policy = _fallback._FallbackPolicy.FALLBACK_DISABLE
+        policy = 'FALLBACK_DISABLE'
+    os.environ['ORTMODULE_FALLBACK_POLICY'] = policy
+    os.environ['ORTMODULE_FALLBACK_RETRY'] = str(not persist_fallback)
 
     pt_model = MyStrNet()
-    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(fallback_policy=policy,
-                                                                persist_fallback=persist_fallback))
+    ort_model = ORTModule(copy.deepcopy(pt_model))
     inputs = torch.randn(1, 2)
 
     ort_model.train(is_training)
@@ -270,11 +276,13 @@ def test_ortmodule_fallback_torch_model(is_training, fallback_enabled, matching_
 
     if fallback_enabled:
         if matching_policy:
-            policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_TORCH_MODEL
+            policy = 'FALLBACK_UNSUPPORTED_TORCH_MODEL'
         else:
-            policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE
+            policy = 'FALLBACK_UNSUPPORTED_DEVICE'
     else:
-        policy = _fallback._FallbackPolicy.FALLBACK_DISABLE
+        policy = 'FALLBACK_DISABLE'
+    os.environ['ORTMODULE_FALLBACK_POLICY'] = policy
+    os.environ['ORTMODULE_FALLBACK_RETRY'] = str(not persist_fallback)
 
     device = 'cuda'
     N, D_in, H, D_out = 64, 784, 500, 10
@@ -286,8 +294,7 @@ def test_ortmodule_fallback_torch_model(is_training, fallback_enabled, matching_
     for _ in range(3):
         if fallback_enabled:
             if matching_policy:
-                ort_model = ORTModule(pt_model, DebugOptions(fallback_policy=policy,
-                                                             persist_fallback=persist_fallback))
+                ort_model = ORTModule(pt_model)
                 ort_model.train(is_training)
                 pt_model.train(is_training)
 
@@ -296,12 +303,12 @@ def test_ortmodule_fallback_torch_model(is_training, fallback_enabled, matching_
                 _test_helpers.assert_values_are_close(ort_out, pt_out, rtol=0, atol=0)
             else:
                 with pytest.raises(_fallback.ORTModuleTorchModelException) as ex_info:
-                    ort_model = ORTModule(pt_model, DebugOptions(fallback_policy=policy))
+                    ort_model = ORTModule(pt_model)
                 assert "ORTModule is not compatible with torch.nn.DataParallel" in str(ex_info.value)
         else:
             with pytest.raises(_fallback.ORTModuleTorchModelException) as ex_info:
                 # Initialize with fallback policy because Exception will happen during __init__
-                ort_model = ORTModule(pt_model, DebugOptions(fallback_policy=policy))
+                ort_model = ORTModule(pt_model)
             assert "ORTModule is not compatible with torch.nn.DataParallel" in str(ex_info.value)
 
 @pytest.mark.parametrize("is_training,fallback_enabled,matching_policy,persist_fallback",
@@ -320,11 +327,13 @@ def test_ortmodule_fallback_init__torch_version(is_training, fallback_enabled, m
 
         if fallback_enabled:
             if matching_policy:
-                policy = _fallback._FallbackPolicy.FALLBACK_BAD_INITIALIZATION
+                policy = 'FALLBACK_BAD_INITIALIZATION'
             else:
-                policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE
+                policy = 'FALLBACK_UNSUPPORTED_DEVICE'
         else:
-            policy = _fallback._FallbackPolicy.FALLBACK_DISABLE
+            policy = 'FALLBACK_DISABLE'
+        os.environ['ORTMODULE_FALLBACK_POLICY'] = policy
+        os.environ['ORTMODULE_FALLBACK_RETRY'] = str(not persist_fallback)
 
         device = 'cuda'
         N, D_in, H, D_out = 64, 784, 500, 10
@@ -335,8 +344,7 @@ def test_ortmodule_fallback_init__torch_version(is_training, fallback_enabled, m
         for i in range(3):
             if fallback_enabled:
                 if matching_policy:
-                    ort_model = ORTModule(pt_model, DebugOptions(fallback_policy=policy,
-                                                                 persist_fallback=persist_fallback))
+                    ort_model = ORTModule(pt_model)
                     ort_model.train(is_training)
                     pt_model.train(is_training)
 
@@ -345,12 +353,12 @@ def test_ortmodule_fallback_init__torch_version(is_training, fallback_enabled, m
                     _test_helpers.assert_values_are_close(ort_out, pt_out, rtol=0, atol=0)
                 else:
                     with pytest.raises(_fallback.ORTModuleInitException) as ex_info:
-                        ort_model = ORTModule(pt_model, DebugOptions(fallback_policy=policy))
+                        ort_model = ORTModule(pt_model)
                     assert "ONNX Runtime ORTModule frontend requires PyTorch version greater or equal to" in str(ex_info.value)
             else:
                 with pytest.raises(_fallback.ORTModuleInitException) as ex_info:
                     # Initialize with fallback policy because Exception will happen during __init__
-                    ort_model = ORTModule(pt_model, DebugOptions(fallback_policy=policy))
+                    ort_model = ORTModule(pt_model)
                 assert "ONNX Runtime ORTModule frontend requires PyTorch version greater or equal to" in str(ex_info.value)
     else:
         warnings.warn('Skipping test_ortmodule_fallback_torch_version.'
@@ -369,13 +377,16 @@ def test_ortmodule_fallback_init__missing_cpp_extensions(is_training, fallback_e
         warnings.warn('Skipping test_ortmodule_fallback_init__missing_cpp_extensions.'
                       f' It requires PyTorch CPP extensions to be missing')
     else:
+
         if fallback_enabled:
             if matching_policy:
-                policy = _fallback._FallbackPolicy.FALLBACK_BAD_INITIALIZATION
+                policy = 'FALLBACK_BAD_INITIALIZATION'
             else:
-                policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE
+                policy = 'FALLBACK_UNSUPPORTED_DEVICE'
         else:
-            policy = _fallback._FallbackPolicy.FALLBACK_DISABLE
+            policy = 'FALLBACK_DISABLE'
+        os.environ['ORTMODULE_FALLBACK_POLICY'] = policy
+        os.environ['ORTMODULE_FALLBACK_RETRY'] = str(not persist_fallback)
 
         device = 'cuda'
         N, D_in, H, D_out = 64, 784, 500, 10
@@ -386,8 +397,7 @@ def test_ortmodule_fallback_init__missing_cpp_extensions(is_training, fallback_e
         for _ in range(3):
             if fallback_enabled:
                 if matching_policy:
-                    ort_model = ORTModule(pt_model, DebugOptions(fallback_policy=policy,
-                                                                 persist_fallback=persist_fallback))
+                    ort_model = ORTModule(pt_model)
                     ort_model.train(is_training)
                     pt_model.train(is_training)
 
@@ -396,12 +406,12 @@ def test_ortmodule_fallback_init__missing_cpp_extensions(is_training, fallback_e
                     _test_helpers.assert_values_are_close(ort_out, pt_out, rtol=0, atol=0)
                 else:
                     with pytest.raises(_fallback.ORTModuleInitException) as ex_info:
-                        ort_model = ORTModule(pt_model, DebugOptions(fallback_policy=policy))
+                        ort_model = ORTModule(pt_model)
                     assert "ORTModule's extensions were not detected" in str(ex_info.value)
             else:
                 with pytest.raises(_fallback.ORTModuleInitException) as ex_info:
                     # Initialize with fallback policy because Exception will happen during __init__
-                    ort_model = ORTModule(pt_model, DebugOptions(fallback_policy=policy))
+                    ort_model = ORTModule(pt_model)
                 assert "ORTModule's extensions were not detected" in str(ex_info.value)
 
 @pytest.mark.parametrize("is_training,fallback_enabled,matching_policy,persist_fallback",
@@ -414,11 +424,13 @@ def test_ortmodule_fallback_onnx_model__custom_autograd(is_training, fallback_en
 
     if fallback_enabled:
         if matching_policy:
-            policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_ONNX_MODEL
+            policy = 'FALLBACK_UNSUPPORTED_ONNX_MODEL'
         else:
-            policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE
+            policy = 'FALLBACK_UNSUPPORTED_DEVICE'
     else:
-        policy = _fallback._FallbackPolicy.FALLBACK_DISABLE
+        policy = 'FALLBACK_DISABLE'
+    os.environ['ORTMODULE_FALLBACK_POLICY'] = policy
+    os.environ['ORTMODULE_FALLBACK_RETRY'] = str(not persist_fallback)
 
     dtype = torch.float
     device = torch.device("cuda")
@@ -430,10 +442,7 @@ def test_ortmodule_fallback_onnx_model__custom_autograd(is_training, fallback_en
     w2 = torch.randn(H, D_out, device=device, dtype=dtype, requires_grad=True)
 
     pt_model = MyCustomFunctionReluModel()
-    ort_model = ORTModule(copy.deepcopy(pt_model),
-                          debug_options=DebugOptions(
-                              fallback_policy=policy,
-                              persist_fallback=persist_fallback))
+    ort_model = ORTModule(copy.deepcopy(pt_model))
     ort_model.train(is_training)
     pt_model.train(is_training)
 
@@ -465,11 +474,13 @@ def test_ortmodule_fallback_onnx_model__missing_op(is_training, fallback_enabled
 
     if fallback_enabled:
         if matching_policy:
-            policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_ONNX_MODEL
+            policy = 'FALLBACK_UNSUPPORTED_ONNX_MODEL'
         else:
-            policy = _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE
+            policy = 'FALLBACK_UNSUPPORTED_DEVICE'
     else:
-        policy = _fallback._FallbackPolicy.FALLBACK_DISABLE
+        policy = 'FALLBACK_DISABLE'
+    os.environ['ORTMODULE_FALLBACK_POLICY'] = policy
+    os.environ['ORTMODULE_FALLBACK_RETRY'] = str(not persist_fallback)
 
     class CrossModule(torch.nn.Module):
         def forward(self, x, y):
@@ -478,10 +489,7 @@ def test_ortmodule_fallback_onnx_model__missing_op(is_training, fallback_enabled
     y = torch.randn(2, 3)
 
     pt_model = CrossModule()
-    ort_model = ORTModule(copy.deepcopy(pt_model),
-                          debug_options=DebugOptions(
-                              fallback_policy=policy,
-                              persist_fallback=persist_fallback))
+    ort_model = ORTModule(copy.deepcopy(pt_model))
     ort_model.train(is_training)
     pt_model.train(is_training)
 
