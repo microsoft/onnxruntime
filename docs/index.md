@@ -59,7 +59,8 @@ The ORTModule is instantiated from [`torch-ort`](https://github.com/pytorch/ort)
 
 ### Install ONNX Runtime Training package
 
-`pip install torch-ort`
+`pip install torch-ort
+python -m torch_ort.configure`
 
 **Note**: This installs the default version of the `torch-ort` and `onnxruntime-training` packages that are mapped to specific versions of the CUDA libraries. Refer to the install options in [ONNXRUNTIME.ai](https://onnxruntime.ai).
 
