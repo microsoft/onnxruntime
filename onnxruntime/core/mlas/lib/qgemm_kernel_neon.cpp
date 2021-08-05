@@ -499,7 +499,7 @@ const MLAS_GEMM_U8X8_DISPATCH MlasGemmU8X8DispatchNeon = {
 
 
 /*-------------------------
- * NEON kernel for signed int8,  
+ * NEON kernel for signed int8
  */
 
 extern "C" {
