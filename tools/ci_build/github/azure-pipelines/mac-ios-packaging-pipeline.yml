@@ -18,6 +18,8 @@ jobs:
   pool:
     vmImage: "macOS-10.15"
 
+  timeoutInMinutes: 90
+
   steps:
   - task: UsePythonVersion@0
     inputs:
