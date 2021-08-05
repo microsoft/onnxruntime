@@ -4,9 +4,10 @@
 import {Graph} from '../../../graph';
 import {OperatorImplementation, OperatorInitialization} from '../../../operators';
 import {Tensor} from '../../../tensor';
-import {BroadcastUtil} from '../../../util';
+import {BroadcastUtil, ShapeUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
+import {getCoordsDataType} from '../utils';
 import {getActicationSnippet, InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
 import {createPackedMatmulProgramInfoLoader} from './matmul-pack';
 
@@ -25,11 +26,13 @@ export const matMul: OperatorImplementation<InternalActivationAttributes> =
 export const parseMatMulAttributes: OperatorInitialization<InternalActivationAttributes> =
     (node: Graph.Node): InternalActivationAttributes => parseInternalActivationAttributes(node.attributes);
 
-const matmulProgramMetadata = {
+const createMatmulProgramMetadata = (hasBias: boolean, cacheHint: string) => ({
   name: 'MatMul',
-  inputTypes: [TextureType.unpacked, TextureType.unpacked],
-  inputNames: ['A', 'B'],
-};
+  inputNames: hasBias ? ['A', 'B', 'Bias'] : ['A', 'B'],
+  inputTypes: hasBias ? [TextureType.unpacked, TextureType.unpacked, TextureType.unpacked] :
+                        [TextureType.unpacked, TextureType.unpacked],
+  cacheHint
+});
 
 function createMatmulProgramInfo(
     metadata: ProgramMetadata, inputs: Tensor[], activationAttributes: InternalActivationAttributes): ProgramInfo {
@@ -39,13 +42,22 @@ function createMatmulProgramInfo(
   if (!outputShape) {
     throw new Error('Can\'t use matmul on the given tensors');
   }
+  const coordsDataType = getCoordsDataType(outputShape.length);
+  const allGlChannels = ['x', 'y', 'z', 'w', 'u', 'v'];
   const {activationFunction, applyActivation} = getActicationSnippet(activationAttributes);
+
+  const hasBias = inputs.length > 2;
+  const processBias = hasBias ? 'value += getBiasForMatmul();' : '';
+  const getBiasForMatmulSnippet =
+      hasBias ? `${getBiasForMatmul(coordsDataType, allGlChannels, inputs[2].dims, outputShape, false)}` : '';
+
   const rank = outputShape.length;
   const arank = aShape.length;
   const brank = bShape.length;
   const sharedDim = aShape[aShape.length - 1];
   const shaderSource = `
     ${activationFunction}
+    ${getBiasForMatmulSnippet}
     float process(int indices[${rank}]) {
         int a[${arank}];
         int b[${brank}];
@@ -58,6 +70,7 @@ function createMatmulProgramInfo(
             b[${brank - 2}] = k;
             value += _A(a) * _B(b);
         }
+        ${processBias}
         ${applyActivation}
         return value;
     }`;
@@ -68,9 +81,9 @@ function createMatmulProgramInfo(
   };
 }
 
-function createMatmulProgramInfoLoader(
+export function createMatmulProgramInfoLoader(
     inputs: Tensor[], activationAttributes: InternalActivationAttributes): ProgramInfoLoader {
-  const metadata = {...matmulProgramMetadata, cacheHint: activationAttributes.activationCacheKey};
+  const metadata = createMatmulProgramMetadata(inputs.length > 2, activationAttributes.activationCacheKey);
   return {...metadata, get: () => createMatmulProgramInfo(metadata, inputs, activationAttributes)};
 }
 
@@ -92,3 +105,40 @@ const validateInputs = (inputs: Tensor[]): void => {
     throw new Error('inputs types should match');
   }
 };
+
+export function getBiasForMatmul(
+    coordsDataType: string, allGlChannels: readonly string[], inShape: readonly number[], outShape: readonly number[],
+    isPacked: boolean): string {
+  let unpackedCoordsSnippet = '';
+  const inRank = inShape.length;
+  const outRank = outShape.length;
+  const rankDiff = outRank - inRank;
+  if (outRank < 2 && inRank > 0) {
+    unpackedCoordsSnippet = 'coords';
+  } else {
+    unpackedCoordsSnippet = inShape.map((s, i) => `coords.${allGlChannels[i + rankDiff]}`).join(', ');
+  }
+  const broadcastDims = BroadcastUtil.getBroadcastDims(inShape, outShape);
+  const coordsSnippet = broadcastDims.map(d => `coords.${allGlChannels[d + rankDiff]} = 0;`).join('\n');
+  const inSize = ShapeUtil.size(inShape);
+  const isInputScalar = inSize === 1;
+  let output = 'vec4(outputValue.xx, outputValue.yy)';
+  if (isInputScalar) {
+    output = 'vec4(outputValue.x)';
+  }
+  const getBiasForMatmulSource = isPacked ? `
+vec4 getBiasForMatmul() {
+  ${coordsDataType} coords = getOutputCoords();
+  ${coordsSnippet}
+  vec4 outputValue = getBias(${unpackedCoordsSnippet});
+  return ${output};
+}` :
+                                            `
+float getBiasForMatmul() {
+  ${coordsDataType} coords = getOutputCoords();
+  ${coordsSnippet}
+  return getBias(coords.x);
+}`;
+
+  return getBiasForMatmulSource;
+}

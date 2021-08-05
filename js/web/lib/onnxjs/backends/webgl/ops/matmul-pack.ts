@@ -10,6 +10,7 @@ import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../t
 import {getCoordsDataType} from '../utils';
 
 import {getActicationSnippet, InternalActivationAttributes} from './fuse-utils';
+import {getBiasForMatmul} from './matmul';
 
 const createPackedMatmulProgramMetadata = (hasBias: boolean, cacheHint: string) => ({
   name: 'MatMul (packed)',
@@ -44,7 +45,7 @@ const createPackedMatmulProgramInfo =
       const {activationFunction, applyActivation} = getActicationSnippet(activationAttributes);
 
       const getBiasForMatmulSnippet =
-          hasBias ? `${getBiasForMatmul(coordsDataType, allGlChannels, inputs[2].dims, outputShape)}` : '';
+          hasBias ? `${getBiasForMatmul(coordsDataType, allGlChannels, inputs[2].dims, outputShape, true)}` : '';
 
       const getBcastedSamplerForMatmulSnippet =
           isBroadcast ? `${getBcastSamplerForMatmul(coordsDataType, allGlChannels, inputs, outputShape)}` : '';
@@ -91,38 +92,6 @@ export const createPackedMatmulProgramInfoLoader =
         get: () => createPackedMatmulProgramInfo(inferenceHandler, metadata, inputs, activationAttributes)
       };
     };
-
-function getBiasForMatmul(
-    coordsDataType: string, allGlChannels: readonly string[], inShape: readonly number[],
-    outShape: readonly number[]): string {
-  let unpackedCoordsSnippet = '';
-  const inRank = inShape.length;
-  const outRank = outShape.length;
-  const rankDiff = outRank - inRank;
-  if (outRank < 2 && inRank > 0) {
-    unpackedCoordsSnippet = 'coords';
-  } else {
-    unpackedCoordsSnippet = inShape.map((s, i) => `coords.${allGlChannels[i + rankDiff]}`).join(', ');
-  }
-  const broadcastDims = BroadcastUtil.getBroadcastDims(inShape, outShape);
-  const coordsSnippet = broadcastDims.map(d => `coords.${allGlChannels[d + rankDiff]} = 0;`).join('\n');
-  const inSize = ShapeUtil.size(inShape);
-  const isInputScalar = inSize === 1;
-  let output = 'vec4(outputValue.xx, outputValue.yy)';
-  if (isInputScalar) {
-    output = 'vec4(outputValue.x)';
-  }
-  const getBiasForMatmulSource = `
-  vec4 getBiasForMatmul() {
-    ${coordsDataType} coords = getOutputCoords();
-    ${coordsSnippet}
-    vec4 outputValue = getBias(${unpackedCoordsSnippet});
-    return ${output};
-
-  }`;
-
-  return getBiasForMatmulSource;
-}
 
 function getBcastSamplerForMatmul(
     coordsDataType: string, allGlChannels: readonly string[], inputs: Tensor[], outShape: readonly number[]): string {

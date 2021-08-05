@@ -14,6 +14,7 @@ import {conv2DPacked} from './conv-pack';
 import {createDotProductProgramInfoLoader} from './dot-product';
 import {InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
 import {createIm2ColProgramInfoLoader} from './im2col';
+import {createMatmulProgramInfoLoader} from './matmul';
 
 
 export const calculateOutputShape =
@@ -56,6 +57,8 @@ const conv2d: OperatorImplementation<ConvAttributes> =
         const result = inferenceHandler.run(
             createUnpackedGroupedConvProgramInfoLoader(inferenceHandler, inputs, adjustedAttributes), inputs);
         return [result];
+      } else if (isPointwise && packMode) {
+        return [conv2DUnpackedPointwise(inferenceHandler, inputs, adjustedAttributes)];
       } else if (packMode && inputs[0].dims.length === 4 && inputs[0].dims[0] === 1 && !isPointwise) {
         return [conv2DPacked(inferenceHandler, inputs, adjustedAttributes)];
       } else {
@@ -63,7 +66,21 @@ const conv2d: OperatorImplementation<ConvAttributes> =
       }
     };
 
-export const conv2DUnpacked =
+const conv2DUnpackedPointwise =
+    (inferenceHandler: WebGLInferenceHandler, inputs: readonly Tensor[], attributes: ConvAttributes): Tensor => {
+      const xshape = inputs[0].dims;
+      const kshape = inputs[1].dims;
+      const outputShape =
+          calculateOutputShape(xshape, kshape, attributes.dilations, attributes.pads, attributes.strides);
+      const reshapedX = inferenceHandler.reshapeUnpacked(inputs[0], [xshape[1], xshape[2] * xshape[3]]);
+      const reshapedK = inferenceHandler.reshapeUnpacked(inputs[1], [kshape[0], kshape[1]]);
+
+      const matmulInputs = inputs.length > 2 ? [reshapedK, reshapedX, inputs[2]] : [reshapedK, reshapedX];
+      const matmulOutput = inferenceHandler.run(createMatmulProgramInfoLoader(matmulInputs, attributes), matmulInputs);
+      return inferenceHandler.reshapeUnpacked(matmulOutput, outputShape);
+    };
+
+const conv2DUnpacked =
     (inferenceHandler: WebGLInferenceHandler, inputs: readonly Tensor[], attributes: ConvAttributes): Tensor => {
       const xshape = inputs[0].dims;
       const kshape = inputs[1].dims;
