@@ -18,15 +18,12 @@ This file should be generated. See [cgmanifests/README](/cgmanifests/README.md) 
 3. Update [tools/ci_build/github/linux/docker/scripts/install_onnx.sh](/tools/ci_build/github/linux/docker/scripts/install_onnx.sh).
 Search 'for version2tag', update the commit hashes. The list should contain every release version from ONNX 1.2, and the latest one in our cmake/external/onnx folder.
 
-4. If there is any change to `cmake/external/onnx/onnx/*.in.proto`, update onnxruntime/core/protobuf as follows : 
-```
-- Apply these changes to onnxruntime/core/protobuf/*.in.proto
-- Copy cmake/external/onnx/onnx/gen_proto.py to onnxruntime/core/protobuf and use this script to generate the new \*.proto and \*.proto3 files
-- Regenerate csharp/test/Microsoft.ML.OnnxRuntime.Tests/OnnxMl.cs
-```
+4. If there is any change to `cmake/external/onnx/onnx/*.in.proto`, you need to re-regenerate OnnxMl.cs. Please build onnxruntime on Windows with csharp enabled, then the file will be auto-updated.
 
-5. Send you PR, and run the CI builds.
+5. Send you PR, and **manually** queue a build for every packaging pipeline for your branch.
 
-6. If there is any unitest failure, caught by onnx_test_runner. Please also update
+6. Usually there would be some unitest failures, because you introduced new test cases. Then you may need to update
 - [onnxruntime/test/onnx/main.cc](/onnxruntime/test/onnx/main.cc)
+- [onnxruntime/test/providers/cpu/model_tests.cc](/onnxruntime/test/providers/cpu/model_tests.cc)
+- [csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs](/csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs)
 - [onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc](/onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc)
