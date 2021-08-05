@@ -7,9 +7,7 @@ import {GlslContext, GlslLib, GlslLibRoutine} from './glsl-definitions';
 import {getGlsl} from './glsl-source';
 import {squeezeShape} from './texture-layout-strategy';
 import {TextureLayout} from './types';
-import {generateShaderFuncNameFromInputSamplerName} from './utils';
-import {generateShaderFuncNameFromInputSamplerNameAtOutCoords,} from './utils';
-import {getCoordsDataType, getSqueezedParams, squeezeInputShape} from './utils';
+import {generateShaderFuncNameFromInputSamplerName, generateShaderFuncNameFromInputSamplerNameAtOutCoords, getCoordsDataType, getGlChannels, getSqueezedParams, squeezeInputShape} from './utils';
 
 /**
  * GLSL Library responsible for data types and routines for manipulating
@@ -630,7 +628,7 @@ export class CoordsGlslLib extends GlslLib {
     const type = getCoordsDataType(outRank);
     const rankDiff = outRank - inRank;
     let coordsSnippet: string;
-    const fields = ['x', 'y', 'z', 'w', 'u', 'v'];
+    const fields = getGlChannels();
 
     if (inRank === 0) {
       coordsSnippet = '';
@@ -723,7 +721,7 @@ export class CoordsGlslLib extends GlslLib {
     const broadcastDims = BroadcastUtil.getBroadcastDims(inShape, outShape);
     const rankDiff = outRank - inRank;
     let coordsSnippet: string;
-    const fields = ['x', 'y', 'z', 'w', 'u', 'v'];
+    const fields = getGlChannels();
 
     if (inRank === 0) {
       coordsSnippet = '';

@@ -7,7 +7,7 @@ import {Tensor} from '../../../tensor';
 import {BroadcastUtil, ShapeUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
-import {getCoordsDataType} from '../utils';
+import {getCoordsDataType, getGlChannels} from '../utils';
 import {getActicationSnippet, InternalActivationAttributes, parseInternalActivationAttributes} from './fuse-utils';
 import {createPackedMatmulProgramInfoLoader} from './matmul-pack';
 
@@ -43,7 +43,7 @@ function createMatmulProgramInfo(
     throw new Error('Can\'t use matmul on the given tensors');
   }
   const coordsDataType = getCoordsDataType(outputShape.length);
-  const allGlChannels = ['x', 'y', 'z', 'w', 'u', 'v'];
+  const allGlChannels = getGlChannels();
   const {activationFunction, applyActivation} = getActicationSnippet(activationAttributes);
 
   const hasBias = inputs.length > 2;

@@ -7,7 +7,7 @@ import {ShapeUtil} from '../../../util';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
-import {getCoordsDataType} from '../utils';
+import {getCoordsDataType, getGlChannels} from '../utils';
 
 import {getActicationSnippet, InternalActivationAttributes} from './fuse-utils';
 import {getBiasForMatmul} from './matmul';
@@ -41,7 +41,7 @@ const createPackedMatmulProgramInfo =
       const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
       const coordsDataType = getCoordsDataType(outputShape.length);
       const outRank = outputShape.length;
-      const allGlChannels = ['x', 'y', 'z', 'w', 'u', 'v'];
+      const allGlChannels = getGlChannels();
       const {activationFunction, applyActivation} = getActicationSnippet(activationAttributes);
 
       const getBiasForMatmulSnippet =

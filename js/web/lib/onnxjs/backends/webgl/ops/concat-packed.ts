@@ -5,7 +5,7 @@ import {Tensor} from '../../../tensor';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
-import {getCoordsDataType} from '../utils';
+import {getCoordsDataType, getGlChannels} from '../utils';
 import {ConcatAttributes} from './concat';
 
 import {getChannels, unpackFromChannel} from './packing-utils';
@@ -49,8 +49,7 @@ const createPackedConcatProgramInfo =
       const unpackChannel = unpackFromChannel();
 
       const shapes = inputs.map(i => i.dims);
-      const allGlChannels = ['x', 'y', 'z', 'w', 'u', 'v'];
-      const channels = allGlChannels.slice(0, rank);
+      const channels = getGlChannels(rank);
       const offsets: number[] = new Array(shapes.length - 1);
 
       offsets[0] = shapes[0][axis];
@@ -92,9 +91,9 @@ const createPackedConcatProgramInfo =
 
           void main() {
             ${dtype} coords = getOutputCoords();
-            int lastDim = coords.${allGlChannels[rank - 1]};
-            coords.${allGlChannels[rank - 1]} = coords.${allGlChannels[rank - 2]};
-            coords.${allGlChannels[rank - 2]} = lastDim;
+            int lastDim = coords.${channels[rank - 1]};
+            coords.${channels[rank - 1]} = coords.${channels[rank - 2]};
+            coords.${channels[rank - 2]} = lastDim;
 
             vec4 result = vec4(getValue(${coords}), 0., 0., 0.);
 
