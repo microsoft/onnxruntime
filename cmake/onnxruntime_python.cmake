@@ -25,10 +25,9 @@ if(NOT onnxruntime_PYBIND_EXPORT_OPSCHEMA)
 endif()
 
 if (onnxruntime_ENABLE_EAGER_MODE)
-  list(APPEND CMAKE_PREFIX_PATH ${prebuilt_PYTORCH_PATH})
+  list(APPEND CMAKE_PREFIX_PATH ${onnxruntime_PREBUILT_PYTORCH_PATH})
   find_package(Torch REQUIRED)
   find_library(TORCH_PYTHON_LIBRARY torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib")
-  # list(APPEND TORCH_LIBRARIES "${prebuilt_PYTORCH_PATH}/lib/libtorch_python.so")
 
   file(GLOB onnxruntime_eager_extension_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_ROOT}/orttraining/eager/*.cpp"

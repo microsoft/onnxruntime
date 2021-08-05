@@ -157,7 +157,7 @@ option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
 option(onnxruntime_ENABLE_EXTENSION_CUSTOM_OPS "Enable custom operators in onnxruntime-extensions" OFF)
 
 # pre-build python path
-option(prebuilt_PYTORCH_PATH "Path to pytorch installation dir")
+option(onnxruntime_PREBUILT_PYTORCH_PATH "Path to pytorch installation dir")
 
 # Single output director for all binaries
 set (RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin CACHE PATH "Single output directory for all binaries.")
