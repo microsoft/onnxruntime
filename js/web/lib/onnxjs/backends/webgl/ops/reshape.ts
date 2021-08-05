@@ -7,7 +7,9 @@ import {ShapeUtil} from '../../../util';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {TextureLayout} from '../types';
 import {getPackedShape} from '../utils';
+
 import {WebGLReshapePacked} from './reshape-packed';
+
 
 export class WebGLReshape extends Reshape {
   packedImpl: WebGLReshapePacked;
@@ -28,10 +30,15 @@ export class WebGLReshape extends Reshape {
 
 export function reshape(
     inferenceHandler: WebGLInferenceHandler, input: Tensor, reshapedDims: readonly number[]): Tensor {
-  const inputTD = inferenceHandler.getOrCreateTextureData(input);
+  let inputTD = inferenceHandler.getOrCreateTextureData(input);
   let packedShape = reshapedDims;
+
   if (inputTD.channels === 4) {
-    packedShape = getPackedShape(reshapedDims);
+    if (!inputTD.isPacked) {
+      packedShape = getPackedShape(reshapedDims);
+    } else {
+      inputTD = inferenceHandler.unpack(inputTD);
+    }
   }
   const newTextureLayout: TextureLayout = {
     channels: inputTD.channels,

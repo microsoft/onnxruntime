@@ -112,10 +112,11 @@ class AttentionCPUBase : public AttentionBase {
 
     {
       if (mask_data != nullptr) {
-        PrepareMask(mask_index, mask_index_dims, mask_data, is_unidirectional_, batch_size, sequence_length, past_sequence_length);
-      } else {  // no any mask
-        memset(attention_probs, 0, static_cast<size_t>(batch_size) * num_heads_ * sequence_length * all_sequence_length * sizeof(T));
+        // Convert attention mask data from int to float (0 to -10000.0f). The mask_data shape is BxSxS*.
+        PrepareMask(mask_index, mask_index_dims, mask_data, batch_size, sequence_length, past_sequence_length);
       }
+
+      memset(attention_probs, 0, static_cast<size_t>(batch_size) * num_heads_ * sequence_length * all_sequence_length * sizeof(T));
 
       const int loop_len = batch_size * num_heads_;
       const float alpha = 1.0f / sqrt(static_cast<float>(head_size));
@@ -127,32 +128,45 @@ class AttentionCPUBase : public AttentionBase {
         for (std::ptrdiff_t i = begin; i != end; ++i) {
           const std::ptrdiff_t batch_index = i / num_heads_;
 
-          // broadcast mask data: (Bx)SxS* -> (BxNx)SxS*
-          if (mask_data != nullptr) {
-            const T* broadcast_data_src = reinterpret_cast<T*>(mask_data) + batch_index * sequence_length * all_sequence_length;
-            T* broadcast_data_dest = reinterpret_cast<T*>(attention_probs) + sequence_length * all_sequence_length * i;
-            memcpy(broadcast_data_dest, broadcast_data_src, sequence_length * all_sequence_length * sizeof(T));
-          }
-
           const T* k = K + input_chunk_length * i;
           if (nullptr != present) {
-            // concatenate past_K and K : (BxNx)S'xH, (BxNx)SxH -> (BxNx)S*xH
+            // Concatenate past_K and K : (BxNx)S'xH, (BxNx)SxH -> (BxNx)S*xH
             k = ConcatStateChunk(past, k, present, past_chunk_length, present_chunk_length, i);
           }
 
-          // gemm
+          int offset = sequence_length * all_sequence_length * static_cast<int>(i);
+          T* output = reinterpret_cast<T*>(attention_probs) + offset;
+
+          // Compute Q*K'
           //                     original                 transposed             each iteration
           // A: Q                (B x N x) S x H          (B x N x) S x H        S x H
           // B: K'               (B x N x) S* x H         (B x N x) H x S*       H x S*
           // C: attention_probs  (B x N x) S x S*         (B x N x) S x S*       S x S*
           math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, all_sequence_length, head_size, alpha,
                                     Q + input_chunk_length * i, k, 1.0,
-                                    reinterpret_cast<T*>(attention_probs) + sequence_length * all_sequence_length * i, nullptr);
+                                    output, nullptr);
+
+          // Apply unidirectional mask and set future words to -10000.0f.
+          if (is_unidirectional_) {
+            for (int s = 0; s < sequence_length - 1; s++) {
+              for (int t = past_sequence_length + s + 1; t < all_sequence_length; t++) {
+                output[s * all_sequence_length + t] = static_cast<T>(-10000.0f);
+              }
+            }
+          }
+
+          // Apply attention mask
+          if (mask_data != nullptr) {
+            const T* attention_mask = reinterpret_cast<T*>(mask_data) + batch_index * sequence_length * all_sequence_length;
+            for (int j = 0; j < sequence_length * all_sequence_length ; j++) {
+              output[j] += attention_mask[j];
+            }
+          }
 
           if (extra_add_qk_data != nullptr) {
-            int extra_add_qk_offset = static_cast<int>(i) * sequence_length * all_sequence_length;
+            const T* extra = extra_add_qk_data + offset;
             for (int j = 0; j < sequence_length * all_sequence_length ; j++) {
-              attention_probs[extra_add_qk_offset+j] += extra_add_qk_data[extra_add_qk_offset + j];
+              output[j] += extra[j];
             }
           }
         }

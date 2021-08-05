@@ -185,9 +185,6 @@ class BertOnnxModel(OnnxModel):
         return
 
     def adjust_reshape_and_expand(self):
-        # Remove reshape nodes that having same shape of input and output based on symbolic shape inference.
-        FusionUtils.remove_useless_reshape_nodes(self)
-
         nodes_to_remove = []
         for node in self.nodes():
             if node.op_type == 'Reshape':
@@ -289,7 +286,9 @@ class BertOnnxModel(OnnxModel):
         if (options is None) or options.enable_embed_layer_norm:
             self.fuse_embed_layer()
 
-        # Post-processing like removing extra reshape nodes.
+        # Remove reshape nodes that having same shape of input and output based on symbolic shape inference.
+        FusionUtils.remove_useless_reshape_nodes(self)
+
         self.postprocess()
 
         # Bias fusion is done after postprocess to avoid extra Reshape between bias and Gelu/FastGelu/SkipLayerNormalization
