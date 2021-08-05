@@ -2784,7 +2784,7 @@ const ONNX_NAMESPACE::TensorProto* Graph::GetInitializer(const std::string& init
   } else if (check_outer_scope && IsSubgraph()) {
     // make sure there's not a local value with the same name. if there is it shadows any initializer in outer scope.
     if (IsOuterScopeValue(initializer_name)) {
-      initializer = parent_graph_->GetConstantInitializer(initializer_name, check_outer_scope);
+      initializer = parent_graph_->GetInitializer(initializer_name, check_outer_scope);
     }
   }
 
