@@ -45,7 +45,7 @@ The device ID.
 
 Default value: 0
 
-### cuda_mem_limit
+### gpu_mem_limit
 The size limit of the device memory arena in bytes. This size limit is only for the execution provider's arena. The total device memory usage may be higher.
 s: max value of C++ size_t type (effectively unlimited)
 
@@ -88,7 +88,7 @@ providers = [
     ('CUDAExecutionProvider', {
         'device_id': 0,
         'arena_extend_strategy': 'kNextPowerOfTwo',
-        'cuda_mem_limit': 2 * 1024 * 1024 * 1024,
+        'gpu_mem_limit': 2 * 1024 * 1024 * 1024,
         'cudnn_conv_algo_search': 'EXHAUSTIVE',
         'do_copy_in_default_stream': True,
     }),
@@ -106,7 +106,7 @@ OrtSessionOptions* session_options = /* ... */;
 OrtCUDAProviderOptions options;
 options.device_id = 0;
 options.arena_extend_strategy = 0;
-options.cuda_mem_limit = 2 * 1024 * 1024 * 1024;
+options.gpu_mem_limit = 2 * 1024 * 1024 * 1024;
 options.cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::EXHAUSTIVE;
 options.do_copy_in_default_stream = 1;
 
