@@ -66,7 +66,7 @@ def optimize_fp16_onnx_no_cast(input_onnx_path, optimized_onnx_path, epsilon):
     node_to_add = onnx.helper.make_node("LayerNormalization", ["input", "layer_norm.weight", "layer_norm.bias"],
                                         ["output"],
                                         "layer_norm",
-                                        epsilon=epsilon)  # need we simulate fp16 epsilon
+                                        epsilon=epsilon)
 
     onnx_model.remove_nodes(nodes_to_remove)
     onnx_model.add_node(node_to_add)
@@ -108,7 +108,7 @@ def run(batch_size,
         optimized_onnx_path = './temp/layer_norm_{}_opt.onnx'.format("fp16" if float16 else "fp32")
         if (not float16) or cast_fp16:
             optimize_onnx(onnx_model_path, optimized_onnx_path,
-                          expected_op=LayerNorm.get_fused_op())  # TODO: convert to fp16 model if needed.
+                          expected_op=LayerNorm.get_fused_op())
         else:
             if cast_onnx_only:
                 optimize_fp16_onnx_with_cast(onnx_model_path, optimized_onnx_path, epsilon=epsilon)
