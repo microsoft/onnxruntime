@@ -841,7 +841,7 @@ class OnnxModel:
 
     def save_model_to_file(self, output_path, use_external_data_format=False):
         logger.info(f"Sort graphs in topological order")
-        self.topological_sort()
+        #self.topological_sort()
 
         logger.info(f"Output model to {output_path}")
 

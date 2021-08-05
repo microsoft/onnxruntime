@@ -24,6 +24,56 @@ class FusionReshape(Fusion):
         if concat_node.op_type != 'Concat' or len(concat_node.input) < 3 or len(concat_node.input) > 4:
             return
 
+        #********************************************************************************
+        # hard_delete = True # fluency bart
+        # if hard_delete:
+        #     self.nodes_to_remove.extend([concat_node])
+
+        #     path_10 = self.model.match_parent_path(concat_node,
+        #                                         ['Unsqueeze', 'Mul', 'Gather', 'Shape'], [0, 0, 0, 0],
+        #                                         output_name_to_node)
+        #     if path_10 is not None:
+        #         self.nodes_to_remove.extend(path_10)
+        #     path_11 = self.model.match_parent_path(concat_node,
+        #                                         ['Unsqueeze', 'Mul', 'Gather', 'Shape'], [1, 0, 0, 0],
+        #                                         output_name_to_node)
+        #     if path_11 is not None:
+        #         self.nodes_to_remove.extend(path_11)
+
+
+        #     path_21 = self.model.match_parent_path(concat_node,
+        #                                         ['Unsqueeze', 'Gather', 'Shape'], [0, 0, 0],
+        #                                         output_name_to_node)
+        #     if path_21 is not None:
+        #         self.nodes_to_remove.extend(path_21)
+
+        #     path_22 = self.model.match_parent_path(concat_node,
+        #                                         ['Unsqueeze', 'Gather', 'Shape'], [1, 0, 0],
+        #                                         output_name_to_node)
+        #     if path_22 is not None:
+        #         self.nodes_to_remove.extend(path_22)
+
+        #     path_23 = self.model.match_parent_path(concat_node,
+        #                                         ['Unsqueeze', 'Gather', 'Shape'], [2, 0, 0],
+        #                                         output_name_to_node)
+        #     if path_23 is not None:
+        #         self.nodes_to_remove.extend(path_23)
+
+
+
+        #     path_32 = self.model.match_parent_path(concat_node,
+        #                                         ['Unsqueeze', 'Gather', 'Shape', 'Transpose', 'Reshape'], [2, 0, 0, 0, 0],
+        #                                         output_name_to_node)
+        #     if path_32 is not None:
+        #         self.nodes_to_remove.extend(path_32[:-1])
+        #     path_33 = self.model.match_parent_path(concat_node,
+        #                                         ['Unsqueeze', 'Gather', 'Shape', 'Transpose', 'Reshape'], [3, 0, 0, 0, 0],
+        #                                         output_name_to_node)
+        #     if path_33 is not None:
+        #         self.nodes_to_remove.extend(path_33[:-1])
+        #     return
+        #********************************************************************************
+
         path0 = self.model.match_parent_path(concat_node, ['Unsqueeze', 'Gather', 'Shape'], [0, 0, 0],
                                              output_name_to_node)
         if path0 is None:

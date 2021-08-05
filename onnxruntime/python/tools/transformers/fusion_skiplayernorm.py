@@ -34,7 +34,12 @@ class FusionSkipLayerNormalization(Fusion):
                 return
 
         # The number of input node of add should be 2
-        if len(self.model.get_parents(add)) != 2:
+        parents = self.model.get_parents(add)
+        if len(parents) != 2:
+            return
+
+        # work around for fluency-bart
+        if parents[0].op_type == 'Mul' and parents[1].op_type == 'Slice':
             return
 
         if self.shape_infer_helper is not None:
