@@ -23,9 +23,9 @@ For build instructions, please see the [BUILD page](../../how-to/build/eps.md#ar
 To use ArmNN as execution provider for inferencing, please register it as below.
 ```
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
-Ort::SessionOptions sf;
+Ort::SessionOptions so;
 bool enable_cpu_mem_arena = true;
-Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(sf, enable_cpu_mem_arena));
+Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ArmNN(so, enable_cpu_mem_arena));
 ```
 The C API details are [here](../api/c-api.md).
 
