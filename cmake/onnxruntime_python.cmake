@@ -27,7 +27,8 @@ endif()
 if (onnxruntime_ENABLE_EAGER_MODE)
   list(APPEND CMAKE_PREFIX_PATH ${prebuilt_PYTORCH_PATH})
   find_package(Torch REQUIRED)
-  list(APPEND TORCH_LIBRARIES "${prebuilt_PYTORCH_PATH}/lib/libtorch_python.so")
+  find_library(TORCH_PYTHON_LIBRARY torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib")
+  # list(APPEND TORCH_LIBRARIES "${prebuilt_PYTORCH_PATH}/lib/libtorch_python.so")
 
   file(GLOB onnxruntime_eager_extension_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_ROOT}/orttraining/eager/*.cpp"
@@ -93,7 +94,7 @@ if (onnxruntime_ENABLE_EAGER_MODE)
   # todo: this is because the prebuild pytorch may use a different version of protobuf headers.
   # force the build to find the protobuf headers ort using.
   target_include_directories(onnxruntime_pybind11_state PRIVATE "${REPO_ROOT}/cmake/external/protobuf/src")
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager ${TORCH_LIBRARIES})
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_eager ${TORCH_LIBRARIES} ${TORCH_PYTHON_LIBRARY})
   # the ort_aten.g.cpp is generated from tools. currently it has some limitations.
   # todo: fix this
   set_source_files_properties("${ORTTRAINING_ROOT}/orttraining/eager/ort_aten.g.cpp" PROPERTIES COMPILE_FLAGS -Wno-unused-parameter)
