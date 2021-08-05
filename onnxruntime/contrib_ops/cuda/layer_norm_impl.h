@@ -43,6 +43,20 @@ void HostApplyLayerNorm(
     const T* gamma,
     const T* beta);
 
+template <typename T>
+void LaunchLayerNorm(
+    const cudaDeviceProp& prop,
+    cudaStream_t stream,
+    T* output,
+    T* mean,
+    T* inv_std_dev,
+    const T* input,
+    int n1,
+    int n2,
+    double epsilon,
+    const T* gamma,
+    const T* beta);
+    
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

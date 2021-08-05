@@ -389,15 +389,19 @@ void HostApplyLayerNorm(
 LAYERNORM_LINEAR_IMPL(float, float, true)
 LAYERNORM_LINEAR_IMPL(half, float, true)
 LAYERNORM_LINEAR_IMPL(double, double, true)
-LAYERNORM_LINEAR_IMPL(float, float, false)
+//LAYERNORM_LINEAR_IMPL(float, float, false)
 LAYERNORM_LINEAR_IMPL(half, float, false)
 LAYERNORM_LINEAR_IMPL(double, double, false)
 
-//LAYERNORM_LINEAR_IMPL(half, half)
 #if CUDA_VERSION >= 11000 && (__CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__))
 LAYERNORM_LINEAR_IMPL(nv_bfloat16, float, true)
 LAYERNORM_LINEAR_IMPL(nv_bfloat16, float, false)
 #endif
+
+template<> void HostApplyLayerNorm<float, float, false>(const cudaDeviceProp& prop, cudaStream_t stream, float* output, float* mean, float* inv_std_dev, const float* input, int n1, int n2, double epsilon, const float* gamma, const float* beta)
+{
+   LaunchLayerNorm<float>(prop, stream, output, mean, inv_std_dev, input, n1, n2, epsilon, gamma, beta);
+}
 
 }  // namespace cuda
 }  // namespace contrib

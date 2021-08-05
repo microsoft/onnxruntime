@@ -97,7 +97,23 @@ Status LayerNorm<T, U, simplified>::ComputeInternal(OpKernelContext* ctx) const 
     inv_var_data = reinterpret_cast<CudaU*>(var->template MutableData<U>());
   }
 
+  IAllocatorUniquePtr<CudaU> mean_buffer;
+  IAllocatorUniquePtr<CudaU> inv_var_buffer;
+  if (!simplified && std::is_same<T, float>::value && std::is_same<U, float>::value) {
+    int64_t elements = TensorShape(mean_inv_std_var_dim).Size();
+    if (mean_data == nullptr) {
+      mean_buffer = GetScratchBuffer<CudaU>(elements);
+      mean_data = reinterpret_cast<CudaU*>(mean_buffer.get());
+    }
+
+    if (inv_var_data == nullptr) {
+      inv_var_buffer = GetScratchBuffer<CudaU>(elements);
+      inv_var_data = reinterpret_cast<CudaU*>(inv_var_buffer.get());
+    }
+  }
+
   HostApplyLayerNorm<CudaT, CudaU, simplified>(GetDeviceProp(), Stream(), Y_data, mean_data, inv_var_data, X_data, n1, n2, epsilon_, scale_data, bias_data);
+
   return Status::OK();
 }
 
