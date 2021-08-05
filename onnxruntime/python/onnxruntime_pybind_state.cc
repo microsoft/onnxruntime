@@ -25,6 +25,7 @@
 #include "core/platform/env.h"
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/provider_bridge_ort.h"
 
 #ifdef ENABLE_TRAINING
@@ -658,11 +659,18 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 #if !defined(__ANDROID__)
       LOGS_DEFAULT(WARNING) << "NNAPI execution provider can only be used to generate ORT format model in this build.";
 #endif
-      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Nnapi(0));
+      const auto partitioning_stop_ops_list = sess->GetSessionOptions().config_options.GetConfigEntry(
+          kOrtSessionOptionsConfigNnapiEpPartitioningStopOps);
+      RegisterExecutionProvider(
+          sess, *onnxruntime::CreateExecutionProviderFactory_Nnapi(0, partitioning_stop_ops_list));
 #endif
     } else if (type == kRknpuExecutionProvider) {
 #ifdef USE_RKNPU
       RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_Rknpu());
+#endif
+    } else if (type == kCoreMLExecutionProvider) {
+#if defined(USE_COREML)
+      RegisterExecutionProvider(sess, *onnxruntime::CreateExecutionProviderFactory_CoreML(0));
 #endif
     } else {
       // check whether it is a dynamic load EP:

@@ -102,3 +102,19 @@ def unfold_gradient():
         (('ATenOp', 'com.microsoft'), ['GO(0)', 'Shape_X', 'I(1)', 'I(2)', 'I(3)'], [
          'GI(0)'], {'name': {'value': 'aten::unfold_backward', 'dtype': 'string'}}),
     ]
+
+
+@register_gradient('com.microsoft', 'ATenOp', 'aten::avg_pool2d', '')
+def avg_pool2d_gradient():
+    return [
+        (('ATenOp', 'com.microsoft'), ['GO(0)', 'I(0)', 'I(1)', 'I(2)', 'I(3)', 'I(4)', 'I(5)', 'I(6)'], [
+         'GI(0)'], {'name': {'value': 'aten::avg_pool2d_backward', 'dtype': 'string'}}),
+    ]
+
+
+@register_gradient('com.microsoft', 'ATenOp', 'aten::_adaptive_avg_pool2d', '')
+def adaptive_avg_pool2d_gradient():
+    return [
+        (('ATenOp', 'com.microsoft'), ['GO(0)', 'I(0)'], [
+         'GI(0)'], {'name': {'value': 'aten::_adaptive_avg_pool2d_backward', 'dtype': 'string'}}),
+    ]

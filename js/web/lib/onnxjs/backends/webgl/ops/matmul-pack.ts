@@ -11,6 +11,7 @@ import {ProgramInfo, RunData, WebGLOperator} from '../types';
 import {getCoordsDataType} from '../utils';
 
 import {getActicationSnippet} from './fuse-utils';
+import {getBiasForMatmul} from './matmul';
 
 export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
@@ -96,38 +97,6 @@ export class WebGLMatMulPacked extends MatMul implements WebGLOperator {
       uniformData: {}
     };
   }
-}
-
-function getBiasForMatmul(
-    coordsDataType: string, allGlChannels: readonly string[], inShape: readonly number[],
-    outShape: readonly number[]): string {
-  let unpackedCoordsSnippet = '';
-  const inRank = inShape.length;
-  const outRank = outShape.length;
-  const rankDiff = outRank - inRank;
-  if (outRank < 2 && inRank > 0) {
-    unpackedCoordsSnippet = 'coords';
-  } else {
-    unpackedCoordsSnippet = inShape.map((s, i) => `coords.${allGlChannels[i + rankDiff]}`).join(', ');
-  }
-  const broadcastDims = BroadcastUtil.getBroadcastDims(inShape, outShape);
-  const coordsSnippet = broadcastDims.map(d => `coords.${allGlChannels[d + rankDiff]} = 0;`).join('\n');
-  const inSize = ShapeUtil.size(inShape);
-  const isInputScalar = inSize === 1;
-  let output = 'vec4(outputValue.xx, outputValue.yy)';
-  if (isInputScalar) {
-    output = 'vec4(outputValue.x)';
-  }
-  const getBiasForMatmulSource = `
-  vec4 getBiasForMatmul() {
-    ${coordsDataType} coords = getOutputCoords();
-    ${coordsSnippet}
-    vec4 outputValue = getBias(${unpackedCoordsSnippet});
-    return ${output};
-
-  }`;
-
-  return getBiasForMatmulSource;
 }
 
 function getBcastSamplerForMatmul(

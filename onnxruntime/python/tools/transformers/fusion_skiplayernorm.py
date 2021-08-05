@@ -39,6 +39,7 @@ class FusionSkipLayerNormalization(Fusion):
 
         if self.shape_infer_helper is not None:
             if not self.shape_infer_helper.compare_shape(add.input[0], add.input[1]):
+                logger.debug(f"skip skiplayernorm fusion since shape of inputs ({add.input[0]}, {add.input[1]}) are not same")
                 return
         else:
             # shape_infer_helper can not handle subgraphs. Current work around is to disable skiplayernorm fusion
