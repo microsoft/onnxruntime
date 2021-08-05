@@ -229,7 +229,6 @@ class SequenceInsert final : public CudaKernel {
       ORT_ENFORCE(I->IsDataType<int32_t>() || I->IsDataType<int64_t>(),
                   "Indices need to be of types int32 or int64");
 
-      int64_t idx = -1;
       if (I->IsDataType<int32_t>()) {
         idx = static_cast<int64_t>(I->Data<int32_t>()[0]);
       } else {
