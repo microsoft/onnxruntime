@@ -63,23 +63,24 @@ class OnnxModel:
         return self.model.graph
 
     def graphs(self):
-        if self.all_graphs is not None:
-            return self.all_graphs
-        self.all_graphs = []
-        graph_queue = [self.model.graph]
-        while graph_queue:
-            graph = graph_queue.pop(0)
-            self.all_graphs.append(graph)
-            for node in graph.node:
-                for attr in node.attribute:
-                    if attr.type == AttributeProto.AttributeType.GRAPH:
-                        assert (isinstance(attr.g, onnx_pb.GraphProto))
-                        graph_queue.append(attr.g)
-                    if attr.type == AttributeProto.AttributeType.GRAPHS:
-                        for g in attr.graphs:
-                            assert (isinstance(g, onnx_pb.GraphProto))
-                            graph_queue.append(g)
-        return self.all_graphs
+        return [self.model.graph]
+        # if self.all_graphs is not None:
+        #     return self.all_graphs
+        # self.all_graphs = []
+        # graph_queue = [self.model.graph]
+        # while graph_queue:
+        #     graph = graph_queue.pop(0)
+        #     self.all_graphs.append(graph)
+        #     for node in graph.node:
+        #         for attr in node.attribute:
+        #             if attr.type == AttributeProto.AttributeType.GRAPH:
+        #                 assert (isinstance(attr.g, onnx_pb.GraphProto))
+        #                 graph_queue.append(attr.g)
+        #             if attr.type == AttributeProto.AttributeType.GRAPHS:
+        #                 for g in attr.graphs:
+        #                     assert (isinstance(g, onnx_pb.GraphProto))
+        #                     graph_queue.append(g)
+        # return self.all_graphs
 
     def get_graph_by_node(self, node):
         for graph in self.graphs():

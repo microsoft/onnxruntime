@@ -61,11 +61,11 @@ def generate_input_data_beam():
     ort_inputs['decoder_start_token_id'] = array_4
     return ort_inputs
 
-onnx_model_path_greedy = "/bert_ort/wy/Fluency/new_model_0804/test_bart_greedy/model_bart_greedy.onnx"
-onnx_model_path_greedy_o = "/bert_ort/wy/Fluency/new_model_0804/test_bart_greedy/model_bart_greedy_o.onnx"
+onnx_model_path_greedy = "/bert_ort/wy/Fluency/new_model_0804/test_bart_greedy/model_bart_greedy_o.onnx"
+onnx_model_path_greedy_o = "/bert_ort/wy/Fluency/new_model_0804/test_bart_greedy/model_bart_greedy_opt.onnx"
 
-onnx_model_path_beam = "/bert_ort/wy/Fluency/new_model_0804/test_bart_beam/model_bart_beam.onnx"
-onnx_model_path_beam_o = "/bert_ort/wy/Fluency/new_model_0804/test_bart_beam/model_bart_beam_o.onnx"
+onnx_model_path_beam = "/bert_ort/wy/Fluency/new_model_0804/test_bart_beam/model_bart_beam_o.onnx"
+onnx_model_path_beam_o = "/bert_ort/wy/Fluency/new_model_0804/test_bart_beam/model_bart_beam_opt.onnx"
 
 print("optimizing greedy search")
 from optimizer import optimize_model
@@ -82,6 +82,7 @@ opt_model = optimize_model(onnx_model_path_greedy,
                            only_onnxruntime=False)
 
 opt_model.save_model_to_file(onnx_model_path_greedy_o, use_external_data_format=False)
+print(opt_model.get_fused_operator_statistics())
 
 print("optimizing beam search")
 opt_model_1 = optimize_model(onnx_model_path_beam,
@@ -94,6 +95,7 @@ opt_model_1 = optimize_model(onnx_model_path_beam,
                            only_onnxruntime=False)
 
 opt_model_1.save_model_to_file(onnx_model_path_beam_o, use_external_data_format=False)
+print(opt_model_1.get_fused_operator_statistics())
 
 print("create session")
 from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel
