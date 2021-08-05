@@ -45,14 +45,14 @@ class GradientBuilderBase {
                       const std::unordered_set<std::string>& gradient_inputs,
                       const std::unordered_set<std::string>& gradient_outputs,
                       const logging::Logger& logger,
-                      const bool use_invertible)
+                      std::unordered_map<std::string, int>& input_arg_ref_count)
       : gradient_graph_config_(gradient_graph_config),
         graph_(graph),
         node_(node),
         gradient_inputs_(gradient_inputs),
         gradient_outputs_(gradient_outputs),
         logger_(logger),
-        use_invertible_(use_invertible) {
+        input_arg_ref_count_(input_arg_ref_count) {
     unique_node_prefix_ = CreateUniqueNodePrefix();
   }
 
@@ -97,6 +97,15 @@ class GradientBuilderBase {
     }
 
     return ArgDef(node_->InputDefs()[i]->Name(), node_->InputDefs()[i]->TypeAsProto());
+  }
+
+  int IC(const size_t i) const {
+    auto input_name = I(i).name;
+    if (input_arg_ref_count_.find(input_name) == input_arg_ref_count_.end()) {
+      return -1;
+    }
+
+    return input_arg_ref_count_[input_name];
   }
 
   // i-th output of forward op
@@ -196,8 +205,7 @@ class GradientBuilderBase {
   }
 
   int OnnxOpSetVersion() const {
-    return graph_ != nullptr && graph_->DomainToVersionMap().find(kOnnxDomain) != graph_->DomainToVersionMap().end() ?
-               graph_->DomainToVersionMap().at(kOnnxDomain) : -1;
+    return graph_ != nullptr && graph_->DomainToVersionMap().find(kOnnxDomain) != graph_->DomainToVersionMap().end() ? graph_->DomainToVersionMap().at(kOnnxDomain) : -1;
   }
 
   template <typename T>
@@ -288,11 +296,11 @@ class GradientBuilderBase {
                                  std::vector<NodeDef>& output) const;
 
   std::vector<NodeDef> GetBiasGeluGradNodes(
-    bool use_approximation,
-    const ArgDef& dY, const ArgDef& X, const ArgDef& B,  // inputs
-    const ArgDef& dX, const ArgDef& dB,                  // outputs
-    const ArgDef& b_axes, const ArgDef& b_shape, const ArgDef& x_shape,  //intermediate args
-    const std::string& node_name) const;
+      bool use_approximation,
+      const ArgDef& dY, const ArgDef& X, const ArgDef& B,                  // inputs
+      const ArgDef& dX, const ArgDef& dB,                                  // outputs
+      const ArgDef& b_axes, const ArgDef& b_shape, const ArgDef& x_shape,  //intermediate args
+      const std::string& node_name) const;
 
   const std::string& NodeName() const { return node_->Name(); }
 
@@ -328,7 +336,7 @@ class GradientBuilderBase {
 
   const logging::Logger& logger_;
 
-  const bool use_invertible_;
+  std::unordered_map<std::string, int>& input_arg_ref_count_;
 };
 
 class EmptyGradientBuilder : public GradientBuilderBase {

@@ -18,7 +18,7 @@ typedef GenericRegistry<GradientBuilderBase,
                         const std::unordered_set<std::string>&,  // gradient_inputs
                         const std::unordered_set<std::string>&,  // gradient_outputs
                         const logging::Logger&,
-                        const bool use_invertible>
+                        std::unordered_map<std::string, int>&>
     GradientRegistryType;
 
 class GradientBuilderRegistry : public GradientRegistryType {
@@ -41,7 +41,7 @@ GradientDef GetGradientForOp(const GradientGraphConfiguration& gradient_graph_co
                              const std::unordered_set<std::string>& output_args_need_grad,
                              const std::unordered_set<std::string>& input_args_need_grad,
                              const logging::Logger& logger,
-                             const bool use_invertible = false);
+                             std::unordered_map<std::string, int>& input_arg_ref_count);
 
 }  // namespace training
 }  // namespace onnxruntime

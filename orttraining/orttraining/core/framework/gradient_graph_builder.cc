@@ -268,19 +268,23 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
     for (auto arg : node->InputDefs()) {
       if (visited_node_args.find(arg) != visited_node_args.end()) {
         input_args_need_grad.insert(arg->Name());
+      }
+
+      if (input_arg_ref_count.find(arg->Name()) == input_arg_ref_count.end()) {
+        input_arg_ref_count[arg->Name()] = 1;
+      } else {
         input_arg_ref_count[arg->Name()] += 1;
       }
     }
     for (auto arg : node->OutputDefs()) {
       if (visited_node_args.find(arg) != visited_node_args.end()) {
         output_args_need_grad.insert(arg->Name());
-        if (input_arg_ref_count.find(arg->Name()) == input_arg_ref_count.end()) {
-          input_arg_ref_count[arg->Name()] = 0;
-        }
       }
     }
 
-    GradientDef node_defs = GetGradientForOp(gradient_graph_config_, graph_, node, output_args_need_grad, input_args_need_grad, logger_);
+    GradientDef node_defs = GetGradientForOp(gradient_graph_config_, graph_, node, output_args_need_grad,
+                                             input_args_need_grad, logger_, input_arg_ref_count);
+
     if (node_defs.empty()) {
       LOGS(logger_, WARNING) << "GetGradientForOp() did not create any nodes for node "
                              << node->Name() << " of type " << node->OpType() << ".";
@@ -308,8 +312,6 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
       continue;
     }
 
-    bool use_invertible = false;
-
     //TODO: might not need two sets, the union of them might be enough
     std::unordered_set<std::string> input_args_need_grad, output_args_need_grad;
     for (auto arg : node->InputDefs()) {
@@ -317,11 +319,9 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
         input_args_need_grad.insert(arg->Name());
       }
       if (input_arg_ref_count.find(arg->Name()) == input_arg_ref_count.end()) {
-        input_arg_ref_count[arg->Name()] = 0;
-      }
-
-      if (input_arg_ref_count[arg->Name()] == 0) {
-        use_invertible = true;
+        input_arg_ref_count[arg->Name()] = 1;
+      } else {
+        input_arg_ref_count[arg->Name()] += 1;
       }
     }
 
@@ -329,12 +329,12 @@ Status GradientGraphBuilder::Build(const std::unordered_set<std::string>* p_init
       if (visited_node_args.find(arg) != visited_node_args.end()) {
         output_args_need_grad.insert(arg->Name());
       }
-      if (input_arg_ref_count.find(arg->Name()) == input_arg_ref_count.end()) {
-        input_arg_ref_count[arg->Name()] = 0;
-      }
     }
 
-    GradientDef node_defs = GetGradientForOp(gradient_graph_config_, graph_, node, output_args_need_grad, input_args_need_grad, logger_, use_invertible);
+    GradientDef node_defs = GetGradientForOp(gradient_graph_config_, graph_, node,
+                                             output_args_need_grad, input_args_need_grad, logger_,
+                                             input_arg_ref_count);
+
     if (node_defs.empty()) {
       LOGS(logger_, WARNING) << "GetGradientForOp() did not create any nodes for node "
                              << node->Name() << " of type " << node->OpType() << ".";
