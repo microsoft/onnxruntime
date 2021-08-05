@@ -5,6 +5,29 @@ parameters:
 jobs:
 - template: ../../templates/win-ci-2019.yml
   parameters:
+    AgentPool : 'onnxruntime-tensorrt8-winbuild'
+    ArtifactName: 'drop-nuget-tensorrt'
+    JobName: 'Windows_CI_GPU_TENSORRT_Dev'
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --use_telemetry --cmake_generator "Visual Studio 16 2019" --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.0.1.6.Windows10.x86_64.cuda-11.3.cudnn8.2" --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+    BuildArch: 'x64'
+    msbuildArchitecture: 'amd64'
+    EnvSetupScript: 'setup_env_trt.bat'
+    sln_platform: 'x64'
+    DoDebugBuild: 'false'
+    DoNugetPack : 'true'
+    DoCompliance: 'false'
+    DoEsrp: ${{ parameters.DoEsrp }}
+    CudaVersion: '11.1'
+    OrtPackageId: 'Microsoft.ML.OnnxRuntime.TensorRT'
+    NuPackScript: |
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.TensorRT /p:ExecutionProvider=tensorrt /p:IsLinuxBuild=false
+     copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+     mkdir $(Build.ArtifactStagingDirectory)\testdata
+     copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
+
+- template: ../../templates/win-ci-2019.yml
+  parameters:
     AgentPool : 'onnxruntime-gpu-winbuild'
     ArtifactName: 'drop-nuget'
     JobName: 'Windows_CI_GPU_CUDA_Dev'
@@ -159,6 +182,7 @@ jobs:
     clean: all
   pool: 'onnxruntime-gpu-winbuild'
   dependsOn:
+  - Windows_CI_GPU_TENSORRT_Dev
   - Windows_CI_GPU_CUDA_Dev
   - Windows_CI_GPU_DML_Dev
   - Windows_CI_GPU_DML_Dev_x86
@@ -167,6 +191,12 @@ jobs:
   - Linux_CI_GPU_Dev
   condition: succeeded()
   steps:
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact - NuGet TensorRT'
+    inputs:
+      artifactName: 'drop-nuget-tensorrt'
+      targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
+
   - task: DownloadPipelineArtifact@0
     displayName: 'Download Pipeline Artifact - NuGet CUDA'
     inputs:
@@ -210,27 +240,60 @@ jobs:
      powershell -Command "Invoke-WebRequest http://stahlworks.com/dev/zip.exe -OutFile zip.exe"
      set PATH=%CD%;%PATH%
      SETLOCAL EnableDelayedExpansion
+     set gpu_nuget=""
+     set gpu_zip=""
+     set gpu_dir=""
+     set trt_nuget=""
+     set trt_zip=""
+     set trt_dir=""
+
      FOR /R %%i IN (*.nupkg) do (
          set filename=%%~ni
-         IF NOT "!filename:~25,7!"=="Managed" (
-             rename %%~ni.nupkg %%~ni.zip
-             unzip %%~ni.zip -d %%~ni
-             del /Q %%~ni.zip
-             unzip linux-x64.zip -d linux-x64
-             mkdir %%~ni\runtimes\linux-x64
-             mkdir %%~ni\runtimes\linux-x64\native
-             move linux-x64\linux-x64\libonnxruntime.so %%~ni\runtimes\linux-x64\native\libonnxruntime.so
-             move linux-x64\linux-x64\libonnxruntime_providers_shared.so %%~ni\runtimes\linux-x64\native\libonnxruntime_providers_shared.so
-             move linux-x64\linux-x64\libonnxruntime_providers_cuda.so %%~ni\runtimes\linux-x64\native\libonnxruntime_providers_cuda.so
-             pushd %%~ni
-             zip -r ..\%%~ni.zip .
-             popd
-             move %%~ni.zip %%~ni.nupkg
+         IF "!filename:~25,3!"=="Gpu" (
+            set gpu_nuget=%%~ni.nupkg
+            set gpu_zip=%%~ni.zip
+            set gpu_dir=%%~ni
+            rename !gpu_nuget! !gpu_zip!
+            unzip !gpu_zip! -d !gpu_dir!
+            del /Q !gpu_zip!
+         )
+         IF "!filename:~25,8!"=="TensorRT" (
+            set trt_nuget=%%~ni.nupkg
+            set trt_zip=%%~ni.zip
+            set trt_dir=%%~ni
+            rename !trt_nuget! !trt_zip!
+            unzip !trt_zip! -d !trt_dir!
+            del /Q !trt_zip!
          )
      )
+
+     IF !gpu_dir! == "" (
+        echo "Can't find GPU nuget package to unpack/pack"
+        EXIT 1
+     )
+
+     unzip linux-x64.zip -d linux-x64
+     mkdir !gpu_dir!\runtimes\linux-x64
+     mkdir !gpu_dir!\runtimes\linux-x64\native
+     move linux-x64\linux-x64\libonnxruntime.so !gpu_dir!\runtimes\linux-x64\native\libonnxruntime.so
+     move linux-x64\linux-x64\libonnxruntime_providers_shared.so !gpu_dir!\runtimes\linux-x64\native\libonnxruntime_providers_shared.so
+     move linux-x64\linux-x64\libonnxruntime_providers_cuda.so !gpu_dir!\runtimes\linux-x64\native\libonnxruntime_providers_cuda.so
+
+     IF !trt_dir! == "" (
+        echo "Can't find TensorRT nuget package to unpack/pack"
+        EXIT 1
+     )
+
+     move !trt_dir!\runtimes\win-x64\native\onnxruntime_providers_tensorrt.dll !gpu_dir!\runtimes\win-x64\native\onnxruntime_providers_tensorrt.dll
+
+     pushd !gpu_dir! 
+     zip -r ..\!gpu_zip! .
+     popd
+     move !gpu_zip! !gpu_nuget!
+
      popd
      copy $(Build.BinariesDirectory)\nuget-artifact\*.nupkg $(Build.ArtifactStagingDirectory)
-    displayName: 'Bundle Native NuGet and other binaries'
+    displayName: 'Bundle Native NuGet and TensorRT EP binaries'
 
   - script: |
      pushd $(Build.BinariesDirectory)\nuget-artifact-dml
