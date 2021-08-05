@@ -842,7 +842,12 @@ include(eigen)
 #onnxruntime_EXTERNAL_LIBRARIES could contain onnx, onnx_proto,libprotobuf, cuda/cudnn,
 # dnnl/mklml, onnxruntime_codegen_tvm, tvm, nnvm_compiler and pthread
 # pthread is always at the last
-set(onnxruntime_EXTERNAL_LIBRARIES -Wl,--whole-archive onnx onnx_proto ${PROTOBUF_LIB} -Wl,--no-whole-archive re2::re2)
+if (UNIX)
+  set(onnxruntime_EXTERNAL_LIBRARIES -Wl,--whole-archive onnx onnx_proto ${PROTOBUF_LIB} -Wl,--no-whole-archive re2::re2)
+else()
+  set(onnxruntime_EXTERNAL_LIBRARIES onnx onnx_proto ${PROTOBUF_LIB} re2::re2)
+endif()
+
 
 
 set(onnxruntime_LINK_DIRS )
