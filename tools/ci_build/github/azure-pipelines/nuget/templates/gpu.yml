@@ -5,7 +5,7 @@ parameters:
 jobs:
 - template: ../../templates/win-ci-2019.yml
   parameters:
-    AgentPool : 'onnxruntime-tensorrt8-winbuild'
+    AgentPool : 'onnxruntime-gpu-winbuild'
     ArtifactName: 'drop-nuget-tensorrt'
     JobName: 'Windows_CI_GPU_TENSORRT_Dev'
     BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --use_telemetry --cmake_generator "Visual Studio 16 2019" --use_tensorrt --tensorrt_home="C:\local\TensorRT-8.0.1.6.Windows10.x86_64.cuda-11.3.cudnn8.2" --cuda_version=11.4 --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.4" --cudnn_home="C:\local\cudnn-11.4-windows-x64-v8.2.2.26\cuda" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
