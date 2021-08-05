@@ -5,7 +5,7 @@ import {Attribute} from '../../../attribute';
 import {Logger} from '../../../instrument';
 import {Conv} from '../../../ops/conv';
 import {Tensor} from '../../../tensor';
-import {PoolConvUtil} from '../../../util';
+import {assert, PoolConvUtil} from '../../../util';
 import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {Artifact, ProgramInfo, RunData, TextureLayout, WebGLOperator} from '../types';
@@ -13,17 +13,21 @@ import {WebGLContext} from '../webgl-context';
 
 import {WebGLConvPacked} from './conv-pack';
 import {getActicationSnippet} from './fuse-utils';
+import {WebGLUnpackedMatMul} from './matmul';
+import {reshape} from './reshape';
 
 export class WebGLConv extends Conv {
   unpackedGroupedConvImpl: WebGLUnpackedGroupedConv;
   unpackedConvImpl: WebGLUnpackedConv;
   packedConvImpl: WebGLConvPacked;
+  unpackedPointwiseConvImpl: WebGLUnpackedPointwiseConv;
 
   constructor() {
     super();
     this.unpackedGroupedConvImpl = new WebGLUnpackedGroupedConv();
     this.unpackedConvImpl = new WebGLUnpackedConv();
     this.packedConvImpl = new WebGLConvPacked();
+    this.unpackedPointwiseConvImpl = new WebGLUnpackedPointwiseConv();
   }
 
   initialize(attributes: Attribute): void {
@@ -31,6 +35,7 @@ export class WebGLConv extends Conv {
     this.unpackedGroupedConvImpl.initialize(attributes);
     this.unpackedConvImpl.initialize(attributes);
     this.packedConvImpl.initialize(attributes);
+    this.unpackedPointwiseConvImpl.initialize(attributes);
   }
 
   run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
@@ -38,7 +43,9 @@ export class WebGLConv extends Conv {
     const isPointwise = this.kernelShape[0] === 1 && this.kernelShape[1] === 1;
     if (this.group > 1) {
       return this.unpackedGroupedConvImpl.run(inferenceHandler, inputs);
-    } else if (packMode && inputs[0].dims.length === 4 && inputs[0].dims[0] === 1 && !isPointwise) {
+    } else if (isPointwise && packMode) {
+      return this.unpackedPointwiseConvImpl.run(inferenceHandler, inputs);
+    } else if (packMode && inputs[0].dims.length === 4 && inputs[0].dims[0] === 1) {
       return this.packedConvImpl.run(inferenceHandler, inputs);
     } else {
       return this.unpackedConvImpl.run(inferenceHandler, inputs);
@@ -59,6 +66,64 @@ export class WebGLConv extends Conv {
         inputSpatialShapeWithPad.map((v, i) => Math.floor((v - dilatedKernelShape[i] + strides[i]) / strides[i]));
     const outputShape = [batchSize, outChannels].concat(...outputSpatialShape);
     return outputShape;
+  }
+}
+
+export class WebGLUnpackedPointwiseConv extends Conv {
+  private programInfo: ProgramInfo[];
+  private artifacts: Artifact[];
+  private matmul = new WebGLUnpackedMatMul();
+  private outputShape: number[];
+
+  run(inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] {
+    const programManager = inferenceHandler.session.programManager;
+    const xShape = inputs[0].dims.slice();
+    const wShape = inputs[1].dims.slice();
+    PoolConvUtil.adjustPadsBasedOnAutoPad(
+        inputs[0].dims, this.strides, this.dilations, this.kernelShape, this.pads, this.autoPad);
+    Logger.verbose(
+        'Conv',
+        `autpPad:${this.autoPad}, dilations:${this.dilations}, group:${this.group}, kernelShape:${
+            this.kernelShape}, pads:${this.pads}, strides:${this.strides}`);
+
+    if (!this.outputShape) {
+      this.outputShape = WebGLConv.calcOutputShape(xShape, wShape, this.dilations, this.pads, this.strides);
+    }
+
+    if (this.activation) {
+      const attributes = new Attribute(undefined);
+      attributes.set('__internal_activation', 'string', (this.activation));
+      if (this.activation === 'Clip') {
+        attributes.set('__clip_max', 'float', this.clipMax);
+        attributes.set('__clip_min', 'float', this.clipMin);
+      }
+      this.matmul.initialize(attributes);
+    }
+    const reshapedX = reshape(inferenceHandler, inputs[0], [xShape[1], xShape[2] * xShape[3]]);
+    const reshapedW = reshape(inferenceHandler, inputs[1], [wShape[0], wShape[1]]);
+    const hasBias = (inputs.length === 3);
+
+    if (!this.artifacts) {
+      this.artifacts = [];
+      this.programInfo = [];
+      this.programInfo[0] = hasBias ?
+          this.matmul.createProgramInfo(inferenceHandler, [reshapedW, reshapedX, inputs[2]]) :
+          this.matmul.createProgramInfo(inferenceHandler, [reshapedW, reshapedX]);
+      this.artifacts[0] = programManager.build(this.programInfo[0]);
+    }
+
+    assert(this.artifacts.length === 1, () => 'expect matmul artifacts was created');
+    const runDataMatmul = this.matmul.createRunData(
+        inferenceHandler, this.programInfo[0], hasBias ? [reshapedW, reshapedX, inputs[2]] : [reshapedW, reshapedX]);
+    programManager.run(this.artifacts[0], runDataMatmul);
+    const matmulOutput = runDataMatmul.outputTextureData.tensor;
+
+    const res = [reshape(inferenceHandler, matmulOutput, this.outputShape)];
+    // eslint-disable-next-line no-console
+    // console.log(
+    //     'res[0]=', res[0].data[0], ' res[1]=', res[0].data[1], ' res[1]=', res[0].data[2], ' res[3]=',
+    //     res[0].data[3]);
+    return res;
   }
 }
 

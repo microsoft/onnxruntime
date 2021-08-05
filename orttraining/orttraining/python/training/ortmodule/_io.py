@@ -488,10 +488,7 @@ def parse_inputs_for_onnx_export(all_input_parameters, onnx_graph, inputs, kwarg
 
 
 def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs):
-
-    #   Do an inference to grab outputs
-    is_train_mode = module.training
-    module.eval()
+    # Perform a forward call to grab outputs
     output_names = None
     output_dynamic_axes = None
     is_deepcopy = False
@@ -512,8 +509,7 @@ def parse_outputs_for_onnx_export_and_extract_schema(module, inputs, kwargs):
 
         # Parse the output and extract the output_names and output_dynamic_axes to be used for onnx export
         output_names, output_dynamic_axes = _parse_outputs_and_extract_names_and_dynamic_axes(sample_outputs)
-    if is_train_mode:
-        module.train()
+
     output_schema = _extract_schema(sample_outputs)
     if is_deepcopy:
         del model_copy

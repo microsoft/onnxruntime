@@ -37,13 +37,19 @@ struct OrtModelTestInfo {
   std::function<void(const std::vector<OrtValue>&)> output_verifier;
   std::vector<std::pair<std::string, std::string>> configs;
   bool run_use_buffer{false};
+  bool disable_copy_ort_buffer{false};
 };
 
 static void RunOrtModel(const OrtModelTestInfo& test_info) {
   SessionOptions so;
   so.session_logid = test_info.logid;
-  for (const auto& config : test_info.configs)
+  for (const auto& config : test_info.configs) {
     so.config_options.AddConfigEntry(config.first.c_str(), config.second.c_str());
+  }
+
+  if (test_info.disable_copy_ort_buffer) {
+    so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "1");
+  }
 
   std::vector<char> model_data;
   InferenceSessionWrapper session_object{so, GetEnvironment()};
@@ -448,6 +454,14 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBuffer) {
   RunOrtModel(test_info);
 }
 
+// Load the model from a buffer instead of a file path, and not copy the buffer in session creation
+TEST(OrtModelOnlyTests, LoadOrtFormatModelFromBufferNoCopy) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModel();
+  test_info.run_use_buffer = true;
+  test_info.disable_copy_ort_buffer = true;
+  RunOrtModel(test_info);
+}
+
 #if !defined(DISABLE_ML_OPS)
 // test that we can deserialize and run a previously saved ORT format model
 // for a model with sequence and map outputs
@@ -499,6 +513,14 @@ TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOps) {
 TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOpsFromBuffer) {
   OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModelMLOps();
   test_info.run_use_buffer = true;
+  RunOrtModel(test_info);
+}
+
+// Load the model from a buffer instead of a file path, and not copy the buffer in session creation
+TEST(OrtModelOnlyTests, LoadOrtFormatModelMLOpsFromBufferNoCopy) {
+  OrtModelTestInfo test_info = GetTestInfoForLoadOrtFormatModelMLOps();
+  test_info.run_use_buffer = true;
+  test_info.disable_copy_ort_buffer = true;
   RunOrtModel(test_info);
 }
 
