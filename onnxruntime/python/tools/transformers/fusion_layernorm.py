@@ -47,7 +47,7 @@ class FusionLayerNormalization(Fusion):
             return
 
         if len(children) == 2:
-            if children[1].op_type != 'Sub' or children[0].input[0] != root_input:
+            if children[1].op_type != 'Sub' or children[1].input[0] != root_input:
                 return
 
         div_node = None
