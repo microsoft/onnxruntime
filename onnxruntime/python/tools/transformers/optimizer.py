@@ -31,6 +31,7 @@ from onnx_model_bert import BertOnnxModel, BertOptimizationOptions
 from onnx_model_bert_tf import BertOnnxModelTF
 from onnx_model_bert_keras import BertOnnxModelKeras
 from onnx_model_gpt2 import Gpt2OnnxModel
+from fusion_options import FusionOptions
 
 logger = logging.getLogger(__name__)
 
@@ -151,59 +152,7 @@ def _parse_arguments():
         help="If your target device is V100 or T4 GPU, use this to convert float32 to float16 for best performance")
     parser.set_defaults(float16=False)
 
-    parser.add_argument('--disable_attention', required=False, action='store_true', help="disable Attention fusion")
-    parser.set_defaults(disable_attention=False)
-
-    parser.add_argument('--disable_skip_layer_norm',
-                        required=False,
-                        action='store_true',
-                        help="disable SkipLayerNormalization fusion")
-    parser.set_defaults(disable_skip_layer_norm=False)
-
-    parser.add_argument('--disable_embed_layer_norm',
-                        required=False,
-                        action='store_true',
-                        help="disable EmbedLayerNormalization fusion")
-    parser.set_defaults(disable_embed_layer_norm=False)
-
-    parser.add_argument('--disable_bias_skip_layer_norm',
-                        required=False,
-                        action='store_true',
-                        help="disable Add Bias and SkipLayerNormalization fusion")
-    parser.set_defaults(disable_bias_skip_layer_norm=False)
-
-    parser.add_argument('--disable_bias_gelu',
-                        required=False,
-                        action='store_true',
-                        help="disable Add Bias and Gelu/FastGelu fusion")
-    parser.set_defaults(disable_bias_gelu=False)
-
-    parser.add_argument('--disable_layer_norm',
-                        required=False,
-                        action='store_true',
-                        help="disable LayerNormalization fusion")
-    parser.set_defaults(disable_layer_norm=False)
-
-    parser.add_argument('--disable_gelu', required=False, action='store_true', help="disable Gelu fusion")
-    parser.set_defaults(disable_gelu=False)
-
-    parser.add_argument('--enable_gelu_approximation',
-                        required=False,
-                        action='store_true',
-                        help="enable Gelu/BiasGelu to FastGelu conversion")
-    parser.set_defaults(enable_gelu_approximation=False)
-
-    parser.add_argument('--use_mask_index',
-                        required=False,
-                        action='store_true',
-                        help="use mask index instead of raw attention mask in attention operator")
-    parser.set_defaults(use_mask_index=False)
-
-    parser.add_argument('--no_attention_mask',
-                        required=False,
-                        action='store_true',
-                        help="no attention mask. Only works for model_type=bert")
-    parser.set_defaults(no_attention_mask=False)
+    FusionOptions.add_arguments(parser)
 
     parser.add_argument('--verbose', required=False, action='store_true')
     parser.set_defaults(verbose=False)
@@ -230,32 +179,6 @@ def _parse_arguments():
     args = parser.parse_args()
 
     return args
-
-
-def _get_optimization_options(args):
-    optimization_options = BertOptimizationOptions(args.model_type)
-    if args.disable_gelu:
-        optimization_options.enable_gelu = False
-    if args.disable_layer_norm:
-        optimization_options.enable_layer_norm = False
-    if args.disable_attention:
-        optimization_options.enable_attention = False
-    if args.disable_skip_layer_norm:
-        optimization_options.enable_skip_layer_norm = False
-    if args.disable_embed_layer_norm:
-        optimization_options.enable_embed_layer_norm = False
-    if args.disable_bias_skip_layer_norm:
-        optimization_options.enable_bias_skip_layer_norm = False
-    if args.disable_bias_gelu:
-        optimization_options.enable_bias_gelu = False
-    if args.enable_gelu_approximation:
-        optimization_options.enable_gelu_approximation = True
-    if args.use_mask_index:
-        optimization_options.use_raw_attention_mask(False)
-    if args.no_attention_mask:
-        optimization_options.disable_attention_mask()
-
-    return optimization_options
 
 
 def optimize_model(input,
@@ -289,7 +212,7 @@ def optimize_model(input,
         model_type (str): model type - like bert, bert_tf, bert_keras or gpt2.
         num_heads (int): number of attention heads. Default is 0 to allow detect the parameter from graph automatically (for model_type "bert" only).
         hidden_size (int): hidden size. Default is 0 to allow detect the parameter from graph automatically (for model_type "bert" only).
-        optimization_options (OptimizationOptions or None): optimization options that can use to turn on/off some fusions.
+        optimization_options (FusionOptions): optimization options that can use to turn on/off some fusions.
         opt_level (int): onnxruntime graph optimization level (0, 1, 2 or 99). When the level > 0, onnxruntime will be used to optimize model first.
         use_gpu (bool): use gpu or not for onnxruntime.
         only_onnxruntime (bool): only use onnxruntime to optimize model, and no offline fusion logic is used
@@ -313,7 +236,7 @@ def optimize_model(input,
         )
 
     if optimization_options is None:
-        optimization_options = BertOptimizationOptions(model_type)
+        optimization_options = FusionOptions(model_type)
 
     optimizer = optimizer_class(model, num_heads, hidden_size)
 
@@ -347,7 +270,7 @@ def main():
     if os.path.realpath(args.input) == os.path.realpath(args.output):
         logger.warning(f"Specified the same input and output path. Note that this may overwrite the original model")
 
-    optimization_options = _get_optimization_options(args)
+    optimization_options = FusionOptions.parse(args)
 
     optimizer = optimize_model(args.input,
                                args.model_type,
