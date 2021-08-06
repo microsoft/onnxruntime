@@ -15,12 +15,7 @@ class SequenceAt final : public CudaKernel {
   SequenceAt(const OpKernelInfo& info) : CudaKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override {
     const TensorSeq* X = context->Input<TensorSeq>(0);
-    ORT_ENFORCE(X != nullptr, "SequenceAt GPU: Got nullptr for sequence input.");
     const Tensor* I = context->Input<Tensor>(1);
-    ORT_ENFORCE(I != nullptr, "SequenceAt GPU: Got nullptr input for index tensor.");
-
-    ORT_ENFORCE(I->IsDataType<int32_t>() || I->IsDataType<int64_t>(),
-                "Indices need to be of types int32 or int64");
 
     int64_t idx = -1;
     if (I->IsDataType<int32_t>()) {
@@ -58,7 +53,6 @@ class SequenceConstruct final : public CudaKernel {
   SequenceConstruct(const OpKernelInfo& info) : CudaKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override {
     TensorSeq* Y = context->Output<TensorSeq>(0);
-    ORT_ENFORCE(Y != nullptr, "SequenceConstruct GPU: Got nullptr for output sequence.");
 
     AllocatorPtr alloc;
     ORT_ENFORCE(context->GetTempSpaceAllocator(&alloc).IsOK(),
@@ -92,7 +86,6 @@ class SequenceEmpty final : public CudaKernel {
   }
   Status ComputeInternal(OpKernelContext* context) const override {
     TensorSeq* Y = context->Output<TensorSeq>(0);
-    ORT_ENFORCE(Y != nullptr, "SequenceEmpty GPU: Failed to allocate output tensor sequence.");
 #ifdef SHARED_PROVIDER
     Y->SetType(DataTypeImpl::GetTypeFromOnnxType(static_cast<int>(dtype_)));
 #else
@@ -110,9 +103,7 @@ class SequenceLength final : public CudaKernel {
   SequenceLength(const OpKernelInfo& info) : CudaKernel(info) {}
   Status ComputeInternal(OpKernelContext* context) const override {
     const TensorSeq* X = context->Input<TensorSeq>(0);
-    ORT_ENFORCE(X != nullptr, "SequenceLength GPU: Input tensor sequence is nullptr.");
     Tensor* Y = context->Output(0, {});
-    ORT_ENFORCE(Y != nullptr, "SequenceLength GPU: Failed to allocate output tensor sequence.");
     Y->MutableData<int64_t>()[0] = static_cast<int64_t>(X->Size());
     return Status::OK();
   }
@@ -124,7 +115,6 @@ class ConcatFromSequence final : public CudaKernel, public ConcatBase {
 
   Status ComputeInternal(OpKernelContext* context) const override {
     const TensorSeq* X = context->Input<TensorSeq>(0);
-    ORT_ENFORCE(X != nullptr, "ConcatFromSequence GPU: Input tensor sequence is nullptr.");
     int64_t input_count = static_cast<int64_t>(X->Size());
     std::vector<const Tensor*> input_tensors;
     for (int64_t i = 0; i < input_count; ++i) {
@@ -170,14 +160,10 @@ class SequenceErase final : public CudaKernel {
 
   Status ComputeInternal(OpKernelContext* context) const override {
     const TensorSeq* X = context->Input<TensorSeq>(0);
-    ORT_ENFORCE(X != nullptr, "SequenceErase GPU: Got nullptr for sequence input.");
     int64_t X_size = static_cast<int64_t>(X->Size());
     int64_t idx = X_size - 1;
     const Tensor* I = context->Input<Tensor>(1);
     if (I != nullptr) {
-      ORT_ENFORCE(I->IsDataType<int32_t>() || I->IsDataType<int64_t>(),
-                  "Indices need to be of types int32 or int64");
-
       if (I->IsDataType<int32_t>()) {
         idx = static_cast<int64_t>(I->Data<int32_t>()[0]);
       } else {
@@ -221,7 +207,6 @@ class SequenceInsert final : public CudaKernel {
 
   Status ComputeInternal(OpKernelContext* context) const override {
     const TensorSeq* S = context->Input<TensorSeq>(0);
-    ORT_ENFORCE(S != nullptr, "SequenceInsert GPU: Got nullptr for sequence input.");
     int64_t S_size = static_cast<int64_t>(S->Size());
     int64_t idx = S_size;
     const Tensor* I = context->Input<Tensor>(2);
