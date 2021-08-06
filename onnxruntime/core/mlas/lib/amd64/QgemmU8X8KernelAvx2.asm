@@ -281,6 +281,7 @@ ComputeBlockLoopU8S8 MACRO Isa, ColumnCount, RowCount
         LOCAL   ProcessRemainingBlocks
         LOCAL   ComputeBlockBy1Loop
         LOCAL   ExitComputeBlockLoop
+        LOCAL   ProcessRemainingBlocksBy1Loop
 
         mov     rsi,r9                      ; reload row length remaining
 
@@ -294,9 +295,6 @@ ComputeBlockBy4Loop:
         ComputeBlockU8S8&Isa& ColumnCount, RowCount, 128, 8
         ComputeBlockU8S8&Isa& ColumnCount, RowCount, 192, 12
         add     rcx,4*4                     ; advance matrix A by 4 quads
-IF RowCount GT 3
-        add     rbx,4*4                     ; advance matrix A plus 3 rows by 4 quads
-ENDIF
         add     rdx,4*64                    ; advance matrix B
         sub     rsi,4*4
         jae     ComputeBlockBy4Loop
@@ -304,8 +302,12 @@ ENDIF
 ProcessRemainingBlocks:
         add     rsi,4*4                     ; correct for over-subtract above
         jz      ExitComputeBlockLoop
+ProcessRemainingBlocksBy1Loop:
         ComputeBlockU8S8&Isa& ColumnCount, RowCount, 0, 0
-        add     rdx,32                      ; advance matrix B
+        add     rcx,4
+        add     rdx,64                      ; advance matrix B
+        sub     rsi,4
+        jnz     ProcessRemainingBlocksBy1Loop
 ELSE
 ComputeBlockBy1Loop:
         ComputeBlockU8S8&Isa& ColumnCount, RowCount, 0, 0
