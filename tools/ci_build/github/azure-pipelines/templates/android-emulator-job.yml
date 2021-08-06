@@ -1,0 +1,59 @@
+parameters:
+- name: Name
+  type: string
+- name: TimeoutInMinutes
+  type: number
+  default: 90
+- name: AndroidApiVersion
+  type: string
+- name: AndroidAbi
+  type: string
+- name: Steps
+  type: stepList
+
+jobs:
+- job: ${{ parameters.Name }}
+
+  pool:
+    vmImage: 'macOS-10.15'
+
+  timeoutInMinutes: ${{ parameters.TimeoutInMinutes }}
+
+  steps:
+  - task: UsePythonVersion@0
+    displayName: Use Python 3.9
+    inputs:
+      versionSpec: 3.9
+
+  - script: brew install coreutils ninja
+    displayName: Install coreutils and ninja
+
+  - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
+    displayName: Setup gradle wrapper to use gradle 6.8.3
+
+  - script: |
+      python3 tools/python/run_android_emulator.py \
+        --android-sdk-root ${ANDROID_SDK_ROOT} \
+        --create-avd --system-image \
+          "system-images;android-${{ parameters.AndroidApiVersion }};google_apis;${{ parameters.AndroidAbi }}" \
+        --start --emulator-extra-args="-partition-size 4096" \
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+    displayName: Start Android emulator
+
+  # Start switching to jdk 11 after the Android Emulator is started since Android SDK manager requires java 8
+  - task: JavaToolInstaller@0
+    displayName: Use jdk 11
+    inputs:
+      versionSpec: '11'
+      jdkArchitectureOption: 'x64'
+      jdkSourceOption: 'PreInstalled'
+
+  - ${{ parameters.Steps }}
+
+  - script: |
+      python3 tools/python/run_android_emulator.py \
+        --android-sdk-root ${ANDROID_SDK_ROOT} \
+        --stop \
+        --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
+    displayName: Stop Android emulator
+    condition: always()

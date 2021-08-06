@@ -8,10 +8,6 @@ set -x
 ORT_ROOT=$1
 MIN_BUILD_DIR=$ORT_ROOT/build_nnapi_minimal
 
-# Remove builds from previous CPU and NNAPI full Android ORT build to free up disk space
-rm -rf $ORT_ROOT/build
-rm -rf $ORT_ROOT/build_nnapi
-
 # make sure flatbuffers is installed as it's required to parse required_ops_and_types.config
 python3 -m pip install --user flatbuffers
 
