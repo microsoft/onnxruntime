@@ -578,7 +578,7 @@ def get_config_build_dir(build_dir, config):
 
 
 def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None,
-                   shell=False, env={}):
+                   shell=False, env={}, python_path=None):
     if isinstance(args, str):
         raise ValueError("args should be a sequence of strings, not a string")
 
@@ -591,6 +591,14 @@ def run_subprocess(args, cwd=None, capture_stdout=False, dll_path=None,
                 my_env["LD_LIBRARY_PATH"] += os.pathsep + dll_path
             else:
                 my_env["LD_LIBRARY_PATH"] = dll_path
+    if python_path:
+        if is_windows():
+            my_env["PYTHONPATH"] = python_path + os.pathsep + my_env["PYTHONPATH"]
+        else:
+            if "PYTHONPATH" in my_env:
+                my_env["PYTHONPATH"] += os.pathsep + python_path
+            else:
+                my_env["PYTHONPATH"] = python_path
 
     my_env.update(env)
 
@@ -1009,6 +1017,10 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
         add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "ON")
     else:
         add_cmake_define_without_override(cmake_extra_defines, "onnxruntime_PYBIND_EXPORT_OPSCHEMA", "OFF")
+
+    if args.build_eager_mode:
+        import torch
+        cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
@@ -1540,6 +1552,11 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if args.enable_training and args.use_cuda:
                 # run basic frontend tests
                 run_training_python_frontend_tests(cwd=cwd)
+
+            if args.build_eager_mode:
+                # run eager mode test
+                args_list = [sys.executable, os.path.join(cwd, 'eager_test')]
+                run_subprocess(args_list, cwd=cwd, dll_path=dll_path, python_path=cwd)
 
             try:
                 import onnx  # noqa
@@ -2126,6 +2143,23 @@ def main():
                 args.cuda_version = ""
         if args.use_rocm and args.rocm_version is None:
             args.rocm_version = ""
+
+        if args.build_eager_mode:
+            # generate the ort aten backend code
+            def gen_ort_aten_ops(eager_root_dir):
+                gen_cpp_name = os.path.join(eager_root_dir, "ort_aten.g.cpp")
+                if os.path.exists(gen_cpp_name):
+                    os.remove(gen_cpp_name)
+                subprocess.check_call([
+                    sys.executable,
+                    os.path.join(eager_root_dir, 'opgen', 'opgen.py'),
+                    "--output_file",
+                    gen_cpp_name,
+                    "--use_preinstalled_torch"
+                ])
+
+            eager_root_dir = os.path.join(source_dir, "orttraining", "orttraining", "eager")
+            gen_ort_aten_ops(eager_root_dir)
 
         generate_build_tree(
             cmake_path, source_dir, build_dir, cuda_home, cudnn_home, rocm_home, mpi_home, nccl_home,
