@@ -211,9 +211,6 @@ class SequenceInsert final : public CudaKernel {
     int64_t idx = S_size;
     const Tensor* I = context->Input<Tensor>(2);
     if (I != nullptr) {
-      ORT_ENFORCE(I->IsDataType<int32_t>() || I->IsDataType<int64_t>(),
-                  "Indices need to be of types int32 or int64");
-
       if (I->IsDataType<int32_t>()) {
         idx = static_cast<int64_t>(I->Data<int32_t>()[0]);
       } else {
