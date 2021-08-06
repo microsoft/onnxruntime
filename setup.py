@@ -328,6 +328,9 @@ if enable_training:
                     + 'rocm' + rocm_version
             else:
                 local_version = '+rocm' + rocm_version
+        else:
+            # cpu version for documentation
+            local_version = '+cpu'
 
 if package_name == 'onnxruntime-nuphar':
     packages += ["onnxruntime.nuphar"]
