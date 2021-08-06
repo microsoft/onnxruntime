@@ -186,7 +186,7 @@ Status GridSample<T>::Compute(OpKernelContext* context) const {
 
               if (mode_ == Nearest) {
                 // x, y are integers in all padding modes
-                *Y_gridpoint = X_data[static_cast<int64_t>(y) * W_in + static_cast<int64_t>(x)];
+                *Y_gridpoint = PixelAtGrid(X_data, static_cast<int64_t>(y), static_cast<int64_t>(x), H_in, W_in, border);
                 continue;
               }
 

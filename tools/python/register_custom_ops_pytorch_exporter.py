@@ -72,6 +72,7 @@ def unregister_custom_op():
             if version >= opset_version and sym_registry.is_registered_op(kind, ns, version):
                 del sym_registry._registry[(ns, version)][kind]
 
+    unregister('::grid_sampler', _onnx_opset_version)
     unregister('::inverse', _onnx_opset_version)
     unregister('::gelu', _onnx_opset_version)
     unregister('::triu', _onnx_opset_version)
