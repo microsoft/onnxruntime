@@ -45,6 +45,10 @@ ONNX_OPERATOR_KERNEL_EX(
     Gather);
 
 Status Gather::ComputeInternal(OpKernelContext* context) const {
+  if (Node().Name() == "Gather_1072") {
+    float f = 1.3f;
+    ORT_IGNORE_RETURN_VALUE(f);
+  }
   Prepare p;
   ORT_RETURN_IF_ERROR(PrepareForCompute(context, p));
 

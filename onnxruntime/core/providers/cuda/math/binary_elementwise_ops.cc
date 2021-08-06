@@ -13,6 +13,7 @@ template <>
 Status BinaryElementwise<ShouldNotBroadcast>::Prepare(OpKernelContext* context, BinaryElementwisePreparation* p) const {
   p->lhs_tensor = context->Input<Tensor>(0);
   p->rhs_tensor = context->Input<Tensor>(1);
+
   if (!(p->lhs_tensor->Shape() == p->rhs_tensor->Shape()))
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, Node().Name(), ": mismatching input shapes: ",
                            p->lhs_tensor->Shape().ToString(), " != ", p->rhs_tensor->Shape().ToString());
@@ -75,6 +76,14 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   auto rhs_tensor = context->Input<Tensor>(1);
   const auto& lhs_shape = lhs_tensor->Shape();
   const auto& rhs_shape = rhs_tensor->Shape();
+
+  
+  if (Node().Name() == "Mul_1709") {
+    const auto& left_shape = lhs_shape.GetDims();
+    const auto& right_shape = rhs_shape.GetDims();
+    ORT_IGNORE_RETURN_VALUE(left_shape);
+    ORT_IGNORE_RETURN_VALUE(right_shape);
+  }
 
   TensorShape output_shape;
   ORT_RETURN_IF_ERROR(ComputeOutputShape(Node().Name(), lhs_shape, rhs_shape, output_shape));

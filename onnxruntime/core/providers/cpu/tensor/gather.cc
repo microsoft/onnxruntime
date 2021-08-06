@@ -122,6 +122,10 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
 }
 
 Status Gather::Compute(OpKernelContext* context) const {
+  if (Node().Name() == "Gather_1072") {
+    float f = 1.3f;
+    ORT_IGNORE_RETURN_VALUE(f);
+  }
   Prepare p;
   ORT_RETURN_IF_ERROR(PrepareForCompute(context, p));
 

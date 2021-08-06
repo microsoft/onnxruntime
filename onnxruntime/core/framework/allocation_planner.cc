@@ -121,6 +121,7 @@ class PlannerImpl {
   PlannerImpl(const Node* parent_node, const onnxruntime::GraphViewer& graph_viewer,
               const std::vector<const NodeArg*>& outer_scope_node_args, const ExecutionProviders& providers,
               const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map,
+              const SubgraphKernelCreationInfoMap& subgraph_kernel_creation_info_maps,
               const OrtValueNameIdxMap& ort_value_name_idx_map,
               const ISequentialPlannerContext& context, SequentialExecutionPlan& plan)
       : context_(context),
@@ -130,6 +131,7 @@ class PlannerImpl {
         outer_scope_node_args_(outer_scope_node_args),
         execution_providers_(providers),
         kernel_create_info_map_(kernel_create_info_map),
+        subgraph_kernel_creation_info_maps_(subgraph_kernel_creation_info_maps),
         ort_value_name_idx_map_(ort_value_name_idx_map) {}
 
   Status CreatePlan();
@@ -144,6 +146,7 @@ class PlannerImpl {
   const ExecutionProviders& execution_providers_;
 
   const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map_;
+  const SubgraphKernelCreationInfoMap& subgraph_kernel_creation_info_maps_;
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
 
   // OrtValueInfo: Auxiliary information about an OrtValue used only during plan-generation:
@@ -261,9 +264,9 @@ class PlannerImpl {
     // Inputs of Yields are essentially the outputs for FW partial subgraph
     // Thses tensors will be pass back to pytorch, thus cannot share the buffer with other tensors
 
-    // Unhandled corner case: 
+    // Unhandled corner case:
     // If FW output tensor is consumed by BW graph, and pytorch performs an inplace operation on th returned tensor,
-    // we will run into a buffer corruption problem. 
+    // we will run into a buffer corruption problem.
     // One potential fix is returning a copy of output tensor, if it has downstream dependency
     auto p_next_node = node.OutputNodesBegin();
     if (p_next_node != node.OutputNodesEnd() && p_next_node->OpType() == "YieldOp") {
@@ -522,7 +525,7 @@ class PlannerImpl {
           OrtValueIndex index = Index(name);
 
           // implicit inputs do not have an entry in the kernel def, so do nothing to them here, leaving the control
-          //   flow op (Loop, Scan, If) to do the necessary copy if the input crosses different provider.
+          // flow op (Loop, Scan, If) to do the necessary copy if the input crosses different provider.
           // matching logic is used in TransformerMemcpyImpl::ProcessDefs
           if (!is_implicit_input) {
             OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
@@ -572,11 +575,14 @@ class PlannerImpl {
     return Status::OK();
   }
 
-  OrtMemoryInfo GetLocationForNodeInput(size_t input_index, const Node& node) {
+  OrtMemoryInfo GetLocationForNodeInput(size_t input_index, const Node& node,
+                                        const std::unordered_map<NodeIndex,
+                                                                 gsl::not_null<const KernelCreateInfo*>>&
+                                            kernel_create_info_map) {
     auto* p_provider = execution_providers_.Get(node);
     ORT_ENFORCE(p_provider);
 
-    const KernelCreateInfo& kernel_create_info = GetKernelCreateInfo(kernel_create_info_map_, node.Index());
+    const KernelCreateInfo& kernel_create_info = GetKernelCreateInfo(kernel_create_info_map, node.Index());
 
     if (utils::IsInputOnCpu(node, &kernel_create_info, input_index))
       // weights are not output from any node, so it's OK to put its location on CPU provider
@@ -587,26 +593,60 @@ class PlannerImpl {
   Status GeneratePlanForWeights() {
     auto& weights = graph_viewer_.GetAllInitializedTensors();
     std::vector<std::vector<OrtMemoryInfo>> locations(plan_.allocation_plan.size());
-    for (const auto& node : graph_viewer_.Nodes()) {
-      auto status = onnxruntime::Node::ForEachWithIndex(
-          node.InputDefs(), [this, &locations, &node, &weights](const onnxruntime::NodeArg& def, size_t index) {
-            auto sub_status = Status::OK();
-            ORT_TRY {
-              auto& def_name = def.Name();
-              if (!weights.count(def_name)) return Status::OK();
-              auto wt_index = Index(def_name);
-              locations[wt_index].emplace_back(GetLocationForNodeInput(index, node));
-            }
-            ORT_CATCH(const std::exception& ex) {
-              ORT_HANDLE_EXCEPTION([&]() {
-                sub_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
-              });
-            }
-            return sub_status;
-          });
 
-      ORT_RETURN_IF_ERROR(status);
+    const Node* current_node = nullptr;
+    const std::unordered_map<NodeIndex,
+                             gsl::not_null<const KernelCreateInfo*>>*
+        kernel_create_info_map = nullptr;
+
+    auto process_node = [this, &locations, &current_node, &kernel_create_info_map, &weights](
+                            const onnxruntime::NodeArg& def, size_t index) {
+      auto sub_status = Status::OK();
+      ORT_TRY {
+        auto& def_name = def.Name();
+        if (!weights.count(def_name)) return Status::OK();
+        auto wt_index = Index(def_name);
+        locations[wt_index].emplace_back(GetLocationForNodeInput(index, *current_node, *kernel_create_info_map));
+      }
+      ORT_CATCH(const std::exception& ex) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          sub_status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+        });
+      }
+      return sub_status;
+    };
+
+    for (const auto& node : graph_viewer_.Nodes()) {
+      current_node = &node;
+      kernel_create_info_map = &kernel_create_info_map_;
+
+      ORT_RETURN_IF_ERROR(onnxruntime::Node::ForEachWithIndex(
+          current_node->InputDefs(), process_node));
+
+      // If the node has subgraphs (i.e.) control flow nodes,
+      // walk the nodes in those subgraphs as well to best determine
+      // the location for the OrtValue corresponding to the weights
+      if (node.ContainsSubgraph()) {
+        for (auto& name_to_subgraph : const_cast<Node&>(node).GetAttributeNameToMutableSubgraphMap()) {
+          GraphViewer subgraph_viewer(*name_to_subgraph.second);
+          auto subgraph_entries = subgraph_kernel_creation_info_maps_.find(node.Index());
+          ORT_ENFORCE(subgraph_entries != subgraph_kernel_creation_info_maps_.end());
+
+          auto specific_subgraph_entries = subgraph_entries->second.find(name_to_subgraph.first);
+          ORT_ENFORCE(specific_subgraph_entries != subgraph_entries->second.end());
+
+          kernel_create_info_map = &specific_subgraph_entries->second;
+
+          for (const auto& subgraph_node : subgraph_viewer.Nodes()) {
+            current_node = &subgraph_node;
+
+            ORT_RETURN_IF_ERROR(onnxruntime::Node::ForEachWithIndex(
+                current_node->InputDefs(), process_node));
+          }
+        }
+      }
     }
+
     for (size_t i = 0; i != locations.size(); ++i) {
       const std::vector<OrtMemoryInfo>& loc = locations[i];
       if (loc.empty()) continue;
@@ -632,7 +672,8 @@ class PlannerImpl {
   }
 
   // Should only be used after ProcessDef()
-  Status ComputeReusePlan() {
+  Status
+  ComputeReusePlan() {
     std::vector<SequentialExecutionPlan::NodeExecutionPlan>& execution_plan(plan_.execution_plan);
     //copy the usecounts to an vector, before computing reuse
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -1062,6 +1103,7 @@ Status SequentialPlanner::CreatePlan(
     const std::vector<const NodeArg*>& outer_scope_node_args,
     const ExecutionProviders& providers,
     const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map,
+    const SubgraphKernelCreationInfoMap& subgraph_kernel_creation_info_maps,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const ISequentialPlannerContext& context,
     std::unique_ptr<SequentialExecutionPlan>& plan) {
@@ -1069,7 +1111,7 @@ Status SequentialPlanner::CreatePlan(
   plan = std::make_unique<SequentialExecutionPlan>();
 
   PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers,
-                      kernel_create_info_map, ort_value_name_idx_map, context, *plan);
+                      kernel_create_info_map, subgraph_kernel_creation_info_maps, ort_value_name_idx_map, context, *plan);
 
   return planner.CreatePlan();
 }

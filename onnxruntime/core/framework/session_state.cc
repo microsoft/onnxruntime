@@ -1121,9 +1121,45 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                   });
   }
 
+  std::unordered_map<onnxruntime::NodeIndex,
+                     std::unordered_map<
+                         std::string,
+                         std::unordered_map<
+                             NodeIndex,
+                             gsl::not_null<const KernelCreateInfo*>>>>
+      subgraph_kernel_creation_info_maps;
+
+  // Add the subgraph kernel creation info maps to the copy
+  for (const auto& entry : subgraph_session_states_) {
+    auto node_index = entry.first;
+
+    std::unordered_map<
+        std::string,
+        std::unordered_map<
+            NodeIndex,
+            gsl::not_null<const KernelCreateInfo*>>>
+        subgraph_name_to_kernel_creation_info_map;
+
+    for (const auto& name_to_subgraph_session_state : entry.second) {
+      const auto& subgraph_name = name_to_subgraph_session_state.first;
+
+      SessionState& subgraph_session_state = *name_to_subgraph_session_state.second;
+
+      std::unordered_map<
+          NodeIndex,
+          gsl::not_null<const KernelCreateInfo*>>
+          node_index_map = subgraph_session_state.kernel_create_info_map_;
+
+      subgraph_name_to_kernel_creation_info_map.insert({subgraph_name, node_index_map});
+    }
+
+    subgraph_kernel_creation_info_maps.insert({node_index, subgraph_name_to_kernel_creation_info_map});
+  }
+
   SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order, session_options.enable_mem_reuse);
   ORT_RETURN_IF_ERROR(SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                                     execution_providers_, kernel_create_info_map_,
+                                                    subgraph_kernel_creation_info_maps,
                                                     ort_value_name_idx_map_, context, p_seq_exec_plan_));
   //Record the allocation plan
 

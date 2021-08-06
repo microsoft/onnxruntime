@@ -288,7 +288,7 @@ Status IfImpl::AllocateOutputTensors() {
       }
 
       if (!graph_output_shape || symbolic_dim_in_shape) {
-        // we still need a value to put in the feeds we give to the execution frame, so just use an empty MLValue
+        // we still need a value to put in the fetches we give to the execution frame, so just use an empty MLValue
         outputs_.push_back({AllocationType::Delayed, {}});
       }
     } else if (graph_output_type->has_sequence_type()) {
@@ -298,7 +298,7 @@ Status IfImpl::AllocateOutputTensors() {
       outputs_.push_back({AllocationType::IfOutput, *context_.GetOutputMLValue(index)});
     } else {
       // Shouldn't hit this
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only tensors or sequence of tensors are suppported");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Only tensors or sequence of tensors are supported");
     }
 
     ++index;

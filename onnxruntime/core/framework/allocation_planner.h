@@ -58,6 +58,13 @@ class SequentialPlannerContext : public ISequentialPlannerContext {
   bool enable_memory_reuse_ = true;
 };
 
+using SubgraphKernelCreationInfoMap = std::unordered_map<onnxruntime::NodeIndex,
+                                                         std::unordered_map<
+                                                             std::string,
+                                                             std::unordered_map<
+                                                                 NodeIndex,
+                                                                 gsl::not_null<const KernelCreateInfo*>>>>;
+
 class SequentialPlanner {
  public:
   // This API allows user to provide a custom planner context.
@@ -66,6 +73,7 @@ class SequentialPlanner {
       const std::vector<const NodeArg*>& outer_scope_node_args,
       const ExecutionProviders& providers,
       const std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map,
+      const SubgraphKernelCreationInfoMap& subgraph_kernel_creation_info_maps,
       const OrtValueNameIdxMap& ort_value_name_idx_map,
       const ISequentialPlannerContext& context,
       std::unique_ptr<SequentialExecutionPlan>& plan);

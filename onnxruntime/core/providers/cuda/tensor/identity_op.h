@@ -56,6 +56,7 @@ class IdentityOp final : public CudaKernel {
       ORT_ENFORCE(X != nullptr, "IdentityOp cuda: input tensor is missing.");
       TensorSeq* Y = context->Output<TensorSeq>(0);
       ORT_ENFORCE(Y != nullptr, "IdentityOp cuda: failed to allocate output tensor sequence.");
+
       if (X == Y) {
         return Status::OK();
       }

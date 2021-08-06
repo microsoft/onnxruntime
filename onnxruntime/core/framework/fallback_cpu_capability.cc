@@ -17,9 +17,13 @@ namespace {
 const int64_t kSmallInitializerThreshold = 100;
 
 bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const NodeArg* arg) {
-  const ONNX_NAMESPACE::TensorProto* initializer_tensor;
-  if (!graph.GetInitializedTensor(arg->Name(), initializer_tensor))
+  const ONNX_NAMESPACE::TensorProto* initializer_tensor =
+      graph.GetGraph().GetConstantInitializer(arg->Name(), true);
+
+  if (initializer_tensor == nullptr) {
     return false;
+  }
+
   int64_t size = 1;
   for (auto& dim : initializer_tensor->dims()) {
     size *= dim;
@@ -55,6 +59,11 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
   for (auto& node_id : tentative_nodes) {
     provider_nodes.insert(node_id);
     const Node* node = graph.GetNode(node_id);
+
+    if (node->Name() == "Gather_1680" || node->Name() == "Mul_1688") {
+      float f = 1.3f;
+      ORT_IGNORE_RETURN_VALUE(f);
+    }
 
     const KernelCreateInfo* kernel_info = nullptr;
     for (auto registry : kernel_registries) {
@@ -100,6 +109,12 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
       continue;
 
     auto* node = graph.GetNode(cur);
+
+    if (node->Name() == "Gather_1680") {
+      float f = 1.3f;
+      ORT_IGNORE_RETURN_VALUE(f);
+    }
+
     bool place_in_cpu = true;
     for (size_t i = 0; i < node->InputDefs().size(); ++i) {
       auto* input = node->InputDefs()[i];
@@ -131,6 +146,10 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     }
 
     if (place_in_cpu) {
+      if (node->Name() == "Gather_1680" || node->Name() == "Mul_1688") {
+        float f = 1.3f;
+        ORT_IGNORE_RETURN_VALUE(f);
+      }
       cpu_nodes.insert(cur);
       LOGS_DEFAULT(INFO) << "ORT optimization- Force fallback to CPU execution for node: " << node->Name()
                          << " because the CPU execution path is deemed faster than overhead involved with execution on other EPs "
