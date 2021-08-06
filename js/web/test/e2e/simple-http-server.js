@@ -8,11 +8,15 @@ var http = require('http');
 var fs = require('fs');
 var path = require('path');
 
+var simpleProxies = {
+  './ort-wasm.wasm': './ort-wasm.wasm'
+};
+
 module.exports = function (dir) {
   http.createServer(function (request, response) {
     console.log('request ', request.url);
 
-    var filePath = '.' + request.url;
+    var filePath = '.' + (simpleProxies[request.url] ?? request.url);
 
     var extname = String(path.extname(filePath)).toLowerCase();
     var mimeTypes = {
