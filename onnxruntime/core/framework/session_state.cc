@@ -1120,7 +1120,7 @@ static void AccumulateAllNestedSubgraphsKernelCreateInfoMaps(
     const std::string& subgraph_kernel_create_info_map_key_base,
     size_t graph_depth,
     /*out*/ SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
-    /*out*/ std::unordered_map<std::string, const ExecutionProviders*>& subgraphs_execution_providers) {
+    /*out*/ std::unordered_map<std::string, std::reference_wrapper<const ExecutionProviders>>& subgraphs_execution_providers) {
   for (const auto& entry : session_state.GetSubgraphSessionStateMap()) {
     auto node_index = entry.first;
 
@@ -1146,8 +1146,10 @@ static void AccumulateAllNestedSubgraphsKernelCreateInfoMaps(
                   subgraphs_execution_providers.find(local_subgraph_kernel_create_info_map_key) ==
                       subgraphs_execution_providers.end());
 
-      subgraphs_kernel_create_info_maps.insert({local_subgraph_kernel_create_info_map_key, subgraph_session_state.GetKernelCreateInfoMap()});
-      subgraphs_execution_providers.insert({local_subgraph_kernel_create_info_map_key, &subgraph_session_state.GetExecutionProviders()});
+      subgraphs_kernel_create_info_maps.insert({local_subgraph_kernel_create_info_map_key,
+                                                subgraph_session_state.GetKernelCreateInfoMap()});
+      subgraphs_execution_providers.insert({local_subgraph_kernel_create_info_map_key,
+                                            subgraph_session_state.GetExecutionProviders()});
 
       // Recurse into the subgraph session state
       AccumulateAllNestedSubgraphsKernelCreateInfoMaps(subgraph_session_state,
@@ -1182,7 +1184,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   }
 
   SubgraphsKernelCreateInfoMaps subgraphs_kernel_create_info_maps;
-  std::unordered_map<std::string, const ExecutionProviders*> subgraphs_execution_providers;
+  std::unordered_map<std::string, std::reference_wrapper<const ExecutionProviders>> subgraphs_execution_providers;
   AccumulateAllNestedSubgraphsKernelCreateInfoMaps(*this, "", 0, subgraphs_kernel_create_info_maps, subgraphs_execution_providers);
 
   SequentialPlannerContext context(session_options.execution_mode, session_options.execution_order, session_options.enable_mem_reuse);

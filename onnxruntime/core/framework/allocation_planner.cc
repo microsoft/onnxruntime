@@ -122,7 +122,7 @@ class PlannerImpl {
               const std::vector<const NodeArg*>& outer_scope_node_args, const ExecutionProviders& providers,
               const KernelCreateInfoMap& kernel_create_info_map,
               const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
-              const std::unordered_map<std::string, const ExecutionProviders*>& subgraphs_execution_providers,
+              const std::unordered_map<std::string, std::reference_wrapper<const ExecutionProviders>>& subgraphs_execution_providers,
               const OrtValueNameIdxMap& ort_value_name_idx_map,
               const ISequentialPlannerContext& context, SequentialExecutionPlan& plan)
       : context_(context),
@@ -150,7 +150,7 @@ class PlannerImpl {
   const KernelCreateInfoMap& kernel_create_info_map_;
   const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps_;
 
-  const std::unordered_map<std::string, const ExecutionProviders*>& subgraphs_execution_providers_;
+  const std::unordered_map<std::string, std::reference_wrapper<const ExecutionProviders>>& subgraphs_execution_providers_;
 
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
 
@@ -448,7 +448,7 @@ class PlannerImpl {
     // Initialize execution plan:
     plan_.execution_plan.reserve(num_graph_nodes);
 
-    // Initialize node_has_fence.I
+    // Initialize node_has_fence.
     plan_.node_has_fence.resize(graph_viewer_.MaxNodeIndex());
 
     // Initialize allocation plan:
@@ -629,9 +629,7 @@ class PlannerImpl {
           // `implicit_inputs` being nullptr is valid only while processing the main graph.
           if (graph_depth > 0) {
             ORT_ENFORCE(implicit_inputs != nullptr);
-
             bool is_implicit_input = false;
-
             size_t num_implicit_inputs = implicit_inputs->size();
             for (size_t implicit_input_index = 0; implicit_input_index < num_implicit_inputs; ++implicit_input_index) {
               if ((*implicit_inputs)[implicit_input_index]->Name() == def_name) {
@@ -647,7 +645,6 @@ class PlannerImpl {
           }
 
           auto wt_index = Index(def_name);
-
           locations[wt_index].emplace_back(GetLocationForNodeInput(node_input_index, node, kernel_create_info_map, execution_providers));
         }
         ORT_CATCH(const std::exception& ex) {
@@ -686,7 +683,7 @@ class PlannerImpl {
                                                              &node.ImplicitInputDefs(),
                                                              weights,
                                                              specific_subgraph_map_for_node->second,
-                                                             *specific_subgraph_execution_providers->second,
+                                                             specific_subgraph_execution_providers->second,
                                                              local_subgraph_kernel_create_info_map_key,
                                                              graph_depth + 1,
                                                              locations));
@@ -1161,7 +1158,7 @@ Status SequentialPlanner::CreatePlan(
     const ExecutionProviders& providers,
     const KernelCreateInfoMap& kernel_create_info_map,
     const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
-    const std::unordered_map<std::string, const ExecutionProviders*>& subgraphs_execution_providers,
+    const std::unordered_map<std::string, std::reference_wrapper<const ExecutionProviders>>& subgraphs_execution_providers,
     const OrtValueNameIdxMap& ort_value_name_idx_map,
     const ISequentialPlannerContext& context,
     std::unique_ptr<SequentialExecutionPlan>& plan) {

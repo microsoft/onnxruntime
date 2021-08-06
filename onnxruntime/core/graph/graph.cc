@@ -919,7 +919,7 @@ std::vector<gsl::not_null<const Graph*>> Node::GetSubgraphs() const {
   return subgraphs;
 }
 
-const std::unordered_map<std::string, gsl::not_null<const Graph*>> Node::GetAttributeNameToSubgraphMap() const {
+std::unordered_map<std::string, gsl::not_null<const Graph*>> Node::GetAttributeNameToSubgraphMap() const {
   std::unordered_map<std::string, gsl::not_null<const Graph*>> attr_to_subgraphs;
   for (auto& entry : attr_to_subgraph_map_) {
     attr_to_subgraphs.insert({entry.first, entry.second});
