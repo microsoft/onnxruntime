@@ -327,7 +327,7 @@ const float beta_6 = 1.19825839466702e-06f;
 const float sigmoid_bound = 20.0f;
 const float tanh_bound = 10.0f;
 
-#ifdef __GNUC__
+#if defined(__GNUC__) && !defined(__wasm__)
 #pragma GCC push_options
 #pragma GCC optimize("tree-vectorize")
 #pragma GCC optimize("unroll-loops")
@@ -531,7 +531,7 @@ void tanh_exact(float* pd, int c, float alpha, float beta) {
 
 void merge_lstm_gates_to_memory(const float* pprev, const float* pi, const float* pf, const float* pg, float* pcurr,
                                 int c) {
-  #ifdef __GNUC__
+  #if defined(__GNUC__) && !defined(__wasm__)
   #pragma GCC ivdep
   #endif
   for (int i = 0; i < c; i++) {
@@ -693,7 +693,7 @@ void composed_gru_output_gate_func(float* ps, int c, std::function<float(float, 
   }
 }
 
-#ifdef __GNUC__
+#if defined(__GNUC__) && !defined(__wasm__)
 #pragma GCC pop_options
 #endif
 
