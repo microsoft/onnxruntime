@@ -2787,6 +2787,21 @@ const ONNX_NAMESPACE::TensorProto* Graph::GetConstantInitializer(const std::stri
   return initializer;
 }
 
+const ONNX_NAMESPACE::TensorProto* Graph::GetInitializer(const std::string& initializer_name,
+                                                         bool check_outer_scope) const {
+  const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+  if (GetInitializedTensor(initializer_name, initializer)) {
+    return initializer;
+  } else if (check_outer_scope && IsSubgraph()) {
+    // make sure there's not a local value with the same name. if there is it shadows any initializer in outer scope.
+    if (IsOuterScopeValue(initializer_name)) {
+      initializer = parent_graph_->GetInitializer(initializer_name, check_outer_scope);
+    }
+  }
+
+  return initializer;
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 void Graph::AddValueInfo(const NodeArg* new_value_info) {
   NodeArg* node_arg = GetNodeArg(new_value_info->Name());
