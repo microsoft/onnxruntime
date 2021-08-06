@@ -38,9 +38,7 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(Loop,
                                       .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
                                   Loop);
 
-// sequence tensors were also supported in addition to existing support for tensors in opset-13,
-// but we do not support sequence tensors in the cuda Loop kernel because there are no ops that handle
-// sequence tensors on CUDA and supporting it for Loop doesn't add value while that is the case
+// sequence support was added in opset 13
 ONNX_OPERATOR_KERNEL_EX(Loop,
                         kOnnxDomain,
                         13,
@@ -50,7 +48,7 @@ ONNX_OPERATOR_KERNEL_EX(Loop,
                             .InputMemoryType(OrtMemTypeCPUInput, 1)  // 'cond' needs to be on CPU
                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                            .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
+                            .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
                         Loop);
 
 static Status ConcatenateGpuOutput(void* stream, std::vector<OrtValue>& per_iteration_output,

@@ -198,6 +198,12 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
     return Status::OK();
   }
 
+   if (copy_info.target_device.Type() == 0 &&
+      copy_info.source_device.Type() == 1) {
+    float f = 1.2f;
+    ORT_IGNORE_RETURN_VALUE(f);
+  }
+
   auto allocator = session_state.GetAllocator(copy_info.target_device);
   if (!target_mlvalue.IsAllocated()) {
     ORT_ENFORCE(allocator != nullptr, "Failed to find allocator for device ", copy_info.target_device.ToString());
