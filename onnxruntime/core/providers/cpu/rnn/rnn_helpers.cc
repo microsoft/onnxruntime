@@ -327,9 +327,11 @@ const float beta_6 = 1.19825839466702e-06f;
 const float sigmoid_bound = 20.0f;
 const float tanh_bound = 10.0f;
 
+#ifdef __GNUC__
 #pragma GCC push_options
 #pragma GCC optimize("tree-vectorize")
 #pragma GCC optimize("unroll-loops")
+#endif
 
 inline void clip_for_sigmoid_in_place(float* ps, int c) {
   for (int i = 0; i < c; i++) {
@@ -529,7 +531,9 @@ void tanh_exact(float* pd, int c, float alpha, float beta) {
 
 void merge_lstm_gates_to_memory(const float* pprev, const float* pi, const float* pf, const float* pg, float* pcurr,
                                 int c) {
+  #ifdef __GNUC__
   #pragma GCC ivdep
+  #endif
   for (int i = 0; i < c; i++) {
     pcurr[i] = pprev[i] * pf[i] + pi[i] * pg[i];
   }
@@ -689,7 +693,9 @@ void composed_gru_output_gate_func(float* ps, int c, std::function<float(float, 
   }
 }
 
+#ifdef __GNUC__
 #pragma GCC pop_options
+#endif
 
 ActivationFuncPtr ActivationFuncByName(const std::string& func) {
   if (func == "sigmoid")
