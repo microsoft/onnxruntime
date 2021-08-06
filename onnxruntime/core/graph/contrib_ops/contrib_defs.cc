@@ -857,7 +857,7 @@ GELU (Gaussian Error Linear Unit) approximation: Y=0.5*X*(1+tanh(0.797885*X+0.03
         onnx_opset_13.set_domain("");
         onnx_opset_13.set_version(13);
 
-        return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+        return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
       });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SkipLayerNormalization)
@@ -2574,10 +2574,14 @@ Example 4:
                 {{"Deviation"}, "Sub", {"XU", "Mean2D"}},
                 {{"Normalized"}, "Div", {"Deviation", "StdDev"}},
                 {{"NormalizedT"}, "Cast", {"Normalized"}, {{"to", T}}},
-                {{"Scaled"}, "Mul", {"NormalizedT", "Scale"}},
-                {{"Biased"}, "Add", {"Scaled", "B"}},
-                {{"Y"}, "Reshape", {"Biased", "XShape"}},
-                {{"InvStdDev2D"}, "Reciprocal", {"StdDev"}}};
+                {{"Scaled"}, "Mul", {"NormalizedT", "Scale"}}};
+            if (ctx.hasInput(2)) {
+              body.push_back({{"Biased"}, "Add", {"Scaled", "B"}});
+            } else {
+              body.push_back({{"Biased"}, "Identity", {"Scaled"}});
+            }
+            body.push_back({{"Y"}, "Reshape", {"Biased", "XShape"}});
+            body.push_back({{"InvStdDev2D"}, "Reciprocal", {"StdDev"}});
             if (ctx.hasOutput(1))
               body.push_back({{"Mean"}, "Reshape", {"Mean2D", "ReducedShape"}});
             if (ctx.hasOutput(2))
@@ -2587,7 +2591,7 @@ Example 4:
             onnx_opset_13.set_domain("");
             onnx_opset_13.set_version(13);
 
-            return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+            return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
           });
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(SimplifiedLayerNormalization)
@@ -2680,7 +2684,7 @@ inputs by their magnitude, rather than gates inputs by their sign as in ReLUs.)D
         onnx_opset_13.set_domain("");
         onnx_opset_13.set_version(13);
 
-        return ONNX_NAMESPACE::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
+        return ONNX_NAMESPACE::FunctionBodyHelper::BuildFunctionProto(functionProto, schema, body, {onnx_opset_13});
       });
 
   static const char* BiasGelu_ver1_doc =
