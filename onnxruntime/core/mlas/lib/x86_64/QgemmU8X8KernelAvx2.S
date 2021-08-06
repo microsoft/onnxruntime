@@ -269,10 +269,10 @@ Implicit Arguments:
         jb      .LProcessRemainingBlocks\@
 
 .LComputeBlockBy4Loop\@:
-        ComputeBlockU8S8\Isa\() \ColumnCount\(), \RowCount\(), 0, 0
-        ComputeBlockU8S8\Isa\() \ColumnCount\(), \RowCount\(), 64, 4
-        ComputeBlockU8S8\Isa\() \ColumnCount\(), \RowCount\(), 128, 8
-        ComputeBlockU8S8\Isa\() \ColumnCount\(), \RowCount\(), 196, 12
+        ComputeBlockU8S8\Isa\() \ColumnCount\(), \RowCount\(), 0*64, 0
+        ComputeBlockU8S8\Isa\() \ColumnCount\(), \RowCount\(), 1*64, 4
+        ComputeBlockU8S8\Isa\() \ColumnCount\(), \RowCount\(), 2*64, 8
+        ComputeBlockU8S8\Isa\() \ColumnCount\(), \RowCount\(), 3*64, 12
         add     rdi,4*4                     # advance matrix A by 4 quads
         add     rsi,4*64                    # advance matrix B
         sub     rbp,4*4
@@ -281,14 +281,7 @@ Implicit Arguments:
 .LProcessRemainingBlocks\@:
         add     rbp,4*4                     # correct for over-subtract above
         jz      .LComputeBlockLoopExit\@
-.LProcessRemainingBlocksBy1Loop\@:
-        ComputeBlockU8S8\Isa\() \ColumnCount\(), \RowCount\(), 0, 0
-        add     rdi,4
-        add     rsi,64                      # advance matrix B
-        sub     rbp,4
-        jnz     .LProcessRemainingBlocksBy1Loop\@
-
-.else
+.endif
 
 .LComputeBlockBy1Loop\@:
         ComputeBlockU8S8\Isa\() \ColumnCount\(), \RowCount\(), 0, 0
@@ -299,8 +292,6 @@ Implicit Arguments:
         add     rsi,64                      # advance matrix B
         sub     rbp,4
         jnz     .LComputeBlockBy1Loop\@
-
-.endif
 
 .LComputeBlockLoopExit\@:
 
