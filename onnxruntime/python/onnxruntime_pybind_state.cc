@@ -1480,6 +1480,10 @@ static struct {
 void addObjectMethodsForTraining(py::module& m);
 #endif
 
+#ifdef ENABLE_EAGER_MODE
+void addObjectMethodsForEager(py::module& m);
+#endif
+
 void CreatePybindStateModule(py::module& m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
@@ -1560,6 +1564,11 @@ void CreatePybindStateModule(py::module& m) {
   addOpSchemaSubmodule(m);
   addOpKernelSubmodule(m);
 #endif
+
+#ifdef ENABLE_EAGER_MODE
+  addObjectMethodsForEager(m);
+#endif
+
 }
 
 // static variable used to create inference session and training session.
