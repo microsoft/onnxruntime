@@ -26,9 +26,9 @@ For comparison, CPU has MaxDiff=4.77E-07 for each formula.
 import unittest
 import torch
 from torch import nn
-import numpy
 import math
 import os
+from parity_utilities import *
 
 
 class Gelu(nn.Module):
@@ -68,141 +68,14 @@ class Gelu(nn.Module):
             return (fp32_gelu, )
 
 
-def create_inputs(batch_size=1, sequence_length=1, hidden_size=768, float16=False, device=torch.device('cuda')):
-    float_type = torch.float16 if float16 else torch.float32
-    input = torch.normal(mean=0.0, std=1.0, size=(batch_size, sequence_length, hidden_size)).to(float_type).to(device)
-    return input
-
-
 def get_output_names():
     outputs = ["output"]
     return outputs
 
 
-def export_onnx(model, onnx_model_path, float16, hidden_size, device):
-    from pathlib import Path
-    Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
-
-    input_hidden_states = create_inputs(hidden_size=hidden_size, float16=float16, device=device)
-    with torch.no_grad():
-        outputs = model(input_hidden_states)
-
-    dynamic_axes = {'input': {0: 'batch_size', 1: 'seq_len'}, "output": {0: 'batch_size', 1: 'seq_len'}}
-
-    torch.onnx.export(model,
-                      args=(input_hidden_states),
-                      f=onnx_model_path,
-                      input_names=['input'],
-                      output_names=["output"],
-                      dynamic_axes=dynamic_axes,
-                      example_outputs=outputs,
-                      opset_version=11,
-                      do_constant_folding=True)
-    print("exported:", onnx_model_path)
-
-
-def optimize_onnx(input_onnx_path, optimized_onnx_path, expected_gelu_op_type='Gelu'):
-    from onnxruntime.transformers.optimizer import optimize_model
-    onnx_model = optimize_model(input_onnx_path, model_type='gpt2', opt_level=0)
-    assert len(onnx_model.get_nodes_by_op_type(
-        expected_gelu_op_type)) == 1, f"Expected {expected_gelu_op_type} node not found in the optimized model"
-    onnx_model.save_model_to_file(optimized_onnx_path)
-
-
-def diff_outputs(torch_outputs, ort_outputs, index):
-    """ Returns the maximum difference between PyTorch and OnnxRuntime outputs.
-    """
-    expected_outputs = torch_outputs[index].cpu().numpy()
-    diff = numpy.abs(expected_outputs - ort_outputs[index])
-    return numpy.amax(diff)
-
-
-def compare_outputs(torch_outputs, ort_outputs, atol=1e-06, verbose=True):
-    """ Returns True if torch and ORT outputs are close for given thresholds, and False otherwise.
-    """
-    same = numpy.asarray([
-        numpy.allclose(ort_outputs[i], torch_outputs[i].cpu().numpy(), atol=atol, rtol=0)
-        for i in range(len(ort_outputs))
-    ])
-
-    max_abs_diff = [diff_outputs(torch_outputs, ort_outputs, i) for i in range(len(ort_outputs))]
-
-    is_all_close = same.all()
-    if is_all_close:
-        for i in numpy.where(numpy.logical_not(same))[0]:
-            diff = numpy.fabs(ort_outputs[i] - torch_outputs[i].cpu().numpy())
-            idx = numpy.unravel_index(diff.argmax(), diff.shape)
-            print(
-                f'Output {i}, diff={diff[idx]:.9f} index={idx} ort={ort_outputs[i][idx]:.9f} torch={float(torch_outputs[i][idx]):.9f}'
-            )
-
-    return is_all_close, max(max_abs_diff)
-
-
-def create_ort_session(onnx_model_path, use_gpu=True):
-    from onnxruntime import SessionOptions, InferenceSession, GraphOptimizationLevel, __version__ as onnxruntime_version
-    sess_options = SessionOptions()
-    sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
-    sess_options.intra_op_num_threads = 2
-    sess_options.log_severity_level = 2
-    execution_providers = ['CPUExecutionProvider'] if not use_gpu else ['CUDAExecutionProvider', 'CPUExecutionProvider']
-    return InferenceSession(onnx_model_path, sess_options, providers=execution_providers)
-
-
-def onnxruntime_inference(ort_session, input):
-    ort_inputs = {'input': numpy.ascontiguousarray(input.cpu().numpy())}
-    ort_outputs = ort_session.run(None, ort_inputs)
-    return ort_outputs
-
-
-def run_parity(model,
-               onnx_model_path,
-               batch_size,
-               hidden_size,
-               sequence_length,
-               float16,
-               device,
-               optimized,
-               test_cases=100,
-               verbose=False):
-    print(
-        f"optimized={optimized}, onnx_model_path={onnx_model_path}, batch_size={batch_size}, hidden_size={hidden_size}, sequence_length={sequence_length}, float16={float16}, device={device}"
-    )
-    passed_cases = 0
-    max_diffs = []
-    printed = False  # print only one sample
-    ort_session = create_ort_session(onnx_model_path, device.type == 'cuda')
-    for i in range(test_cases):
-        input_hidden_states = create_inputs(batch_size, sequence_length, hidden_size, float16, device)
-
-        with torch.no_grad():
-            torch_outputs = model(input_hidden_states)
-
-        ort_outputs = onnxruntime_inference(ort_session, input_hidden_states)
-
-        tolerance = 1e-04 if float16 else 1e-06
-        is_all_close, max_diff = compare_outputs(torch_outputs, ort_outputs, atol=tolerance)
-        max_diffs.append(max_diff)
-        if is_all_close:
-            passed_cases += 1
-        elif verbose and not printed:
-            printed = True
-            numpy.set_printoptions(precision=10, floatmode='fixed')
-            torch.set_printoptions(precision=10)
-            print("input", input_hidden_states)
-            print("torch_outputs", torch_outputs)
-            print("ort_outputs", ort_outputs)
-
-    max_diff = max(max_diffs)
-    diff_count = len([i for i in max_diffs if i > 0])
-    success_flag = "[FAILED]" if passed_cases < test_cases else "[OK]"
-    print(f"{success_flag} Passed_cases={passed_cases}/{test_cases}; Max_diff={max_diff}; Diff_count={diff_count}")
-    return test_cases - passed_cases
-
-
 def run(batch_size, float16, optimized, hidden_size, device, test_cases, formula=0, sequence_length=2):
-    test_name = f"batch_size={batch_size}, float16={float16}, optimized={optimized}, hidden_size={hidden_size}, formula={formula}"
-    print(f"\nTesting ONNX parity: {test_name}")
+    test_name = f"device={device}, float16={float16}, optimized={optimized}, batch_size={batch_size}, sequence_length={sequence_length}, hidden_size={hidden_size}, formula={formula}"
+    print(f"\nTesting: {test_name}")
 
     model = Gelu(formula=formula)
     model.eval()
@@ -216,7 +89,7 @@ def run(batch_size, float16, optimized, hidden_size, device, test_cases, formula
 
     if optimized:
         optimized_onnx_path = './temp/gelu_{}_opt_{}.onnx'.format(formula, "fp16" if float16 else "fp32")
-        optimize_onnx(onnx_model_path, optimized_onnx_path, expected_gelu_op_type=Gelu.get_fused_op(formula))
+        optimize_onnx(onnx_model_path, optimized_onnx_path, Gelu.get_fused_op(formula))
         onnx_path = optimized_onnx_path
     else:
         onnx_path = onnx_model_path
@@ -238,14 +111,16 @@ class TestGeluParity(unittest.TestCase):
         self.test_cases = 100  # Number of test cases per test run
         self.sequence_length = 2
         self.hidden_size = 768
-        self.formula_to_test = [0, 1, 3, 4, 5]  # formula 2 cannot pass precision test.
+        self.formula_to_test = [0, 1, 2, 3, 4, 5]
+        self.formula_must_pass = [0, 1, 3, 4, 5]  # formula 2 cannot pass precision test.
 
-    def run_test(self, batch_size, float16, optimized, hidden_size, device, formula):
+    def run_test(self, batch_size, float16, optimized, hidden_size, device, formula, enable_assert=True):
         if float16 and device.type == 'cpu':  # CPU does not support FP16
             return
         num_failure, test_name = run(batch_size, float16, optimized, hidden_size, device, self.test_cases, formula,
                                      self.sequence_length)
-        self.assertTrue(num_failure == 0, test_name)
+        if enable_assert:
+            self.assertTrue(num_failure == 0, "Failed: " + test_name)
 
     def run_one(self, optimized, device, hidden_size=768, formula=0):
         for batch_size in [4]:
@@ -254,14 +129,16 @@ class TestGeluParity(unittest.TestCase):
                           optimized=optimized,
                           hidden_size=hidden_size,
                           device=device,
-                          formula=formula)
+                          formula=formula,
+                          enable_assert=formula in self.formula_must_pass)
 
             self.run_test(batch_size,
                           float16=True,
                           optimized=optimized,
                           hidden_size=hidden_size,
                           device=device,
-                          formula=formula)
+                          formula=formula,
+                          enable_assert=formula in self.formula_must_pass)
 
     def test_cpu(self):
         cpu = torch.device('cpu')
