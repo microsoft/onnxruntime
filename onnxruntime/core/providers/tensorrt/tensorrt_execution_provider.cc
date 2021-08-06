@@ -21,6 +21,7 @@
 #include <memory>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
+#include <iostream>//slx
 
 #ifdef _WIN32
 #include <windows.h>
@@ -769,6 +770,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   auto meta_def = IndexedSubGraph_MetaDef::Create();
   const std::string graph_type = graph.IsSubgraph() ? "subgraph" : "graph";
   meta_def->name() = "TRTKernel_" + graph_type + "_" + graph.Name() + "_" + subgraph_id;
+  std::cout << "TRTKernel name: " << meta_def->name() << std::endl;//slx
 
   // Assign inputs and outputs to subgraph's meta_def
   for (const auto& input : inputs) {
@@ -822,39 +824,65 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         std::vector<std::string> subgraph_output_names;
         for (const auto& index : group.first) {
           const auto& node = graph.GetNode(node_index[index]);
+          std::cout << "GetSupportedList: node: " << node->Name() << std::endl;
           std::vector<onnxruntime::NodeArg*> inputs, outputs;
           for (auto input : node->InputDefs()) {
+            std::cout << "InputDefs: input: " << input->Name() << std::endl;//slx
             auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
             inputs.push_back(&n_input);
             const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
             if (graph.GetInitializedTensor(input->Name(), initializer)) {
+              std::cout << "input has initializer: " << std::endl;//initializer->size() << 
               const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
               if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
+                std::cout << "add initializer to graph_build" << std::endl;//initializer->name() <<
                 graph_build.AddInitializedTensor(*(initializer));
               }
             }
           }
 
           for (auto input : node->ImplicitInputDefs()) {
+            std::cout << "ImplicitInputDefs: input: " << input->Name() << std::endl;//slx
             const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
             if (graph.GetInitializedTensor(input->Name(), initializer)) {
+              std::cout << "input has initializer: " << std::endl;//initializer->name() << 
               const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
               if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
+                std::cout << "add initializer to graph_build" << std::endl;//initializer->name() << 
                 graph_build.AddInitializedTensor(*(initializer));
               }
             }
           }
           for (auto output : node->OutputDefs()) {
+            std::cout << "OutputDefs: output: " << output->Name() << std::endl;//slx
             auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
             outputs.push_back(&n_output);
             const auto name = output->Name();
             if (graph_output_names.find(name) != graph_output_names.end()) {
+              std::cout << "add output name to subgraph_output_names" << std::endl;
               subgraph_output_names.push_back(name);
             }
           }
           graph_build.AddNode(node->Name(), node->OpType(), node->Description(), inputs, outputs, &node->GetAttributes(), node->Domain());
         }
 
+{//slx
+        // Serialize modelproto to string
+        auto graph_viewer = graph_build.CreateGraphViewer();
+        auto model = graph_viewer->CreateModel(*GetLogger());
+        auto model_proto = model->ToProto();
+        ToGraphProtoInternal(*graph_viewer, *model_proto->mutable_graph());
+        model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
+        std::string string_buf;
+        model_proto->SerializeToString(string_buf);
+
+        ///if (dump_subgraphs_) {
+          // Dump TensorRT subgraph for debugging
+          std::fstream dump("TensorrtExecutionProvider_TRT_Subgraph_debug.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+          model_proto->SerializeToOstream(dump);
+        ///}
+}
         ORT_ENFORCE(graph_build.Resolve().IsOK());
 
         // Add parent graph output to the subgraph
@@ -871,7 +899,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         subgraph_outputs.insert(subgraph_outputs.begin(), graph_build_outputs.begin(), graph_build_outputs.end());
         graph_build.SetOutputs(graph_build_outputs);
         ORT_ENFORCE(graph_build.Resolve().IsOK());
-
+/*//slx
         // Check if input tensors have shapes
         if (iterations > 1) {
           auto graph_inputs = graph_build.GetInputs();
@@ -897,7 +925,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
             }
           }
         }
-
+*/
         // Serialize modelproto to string
         auto graph_viewer = graph_build.CreateGraphViewer();
         auto model = graph_viewer->CreateModel(*GetLogger());
@@ -1051,6 +1079,7 @@ void TensorrtExecutionProvider::RemoveTensorRTGraphCycles(SubGraphCollection_t& 
 std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+  std::cout << "-------GetCapability: graph: " << graph.Name() << std::endl;//slx
   // Get ModelPath
   const auto& path_string = graph.ModelPath().ToPathString();
 #ifdef _WIN32
@@ -1100,6 +1129,20 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   } else {
     LOGS_DEFAULT(INFO) << "[TensorRT EP] Graph is partitioned and number of subgraphs running on TensorRT exeuction provider is " << number_of_subgraphs;
   }
+
+{//slx print supported nodes
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder();
+  for (const auto& group : supported_nodes_vector) {
+    std::cout << "---subgraph---" << std::endl;
+    if (!group.first.empty()) {
+      for (const auto& index : group.first) {
+        const auto& node = graph.GetNode(node_index[index]);
+        std::cout << "trt ep: node: " << node->Name() << std::endl;
+      }
+    }
+  }
+  std::cout << "GetCapability done: graph: " << graph.Name() << std::endl;//slx
+}
 
   return result;
 }

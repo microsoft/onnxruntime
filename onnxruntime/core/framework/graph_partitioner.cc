@@ -12,6 +12,7 @@
 #include "core/framework/execution_providers.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/func_kernel.h"
+#include <iostream>
 
 // uncomment this line to count non-CUDA ops in ONNX domain
 //#define COUNT_NON_CUDA_OPS
@@ -173,6 +174,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
   }
 
   // recurse into nested graphs first to partition bottom up.
+/*//slx
   for (auto& node : graph.Nodes()) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       Graph* subgraph = entry.second;
@@ -181,7 +183,35 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, bool export_dll, FuncMa
                                                        fused_kernel_registry, current_ep, mode, fused_node_unique_id));
     }
   }
+*/
 
+  for (auto& node : graph.Nodes()) {
+    const std::string& type = current_ep.Type();//slx
+    std::cout << "partitioner: node: " << node.Name() << ", EP:" << type << std::endl;
+    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+      Graph* subgraph = entry.second;
+      std::cout << "node " << node.Name() << " has subgraph. Recurse into subgraph: " << subgraph->Name() << std::endl;
+      // we pass through the export_dll value and FuncManager from the top level graph
+      ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(*subgraph, export_dll, func_mgr, kernel_registry_mgr,
+                                                       fused_kernel_registry, current_ep, mode, fused_node_unique_id));
+    }
+  }
+/*
+  for (auto& node : graph.Nodes()) {
+    const std::string& type = current_ep.Type();//slx
+    std::cout << "partitioner: node: " << node.Name() << ", EP:" << type << std::endl;
+    for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
+      if (type == kTensorrtExecutionProvider)//slx
+        std::cout << "node has subgraph. Skip recursion for trt" << std::endl;
+      else {
+        Graph* subgraph = entry.second;
+        // we pass through the export_dll value and FuncManager from the top level graph
+        ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(*subgraph, export_dll, func_mgr, kernel_registry_mgr,
+                                                       fused_kernel_registry, current_ep, mode, fused_node_unique_id));
+      }
+    }
+  }
+*/
   // If an execution provider return the capability that he could run a sub-graph,
   // onnxruntime will fuse the sub-graph into a function node. if the execution provider
   // says he need to compile the graph at runtime (by need_compile flag),
