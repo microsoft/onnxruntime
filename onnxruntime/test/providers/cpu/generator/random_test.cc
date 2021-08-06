@@ -137,7 +137,8 @@ void RunRandomUniformLikeTest(bool infer_dtype = false) {
 
   test.AddOutput<double>("Y", dims, expected_output);
 
-  test.Run();
+  // TensorRT does not support seed parameter and there will be result mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(Random, RandomUniformLike2DDouble) {

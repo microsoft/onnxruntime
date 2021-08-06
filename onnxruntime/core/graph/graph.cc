@@ -1902,6 +1902,11 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
     return initializer;
   }
 
+  // ORT does not implement partial data propagation yet so just return nullptr.
+  const TensorShapeProto* getSymbolicInput(size_t) const override {
+    return nullptr;
+  }
+
   GraphInferencer* getGraphAttributeInferencer(const std::string& attribute_name) override {
     GraphInferencer* graph_inferencer = nullptr;
 
@@ -2352,8 +2357,12 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
       auto maxInclusiveVersion = DomainToVersionMap().find(domain)->second;
       node.op_ = schema_registry_->GetSchema(node.OpType(), maxInclusiveVersion, node.Domain());
 
-      if (node.op_ && node.op_->Deprecated()) {
-        node.op_ = nullptr;
+      if (node.op_) {
+        node.since_version_ = node.op_->since_version();
+
+        if (node.op_->Deprecated()) {
+            node.op_ = nullptr;
+        }
       }
 
       InitFunctionBodyForNode(node);
@@ -2362,7 +2371,11 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         return Status(ONNXRUNTIME, FAIL, "Fatal error: " + node.OpType() + " is not a registered function/op");
       }
 
-      node.since_version_ = node.op_->since_version();
+      // For ops without schema (like model local functions set the since version after constructing the schema.
+      // schema construction will happen during function body initialization.
+      if (node.since_version_ == -1) {
+        node.since_version_ = node.op_->since_version();
+      }
     }
 
     ORT_RETURN_IF_ERROR(node.UpdateInputArgCount());
@@ -2429,19 +2442,17 @@ void Graph::InitFunctionBodyForNode(Node& node) {
       onnx_function_proto = *(node.op_->GetFunction());
     }
 
-    // Check function's opset requirements are compatible with model's opset.
-    auto& graphImports = DomainToVersionMap();
-    for (const auto& fn_import : onnx_function_proto.opset_import()) {
-      auto it = graphImports.find(fn_import.domain());
-      if ((it != graphImports.end()) && (it->second != fn_import.version()))
-        return;  // Incompatible. Do not use this function expansion.
+    ORT_TRY {
+      auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
+                                                                  logger_);
+      function_container_.emplace_back(std::move(func_ptr));
+      node.SetFunctionBody(*function_container_.back());
     }
-
-    auto func_ptr = std::make_unique<onnxruntime::FunctionImpl>(*this, node.Index(), onnx_function_proto,
-                                                                logger_);
-
-    function_container_.emplace_back(std::move(func_ptr));
-    node.SetFunctionBody(*function_container_.back());
+    ORT_CATCH(const std::exception& ) {
+      // Return without using this function op's expansion. No need to fail just yet.
+      // If ORT has a specialized kernel for this op then execution will proceed
+      return;
+    }
   }
 }
 

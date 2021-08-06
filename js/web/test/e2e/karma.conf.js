@@ -20,11 +20,13 @@ module.exports = function (config) {
       { pattern: distPrefix + 'ort.js' },
       { pattern: './common.js' },
       { pattern: TEST_MAIN },
-      { pattern: './node_modules/onnxruntime-web/dist/**/*', included: false, nocache: true },
+      { pattern: './node_modules/onnxruntime-web/dist/*.wasm', included: false, nocache: true },
       { pattern: './model.onnx', included: false }
     ],
     proxies: {
       '/model.onnx': '/base/model.onnx',
+      '/test-wasm-path-override/ort-wasm.wasm': '/base/node_modules/onnxruntime-web/dist/ort-wasm.wasm',
+      '/test-wasm-path-override/renamed.wasm': '/base/node_modules/onnxruntime-web/dist/ort-wasm.wasm',
     },
     client: { captureConsole: true, mocha: { expose: ['body'], timeout: 60000 } },
     reporters: ['mocha'],

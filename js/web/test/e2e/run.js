@@ -46,6 +46,9 @@ async function main() {
   // npm install with "--cache" to install packed packages with an empty cache folder
   await runInShell(`npm install --cache "${NPM_CACHE_FOLDER}" "${ORT_COMMON_PACKED_FILEPATH}" "${ORT_WEB_PACKED_FILEPATH}"`);
 
+  // prepare .wasm files for path override testing
+  prepareWasmPathOverrideFiles();
+
   // test case run in Node.js
   await testAllNodejsCases();
 
@@ -60,17 +63,29 @@ async function main() {
   process.exit(0);
 }
 
+function prepareWasmPathOverrideFiles() {
+  const folder = path.join(TEST_E2E_RUN_FOLDER, 'test-wasm-path-override');
+  const sourceFile = path.join(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web', 'dist', 'ort-wasm.wasm');
+  fs.emptyDirSync(folder);
+  fs.copyFileSync(sourceFile, path.join(folder, 'ort-wasm.wasm'));
+  fs.copyFileSync(sourceFile, path.join(folder, 'renamed.wasm'));
+}
+
 async function testAllNodejsCases() {
   await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-main-no-threads.js');
   await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-main.js');
   await runInShell('node --experimental-wasm-threads --experimental-wasm-bulk-memory ./node_modules/mocha/bin/mocha ./node-test-main-no-threads.js');
   await runInShell('node --experimental-wasm-threads --experimental-wasm-bulk-memory ./node_modules/mocha/bin/mocha ./node-test-main.js');
+  await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-wasm-path-override-filename.js');
+  await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-wasm-path-override-prefix.js');
 }
 
 async function testAllBrowserCases({ hostInKarma }) {
   await runKarma({ hostInKarma, main: './browser-test-webgl.js', browser: 'Chrome_default' });
   await runKarma({ hostInKarma, main: './browser-test-wasm.js', browser: 'Chrome_default' });
   await runKarma({ hostInKarma, main: './browser-test-wasm-no-threads.js', browser: 'Chrome_default' });
+  await runKarma({ hostInKarma, main: './browser-test-wasm-path-override-filename.js', browser: 'Chrome_default' });
+  await runKarma({ hostInKarma, main: './browser-test-wasm-path-override-prefix.js', browser: 'Chrome_default' });
 }
 
 async function runKarma({ hostInKarma, main, browser }) {
