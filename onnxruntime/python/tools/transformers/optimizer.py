@@ -34,13 +34,13 @@ from onnx_model_gpt2 import Gpt2OnnxModel
 
 logger = logging.getLogger(__name__)
 
-# Map model type to tuple: optimizer class, export tools (pytorch, tf2onnx, keras2onnx) and whether OnnxRuntime has the optimization.
-MODEL_CLASSES = {
-    "bert": (BertOnnxModel, "pytorch", True),
-    "bert_tf": (BertOnnxModelTF, "tf2onnx", False),
-    "bert_keras": (BertOnnxModelKeras, "keras2onnx", False),
-    "gpt2": (Gpt2OnnxModel, "pytorch", True),
-    "gpt2_tf": (Gpt2OnnxModel, 'tf2onnx', False)  # might add a class for GPT2OnnxModel for TF later.
+# Map model type to tuple: optimizer class, export tools (pytorch, tf2onnx, keras2onnx)
+MODEL_TYPES = {
+    "bert": (BertOnnxModel, "pytorch"),
+    "bert_tf": (BertOnnxModelTF, "tf2onnx"),
+    "bert_keras": (BertOnnxModelKeras, "keras2onnx"),
+    "gpt2": (Gpt2OnnxModel, "pytorch"),
+    "gpt2_tf": (Gpt2OnnxModel, 'tf2onnx')  # might add a class for GPT2OnnxModel for TF later.
 }
 
 
@@ -117,8 +117,8 @@ def _parse_arguments():
                         required=False,
                         type=str.lower,
                         default="bert",
-                        choices=list(MODEL_CLASSES.keys()),
-                        help="Model type selected in the list: " + ", ".join(MODEL_CLASSES.keys()))
+                        choices=list(MODEL_TYPES.keys()),
+                        help="Model type selected in the list: " + ", ".join(MODEL_TYPES.keys()))
 
     parser.add_argument(
         '--num_heads',
@@ -214,12 +214,6 @@ def _parse_arguments():
     parser.add_argument('--only_onnxruntime', required=False, action='store_true', help="optimized by onnxruntime only")
     parser.set_defaults(only_onnxruntime=False)
 
-    parser.add_argument('--disable_onnxruntime',
-                        required=False,
-                        action='store_true',
-                        help="do not use onnxruntime to optimize")
-    parser.set_defaults(disable_onnxruntime=False)
-
     parser.add_argument('--opt_level',
                         required=False,
                         type=int,
@@ -271,14 +265,24 @@ def optimize_model(input,
                    optimization_options=None,
                    opt_level=0,
                    use_gpu=False,
-                   only_onnxruntime=False,
-                   disable_onnxruntime=False):
-    """ Optimize Model by OnnxRuntime and/or offline fusion logic.
+                   only_onnxruntime=False):
+    """ Optimize Model by OnnxRuntime and/or python fusion logic.
 
-    The following optimizes model by OnnxRuntime only, and no offline fusion logic:
+    In onnxruntime, there are graph optimizations (https://onnxruntime.ai/docs/resources/graph-optimizations.html) avaiable. However, the coverage
+    is limited. We also have graph fusions that implemented in python to improve the coverage. These two methods can combined: onnxruntime will run first
+    when opt_level > 0, then graph fusions in Python will be applied.
+
+    You can opt to use ONNX Runtime only, and no python fusion logic by specifying only_onnxruntime and a positive opt_level like
         optimize_model(input, opt_level=1, use_gpu=False, only_onnxruntime=True)
-    If you want to optimize model by offline fusion logic.
-        optimize_model(input, model_type, num_heads=12, hidden_size=768, optimization_options=your_options)
+    If your model is not exported with constant folding, try opt_level=1 to let onnxruntime do it.
+
+    When opt_level is 0 and only_onnxruntime is False, only python fusion logic is used and onnxruntime is disabled.
+
+    For BERT model, num_heads and hidden_size are optional. For other model types, you need specify these parameters.
+
+    use_gpu shall set properly. When opt_level > 1, optimized graph might contain optimization for GPU only. That makes the optimized model less portable.
+    However, if your model is intended for GPU inference only (especially float16 or mixed precision model), you must set use_gpu to be True,
+    otherwise the model is not optimized for GPU inference.
 
     Args:
         input (str): input model path.
@@ -288,32 +292,24 @@ def optimize_model(input,
         optimization_options (OptimizationOptions or None): optimization options that can use to turn on/off some fusions.
         opt_level (int): onnxruntime graph optimization level (0, 1, 2 or 99). When the level > 0, onnxruntime will be used to optimize model first.
         use_gpu (bool): use gpu or not for onnxruntime.
-        only_onnxruntime (bool): only use onnxruntime to optimize model, and no offline fusion logic is used.
-        disable_onnxruntime (bool): only use offline fusion logic to optimize model.
+        only_onnxruntime (bool): only use onnxruntime to optimize model, and no offline fusion logic is used
 
      Returns:
         object of an optimizer class.
     """
-    (optimizer_class, producer, run_onnxruntime) = MODEL_CLASSES[model_type]
+    (optimizer_class, producer) = MODEL_TYPES[model_type]
 
     temp_model_path = None
-
-    if disable_onnxruntime and only_onnxruntime:
-        logger.warning("Only one of the options can be true in disable_onnxruntime or only_onnxruntime")
-
-    if disable_onnxruntime is False:
-        if opt_level > 1:  # Optimization specified for an execution provider.
-            temp_model_path = optimize_by_onnxruntime(input, use_gpu=use_gpu, opt_level=opt_level)
-        elif run_onnxruntime:
-            # Use Onnxruntime to do optimizations (like constant folding and cast elimation) that is not specified to exection provider.
-            # CPU provider is used here so that there is no extra node for GPU memory copy.
-            temp_model_path = optimize_by_onnxruntime(input, use_gpu=False, opt_level=1)
+    if opt_level > 0:
+        temp_model_path = optimize_by_onnxruntime(input, use_gpu=use_gpu, opt_level=opt_level)
+    elif only_onnxruntime:
+        logger.warning("Please specify a positive value for opt_level when only_onnxruntime is True")
 
     model = load_model(temp_model_path or input, format=None, load_external_data=True)
 
     if model.producer_name and producer != model.producer_name:
         logger.warning(
-            f"Model producer not matched: Expect {producer},  Got {model.producer_name} {model.producer_version}. Please specify correct --model_type parameter."
+            f"Model producer not matched: Expect {producer}, Got {model.producer_name} {model.producer_version}. Please specify correct --model_type parameter."
         )
 
     if optimization_options is None:
@@ -360,8 +356,7 @@ def main():
                                opt_level=args.opt_level,
                                optimization_options=optimization_options,
                                use_gpu=args.use_gpu,
-                               only_onnxruntime=args.only_onnxruntime,
-                               disable_onnxruntime=args.disable_onnxruntime)
+                               only_onnxruntime=args.only_onnxruntime)
 
     if args.float16:
         optimizer.convert_model_float32_to_float16()
