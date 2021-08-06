@@ -40,8 +40,8 @@ class Model {
   explicit Model(const std::string& graph_name,
                  bool is_onnx_domain_only,
                  const logging::Logger& logger)
-      : Model(graph_name, is_onnx_domain_only, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {},
-              {}, logger) {}
+      : Model(graph_name, is_onnx_domain_only, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), std::unordered_map<std::string, int>(),
+              std::vector<ONNX_NAMESPACE::FunctionProto>(), logger) {}
 
   // Construct model from scratch.
   explicit Model(const std::string& graph_name,

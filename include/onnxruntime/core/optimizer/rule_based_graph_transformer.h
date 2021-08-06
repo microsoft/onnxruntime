@@ -30,7 +30,7 @@ each with different trade offs. At the moment, we define one that performs top-d
 class RuleBasedGraphTransformer : public GraphTransformer {
  public:
   RuleBasedGraphTransformer(const std::string& name,
-                            const std::unordered_set<std::string>& compatible_execution_providers = {})
+                            const std::unordered_set<std::string>& compatible_execution_providers )
       : GraphTransformer(name, compatible_execution_providers) {}
 
   /** Registers a rewrite rule in this transformer. */

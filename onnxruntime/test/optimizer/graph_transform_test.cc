@@ -81,7 +81,7 @@ TEST_F(GraphTransformationTests, IdentityElimination) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Identity"] == 1);
 
-  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1",std::unordered_set<std::string>());
   rule_transformer_L1->Register(onnxruntime::make_unique<EliminateIdentity>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
@@ -100,7 +100,7 @@ TEST_F(GraphTransformationTests, DropoutElimination) {
   ASSERT_TRUE(op_to_count["Identity"] == 5);
   ASSERT_TRUE(op_to_count["Dropout"] == 6);
 
-  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1", std::unordered_set<std::string>());
   rule_transformer_L1->Register(onnxruntime::make_unique<EliminateDropout>());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
@@ -125,7 +125,7 @@ TEST_F(GraphTransformationTests, SliceElimination) {
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
     int initial_slice_num = op_to_count["Slice"];
 
-    auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+    auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1",std::unordered_set<std::string>());
     rule_transformer_L1->Register(onnxruntime::make_unique<EliminateSlice>());
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
     graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
@@ -147,7 +147,7 @@ TEST_F(GraphTransformationTests, ConstantFolding) {
   std::unique_ptr<CPUExecutionProvider> e =
       onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/,std::unordered_set<std::string>(),std::unordered_set<std::string>()), TransformerLevel::Level1);
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
@@ -165,7 +165,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingNodesOnDifferentEP) {
   std::unique_ptr<CPUExecutionProvider> e =
       onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/,std::unordered_set<std::string>(),std::unordered_set<std::string>()), TransformerLevel::Level1);
 
   // assign all nodes to CUDA. the constant folding should override this to perform the constant folding on cpu
   for (auto& node : graph.Nodes()) {
@@ -246,7 +246,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingSubgraph) {
   std::unique_ptr<CPUExecutionProvider> e =
       onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/,std::unordered_set<std::string>(),std::unordered_set<std::string>()), TransformerLevel::Level1);
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
@@ -301,7 +301,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithScalarShapeToInitializer) {
       onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get(),
                                                                               false /*skip_dequantize_linear*/,
-                                                                              compatible_eps),
+                                                                              compatible_eps,std::unordered_set<std::string>()),
                                     TransformerLevel::Level1);
 
   ASSERT_TRUE(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_).IsOK());
@@ -376,7 +376,7 @@ TEST_F(GraphTransformationTests, ConstantFolding_RemoveDanglingInputNodesToConst
   std::unique_ptr<CPUExecutionProvider> e =
       onnxruntime::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/), TransformerLevel::Level1);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/,std::unordered_set<std::string>(),std::unordered_set<std::string>()), TransformerLevel::Level1);
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
@@ -395,7 +395,7 @@ TEST_F(GraphTransformationTests, ShapeToInitializer) {
   ASSERT_TRUE(op_to_count["Shape"] == 4);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1",std::unordered_set<std::string>());
   rule_transformer_L1->Register(onnxruntime::make_unique<ShapeToInitializer>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
@@ -450,7 +450,7 @@ TEST_F(GraphTransformationTests, FuseConvBNNoBias) {
   }
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1", std::unordered_set<std::string>());
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvBNFusion>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
@@ -484,7 +484,7 @@ TEST_F(GraphTransformationTests, DontFuseConvWithBNWithOptionalOutputs) {
   }
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1", std::unordered_set<std::string>());
   rule_transformer_L1->Register(onnxruntime::make_unique<ConvBNFusion>());
   graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1);
 
@@ -506,7 +506,7 @@ TEST_F(GraphTransformationTests, FuseConvBNMulAddUnsqueeze) {
     Graph& graph = p_model->MainGraph();
 
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-    auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+    auto rule_transformer_L1 = onnxruntime::make_unique<RuleBasedGraphTransformer>("RuleTransformer1",std::unordered_set<std::string>());
     rule_transformer_L1->Register(onnxruntime::make_unique<UnsqueezeElimination>());
     rule_transformer_L1->Register(onnxruntime::make_unique<ConvAddFusion>());
     rule_transformer_L1->Register(onnxruntime::make_unique<ConvBNFusion>());
@@ -542,7 +542,7 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
 
     // Apply transformer
     onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-    graph_transformation_mgr.Register(onnxruntime::make_unique<ConvActivationFusion>(), TransformerLevel::Level2);
+    graph_transformation_mgr.Register(onnxruntime::make_unique<ConvActivationFusion>(std::unordered_set<std::string>()), TransformerLevel::Level2);
     ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
     op_to_count = CountOpsInGraph(graph);
@@ -699,7 +699,7 @@ TEST_F(GraphTransformationTests, MatMulAddFusion_two_input) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<MatMulAddFusion>(), TransformerLevel::Level1);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MatMulAddFusion>(std::unordered_set<std::string>()), TransformerLevel::Level1);
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -791,7 +791,7 @@ TEST_F(GraphTransformationTests, Gemm_Relu_three_input) {
   Graph& graph = p_model->MainGraph();
   std::map<std::string, int> op_to_count1 = CountOpsInGraph(graph);
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<GemmActivationFusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GemmActivationFusion>(std::unordered_set<std::string>()), TransformerLevel::Level2);
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -805,7 +805,7 @@ TEST_F(GraphTransformationTests, TransposeMatmulFusion) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<MatmulTransposeFusion>(std::unordered_set<std::string>()), TransformerLevel::Level1);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -1210,7 +1210,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionTest) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(), TransformerLevel::Level1);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ReshapeFusion>(std::unordered_set<std::string>()), TransformerLevel::Level1);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -1739,7 +1739,7 @@ TEST_F(GraphTransformationTests, ConcatSliceEliminationTest) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<ConcatSliceElimination>(), TransformerLevel::Level1);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ConcatSliceElimination>(std::unordered_set<std::string>()), TransformerLevel::Level1);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -1906,7 +1906,7 @@ TEST_F(GraphTransformationTests, AttentionFusionInt32Test) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<AttentionFusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<AttentionFusion>(std::unordered_set<std::string>()), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -2109,7 +2109,7 @@ TEST_F(GraphTransformationTests, GeluFusionTest) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<GeluFusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GeluFusion>(std::unordered_set<std::string>()), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -2186,7 +2186,7 @@ TEST_F(GraphTransformationTests, GeluFusionTestFormat2GraphOutput) {
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   graph_transformation_mgr.Register(onnxruntime::make_unique<GeluFusion>(), TransformerLevel::Level2);
-  graph_transformation_mgr.Register(onnxruntime::make_unique<BiasGeluFusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<BiasGeluFusion>(std::unordered_set<std::string>()), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -2273,7 +2273,7 @@ TEST_F(GraphTransformationTests, GeluApproximation_Gelu) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<GeluApproximation>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<GeluApproximation>(std::unordered_set<std::string>()), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -2325,7 +2325,7 @@ TEST_F(GraphTransformationTests, FastGeluFusionTest) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<FastGeluFusion>(std::unordered_set<std::string>()), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -2506,7 +2506,7 @@ struct BiasSoftmaxFusionTester {
     SetExecutionProvider(execution_provider);
 
     graph_transformation_mgr_.Register(
-        onnxruntime::make_unique<BiasSoftmaxFusion>(), TransformerLevel::Level2);
+        onnxruntime::make_unique<BiasSoftmaxFusion>(std::unordered_set<std::string>()), TransformerLevel::Level2);
   }
 
   void SetExecutionProvider(const char* ep) {
@@ -2611,7 +2611,7 @@ TEST_F(GraphTransformationTests, LayerNormFusionTest) {
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<LayerNormFusion>(), TransformerLevel::Level2);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<LayerNormFusion>(std::unordered_set<std::string>()), TransformerLevel::Level2);
   auto ret = graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_);
   ASSERT_TRUE(ret.IsOK());
 
@@ -3216,7 +3216,7 @@ static void GatherNDComputationReductionTest(const std::string op_type, logging:
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  graph_transformation_mgr.Register(onnxruntime::make_unique<ComputationReductionTransformer>(), TransformerLevel::Level1);
+  graph_transformation_mgr.Register(onnxruntime::make_unique<ComputationReductionTransformer>(std::unordered_set<std::string>()), TransformerLevel::Level1);
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, logger));
 
   GraphViewer graph_viewer(graph);
@@ -3397,8 +3397,8 @@ static void TestMatMulScaleFusion(
     const PathString& model_path, const Logger& logger,
     GraphPreprocessFn graph_preprocess_fn,
     GraphTransformationCheckFn graph_transformation_check_fn,
-    const std::unordered_set<std::string>& compatible_execution_providers = {},
-    const std::unordered_set<std::string>& excluded_initializer_names = {}) {
+    const std::unordered_set<std::string>& compatible_execution_providers =  std::unordered_set<std::string>(),
+    const std::unordered_set<std::string>& excluded_initializer_names =  std::unordered_set<std::string>()) {
   SCOPED_TRACE(ORT_TSTR("model path: ") + model_path);
 
   std::shared_ptr<Model> model;
@@ -3424,8 +3424,8 @@ template <typename GraphTransformationCheckFn>
 static void TestMatMulScaleFusion(
     const PathString& model_path, const Logger& logger,
     GraphTransformationCheckFn graph_transformation_check,
-    const std::unordered_set<std::string>& compatible_execution_providers = {},
-    const std::unordered_set<std::string>& excluded_initializer_names = {}) {
+    const std::unordered_set<std::string>& compatible_execution_providers = std::unordered_set<std::string>(),
+    const std::unordered_set<std::string>& excluded_initializer_names = std::unordered_set<std::string>()) {
   TestMatMulScaleFusion(
       model_path, logger,
       [](Graph&) {}, graph_transformation_check,
@@ -3509,7 +3509,7 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionExcludedInitializerName) {
          const std::map<std::string, int>& transformed_op_counts) {
         EXPECT_EQ(original_op_counts, transformed_op_counts);
       },
-      {},
+      std::unordered_set<std::string>(),
       {"scale"});
 }
 
