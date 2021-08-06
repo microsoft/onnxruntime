@@ -10,22 +10,31 @@
 
 import unittest
 import os
-import onnx
-import onnxruntime
 import pytest
-from onnx import helper, TensorProto, ModelProto, load_model
-from onnx.helper import make_node, make_tensor_value_info
-import numpy as np
-from onnx import numpy_helper
+from onnx import TensorProto, load_model
 import sys
 
-from onnxruntime.transformers.optimizer import optimize_model, optimize_by_onnxruntime
-from onnxruntime.transformers.onnx_model import OnnxModel
+# Try import optimizer from source directory so that we need not build and install package after making change.
+source_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'python', 'tools', 'transformers')
+if (os.path.exists(source_dir) and source_dir not in sys.path):
+    sys.path.append(source_dir)
+    from optimizer import optimize_model
+    from onnx_model import OnnxModel
+    from onnx_exporter import export_onnx_model_from_tf, export_onnx_model_from_pt
+    from huggingface_models import MODELS
+    from benchmark_helper import Precision
+else:
+    from onnxruntime.transformers.optimizer import optimize_model
+    from onnxruntime.transformers.onnx_model import OnnxModel
+    from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_tf, export_onnx_model_from_pt
+    from onnxruntime.transformers.huggingface_models import MODELS
+    from onnxruntime.transformers.benchmark_helper import Precision
+
 
 BERT_TEST_MODELS = {
-    "bert_keras_0": ('models', 'TFBertForSequenceClassification_1.onnx'), # bert_mrpc_tensorflow2.1_opset10
-    "bert_keras_squad": ('models', 'TFBertForQuestionAnswering.onnx'), # bert_squad_tensorflow2.1_keras2onnx_opset11
-    "gpt2_past": ('models', 'gpt2_past.onnx'), # gpt2_pytorch1.5_opset11
+    "bert_keras_0": ('models', 'TFBertForSequenceClassification_1.onnx'),  # bert_mrpc_tensorflow2.1_opset10
+    "bert_keras_squad": ('models', 'TFBertForQuestionAnswering.onnx'),  # bert_squad_tensorflow2.1_keras2onnx_opset11
+    "gpt2_past": ('models', 'gpt2_past.onnx'),  # gpt2_pytorch1.5_opset11
     "gpt2_past_mask": ('FUSION', 'gpt2_past_mask_one_layer.onnx'),
     "multiple_embed": ('FUSION', 'embed_layer_norm_multiple.onnx'),
     "bert_tf2onnx_0": ('models', 'bert_tf2onnx_0.onnx')
@@ -35,10 +44,15 @@ BERT_TEST_MODELS = {
 def _get_test_model_path(name):
     sub_dir, file = BERT_TEST_MODELS[name]
     if sub_dir == "FUSION":
-        #return os.path.join('..', '..', '..', '..', 'test', 'testdata', 'transform', 'fusion', file)
-        return os.path.join('./', 'testdata', 'transform', 'fusion', file)
+        relative_path = os.path.join(os.path.dirname(__file__), '..', '..', 'testdata', 'transform', 'fusion', file)
+        if (os.path.exists(relative_path)):
+            return relative_path
+        return os.path.join('.', 'testdata', 'transform', 'fusion', file)
     else:
-        return os.path.join('./', 'transformers', 'test_data', sub_dir, file)
+        relative_path = os.path.join(os.path.dirname(__file__), 'test_data', sub_dir, file)
+        if (os.path.exists(relative_path)):
+            return relative_path
+        return os.path.join('.', 'transformers', 'test_data', sub_dir, file)
 
 
 class TestBertOptimization(unittest.TestCase):
@@ -63,9 +77,6 @@ class TestBertOptimization(unittest.TestCase):
         # expect fusion result list have the following keys
         # EmbedLayerNormalization, Attention, Gelu, FastGelu, BiasGelu, LayerNormalization, SkipLayerNormalization
         model_fusion_statistics = {}
-        from onnx_exporter import export_onnx_model_from_pt
-        from huggingface_models import MODELS
-        from benchmark_helper import Precision
 
         input_names = MODELS[model_name][0]
 
@@ -94,9 +105,6 @@ class TestBertOptimization(unittest.TestCase):
         # expect fusion result list have the following keys
         # EmbedLayerNormalization, Attention, Gelu, FastGelu, BiasGelu, LayerNormalization, SkipLayerNormalization
         model_fusion_statistics = {}
-        from onnx_exporter import export_onnx_model_from_tf
-        from huggingface_models import MODELS
-        from benchmark_helper import Precision
         print("testing mode ", model_name)
         print("testing input number = ", inputs_count)
         input_names = MODELS[model_name][0]
@@ -157,28 +165,28 @@ class TestBertOptimization(unittest.TestCase):
         }
         self.verify_node_count(model, expected_node_count, 'test_gpt2_past')
 
-    # def test_gpt2_past_fp16(self):
-    #     input_model_path = _get_test_model_path('gpt2_past')
-    #     model = OnnxModel(load_model(input_model_path, format=None, load_external_data=True))
-    #     model.convert_model_float32_to_float16(cast_input_output=False)
-    #     for input in model.graph().input[1:]:
-    #         self.assertEqual(input.type.tensor_type.elem_type, TensorProto.FLOAT16)
-    #     for output in model.graph().output:
-    #         self.assertEqual(output.type.tensor_type.elem_type, TensorProto.FLOAT16)
+    def test_gpt2_past_fp16(self):
+        input_model_path = _get_test_model_path('gpt2_past')
+        model = OnnxModel(load_model(input_model_path, format=None, load_external_data=True))
+        model.convert_model_float32_to_float16(cast_input_output=False, use_symbolic_shape_infer=False)
+        for input in model.graph().input[1:]:
+            self.assertEqual(input.type.tensor_type.elem_type, TensorProto.FLOAT16)
+        for output in model.graph().output:
+            self.assertEqual(output.type.tensor_type.elem_type, TensorProto.FLOAT16)
 
-    # def test_gpt2_past_mask(self):
-    #     input = _get_test_model_path('gpt2_past_mask')
-    #     model = optimize_model(input, 'gpt2', num_heads=2, hidden_size=4)
-    #     expected_node_count = {
-    #         'EmbedLayerNormalization': 0,
-    #         'Attention': 1,
-    #         'Gelu': 0,
-    #         'FastGelu': 1,
-    #         'BiasGelu': 0,
-    #         'LayerNormalization': 2,
-    #         'SkipLayerNormalization': 0
-    #     }
-    #     self.verify_node_count(model, expected_node_count, 'test_gpt2_past_mask')
+    def test_gpt2_past_mask(self):
+        input = _get_test_model_path('gpt2_past_mask')
+        model = optimize_model(input, 'gpt2', num_heads=2, hidden_size=4)
+        expected_node_count = {
+            'EmbedLayerNormalization': 0,
+            'Attention': 1,
+            'Gelu': 0,
+            'FastGelu': 1,
+            'BiasGelu': 0,
+            'LayerNormalization': 2,
+            'SkipLayerNormalization': 0
+        }
+        self.verify_node_count(model, expected_node_count, 'test_gpt2_past_mask')
 
     def test_multiple_embed(self):
         input_model_path = _get_test_model_path('multiple_embed')
@@ -209,9 +217,15 @@ class TestBertOptimization(unittest.TestCase):
     #     self.verify_node_count(model, expected_node_count, 'test_bert_tf2onnx_0')
 
     @pytest.mark.slow
-    def test_huggingface_bert_fusion(self):
+    def test_huggingface_bert_fusion_1(self):
         self._test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=1)
+
+    @pytest.mark.slow
+    def test_huggingface_bert_fusion_2(self):
         self._test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=2)
+
+    @pytest.mark.slow
+    def test_huggingface_bert_fusion_3(self):
         self._test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=3)
 
     @pytest.mark.slow
@@ -269,9 +283,15 @@ class TestBertOptimization(unittest.TestCase):
         self._test_optimizer_on_huggingface_model("facebook/bart-base", [0, 0, 0, 0, 12, 2, 30])
 
     @pytest.mark.slow
-    def test_huggingface_bert_base_cased_from_tf2onnx(self):
+    def test_huggingface_bert_base_cased_from_tf2onnx_1(self):
         self._test_optimizer_on_tf_model("bert-base-cased", [0, 12, 0, 0, 0, 0, 25], 1)
+
+    @pytest.mark.slow
+    def test_huggingface_bert_base_cased_from_tf2onnx_2(self):
         self._test_optimizer_on_tf_model("bert-base-cased", [0, 12, 0, 0, 0, 0, 25], 2)
+
+    @pytest.mark.slow
+    def test_huggingface_bert_base_cased_from_tf2onnx_3(self):
         self._test_optimizer_on_tf_model("bert-base-cased", [0, 12, 0, 0, 0, 0, 25], 3)
 
     @pytest.mark.slow
