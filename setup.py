@@ -297,7 +297,7 @@ if enable_training:
     package_name = 'onnxruntime-training'
 
     # we want put default training packages to pypi. pypi does not accept package with a local version.
-    if not default_training_package_device:
+    if not default_training_package_device or nightly_build:
         def get_torch_version():
             try:
                 import torch
@@ -390,6 +390,44 @@ if nightly_build:
         build_suffix = str(datetime.datetime.now().date().strftime("%Y%m%d"))
     else:
         build_suffix = build_suffix.replace('.', '')
+
+    if len(build_suffix) > 8 and len(build_suffix) < 12:
+        # we want to format the build_suffix to avoid (the 12th run on 20210630 vs the first run on 20210701):
+        # 2021063012 > 202107011
+        # in above 2021063012 is treated as the latest which is incorrect.
+        # we want to convert the format to:
+        # 20210630012 < 20210701001
+        # where the first 8 digits are date. the last 3 digits are run count.
+        # as long as there are less than 1000 runs per day, we will not have the problem.
+        # to test this code locally, run:
+        # NIGHTLY_BUILD=1 BUILD_BUILDNUMBER=202107011 python tools/ci_build/build.py --config RelWithDebInfo \
+        #   --enable_training --use_cuda --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ \
+        #   --nccl_home /usr/lib/x86_64-linux-gnu/ --build_dir build/Linux --build --build_wheel --skip_tests \
+        #   --cuda_version 11.1
+        def check_date_format(date_str):
+            try:
+                datetime.datetime.strptime(date_str, '%Y%m%d')
+                return True
+            except: # noqa
+                return False
+
+        def reformat_run_count(count_str):
+            try:
+                count = int(count_str)
+                if count >= 0 and count < 1000:
+                    return "{:03}".format(count)
+                elif count >= 1000:
+                    raise RuntimeError(f'Too many builds for the same day: {count}')
+                return ""
+            except: # noqa
+                return ""
+
+        build_suffix_is_date_format = check_date_format(build_suffix[:8])
+        build_suffix_run_count = reformat_run_count(build_suffix[8:])
+        if build_suffix_is_date_format and build_suffix_run_count:
+            build_suffix = build_suffix[:8] + build_suffix_run_count
+    elif len(build_suffix) >= 12:
+	        raise RuntimeError(f'Incorrect build suffix: "{build_suffix}"')
 
     if enable_training:
         from packaging import version
