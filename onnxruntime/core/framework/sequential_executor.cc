@@ -188,6 +188,7 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
       profile::Color::Black);
 #endif
 
+  std::unique_ptr<FILE, decltype(&fclose)> fp(fopen("execution-provider.txt","a"), &fclose);
   for (const auto& node_exec_plan : exec_plan_vec) {
     if (terminate_flag_) {
       LOGS(logger, WARNING) << "Exiting due to terminate flag being set to true.";
@@ -202,6 +203,12 @@ Status SequentialExecutor::Execute(const SessionState& session_state, const std:
     }
 
     const auto& node = *graph_viewer.GetNode(node_exec_plan.node_index);
+
+
+    fprintf(fp.get(), "Executing %s on %s\n", node.Name().c_str(), node.GetExecutionProviderType().c_str());
+    printf("Executing %s on %s\n", node.Name().c_str(), node.GetExecutionProviderType().c_str());
+    fflush(stdout);
+    fflush(fp.get());
 
 #ifdef CONCURRENCY_VISUALIZER
     series.write_flag(node.Name().c_str());
