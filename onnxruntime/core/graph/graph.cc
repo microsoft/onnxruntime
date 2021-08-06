@@ -919,6 +919,14 @@ std::vector<gsl::not_null<const Graph*>> Node::GetSubgraphs() const {
   return subgraphs;
 }
 
+std::unordered_map<std::string, gsl::not_null<const Graph*>> Node::GetAttributeNameToSubgraphMap() const {
+  std::unordered_map<std::string, gsl::not_null<const Graph*>> attr_to_subgraphs;
+  for (auto& entry : attr_to_subgraph_map_) {
+    attr_to_subgraphs.insert({entry.first, entry.second});
+  }
+  return attr_to_subgraphs;
+}
+
 void Node::ForEachDef(std::function<void(const onnxruntime::NodeArg&, bool is_input)> func,
                       bool include_missing_optional_defs) const {
   for (const auto* arg : InputDefs()) {
@@ -2361,7 +2369,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
         node.since_version_ = node.op_->since_version();
 
         if (node.op_->Deprecated()) {
-            node.op_ = nullptr;
+          node.op_ = nullptr;
         }
       }
 
@@ -2448,7 +2456,7 @@ void Graph::InitFunctionBodyForNode(Node& node) {
       function_container_.emplace_back(std::move(func_ptr));
       node.SetFunctionBody(*function_container_.back());
     }
-    ORT_CATCH(const std::exception& ) {
+    ORT_CATCH(const std::exception&) {
       // Return without using this function op's expansion. No need to fail just yet.
       // If ORT has a specialized kernel for this op then execution will proceed
       return;
