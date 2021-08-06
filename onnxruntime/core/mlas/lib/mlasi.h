@@ -465,6 +465,17 @@ void
     int8_t ZeroPoint
     );
 
+typedef
+void
+(MLASCALL MLAS_VECTOR_DOT_PRODUCT_FLOAT_KERNEL)(
+    const float* A,
+    const float* B,
+    float* C,
+    size_t M,
+    size_t N
+    );
+
+
 template<typename FilterType>
 struct MLAS_U8X8_KERNEL
 {
@@ -600,6 +611,12 @@ extern "C" {
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32KernelAvx;
 #endif
 
+    MLAS_VECTOR_DOT_PRODUCT_FLOAT_KERNEL MlasVectorDotProductF32Kernel;
+#if defined(MLAS_TARGET_AMD64)
+    MLAS_VECTOR_DOT_PRODUCT_FLOAT_KERNEL MlasVectorDotProductF32KernelAvx;
+    MLAS_VECTOR_DOT_PRODUCT_FLOAT_KERNEL MlasVectorDotProductF32KernelAvx2;
+    MLAS_VECTOR_DOT_PRODUCT_FLOAT_KERNEL MlasVectorDotProductF32KernelAvx512F;
+#endif
 }
 
 //
@@ -735,6 +752,7 @@ struct MLAS_PLATFORM {
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeLogSoftmaxOutputF32Kernel;
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL* ReduceMaximumF32Kernel;
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL* ReduceMinimumMaximumF32Kernel;
+    MLAS_VECTOR_DOT_PRODUCT_FLOAT_KERNEL* VectorDotProductF32Kernel;
     MLAS_QUANTIZE_LINEAR_S8_KERNEL* QuantizeLinearS8Kernel;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL* QuantizeLinearU8Kernel;
     uint32_t NchwcBlockSize;

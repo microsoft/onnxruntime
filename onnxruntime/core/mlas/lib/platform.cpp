@@ -153,6 +153,7 @@ Return Value:
     this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
     this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
     this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32Kernel;
+    this->VectorDotProductF32Kernel = MlasVectorDotProductF32Kernel;
     this->QLinearAddS8Kernel = MlasQLinearAddS8Kernel;
     this->QLinearAddU8Kernel = MlasQLinearAddU8Kernel;
     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8Kernel;
@@ -219,6 +220,7 @@ Return Value:
             this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelAvx;
             this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelAvx;
             this->ReduceMinimumMaximumF32Kernel = MlasReduceMinimumMaximumF32KernelAvx;
+            this->VectorDotProductF32Kernel = MlasVectorDotProductF32KernelAvx;
 
             //
             // Check if the processor supports AVX2/FMA3 features.
@@ -254,6 +256,7 @@ Return Value:
                 this->ConvDepthwiseU8S8Kernel = MlasConvDepthwiseKernelAvx2<int8_t>;
                 this->ConvDepthwiseU8U8Kernel = MlasConvDepthwiseKernelAvx2<uint8_t>;
                 this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelFma3;
+                this->VectorDotProductF32Kernel = MlasVectorDotProductF32KernelAvx2;
 
                 //
                 // Check if the processor supports Hybrid core architecture.
@@ -303,6 +306,7 @@ Return Value:
                     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelAvx512F;
                     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelAvx512F;
                     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelAvx512F;
+                    this->VectorDotProductF32Kernel = MlasVectorDotProductF32KernelAvx512F;
                     this->NchwcBlockSize = 16;
                     this->PreferredBufferAlignment = 64;
 

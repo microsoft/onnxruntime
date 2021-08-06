@@ -648,6 +648,199 @@ MlasReduceMinimumMaximumF32Kernel(
 
 void
 MLASCALL
+MlasVectorDotProductF32Kernel(
+    const float* A,
+    const float* B,
+    float* C,
+    size_t M,
+    size_t N
+    )
+{
+    size_t B_Row_Shift = N;
+
+    while (N > 0) {
+
+        while (N >= 16) {
+            MLAS_FLOAT32X4 sums_0 = MlasZeroFloat32x4();
+            MLAS_FLOAT32X4 sums_1 = MlasZeroFloat32x4();
+            MLAS_FLOAT32X4 sums_2 = MlasZeroFloat32x4();
+            MLAS_FLOAT32X4 sums_3 = MlasZeroFloat32x4();
+
+            const float* cur_A = A;
+            const float* cur_B = B;
+
+            size_t cur_M = M;
+
+            while (cur_M > 0) {
+                MLAS_FLOAT32X4 a = MlasBroadcastFloat32x4(cur_A[0]);
+
+                MLAS_FLOAT32X4 b_0 = MlasLoadFloat32x4(&cur_B[0]);
+                MLAS_FLOAT32X4 b_1 = MlasLoadFloat32x4(&cur_B[4]);
+                MLAS_FLOAT32X4 b_2 = MlasLoadFloat32x4(&cur_B[8]);
+                MLAS_FLOAT32X4 b_3 = MlasLoadFloat32x4(&cur_B[12]);
+
+                sums_0 = MlasMultiplyAddFloat32x4(a, b_0, sums_0);
+                sums_1 = MlasMultiplyAddFloat32x4(a, b_1, sums_1);
+                sums_2 = MlasMultiplyAddFloat32x4(a, b_2, sums_2);
+                sums_3 = MlasMultiplyAddFloat32x4(a, b_3, sums_3);
+
+                cur_A += 1;
+                cur_B += B_Row_Shift;
+
+                cur_M -= 1;
+            }
+
+            MlasStoreFloat32x4(C, sums_0);
+            C += 4;
+
+            MlasStoreFloat32x4(C, sums_1);
+            C += 4;
+
+            MlasStoreFloat32x4(C, sums_2);
+            C += 4;
+
+            MlasStoreFloat32x4(C, sums_3);
+            C += 4;
+
+            B += 16;
+
+            N -= 16;
+        }
+
+        while (N >= 12) {
+            MLAS_FLOAT32X4 sums_0 = MlasZeroFloat32x4();
+            MLAS_FLOAT32X4 sums_1 = MlasZeroFloat32x4();
+            MLAS_FLOAT32X4 sums_2 = MlasZeroFloat32x4();
+
+            const float* cur_A = A;
+            const float* cur_B = B;
+
+            size_t cur_M = M;
+
+            while (cur_M > 0) {
+                MLAS_FLOAT32X4 a = MlasBroadcastFloat32x4(cur_A[0]);
+
+                MLAS_FLOAT32X4 b_0 = MlasLoadFloat32x4(&cur_B[0]);
+                MLAS_FLOAT32X4 b_1 = MlasLoadFloat32x4(&cur_B[4]);
+                MLAS_FLOAT32X4 b_2 = MlasLoadFloat32x4(&cur_B[8]);
+
+                sums_0 = MlasMultiplyAddFloat32x4(a, b_0, sums_0);
+                sums_1 = MlasMultiplyAddFloat32x4(a, b_1, sums_1);
+                sums_2 = MlasMultiplyAddFloat32x4(a, b_2, sums_2);
+
+                cur_A += 1;
+                cur_B += B_Row_Shift;
+
+                cur_M -= 1;
+            }
+
+            MlasStoreFloat32x4(C, sums_0);
+            C += 4;
+
+            MlasStoreFloat32x4(C, sums_1);
+            C += 4;
+
+            MlasStoreFloat32x4(C, sums_2);
+            C += 4;
+
+            B += 12;
+
+            N -= 12;
+        }
+
+        while (N >= 8) {
+            MLAS_FLOAT32X4 sums_0 = MlasZeroFloat32x4();
+            MLAS_FLOAT32X4 sums_1 = MlasZeroFloat32x4();
+
+            const float* cur_A = A;
+            const float* cur_B = B;
+
+            size_t cur_M = M;
+
+            while (cur_M > 0) {
+                MLAS_FLOAT32X4 a = MlasBroadcastFloat32x4(cur_A[0]);
+
+                MLAS_FLOAT32X4 b_0 = MlasLoadFloat32x4(&cur_B[0]);
+                MLAS_FLOAT32X4 b_1 = MlasLoadFloat32x4(&cur_B[4]);
+
+                sums_0 = MlasMultiplyAddFloat32x4(a, b_0, sums_0);
+                sums_1 = MlasMultiplyAddFloat32x4(a, b_1, sums_1);
+
+                cur_A += 1;
+                cur_B += B_Row_Shift;
+
+                cur_M -= 1;
+            }
+
+            MlasStoreFloat32x4(C, sums_0);
+            C += 4;
+
+            MlasStoreFloat32x4(C, sums_1);
+            C += 4;
+
+            B += 8;
+
+            N -= 8;
+        }
+
+        while (N >= 4) {
+            MLAS_FLOAT32X4 sums_0 = MlasZeroFloat32x4();
+
+            const float* cur_A = A;
+            const float* cur_B = B;
+
+            size_t cur_M = M;
+
+            while (cur_M > 0) {
+                MLAS_FLOAT32X4 a = MlasBroadcastFloat32x4(cur_A[0]);
+
+                MLAS_FLOAT32X4 b = MlasLoadFloat32x4(&cur_B[0]);
+
+                sums_0 = MlasMultiplyAddFloat32x4(a, b, sums_0);
+
+                cur_A += 1;
+                cur_B += B_Row_Shift;
+
+                cur_M -= 1;
+            }
+
+            MlasStoreFloat32x4(C, sums_0);
+            C += 4;
+
+            B += 4;
+
+            N -= 4;
+        }
+
+        while (N > 0) {
+            float sum = 0;
+
+            const float* cur_A = A;
+            const float* cur_B = B;
+
+            size_t cur_M = M;
+
+            while (cur_M > 0) {
+                sum += cur_A[0] * cur_B[0];
+
+                cur_A += 1;
+                cur_B += B_Row_Shift;
+
+                cur_M -= 1;
+            }
+
+            C[0] = sum;
+
+            C += 1;
+            B += 1;
+
+            N -= 1;
+        }
+    }
+}
+
+void
+MLASCALL
 MlasComputeSoftmaxOutputF32Kernel(
     float* Output,
     size_t N,

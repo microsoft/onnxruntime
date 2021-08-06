@@ -1128,3 +1128,21 @@ MlasQLinearMul(
     size_t N,
     bool IsScalarB
     );
+
+/**
+ * @brief Performs a single precision vector dot product operation.
+ *
+ * @param A          Supplies the A input vector of M length.
+ * @param TransB     Supplies the B input vector of M * N length.
+ * @param C          Supplies the C output vector of N length.
+ * @param M          Supplies the number of values in the A vector.
+ * @param N          Supplies the number of values in the C vector.
+ */
+void 
+MLASCALL
+MlasVectorDotProduct(
+    const float* A,
+    const float* B,
+    float* C,
+    size_t M,
+    size_t N);
