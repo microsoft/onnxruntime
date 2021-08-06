@@ -9,7 +9,7 @@ namespace onnxruntime {
 
 class ConvActivationFusion : public GraphTransformer {
  public:
-  ConvActivationFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  ConvActivationFusion(const std::unordered_set<std::string>& compatible_execution_providers ) noexcept
       : GraphTransformer("ConvActivationFusion", compatible_execution_providers) {}
 
  private:

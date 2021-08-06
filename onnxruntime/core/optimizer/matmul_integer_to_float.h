@@ -13,7 +13,7 @@ Fuse MatMulInteger and corresponding cast and mul to MatMulIntegerToFloat
 */
 class MatMulIntegerToFloatFusion : public GraphTransformer {
  public:
-  MatMulIntegerToFloatFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  MatMulIntegerToFloatFusion(const std::unordered_set<std::string>& compatible_execution_providers ) noexcept
       : GraphTransformer("MatMulIntegerToFloatFusion", compatible_execution_providers) {
   }
 

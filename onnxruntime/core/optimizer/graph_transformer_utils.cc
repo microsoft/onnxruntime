@@ -119,10 +119,10 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
   bool enable_quant_qdq = session_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQ, "1") == "1";
   switch (level) {
     case TransformerLevel::Level1: {
-      std::unordered_set<std::string> l1_execution_providers = {};
+      std::unordered_set<std::string> l1_execution_providers;
 
       transformers.emplace_back(onnxruntime::make_unique<CommonSubexpressionElimination>(l1_execution_providers));
-      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, enable_quant_qdq, l1_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<ConstantFolding>(execution_provider, enable_quant_qdq, l1_execution_providers,std::unordered_set<std::string>()));
       transformers.emplace_back(onnxruntime::make_unique<MatMulAddFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<ReshapeFusion>(l1_execution_providers));
       transformers.emplace_back(onnxruntime::make_unique<FreeDimensionOverrideTransformer>(session_options.free_dimension_overrides));
@@ -159,7 +159,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GenerateTransformers(TransformerL
 
       transformers.emplace_back(onnxruntime::make_unique<FastGeluFusion>(cpu_cuda_execution_providers));
 
-      transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(cpu_cuda_execution_providers));
+      transformers.emplace_back(onnxruntime::make_unique<MatMulScaleFusion>(cpu_cuda_execution_providers,std::unordered_set<std::string>()));
 #endif
     } break;
 

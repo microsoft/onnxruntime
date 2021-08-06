@@ -105,7 +105,7 @@ TypeGroup GetTypeGroup(DataType type) {
 /** Transformer to remove duplicate Cast nodes. */
 class RemoveDuplicateCastTransformer : public GraphTransformer {
  public:
-  RemoveDuplicateCastTransformer() : GraphTransformer("RemoveDuplicateCastTransformer") {
+  RemoveDuplicateCastTransformer() : GraphTransformer("RemoveDuplicateCastTransformer",std::unordered_set<std::string>()) {
   }
 
  private:

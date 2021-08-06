@@ -116,7 +116,7 @@ class IExecutionProvider {
   /**
      Get execution provider's configuration options.
    */
-  virtual ProviderOptions GetProviderOptions() const { return {}; }
+  virtual ProviderOptions GetProviderOptions() const { return ProviderOptions(); }
 
   /**
      Returns an opaque handle whose exact type varies based on the provider

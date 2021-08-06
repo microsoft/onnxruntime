@@ -13,7 +13,7 @@ Rewrite graph fusing reshape subgraph to a single Reshape node.
 */
 class ReshapeFusion : public GraphTransformer {
  public:
-  ReshapeFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  ReshapeFusion(const std::unordered_set<std::string>& compatible_execution_providers ) noexcept
       : GraphTransformer("ReshapeFusion", compatible_execution_providers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;

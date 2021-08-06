@@ -19,7 +19,7 @@ static std::string ToLower(std::string s) {
 }
 
 FreeDimensionOverrideTransformer::FreeDimensionOverrideTransformer(gsl::span<const FreeDimensionOverride> overrides_to_apply)
-    : GraphTransformer("FreeDimensionOverrideTransformer") {
+    : GraphTransformer("FreeDimensionOverrideTransformer",std::unordered_set<std::string>()) {
   for (const auto& o : overrides_to_apply) {
     // Convert to lowercase to perform case-insensitive comparisons later
     if (o.dim_identifer_type == FreeDimensionOverrideType::Denotation) {

@@ -17,7 +17,7 @@ Transformer to insert cast node that casts float16 to float for cpu nodes
 class InsertCastTransformer : public onnxruntime::GraphTransformer {
  public:
   InsertCastTransformer(const std::string& name)
-      : onnxruntime::GraphTransformer(name),
+      : onnxruntime::GraphTransformer(name,std::unordered_set<std::string>()),
         force_cpu_fp32_(true) {
   }
 

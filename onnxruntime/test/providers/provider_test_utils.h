@@ -424,7 +424,7 @@ class OpTester {
                             kExpectFailure };
 
   void Run(ExpectResult expect_result = ExpectResult::kExpectSuccess, const std::string& expected_failure_string = "",
-           const std::unordered_set<std::string>& excluded_provider_types = {},
+           const std::unordered_set<std::string>& excluded_provider_types = std::unordered_set<std::string>(),
            const RunOptions* run_options = nullptr,
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
            ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL,
@@ -433,14 +433,14 @@ class OpTester {
   void Run(SessionOptions session_options,
            ExpectResult expect_result = ExpectResult::kExpectSuccess,
            const std::string& expected_failure_string = "",
-           const std::unordered_set<std::string>& excluded_provider_types = {},
+           const std::unordered_set<std::string>& excluded_provider_types = std::unordered_set<std::string>(),
            const RunOptions* run_options = nullptr,
            std::vector<std::unique_ptr<IExecutionProvider>>* execution_providers = nullptr,
            const Graph::ResolveOptions& resolve_options = {});
 
   std::vector<MLValue> GetFetches() { return fetches_; }
 
-  std::unique_ptr<onnxruntime::Model> BuildGraph(const std::unordered_map<std::string, int>& extra_domain_to_version = {});
+  std::unique_ptr<onnxruntime::Model> BuildGraph(const std::unordered_map<std::string, int>& extra_domain_to_version = std::unordered_map<std::string, int>());
 
   // storing p_model as cache
   void SetModelCache(std::shared_ptr<onnxruntime::Model> model) {

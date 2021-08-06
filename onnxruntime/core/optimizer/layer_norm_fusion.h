@@ -18,7 +18,7 @@ The formula corresponding to LayerNorm activation subgraph:
 */
 class LayerNormFusion : public GraphTransformer {
  public:
-  LayerNormFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  LayerNormFusion(const std::unordered_set<std::string>& compatible_execution_providers ) noexcept
       : GraphTransformer("LayerNormFusion", compatible_execution_providers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
@@ -35,7 +35,7 @@ The formula corresponding to LayerNorm activation subgraph:
 */
 class SimplifiedLayerNormFusion : public GraphTransformer {
  public:
-  SimplifiedLayerNormFusion(const std::unordered_set<std::string>& compatible_execution_providers = {}) noexcept
+  SimplifiedLayerNormFusion(const std::unordered_set<std::string>& compatible_execution_providers ) noexcept
       : GraphTransformer("SimplifiedLayerNormFusion", compatible_execution_providers) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;

@@ -18,7 +18,7 @@ The interface for in-place transformation of a Graph.
 */
 class GraphTransformer {
  public:
-  GraphTransformer(const std::string& name, const std::unordered_set<std::string>& compatible_execution_providers = {})
+  GraphTransformer(const std::string& name, const std::unordered_set<std::string>& compatible_execution_providers )
       : name_(name), compatible_provider_types_(compatible_execution_providers) {
   }
 
