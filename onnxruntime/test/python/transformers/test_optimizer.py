@@ -10,17 +10,26 @@
 
 import unittest
 import os
-import onnx
-import onnxruntime
 import pytest
-from onnx import helper, TensorProto, ModelProto, load_model
-from onnx.helper import make_node, make_tensor_value_info
-import numpy as np
-from onnx import numpy_helper
+from onnx import TensorProto, load_model
 import sys
 
-from onnxruntime.transformers.optimizer import optimize_model, optimize_by_onnxruntime
-from onnxruntime.transformers.onnx_model import OnnxModel
+# Try import optimizer from source directory so that we need not build and install package after making change.
+source_dir = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'python', 'tools', 'transformers')
+if (os.path.exists(source_dir) and source_dir not in sys.path):
+    sys.path.append(source_dir)
+    from optimizer import optimize_model
+    from onnx_model import OnnxModel
+    from onnx_exporter import export_onnx_model_from_tf, export_onnx_model_from_pt
+    from huggingface_models import MODELS
+    from benchmark_helper import Precision
+else:
+    from onnxruntime.transformers.optimizer import optimize_model
+    from onnxruntime.transformers.onnx_model import OnnxModel
+    from onnxruntime.transformers.onnx_exporter import export_onnx_model_from_tf, export_onnx_model_from_pt
+    from onnxruntime.transformers.huggingface_models import MODELS
+    from onnxruntime.transformers.benchmark_helper import Precision
+
 
 BERT_TEST_MODELS = {
     "bert_keras_0": ('models', 'TFBertForSequenceClassification_1.onnx'),  # bert_mrpc_tensorflow2.1_opset10
@@ -68,9 +77,6 @@ class TestBertOptimization(unittest.TestCase):
         # expect fusion result list have the following keys
         # EmbedLayerNormalization, Attention, Gelu, FastGelu, BiasGelu, LayerNormalization, SkipLayerNormalization
         model_fusion_statistics = {}
-        from onnx_exporter import export_onnx_model_from_pt
-        from huggingface_models import MODELS
-        from benchmark_helper import Precision
 
         input_names = MODELS[model_name][0]
 
@@ -99,9 +105,6 @@ class TestBertOptimization(unittest.TestCase):
         # expect fusion result list have the following keys
         # EmbedLayerNormalization, Attention, Gelu, FastGelu, BiasGelu, LayerNormalization, SkipLayerNormalization
         model_fusion_statistics = {}
-        from onnx_exporter import export_onnx_model_from_tf
-        from huggingface_models import MODELS
-        from benchmark_helper import Precision
         print("testing mode ", model_name)
         print("testing input number = ", inputs_count)
         input_names = MODELS[model_name][0]
@@ -214,9 +217,15 @@ class TestBertOptimization(unittest.TestCase):
     #     self.verify_node_count(model, expected_node_count, 'test_bert_tf2onnx_0')
 
     @pytest.mark.slow
-    def test_huggingface_bert_fusion(self):
+    def test_huggingface_bert_fusion_1(self):
         self._test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=1)
+
+    @pytest.mark.slow
+    def test_huggingface_bert_fusion_2(self):
         self._test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=2)
+
+    @pytest.mark.slow
+    def test_huggingface_bert_fusion_3(self):
         self._test_optimizer_on_huggingface_model("bert-base-uncased", [1, 12, 0, 0, 12, 0, 24], inputs_count=3)
 
     @pytest.mark.slow
@@ -274,9 +283,15 @@ class TestBertOptimization(unittest.TestCase):
         self._test_optimizer_on_huggingface_model("facebook/bart-base", [0, 0, 0, 0, 12, 2, 30])
 
     @pytest.mark.slow
-    def test_huggingface_bert_base_cased_from_tf2onnx(self):
+    def test_huggingface_bert_base_cased_from_tf2onnx_1(self):
         self._test_optimizer_on_tf_model("bert-base-cased", [0, 12, 0, 0, 0, 0, 25], 1)
+
+    @pytest.mark.slow
+    def test_huggingface_bert_base_cased_from_tf2onnx_2(self):
         self._test_optimizer_on_tf_model("bert-base-cased", [0, 12, 0, 0, 0, 0, 25], 2)
+
+    @pytest.mark.slow
+    def test_huggingface_bert_base_cased_from_tf2onnx_3(self):
         self._test_optimizer_on_tf_model("bert-base-cased", [0, 12, 0, 0, 0, 0, 25], 3)
 
     @pytest.mark.slow
