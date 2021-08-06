@@ -2,8 +2,10 @@
 // Licensed under the MIT License.
 
 #include "core/providers/shared/utils/utils.h"
+#ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
+#endif
 
 #include "base_op_builder.h"
 
@@ -11,10 +13,12 @@ namespace onnxruntime {
 namespace coreml {
 
 class ArgMaxOpBuilder : public BaseOpBuilder {
-  // Add operator related
+// Add operator related
+#ifdef __APPLE__
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+#endif
 
   // Operator support related
  private:
@@ -23,7 +27,7 @@ class ArgMaxOpBuilder : public BaseOpBuilder {
 };
 
 // Add operator related
-
+#ifdef __APPLE__
 Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                               const Node& node,
                                               const logging::Logger& /* logger */) const {
@@ -63,6 +67,7 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
+#endif
 
 // Operator support related
 
@@ -97,10 +102,12 @@ bool ArgMaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
   return true;
 }
 
+#ifdef __APPLE__
 void CreateArgMaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   op_registrations.builders.push_back(std::make_unique<ArgMaxOpBuilder>());
   op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
+#endif
 
 }  // namespace coreml
 }  // namespace onnxruntime

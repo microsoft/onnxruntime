@@ -897,8 +897,8 @@ def generate_build_tree(cmake_path, source_dir, build_dir, cuda_home, cudnn_home
             cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
 
     if args.use_coreml:
-        if not is_macOS():
-            raise BuildError("Build CoreML EP requires macOS")
+        """ if not is_macOS():
+            raise BuildError("Build CoreML EP requires macOS") """
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
 
     if args.ios:

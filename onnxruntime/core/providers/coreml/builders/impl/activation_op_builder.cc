@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
+#endif
 
 #include "base_op_builder.h"
 
@@ -10,10 +12,12 @@ namespace onnxruntime {
 namespace coreml {
 
 class ActivationOpBuilder : public BaseOpBuilder {
-  // Add operator related
+// Add operator related
+#ifdef __APPLE__
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+#endif
 
   // Operator support related
  private:
@@ -21,7 +25,7 @@ class ActivationOpBuilder : public BaseOpBuilder {
 };
 
 // Add operator related
-
+#ifdef __APPLE__
 Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                   const Node& node,
                                                   const logging::Logger& /* logger */) const {
@@ -45,6 +49,7 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
+#endif
 
 // Operator support related
 
@@ -53,6 +58,7 @@ int ActivationOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
   return 6;
 }
 
+#ifdef __APPLE__
 void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
     return;
@@ -69,6 +75,7 @@ void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistration
     op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
   }
 }
+#endif
 
 }  // namespace coreml
 }  // namespace onnxruntime

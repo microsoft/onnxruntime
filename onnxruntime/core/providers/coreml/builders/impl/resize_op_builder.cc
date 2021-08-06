@@ -6,8 +6,10 @@
 
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/coreml/builders/helper.h"
+#ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
+#endif
 
 #include "base_op_builder.h"
 
@@ -16,12 +18,14 @@ namespace coreml {
 
 class ResizeOpBuilder : public BaseOpBuilder {
   // Add operator related
+#ifdef __APPLE__
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+#endif
 
   // Operator support related
  private:
@@ -63,7 +67,7 @@ bool GetResizeOutputSizes(const InitializedTensorSet& initializers, const Node& 
 }
 
 // Add operator related
-
+#ifdef __APPLE__
 void ResizeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   // We don't really use ROI here, so add it to skipped list if it's an initializer tensor
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // ROI
@@ -117,6 +121,7 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
+#endif
 
 // Operator support related
 
@@ -265,10 +270,12 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPa
   return true;
 }
 
+#ifdef __APPLE__
 void CreateResizeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   op_registrations.builders.push_back(std::make_unique<ResizeOpBuilder>());
   op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
+#endif
 
 }  // namespace coreml
 }  // namespace onnxruntime

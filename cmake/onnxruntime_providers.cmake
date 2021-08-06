@@ -726,11 +726,22 @@ if (onnxruntime_USE_COREML)
   )
 
   # Add builder source code
-  file(GLOB_RECURSE
+  if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    file(GLOB_RECURSE
+      onnxruntime_providers_coreml_cc_srcs_nested CONFIGURE_DEPENDS
+      "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/*.h"
+      "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/*.cc"
+    )
+  else()
+    file(GLOB
     onnxruntime_providers_coreml_cc_srcs_nested CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/*.cc"
-  )
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/helper.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/helper.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/op_builder.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/impl/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/impl/*.cc"
+    )
+  endif()
 
   # Add CoreML objective c++ source code
   file(GLOB

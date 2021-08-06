@@ -4,8 +4,10 @@
 
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
+#ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
+#endif
 
 #include "base_op_builder.h"
 
@@ -14,12 +16,14 @@ namespace coreml {
 
 class SqueezeOpBuilder : public BaseOpBuilder {
   // Add operator related
+#ifdef __APPLE__
  public:
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+#endif
 
   // Operator support related
  private:
@@ -28,7 +32,7 @@ class SqueezeOpBuilder : public BaseOpBuilder {
 };
 
 // Add operator related
-
+#ifdef __APPLE__
 void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   if (node.SinceVersion() > 12 && node.InputDefs().size() > 1) {
     model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
@@ -78,6 +82,7 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   model_builder.AddLayer(std::move(layer));
   return Status::OK();
 }
+#endif
 
 // Operator support related
 
@@ -96,10 +101,12 @@ bool SqueezeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   return true;
 }
 
+#ifdef __APPLE__
 void CreateSqueezeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
   op_registrations.builders.push_back(std::make_unique<SqueezeOpBuilder>());
   op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
+#endif
 
 }  // namespace coreml
 }  // namespace onnxruntime
