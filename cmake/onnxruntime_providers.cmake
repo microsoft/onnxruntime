@@ -726,7 +726,7 @@ if (onnxruntime_USE_COREML)
   )
 
   # Add builder source code
-  if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin|iOS")
     file(GLOB_RECURSE
       onnxruntime_providers_coreml_cc_srcs_nested CONFIGURE_DEPENDS
       "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/*.h"
