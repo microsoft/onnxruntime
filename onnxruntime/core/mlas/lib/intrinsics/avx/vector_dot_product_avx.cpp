@@ -16,19 +16,6 @@ Abstract:
 
 #include "mlasi.h"
 
-
-MLAS_FORCEINLINE
-float
-sum_256_horizontal(__m256 sums_256)
-{
-    __m256 t1_256 = _mm256_hadd_ps(sums_256, sums_256);
-    __m256 t2_256 = _mm256_hadd_ps(t1_256, t1_256);
-    __m128 t3_128 = _mm256_extractf128_ps(t2_256, 1);
-    __m128 t4_128 = _mm256_castps256_ps128(t2_256);
-    __m128 t5_128 = _mm_add_ss(t4_128, t3_128);
-    return _mm_cvtss_f32(t5_128);
-}
-
 void
 MLASCALL
 MlasVectorDotProductF32KernelAvx(
@@ -39,114 +26,200 @@ MlasVectorDotProductF32KernelAvx(
     size_t N
     )
 {
-  size_t C_idx = 0;
+    size_t B_Row_Shift = N;
 
-  while (N > 0) {
+    while (N > 0) {
 
-    size_t cur_M = M;
+        while (N >= 32) {
+            __m256 sums_0 = _mm256_setzero_ps();
+            __m256 sums_1 = _mm256_setzero_ps();
+            __m256 sums_2 = _mm256_setzero_ps();
+            __m256 sums_3 = _mm256_setzero_ps();
 
-    const float* cur_A = A;
-    float cur_sum = 0.0f;
+            const float* cur_A = A;
+            const float* cur_B = B;
 
-    while (cur_M >= 32) {
-        __m256 a_0 = _mm256_loadu_ps(&cur_A[0]);
-        __m256 a_1 = _mm256_loadu_ps(&cur_A[8]);
-        __m256 a_2 = _mm256_loadu_ps(&cur_A[16]);
-        __m256 a_3 = _mm256_loadu_ps(&cur_A[24]);
+            size_t cur_M = M;
 
-        __m256 b_0 = _mm256_loadu_ps(&B[0]);
-        __m256 b_1 = _mm256_loadu_ps(&B[8]);
-        __m256 b_2 = _mm256_loadu_ps(&B[16]);
-        __m256 b_3 = _mm256_loadu_ps(&B[24]);
+            while (cur_M > 0) {
+                __m256 a = _mm256_set1_ps(cur_A[0]);
 
-        __m256 ab_0 = _mm256_mul_ps(a_0, b_0);
-        __m256 ab_1 = _mm256_mul_ps(a_1, b_1);
-        __m256 ab_2 = _mm256_mul_ps(a_2, b_2);
-        __m256 ab_3 = _mm256_mul_ps(a_3, b_3);
+                __m256 b_0 = _mm256_loadu_ps(&cur_B[0]);
+                __m256 b_1 = _mm256_loadu_ps(&cur_B[8]);
+                __m256 b_2 = _mm256_loadu_ps(&cur_B[16]);
+                __m256 b_3 = _mm256_loadu_ps(&cur_B[24]);
 
-        __m256 sums_256 = _mm256_add_ps(ab_0, ab_1);
-        sums_256 = _mm256_add_ps(sums_256, ab_2);
-        sums_256 = _mm256_add_ps(sums_256, ab_3);
+                __m256 ab_0 = _mm256_mul_ps(a, b_0);
+                __m256 ab_1 = _mm256_mul_ps(a, b_1);
+                __m256 ab_2 = _mm256_mul_ps(a, b_2);
+                __m256 ab_3 = _mm256_mul_ps(a, b_3);
 
-        cur_sum += sum_256_horizontal(sums_256);
+                sums_0 = _mm256_add_ps(sums_0, ab_0);
+                sums_1 = _mm256_add_ps(sums_1, ab_1);
+                sums_2 = _mm256_add_ps(sums_2, ab_2);
+                sums_3 = _mm256_add_ps(sums_3, ab_3);
 
-        cur_A += 32;
-        B += 32;
+                cur_A += 1;
+                cur_B += B_Row_Shift;
 
-        cur_M -= 32;
+                cur_M -= 1;
+            }
+
+            _mm256_storeu_ps(C, sums_0);
+            C += 8;
+
+            _mm256_storeu_ps(C, sums_1);
+            C += 8;
+
+            _mm256_storeu_ps(C, sums_2);
+            C += 8;
+
+            _mm256_storeu_ps(C, sums_3);
+            C += 8;
+
+            B += 32;
+
+            N -= 32;
+        }
+
+        while (N >= 24) {
+            __m256 sums_0 = _mm256_setzero_ps();
+            __m256 sums_1 = _mm256_setzero_ps();
+            __m256 sums_2 = _mm256_setzero_ps();
+
+            const float* cur_A = A;
+            const float* cur_B = B;
+
+            size_t cur_M = M;
+
+            while (cur_M > 0) {
+                __m256 a = _mm256_set1_ps(cur_A[0]);
+
+                __m256 b_0 = _mm256_loadu_ps(&cur_B[0]);
+                __m256 b_1 = _mm256_loadu_ps(&cur_B[8]);
+                __m256 b_2 = _mm256_loadu_ps(&cur_B[16]);
+
+                __m256 ab_0 = _mm256_mul_ps(a, b_0);
+                __m256 ab_1 = _mm256_mul_ps(a, b_1);
+                __m256 ab_2 = _mm256_mul_ps(a, b_2);
+
+                sums_0 = _mm256_add_ps(sums_0, ab_0);
+                sums_1 = _mm256_add_ps(sums_1, ab_1);
+                sums_2 = _mm256_add_ps(sums_2, ab_2);
+
+                cur_A += 1;
+                cur_B += B_Row_Shift;
+
+                cur_M -= 1;
+            }
+
+            _mm256_storeu_ps(C, sums_0);
+            C += 8;
+
+            _mm256_storeu_ps(C, sums_1);
+            C += 8;
+
+            _mm256_storeu_ps(C, sums_2);
+            C += 8;
+
+            B += 24;
+
+            N -= 24;
+        }
+
+        while (N >= 16) {
+            __m256 sums_0 = _mm256_setzero_ps();
+            __m256 sums_1 = _mm256_setzero_ps();
+
+            const float* cur_A = A;
+            const float* cur_B = B;
+
+            size_t cur_M = M;
+
+            while (cur_M > 0) {
+                __m256 a = _mm256_set1_ps(cur_A[0]);
+
+                __m256 b_0 = _mm256_loadu_ps(&cur_B[0]);
+                __m256 b_1 = _mm256_loadu_ps(&cur_B[8]);
+
+                __m256 ab_0 = _mm256_mul_ps(a, b_0);
+                __m256 ab_1 = _mm256_mul_ps(a, b_1);
+
+                sums_0 = _mm256_add_ps(sums_0, ab_0);
+                sums_1 = _mm256_add_ps(sums_1, ab_1);
+
+                cur_A += 1;
+                cur_B += B_Row_Shift;
+
+                cur_M -= 1;
+            }
+
+            _mm256_storeu_ps(C, sums_0);
+            C += 8;
+
+            _mm256_storeu_ps(C, sums_1);
+            C += 8;
+
+            B += 16;
+
+            N -= 16;
+        }
+
+        while (N >= 8) {
+            __m256 sums_0 = _mm256_setzero_ps();
+
+            const float* cur_A = A;
+            const float* cur_B = B;
+
+            size_t cur_M = M;
+
+            while (cur_M > 0) {
+                __m256 a = _mm256_set1_ps(cur_A[0]);
+
+                __m256 b = _mm256_loadu_ps(&cur_B[0]);
+
+                __m256 ab = _mm256_mul_ps(a, b);
+
+                sums_0 = _mm256_add_ps(sums_0, ab);
+
+                cur_A += 1;
+
+                cur_B += B_Row_Shift;
+
+                cur_M -= 1;
+            }
+
+            _mm256_storeu_ps(C, sums_0);
+            C += 8;
+
+            B += 8;
+
+            N -= 8;
+        }
+
+        while (N > 0) {
+            float sum = 0;
+
+            const float* cur_A = A;
+            const float* cur_B = B;
+
+            size_t cur_M = M;
+
+            while (cur_M > 0) {
+                sum += cur_A[0] * cur_B[0];
+
+                cur_A += 1;
+                cur_B += B_Row_Shift;
+
+                cur_M -= 1;
+            }
+
+            C[0] = sum;
+
+            C += 1;
+            B += 1;
+
+            N -= 1;
+        }
     }
-
-    while (cur_M >= 24) {
-        __m256 a_0 = _mm256_loadu_ps(&cur_A[0]);
-        __m256 a_1 = _mm256_loadu_ps(&cur_A[8]);
-        __m256 a_2 = _mm256_loadu_ps(&cur_A[16]);
-
-        __m256 b_0 = _mm256_loadu_ps(&B[0]);
-        __m256 b_1 = _mm256_loadu_ps(&B[8]);
-        __m256 b_2 = _mm256_loadu_ps(&B[16]);
-
-        __m256 ab_0 = _mm256_mul_ps(a_0, b_0);
-        __m256 ab_1 = _mm256_mul_ps(a_1, b_1);
-        __m256 ab_2 = _mm256_mul_ps(a_2, b_2);
-
-        __m256 sums_256 = _mm256_add_ps(ab_0, ab_1);
-        sums_256 = _mm256_add_ps(sums_256, ab_2);
-
-        cur_sum += sum_256_horizontal(sums_256);
-
-        cur_A += 24;
-        B += 24;
-
-        cur_M -= 24;
-    }
-
-    while (cur_M >= 16) {
-        __m256 a_0 = _mm256_loadu_ps(&cur_A[0]);
-        __m256 a_1 = _mm256_loadu_ps(&cur_A[8]);
-
-        __m256 b_0 = _mm256_loadu_ps(&B[0]);
-        __m256 b_1 = _mm256_loadu_ps(&B[8]);
-
-        __m256 ab_0 = _mm256_mul_ps(a_0, b_0);
-        __m256 ab_1 = _mm256_mul_ps(a_1, b_1);
-
-        __m256 sums_256 = _mm256_add_ps(ab_0, ab_1);
-
-        cur_sum += sum_256_horizontal(sums_256);
-
-        cur_A += 16;
-        B += 16;
-
-        cur_M -= 16;
-    }
-
-    while (cur_M >= 8) {
-        __m256 a_0 = _mm256_loadu_ps(&cur_A[0]);
-
-        __m256 b_0 = _mm256_loadu_ps(&B[0]);
-
-        __m256 ab_0 = _mm256_mul_ps(a_0, b_0);
-
-        cur_sum += sum_256_horizontal(ab_0);
-
-        cur_A += 8;
-        B += 8;
-
-        cur_M -= 8;
-    }
-
-    while (cur_M > 0) {
-        cur_sum += cur_A[0] * B[0];
-
-        cur_A += 1;
-        B += 1;
-
-        cur_M -= 1;
-    }
-
-    C[C_idx] = cur_sum;
-    C_idx++;
-
-    N -= 1;
-  }
 }

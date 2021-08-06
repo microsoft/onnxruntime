@@ -656,10 +656,10 @@ MlasVectorDotProductF32Kernel(
     size_t N
     )
 {
-  // TODO(kreeger): What if M > N?
-    size_t M_Rows_Per_N = N / M;
+    size_t B_Row_Shift = N;
 
     while (N > 0) {
+
         while (N >= 16) {
             MLAS_FLOAT32X4 sums_0 = MlasZeroFloat32x4();
             MLAS_FLOAT32X4 sums_1 = MlasZeroFloat32x4();
@@ -685,7 +685,7 @@ MlasVectorDotProductF32Kernel(
                 sums_3 = MlasMultiplyAddFloat32x4(a, b_3, sums_3);
 
                 cur_A += 1;
-                cur_B += 16 * M_Rows_Per_N;
+                cur_B += B_Row_Shift;
 
                 cur_M -= 1;
             }
@@ -729,7 +729,7 @@ MlasVectorDotProductF32Kernel(
                 sums_2 = MlasMultiplyAddFloat32x4(a, b_2, sums_2);
 
                 cur_A += 1;
-                cur_B += 12 * M_Rows_Per_N;
+                cur_B += B_Row_Shift;
 
                 cur_M -= 1;
             }
@@ -767,7 +767,7 @@ MlasVectorDotProductF32Kernel(
                 sums_1 = MlasMultiplyAddFloat32x4(a, b_1, sums_1);
 
                 cur_A += 1;
-                cur_B += 8 * M_Rows_Per_N;
+                cur_B += B_Row_Shift;
 
                 cur_M -= 1;
             }
@@ -794,12 +794,12 @@ MlasVectorDotProductF32Kernel(
             while (cur_M > 0) {
                 MLAS_FLOAT32X4 a = MlasBroadcastFloat32x4(cur_A[0]);
 
-                MLAS_FLOAT32X4 b_0 = MlasLoadFloat32x4(&cur_B[0]);
+                MLAS_FLOAT32X4 b = MlasLoadFloat32x4(&cur_B[0]);
 
-                sums_0 = MlasMultiplyAddFloat32x4(a, b_0, sums_0);
+                sums_0 = MlasMultiplyAddFloat32x4(a, b, sums_0);
 
                 cur_A += 1;
-                cur_B += 4 * M_Rows_Per_N;
+                cur_B += B_Row_Shift;
 
                 cur_M -= 1;
             }
@@ -824,7 +824,7 @@ MlasVectorDotProductF32Kernel(
                 sum += cur_A[0] * cur_B[0];
 
                 cur_A += 1;
-                cur_B += 1;
+                cur_B += B_Row_Shift;
 
                 cur_M -= 1;
             }

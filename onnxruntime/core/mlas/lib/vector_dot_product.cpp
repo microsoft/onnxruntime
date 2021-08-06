@@ -45,8 +45,7 @@ Return Value:
 
 --*/
 #if defined(MLAS_TARGET_AMD64)
-    MlasVectorDotProductF32Kernel(A, B, C, M, N);
-    //MlasPlatform.VectorDotProductF32Kernel(A, B, C, M, N);
+    MlasPlatform.VectorDotProductF32Kernel(A, B, C, M, N);
 #else
     MlasVectorDotProductF32Kernel(A, B, C, M, N);
 #endif
