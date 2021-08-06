@@ -568,30 +568,30 @@ TEST_P(ModelTest, Run) {
       } else if (provider_name == "nuphar") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultNupharExecutionProvider()));
       } else if (provider_name == "tensorrt") {
-        //if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
-          //OrtTensorRTProviderOptions params{
-              //0,
-              //0,
-              //nullptr,
-              //1000,
-              //1,
-              //1 << 30,
-              //1, // enable fp16
-              //0,
-              //nullptr,
-              //0,
-              //0,
-              //0,
-              //0,
-              //0,
-              //nullptr,
-              //0,
-              //nullptr,
-              //0};
-          //ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(TensorrtExecutionProviderWithOptions(&params)));
-        //} else {
+        if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
+          OrtTensorRTProviderOptions params{
+              0,
+              0,
+              nullptr,
+              1000,
+              1,
+              1 << 30,
+              1, // enable fp16
+              0,
+              nullptr,
+              0,
+              0,
+              0,
+              0,
+              0,
+              nullptr,
+              0,
+              nullptr,
+              0};
+          ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(TensorrtExecutionProviderWithOptions(&params)));
+        } else {
           ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
-        //}
+        }
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
       } else if (provider_name == "migraphx") {
         ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultMIGraphXExecutionProvider()));
