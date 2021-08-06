@@ -16,6 +16,7 @@ from fusion_gelu import FusionGelu
 from fusion_fastgelu import FusionFastGelu
 from fusion_biasgelu import FusionBiasGelu
 from fusion_gelu_approximation import FusionGeluApproximation
+from fusion_utils import FusionUtils
 from fusion_options import FusionOptions
 
 logger = getLogger(__name__)
