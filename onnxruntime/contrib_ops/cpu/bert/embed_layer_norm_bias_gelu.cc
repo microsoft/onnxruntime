@@ -288,11 +288,11 @@ Status EmbedLayerNormBiasGelu<T>::Compute(OpKernelContext* context) const {
         // Now perform MatMul on the 1 row that was calculated in the call to
         // ComputeSkipLayerNorm():
         size_t offset = task_idx * bias_size;
-        VectorDotProductSlow(hidden_size,
-                             bias_size,
-                             skip_layer_norm_output_data + (task_idx * hidden_size),
+        MlasVectorDotProduct(skip_layer_norm_output_data + (task_idx * hidden_size),
                              matmul_1_b_data,
-                             matmul_1_output + offset);
+                             matmul_1_output + offset,
+                             hidden_size,
+                             bias_size);
 
         // Use the row calculated in the MatMul #1 and pass through for BiasGelu
         // calculation:
@@ -303,11 +303,11 @@ Status EmbedLayerNormBiasGelu<T>::Compute(OpKernelContext* context) const {
 
         // Finally, perform one more MatMul on the row calculated at the start
         // of this batch:
-        VectorDotProductSlow(bias_size,
-                             hidden_size,
-                             bias_gelu_output + offset,
+        MlasVectorDotProduct(bias_gelu_output + offset,
                              matmul_2_b_data,
-                             output_data + (task_idx * hidden_size));
+                             output_data + (task_idx * hidden_size),
+                             bias_size,
+                             hidden_size);
       },
       0);
 
