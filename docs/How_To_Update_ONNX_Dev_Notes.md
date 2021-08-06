@@ -27,6 +27,11 @@ Search 'for version2tag', update the commit hashes. The list should contain ever
 
 5. Send you PR, and run the CI builds.
 
-6. If there is any unitest failure, caught by onnx_test_runner. Please also update
+6. If there is a build failure in stage "Check out of dated documents" in WebAssembly CI pipeline, update ONNX Runtime Web WebGL operator support document:
+   - Make sure Node.js is installed (see [Prerequisites](../js/README.md#Prerequisites) for instructions).
+   - Follow step 1 in [js/Build](../js/README.md#Build-2) to install dependencies).
+   - Follow instructions in [Generate document](../js/README.md#Generating-Document) to update document. Commit changes applied to file `docs/operators.md`.
+
+7. If there is any unitest failure, caught by onnx_test_runner. Please also update
 - [onnxruntime/test/onnx/main.cc](/onnxruntime/test/onnx/main.cc)
 - [onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc](/onnxruntime/test/testdata/onnx_backend_test_series_filters.jsonc)
