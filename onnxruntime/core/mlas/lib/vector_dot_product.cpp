@@ -31,7 +31,7 @@ Arguments:
 
     A - Supplies the A input vector of M length.
 
-    TransB - Supplies the transposed B input vector of M * N length.
+    B - Supplies the B input vector of M * N length.
 
     C - Supplies the C output vector of N length.
 
@@ -45,7 +45,8 @@ Return Value:
 
 --*/
 #if defined(MLAS_TARGET_AMD64)
-    MlasPlatform.VectorDotProductF32Kernel(A, B, C, M, N);
+    MlasVectorDotProductF32Kernel(A, B, C, M, N);
+    //MlasPlatform.VectorDotProductF32Kernel(A, B, C, M, N);
 #else
     MlasVectorDotProductF32Kernel(A, B, C, M, N);
 #endif

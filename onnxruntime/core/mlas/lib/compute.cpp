@@ -656,116 +656,187 @@ MlasVectorDotProductF32Kernel(
     size_t N
     )
 {
-    size_t C_idx = 0;
+  // TODO(kreeger): What if M > N?
+    size_t M_Rows_Per_N = N / M;
 
     while (N > 0) {
-        size_t cur_M = M;
+        while (N >= 16) {
+            MLAS_FLOAT32X4 sums_0 = MlasZeroFloat32x4();
+            MLAS_FLOAT32X4 sums_1 = MlasZeroFloat32x4();
+            MLAS_FLOAT32X4 sums_2 = MlasZeroFloat32x4();
+            MLAS_FLOAT32X4 sums_3 = MlasZeroFloat32x4();
 
-        const float* cur_A = A;
-        float cur_sum = 0.0f;
+            const float* cur_A = A;
+            const float* cur_B = B;
 
-        while (cur_M >= 16) {
-            MLAS_FLOAT32X4 a_0 = MlasLoadFloat32x4(&cur_A[0]);
-            MLAS_FLOAT32X4 a_1 = MlasLoadFloat32x4(&cur_A[4]);
-            MLAS_FLOAT32X4 a_2 = MlasLoadFloat32x4(&cur_A[8]);
-            MLAS_FLOAT32X4 a_3 = MlasLoadFloat32x4(&cur_A[12]);
+            size_t cur_M = M;
 
-            MLAS_FLOAT32X4 b_0 = MlasLoadFloat32x4(&B[0]);
-            MLAS_FLOAT32X4 b_1 = MlasLoadFloat32x4(&B[4]);
-            MLAS_FLOAT32X4 b_2 = MlasLoadFloat32x4(&B[8]);
-            MLAS_FLOAT32X4 b_3 = MlasLoadFloat32x4(&B[12]);
+            while (cur_M > 0) {
+                MLAS_FLOAT32X4 a = MlasBroadcastFloat32x4(cur_A[0]);
 
-            MLAS_FLOAT32X4 ab_0 = MlasMultiplyFloat32x4(a_0, b_0);
-            MLAS_FLOAT32X4 ab_1 = MlasMultiplyFloat32x4(a_1, b_1);
-            MLAS_FLOAT32X4 ab_2 = MlasMultiplyFloat32x4(a_2, b_2);
-            MLAS_FLOAT32X4 ab_3 = MlasMultiplyFloat32x4(a_3, b_3);
+                MLAS_FLOAT32X4 b_0 = MlasLoadFloat32x4(&cur_B[0]);
+                MLAS_FLOAT32X4 b_1 = MlasLoadFloat32x4(&cur_B[4]);
+                MLAS_FLOAT32X4 b_2 = MlasLoadFloat32x4(&cur_B[8]);
+                MLAS_FLOAT32X4 b_3 = MlasLoadFloat32x4(&cur_B[12]);
 
-            MLAS_FLOAT32X4 sums_128 = MlasAddFloat32x4(ab_0, ab_1);
-            sums_128 = MlasAddFloat32x4(sums_128, ab_2);
-            sums_128 = MlasAddFloat32x4(sums_128, ab_3);
+                sums_0 = MlasMultiplyAddFloat32x4(a, b_0, sums_0);
+                sums_1 = MlasMultiplyAddFloat32x4(a, b_1, sums_1);
+                sums_2 = MlasMultiplyAddFloat32x4(a, b_2, sums_2);
+                sums_3 = MlasMultiplyAddFloat32x4(a, b_3, sums_3);
 
-            cur_sum += MlasReduceAddFloat32x4(sums_128);
+                cur_A += 1;
+                cur_B += 16 * M_Rows_Per_N;
 
-            cur_A += 16;
+                cur_M -= 1;
+            }
+
+            MlasStoreFloat32x4(C, sums_0);
+            C += 4;
+
+            MlasStoreFloat32x4(C, sums_1);
+            C += 4;
+
+            MlasStoreFloat32x4(C, sums_2);
+            C += 4;
+
+            MlasStoreFloat32x4(C, sums_3);
+            C += 4;
+
             B += 16;
 
-            cur_M -= 16;
+            N -= 16;
         }
 
-        while (cur_M >= 12) {
-            MLAS_FLOAT32X4 a_0 = MlasLoadFloat32x4(&cur_A[0]);
-            MLAS_FLOAT32X4 a_1 = MlasLoadFloat32x4(&cur_A[4]);
-            MLAS_FLOAT32X4 a_2 = MlasLoadFloat32x4(&cur_A[8]);
+        while (N >= 12) {
+            MLAS_FLOAT32X4 sums_0 = MlasZeroFloat32x4();
+            MLAS_FLOAT32X4 sums_1 = MlasZeroFloat32x4();
+            MLAS_FLOAT32X4 sums_2 = MlasZeroFloat32x4();
 
-            MLAS_FLOAT32X4 b_0 = MlasLoadFloat32x4(&B[0]);
-            MLAS_FLOAT32X4 b_1 = MlasLoadFloat32x4(&B[4]);
-            MLAS_FLOAT32X4 b_2 = MlasLoadFloat32x4(&B[8]);
+            const float* cur_A = A;
+            const float* cur_B = B;
 
-            MLAS_FLOAT32X4 ab_0 = MlasMultiplyFloat32x4(a_0, b_0);
-            MLAS_FLOAT32X4 ab_1 = MlasMultiplyFloat32x4(a_1, b_1);
-            MLAS_FLOAT32X4 ab_2 = MlasMultiplyFloat32x4(a_2, b_2);
+            size_t cur_M = M;
 
-            MLAS_FLOAT32X4 sums_128 = MlasAddFloat32x4(ab_0, ab_1);
-            sums_128 = MlasAddFloat32x4(sums_128, ab_2);
+            while (cur_M > 0) {
+                MLAS_FLOAT32X4 a = MlasBroadcastFloat32x4(cur_A[0]);
 
-            cur_sum += MlasReduceAddFloat32x4(sums_128);
+                MLAS_FLOAT32X4 b_0 = MlasLoadFloat32x4(&cur_B[0]);
+                MLAS_FLOAT32X4 b_1 = MlasLoadFloat32x4(&cur_B[4]);
+                MLAS_FLOAT32X4 b_2 = MlasLoadFloat32x4(&cur_B[8]);
 
-            cur_A += 12;
+                sums_0 = MlasMultiplyAddFloat32x4(a, b_0, sums_0);
+                sums_1 = MlasMultiplyAddFloat32x4(a, b_1, sums_1);
+                sums_2 = MlasMultiplyAddFloat32x4(a, b_2, sums_2);
+
+                cur_A += 1;
+                cur_B += 12 * M_Rows_Per_N;
+
+                cur_M -= 1;
+            }
+
+            MlasStoreFloat32x4(C, sums_0);
+            C += 4;
+
+            MlasStoreFloat32x4(C, sums_1);
+            C += 4;
+
+            MlasStoreFloat32x4(C, sums_2);
+            C += 4;
+
             B += 12;
 
-            cur_M -= 12;
+            N -= 12;
         }
 
-        while (cur_M >= 8) {
-            MLAS_FLOAT32X4 a_0 = MlasLoadFloat32x4(&cur_A[0]);
-            MLAS_FLOAT32X4 a_1 = MlasLoadFloat32x4(&cur_A[4]);
+        while (N >= 8) {
+            MLAS_FLOAT32X4 sums_0 = MlasZeroFloat32x4();
+            MLAS_FLOAT32X4 sums_1 = MlasZeroFloat32x4();
 
-            MLAS_FLOAT32X4 b_0 = MlasLoadFloat32x4(&B[0]);
-            MLAS_FLOAT32X4 b_1 = MlasLoadFloat32x4(&B[4]);
+            const float* cur_A = A;
+            const float* cur_B = B;
 
-            MLAS_FLOAT32X4 ab_0 = MlasMultiplyFloat32x4(a_0, b_0);
-            MLAS_FLOAT32X4 ab_1 = MlasMultiplyFloat32x4(a_1, b_1);
+            size_t cur_M = M;
 
-            MLAS_FLOAT32X4 sums_128 = MlasAddFloat32x4(ab_0, ab_1);
+            while (cur_M > 0) {
+                MLAS_FLOAT32X4 a = MlasBroadcastFloat32x4(cur_A[0]);
 
-            cur_sum += MlasReduceAddFloat32x4(sums_128);
+                MLAS_FLOAT32X4 b_0 = MlasLoadFloat32x4(&cur_B[0]);
+                MLAS_FLOAT32X4 b_1 = MlasLoadFloat32x4(&cur_B[4]);
 
-            cur_A += 8;
+                sums_0 = MlasMultiplyAddFloat32x4(a, b_0, sums_0);
+                sums_1 = MlasMultiplyAddFloat32x4(a, b_1, sums_1);
+
+                cur_A += 1;
+                cur_B += 8 * M_Rows_Per_N;
+
+                cur_M -= 1;
+            }
+
+            MlasStoreFloat32x4(C, sums_0);
+            C += 4;
+
+            MlasStoreFloat32x4(C, sums_1);
+            C += 4;
+
             B += 8;
 
-            cur_M -= 8;
+            N -= 8;
         }
 
-        while (cur_M >= 4) {
-            MLAS_FLOAT32X4 a_0 = MlasLoadFloat32x4(&cur_A[0]);
+        while (N >= 4) {
+            MLAS_FLOAT32X4 sums_0 = MlasZeroFloat32x4();
 
-            MLAS_FLOAT32X4 b_0 = MlasLoadFloat32x4(&B[0]);
+            const float* cur_A = A;
+            const float* cur_B = B;
 
-            MLAS_FLOAT32X4 ab_0 = MlasMultiplyFloat32x4(a_0, b_0);
+            size_t cur_M = M;
 
-            cur_sum += MlasReduceAddFloat32x4(ab_0);
+            while (cur_M > 0) {
+                MLAS_FLOAT32X4 a = MlasBroadcastFloat32x4(cur_A[0]);
 
-            cur_A += 4;
+                MLAS_FLOAT32X4 b_0 = MlasLoadFloat32x4(&cur_B[0]);
+
+                sums_0 = MlasMultiplyAddFloat32x4(a, b_0, sums_0);
+
+                cur_A += 1;
+                cur_B += 4 * M_Rows_Per_N;
+
+                cur_M -= 1;
+            }
+
+            MlasStoreFloat32x4(C, sums_0);
+            C += 4;
+
             B += 4;
 
-            cur_M -= 4;
+            N -= 4;
         }
 
-        while (cur_M > 0) {
-            cur_sum += cur_A[0] * B[0];
+        while (N > 0) {
+            float sum = 0;
 
-            cur_A += 1;
+            const float* cur_A = A;
+            const float* cur_B = B;
+
+            size_t cur_M = M;
+
+            while (cur_M > 0) {
+                sum += cur_A[0] * cur_B[0];
+
+                cur_A += 1;
+                cur_B += 1;
+
+                cur_M -= 1;
+            }
+
+            C[0] = sum;
+
+            C += 1;
             B += 1;
 
-            cur_M -= 1;
+            N -= 1;
         }
-
-        C[C_idx] = cur_sum;
-        C_idx++;
-
-        N -= 1;
     }
-
 }
 
 void
