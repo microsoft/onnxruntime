@@ -695,9 +695,9 @@ class PlannerImpl {
   Status GeneratePlanForWeights() {
     std::vector<std::vector<OrtMemoryInfo>> locations(plan_.allocation_plan.size());
 
-    GeneratePlanForWeightsHelper(graph_viewer_, graph_viewer_.GetAllInitializedTensors(),
-                                 kernel_create_info_map_, execution_providers_,
-                                 "", 0, locations);
+    ORT_RETURN_IF_ERROR(GeneratePlanForWeightsHelper(graph_viewer_, graph_viewer_.GetAllInitializedTensors(),
+                                                     kernel_create_info_map_, execution_providers_,
+                                                     "", 0, locations));
 
     for (size_t i = 0; i != locations.size(); ++i) {
       const std::vector<OrtMemoryInfo>& loc = locations[i];
