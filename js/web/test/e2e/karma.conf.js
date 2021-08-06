@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+'use strict';
+
 const args = require('minimist')(process.argv.slice(2));
 const SELF_HOST = !!args['self-host'];
 const TEST_MAIN = args['test-main'];
