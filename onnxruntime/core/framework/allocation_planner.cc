@@ -595,7 +595,6 @@ class PlannerImpl {
   }
 
   Status GeneratePlanForWeightsHelper(const GraphViewer& graph_viewer,
-                                      const ConstPointerContainer<std::vector<NodeArg*>>* implicit_inputs,
                                       const InitializedTensorSet& weights,
                                       const KernelCreateInfoMap& kernel_create_info_map,
                                       const ExecutionProviders& execution_providers,
@@ -607,15 +606,15 @@ class PlannerImpl {
       size_t num_node_inputs = input_node_args.size();
 
       for (size_t node_input_index = 0; node_input_index < num_node_inputs; ++node_input_index) {
-        auto arg = input_node_args[node_input_index];
+        auto input_node_arg = input_node_args[node_input_index];
 
         // Skip processing missing optional inputs
-        if (!arg->Exists()) {
+        if (!input_node_arg->Exists()) {
           continue;
         }
 
         ORT_TRY {
-          auto& def_name = arg->Name();
+          auto& def_name = input_node_arg->Name();
 
           // This node input doesn't correspond to any of the weights
           if (!weights.count(def_name)) {
@@ -626,13 +625,14 @@ class PlannerImpl {
           // While processing subgraphs, if we don't see this entry in the implicit
           // inputs of the node containing the subgraph, skip processing it as it is
           // a shadow value.
-          // `implicit_inputs` being nullptr is valid only while processing the main graph.
           if (graph_depth > 0) {
-            ORT_ENFORCE(implicit_inputs != nullptr);
+            // We are processing a subgraph if we enter this
+            const auto* parent_node = graph_viewer.ParentNode();
+            ORT_ENFORCE(parent_node);
+
             bool is_implicit_input = false;
-            size_t num_implicit_inputs = implicit_inputs->size();
-            for (size_t implicit_input_index = 0; implicit_input_index < num_implicit_inputs; ++implicit_input_index) {
-              if ((*implicit_inputs)[implicit_input_index]->Name() == def_name) {
+            for (const auto& implicit_input : parent_node->ImplicitInputDefs()) {
+              if (implicit_input->Name() == def_name) {
                 is_implicit_input = true;
                 break;
               }
@@ -678,16 +678,13 @@ class PlannerImpl {
           auto specific_subgraph_execution_providers = subgraphs_execution_providers_.find(local_subgraph_kernel_create_info_map_key);
           ORT_ENFORCE(specific_subgraph_execution_providers != subgraphs_execution_providers_.end());
 
-          for (const auto& subgraph_node : subgraph_viewer.Nodes()) {
-            ORT_RETURN_IF_ERROR(GeneratePlanForWeightsHelper(subgraph_viewer,
-                                                             &node.ImplicitInputDefs(),
-                                                             weights,
-                                                             specific_subgraph_map_for_node->second,
-                                                             specific_subgraph_execution_providers->second,
-                                                             local_subgraph_kernel_create_info_map_key,
-                                                             graph_depth + 1,
-                                                             locations));
-          }
+          ORT_RETURN_IF_ERROR(GeneratePlanForWeightsHelper(subgraph_viewer,
+                                                           weights,
+                                                           specific_subgraph_map_for_node->second,
+                                                           specific_subgraph_execution_providers->second,
+                                                           local_subgraph_kernel_create_info_map_key,
+                                                           graph_depth + 1,
+                                                           locations));
         }
       }
     }
@@ -698,9 +695,9 @@ class PlannerImpl {
   Status GeneratePlanForWeights() {
     std::vector<std::vector<OrtMemoryInfo>> locations(plan_.allocation_plan.size());
 
-    ORT_RETURN_IF_ERROR(GeneratePlanForWeightsHelper(graph_viewer_, nullptr, graph_viewer_.GetAllInitializedTensors(),
-                                                     kernel_create_info_map_, execution_providers_,
-                                                     "", 0, locations));
+    GeneratePlanForWeightsHelper(graph_viewer_, graph_viewer_.GetAllInitializedTensors(),
+                                 kernel_create_info_map_, execution_providers_,
+                                 "", 0, locations);
 
     for (size_t i = 0; i != locations.size(); ++i) {
       const std::vector<OrtMemoryInfo>& loc = locations[i];
