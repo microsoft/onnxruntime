@@ -6,11 +6,11 @@ Licensed under the MIT License.
 
 Module Name:
 
-    vector_dot_prod_avx.cpp
+    vector_dot_prod_avx2.cpp
 
 Abstract:
 
-    This module implements the vector dot product routine for avx.
+    This module implements the vector dot product routine for avx2/fma.
 
 --*/
 
@@ -18,7 +18,7 @@ Abstract:
 
 void
 MLASCALL
-MlasVectorDotProductF32KernelAvx(
+MlasVectorDotProductF32KernelAvx2(
     const float* A,
     const float* B,
     float* C,
@@ -49,15 +49,10 @@ MlasVectorDotProductF32KernelAvx(
                 __m256 b_2 = _mm256_loadu_ps(&cur_B[16]);
                 __m256 b_3 = _mm256_loadu_ps(&cur_B[24]);
 
-                __m256 ab_0 = _mm256_mul_ps(a, b_0);
-                __m256 ab_1 = _mm256_mul_ps(a, b_1);
-                __m256 ab_2 = _mm256_mul_ps(a, b_2);
-                __m256 ab_3 = _mm256_mul_ps(a, b_3);
-
-                sums_0 = _mm256_add_ps(sums_0, ab_0);
-                sums_1 = _mm256_add_ps(sums_1, ab_1);
-                sums_2 = _mm256_add_ps(sums_2, ab_2);
-                sums_3 = _mm256_add_ps(sums_3, ab_3);
+                sums_0 = _mm256_fmadd_ps(a, b_0, sums_0);
+                sums_1 = _mm256_fmadd_ps(a, b_1, sums_1);
+                sums_2 = _mm256_fmadd_ps(a, b_2, sums_2);
+                sums_3 = _mm256_fmadd_ps(a, b_3, sums_3);
 
                 cur_A += 1;
                 cur_B += B_Row_Shift;
@@ -99,13 +94,9 @@ MlasVectorDotProductF32KernelAvx(
                 __m256 b_1 = _mm256_loadu_ps(&cur_B[8]);
                 __m256 b_2 = _mm256_loadu_ps(&cur_B[16]);
 
-                __m256 ab_0 = _mm256_mul_ps(a, b_0);
-                __m256 ab_1 = _mm256_mul_ps(a, b_1);
-                __m256 ab_2 = _mm256_mul_ps(a, b_2);
-
-                sums_0 = _mm256_add_ps(sums_0, ab_0);
-                sums_1 = _mm256_add_ps(sums_1, ab_1);
-                sums_2 = _mm256_add_ps(sums_2, ab_2);
+                sums_0 = _mm256_fmadd_ps(a, b_0, sums_0);
+                sums_1 = _mm256_fmadd_ps(a, b_1, sums_1);
+                sums_2 = _mm256_fmadd_ps(a, b_2, sums_2);
 
                 cur_A += 1;
                 cur_B += B_Row_Shift;
@@ -142,11 +133,8 @@ MlasVectorDotProductF32KernelAvx(
                 __m256 b_0 = _mm256_loadu_ps(&cur_B[0]);
                 __m256 b_1 = _mm256_loadu_ps(&cur_B[8]);
 
-                __m256 ab_0 = _mm256_mul_ps(a, b_0);
-                __m256 ab_1 = _mm256_mul_ps(a, b_1);
-
-                sums_0 = _mm256_add_ps(sums_0, ab_0);
-                sums_1 = _mm256_add_ps(sums_1, ab_1);
+                sums_0 = _mm256_fmadd_ps(a, b_0, sums_0);
+                sums_1 = _mm256_fmadd_ps(a, b_1, sums_1);
 
                 cur_A += 1;
                 cur_B += B_Row_Shift;
@@ -178,9 +166,7 @@ MlasVectorDotProductF32KernelAvx(
 
                 __m256 b = _mm256_loadu_ps(&cur_B[0]);
 
-                __m256 ab_0 = _mm256_mul_ps(a, b);
-
-                sums_0 = _mm256_add_ps(sums_0, ab_0);
+                sums_0 = _mm256_fmadd_ps(a, b, sums_0);
 
                 cur_A += 1;
 

@@ -336,6 +336,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/ErfKernelFma3.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx2/qladd_avx2.cpp
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx2/qdwconv_avx2.cpp
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx2/vector_dot_product_avx2.cpp
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma")
 
@@ -346,6 +347,7 @@ else()
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/SpoolKernelAvx512F.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/x86_64/TransKernelAvx512F.S
       ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx512/quantize_avx512f.cpp
+      ${ONNXRUNTIME_ROOT}/core/mlas/lib/intrinsics/avx512/vector_dot_product_avx512f.cpp
     )
     set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f")
 

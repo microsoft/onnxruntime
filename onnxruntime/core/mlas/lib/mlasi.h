@@ -614,6 +614,8 @@ extern "C" {
     MLAS_VECTOR_DOT_PRODUCT_FLOAT_KERNEL MlasVectorDotProductF32Kernel;
 #if defined(MLAS_TARGET_AMD64)
     MLAS_VECTOR_DOT_PRODUCT_FLOAT_KERNEL MlasVectorDotProductF32KernelAvx;
+    MLAS_VECTOR_DOT_PRODUCT_FLOAT_KERNEL MlasVectorDotProductF32KernelAvx2;
+    MLAS_VECTOR_DOT_PRODUCT_FLOAT_KERNEL MlasVectorDotProductF32KernelAvx512F;
 #endif
 }
 
