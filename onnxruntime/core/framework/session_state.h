@@ -77,6 +77,10 @@ class MemoryInfo;
  * Then you can use:
  *   s.GetKernel(...);
  */
+
+using SubgraphSessionStateMap =
+    std::unordered_map<onnxruntime::NodeIndex, std::unordered_map<std::string, std::unique_ptr<SessionState>>>;
+
 class SessionState {
  public:
   SessionState(Graph& graph,
@@ -317,6 +321,14 @@ class SessionState {
     return used_shared_pre_packed_weights_counter_;
   }
 
+  const KernelCreateInfoMap& GetKernelCreateInfoMap() const {
+    return kernel_create_info_map_;
+  }
+
+  const SubgraphSessionStateMap& GetSubgraphSessionStateMap() const {
+    return subgraph_session_states_;
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -371,7 +383,7 @@ class SessionState {
   }
 
   // KernelCreateInfo for each node so we do kernel lookup once
-  std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>> kernel_create_info_map_;
+  KernelCreateInfoMap kernel_create_info_map_;
 
   // If we compile kernels in a minimal build we need a way to find the kernel using the hash.
   // We populate this map when doing the kernel compilation in GraphPartitioner, and use it in LoadFromOrtFormat.
@@ -455,8 +467,6 @@ class SessionState {
 
   // subgraph SessionState. entry for node containing subgraph, with value containing attribute:SessionState pair
   // as a node may contain multiple subgraphs (e.g. 'If' has one for both the 'then' and 'else' branches).
-  using SubgraphSessionStateMap =
-      std::unordered_map<onnxruntime::NodeIndex, std::unordered_map<std::string, std::unique_ptr<SessionState>>>;
   SubgraphSessionStateMap subgraph_session_states_;
 
   // either threadpool could be nullptr
