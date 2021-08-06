@@ -133,6 +133,34 @@ dnnl::memory::format_tag DnnlSubgraphPrimitive::GetDnnlFormat(size_t dim_size) {
       source_format = dnnl::memory::format_tag::ncdhw;
       break;
     }
+    case 6: {
+      source_format = dnnl::memory::format_tag::abcdef;
+      break;
+    }
+    case 7: {
+      source_format = dnnl::memory::format_tag::abcdefg;
+      break;
+    }
+    case 8: {
+      source_format = dnnl::memory::format_tag::abcdefgh;
+      break;
+    }
+    case 9: {
+      source_format = dnnl::memory::format_tag::abcdefghi;
+      break;
+    }
+    case 10: {
+      source_format = dnnl::memory::format_tag::abcdefghij;
+      break;
+    }
+    case 11: {
+      source_format = dnnl::memory::format_tag::abcdefghijk;
+      break;
+    }
+    case 12: {
+      source_format = dnnl::memory::format_tag::abcdefghijkl;
+      break;
+    }
     default: {
       source_format = dnnl::memory::format_tag::any;
       break;
