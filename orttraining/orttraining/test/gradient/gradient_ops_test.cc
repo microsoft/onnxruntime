@@ -2494,33 +2494,28 @@ void GradientCheckerMinMaxGradHelper(const std::string op) {
   float max_error;
   GradientChecker<float, float, float> gradient_checker;
   OpDef op_def{op, kOnnxDomain, 11};
+  // Ensure the gap between x1 and x2 is greater than 1e-3f, otherwise the result of NumericJacobian
+  // will be incorrect. This also excludes equal inputs case, where Min/Max is not smooth.
+  std::function<float(float)> x1_transformer = [](float x) { return (int)(x * 100) / 100.f; };
+  std::function<float(float)> x2_transformer = [](float x) { return (int)(x * 100) / 100.f + 0.002f; };
+  TensorInfo x1_info({2, 3}, true, &x1_transformer);
+  TensorInfo y_info({2, 3}, true);
 
-  // Exclude equal inputs, since Min/Max is not smooth in such case
   {
     TensorInfo x_info({2, 3}, true);
-    TensorInfo y_info({2, 3}, true);
     gradient_checker.ComputeGradientError(op_def, {x_info}, {y_info}, &max_error);
     EXPECT_IS_TINY(max_error);
   }
 
-  // Fix below x values since too close x1 and x2 values (|difference| < 1e-3f) cause NumericJacobian incorrect.
-  // 1e-3f is the delta value of `ComputeNumericJacobianTranspose()`.
   {
-    TensorInfo x1_info({2, 3}, true);
-    TensorInfo x2_info({2, 3}, true);
-    std::vector<std::vector<float>> x_datas = {{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f},
-                                               {1.01f, 1.99f, 3.01f, 3.99f, 5.01f, 5.99f}};
-    TensorInfo y_info({2, 3}, true);
-    gradient_checker.ComputeGradientError(op_def, {x1_info, x2_info}, {y_info}, &max_error, x_datas);
+    TensorInfo x2_info({2, 3}, true, &x2_transformer);
+    gradient_checker.ComputeGradientError(op_def, {x1_info, x2_info}, {y_info}, &max_error);
     EXPECT_IS_TINY(max_error);
   }
 
   {
-    TensorInfo x1_info({2, 3}, true);
-    TensorInfo x2_info({3}, true);
-    std::vector<std::vector<float>> x_datas = {{1.0f, 2.0f, 3.0f, 1.02f, 2.02f, 3.02f}, {1.01f, 2.01f, 3.01f}};
-    TensorInfo y_info({2, 3}, true);
-    gradient_checker.ComputeGradientError(op_def, {x1_info, x2_info}, {y_info}, &max_error, x_datas);
+    TensorInfo x2_info({3}, true, &x2_transformer);
+    gradient_checker.ComputeGradientError(op_def, {x1_info, x2_info}, {y_info}, &max_error);
     EXPECT_IS_TINY(max_error);
   }
 }
