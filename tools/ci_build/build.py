@@ -7,6 +7,7 @@ import contextlib
 import glob
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -1882,6 +1883,8 @@ def generate_documentation(source_dir, build_dir, configs, validate):
 
 
 def main():
+    log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))
+
     args = parse_arguments()
     cmake_extra_defines = (args.cmake_extra_defines
                            if args.cmake_extra_defines else [])
