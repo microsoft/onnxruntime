@@ -109,7 +109,10 @@ def get_fusion_statistics(optimized_model_path: str) -> Dict[str, int]:
 
 
 def _parse_arguments():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description=
+        'Graph optimization tool for ONNX Runtime. It transforms ONNX graph to use optimized operators for Transformer models.'
+    )
     parser.add_argument('--input', required=True, type=str, help="input onnx model path")
 
     parser.add_argument('--output', required=True, type=str, help="optimized onnx model path")
@@ -142,33 +145,45 @@ def _parse_arguments():
     parser.add_argument('--input_int32',
                         required=False,
                         action='store_true',
-                        help="Use int32 (instead of int64) tensor as input to avoid unnecessary data cast")
+                        help="Use int32 (instead of int64) tensor as input to avoid unnecessary data cast.")
     parser.set_defaults(input_int32=False)
 
     parser.add_argument(
         '--float16',
         required=False,
         action='store_true',
-        help="If your target device is V100 or T4 GPU, use this to convert float32 to float16 for best performance")
+        help=
+        "If your target device is V100 or T4 GPU, try this to convert float32 to float16 for best performance (with potential loss in precision)."
+    )
     parser.set_defaults(float16=False)
 
     FusionOptions.add_arguments(parser)
 
-    parser.add_argument('--verbose', required=False, action='store_true')
+    parser.add_argument('--verbose', required=False, action='store_true', help="show debug information.")
     parser.set_defaults(verbose=False)
 
-    parser.add_argument('--use_gpu', required=False, action='store_true', help="use GPU inference")
+    parser.add_argument(
+        '--use_gpu',
+        required=False,
+        action='store_true',
+        help="use GPU for inference. Set this flag if your model is intended for GPU and opt_level > 1.")
     parser.set_defaults(use_gpu=False)
 
-    parser.add_argument('--only_onnxruntime', required=False, action='store_true', help="optimized by onnxruntime only")
+    parser.add_argument('--only_onnxruntime',
+                        required=False,
+                        action='store_true',
+                        help="optimized by onnxruntime only, and no graph fusion in Python")
     parser.set_defaults(only_onnxruntime=False)
 
-    parser.add_argument('--opt_level',
-                        required=False,
-                        type=int,
-                        choices=[0, 1, 2, 99],
-                        default=0,
-                        help="onnxruntime optimization level. 0 will disable onnxruntime.")
+    parser.add_argument(
+        '--opt_level',
+        required=False,
+        type=int,
+        choices=[0, 1, 2, 99],
+        default=None,
+        help=
+        "onnxruntime optimization level. 0 will disable onnxruntime graph optimization. Graph fusion in Python is not impacted by setting."
+    )
 
     parser.add_argument('--use_external_data_format',
                         required=False,
@@ -191,38 +206,44 @@ def optimize_model(input,
                    only_onnxruntime=False):
     """ Optimize Model by OnnxRuntime and/or python fusion logic.
 
-    In onnxruntime, there are graph optimizations (https://onnxruntime.ai/docs/resources/graph-optimizations.html) avaiable. However, the coverage
-    is limited. We also have graph fusions that implemented in python to improve the coverage. These two methods can combined: onnxruntime will run first
-    when opt_level > 0, then graph fusions in Python will be applied.
+    ONNX Runtime has graph optimizations (https://onnxruntime.ai/docs/resources/graph-optimizations.html). 
+    However, the coverage is limited. We also have graph fusions that implemented in Python to improve the coverage.
+    They can combined: ONNX Runtime will run first when opt_level > 0, then graph fusions in Python will be applied.
 
-    You can opt to use ONNX Runtime only, and no python fusion logic by specifying only_onnxruntime and a positive opt_level like
+    To use ONNX Runtime only and no Python fusion logic, use only_onnxruntime flag and a positive opt_level like
         optimize_model(input, opt_level=1, use_gpu=False, only_onnxruntime=True)
-    If your model is not exported with constant folding, try opt_level=1 to let onnxruntime do it.
 
     When opt_level is None, we will choose default optimization level according to model type.
 
     When opt_level is 0 and only_onnxruntime is False, only python fusion logic is used and onnxruntime is disabled.
 
-    For BERT model, num_heads and hidden_size are optional. For other model types, you need specify these parameters.
+    When opt_level > 1, use_gpu shall set properly since the optimized graph might contain operators for GPU or CPU only. 
+    If your model is intended for GPU inference only (especially float16 or mixed precision model), it is recommended to 
+    set use_gpu to be True, otherwise the model is not optimized for GPU inference.
 
-    use_gpu shall set properly. When opt_level > 1, optimized graph might contain optimization for GPU only. That makes the optimized model less portable.
-    However, if your model is intended for GPU inference only (especially float16 or mixed precision model), you must set use_gpu to be True,
-    otherwise the model is not optimized for GPU inference.
+    For BERT model, num_heads and hidden_size are optional. For other model types, you need specify these parameters.
 
     Args:
         input (str): input model path.
-        model_type (str): model type - like bert, bert_tf, bert_keras or gpt2.
-        num_heads (int): number of attention heads. Default is 0 to allow detect the parameter from graph automatically (for model_type "bert" only).
-        hidden_size (int): hidden size. Default is 0 to allow detect the parameter from graph automatically (for model_type "bert" only).
-        optimization_options (FusionOptions): optimization options that can use to turn on/off some fusions.
-        opt_level (int): onnxruntime graph optimization level (0, 1, 2 or 99) or None. When the level > 0, onnxruntime will be used to optimize model first.
-        use_gpu (bool): use gpu or not for onnxruntime.
-        only_onnxruntime (bool): only use onnxruntime to optimize model, and no offline fusion logic is used
+        model_type (str, optional): model type - like bert, bert_tf, bert_keras or gpt2. Defaults to 'bert'.
+        num_heads (int, optional): number of attention heads. Defaults to 0.
+                                   0 allows detect the parameter from graph automatically (for model_type "bert" only). 
+        hidden_size (int, optional): hidden size. Defaults to 0.
+                                     0 allows detect the parameter from graph automatically (for model_type "bert" only). 
+        optimization_options (FusionOptions, optional): optimization options that turn on/off some fusions. Defaults to None.
+        opt_level (int, optional): onnxruntime graph optimization level (0, 1, 2 or 99) or None. Defaults to None.
+                                   When the value is None, default value (1 for bert and gpt2, 0 for other model types) will be used.
+                                   When the level > 0, onnxruntime will be used to optimize model first.
+        use_gpu (bool, optional): use gpu or not for onnxruntime. Defaults to False.
+        only_onnxruntime (bool, optional): only use onnxruntime to optimize model, and no python fusion. Defaults to False.
 
      Returns:
         object of an optimizer class.
     """
     assert opt_level is None or opt_level in [0, 1, 2, 99]
+
+    if model_type != "bert" and (num_heads == 0 or hidden_size == 0):
+        logger.warning("Please specify parameters of num_heads and hidden_size when model_type is not 'bert'")
 
     (optimizer_class, producer, default_opt_level) = MODEL_TYPES[model_type]
 
@@ -278,6 +299,8 @@ def main():
     args = _parse_arguments()
 
     _setup_logger(args.verbose)
+
+    logger.debug(f"arguments:{args}")
 
     if os.path.realpath(args.input) == os.path.realpath(args.output):
         logger.warning(f"Specified the same input and output path. Note that this may overwrite the original model")
