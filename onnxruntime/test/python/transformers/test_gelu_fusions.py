@@ -53,7 +53,7 @@ class TestGeluFusions(unittest.TestCase):
             test_name = f"{operator}_{source}"
             onnx_path = f"{test_name}.onnx"
             torch.onnx.export(model, (dummy_input), onnx_path, input_names=['input'], output_names=['output'])
-            optimizer = optimize_model(onnx_path, 'bert', opt_level=1)
+            optimizer = optimize_model(onnx_path, 'bert')
             # optimizer.save_model_to_file(f"{operator}_{source}_opt.onnx")
             os.remove(onnx_path)
             expected_node_count = {operator: 1}

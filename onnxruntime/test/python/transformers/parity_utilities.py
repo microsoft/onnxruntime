@@ -53,7 +53,7 @@ def optimize_onnx(input_onnx_path, optimized_onnx_path, expected_op=None):
     else:
         from onnxruntime.transformers.optimizer import optimize_model
 
-    onnx_model = optimize_model(input_onnx_path, model_type='gpt2', opt_level=1)
+    onnx_model = optimize_model(input_onnx_path, model_type='gpt2')
     onnx_model.save_model_to_file(optimized_onnx_path)
 
     if expected_op is not None:

@@ -35,13 +35,13 @@ from fusion_options import FusionOptions
 
 logger = logging.getLogger(__name__)
 
-# Map model type to tuple: optimizer class, export tools (pytorch, tf2onnx, keras2onnx)
+# Map model type to tuple: optimizer class, export tools (pytorch, tf2onnx, keras2onnx), and default opt_level
 MODEL_TYPES = {
-    "bert": (BertOnnxModel, "pytorch"),
-    "bert_tf": (BertOnnxModelTF, "tf2onnx"),
-    "bert_keras": (BertOnnxModelKeras, "keras2onnx"),
-    "gpt2": (Gpt2OnnxModel, "pytorch"),
-    "gpt2_tf": (Gpt2OnnxModel, 'tf2onnx')  # might add a class for GPT2OnnxModel for TF later.
+    "bert": (BertOnnxModel, "pytorch", 1),
+    "bert_tf": (BertOnnxModelTF, "tf2onnx", 0),
+    "bert_keras": (BertOnnxModelKeras, "keras2onnx", 0),
+    "gpt2": (Gpt2OnnxModel, "pytorch", 1),
+    "gpt2_tf": (Gpt2OnnxModel, 'tf2onnx', 0)  # might add a class for GPT2OnnxModel for TF later.
 }
 
 
@@ -61,6 +61,7 @@ def optimize_by_onnxruntime(onnx_model_path: str,
     Returns:
         optimized_model_path (str): the path of optimized model
     """
+    assert opt_level in [1, 2, 99]
     import onnxruntime
 
     if use_gpu and 'CUDAExecutionProvider' not in onnxruntime.get_available_providers():
@@ -73,7 +74,6 @@ def optimize_by_onnxruntime(onnx_model_path: str,
     elif opt_level == 2:
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
     else:
-        assert opt_level == 99
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
 
     if optimized_model_path is None:
@@ -186,7 +186,7 @@ def optimize_model(input,
                    num_heads=0,
                    hidden_size=0,
                    optimization_options=None,
-                   opt_level=0,
+                   opt_level=None,
                    use_gpu=False,
                    only_onnxruntime=False):
     """ Optimize Model by OnnxRuntime and/or python fusion logic.
@@ -198,6 +198,8 @@ def optimize_model(input,
     You can opt to use ONNX Runtime only, and no python fusion logic by specifying only_onnxruntime and a positive opt_level like
         optimize_model(input, opt_level=1, use_gpu=False, only_onnxruntime=True)
     If your model is not exported with constant folding, try opt_level=1 to let onnxruntime do it.
+
+    When opt_level is None, we will choose default optimization level according to model type.
 
     When opt_level is 0 and only_onnxruntime is False, only python fusion logic is used and onnxruntime is disabled.
 
@@ -213,19 +215,29 @@ def optimize_model(input,
         num_heads (int): number of attention heads. Default is 0 to allow detect the parameter from graph automatically (for model_type "bert" only).
         hidden_size (int): hidden size. Default is 0 to allow detect the parameter from graph automatically (for model_type "bert" only).
         optimization_options (FusionOptions): optimization options that can use to turn on/off some fusions.
-        opt_level (int): onnxruntime graph optimization level (0, 1, 2 or 99). When the level > 0, onnxruntime will be used to optimize model first.
+        opt_level (int): onnxruntime graph optimization level (0, 1, 2 or 99) or None. When the level > 0, onnxruntime will be used to optimize model first.
         use_gpu (bool): use gpu or not for onnxruntime.
         only_onnxruntime (bool): only use onnxruntime to optimize model, and no offline fusion logic is used
 
      Returns:
         object of an optimizer class.
     """
-    (optimizer_class, producer) = MODEL_TYPES[model_type]
+    assert opt_level is None or opt_level in [0, 1, 2, 99]
+
+    (optimizer_class, producer, default_opt_level) = MODEL_TYPES[model_type]
+
+    if opt_level is None:
+        opt_level = default_opt_level
 
     temp_model_path = None
-    if opt_level > 0:
+    if opt_level > 1:
         temp_model_path = optimize_by_onnxruntime(input, use_gpu=use_gpu, opt_level=opt_level)
-    elif only_onnxruntime:
+    elif opt_level == 1:
+        # basic optimizations (like constant folding and cast elimation) are not specified to exection provider.
+        # CPU provider is used here so that there is no extra node for GPU memory copy.
+        temp_model_path = optimize_by_onnxruntime(input, use_gpu=False, opt_level=1)
+
+    if only_onnxruntime and not temp_model_path:
         logger.warning("Please specify a positive value for opt_level when only_onnxruntime is True")
 
     model = load_model(temp_model_path or input, format=None, load_external_data=True)
