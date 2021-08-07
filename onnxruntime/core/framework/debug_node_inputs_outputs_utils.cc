@@ -18,6 +18,15 @@ namespace utils {
 
 namespace {
 
+struct TensorMetadata {
+
+  std::string name;
+  std::string intoNode;
+  int intoNodeInputIndex;
+  std::string fromNode;
+  int fromNodeOutputIndex;
+};
+
 bool FilterNode(const NodeDumpOptions& dump_options, const Node& node) {
   auto match_pattern =
       [](const std::string& value, const std::string& delimited_patterns) {
@@ -117,17 +126,27 @@ void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, cons
   ORT_THROW_IF_ERROR(Env::Default().FileClose(output_fd));
 }
 
+void DumpTensorToSqliteDb(const Tensor& tensor, const TensorMetadata& tensor_metadata) {
+  auto tensor_proto = utils::TensorToTensorProto(tensor, tensor_name);
+  /* stub */
+}
+
+
 void DumpCpuTensor(
     const NodeDumpOptions& dump_options,
-    const Tensor& tensor, const std::string& tensor_name) {
+    const Tensor& tensor, const TensorMetadata& tensor_metadata) {
   switch (dump_options.data_destination) {
     case NodeDumpOptions::DataDestination::StdOut: {
       DispatchOnTensorType(tensor.DataType(), DumpTensorToStdOut, tensor);
       break;
     }
     case NodeDumpOptions::DataDestination::TensorProtoFiles: {
-      const Path tensor_file = dump_options.output_dir / Path::Parse(MakeTensorFileName(tensor_name, dump_options));
-      DumpTensorToFile(tensor, tensor_name, tensor_file);
+      const Path tensor_file = dump_options.output_dir / Path::Parse(MakeTensorFileName(tensor_metadata.name, dump_options));
+      DumpTensorToFile(tensor, tensor_metadata.name, tensor_file);
+      break;
+    }
+    case NodeDumpOptions::DataDestination::SqliteDb {
+      DumpTensorToSqliteDb(tensor, tensor_metadata);
       break;
     }
     default:
@@ -137,14 +156,14 @@ void DumpCpuTensor(
 
 void DumpTensor(
     const NodeDumpOptions& dump_options,
-    const Tensor& tensor, const std::string& tensor_name,
+    const Tensor& tensor, const TensorMetadata& tensor_metadata,
     const SessionState& session_state) {
   // check tensor is on CPU before dumping it
   auto& tensor_location = tensor.Location();
   if (tensor_location.device.Type() == OrtDevice::CPU ||
       tensor_location.mem_type == OrtMemTypeCPUInput ||
       tensor_location.mem_type == OrtMemTypeCPUOutput) {
-    DumpCpuTensor(dump_options, tensor, tensor_name);
+    DumpCpuTensor(dump_options, tensor, tensor_metadata);
   } else {
     std::cout << tensor_location << "\n";
 
@@ -159,7 +178,7 @@ void DumpTensor(
       const auto& data_transfer_mgr = session_state.GetDataTransferMgr();
       auto status = data_transfer_mgr.CopyTensor(tensor, cpu_tensor);
       if (status == common::Status::OK()) {
-        DumpCpuTensor(dump_options, cpu_tensor, tensor_name);
+        DumpCpuTensor(dump_options, cpu_tensor, tensor_metadata);
       } else {
         std::cout << " failed to transfer data to cpu.\n";
       }

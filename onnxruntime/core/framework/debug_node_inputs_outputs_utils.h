@@ -34,6 +34,8 @@ constexpr const char* kNameFilter = "ORT_DEBUG_NODE_IO_NAME_FILTER";
 constexpr const char* kOpTypeFilter = "ORT_DEBUG_NODE_IO_OP_TYPE_FILTER";
 // set to non-zero to dump data to files instead of stdout
 constexpr const char* kDumpDataToFiles = "ORT_DEBUG_NODE_IO_DUMP_DATA_TO_FILES";
+// set to non-zero to dump data to files instead of stdout
+constexpr const char* kDumpDataToSqlite = "ORT_DEBUG_NODE_IO_DUMP_DATA_TO_SQLITE";
 // set to non-zero to append OpenMPI world rank to filename
 constexpr const char* kAppendRankToFileName = "ORT_DEBUG_NODE_IO_APPEND_RANK_TO_FILE_NAME";
 // specify the output directory for any data files produced
@@ -80,6 +82,8 @@ struct NodeDumpOptions {
     StdOut,
     // write to one file per tensor input/output as a TensorProto
     TensorProtoFiles,
+    // write to one row per tensor input/output in Sqlite table
+    SqliteDb
   } data_destination{DataDestination::StdOut};
 
   std::string file_suffix;
