@@ -7,6 +7,7 @@
 
 #include <iomanip>
 #include <cctype>
+#include <sqlite3.h>
 
 #include "core/common/path_utils.h"
 #include "core/framework/tensorprotoutils.h"
@@ -26,6 +27,16 @@ struct TensorMetadata {
   std::string fromNode;
   int fromNodeOutputIndex;
 };
+
+static int callback(void *data, int argc, char **argv, char **azColName) {
+   ORT_ENFORCE(data == nullptr);
+   int i;
+   for(i = 0; i<argc; i++) {
+      printf("%s = %s\n", azColName[i], argv[i] ? argv[i] : "NULL");
+   }
+   printf("\n");
+   return 0;
+}
 
 bool FilterNode(const NodeDumpOptions& dump_options, const Node& node) {
   auto match_pattern =
@@ -127,8 +138,27 @@ void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, cons
 }
 
 void DumpTensorToSqliteDb(const Tensor& tensor, const TensorMetadata& tensor_metadata) {
-  auto tensor_proto = utils::TensorToTensorProto(tensor, tensor_name);
-  /* stub */
+  auto tensor_proto = utils::TensorToTensorProto(tensor, tensor_metadata.name);
+
+  sqlite3 *db;
+  int rc = sqlite3_open("test.db", &db);
+  ORT_ENFORCE(rc == 0, "Failed to connect to sqlite3 db ", "test.db");
+  printf("Connected to sqlite3 db\n");
+ 
+  const char *sql = "create table if not exists tensors ("  \
+      "index int primary key not null," \
+      "name text not null," \
+      "fromNode text," \
+      "fromNodeOutputIndex int," \
+      "intoNode test," \
+      "intoNodeInputIndex int );";
+
+  char *zErrMsg = 0;
+  rc = sqlite3_exec(db, sql, callback, 0, &zErrMsg);
+  ORT_ENFORCE(rc == SQLITE_OK, "Failed to create table tensors in sqlite3 db ", "test.db");
+  printf("Created tensors table in sqlite3 db\n"); 
+ 
+  sqlite3_close(db);
 }
 
 
@@ -145,7 +175,7 @@ void DumpCpuTensor(
       DumpTensorToFile(tensor, tensor_metadata.name, tensor_file);
       break;
     }
-    case NodeDumpOptions::DataDestination::SqliteDb {
+    case NodeDumpOptions::DataDestination::SqliteDb: {
       DumpTensorToSqliteDb(tensor, tensor_metadata);
       break;
     }
@@ -273,6 +303,7 @@ void DumpNodeInputs(
   std::cout << node.OpType() << " node: " << node.Name() << "\n";
 
   const auto& input_defs = node.InputDefs();
+  TensorMetadata tensor_metadata;
 
   for (auto i = 0, end = context.InputCount(); i < end; ++i) {
     if (input_defs[i]->Exists()) {
@@ -289,7 +320,8 @@ void DumpNodeInputs(
           PrintIf(is_shape_set, MakeString(" Shape: ", shape, "\n"));
 
           if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::InputData) != 0) {
-            DumpTensor(dump_options, tensor, input_defs[i]->Name(), session_state);
+	    tensor_metadata.name = input_defs[i]->Name();
+            DumpTensor(dump_options, tensor, tensor_metadata, session_state);
           }
         } else {
           std::cout << " is non-tensor type.\n";
@@ -319,6 +351,7 @@ void DumpNodeOutputs(const NodeDumpOptions& dump_options, OpKernelContext& conte
 
   std::cout << "-----------\n";
   const auto& output_defs = node.OutputDefs();
+  TensorMetadata tensor_metadata;
 
   for (auto i = 0, end = context.OutputCount(); i < end; ++i) {
     if (output_defs[i]->Exists()) {
@@ -334,7 +367,8 @@ void DumpNodeOutputs(const NodeDumpOptions& dump_options, OpKernelContext& conte
           PrintIf(is_shape_set, MakeString(" Shape: ", shape, "\n"));
 
           if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::OutputData) != 0) {
-            DumpTensor(dump_options, tensor, output_defs[i]->Name(), session_state);
+	    tensor_metadata.name = output_defs[i]->Name();
+            DumpTensor(dump_options, tensor, tensor_metadata, session_state);
           }
         } else {
           std::cout << " is non-tensor type.\n";

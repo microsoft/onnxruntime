@@ -59,6 +59,7 @@ endif()
 
 if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
   target_compile_definitions(onnxruntime_framework PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
+  target_link_libraries(onnxruntime_framework sqlite3)
 endif()
 
 
