@@ -28,16 +28,6 @@ struct TensorMetadata {
   int fromNodeOutputIndex;
 };
 
-static int callback(void *data, int argc, char **argv, char **azColName) {
-   ORT_ENFORCE(data == nullptr);
-   int i;
-   for(i = 0; i<argc; i++) {
-      printf("%s = %s\n", azColName[i], argv[i] ? argv[i] : "NULL");
-   }
-   printf("\n");
-   return 0;
-}
-
 bool FilterNode(const NodeDumpOptions& dump_options, const Node& node) {
   auto match_pattern =
       [](const std::string& value, const std::string& delimited_patterns) {
@@ -138,26 +128,68 @@ void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, cons
 }
 
 void DumpTensorToSqliteDb(const Tensor& tensor, const TensorMetadata& tensor_metadata) {
-  auto tensor_proto = utils::TensorToTensorProto(tensor, tensor_metadata.name);
+
+  static int64_t counter = 0;
+  counter++;
+
+  std::string sqlitedb_path = "ort-trace.db";
 
   sqlite3 *db;
-  int rc = sqlite3_open("test.db", &db);
-  ORT_ENFORCE(rc == 0, "Failed to connect to sqlite3 db ", "test.db");
-  printf("Connected to sqlite3 db\n");
+  int rc = sqlite3_open(sqlitedb_path.c_str(), &db);
+  ORT_ENFORCE(rc == 0, "Failed to connect to sqlite3 db ", sqlitedb_path.c_str());
  
-  const char *sql = "create table if not exists tensors ("  \
-      "index int primary key not null," \
-      "name text not null," \
-      "fromNode text," \
-      "fromNodeOutputIndex int," \
-      "intoNode test," \
-      "intoNodeInputIndex int );";
+  const char *sql_create_tensor_table = ;
+    "create table if not exists tensors ( " \
+    "  iteration int not null, " \
+    "  name text not null, " \
+    "  tensorShapeProto blob, " \
+    "  typeProto blob, "  \
+    "  tensorProto blob, " \
+    "  device text, " \
+    "  address int, " \
+    "  size int, " \
+    "  fromNode text, " \
+    "  fromNodeOutputIndex int, " \
+    "  intoNode text, " \
+    "  intoNodeInputIndex int, " \
+    "  primary key (iteration, name) " \
+    ");";
+    
+  char *error_message = 0;
+  rc = sqlite3_exec(db, sql_create_tensor_table, NULL, 0, &error_message);
+  ORT_ENFORCE(rc == SQLITE_OK, 
+    "Failed to create tensors table in sqlite3 db ", sqlitedb_path.c_str(), 
+    " on ", error_message);
 
-  char *zErrMsg = 0;
-  rc = sqlite3_exec(db, sql, callback, 0, &zErrMsg);
-  ORT_ENFORCE(rc == SQLITE_OK, "Failed to create table tensors in sqlite3 db ", "test.db");
-  printf("Created tensors table in sqlite3 db\n"); 
- 
+  std::stringstream ss; 
+  ss << "insert into tensors (iteration, name, value) ";
+  ss << "values ( ";
+  ss << counter << ", ";
+  ss << tensor_metadata.name << ", ";
+  ss << "? );";
+
+  sqlite3_stmt *stmt = NULL;
+  rc = sqlite3_prepare_v2(db, ss.str().c_str(), 0, &stmt, NULL);
+  ORT_ENFORCE(rc == SQLITE_OK, 
+    "Failed to prepare sql statement for insertion of tensor ", 
+    tensor_metadata.name.c_str(), " into sqlite3 db on ", sqlite3_errmsg(db));
+
+  auto tensor_proto = utils::TensorToTensorProto(tensor, tensor_metadata.name);
+  std::string bytes = tensor_proto.SerializeAsString();
+  const char* data = bytes.data();
+  int size = bytes.size();
+
+  rc = sqlite3_bind_blob(stmt, 1, data, size, SQLITE_STATIC);
+  ORT_ENFORCE(rc == SQLITE_OK, 
+    "Failed to bind tensor ", tensor_metadata.name.c_str(), 
+    " blob for insertion into sqlite3 db on ", sqlite3_errmsg(db));
+
+  rc = sqlite3_step(stmt);
+  ORT_ENFORCE(rc == SQLITE_DONE, 
+    "Failed to insert tensor ", tensor_metadata.name.c_str(), 
+    " into sqlite3 db on ", sqlite3_errmsg(db));
+
+  sqlite3_finalize(stmt);
   sqlite3_close(db);
 }
 
@@ -246,6 +278,10 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
 
     if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpDataToFiles, false)) {
       opts.data_destination = NodeDumpOptions::DataDestination::TensorProtoFiles;
+    }
+
+    if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpDataToSqlite, false)) {
+      opts.data_destination = NodeDumpOptions::DataDestination::SqliteDb;
     }
 
     if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kAppendRankToFileName, false)) {
