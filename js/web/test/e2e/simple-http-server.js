@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+'use strict';
+
 // this is a simple HTTP server that enables CORS.
 // following code is based on https://developer.mozilla.org/en-US/docs/Learn/Server-side/Node_server_without_framework
 
